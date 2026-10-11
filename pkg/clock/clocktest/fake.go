@@ -81,9 +81,13 @@ func (f *Fake) After(d time.Duration) <-chan time.Time { return f.NewTimer(d).C(
 
 // Advance moves the time forward by d. Every timer and tick that falls due on
 // the way fires in deadline order (timers with the same deadline fire in the
-// order they were created), and while it fires Now shows its deadline, so a
-// reader sees the time its timer was set for, not the end of the advance.
-// Advance panics if d is negative.
+// order they were created), and each channel receives the time its timer was
+// set for, not the end of the advance.
+//
+// Advance is one step: it returns before the goroutines it woke have run, so a
+// goroutine that re-arms a timer after waking does so at the end time. Code
+// that waits in a loop is tested by advancing one interval at a time and
+// calling [Fake.WaitForTimers] in between. Advance panics if d is negative.
 func (f *Fake) Advance(d time.Duration) {
 	if d < 0 {
 		panic("clocktest: negative Advance")
@@ -198,17 +202,22 @@ func (e *entry) fire() {
 func (e *entry) disarm() bool {
 	was := e.active
 	e.f.deactivate(e)
-	e.drain()
+	pending := e.drain()
 	if was {
 		e.f.notify()
 	}
-	return was
+	// Like a real timer, one that fired but whose value nobody received still
+	// counts as pending: Stop reports true and discards the value.
+	return was || pending
 }
 
-func (e *entry) drain() {
+// drain discards an unread value and reports whether there was one.
+func (e *entry) drain() bool {
 	select {
 	case <-e.ch:
+		return true
 	default:
+		return false
 	}
 }
 
@@ -225,7 +234,7 @@ func (t *timer) Stop() bool {
 func (t *timer) Reset(d time.Duration) bool {
 	t.f.mu.Lock()
 	defer t.f.mu.Unlock()
-	was := t.active
+	was := t.active || len(t.ch) > 0
 	t.f.arm((*entry)(t), d)
 	return was
 }

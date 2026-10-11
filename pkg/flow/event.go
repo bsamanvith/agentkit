@@ -33,6 +33,6 @@ type Event struct {
 	Kind EventKind
 	// Path identifies the step, for example "review/gather[1]/search".
 	Path string
-	// Err is set for [EventFailed] and [EventSuspended].
+	// Err is set for [EventFailed], [EventSuspended] and [EventWarning].
 	Err error
 }

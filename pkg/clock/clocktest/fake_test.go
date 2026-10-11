@@ -122,23 +122,43 @@ func TestStopAndResetDiscardAValueNobodyReceived(t *testing.T) {
 	t.Parallel()
 	f := clocktest.NewFake(start)
 
+	// As with a real timer, a value nobody received still counts as pending.
 	stopped := f.NewTimer(time.Second)
 	f.Advance(time.Second)
-	if stopped.Stop() {
-		t.Error("Stop on a timer that already fired returned true")
+	if !stopped.Stop() {
+		t.Error("Stop on a timer that fired but was not received returned false")
 	}
 	mustNotFire(t, stopped.C(), "a stale value after Stop")
 
 	reset := f.NewTimer(time.Second)
 	f.Advance(time.Second)
-	if reset.Reset(2 * time.Second) {
-		t.Error("Reset on a timer that already fired returned true")
+	if !reset.Reset(2 * time.Second) {
+		t.Error("Reset on a timer that fired but was not received returned false")
 	}
 	mustNotFire(t, reset.C(), "a stale value after Reset")
 	f.Advance(time.Second)
 	mustNotFire(t, reset.C(), "before the new deadline")
 	f.Advance(time.Second)
 	mustFire(t, reset.C(), "at the new deadline")
+}
+
+// Once the value was received, the timer is no longer pending.
+func TestStopAndResetAfterTheValueWasReceivedReportFalse(t *testing.T) {
+	t.Parallel()
+	f := clocktest.NewFake(start)
+	tm := f.NewTimer(time.Second)
+	f.Advance(time.Second)
+	mustFire(t, tm.C(), "at its deadline")
+
+	if tm.Stop() {
+		t.Error("Stop after the value was received returned true")
+	}
+	if tm.Reset(time.Second) {
+		t.Error("Reset after the value was received returned true")
+	}
+	if !tm.Reset(time.Second) {
+		t.Error("Reset of a waiting timer returned false")
+	}
 }
 
 func TestResetMovesTheDeadline(t *testing.T) {
@@ -221,9 +241,17 @@ func TestWaitForTimersReturnsWhenTheCodeUnderTestHasArmedItsTimer(t *testing.T) 
 	if err := f.WaitForTimers(t.Context(), 1); err != nil {
 		t.Fatalf("WaitForTimers: %v", err)
 	}
+	// The goroutine has armed its timer, so this Advance cannot miss it. A
+	// WaitForTimers that returned too early would leave it waiting forever; the
+	// test's context ends the wait instead of the test hanging.
 	f.Advance(30 * time.Second)
-	if got := <-woke; !got.Equal(start.Add(30 * time.Second)) {
-		t.Errorf("woke at %v, want %v", got, start.Add(30*time.Second))
+	select {
+	case got := <-woke:
+		if !got.Equal(start.Add(30 * time.Second)) {
+			t.Errorf("woke at %v, want %v", got, start.Add(30*time.Second))
+		}
+	case <-t.Context().Done():
+		t.Fatal("the goroutine never woke")
 	}
 }
 

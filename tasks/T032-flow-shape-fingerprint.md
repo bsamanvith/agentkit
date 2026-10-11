@@ -22,7 +22,7 @@ T023 handoff, contract 2: `Resume` assumes the step tree is the one that produce
 ## Acceptance criteria
 
 - [x] Same tree → same fingerprint, across processes (no map-order or pointer dependence). (`TestFingerprintIsStable`: pinned value in `testdata/shape_fingerprint.txt` plus 100 rebuilds with other closures and a 12-key route map; `TestFingerprintIgnoresWhatDoesNotChangeTheShape`)
-- [x] Adding, removing, renaming or reordering a step, or changing a route key or a loop maximum, changes it. (`TestFingerprintChangesWithTheShape`, 24 trees that must all differ; `TestFingerprintMatchesStructureSimulation`, `FuzzFingerprintMatchesStructure`)
+- [x] Adding, removing, renaming or reordering a step, or changing a route key or a loop maximum, changes it. (`TestFingerprintChangesWithTheShape`, 28 trees that must all differ; `TestFingerprintMatchesStructureSimulation`, `FuzzFingerprintMatchesStructure`)
 - [x] `Resume` against a changed tree fails with `ErrShapeChanged`; with the opt-in it proceeds. (`TestResumeOfAChangedTreeFailsWithErrShapeChanged`, `TestResumeWithAllowShapeChangeProceedsAndWarns`)
 - [x] An old checkpoint without a fingerprint still resumes. (`TestResumeOfACheckpointWithoutAShapeStillRuns`, from the real old-format file `testdata/checkpoint_suspended_no_shape.json`)
 - [x] `flowtest.RunCheckpointer` still passes; mutation list recorded. (`TestMemoryCheckpointer`, whose sample now carries a `Shape`; mutations below)
@@ -37,7 +37,7 @@ T023 handoff, contract 2: `Resume` assumes the step tree is the one that produce
 
 ### Design decisions
 
-- **What is covered:** the name and kind of every step (`seq`, `par`, `route`, `loop`, `approve`, and `step` for any other leaf), nesting, the order of a `Sequence`'s children and a `Parallel`'s branches, route keys (sorted, each with its child) and the loop maximum. Every string is quoted (`strconv.Quote`), so a step named `a"),step("b` cannot make one tree write the text of another. `Named(n, s)` contributes `n` and the shape of `s`, because that is how paths are built. Nothing about Go types, pointers or closures is covered, so refactors and code changes do not invalidate checkpoints.
+- **What is covered:** the name and kind of every step (`seq`, `par`, `route`, `loop`, `approve`, and `step` for any other leaf), nesting, the order of a `Sequence`'s children and a `Parallel`'s branches, route keys (sorted, each with its child) and the loop maximum. Every name and route key is written as its length in bytes, a colon and its bytes (`3:abc`), so no choice of names (`a"),step("b`, `a),step(b`, a route key `x=step(1:a),y`) can make one tree write the text of another, and the text does not depend on the toolchain: `strconv.Quote`, used first, prints a rune as `\U0001fae9` or as itself depending on the Unicode tables of the Go release, so the same tree had two fingerprints on go1.26 and go1.27 (found in review; the reference tree now has such a name, and its pinned fingerprint is identical on both toolchains). `Named(n, s)` contributes `n` and the shape of `s`, because that is how paths are built. Nothing about Go types, pointers or closures is covered, so refactors and code changes do not invalidate checkpoints.
 - **Custom leaf steps** (an agent step, say) are identified by name only: changing an agent's model or prompt does not change the fingerprint. That matches "never closures"; a step that needs more can include it in its name.
 - **`Run`** stores the fingerprint in the first checkpoint, and every later save carries it (`TestEveryCheckpointCarriesTheFingerprint`).
 - **`Resume`** checks right after the version check, before the state is restored and before any step, event or save. On a mismatch without the opt-in it returns `*ShapeChangedError` and changes nothing, not even the stored checkpoint (`TestResumeOfAChangedTreeFailsWithErrShapeChanged`). Applies to a run in any status, a completed one included.
@@ -48,7 +48,7 @@ T023 handoff, contract 2: `Resume` assumes the step tree is the one that produce
 
 ### Golden files
 
-`make golden` (run for `pkg/flow`) changed `testdata/checkpoint_suspended.json` by exactly one line, `"shape": "v1:8b12…"`. The file as it was is kept as `testdata/checkpoint_suspended_no_shape.json`, an old-format checkpoint that the legacy-resume test loads. `testdata/shape_fingerprint.txt` pins the fingerprint of a reference tree that uses every kind of step: changing the encoding changes it, and that needs a new `shapeVersion`.
+`make golden` (run for `pkg/flow`) changed `testdata/checkpoint_suspended.json` by exactly one line, `"shape"` (now `v1:f130…`, after the encoding change below). The file as it was is kept as `testdata/checkpoint_suspended_no_shape.json`, an old-format checkpoint that the legacy-resume test loads. `testdata/shape_fingerprint.txt` pins the fingerprint of a reference tree that uses every kind of step: changing the encoding changes it, and that needs a new `shapeVersion`.
 
 ### Mutation check
 
@@ -64,7 +64,9 @@ Each bug was planted alone (the code compiled), `go test -race ./pkg/flow/...` w
 | Fingerprint ignores the combinator kind (`Parallel` written as `Sequence`) | `TestFingerprintChangesWithTheShape`, `TestFingerprintIsStable`, `TestFingerprintMatchesStructureSimulation`, `TestCheckpointJSONGolden` |
 | Fingerprint treats `Approve` as a plain step | same four |
 | Fingerprint uses the wrapped step's name under `Named` | `TestFingerprintIgnoresWhatDoesNotChangeTheShape`, `TestFingerprintIsStable`, `TestFingerprintMatchesStructureSimulation` |
-| Fingerprint writes names unquoted (a name can forge structure) | `TestFingerprintChangesWithTheShape`, `TestFingerprintMatchesStructureSimulation` |
+| Names written without a length (raw), or raw inside quotes | `TestFingerprintChangesWithTheShape` (with the pinned-value tests skipped; the simulation does not catch it) |
+| Only route keys written raw | `TestFingerprintChangesWithTheShape` (same) |
+| Rejecting an approval drops `Shape` from the saved checkpoint | `TestApproveRejectionEndsRun` (through the check every `run`/`resume` helper call now makes) |
 | The check is skipped | `TestResumeOfAChangedTreeFailsWithErrShapeChanged` (and two more) |
 | The opt-in is ignored (a changed tree always fails) | `TestResumeWithAllowShapeChangeProceedsAndWarns`, `TestEveryCheckpointCarriesTheFingerprint` |
 | The opt-in is all that is checked (a changed tree always proceeds) | `TestResumeOfAChangedTreeFailsWithErrShapeChanged` |
@@ -78,7 +80,19 @@ Found while checking: a `Clone` that drops `Shape` was first *not* caught by the
 
 ### Extra tests beyond the criteria
 
-`TestFingerprintOfAnInvalidTreeIsAnError`, `TestResumeWithTheSameTreeWarnsAboutNothing` (a rebuilt tree is the same tree), `TestEveryCheckpointCarriesTheFingerprint` (an invariant over every save of a failing run, a legacy adoption and an opt-in), `TestFingerprintMatchesStructureSimulation` (3,000 seeded trees, about 1,800 distinct, many built by more than one seed: fingerprint and an independent JSON description of the structure identify each other; a failure names its seed) and `FuzzFingerprintMatchesStructure` (the same property for two seeds).
+`TestFingerprintOfAnInvalidTreeIsAnError`, `TestResumeWithTheSameTreeWarnsAboutNothing` (a rebuilt tree is the same tree), `TestEveryCheckpointCarriesTheFingerprint` (an invariant over every save of a failing run, a legacy adoption and an opt-in) and, for the whole package, the `run` and `resume` test helpers, which fail any test whose checkpointer is asked to save a checkpoint without the fingerprint of the running tree (§2.6: the invariant is checked after every run, not in one test), `TestFingerprintMatchesStructureSimulation` (3,000 seeded trees, about 1,800 distinct, many built by more than one seed: fingerprint and an independent JSON description of the structure identify each other; a failure names its seed) and `FuzzFingerprintMatchesStructure` (the same property for two seeds).
+
+### Review fixes (an independent review after the first push)
+
+- **The encoding used `strconv.Quote`, which depends on the toolchain's Unicode tables** (see Design decisions). Replaced by length-prefixed bytes before anything stable stored a fingerprint; `shapeVersion` stays `v1` because nothing was released. A suspended `agentkit flow demo` file written by the first push holds the old value and will answer `ErrShapeChanged`: delete it or use the opt-in.
+- The quoting guarantee was protected only by the pinned golden value, because the forging names in the tests (`a"),step("b`) contain quotes and forge nothing against an unquoted encoding. Added forging names, route keys and root names that do collide under the raw encodings (verified), and the generator uses them too.
+- The "every checkpoint carries the fingerprint" invariant was checked in one test only; planting a bug that dropped `Shape` when an approval is rejected passed the suite. It is now checked by the shared test helpers.
+- `Event.Err` doc now includes `EventWarning`.
+
+### Open points (not changed)
+
+- `Resume` also checks a completed run, so a deploy that edits a tree makes "read the final state of a finished run" fail with `ErrShapeChanged` unless the opt-in is given. No step can run for a completed run, so the check protects nothing there; kept because the spec says `Resume` fails on a changed tree, and a runner can read the final state from the checkpoint instead. Decide in T030.
+- Outside this task's files: `tasks/T023-flow.md` and `tasks/T024-run-cli.md` still say a changed tree "is not detected".
 
 ### For T028, T029 and T030
 

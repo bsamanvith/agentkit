@@ -43,9 +43,15 @@ func shapeOf(step Step) string {
 	return shapeVersion + ":" + hex.EncodeToString(sum[:])
 }
 
+// lp writes s as its length in bytes, a colon and its bytes. Unlike quoting, it
+// does not depend on which characters the toolchain's Unicode tables call
+// printable, so the same tree has the same text under every Go release, and
+// since the length says where the string ends, no choice of names or route keys
+// makes two different trees write the same text.
+func lp(s string) string { return strconv.Itoa(len(s)) + ":" + s }
+
 // encodeShape writes a canonical text of step, whose name in its parent is
-// name. Every string is quoted, so no choice of names makes two different trees
-// write the same text.
+// name.
 func encodeShape(b *strings.Builder, step Step, name string) {
 	switch s := step.(type) {
 	case *named:
@@ -53,39 +59,39 @@ func encodeShape(b *strings.Builder, step Step, name string) {
 		// step inside is called.
 		encodeShape(b, s.step, name)
 	case *sequence:
-		b.WriteString("seq(" + strconv.Quote(name))
+		b.WriteString("seq(" + lp(name))
 		for _, c := range s.steps {
 			b.WriteByte(',')
 			encodeShape(b, c, nameOf(c))
 		}
 		b.WriteByte(')')
 	case *parallel:
-		b.WriteString("par(" + strconv.Quote(name))
+		b.WriteString("par(" + lp(name))
 		for _, c := range s.branches {
 			b.WriteByte(',')
 			encodeShape(b, c, nameOf(c))
 		}
 		b.WriteByte(')')
 	case *route:
-		b.WriteString("route(" + strconv.Quote(name))
+		b.WriteString("route(" + lp(name))
 		keys := make([]string, 0, len(s.routes))
 		for k := range s.routes {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			b.WriteString("," + strconv.Quote(k) + ":")
+			b.WriteString("," + lp(k) + "=")
 			encodeShape(b, s.routes[k], nameOf(s.routes[k]))
 		}
 		b.WriteByte(')')
 	case *loop:
-		b.WriteString("loop(" + strconv.Quote(name) + "," + strconv.Itoa(s.max) + ",")
+		b.WriteString("loop(" + lp(name) + "," + strconv.Itoa(s.max) + ",")
 		encodeShape(b, s.body, nameOf(s.body))
 		b.WriteByte(')')
 	case *approve:
-		b.WriteString("approve(" + strconv.Quote(name) + ")")
+		b.WriteString("approve(" + lp(name) + ")")
 	default:
-		b.WriteString("step(" + strconv.Quote(name) + ")")
+		b.WriteString("step(" + lp(name) + ")")
 	}
 }
 

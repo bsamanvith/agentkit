@@ -97,13 +97,41 @@ func failOnce(c *calls, name string) flow.Step {
 	})
 }
 
+// shapeChecked is a Checkpointer that fails the test when a checkpoint is saved
+// without the fingerprint of the tree that is running. run and resume wrap
+// their checkpointer in it, so every test in the package checks it.
+type shapeChecked struct {
+	flow.Checkpointer
+	t    testing.TB
+	want string
+}
+
+func (c shapeChecked) Save(ctx context.Context, id string, ck flow.Checkpoint) error {
+	if ck.Shape != c.want {
+		c.t.Errorf("saved a checkpoint (status %s, %d steps) with shape %q, want the running tree's %q", ck.Status, len(ck.Steps), ck.Shape, c.want)
+	}
+	return c.Checkpointer.Save(ctx, id, ck)
+}
+
+// withShapeCheck wraps cp for a run of step. A tree that is not valid has no
+// fingerprint, and flow reports that itself.
+func withShapeCheck(t testing.TB, cp flow.Checkpointer, step flow.Step) flow.Checkpointer {
+	want, err := flow.Fingerprint(step)
+	if err != nil {
+		return cp
+	}
+	return shapeChecked{Checkpointer: cp, t: t, want: want}
+}
+
 func run(t *testing.T, cp flow.Checkpointer, id string, step flow.Step, opts ...flow.Option) (*flow.State, error) {
 	t.Helper()
+	cp = withShapeCheck(t, cp, step)
 	return flow.Run(t.Context(), id, step, append([]flow.Option{flow.WithCheckpointer(cp)}, opts...)...)
 }
 
 func resume(t *testing.T, cp flow.Checkpointer, id string, step flow.Step, opts ...flow.Option) (*flow.State, error) {
 	t.Helper()
+	cp = withShapeCheck(t, cp, step)
 	return flow.Resume(t.Context(), id, step, append([]flow.Option{flow.WithCheckpointer(cp)}, opts...)...)
 }
 

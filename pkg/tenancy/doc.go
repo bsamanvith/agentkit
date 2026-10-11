@@ -5,7 +5,7 @@
 // is refused instead of treated as "all tenants".
 //
 // A [Tenant] can only be made by [NewTenant], which accepts identifiers that
-// are safe to use as a database key, a path segment, a URL segment or a metric
-// label. The same scope can carry a user id and a request id for audit logs.
+// are safe to use as a database key, a SQL value, a URL segment or a metric
+// label (but see [NewTenant] before using one as a file name). The same scope can carry a user id and a request id for audit logs.
 // They are labels: this package does not authenticate anyone.
 package tenancy

@@ -7,7 +7,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/clock"
 )
 
-// Real forwards to the time package. The timers here are 1 ms long; the test
+// Real forwards to the time package. The timers here are short; the test
 // blocks on their channels instead of sleeping, so it takes as long as they do
 // and no longer.
 func TestRealClockUsesTheMachineTime(t *testing.T) {
@@ -20,8 +20,13 @@ func TestRealClockUsesTheMachineTime(t *testing.T) {
 		t.Errorf("Now() = %v, outside [%v, %v]", now, before, after)
 	}
 
-	<-c.NewTimer(time.Millisecond).C()
-	<-c.After(time.Millisecond)
+	const d = 20 * time.Millisecond
+	began := time.Now()
+	<-c.NewTimer(d).C()
+	<-c.After(d)
+	if elapsed := time.Since(began); elapsed < 2*d {
+		t.Errorf("two timers of %v fired after %v, the duration was not honored", d, elapsed)
+	}
 
 	tk := c.NewTicker(time.Millisecond)
 	defer tk.Stop()

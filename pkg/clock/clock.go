@@ -24,11 +24,14 @@ type Clock interface {
 type Timer interface {
 	// C is the channel the time is sent on. It holds at most one value.
 	C() <-chan time.Time
-	// Stop prevents the timer from firing. It reports whether it did: false
-	// means the timer had already fired or been stopped.
+	// Stop prevents the timer from firing and discards a value that was sent
+	// but not yet received. It reports whether the timer was still pending:
+	// true if it had not fired, or had fired and nobody received the value;
+	// false if the value was received or the timer had already been stopped.
 	Stop() bool
-	// Reset makes the timer fire d from now, whether or not it had fired. It
-	// reports whether the timer was still waiting.
+	// Reset makes the timer fire d from now, whether or not it had fired, and
+	// discards a value that was sent but not yet received. Its result is the
+	// one Stop would have returned.
 	Reset(d time.Duration) bool
 }
 

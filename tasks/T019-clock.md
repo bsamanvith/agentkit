@@ -34,8 +34,9 @@ Split out of T002, now part of E05: the runner and the store's leases need it, a
 
 ### Design decisions
 
-- **The fake behaves like Go's real timers (Go 1.23+).** A channel holds one value, so a ticker whose reader is slow misses ticks instead of receiving a backlog, and `Stop`/`Reset` discard a value nobody received. Code tested on the fake therefore behaves the same in production. Criterion 2 is read as: the schedule advances once per elapsed period, without drift, and at most one tick is pending (`TestTickerDropsTicksForASlowReaderWithoutDrifting`); a reader that keeps up gets one tick per period (`TestTickerFiresOncePerPeriodForAReaderThatKeepsUp`).
-- `Advance` fires what is due in deadline order (ties in creation order). While one fires, `Now` shows its deadline and the channel receives the deadline, not the end of the advance (`TestTimersReceiveTheirOwnDeadline`). The order itself is not observable through channels, so it has no test of its own.
+- **The fake behaves like Go's real timers (Go 1.23+).** A channel holds one value, so a ticker whose reader is slow misses ticks instead of receiving a backlog, `Stop`/`Reset` discard a value nobody received, and (as with a real `time.Timer`, checked against it on go1.26 and go1.27) they report `true` for a timer that fired but whose value was not received. Code tested on the fake therefore behaves the same in production, including the `if !t.Stop() { <-t.C() }` idiom, which does not block. Criterion 2 is read as: the schedule advances once per elapsed period, without drift, and at most one tick is pending (`TestTickerDropsTicksForASlowReaderWithoutDrifting`); a reader that keeps up gets one tick per period (`TestTickerFiresOncePerPeriodForAReaderThatKeepsUp`).
+- `Advance` fires what is due in deadline order (ties in creation order), and each channel receives the deadline of its timer, not the end of the advance (`TestTimersReceiveTheirOwnDeadline`). `Advance` is one step under one lock: nobody can observe `Now` midway, and a goroutine woken by it re-arms at the end time. A test of a loop that waits advances one interval at a time and calls `WaitForTimers` in between (documented on `Advance`). The firing order itself is not observable through channels, so it has no test of its own.
+- Timers that are armed and never fired or stopped (an `After` nobody waits for) stay in the waiting set, so they count for `WaitForTimers` and make `Advance` scan them; a real timer would be garbage collected. Fine for a test; do not use the fake in a long-running process.
 - A timer of zero or negative length fires at once; `NewTicker`/`Reset` with a non-positive period and `Advance` of a negative duration panic, like the time package.
 - `WaitForTimers` is how a test lets the code under test arm its timers before advancing, with no sleep. It counts timers and tickers that are waiting (not stopped, not fired).
 - There is no `AfterFunc`: nothing needs it yet.
@@ -51,9 +52,12 @@ Each bug was planted alone (the code compiled), `go test -race ./pkg/clock/...` 
 | Timer fires a second time an hour later | `TestTimerFiresOnceAtItsDeadline`, `TestStopAndResetDiscardAValueNobodyReceived`, `TestWaitForTimersCountsOnlyWaitingTimers` |
 | `Stop` ignored | `TestStoppedTimerNeverFires`, `TestStoppedTickerNeverTicks` |
 | Ticker counts its next period from the end of the `Advance` (drift) | `TestTickerDropsTicksForASlowReaderWithoutDrifting` |
-| `Now` jumps to the end before timers fire | `TestTimersReceiveTheirOwnDeadline` |
+| Timers fire with the end time of the `Advance` instead of their deadline (`Now` set to the end first, and the value taken from it) | `TestTimersReceiveTheirOwnDeadline` |
 | `Stop` keeps an unread value | `TestStopAndResetDiscardAValueNobodyReceived`, `TestStoppedTickerNeverTicks` |
 | `Reset` keeps an unread value | `TestStopAndResetDiscardAValueNobodyReceived`, `TestResetMovesTheDeadline` |
+| `Stop` on a timer that fired but was not received reports false | `TestStopAndResetDiscardAValueNobodyReceived` |
+| `Reset` on a timer that fired but was not received reports false | `TestStopAndResetDiscardAValueNobodyReceived` |
+| `Real()` timers ignore the duration | `TestRealClockUsesTheMachineTime` |
 | Timer with no delay does not fire at once | `TestTimerWithNoDelayFiresAtOnce` |
 | Ticker `Reset` ignores the new period | `TestResetMovesTheDeadline` |
 | Ticker keeps a backlog of missed ticks | `TestTickerDropsTicksForASlowReaderWithoutDrifting`, `TestResetMovesTheDeadline` |
@@ -62,7 +66,13 @@ Each bug was planted alone (the code compiled), `go test -race ./pkg/clock/...` 
 
 ### Extra tests beyond the criteria
 
-`TestStopAndResetDiscardAValueNobodyReceived` and `TestResetMovesTheDeadline` (the Go 1.23 semantics code will rely on), `TestTimerWithNoDelayFiresAtOnce`, `TestZeroStartIsAFixedTime`, `TestWaitForTimers*`, `TestNonPositiveTickerPeriodPanics`, `TestRealClockUsesTheMachineTime` (the one test of `Real`: 1 ms timers, blocking on channels, no sleep), `Example` and `ExampleFake`.
+`TestStopAndResetDiscardAValueNobodyReceived`, `TestStopAndResetAfterTheValueWasReceivedReportFalse` and `TestResetMovesTheDeadline` (the Go 1.23 semantics code will rely on), `TestTimerWithNoDelayFiresAtOnce`, `TestZeroStartIsAFixedTime`, `TestWaitForTimers*`, `TestNonPositiveTickerPeriodPanics`, `TestRealClockUsesTheMachineTime` (the one test of `Real`: 1 ms timers, blocking on channels, no sleep), `Example` and `ExampleFake`.
+
+### Review fixes (an independent review after the first push)
+
+- `Stop`/`Reset` returned `false` for a fired-but-unreceived timer where a real timer returns `true`, and a test locked that in (a drain idiom would have hung on the fake). Fixed, the doc on `clock.Timer` corrected, test flipped and extended.
+- The `Advance` doc claimed `Now` shows the deadline while a timer fires, which no other goroutine can observe; reworded (see Design decisions).
+- `TestWaitForTimersReturnsWhenTheCodeUnderTestHasArmedItsTimer` now ends through the test context instead of hanging if `WaitForTimers` returns early; `TestRealClockUsesTheMachineTime` now checks that the duration is honored (20 ms timers, no sleep).
 
 ### For T028, T030 and later
 

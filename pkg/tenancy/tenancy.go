@@ -24,8 +24,13 @@ type Tenant struct{ id string }
 
 // NewTenant returns the tenant with the given id. An id has 1 to [MaxIDLength]
 // bytes, each an ASCII letter, digit, '.', '_' or '-', and starts with a
-// letter or digit. That makes it safe as a key, a file or URL path segment and
-// a metric label, and rules out "." and "..".
+// letter or digit. That makes it safe as a map or database key, a SQL value, a
+// URL path segment and a metric label, and rules out "." and "..".
+//
+// Ids are case sensitive and are not normalized: "Acme" and "acme" are two
+// tenants. A store that uses the id as a file name must therefore not rely on
+// it alone on a case-insensitive file system, where they are one directory, and
+// some names (such as "CON" or "NUL" on Windows) are reserved there.
 func NewTenant(id string) (Tenant, error) {
 	if len(id) == 0 || len(id) > MaxIDLength {
 		return Tenant{}, fmt.Errorf("%w: length %d, want 1 to %d", ErrInvalidTenant, len(id), MaxIDLength)

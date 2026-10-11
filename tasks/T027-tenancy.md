@@ -36,10 +36,11 @@ Multi-tenant in v1 ([PLAN.md `tenancy`](../docs/PLAN.md#tenancy)): tenant, user 
 
 ### Design decisions
 
-- **A valid id** has 1 to 64 bytes, each an ASCII letter, digit, `.`, `_` or `-`, and starts with a letter or digit. That makes it safe as a SQL value, a file or URL path segment and a metric label, and rules out `.` and `..`. Non-ASCII is refused so two ids cannot look alike.
+- **A valid id** has 1 to 64 bytes, each an ASCII letter, digit, `.`, `_` or `-`, and starts with a letter or digit. That makes it safe as a map or database key, a SQL value, a URL path segment and a metric label, and rules out `.` and `..`. Non-ASCII is refused so no id contains look-alike characters. Ids are case sensitive and not normalized (`Acme` and `acme` are two tenants): a store that uses the id as a file name must not rely on it alone on a case-insensitive file system, where those are one directory (review finding; the doc says so).
 - **`Require` is not in the spec.** A store method must refuse a context with no tenant with an error, not a panic, so T028 needs an error-returning variant next to `MustFrom`. Both are one line over `From`.
 - **One immutable scope value in `ctx`.** `With` starts a new scope, so the user and request id of tenant A never carry into tenant B. `With(ctx, Tenant{})` clears the scope instead of being ignored, so a context cannot keep the outer tenant by accident: the store then fails closed with `ErrNoTenant`.
 - `Tenant` has no exported fields, so the only way to hold a non-zero one is `NewTenant`; the zero value means "none".
+- `With` on the same tenant still starts a fresh scope, so a user or request id set earlier is dropped. That is by design (a scope belongs to one tenant), but a layer that re-asserts the tenant should call `WithUser`/`WithRequest` after it. Raised in review; left as is.
 - User and request ids are not validated: they are labels, and bounding untrusted header values is the middleware's job.
 - Moving the scope across a process boundary (request metadata, ENGINEERING §1.5) is the middleware's job and not built here; it will use `ID()` and `NewTenant`.
 

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "run_id": "r",
-  "shape": "v1:8b1266578d79ec4b53cbc99cffb7c3997d812fc569efcfdde502840f40d66b84",
+  "shape": "v1:f130254fd3f9574a35ca89c0e51c06cd1fc2e849aff9fcdcc7bac181d2889822",
   "status": "suspended",
   "initial": {
     "topic": "q3"

@@ -8,6 +8,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"reflect"
+	"slices"
 	"sync"
 	"testing"
 
@@ -42,6 +43,7 @@ func referenceTree(salt string) flow.Step {
 		flow.Loop("refine", noop("draft"), func(*flow.State) (bool, error) { _ = salt; return true, nil }, 4),
 		flow.Route("pick", key(salt), routes),
 		flow.Named("sign", flow.Approve("ignored")),
+		noop("note-\U0001FAE9"), // assigned in Unicode 16: must not depend on the toolchain's tables
 		noop("publish"))
 }
 
@@ -75,30 +77,34 @@ func TestFingerprintChangesWithTheShape(t *testing.T) {
 	routeOf := func(m map[string]flow.Step) flow.Step { return flow.Route("r", key(""), m) }
 
 	trees := map[string]flow.Step{
-		"base":                  flow.Sequence("s", a, b),
-		"step added":            flow.Sequence("s", a, b, c),
-		"step removed":          flow.Sequence("s", a),
-		"step renamed":          flow.Sequence("s", a, noop("b2")),
-		"root renamed":          flow.Sequence("s2", a, b),
-		"steps reordered":       flow.Sequence("s", b, a),
-		"sequence to parallel":  flow.Parallel("s", a, b),
-		"branches reordered":    flow.Parallel("s", b, a),
-		"approval for a func":   flow.Sequence("s", a, flow.Approve("b")),
-		"nested together":       flow.Sequence("s", flow.Sequence("x", a, b)),
-		"nested first":          flow.Sequence("s", flow.Sequence("x", a), b),
-		"nested last":           flow.Sequence("s", a, flow.Sequence("x", b)),
-		"forged by a name":      flow.Sequence("s", noop(`a"),step("b`)),
-		"route":                 routeOf(map[string]flow.Step{"x": a, "y": b}),
-		"route key renamed":     routeOf(map[string]flow.Step{"x": a, "z": b}),
-		"route children swap":   routeOf(map[string]flow.Step{"x": b, "y": a}),
-		"route key added":       routeOf(map[string]flow.Step{"x": a, "y": b, "z": c}),
-		"route child renamed":   routeOf(map[string]flow.Step{"x": a, "y": noop("b2")}),
-		"loop":                  flow.Loop("l", a, never, 3),
-		"loop maximum":          flow.Loop("l", a, never, 4),
-		"loop body renamed":     flow.Loop("l", b, never, 3),
-		"loop to sequence":      flow.Sequence("l", a),
-		"loop of a loop":        flow.Loop("l", flow.Loop("a", b, never, 3), never, 3),
-		"parallel of sequences": flow.Parallel("s", flow.Sequence("a", b), c),
+		"base":                    flow.Sequence("s", a, b),
+		"step added":              flow.Sequence("s", a, b, c),
+		"step removed":            flow.Sequence("s", a),
+		"step renamed":            flow.Sequence("s", a, noop("b2")),
+		"root renamed":            flow.Sequence("s2", a, b),
+		"steps reordered":         flow.Sequence("s", b, a),
+		"sequence to parallel":    flow.Parallel("s", a, b),
+		"branches reordered":      flow.Parallel("s", b, a),
+		"approval for a func":     flow.Sequence("s", a, flow.Approve("b")),
+		"nested together":         flow.Sequence("s", flow.Sequence("x", a, b)),
+		"nested first":            flow.Sequence("s", flow.Sequence("x", a), b),
+		"nested last":             flow.Sequence("s", a, flow.Sequence("x", b)),
+		"forged by a quoted name": flow.Sequence("s", noop(`a"),step("b`)),
+		"forged by a name":        flow.Sequence("s", noop("a),step(b")),
+		"forged by a root name":   flow.Sequence("s,step(a),step(b", noop("c")),
+		"forged by a route key":   routeOf(map[string]flow.Step{"x=step(1:a),y": b}),
+		"forged by a loop name":   flow.Loop("l,3,step(a", b, never, 3),
+		"route":                   routeOf(map[string]flow.Step{"x": a, "y": b}),
+		"route key renamed":       routeOf(map[string]flow.Step{"x": a, "z": b}),
+		"route children swap":     routeOf(map[string]flow.Step{"x": b, "y": a}),
+		"route key added":         routeOf(map[string]flow.Step{"x": a, "y": b, "z": c}),
+		"route child renamed":     routeOf(map[string]flow.Step{"x": a, "y": noop("b2")}),
+		"loop":                    flow.Loop("l", a, never, 3),
+		"loop maximum":            flow.Loop("l", a, never, 4),
+		"loop body renamed":       flow.Loop("l", b, never, 3),
+		"loop to sequence":        flow.Sequence("l", a),
+		"loop of a loop":          flow.Loop("l", flow.Loop("a", b, never, 3), never, 3),
+		"parallel of sequences":   flow.Parallel("s", flow.Sequence("a", b), c),
 	}
 	seen := map[string]string{}
 	for name, tree := range trees {
@@ -401,7 +407,9 @@ type spec struct {
 // so that different seeds often build the same tree.
 type treeGen struct{ r *rand.Rand }
 
-var namePool = []string{"a", "b", "c", `a"`, `b"),step("c`, "é"}
+var namePool = []string{"a", "b", "c", `a"`, `b"),step("c`, "a),step(b", "é"}
+
+var routeKeys = []string{"x", "y", "z", "x=step(1:a),y"}
 
 func newTreeGen(seed uint64) *treeGen { return &treeGen{rand.New(rand.NewPCG(seed, 1))} }
 
@@ -437,13 +445,13 @@ func (g *treeGen) build(name string, depth int) (flow.Step, spec) {
 	case 4:
 		routes := map[string]flow.Step{}
 		sp := spec{Kind: "route", Name: name}
-		keys := []string{"x", "y", "z"}
+		keys := slices.Clone(routeKeys)
 		g.r.Shuffle(len(keys), func(i, j int) { keys[i], keys[j] = keys[j], keys[i] })
 		kids := map[string]spec{}
-		for _, k := range keys[:1+g.r.IntN(3)] {
+		for _, k := range keys[:1+g.r.IntN(len(keys))] {
 			routes[k], kids[k] = g.build(g.pick(namePool), depth-1)
 		}
-		for _, k := range []string{"x", "y", "z"} {
+		for _, k := range routeKeys {
 			if kid, ok := kids[k]; ok {
 				sp.Keys, sp.Kids = append(sp.Keys, k), append(sp.Kids, kid)
 			}

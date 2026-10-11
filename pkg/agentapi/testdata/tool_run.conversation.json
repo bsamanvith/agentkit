@@ -1,0 +1,71 @@
+{
+  "v": 1,
+  "id": "conv_1",
+  "status": "idle",
+  "created_at": "2026-10-11T12:00:00Z",
+  "updated_at": "2026-10-11T12:00:00.02Z",
+  "messages": [
+    {
+      "at": "2026-10-11T12:00:00.002Z",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Echo hi, then tell me what it said."
+          }
+        ]
+      }
+    },
+    {
+      "at": "2026-10-11T12:00:00.008Z",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "opaque",
+            "provider": "anthropic",
+            "data": "{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"c2lnbmF0dXJl\"}"
+          },
+          {
+            "type": "text",
+            "text": "Let me echo that."
+          },
+          {
+            "type": "tool_use",
+            "id": "toolu_1",
+            "name": "echo",
+            "input": {
+              "text": "hi"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "at": "2026-10-11T12:00:00.012Z",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "tool_result",
+            "tool_use_id": "toolu_1",
+            "content": "{\"text\":\"[a] hi\"}"
+          }
+        ]
+      }
+    },
+    {
+      "at": "2026-10-11T12:00:00.018Z",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "It said: [a] hi"
+          }
+        ]
+      }
+    }
+  ]
+}

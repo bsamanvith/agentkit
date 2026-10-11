@@ -30,6 +30,13 @@ func ModuleRules() Rules {
 				"pkg/llm", "pkg/flow", "pkg/flow/flowtest", "pkg/tenancy",
 				"pkg/clock", "pkg/clock/clocktest",
 			},
+			// The agent API runs a harness and never a model adapter:
+			// cmd/agentkit wires the model in (E09). Its tests use the demo
+			// toolsets and the fakes.
+			"pkg/agentapi": {
+				"pkg/harness", "pkg/llm", "pkg/tool", "pkg/toolset", "pkg/component", "pkg/clock",
+				"pkg/llm/llmtest", "pkg/clock/clocktest", "internal/testkit",
+			},
 		},
 		Banned: []string{
 			"github.com/golang/mock",

@@ -14,7 +14,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/component"
+	"github.com/bsamanvith/agentkit/pkg/tool"
+	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
 // Environment read by agentkit serve.
@@ -27,12 +30,13 @@ const (
 )
 
 // knownComponents are the names AGENTKIT_COMPONENTS accepts.
-var knownComponents = []string{mcpServerName}
+var knownComponents = []string{mcpServerName, agentapi.Name}
 
 // serveConfig is the config file of agentkit serve. It is JSON; YAML (with
 // the same keys) comes with pkg/config.
 type serveConfig struct {
-	MCP mcpConfig `json:"mcp"`
+	MCP   mcpConfig   `json:"mcp"`
+	Agent agentConfig `json:"agent"`
 }
 
 // serveEnv is what agentkit serve reads from the environment.
@@ -62,6 +66,10 @@ func (c cli) serve(ctx context.Context, args []string) error {
 		return err
 	}
 	log := slog.New(slog.NewJSONHandler(c.stderr, &slog.HandlerOptions{Level: env.logLevel}))
+	built, problems, err := buildToolsets(ctx, env, cfg, *configPath, log)
+	if err != nil {
+		return err
+	}
 
 	// The wiring: one constructor per component, chosen by name.
 	var mounts []component.Mount
@@ -69,10 +77,9 @@ func (c cli) serve(ctx context.Context, args []string) error {
 		var m component.Mount
 		switch name {
 		case mcpServerName:
-			if *configPath == "" {
-				return fmt.Errorf("%s needs a config file with its toolsets: -config or $%s", name, envConfig)
-			}
-			m, err = newMCPServer(ctx, cfg.MCP, log)
+			m, err = newMCPServer(ctx, cfg.MCP, built, problems, log)
+		case agentapi.Name:
+			m, err = c.newAgent(ctx, cfg.Agent, built, env, log)
 		default: // in knownComponents but not wired here
 			err = errors.New("component not wired in cmd/agentkit")
 		}
@@ -94,6 +101,45 @@ func (c cli) serve(ctx context.Context, args []string) error {
 		return err
 	}
 	return rt.Serve(ctx, ln)
+}
+
+// buildToolsets builds, once, the toolsets the components use: every one in
+// mcp.toolsets when mcp-server runs, else those the agent names. Both
+// components then share the same instances. Optional toolsets that fail are
+// logged and returned as problems.
+func buildToolsets(ctx context.Context, env serveEnv, cfg serveConfig, configPath string, log *slog.Logger) (map[string]tool.Registry, []toolset.Problem, error) {
+	var specs []toolset.Spec
+	if slices.Contains(env.components, agentapi.Name) {
+		s, err := agentToolsetSpecs(cfg)
+		if err != nil {
+			return nil, nil, fmt.Errorf("%s: %w", agentapi.Name, err)
+		}
+		specs = s
+	}
+	if slices.Contains(env.components, mcpServerName) {
+		if configPath == "" {
+			return nil, nil, fmt.Errorf("%s needs a config file with its toolsets: -config or $%s", mcpServerName, envConfig)
+		}
+		if len(cfg.MCP.Toolsets) == 0 {
+			return nil, nil, fmt.Errorf("%s: no toolsets configured (mcp.toolsets in the config file)", mcpServerName)
+		}
+		specs = cfg.MCP.Toolsets
+	}
+	if len(specs) == 0 {
+		return map[string]tool.Registry{}, nil, nil
+	}
+	catalog, err := newCatalog()
+	if err != nil {
+		return nil, nil, err
+	}
+	regs, problems, err := toolset.Build(ctx, catalog, specs)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, p := range problems {
+		log.Warn("optional toolset skipped", "toolset", p.Toolset, "type", p.Type, "err", p.Err)
+	}
+	return regs, problems, nil
 }
 
 func (c cli) serveEnv() (serveEnv, error) {
@@ -135,7 +181,7 @@ func (c cli) serveEnv() (serveEnv, error) {
 // loadServeConfig reads the config file; an empty path gives the defaults.
 // Unknown fields are errors, so a typo cannot silently change what is served.
 func loadServeConfig(path string) (serveConfig, error) {
-	cfg := serveConfig{MCP: defaultMCPConfig()}
+	cfg := serveConfig{MCP: defaultMCPConfig(), Agent: defaultAgentConfig()}
 	if path == "" {
 		return cfg, nil
 	}

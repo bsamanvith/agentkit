@@ -1,0 +1,583 @@
+package agentapi_test
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"iter"
+	"maps"
+	"net/http"
+	"net/http/httptest"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/bsamanvith/agentkit/internal/testkit"
+	"github.com/bsamanvith/agentkit/pkg/agentapi"
+	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
+	"github.com/bsamanvith/agentkit/pkg/harness"
+	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
+	"github.com/bsamanvith/agentkit/pkg/tool"
+)
+
+// testToken is the bearer token of rigs that ask for auth.
+const testToken = "test-token-0123456789"
+
+// model answers each request with the reply fn picks for it, records every
+// request, and can hold each reply until the test lets it go.
+type model struct {
+	tb   testing.TB
+	fn   func(req llm.Request) llmtest.Reply
+	gate chan struct{} // nil: answer at once; else each reply takes one value (or waits for ctx)
+
+	mu   sync.Mutex
+	reqs []llm.Request
+}
+
+func newModel(tb testing.TB, fn func(req llm.Request) llmtest.Reply) *model {
+	return &model{tb: tb, fn: fn}
+}
+
+// script answers the requests with replies, in order.
+func script(tb testing.TB, replies ...llmtest.Reply) *model {
+	var n atomic.Int32
+	return newModel(tb, func(llm.Request) llmtest.Reply {
+		i := int(n.Add(1)) - 1
+		if i >= len(replies) {
+			tb.Errorf("model call %d, but only %d replies were scripted", i+1, len(replies))
+			return llmtest.Fail(llm.ErrInvalidRequest)
+		}
+		return replies[i]
+	})
+}
+
+// echo answers every request with "echo: " and the text of its last message.
+func echo(tb testing.TB) *model {
+	return newModel(tb, func(req llm.Request) llmtest.Reply {
+		return llmtest.Text("echo: " + req.Messages[len(req.Messages)-1].Text())
+	})
+}
+
+func (m *model) Generate(ctx context.Context, req llm.Request) iter.Seq2[llm.Event, error] {
+	req = req.Clone()
+	m.mu.Lock()
+	m.reqs = append(m.reqs, req)
+	m.mu.Unlock()
+	reply := m.fn(req)
+	inner := llmtest.NewFake(m.tb, reply).Generate(ctx, req)
+	return func(yield func(llm.Event, error) bool) {
+		if m.gate != nil {
+			select {
+			case <-m.gate:
+			case <-ctx.Done():
+				yield(llm.Event{}, ctx.Err())
+				return
+			}
+		}
+		for ev, err := range inner {
+			if !yield(ev, err) {
+				return
+			}
+		}
+	}
+}
+
+func (m *model) requests() []llm.Request {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return slices.Clone(m.reqs)
+}
+
+// rig is an agent API on an httptest server, with a client that records every
+// stream it reads. When the test ends, check verifies the invariants on
+// everything the test did.
+type rig struct {
+	t      *testing.T
+	srv    *agentapi.Server
+	ts     *httptest.Server
+	model  *model
+	clock  *clocktest.Fake
+	token  string
+	url    string // where runs are posted: the httptest server, unless a test serves elsewhere
+	client *http.Client
+
+	mu      sync.Mutex
+	streams []*stream       // every stream read to its end, in the order they ended
+	runs    []agentapi.Run  // runs posted for JSON
+	convs   []string        // conversations of every stream, in the order seen
+	partial map[string]bool // conversations with a stream the client abandoned
+}
+
+type rigConfig struct {
+	tools   tool.Registry
+	harness []harness.Option
+	api     []agentapi.Option
+	token   string
+	clock   *clocktest.Fake
+	now     func() time.Time // the harness's clock; default clock.Now
+}
+
+func newRig(t *testing.T, m *model, cfg rigConfig) *rig {
+	t.Helper()
+	if cfg.tools == nil {
+		var err error
+		if cfg.tools, err = tool.NewRegistry(nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if cfg.clock == nil {
+		cfg.clock = clocktest.NewFake(time.Time{})
+	}
+	if cfg.now == nil {
+		cfg.now = cfg.clock.Now
+	}
+	h, err := harness.New(m, cfg.tools, append([]harness.Option{harness.WithNow(cfg.now)}, cfg.harness...)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids atomic.Int64
+	opts := []agentapi.Option{
+		agentapi.WithClock(cfg.clock), agentapi.WithKeepAlive(0), agentapi.WithRunTimeout(0),
+		agentapi.WithNewID(func(prefix string) string { return fmt.Sprintf("%s%d", prefix, ids.Add(1)) }),
+	}
+	if cfg.token != "" {
+		opts = append(opts, agentapi.WithToken(cfg.token))
+	}
+	srv, err := agentapi.New(h, append(opts, cfg.api...)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &rig{t: t, srv: srv, model: m, clock: cfg.clock, token: cfg.token}
+	mux := http.NewServeMux()
+	mux.Handle("/v1/", srv.Handler())
+	r.ts = httptest.NewServer(mux)
+	r.url = r.ts.URL
+	// A request that never ends (a broken server) fails the test in a
+	// minute instead of hanging it; no correct run here takes that long.
+	r.client = &http.Client{Transport: r.ts.Client().Transport, Timeout: time.Minute}
+	t.Cleanup(r.ts.Close)
+	t.Cleanup(func() { // a run a broken server never ended would hold Close for ever
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(ctx)
+	})
+	t.Cleanup(r.check) // runs before the server closes
+	return r
+}
+
+// post sends POST /v1/runs with the given body and Accept header.
+func (r *rig) post(ctx context.Context, body, accept string) *http.Response {
+	r.t.Helper()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.url+"/v1/runs", strings.NewReader(body))
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	if accept != "" {
+		req.Header.Set("Accept", accept)
+	}
+	if r.token != "" {
+		req.Header.Set("Authorization", "Bearer "+r.token)
+	}
+	resp, err := r.client.Do(req)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	return resp
+}
+
+func runBody(message, conversationID string) string {
+	b, _ := json.Marshal(agentapi.RunRequest{Message: message, ConversationID: conversationID})
+	return string(b)
+}
+
+// start posts a run and returns its open event stream. The response must be
+// a stream.
+func (r *rig) start(ctx context.Context, message, conversationID string) *stream {
+	r.t.Helper()
+	resp := r.post(ctx, runBody(message, conversationID), "")
+	if resp.StatusCode != http.StatusOK || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		r.t.Fatalf("POST /v1/runs = %d %s: %s", resp.StatusCode, resp.Header.Get("Content-Type"), b)
+	}
+	s := &stream{r: r, resp: resp, sc: bufio.NewScanner(resp.Body)}
+	s.sc.Buffer(nil, 1<<20)
+	return s
+}
+
+// run posts a run and reads its stream to the end.
+func (r *rig) run(message, conversationID string) *stream {
+	r.t.Helper()
+	s := r.start(r.t.Context(), message, conversationID)
+	s.all()
+	return s
+}
+
+// runJSON posts a run asking for JSON and returns the run.
+func (r *rig) runJSON(message, conversationID string) agentapi.Run {
+	r.t.Helper()
+	resp := r.post(r.t.Context(), runBody(message, conversationID), "application/json")
+	defer resp.Body.Close()
+	var run agentapi.Run
+	if resp.StatusCode != http.StatusOK || json.NewDecoder(resp.Body).Decode(&run) != nil {
+		r.t.Fatalf("POST /v1/runs (JSON) = %d", resp.StatusCode)
+	}
+	r.mu.Lock()
+	r.runs = append(r.runs, run)
+	r.mu.Unlock()
+	return run
+}
+
+// get sends a GET to path and decodes the body into v; it returns the status.
+func (r *rig) get(path string, v any) int {
+	r.t.Helper()
+	req, err := http.NewRequestWithContext(context.WithoutCancel(r.t.Context()), http.MethodGet, r.ts.URL+path, nil)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	if r.token != "" {
+		req.Header.Set("Authorization", "Bearer "+r.token)
+	}
+	resp, err := r.client.Do(req)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(v); err != nil {
+		r.t.Fatalf("GET %s = %d: %v", path, resp.StatusCode, err)
+	}
+	return resp.StatusCode
+}
+
+func (r *rig) getRun(id string) agentapi.Run {
+	r.t.Helper()
+	var run agentapi.Run
+	if code := r.get("/v1/runs/"+id, &run); code != http.StatusOK {
+		r.t.Fatalf("GET /v1/runs/%s = %d", id, code)
+	}
+	return run
+}
+
+func (r *rig) getConversation(id string) agentapi.Conversation {
+	r.t.Helper()
+	var c agentapi.Conversation
+	if code := r.get("/v1/conversations/"+id, &c); code != http.StatusOK {
+		r.t.Fatalf("GET /v1/conversations/%s = %d", id, code)
+	}
+	return c
+}
+
+// waitEnded waits until the run is no longer running and returns it.
+func (r *rig) waitEnded(id string) agentapi.Run {
+	r.t.Helper()
+	var run agentapi.Run
+	testkit.Eventually(r.t, 30*time.Second, func() bool {
+		run = r.getRun(id)
+		return run.Status != agentapi.StatusRunning
+	})
+	return run
+}
+
+// stream is one SSE response, read event by event.
+type stream struct {
+	r      *rig
+	resp   *http.Response
+	sc     *bufio.Scanner
+	events []agentapi.Event
+	done   bool
+}
+
+// next returns the next event, or false at the end of the stream. It checks
+// the SSE framing: the id is the seq, the event name is the type.
+func (s *stream) next() (agentapi.Event, bool) {
+	s.r.t.Helper()
+	var id, name string
+	var data []string
+	for s.sc.Scan() {
+		line := s.sc.Text()
+		switch {
+		case line == "":
+			if data == nil {
+				continue
+			}
+			var e agentapi.Event
+			if err := json.Unmarshal([]byte(strings.Join(data, "\n")), &e); err != nil {
+				s.r.t.Fatalf("event %q: %v", data, err)
+			}
+			if id != strconv.Itoa(e.Seq) || name != e.Type {
+				s.r.t.Errorf("SSE id %q and event %q, want %d and %q", id, name, e.Seq, e.Type)
+			}
+			s.events = append(s.events, e)
+			if e.Type == agentapi.TypeRunStart {
+				s.r.mu.Lock()
+				if !slices.Contains(s.r.convs, e.ConversationID) {
+					s.r.convs = append(s.r.convs, e.ConversationID)
+				}
+				s.r.mu.Unlock()
+			}
+			return e, true
+		case strings.HasPrefix(line, ":"): // comment
+		case strings.HasPrefix(line, "id: "):
+			id = strings.TrimPrefix(line, "id: ")
+		case strings.HasPrefix(line, "event: "):
+			name = strings.TrimPrefix(line, "event: ")
+		case strings.HasPrefix(line, "data: "):
+			data = append(data, strings.TrimPrefix(line, "data: "))
+		default:
+			s.r.t.Errorf("unexpected SSE line %q", line)
+		}
+	}
+	s.resp.Body.Close()
+	if !s.done {
+		s.done = true
+		s.r.mu.Lock()
+		s.r.streams = append(s.r.streams, s)
+		s.r.mu.Unlock()
+	}
+	return agentapi.Event{}, false
+}
+
+// until reads events until one of type typ (and, if turn > 0, of that turn).
+func (s *stream) until(typ string, turn int) agentapi.Event {
+	s.r.t.Helper()
+	for {
+		e, ok := s.next()
+		if !ok {
+			s.r.t.Fatalf("stream ended before a %s event", typ)
+		}
+		if e.Type == typ && (turn == 0 || e.Turn == turn) {
+			return e
+		}
+	}
+}
+
+// all reads the stream to its end.
+func (s *stream) all() []agentapi.Event {
+	for {
+		if _, ok := s.next(); !ok {
+			return s.events
+		}
+	}
+}
+
+// abandon closes the stream without reading it to the end (the client goes
+// away); it is not checked as a whole.
+func (s *stream) abandon(cancel context.CancelFunc) {
+	s.r.mu.Lock()
+	if s.r.partial == nil {
+		s.r.partial = map[string]bool{}
+	}
+	s.r.partial[s.conversationID()] = true
+	s.r.mu.Unlock()
+	cancel()
+	s.resp.Body.Close()
+}
+
+func (s *stream) last() agentapi.Event { return s.events[len(s.events)-1] }
+
+func (s *stream) runID() string { return s.events[0].RunID }
+
+func (s *stream) conversationID() string { return s.events[0].ConversationID }
+
+// check verifies what must hold for everything the test did:
+//
+//  1. every stream read to its end is well formed (checkStream), and agrees
+//     with the run GET /v1/runs/{id} returns;
+//  2. every conversation the test touched holds exactly the messages its
+//     streams announced (run_start's prompt, turn_done's messages), in order;
+//  3. every request the model got is a prefix of its conversation (so a
+//     follow-up carried the earlier turns unchanged) and ends with a user
+//     message.
+func (r *rig) check() {
+	t := r.t
+	if t.Failed() {
+		return
+	}
+	r.mu.Lock()
+	streams, runs, convs := slices.Clone(r.streams), slices.Clone(r.runs), slices.Clone(r.convs)
+	partial := maps.Clone(r.partial)
+	r.mu.Unlock()
+
+	announced := map[string][]llm.Message{} // conversation → messages, from events
+	for _, s := range streams {
+		checkStream(t, s.events)
+		if t.Failed() {
+			return
+		}
+		run := r.getRun(s.runID())
+		end := s.last()
+		switch {
+		case run.ConversationID != s.conversationID(), run.Turns != end.Turns:
+			t.Errorf("run %s = %+v, disagrees with its stream", run.ID, run)
+		case end.Type == agentapi.TypeRunDone && (run.Status != agentapi.StatusDone || run.Answer != end.Answer || run.Usage != *end.Usage):
+			t.Errorf("run %s = %+v, want done with the stream's answer %q and usage", run.ID, run, end.Answer)
+		case end.Type == agentapi.TypeRunError && (run.Status != agentapi.StatusFailed || run.Error == nil || run.Error.Code != end.Error.Code):
+			t.Errorf("run %s = %+v, want failed with code %q", run.ID, run, end.Error.Code)
+		}
+		id := s.conversationID()
+		for _, e := range s.events {
+			switch {
+			case e.Type == agentapi.TypeRunStart && e.Prompt != nil:
+				announced[id] = append(announced[id], e.Prompt.Message)
+			case e.Type == agentapi.TypeTurnDone:
+				for _, m := range e.Record.Messages {
+					announced[id] = append(announced[id], m.Message)
+				}
+			}
+		}
+	}
+	for _, run := range runs {
+		if run.Status == agentapi.StatusDone && (run.Record == nil || run.Answer == "" && run.Turns > 0) {
+			t.Errorf("JSON run %s = %+v, want an answer and a record", run.ID, run)
+		}
+	}
+	transcripts := map[string][]llm.Message{}
+	for _, id := range convs {
+		c := r.getConversation(id)
+		var got []llm.Message
+		for _, m := range c.Messages {
+			got = append(got, m.Message)
+		}
+		if !partial[id] && !jsonEqual(got, announced[id]) {
+			t.Errorf("conversation %s holds\n%s\nbut its streams announced\n%s", id, jsonOf(got), jsonOf(announced[id]))
+		}
+		if err := harness.Transcript(got).Validate(); err != nil {
+			t.Errorf("conversation %s: %v", id, err)
+		}
+		transcripts[id] = got
+	}
+	if len(runs) > 0 {
+		return // JSON runs announce nothing; the requests cannot be matched to them
+	}
+	for i, req := range r.model.requests() {
+		if n := len(req.Messages); n == 0 || req.Messages[n-1].Role != llm.RoleUser {
+			t.Errorf("model request %d does not end with a user message", i+1)
+		}
+		found := false
+		for _, msgs := range transcripts {
+			if len(req.Messages) <= len(msgs) && jsonEqual(req.Messages, msgs[:len(req.Messages)]) {
+				found = true
+			}
+		}
+		if !found && len(transcripts) > 0 {
+			t.Errorf("model request %d is not a prefix of any conversation: %s", i+1, jsonOf(req.Messages))
+		}
+	}
+}
+
+// checkStream checks one run's events: framing and header, the order, exactly
+// one terminal event at the end, and that the text deltas add up to each
+// turn's text and the last turn's to the answer.
+func checkStream(t *testing.T, events []agentapi.Event) {
+	t.Helper()
+	if len(events) < 2 || events[0].Type != agentapi.TypeRunStart || events[0].ConversationID == "" {
+		t.Errorf("stream %v does not start with run_start and end after it", types(events))
+		return
+	}
+	last := events[len(events)-1]
+	terminal := 0
+	turn := 0
+	deltas := map[int]string{} // turn → text deltas
+	calls := map[[2]int]string{}
+	var usage llm.Usage
+	for i, e := range events {
+		if e.V != agentapi.WireVersion || e.Seq != i || e.RunID != events[0].RunID || (i > 0 && e.At.Before(events[i-1].At)) {
+			t.Errorf("event %d %+v: want v 1, seq %d, run %s, time not before the last", i, e, i, events[0].RunID)
+		}
+		switch e.Type {
+		case agentapi.TypeRunStart:
+			if i != 0 {
+				t.Errorf("run_start at %d", i)
+			}
+		case agentapi.TypeTextDelta, agentapi.TypeToolCall, agentapi.TypeToolResult, agentapi.TypeTurnDone:
+			if e.Turn != turn+1 {
+				t.Errorf("event %d (%s) of turn %d after turn %d was done", i, e.Type, e.Turn, turn)
+			}
+		case agentapi.TypeRunDone, agentapi.TypeRunError:
+			terminal++
+		default:
+			t.Errorf("event %d of unknown type %q", i, e.Type)
+		}
+		switch e.Type {
+		case agentapi.TypeTextDelta:
+			deltas[e.Turn] += e.Text
+		case agentapi.TypeToolCall:
+			if _, dup := calls[[2]int{e.Turn, e.Call}]; dup {
+				t.Errorf("tool_call %d/%d twice", e.Turn, e.Call)
+			}
+			calls[[2]int{e.Turn, e.Call}] = e.ToolUseID
+		case agentapi.TypeToolResult:
+			id, ok := calls[[2]int{e.Turn, e.Call}]
+			if !ok || id != e.ToolUseID {
+				t.Errorf("tool_result %d/%d without its tool_call", e.Turn, e.Call)
+			}
+			calls[[2]int{e.Turn, e.Call}] = "done"
+		case agentapi.TypeTurnDone:
+			turn++
+			for k, v := range calls {
+				if k[0] == turn && v != "done" {
+					t.Errorf("turn %d done with call %d unfinished", turn, k[1])
+				}
+			}
+			if e.Record == nil || e.Record.Turn != turn || len(e.Record.Messages) == 0 {
+				t.Errorf("turn_done %d has record %+v", turn, e.Record)
+				continue
+			}
+			if got := e.Record.Messages[0].Message.Text(); got != deltas[turn] {
+				t.Errorf("turn %d text deltas %q, but its reply says %q", turn, deltas[turn], got)
+			}
+			usage = addUsage(usage, e.Record.Usage)
+		}
+	}
+	if terminal != 1 || (last.Type != agentapi.TypeRunDone && last.Type != agentapi.TypeRunError) {
+		t.Errorf("stream %v: want exactly one run_done or run_error, last", types(events))
+		return
+	}
+	if last.Usage == nil {
+		t.Errorf("%s without usage", last.Type)
+		return
+	}
+	switch last.Type {
+	case agentapi.TypeRunDone:
+		if last.Final == nil || last.Answer != last.Final.Text() || last.Answer != deltas[turn] || last.Turns != turn || *last.Usage != usage {
+			t.Errorf("run_done %+v: want the answer %q (the last turn's deltas), %d turns and usage %+v", last, deltas[turn], turn, usage)
+		}
+	case agentapi.TypeRunError:
+		if last.Error == nil || last.Error.Code == "" || last.Turns < turn {
+			t.Errorf("run_error %+v: want a typed error and at least %d turns", last, turn)
+		}
+	}
+}
+
+func addUsage(a, b llm.Usage) llm.Usage {
+	return llm.Usage{
+		InputTokens: a.InputTokens + b.InputTokens, OutputTokens: a.OutputTokens + b.OutputTokens,
+		CacheReadTokens: a.CacheReadTokens + b.CacheReadTokens, CacheWriteTokens: a.CacheWriteTokens + b.CacheWriteTokens,
+	}
+}
+
+func types(events []agentapi.Event) []string {
+	out := make([]string, len(events))
+	for i, e := range events {
+		out[i] = e.Type
+	}
+	return out
+}
+
+func jsonOf(v any) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return []byte(err.Error())
+	}
+	return b
+}
+
+func jsonEqual(a, b any) bool { return bytes.Equal(jsonOf(a), jsonOf(b)) }

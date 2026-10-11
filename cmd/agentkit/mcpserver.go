@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/pkg/component"
 	"github.com/bsamanvith/agentkit/pkg/mcp/server"
+	"github.com/bsamanvith/agentkit/pkg/tool"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
@@ -52,24 +52,10 @@ type mcpServer struct {
 	problems []toolset.Problem
 }
 
-// newMCPServer builds the toolsets and the MCP handler. A required toolset
-// that fails, or a mistake in the specs, fails startup; an optional one that
-// fails is skipped, logged, and shown in /readyz.
-func newMCPServer(ctx context.Context, cfg mcpConfig, log *slog.Logger) (component.Mount, error) {
-	if len(cfg.Toolsets) == 0 {
-		return component.Mount{}, errors.New("no toolsets configured (mcp.toolsets in the config file)")
-	}
-	catalog, err := newCatalog()
-	if err != nil {
-		return component.Mount{}, err
-	}
-	regs, problems, err := toolset.Build(ctx, catalog, cfg.Toolsets)
-	if err != nil {
-		return component.Mount{}, err
-	}
-	for _, p := range problems {
-		log.Warn("optional toolset skipped", "component", mcpServerName, "toolset", p.Toolset, "type", p.Type, "err", p.Err)
-	}
+// newMCPServer builds the MCP handler over the toolsets serve built: a
+// required toolset that failed, or a mistake in the specs, has already failed
+// startup; an optional one that failed is skipped and shown in /readyz.
+func newMCPServer(ctx context.Context, cfg mcpConfig, regs map[string]tool.Registry, problems []toolset.Problem, log *slog.Logger) (component.Mount, error) {
 	// The MCP SDK logs every stateless request at info; keep that for debug.
 	srvLog := log
 	if !log.Enabled(ctx, slog.LevelDebug) {

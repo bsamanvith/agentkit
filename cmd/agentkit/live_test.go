@@ -8,7 +8,9 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/anthropic"
@@ -102,5 +104,39 @@ func TestLiveMixedToolResultsAndText(t *testing.T) {
 	t.Logf("Claude accepted it: stop %+v, text %q", second.Stop, second.Message.Text())
 	if second.Stop.Kind != llm.StopEndTurn || second.Message.Text() == "" {
 		t.Errorf("second reply = %+v, want a text answer", second)
+	}
+}
+
+// TestLiveServeAgent runs agentkit serve with agent and mcp-server against
+// Claude: a run that needs a tool of one toolset, then a follow-up in the
+// same conversation that needs a tool of the other.
+func TestLiveServeAgent(t *testing.T) {
+	t.Parallel()
+	key, token := os.Getenv("ANTHROPIC_API_KEY"), os.Getenv("ANTHROPIC_AUTH_TOKEN")
+	if key == "" && token == "" {
+		t.Skip("set ANTHROPIC_API_KEY (the server runs with an empty HOME, so an `ant` profile is not seen)")
+	}
+	p := startServe(t, agentConfigJSON, 20*time.Second,
+		envComponents+"=agent,mcp-server", envAPIToken+"="+e2eToken,
+		"ANTHROPIC_API_KEY="+key, "ANTHROPIC_AUTH_TOKEN="+token)
+	a := agentClient{t: t, url: p.url, token: e2eToken}
+
+	first := a.stream("Use the demo-b__echo tool to echo the word pineapple, then tell me exactly what the tool returned.", "", nil)
+	calls, results := toolEvents(first)
+	end := first[len(first)-1]
+	t.Logf("first run: %v; answer %q; usage %+v", eventTypes(first), end.Answer, end.Usage)
+	if len(calls) == 0 || calls[0].Name != "demo-b__echo" || !strings.Contains(results[0].Content, "[b] pineapple") || end.Type != agentapi.TypeRunDone {
+		t.Fatalf("first run: calls %+v, results %+v, end %+v", calls, results, end)
+	}
+	second := a.stream("Now use demo-a__calculate to multiply 48271 by 9733, and tell me the result.", first[0].ConversationID, nil)
+	calls, results = toolEvents(second)
+	end = second[len(second)-1]
+	t.Logf("follow-up: %v; answer %q; usage %+v", eventTypes(second), end.Answer, end.Usage)
+	if len(calls) == 0 || calls[0].Name != "demo-a__calculate" || results[0].Content != `{"result":469821643}` ||
+		end.Type != agentapi.TypeRunDone || !strings.Contains(strings.ReplaceAll(end.Answer, ",", ""), "469821643") {
+		t.Fatalf("follow-up: calls %+v, results %+v, end %+v", calls, results, end)
+	}
+	if end.Usage.CacheReadTokens == 0 {
+		t.Logf("note: the follow-up read nothing from the prompt cache")
 	}
 }

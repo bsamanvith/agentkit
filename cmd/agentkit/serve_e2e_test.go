@@ -53,7 +53,8 @@ type serveProcess struct {
 
 // startServe starts agentkit serve on a free loopback port and waits until it
 // listens. It learns the port from the "listening" record the server logs.
-func startServe(t *testing.T, config string, shutdownTimeout time.Duration) *serveProcess {
+// env entries ("KEY=value") are added to, or replace, the defaults.
+func startServe(t *testing.T, config string, shutdownTimeout time.Duration, env ...string) *serveProcess {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "agentkit.json")
 	if err := os.WriteFile(path, []byte(config), 0o600); err != nil {
@@ -68,6 +69,7 @@ func startServe(t *testing.T, config string, shutdownTimeout time.Duration) *ser
 		envLogLevel + "=debug",
 		envShutdownTimeout + "=" + shutdownTimeout.String(),
 	}
+	p.cmd.Env = append(p.cmd.Env, env...) // the last value of a key wins
 	stderr, err := p.cmd.StderrPipe()
 	if err != nil {
 		t.Fatal(err)

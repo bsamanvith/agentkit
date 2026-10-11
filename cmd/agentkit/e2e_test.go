@@ -98,12 +98,18 @@ type replayAPI struct {
 	reqs    []request
 	stallAt int           // the request (counting from 1) to hold until its client gives up; 0 for none
 	stalled chan struct{} // closed when that request arrives
+	holdAt  int           // the request (counting from 1) to hold until release is closed; 0 for none
+	held    chan struct{} // closed when that request arrives
+	release chan struct{}
 }
 
 func newReplayAPI(t *testing.T, scenario string) (*replayAPI, *httptest.Server) {
 	t.Helper()
 	binary(t) // build, or skip under -short, before anything is set up
-	c := &replayAPI{t: t, dir: filepath.Join("testdata", "e2e", scenario), stalled: make(chan struct{})}
+	c := &replayAPI{
+		t: t, dir: filepath.Join("testdata", "e2e", scenario),
+		stalled: make(chan struct{}), held: make(chan struct{}), release: make(chan struct{}),
+	}
 	if os.Getenv(recordEnv) != "" {
 		c.record = true
 		c.key = os.Getenv("ANTHROPIC_API_KEY")
@@ -146,9 +152,18 @@ func (c *replayAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done() // the process is killed while it waits for the model
 		return
 	}
+	hold := len(c.reqs) == c.holdAt
 	c.served++
 	n := c.served
 	c.mu.Unlock()
+	if hold { // answered once the test lets it go
+		close(c.held)
+		select {
+		case <-c.release:
+		case <-r.Context().Done():
+			return
+		}
+	}
 
 	file := filepath.Join(c.dir, fmt.Sprintf("%02d.http", n))
 	var raw []byte

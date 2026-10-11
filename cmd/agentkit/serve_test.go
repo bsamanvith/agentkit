@@ -10,6 +10,9 @@ import (
 	"time"
 )
 
+// agentClash gives the agent two toolsets with the same tools and no prefix.
+const agentClash = `{"mcp":{"toolsets":[{"name":"a","type":"demo"},{"name":"b","type":"demo"}]},"agent":{"toolsets":["a","b"]}}`
+
 // TestServeRejectsBadSetup: a mistake in the environment or the config fails
 // startup, before anything listens, with a message naming the mistake.
 func TestServeRejectsBadSetup(t *testing.T) {
@@ -40,6 +43,16 @@ func TestServeRejectsBadSetup(t *testing.T) {
 		"bad shutdown timeout":   {env: map[string]string{envShutdownTimeout: "0s"}, config: good, code: 1, says: envShutdownTimeout},
 		"unusable address":       {env: map[string]string{envAddr: "127.0.0.1:not-a-port"}, config: good, code: 1, says: "not-a-port"},
 		"positional argument":    {config: good, args: []string{"extra"}, code: 2},
+		// The agent component.
+		"agent: no token off loopback": {env: map[string]string{envComponents: "agent", envAddr: "0.0.0.0:0"}, config: good, code: 1, says: envAPIToken},
+		"agent: no token on all ifs":   {env: map[string]string{envComponents: "agent", envAddr: ":0"}, config: good, code: 1, says: envAPIToken},
+		"agent: short token":           {env: map[string]string{envComponents: "agent", envAPIToken: "short"}, config: good, code: 1, says: "token"},
+		"agent: unknown toolset":       {env: map[string]string{envComponents: "agent"}, config: `{"mcp":{"toolsets":[{"name":"demo","type":"demo"}]},"agent":{"toolsets":["dmeo"]}}`, code: 1, says: "dmeo"},
+		"agent: tool name clash":       {env: map[string]string{envComponents: "agent,mcp-server"}, config: agentClash, code: 1, says: "clash"},
+		"agent: unknown provider":      {env: map[string]string{envComponents: "agent"}, config: `{"agent":{"model":{"provider":"openai"}}}`, code: 1, says: "openai"},
+		"agent: unknown field":         {env: map[string]string{envComponents: "agent"}, config: `{"agent":{"max_turn":3}}`, code: 1, says: "max_turn"},
+		"agent: no concurrent runs":    {env: map[string]string{envComponents: "agent"}, config: `{"agent":{"max_concurrent_runs":0}}`, code: 1, says: "concurrent"},
+		"agent: bad effort":            {env: map[string]string{envComponents: "agent"}, config: `{"agent":{"model":{"effort":"extreme"}}}`, code: 1, says: "agent.model"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

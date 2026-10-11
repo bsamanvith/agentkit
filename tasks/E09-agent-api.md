@@ -20,7 +20,7 @@ status: todo
 
 ## Tasks
 
-- [ ] [T036](T036-agent-api-v0.md) `agent` component v0: runs and conversations over HTTP + SSE, in memory
+- [x] [T036](T036-agent-api-v0.md) `agent` component v0: runs and conversations over HTTP + SSE, in memory
 - [ ] [T037](T037-agent-api-v1.md) `agent` component v1: on `pkg/runner` (persist, resume, approve, cancel, list)
 
 T036 can start now, in parallel with T005 (image). Together they are the shortest path to deploying the API and testing it with a real model.

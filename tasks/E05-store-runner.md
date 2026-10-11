@@ -1,7 +1,7 @@
 ---
 id: E05
 title: Store, runner and compaction (M4)
-status: todo
+status: in-progress
 ---
 
 # E05: Store, runner and compaction

@@ -69,7 +69,8 @@ make help     # all targets
 ```
 
 How we work:
-- **Plan and conventions**: [docs/PLAN.md](docs/PLAN.md) (what we build) and [docs/ENGINEERING.md](docs/ENGINEERING.md) (module design, testing, local environments, agent skills).
+- **Plan and conventions**: [docs/PLAN.md](docs/PLAN.md) (what we build), [docs/ENGINEERING.md](docs/ENGINEERING.md) (module design, testing, local environments, agent skills) and [docs/WORKFLOW.md](docs/WORKFLOW.md) (how the planner and parallel sessions work, and lessons learned).
+- **Status**: [tasks/STATUS.md](tasks/STATUS.md): done, running, next, and what waits on whom.
 - **Tasks**: one file per task in [tasks/](tasks/), grouped by epics. A task's acceptance criteria are its test list.
 - **Workflow**: changes are committed straight to `main`; `make check` must pass first, and CI runs it again on every push.
 

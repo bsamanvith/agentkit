@@ -368,6 +368,9 @@ We keep coding-agent skills in the repo and improve them like code. They turn th
 
 ## 5. Workflow: tasks folder
 
+How the planner and parallel sessions coordinate, and the lessons learned so far: [WORKFLOW.md](WORKFLOW.md).
+
+
 - `tasks/` holds one Markdown file per task, plus epic files that reference tasks. Conventions and template are in [tasks/README.md](../tasks/README.md).
 - A task's **acceptance criteria are its test list** (§2.3). A task is done when each criterion has a passing test (or a stated reason it is covered elsewhere) and `make check` is green.
 - `make lint` checks the task files: no duplicate IDs, every `depends_on` exists, and each epic's checklist matches its tasks' `status`. Two branches that take the same ID fail CI; the second one to merge takes the next free number.

@@ -36,7 +36,7 @@ An epic uses the same fields minus `epic`, and lists its tasks in the body.
 
 ## Lifecycle
 
-Work is committed and pushed directly to `main`.
+Work is committed and pushed directly to `main`. The overview of all tasks is [STATUS.md](STATUS.md); how sessions hand work to each other is in [docs/WORKFLOW.md](../docs/WORKFLOW.md), with a prompt template in [_handoff_template.md](_handoff_template.md).
 
 1. `todo` -> `in-progress` when someone starts.
 2. `review` while the work is pushed but something in the criteria is still being verified (for example the first CI run).

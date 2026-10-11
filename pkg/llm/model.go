@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"errors"
+	"fmt"
 	"iter"
 
 	"github.com/bsamanvith/agentkit/pkg/tool"
@@ -21,6 +22,11 @@ type Model interface {
 	//
 	// Generate never modifies req or anything it points to: the history it is
 	// given is append-only.
+	//
+	// The returned sequence is single use, and the request is sent when it is
+	// first iterated. Failures that are not a provider's answer (a dropped
+	// connection, a 5xx, a stream cut short) are mapped by adapters to
+	// [ErrOverloaded], so that a retry loop treats them as transient.
 	Generate(ctx context.Context, req Request) iter.Seq2[Event, error]
 }
 
@@ -37,7 +43,7 @@ type Request struct {
 	MaxTokens int
 	// Provider holds options for one provider, a typed value such as
 	// anthropic.Options. An adapter ignores options that are not its own
-	// type. Treat the value as immutable once it is in a request: [Request.Clone]
+	// type, and documents whether it takes the value or a pointer. Treat the value as immutable once it is in a request: [Request.Clone]
 	// copies the reference.
 	Provider any
 }
@@ -66,9 +72,9 @@ func (r Request) Clone() Request {
 type Response struct {
 	// Message is the assistant message: text, tool calls and opaque blocks in
 	// the order the model produced them.
-	Message Message
-	Stop    StopReason
-	Usage   Usage
+	Message Message    `json:"message"`
+	Stop    StopReason `json:"stop"`
+	Usage   Usage      `json:"usage"`
 }
 
 // StopKind says why a model stopped.
@@ -95,8 +101,8 @@ type StopReason struct {
 	Category string `json:"category,omitempty"`
 	// Explanation is the model's or provider's account of a refusal.
 	Explanation string `json:"explanation,omitempty"`
-	// Raw is the provider's stop reason as received, kept for [StopOther]
-	// (and available to adapters for the other kinds).
+	// Raw is the provider's stop reason as received. It is set for
+	// [StopOther] and empty for every other kind.
 	Raw string `json:"raw,omitempty"`
 }
 
@@ -139,6 +145,22 @@ const (
 	// EventMessageDone ends the stream: Event.Response is the finished reply.
 	EventMessageDone
 )
+
+func (k EventKind) String() string {
+	switch k {
+	case EventTextDelta:
+		return "text_delta"
+	case EventToolUseStart:
+		return "tool_use_start"
+	case EventToolInputDelta:
+		return "tool_input_delta"
+	case EventBlockDone:
+		return "block_done"
+	case EventMessageDone:
+		return "message_done"
+	}
+	return fmt.Sprintf("EventKind(%d)", uint8(k))
+}
 
 // Event is one step of a streamed reply. Which fields are set depends on Kind;
 // it is a flat struct so that streaming does not allocate per event.

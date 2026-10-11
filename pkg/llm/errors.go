@@ -7,7 +7,9 @@ import "errors"
 //
 //	return fmt.Errorf("%w: %w", llm.ErrRateLimited, providerErr)
 //
-// A cancelled or expired context is reported as the context's own error and
+// Transport failures (a dropped connection, a 5xx, a stream cut short) have no
+// sentinel of their own: adapters report them as [ErrOverloaded], so they are
+// retryable. A cancelled or expired context is reported as the context's own error and
 // matches none of these.
 var (
 	// ErrRateLimited means the provider is throttling this caller. Retry later.

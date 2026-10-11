@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
 )
 
 // stream returns a model stream that yields the given events, then err if
@@ -57,6 +58,40 @@ func TestCollect(t *testing.T) {
 	}
 	if got.Message.Text() != "Hello, world" {
 		t.Errorf("Text() = %q", got.Message.Text())
+	}
+}
+
+// Collect over a streamed reply equals the same reply handed over whole, and
+// the result does not share memory with the stream's event.
+func TestCollectStreamedEqualsWhole(t *testing.T) {
+	t.Parallel()
+	reply := llmtest.ToolCalls(
+		llm.ToolUse{ID: "a", Name: "one", Input: []byte(`{"x":1}`)},
+		llm.ToolUse{ID: "b", Name: "two"},
+	)
+	reply.Response.Message.Content = append([]llm.Block{llm.Text{Text: "Thinking out loud, in pieces."}}, reply.Response.Message.Content...)
+	reply.Response.Usage = llm.Usage{InputTokens: 3, OutputTokens: 4}
+
+	got, err := llm.Collect(llmtest.NewFake(t, reply).Generate(t.Context(), llm.Request{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, reply.Response) {
+		t.Errorf("streamed:\n got %#v\nwant %#v", got, reply.Response)
+	}
+
+	var shared llm.Response
+	seq := func(yield func(llm.Event, error) bool) {
+		shared = llm.Response{Message: llm.Assistant(llm.ToolUse{ID: "a", Name: "n", Input: []byte(`{"k":1}`)})}
+		yield(llm.Event{Kind: llm.EventMessageDone, Response: &shared}, nil)
+	}
+	out, err := llm.Collect(seq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out.Message.Content[0].(llm.ToolUse).Input[2] = 'X'
+	if string(shared.Message.Content[0].(llm.ToolUse).Input) != `{"k":1}` {
+		t.Error("changing the collected response changed the event's response")
 	}
 }
 

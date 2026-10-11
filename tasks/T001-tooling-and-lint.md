@@ -40,4 +40,4 @@ One command (`make check`) must tell a contributor whether their change is accep
 - Tag isolation verified: a non-compiling `//go:build integration` file is ignored by `go test` and breaks `-tags integration`.
 - `fmt-check` verified to fail on unformatted code; `tidy-check` caught a real untidy `go.mod` on the first run.
 - Not yet verified: the CI workflow (needs a PR to run). Kept open.
-- golangci-lint is pinned to v2.14.0 and installed into `bin/` by the Makefile.
+- golangci-lint is pinned to v2.14.0 and installed into `bin/` by the Makefile, built with the repo toolchain. A fresh-clone `make check` caught that it was first built with go1.26 (its own go directive) and refused to lint go1.27 code; fixed, and the fresh clone now passes.

@@ -7,6 +7,24 @@ This complements [PLAN.md](PLAN.md) (what we build) with how we build it.
 
 ---
 
+## 0. Build order
+
+Build the product from the inside out. Add infrastructure when there is something real for it to run or guide, not before.
+
+| Milestone | What | Epic | Proves |
+|---|---|---|---|
+| **M0** | `make check`, lint, architecture test, test helpers, minimal CI | [E01](../tasks/E01-foundations.md) (T001, T002) | Every later change is checked the same way |
+| **M1** | `pkg/tool`: definition, `tool.Func[In, Out]`, registry, middleware, conformance suite | [E03](../tasks/E03-tool-core-and-mcp.md) (T017) | The core abstraction and all conventions on real code |
+| **M2** | MCP server over stdio for any registry | E03 (T018) | Claude Code / Codex can call our Go tools: the first real end-to-end test |
+| **M3** | `llm` + Anthropic adapter + in-process harness | to plan | An agent loop runs |
+| **M4** | `store` (SQLite) | to plan | Runs persist and resume |
+| **M5** | `pkg/component`, `cmd/agentkit`, `fakellm`, image, Compose, smoke tests, full CI | E01 (T003-T008) | Mix-and-match deployment |
+| **M6** | Tool protocol over ConnectRPC; remote registry | to plan | The `split` topology |
+
+Skills ([E02](../tasks/E02-agent-skills.md)) grow alongside: the skill layout and review checklist come with M0/M1; each other skill is written right after the first piece of real code it describes.
+
+---
+
 ## 1. Module design
 
 ### 1.1 One Go module, many packages
@@ -46,7 +64,8 @@ pkg/store/
 |---|---|
 | Accept interfaces, return concrete types. Keep interfaces small (1-4 methods). | Easy to fake, easy to implement. |
 | `New(required..., opts ...Option) (*T, error)`; validate in the constructor. | Invalid objects never exist; no `Init()` step. |
-| No `init()`, no package-level mutable state, no global registries. Registries are values. | Parallel tests, multi-tenant safety. |
+| No `init()`, no package-level mutable state, no global registries. Registries are values, built once and read-only afterwards. | Parallel tests, multi-tenant safety, no locks. |
+| Optional backends behind build tags are registered in `cmd/agentkit` (one small file per tag), not by `init()` in the backend. Config naming a backend that was not compiled in fails at startup with a clear error. | Keeps the no-globals rule with build tags. |
 | `ctx context.Context` is the first parameter of anything that does IO or blocks. | Cancellation, deadlines, tenant scope. |
 | Exported sentinel errors / typed errors, wrapped with `%w`. Callers use `errors.Is` / `errors.As`. | Tests and callers branch on error identity, never message text. |
 | Inject time and randomness (`clock.Clock`, `io.Reader` for rand) where behavior depends on them. | Token refresh, rate limits, budgets and retries become deterministic to test. |
@@ -67,24 +86,42 @@ cmd/*  ──wires──▶  adapters (llm/anthropic, store/postgres, credential
 ```
 
 - Arrows only point down. `harness` depends on the `llm.Model` interface, never on `llm/anthropic`.
-- Nothing in `pkg/` imports `cmd/`. Nothing imports another package's `internal/`.
-- Enforced by lint (`depguard` rules in `.golangci.yml`), not by review.
+- Enforced by an **architecture test** (`internal/archtest`), which runs with the unit tests and reads the import graph from `go list`:
+  1. Nothing in `pkg/` or `internal/` imports `cmd/`.
+  2. A package never imports its own subpackages (the parent is the interface; children are implementations).
+  3. Non-test code never imports test helpers (`*test` packages, `internal/testkit`).
+  4. **Third-party imports are allowlisted per package.** Adding a dependency to a package means adding one line to the table in `archtest`, which makes every new dependency a visible, reviewed decision.
+  5. Mocking frameworks are banned everywhere, tests included.
 
 ### 1.5 Components: mix-and-match deployment
 
 Goal: any set of packages can run in one container, or be spread across containers that talk to each other, **without code changes**.
 
-**One binary, components chosen by config.** `cmd/agentkit` is thin wiring. Each deployable piece (`harness`, `tools`, `mcp-server`, ...) implements a small contract in `pkg/component`:
+**One binary, components chosen by config.** Each deployable piece (`harness`, `tools`, `mcp-server`, ...) is built by an ordinary typed constructor and then handed to the runtime in `pkg/component`, which only needs this:
 
 ```go
 type Component interface {
     Name() string
-    Start(ctx context.Context, deps Deps) error // build the component from its deps
-    Register(mux *http.ServeMux)                 // mount HTTP, ConnectRPC and gRPC handlers
-    Ready(ctx context.Context) error             // feeds /readyz
+    Handler() http.Handler            // mounted under the shared server (ConnectRPC, MCP over HTTP, ...)
+    Ready(ctx context.Context) error  // feeds /readyz
     Shutdown(ctx context.Context) error
 }
 ```
+
+The wiring is **explicit Go code in `cmd/agentkit`**, not a generic dependency bag. For each dependency there is one `switch` on the config:
+
+```go
+var tools tool.Registry
+switch cfg.Harness.Tools.Mode {
+case "local":
+    tools = localRegistry               // built in this process
+case "remote":
+    tools = toolclient.New(cfg.Harness.Tools.URL)
+}
+h, err := harness.New(model, tools, store)
+```
+
+Wrong wiring is a compile error, not a runtime type assertion.
 
 **Every dependency between components is an interface, and config picks local or remote:**
 
@@ -111,9 +148,11 @@ components: [tools, mcp-server]
 
 | Path | Protocol | Why |
 |---|---|---|
-| Component to component (ours) | gRPC / ConnectRPC over HTTP/2 | Typed, streaming, one definition for Go and non-Go clients |
+| Component to component (ours) | ConnectRPC (gRPC protocol over HTTP/2) | Typed, streaming, one definition for Go and non-Go clients |
 | To and from external agents and tools | MCP (stdio, Streamable HTTP) | Spec-compliant interop |
 | Browser / curl | ConnectRPC JSON over HTTP/1.1 | No gRPC tooling needed |
+
+We use only `connect-go`: one handler on a standard `net/http` server serves the gRPC, gRPC-Web and Connect protocols. No `grpc-go`, no second port.
 
 - Plain h2c locally; mTLS between containers in real deployments, with certificates from `pkg/credentials`.
 - Tenant and request scope travel in request metadata and are restored into `context.Context` by middleware on the receiving side.
@@ -123,6 +162,7 @@ components: [tools, mcp-server]
 
 - The default image is `agentkit` (everything in the core build) plus `fakellm` for dev and tests. Deployment shape is config, not image choice.
 - Heavy optional backends sit behind build tags (for example `-tags aws,vault`) so the default image stays small. `make image TAGS=...` builds a variant.
+- Size budget: measure the first real image (M5), then set the limit in CI. The pure-Go SQLite driver alone is several MB, so the earlier 10-20 MB target is a goal, not a promise.
 - If you need a truly custom bundle, write a 20-line `main` that imports the components you want. They are ordinary packages.
 
 ---
@@ -192,7 +232,7 @@ New implementation = one line of test code + passing the suite.
 - **Table-driven** when the same behavior varies by input; separate tests when behavior differs.
 - **Golden files** only for wire formats (MCP JSON-RPC, tool protocol JSON, provider request bodies). Stored in `testdata/`, regenerated with `go test ./... -update`, reviewed in the diff.
 - **Recorded fixtures for LLM providers**: an `httptest` server replays `testdata/*.jsonl` responses. Unit tests never touch the network.
-- **Fuzz** parsers that take untrusted input (JSON-RPC decoding, schema derivation, JWT parsing).
+- **Fuzz** anything that takes untrusted input (tool input, JSON-RPC decoding, JWT parsing). The seed corpus runs with the unit tests; `make fuzz` runs each target for a short time and CI runs it on every PR.
 - Every test calls `t.Parallel()` unless it has a documented reason not to.
 - Always run with `-race -shuffle=on`. CI runs `-count=1`.
 
@@ -203,7 +243,7 @@ New implementation = one line of test code + passing the suite.
 ### 3.1 Approach
 
 - **Docker Compose with profiles** is the default local runtime: fast, one file, no cluster needed.
-- **kind** (Kubernetes in Docker) is optional and only for things that need real Kubernetes (the k8s secrets backend, manifests, probes). Same images, same config.
+- **kind** (Kubernetes in Docker) is optional and only for things that need real Kubernetes (the k8s secrets backend, manifests, probes). Same images, same config. It is built with the credentials work, the first thing that needs it.
 - One `Dockerfile` producing distroless images: `agentkit` and `fakellm`. Topologies differ by config, not by image.
 - **`fakellm`**: a small scripted model server speaking the Anthropic Messages API (subset). Every topology uses it by default, so local runs and e2e tests are deterministic and need no API key. Set `AGENTKIT_LLM=anthropic` plus a key to use the real provider.
 
@@ -296,15 +336,22 @@ We keep coding-agent skills in the repo and improve them like code. They turn th
 - **Agent-neutral.** No instructions that only one agent can follow. Where a skill can use another agent, it is optional and degrades gracefully. For example, `review` can ask for a second opinion from a different agent CLI if one is installed (`codex exec`, `claude -p`), read-only, and merges the findings. If none is installed, it skips that step.
 - **Linted.** `make lint` checks the front matter, that `name` matches the directory, that every link resolves, and that `.claude/skills` points at `.agents/skills`.
 - **Improve in the same PR.** When a review finds the same mistake twice, or a skill sent an agent the wrong way, fix the skill in the PR that fixes the code.
+- **Written from real code.** A skill is written right after the first real piece of work it describes, using that work as its example, not ahead of time.
 
 ## 5. Workflow: tasks folder
 
 - `tasks/` holds one Markdown file per task, plus epic files that reference tasks. Conventions and template are in [tasks/README.md](../tasks/README.md).
 - A task's **acceptance criteria are its test list** (§2.3). A task is done when each criterion has a passing test (or a stated reason it is covered elsewhere) and `make check` is green.
+- `make lint` checks the task files: no duplicate IDs, every `depends_on` exists, and each epic's checklist matches its tasks' `status`. Two branches that take the same ID fail CI; the second one to merge takes the next free number.
 
-## 6. Open questions
+## 6. Decisions and open questions
 
-- Compose as the default and kind as opt-in: agreed?
-- Which build tags gate heavy backends, and what is the size budget for the default `agentkit` image?
-- Is `fakellm` speaking the Anthropic wire format enough, or do we also want an OpenAI-compatible mode from day one?
-- Go version: `go.mod` says 1.23; we may want to move to the current stable release before writing code.
+Decided:
+- Compose is the default local runtime; kind is opt-in and comes with credentials.
+- ConnectRPC only for our protocol; official MCP Go SDK; `google/jsonschema-go` for schemas.
+- Go: `go 1.26.0` minimum, `toolchain go1.27.2`.
+
+Open:
+- Image size budget: set after measuring the first real image (M5).
+- Does `fakellm` need an OpenAI-compatible mode from day one, or only Anthropic?
+- Which build tags gate which backends (decided per backend as each one lands).

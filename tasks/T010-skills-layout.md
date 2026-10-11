@@ -22,7 +22,8 @@ One copy of every skill and every agent instruction, readable by Claude Code, Co
   - every `SKILL.md` has front matter with `name` and `description`; `name` equals the directory name;
   - every relative link in skills, `AGENTS.md` and `tasks/` resolves (including `#anchors` into docs);
   - `.claude/skills` is a symlink to `.agents/skills`;
-  - each skill body stays under a line limit (start at 150).
+  - each skill body stays under a line limit (start at 150);
+  - task files: no duplicate IDs, every `depends_on` exists, each epic's checklist matches its tasks' `status` ([ENGINEERING.md §5](../docs/ENGINEERING.md#5-workflow-tasks-folder)).
 
 ## Out of scope
 
@@ -33,7 +34,7 @@ One copy of every skill and every agent instruction, readable by Claude Code, Co
 
 - [ ] Claude Code lists the repo skills when started in the repo (checked once by hand, recorded in Notes).
 - [ ] Codex lists the same skills when started in the repo (checked once by hand, recorded in Notes; if Codex reads a different path, add a second symlink and note it).
-- [ ] `lint-skills.sh` fails on: missing `description`, `name`/directory mismatch, a broken link, a broken symlink. One fixture per case under `scripts/testdata/skills/`.
+- [ ] `lint-skills.sh` fails on: missing `description`, `name`/directory mismatch, a broken link, a broken symlink, a duplicate task ID, an epic checklist out of sync with a task's status. One fixture per case under `scripts/testdata/skills/`.
 - [ ] `make lint` runs `lint-skills.sh`.
 
 ## Notes

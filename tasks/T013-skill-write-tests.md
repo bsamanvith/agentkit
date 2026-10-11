@@ -3,7 +3,7 @@ id: T013
 title: write-tests skill
 epic: E02
 status: todo
-depends_on: [T010]
+depends_on: [T010, T017]
 ---
 
 # T013: `write-tests` skill
@@ -23,11 +23,11 @@ Makes agents write few, solid, behavior-level tests instead of many brittle ones
 5. Self-check before finishing: delete any test that duplicates a lower tier, tests a getter/option/generated code, or asserts internals.
 6. Run with `-race -shuffle=on -count=3` locally to shake out flakes.
 
-`references/examples.md`: one good and one bad example for each rule, taken from this repo once real code exists.
+`references/examples.md`: one good and one bad example for each rule, taken from `pkg/tool` (T017).
 
 ## Acceptance criteria
 
-- [ ] Dry run on a real E03 task: test count equals criteria count ± documented extras (error cases, regressions). Recorded in Notes.
+- [ ] Dry run on T018 (MCP stdio server): test count equals criteria count ± documented extras (error cases, regressions). Recorded in Notes.
 - [ ] Dry run tests pass `-race -shuffle=on -count=3`.
 
 ## Notes

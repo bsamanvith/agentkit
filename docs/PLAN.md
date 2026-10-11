@@ -70,7 +70,7 @@ Our own tool protocol and the core abstraction.
 - Registry.
 - Middleware: auth, rate limiting, timeouts, logging, validation.
 - Typed helper `tool.Func[In, Out]` that derives the schema from Go structs.
-- Wire protocol defined in **protobuf**, served over **gRPC** internally and as **JSON/HTTP via ConnectRPC** from the same definitions (for non-Go clients and browsers).
+- Wire protocol defined in **protobuf** and served with **ConnectRPC** (`connect-go`). One handler on a standard `net/http` server speaks the gRPC, gRPC-Web and Connect (JSON over HTTP/1.1) protocols, so we do not need `grpc-go` or a second port.
 
 ### `mcp`
 
@@ -93,8 +93,9 @@ Framework to maintain and store credentials securely.
 
 Stateful from day one.
 
-- `Store` interface with **SQLite** (local) and **Postgres** (server) implementations.
+- **SQLite** (local) and **Postgres** (server) implementations.
 - Holds runs, messages, tool calls, checkpoints (for resume), and tenant data.
+- Several small interfaces, one per kind of data (`RunStore`, `CheckpointStore`, ...), not one large `Store`. A backend can implement all of them.
 
 ### `tenancy`
 
@@ -102,7 +103,8 @@ Multi-tenant in v1.
 
 - Go has no thread-locals (goroutines are not threads), so tenant, user, and request info is carried in `context.Context`.
 - Set once by middleware; read via helpers such as `tenant.From(ctx)`.
-- Postgres row-level security keyed on tenant id.
+- Isolation is enforced in the application layer for every backend (every store query is scoped by the tenant in `ctx`), and checked by the store conformance suite for both SQLite and Postgres.
+- Postgres row-level security keyed on tenant id is an additional layer on top, not the only one.
 
 ### `transport`
 
@@ -143,15 +145,28 @@ Details: [ENGINEERING.md §1.5](ENGINEERING.md#15-components-mix-and-match-deplo
 | Models | Provider-agnostic `Model` interface; Claude first, then OpenAI-compatible |
 | State | Stateful; SQLite locally, Postgres for servers |
 | Tenancy | Multi-tenant in v1, scope carried in `context.Context` |
-| Protocols | gRPC (plus ConnectRPC JSON/HTTP) internally; spec MCP externally |
+| Protocols | ConnectRPC internally (speaks gRPC, gRPC-Web and JSON from one handler); spec MCP externally |
+| MCP library | Official Go SDK (`github.com/modelcontextprotocol/go-sdk`) |
+| JSON Schema | `github.com/google/jsonschema-go` (same library the MCP SDK uses): derive schemas from Go structs and validate input |
+| Go version | `go 1.26.0` minimum in `go.mod` (oldest supported release); `toolchain go1.27.2` for development |
 | Go modules | One module for the whole repo; split out a nested module only if a backend's dependencies cause problems for users |
 | Deployment | One `agentkit` binary/image; components and local-vs-remote wiring chosen by config |
+
+## Build order
+
+Build the product from the inside out, and add infrastructure when there is something real for it to run. Detail and task links: [ENGINEERING.md §0](ENGINEERING.md#0-build-order).
+
+1. **M0 Tooling**: `make check`, lint, architecture test, minimal CI.
+2. **M1 `pkg/tool`**: tool definition, `tool.Func[In, Out]`, registry, middleware, conformance suite.
+3. **M2 MCP server over stdio**: any registry becomes an MCP server that Claude Code or Codex can use. First real end-to-end test.
+4. **M3 `llm` + Anthropic adapter + in-process harness**: run an agent loop from a small CLI.
+5. **M4 `store` (SQLite)**: runs and checkpoints persist; resume works.
+6. **M5 Components and containers**: `pkg/component`, `cmd/agentkit`, `fakellm`, image, Compose, smoke tests.
+7. **M6 Tool protocol over ConnectRPC**: remote registry; the `split` topology.
+8. Then MCP client and bridge, Postgres and tenancy, credentials, observability.
 
 ## Open items / next steps
 
 - Finalize the project name (`agentkit` is a placeholder).
-- Define the protobuf schema for the tool protocol.
-- Define the core interfaces: `Model`, `Tool` / `ToolRegistry`, `Memory`, `Store`, credential store.
-- Decide milestone ordering across packages.
-- Choose the MCP SDK approach (official Go SDK vs. own implementation).
-- Define the config file format and schema.
+- Define the protobuf schema for the tool protocol (M6).
+- Define the config file format and schema (M5).

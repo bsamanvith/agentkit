@@ -1,7 +1,7 @@
 ---
 id: T009
 title: kind cluster and k8s overlays
-epic: E01
+epic: E07
 status: todo
 depends_on: [T005, T007]
 ---
@@ -10,7 +10,7 @@ depends_on: [T005, T007]
 
 ## Context
 
-Optional path for things that need real Kubernetes: the k8s secrets credential backend, manifests, probes, multi-replica behavior. Compose stays the default ([ENGINEERING.md §3.1](../docs/ENGINEERING.md#31-approach)). Can move to a later epic if not needed yet.
+Optional path for things that need real Kubernetes: the k8s secrets credential backend, manifests, probes, multi-replica behavior. Compose stays the default ([ENGINEERING.md §3.1](../docs/ENGINEERING.md#31-approach)). Moved to the credentials epic (E07, to be planned): the k8s secrets backend is the first thing that needs it.
 
 ## Scope
 

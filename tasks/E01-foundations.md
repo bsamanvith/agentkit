@@ -1,44 +1,45 @@
 ---
 id: E01
 title: Engineering foundations (tooling, tests, local pods)
-status: todo
+status: in-progress
 ---
 
 # E01: Engineering foundations
 
-Put [docs/ENGINEERING.md](../docs/ENGINEERING.md) into practice before feature work starts, so every later package lands with the same shape, the same test tiers, and a one-command local environment.
+Put [docs/ENGINEERING.md](../docs/ENGINEERING.md) into practice. Split in two phases following the build order ([§0](../docs/ENGINEERING.md#0-build-order)): the checks every change needs come first (M0); containers and local pods come once there are real components to run (M5).
 
-## Outcome
+## Phase 1: M0, before any feature
 
-- `make check` runs lint, import-boundary rules, and unit tests.
-- `scripts/dev.sh up` brings up a working stack; `scripts/dev.sh smoke` proves it works.
-- CI runs the same commands.
+- [ ] [T001](T001-tooling-and-lint.md) *(review: CI run pending)* Toolchain, Makefile, lint, architecture test, minimal CI
+- [ ] [T002](T002-testkit.md) Test helpers (testkit) *(in review)*
 
-## Tasks
+## Phase 2: M5, after E03 (real components exist)
 
-Ordered roughly by dependency.
-
-- [ ] [T001](T001-tooling-and-lint.md) Toolchain, Makefile, lint, import boundaries
-- [ ] [T002](T002-testkit.md) Test helpers: testkit and fake clock
 - [ ] [T003](T003-skeleton-binaries.md) `agentkit` binary with component runtime and health endpoints
-- [ ] [T004](T004-fakellm.md) `fakellm` scripted model server
+- [ ] [T004](T004-fakellm.md) `fakellm` scripted model server (needs the `llm` work from M3)
 - [ ] [T005](T005-container-image.md) Distroless container image
 - [ ] [T006](T006-compose-and-dev-script.md) Compose topologies and `scripts/dev.sh`
 - [ ] [T007](T007-e2e-smoke-suite.md) E2E smoke suite
-- [ ] [T008](T008-ci-pipeline.md) CI pipeline
-- [ ] [T009](T009-kind-cluster.md) kind cluster and k8s overlays (optional, can slip to a later epic)
+- [ ] [T008](T008-ci-pipeline.md) Full CI pipeline (images, integration, smoke)
+
+## When first needed
+
+- [ ] [T019](T019-clock.md) `clock` package and fake clock
+
+Moved out: [T009](T009-kind-cluster.md) kind cluster now belongs to the credentials epic (E07).
 
 ```
-T001 ─┬─ T002
-      └─ T003 ─┬─ T005 ─ T006 ─ T007 ─ T008
-           T004┘                  └─ T009
+T001 ─ T002 ─ (E03: T017 ─ T018) ─ T003 ─ T005 ─ T006 ─ T007 ─ T008
+                                   T004 ┘
 ```
 
-## Next epics
+## All epics
 
-- [E02](E02-agent-skills.md) Agent skills (can run in parallel with E01).
-- E03 Core interfaces: `llm.Model`, `tool.Tool`/registry, `store.Store`, credential store, tenancy context, each with its `xxxtest` package and conformance suite. *(to be broken down)*
-- E04 Tool protocol: protobuf, gRPC + ConnectRPC, `tools` and remote-registry client. *(to be broken down)*
-- E05 Harness loop on top of E03 (with `fakellm`). *(to be broken down)*
-- E06 MCP client/server/bridge (`mcp` topology). *(to be broken down)*
-- E07 Credentials backends (`secrets` topology). *(to be broken down)*
+- E01 Foundations (this file).
+- [E02](E02-agent-skills.md) Agent skills, growing alongside the code.
+- [E03](E03-tool-core-and-mcp.md) Tool core and MCP server (M1, M2). **Start here after T001/T002.**
+- E04 `llm` + Anthropic adapter + in-process harness (M3). *(to be planned)*
+- E05 `store` SQLite, runs and checkpoints (M4). *(to be planned)*
+- E06 Tool protocol over ConnectRPC, remote registry, `split` topology (M6). *(to be planned)*
+- E07 Credentials backends (`secrets` topology, kind). *(to be planned)*
+- Later: MCP client and bridge, Postgres and tenancy, observability.

@@ -3,7 +3,7 @@
 A modular Go framework for building agentic harnesses, tools, MCP servers/clients, and secure credential handling.
 
 - **Harness**: provider-agnostic agent loop with streaming, cancellation, and parallel tool calls.
-- **Tools**: our own lightweight tool protocol (gRPC internally, JSON/HTTP via ConnectRPC).
+- **Tools**: our own lightweight tool protocol (ConnectRPC: gRPC and JSON/HTTP from one handler).
 - **MCP**: connect to external MCP servers and expose any tool registry as a spec-compliant MCP server.
 - **Credentials**: API key, OAuth2, JWT, basic, and mTLS with pluggable secure storage backends.
 

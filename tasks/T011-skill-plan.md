@@ -24,7 +24,7 @@ Turns an idea or request into an epic and task files that follow [tasks/README.m
 
 ## Acceptance criteria
 
-- [ ] Dry run: planning one upcoming epic (E03 core interfaces) produces files that pass `lint-skills.sh` link checks and match the template. Recorded in Notes.
+- [ ] Dry run: planning the M3 epic (`llm` + Anthropic adapter + harness) produces files that pass `lint-skills.sh` link checks and match the template. Recorded in Notes.
 - [ ] Dry run output has no criterion a reviewer marks as untestable. Recorded in Notes with any skill changes made.
 
 ## Notes

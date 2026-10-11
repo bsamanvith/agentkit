@@ -28,7 +28,7 @@ depends_on: [T003, T004]
 
 ## Acceptance criteria
 
-- [ ] Each image builds, runs as non-root, and is under 20 MB (checked in CI by T008).
+- [ ] Each image builds and runs as non-root. Measure the size, set the budget in the Makefile, and record both in Notes (CI enforces it in T008).
 - [ ] `docker run <image> healthcheck` exits non-zero when the server is not up and 0 when it is.
 - [ ] A rebuild after changing one `.go` file reuses the module download layer.
 

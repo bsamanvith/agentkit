@@ -1,0 +1,87 @@
+{
+  "name": "search",
+  "description": "Search the docs.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "what to search for"
+      },
+      "limit": {
+        "type": "integer",
+        "description": "maximum number of results"
+      },
+      "filters": {
+        "type": "object",
+        "properties": {
+          "lang": {
+            "type": "string"
+          },
+          "since": {
+            "type": "string",
+            "description": "RFC 3339 date"
+          }
+        },
+        "required": [
+          "lang"
+        ],
+        "additionalProperties": false
+      },
+      "tags": {
+        "type": [
+          "null",
+          "array"
+        ],
+        "items": {
+          "type": "string"
+        }
+      },
+      "labels": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "results": {
+        "type": [
+          "null",
+          "array"
+        ],
+        "items": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "title",
+            "url"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "total": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "results",
+      "total"
+    ],
+    "additionalProperties": false
+  }
+}

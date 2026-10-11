@@ -24,7 +24,7 @@ Put [docs/ENGINEERING.md](../docs/ENGINEERING.md) into practice. Split in two ph
 
 ## When first needed
 
-- [ ] [T019](T019-clock.md) `clock` package and fake clock
+- [ ] [T019](T019-clock.md) `clock` package and fake clock (moved to [E05](E05-store-runner.md))
 
 Moved out: [T009](T009-kind-cluster.md) kind cluster now belongs to the credentials epic (E07).
 

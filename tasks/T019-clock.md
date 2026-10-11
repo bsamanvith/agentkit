@@ -1,7 +1,7 @@
 ---
 id: T019
 title: clock package and fake clock
-epic: E01
+epic: E05
 status: todo
 depends_on: [T001]
 ---
@@ -10,7 +10,7 @@ depends_on: [T001]
 
 ## Context
 
-Split out of T002. Needed as soon as behavior depends on time: token refresh (credentials), rate limits, retry backoff, run budgets. Do it with the first task that needs it.
+Split out of T002, now part of E05: the runner and the store's leases need it, and the harness switches from `WithNow` to it. Also used later for token refresh, rate limits and retry backoff.
 
 ## Scope
 

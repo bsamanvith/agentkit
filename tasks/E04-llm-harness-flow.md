@@ -16,7 +16,7 @@ Everything up to T023 is tested with fakes (no API key, no containers). T024 is 
 - [ ] [T021](T021-llm-anthropic.md) `pkg/llm/anthropic`: adapter on the official Go SDK (in review: built and tested; the live test has not run yet)
 - [x] [T022](T022-harness-loop.md) `pkg/harness`: the agent loop (parallel tools, budgets, hooks, events)
 - [x] [T023](T023-flow.md) `pkg/flow`: steps, combinators, checkpoints, resume, approval
-- [ ] [T024](T024-run-cli.md) `agentkit run`: a real agent and a two-step flow against Claude, end to end
+- [ ] [T024](T024-run-cli.md) `agentkit run`: a real agent and a two-step flow against Claude, end to end (also completes T021's live test) **← next**
 - [ ] [T025](T025-llm-openai-compatible.md) `pkg/llm/openaicompat`: OpenAI-compatible adapter (OpenAI, Ollama, vLLM, gateways)
 
 ```
@@ -27,3 +27,11 @@ T023 (needs only E01) ─┘
 ```
 
 T021, T022 and T023 can run in parallel once T020 is done (T023 even before). T018 (MCP server, E03) is independent of this epic.
+
+## Follow-ups, scheduled when a caller needs them
+
+From the T020 and T022 handoffs. Each becomes its own task when its first real caller appears; until then the detail lives in the linked Notes.
+- Harness ([T022 Deferred](T022-harness-loop.md)): compaction inside a run, a replaceable `Validate`, a between-turns hook, a "model call started" event, JSON wire forms for `Event` and `Record` (needed for the remote harness, M6), continuing after `pause_turn`, retries as an `llm.Model` wrapper.
+- `pkg/llm`: promote `Message.ToolUses()` and `Usage.Add` once a second caller exists.
+- `Validate` strictness (rejects a user message mixing tool results and text, which Anthropic accepts): checked live in T024.
+- `pkg/clock` (T019): the harness uses `WithNow` until it lands; switch then.

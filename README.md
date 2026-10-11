@@ -18,9 +18,10 @@ Each package can be imported on its own or run as a lightweight server. One `age
 |---|---|
 | M0 Tooling: `make check`, lint, architecture test, test helpers, CI | Done |
 | M1 `pkg/tool`: tool definitions, `tool.Func[In, Out]`, registry, middleware, conformance suite | Done |
-| M2 Toolsets from config; one MCP server, one URL path per toolset | Planned ([T026](tasks/T026-toolsets-from-config.md), [T018](tasks/T018-mcp-server.md)) |
-| M3 `llm`, Anthropic adapter, harness, `flow` | **In progress** ([E04](tasks/E04-llm-harness-flow.md)): `pkg/llm` and `pkg/flow` done; [T022](tasks/T022-harness-loop.md) (harness) in progress; [T021](tasks/T021-llm-anthropic.md) (Anthropic adapter) next |
-| M4 SQLite store, M5 containers and pods, M6 remote tools | Planned |
+| M2 Toolsets from config; one MCP server, one URL path per toolset | Done ([T026](tasks/T026-toolsets-from-config.md), [T018](tasks/T018-mcp-server.md)) |
+| M3 `llm`, Anthropic adapter, harness, `flow` | **In progress** ([E04](tasks/E04-llm-harness-flow.md)): `pkg/llm`, `pkg/harness` and `pkg/flow` done; Anthropic adapter built (live test pending); next [T024](tasks/T024-run-cli.md), the first end-to-end run against Claude |
+| M4 Store, runner and compaction | Planned ([E05](tasks/E05-store-runner.md)) |
+| M5 containers and pods, M6 remote tools | Planned |
 
 ## What works today
 

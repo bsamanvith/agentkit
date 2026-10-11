@@ -1,0 +1,11 @@
+# Allowlist: the build needs the module files and the Go packages, nothing
+# else. Tests and their fixtures are left out too, so editing one does not
+# rebuild the image.
+*
+!go.mod
+!go.sum
+!cmd/
+!internal/
+!pkg/
+**/*_test.go
+**/testdata/

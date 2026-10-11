@@ -64,6 +64,7 @@ const usage = `usage:
   agentkit run [flags] "<prompt>"          run one agent against Claude with the demo tools
   agentkit flow demo [flags] ["<topic>"]   research → approval → write; run again with -approve to continue
   agentkit serve [-config file]            serve the components in $AGENTKIT_COMPONENTS (default mcp-server)
+  agentkit healthcheck [-ready]            exit 0 if the server on $AGENTKIT_ADDR is live (or ready)
 
 Run "agentkit <command> -h" for flags.
 `
@@ -80,6 +81,8 @@ func (c cli) main(ctx context.Context, args []string) int {
 		err = c.flowDemo(ctx, args[2:])
 	case len(args) >= 1 && args[0] == "serve":
 		err = c.serve(ctx, args[1:])
+	case len(args) >= 1 && args[0] == "healthcheck":
+		err = c.healthcheck(ctx, args[1:])
 	default:
 		fmt.Fprint(c.stderr, usage)
 		return 2

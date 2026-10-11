@@ -1,0 +1,8 @@
+{
+  "mcp": {
+    "base_path": "/mcp",
+    "toolsets": [
+      {"name": "demo", "type": "demo"}
+    ]
+  }
+}

@@ -31,7 +31,7 @@ T023 handoff, contract 2: `Resume` assumes the step tree is the one that produce
 
 ### API (package `flow`)
 
-- `Fingerprint(step Step) (string, error)`: `"v1:" + hex(SHA-256)` of a canonical text of the tree. Runs `Validate` first (`ErrInvalidFlow`).
+- `Fingerprint(step Step) (string, error)`: `"v2:" + hex(SHA-256)` of a canonical text of the tree (the label names the encoding). Runs `Validate` first (`ErrInvalidFlow`).
 - `Checkpoint.Shape string` (`json:"shape,omitempty"`). `CheckpointVersion` stays 1: the field is optional, and bumping the version would make `Resume` reject every old checkpoint, which the task forbids.
 - `ErrShapeChanged`, `*ShapeChangedError{RunID, Stored, Current}` (unwraps to `ErrShapeChanged`), `ErrNoShape`, `WithAllowShapeChange()`, and a new `EventWarning` event kind.
 
@@ -41,14 +41,14 @@ T023 handoff, contract 2: `Resume` assumes the step tree is the one that produce
 - **Custom leaf steps** (an agent step, say) are identified by name only: changing an agent's model or prompt does not change the fingerprint. That matches "never closures"; a step that needs more can include it in its name.
 - **`Run`** stores the fingerprint in the first checkpoint, and every later save carries it (`TestEveryCheckpointCarriesTheFingerprint`).
 - **`Resume`** checks right after the version check, before the state is restored and before any step, event or save. On a mismatch without the opt-in it returns `*ShapeChangedError` and changes nothing, not even the stored checkpoint (`TestResumeOfAChangedTreeFailsWithErrShapeChanged`). Applies to a run in any status, a completed one included.
-- **Warnings** are `EventWarning` events on the root path, delivered to the observer before anything else: `Err` matches `ErrNoShape` for an old checkpoint, and `ErrShapeChanged` (a `*ShapeChangedError`) when the opt-in was used. In both cases `Resume` adopts the current fingerprint, written by the run's next save. If the process is cancelled before that save, the stored checkpoint is unchanged and the next `Resume` warns again.
+- **Warnings** are `EventWarning` events on the root path, delivered to the observer before anything else: `Err` matches `ErrNoShape` for an old checkpoint or one with a fingerprint of another version, and `ErrShapeChanged` (a `*ShapeChangedError`) when the opt-in was used. In both cases `Resume` adopts the current fingerprint, written by the run's next save. If the process is cancelled before that save, the stored checkpoint is unchanged and the next `Resume` warns again.
 - **`WithAllowShapeChange` is only sound** if every recorded path still means the same step (documented on the option): records are matched by path, so a renamed step that had completed is simply not skipped, and a moved one is skipped wherever its old path now leads.
 - T023 Notes said a changed tree "is not detected"; it is now.
 - `flowtest` change: the shared sample checkpoint has a `Shape` and `equal` compares it, so every `Checkpointer` (SQLite in T029) must round-trip it. `equal` compares `Shape` before it normalises through `Clone`, so a broken `Clone` cannot hide a lost shape from the suite.
 
 ### Golden files
 
-`make golden` (run for `pkg/flow`) changed `testdata/checkpoint_suspended.json` by exactly one line, `"shape"` (now `v1:f130…`, after the encoding change below). The file as it was is kept as `testdata/checkpoint_suspended_no_shape.json`, an old-format checkpoint that the legacy-resume test loads. `testdata/shape_fingerprint.txt` pins the fingerprint of a reference tree that uses every kind of step: changing the encoding changes it, and that needs a new `shapeVersion`.
+`make golden` (run for `pkg/flow`) changed `testdata/checkpoint_suspended.json` by exactly one line, `"shape"` (now `v2:f130…`, after the encoding changes below). The file as it was is kept as `testdata/checkpoint_suspended_no_shape.json`, an old-format checkpoint that the legacy-resume test loads. `testdata/shape_fingerprint.txt` pins the fingerprint of a reference tree that uses every kind of step: changing the encoding changes it, and that needs a new `shapeVersion`.
 
 ### Mutation check
 
@@ -84,10 +84,24 @@ Found while checking: a `Clone` that drops `Shape` was first *not* caught by the
 
 ### Review fixes (an independent review after the first push)
 
-- **The encoding used `strconv.Quote`, which depends on the toolchain's Unicode tables** (see Design decisions). Replaced by length-prefixed bytes before anything stable stored a fingerprint; `shapeVersion` stays `v1` because nothing was released. A suspended `agentkit flow demo` file written by the first push holds the old value and will answer `ErrShapeChanged`: delete it or use the opt-in.
+- **The encoding used `strconv.Quote`, which depends on the toolchain's Unicode tables** (see Design decisions). Replaced by length-prefixed bytes.
 - The quoting guarantee was protected only by the pinned golden value, because the forging names in the tests (`a"),step("b`) contain quotes and forge nothing against an unquoted encoding. Added forging names, route keys and root names that do collide under the raw encodings (verified), and the generator uses them too.
 - The "every checkpoint carries the fingerprint" invariant was checked in one test only; planting a bug that dropped `Shape` when an approval is rejected passed the suite. It is now checked by the shared test helpers.
 - `Event.Err` doc now includes `EventWarning`.
+
+### The stale demo file (second fix)
+
+The encoding change above kept the label `v1`, so the same tree had two different `v1:` fingerprints: the demo tree is `v1:36dd…` with the quoting encoding and `v1:c608…` with the length-prefixed one (computed with both versions of the code). A suspended `agentkit flow demo` file written by the first push therefore failed to resume with `ErrShapeChanged` ("step tree changed", although it had not), and the message pointed at a Go option the CLI cannot pass. Reproduced through the real binary with the repo's replay harness.
+
+Cause: `Resume` never looked at the version prefix, so a new encoding could not be told from a changed tree. Fix (in `pkg/flow`, not the demo):
+
+- The new encoding is **`v2`** (labels are never reused; the history is in the `shapeVersion` comment).
+- `Resume` compares only a fingerprint of its own version. One from another version (an older encoding, a later release after a downgrade, or garbage) cannot be compared, so it is treated like a checkpoint with no fingerprint: it resumes, emits an `EventWarning` matching `ErrNoShape` (and not `ErrShapeChanged`), and its next save carries the current fingerprint. A genuine change of tree under the current version still fails with `ErrShapeChanged`.
+- This makes every future encoding change non-breaking by design, without keeping a decoder for old encodings.
+
+Verified: `TestResumeOfACheckpointWithAFingerprintOfAnotherVersionStillRuns` (the real v1 file from the first push, `testdata/checkpoint_suspended_v1_shape.json`, plus a later version, no version, a bare version, and a mangled one); three planted bugs caught (versions not looked at, any `v…` taken as comparable, another version rejected instead of warned about); and the repro rerun through the binary: the stale file now resumes (exit 0, the research step skipped, only the writer called, draft printed). The goldens changed by the label only (`v1:` → `v2:`, same hash).
+
+Not done on purpose: a `-allow-shape-change` flag on the demo (the CLI is outside this task's files, and the real runner will decide how an operator opts in).
 
 ### Open points (not changed)
 

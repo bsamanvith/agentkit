@@ -9,6 +9,7 @@ import (
 	"os"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 
@@ -302,6 +303,53 @@ func TestResumeOfACheckpointWithoutAShapeStillRuns(t *testing.T) {
 	// From now on the run has a fingerprint.
 	if got, want := load(t, cp, "r").Shape, fingerprint(t, reviewFlow(&c)); got != want {
 		t.Errorf("checkpoint shape = %q, want %q", got, want)
+	}
+}
+
+// A fingerprint made by another version of the encoding cannot be compared with
+// the current one, so it is no evidence that the tree changed. The first file
+// is a checkpoint as it was written when the encoding was still v1: the same
+// tree as reviewFlow, with a fingerprint that differs only because of the
+// encoding.
+func TestResumeOfACheckpointWithAFingerprintOfAnotherVersionStillRuns(t *testing.T) {
+	t.Parallel()
+	v1 := readCheckpoint(t, "testdata/checkpoint_suspended_v1_shape.json")
+	if !strings.HasPrefix(v1.Shape, "v1:") {
+		t.Fatalf("fixture has shape %q, want a v1 fingerprint", v1.Shape)
+	}
+	for name, shape := range map[string]string{
+		"the v1 encoding":   v1.Shape,
+		"a later version":   "v99:abc",
+		"no version":        "abc",
+		"only a version":    "v2",
+		"a version in vain": "x" + v1.Shape,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			var c calls
+			cp := flow.NewMemory()
+			stored := v1.Clone()
+			stored.Shape = shape
+			if err := cp.Save(t.Context(), "r", stored); err != nil {
+				t.Fatal(err)
+			}
+			var rec flowtest.Recorder
+
+			st, err := resume(t, cp, "r", reviewFlow(&c),
+				flow.WithDecision("review/check[1]/legal", flow.Decision{Approved: true}), flow.WithObserver(rec.Observe))
+			if err != nil {
+				t.Fatalf("Resume: %v", err)
+			}
+			equalStrings(t, "steps run", c.all(), []string{"publish"})
+			equalStrings(t, "trail", mustGet[[]string](t, st, "trail"), []string{"draft", "lint", "publish"})
+			events := rec.Events()
+			if len(events) == 0 || events[0].Kind != flow.EventWarning || !errors.Is(events[0].Err, flow.ErrNoShape) || errors.Is(events[0].Err, flow.ErrShapeChanged) {
+				t.Errorf("first event = %+v, want a warning matching ErrNoShape and not ErrShapeChanged", events)
+			}
+			if got, want := load(t, cp, "r").Shape, fingerprint(t, reviewFlow(&c)); got != want {
+				t.Errorf("checkpoint shape = %q, want the current %q", got, want)
+			}
+		})
 	}
 }
 

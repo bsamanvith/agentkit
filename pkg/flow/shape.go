@@ -9,10 +9,18 @@ import (
 	"strings"
 )
 
-// shapeVersion prefixes every fingerprint. Change it, and the encoding below,
-// together: a changed encoding makes every stored fingerprint look like a
-// changed tree.
-const shapeVersion = "v1"
+// shapeVersion prefixes every fingerprint, and names the encoding below. Change
+// the encoding only together with this label, and never reuse a label: [Resume]
+// compares only fingerprints of its own version, and treats any other as one it
+// cannot check (a warning, not a failure), so a new encoding does not turn every
+// stored fingerprint into "the tree changed". v1 was a first encoding that
+// quoted names with strconv.Quote and was replaced within hours, before any
+// release, because quoting depends on the toolchain's Unicode tables.
+const shapeVersion = "v2"
+
+// comparable reports whether a stored fingerprint was made by this version of
+// the encoding, so that it can be compared with the current one.
+func comparable(stored string) bool { return strings.HasPrefix(stored, shapeVersion+":") }
 
 // Fingerprint returns a short, stable identifier of the structure of a step
 // tree: the name and kind of every step, how they nest, the order of the

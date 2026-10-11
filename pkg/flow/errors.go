@@ -42,9 +42,11 @@ var (
 	// [WithAllowShapeChange] resumes anyway.
 	ErrShapeChanged = errors.New("step tree changed since the run was checkpointed")
 	// ErrNoShape is the cause of the warning [Event] that [Resume] emits for a
-	// checkpoint written before fingerprints existed. The run resumes, and its
-	// next checkpoint carries the fingerprint.
-	ErrNoShape = errors.New("checkpoint has no step tree fingerprint")
+	// checkpoint with no fingerprint it can compare: one written before
+	// fingerprints existed, or with a fingerprint made by another version of
+	// the encoding. Nothing says the tree changed, so the run resumes, and its
+	// next checkpoint carries the current fingerprint.
+	ErrNoShape = errors.New("checkpoint has no step tree fingerprint that can be compared")
 	// ErrCheckpoint means a checkpoint could not be saved or loaded, or the
 	// stored one is unusable. The cause is wrapped.
 	ErrCheckpoint = errors.New("checkpoint failed")

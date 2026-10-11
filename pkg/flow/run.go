@@ -116,8 +116,10 @@ func Run(ctx context.Context, id string, step Step, opts ...Option) (*State, err
 // of step with the one in the checkpoint and fails with [ShapeChangedError]
 // (matching [ErrShapeChanged]) if they differ, before running anything, unless
 // [WithAllowShapeChange] is given. A checkpoint written before fingerprints
-// existed has none and resumes as before. In both cases Resume emits an
-// [EventWarning] and the run's next checkpoint carries the current fingerprint.
+// existed has none and resumes as before, and so does one whose fingerprint
+// was made by another version of the encoding, which cannot be compared. In
+// both cases Resume emits an [EventWarning] and the run's next checkpoint
+// carries the current fingerprint.
 // Resuming a completed run returns its final state; resuming a rejected run
 // returns [ErrRejected] again. Resume fails with [ErrNotFound] if the run does
 // not exist.
@@ -139,9 +141,14 @@ func Resume(ctx context.Context, id string, step Step, opts ...Option) (*State, 
 	shape := shapeOf(step)
 	if ckpt.Shape != shape {
 		var warning error
-		if ckpt.Shape == "" {
+		switch {
+		case ckpt.Shape == "":
 			warning = fmt.Errorf("%w: run %q", ErrNoShape, id)
-		} else {
+		case !comparable(ckpt.Shape):
+			// Made by another version of the encoding: not comparable, so no
+			// evidence that the tree changed.
+			warning = fmt.Errorf("%w: run %q has fingerprint %q of another version", ErrNoShape, id, ckpt.Shape)
+		default:
 			warning = &ShapeChangedError{RunID: id, Stored: ckpt.Shape, Current: shape}
 			if !o.allowShape {
 				return nil, warning

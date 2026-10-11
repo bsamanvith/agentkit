@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "run_id": "r",
+  "shape": "v1:8b1266578d79ec4b53cbc99cffb7c3997d812fc569efcfdde502840f40d66b84",
+  "status": "suspended",
+  "initial": {
+    "topic": "q3"
+  },
+  "steps": {
+    "review/check[0]/lint": {
+      "topic": "q3",
+      "trail": [
+        "draft",
+        "lint"
+      ]
+    },
+    "review/draft": {
+      "topic": "q3",
+      "trail": [
+        "draft"
+      ]
+    }
+  },
+  "pending": [
+    "review/check[1]/legal"
+  ]
+}

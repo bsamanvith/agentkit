@@ -13,7 +13,7 @@ Everything up to T023 is tested with fakes (no API key, no containers). T024 is 
 ## Tasks
 
 - [x] [T020](T020-llm-core.md) `pkg/llm`: model interface, message types, streaming events, `llmtest` fake and adapter conformance suite
-- [ ] [T021](T021-llm-anthropic.md) `pkg/llm/anthropic`: adapter on the official Go SDK **← next**
+- [ ] [T021](T021-llm-anthropic.md) `pkg/llm/anthropic`: adapter on the official Go SDK (in review: built and tested; the live test has not run yet)
 - [x] [T022](T022-harness-loop.md) `pkg/harness`: the agent loop (parallel tools, budgets, hooks, events)
 - [x] [T023](T023-flow.md) `pkg/flow`: steps, combinators, checkpoints, resume, approval
 - [ ] [T024](T024-run-cli.md) `agentkit run`: a real agent and a two-step flow against Claude, end to end

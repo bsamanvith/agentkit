@@ -8,7 +8,13 @@ func ModuleRules() Rules {
 		Module: "github.com/bsamanvith/agentkit",
 		ThirdParty: map[string][]string{
 			"internal/testkit": {"github.com/google/go-cmp/cmp"},
-			"pkg/tool":         {"github.com/google/jsonschema-go/jsonschema"},
+			"pkg/llm/anthropic": {
+				"github.com/anthropics/anthropic-sdk-go",
+				"github.com/anthropics/anthropic-sdk-go/option",
+				"github.com/anthropics/anthropic-sdk-go/packages/param",
+				"github.com/anthropics/anthropic-sdk-go/shared/constant",
+			},
+			"pkg/tool": {"github.com/google/jsonschema-go/jsonschema"},
 		},
 		TestOnly: []string{
 			"github.com/google/go-cmp/cmp",

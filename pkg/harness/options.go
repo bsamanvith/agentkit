@@ -23,7 +23,21 @@ type BeforeToolFunc func(ctx context.Context, call llm.ToolUse) error
 // ToolUseID is always set back to the call's. Same rules as [BeforeToolFunc].
 type AfterToolFunc func(ctx context.Context, call llm.ToolUse, res llm.ToolResult) llm.ToolResult
 
+// RequestOptions are the parts of every model request that the harness does
+// not decide. The harness fills in the rest: the system prompt, the messages
+// and the tool definitions.
+type RequestOptions struct {
+	// MaxTokens limits the output tokens of each reply; zero means the
+	// adapter's default.
+	MaxTokens int
+	// Provider holds options for one provider, such as thinking or caching
+	// settings; see [llm.Request.Provider]. It is sent as is on every turn
+	// and must not be modified once the harness has it.
+	Provider any
+}
+
 type config struct {
+	request     RequestOptions
 	system      string
 	maxTurns    int
 	maxTokens   int
@@ -38,6 +52,10 @@ type Option func(*config)
 
 // WithSystem sets the system prompt of every request.
 func WithSystem(prompt string) Option { return func(c *config) { c.system = prompt } }
+
+// WithRequest sets the options every model request carries. The messages and
+// tools are never taken from it.
+func WithRequest(opts RequestOptions) Option { return func(c *config) { c.request = opts } }
 
 // WithMaxTurns limits a run to n model calls (default 25). A run that would
 // need more fails with [ErrBudgetExceeded]. n must be at least 1.
@@ -67,5 +85,7 @@ func WithAfterTool(f AfterToolFunc) Option {
 
 // WithNow sets the clock used for every timestamp and duration (default
 // [time.Now]). It must be safe for concurrent use: tool calls read it from
-// their own goroutines.
+// their own goroutines. Durations are the difference of two readings, so they
+// are monotonic only if the clock returns times that carry a monotonic reading,
+// as [time.Now] does and its UTC or Round(0) forms do not.
 func WithNow(now func() time.Time) Option { return func(c *config) { c.now = now } }

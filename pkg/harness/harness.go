@@ -39,6 +39,8 @@ func New(model llm.Model, tools tool.Registry, opts ...Option) (*Harness, error)
 		return nil, fmt.Errorf("%w: max turns must be at least 1, got %d", ErrInvalidConfig, cfg.maxTurns)
 	case cfg.maxTokens < 0:
 		return nil, fmt.Errorf("%w: max total tokens must not be negative, got %d", ErrInvalidConfig, cfg.maxTokens)
+	case cfg.request.MaxTokens < 0:
+		return nil, fmt.Errorf("%w: output token limit must not be negative, got %d", ErrInvalidConfig, cfg.request.MaxTokens)
 	case cfg.maxParallel < 1:
 		return nil, fmt.Errorf("%w: max parallel tools must be at least 1, got %d", ErrInvalidConfig, cfg.maxParallel)
 	case cfg.now == nil:
@@ -102,7 +104,6 @@ type run struct {
 
 	transcript Transcript
 	usage      llm.Usage
-	tokens     int
 	turns      int
 	rec        Record
 }
@@ -147,7 +148,7 @@ func (r *run) finish() {
 		Turns:      r.turns,
 		Record:     r.rec.clone(),
 	}
-	res.Final = res.Transcript[len(res.Transcript)-1]
+	res.Final = res.Transcript[len(res.Transcript)-1].Clone() // not the transcript's own blocks
 	r.emit(Event{Kind: EventRunDone, At: r.rec.FinishedAt, Result: &res})
 }
 
@@ -226,21 +227,15 @@ func (r *run) begin(in Input) error {
 		}
 		return nil
 	}
-	m := in.Message
-	if m.Role != llm.RoleUser {
-		return invalidInput("the new message has role %q, want %q", m.Role, llm.RoleUser)
-	}
-	if len(m.Content) == 0 {
-		return invalidInput("the new message is empty")
-	}
-	for _, b := range m.Content {
-		switch b.(type) {
-		case llm.ToolResult, llm.ToolUse:
-			return invalidInput("the new message must not contain tool calls or results")
-		}
-	}
 	if endsWithUser {
 		return invalidInput("the transcript already ends with a user message; resume it without a new message")
+	}
+	// The new message is checked like every other: as part of the whole
+	// transcript, so that what the model is sent is always one Validate accepts.
+	m := in.Message.Clone()
+	t = append(t, m)
+	if err := t.Validate(); err != nil {
+		return err
 	}
 	at := in.At
 	if at.IsZero() {
@@ -248,7 +243,7 @@ func (r *run) begin(in Input) error {
 	}
 	prompt := TimedMessage{Message: m.Clone(), At: at}
 	r.rec.Prompt = &prompt
-	r.transcript = append(r.transcript, m.Clone())
+	r.transcript = t
 	return nil
 }
 
@@ -258,8 +253,8 @@ func (r *run) checkBudget() error {
 	if r.turns >= cfg.maxTurns {
 		return fmt.Errorf("%w: %d turns used, the limit is %d", ErrBudgetExceeded, r.turns, cfg.maxTurns)
 	}
-	if cfg.maxTokens > 0 && r.tokens >= cfg.maxTokens {
-		return fmt.Errorf("%w: %d tokens used, the limit is %d", ErrBudgetExceeded, r.tokens, cfg.maxTokens)
+	if cfg.maxTokens > 0 && totalTokens(r.usage) >= cfg.maxTokens {
+		return fmt.Errorf("%w: %d tokens used, the limit is %d", ErrBudgetExceeded, totalTokens(r.usage), cfg.maxTokens)
 	}
 	return nil
 }
@@ -272,7 +267,13 @@ func (r *run) turn(ctx context.Context, defs []tool.Definition) (done bool, err 
 	// The model gets a view of the transcript it cannot append to, and it is
 	// never modified once sent: only whole turns are added at the end.
 	n := len(r.transcript)
-	req := llm.Request{System: r.h.cfg.system, Messages: r.transcript[:n:n], Tools: defs}
+	req := llm.Request{
+		System:    r.h.cfg.system,
+		Messages:  r.transcript[:n:n],
+		Tools:     defs,
+		MaxTokens: r.h.cfg.request.MaxTokens,
+		Provider:  r.h.cfg.request.Provider,
+	}
 
 	tr.RequestedAt = r.now()
 	var resp *llm.Response
@@ -285,7 +286,7 @@ func (r *run) turn(ctx context.Context, defs []tool.Definition) (done bool, err 
 		}
 		switch ev.Kind {
 		case llm.EventTextDelta:
-			if !r.emit(Event{Kind: EventTextDelta, Turn: tr.Turn, At: r.now(), Text: ev.Text}) {
+			if !r.emit(Event{Kind: EventTextDelta, Turn: tr.Turn, At: r.now(), Text: ev.Text, Block: ev.Index}) {
 				return false, nil
 			}
 		case llm.EventMessageDone:
@@ -302,10 +303,16 @@ func (r *run) turn(ctx context.Context, defs []tool.Definition) (done bool, err 
 	tr.DoneAt = r.now()
 	tr.Usage, tr.Stop = resp.Usage, resp.Stop
 	r.usage = addUsage(r.usage, resp.Usage)
-	r.tokens += totalTokens(resp.Usage)
 	// The response belongs to the model; the transcript keeps its own copy.
 	msg := resp.Message.Clone()
 	uses := toolUses(msg)
+
+	// A reply the transcript could not hold (Validate and JSON encoding would
+	// reject it) is never committed, whatever the model stopped for.
+	malformed := replyProblem(msg)
+	if malformed != nil && (resp.Stop.Kind == llm.StopToolUse || resp.Stop.Kind == llm.StopEndTurn) {
+		return false, fmt.Errorf("%w: %w", ErrUnexpectedStop, malformed)
+	}
 
 	switch resp.Stop.Kind {
 	case llm.StopToolUse:
@@ -323,7 +330,7 @@ func (r *run) turn(ctx context.Context, defs []tool.Definition) (done bool, err 
 
 	// The model stopped for a reason that ends the run. Its reply is part of
 	// the conversation and is kept, unless it calls tools that nothing will
-	// answer: that would leave a transcript no model accepts.
+	// answer (that would leave a transcript no model accepts) or is malformed.
 	var cause error
 	switch resp.Stop.Kind {
 	case llm.StopMaxTokens:
@@ -333,7 +340,7 @@ func (r *run) turn(ctx context.Context, defs []tool.Definition) (done bool, err 
 	default:
 		cause = fmt.Errorf("%w: stop reason %q %q", ErrUnexpectedStop, resp.Stop.Kind, resp.Stop.Raw)
 	}
-	if len(uses) == 0 {
+	if len(uses) == 0 && malformed == nil {
 		r.commit(&tr, TimedMessage{Message: msg, At: tr.DoneAt})
 	}
 	return false, cause
@@ -342,14 +349,6 @@ func (r *run) turn(ctx context.Context, defs []tool.Definition) (done bool, err 
 // useTools runs the model's tool calls and, once they are all done, adds the
 // reply and the results to the transcript as one turn.
 func (r *run) useTools(ctx context.Context, tr *TurnRecord, msg llm.Message, uses []llm.ToolUse) (bool, error) {
-	seen := make(map[string]bool, len(uses))
-	for _, u := range uses {
-		if u.ID == "" || seen[u.ID] {
-			return false, fmt.Errorf("%w: tool call ID %q is empty or repeated", ErrUnexpectedStop, u.ID)
-		}
-		seen[u.ID] = true
-	}
-
 	calls, err := r.runTools(ctx, tr.Turn, uses)
 	if r.stopped || err != nil {
 		return false, err

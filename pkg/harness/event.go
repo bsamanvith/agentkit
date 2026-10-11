@@ -23,9 +23,11 @@ const (
 	// EventTextDelta carries a piece of the model's text in Event.Text.
 	EventTextDelta
 	// EventToolStart says a tool call began to run: Event.Call is its index in
-	// the turn's calls and Event.ToolUse the call.
+	// the turn's calls and Event.ToolUse a copy of the call. A call that never
+	// began because the run ended first has neither this event nor
+	// EventToolDone.
 	EventToolStart
-	// EventToolDone says a tool call finished: Event.Call, Event.ToolResult
+	// EventToolDone says a tool call that began has finished: Event.Call, Event.ToolResult
 	// (check IsError) and Event.Duration. Events of parallel calls arrive in
 	// the order the calls finish.
 	EventToolDone
@@ -65,8 +67,11 @@ type Event struct {
 	// At is when the event happened, by the harness's clock.
 	At time.Time
 
-	// Text is the delta of EventTextDelta.
-	Text string
+	// Text is the delta of EventTextDelta, and Block the index of the text
+	// block of the reply it belongs to (a reply can have several, with tool
+	// calls in between).
+	Text  string
+	Block int
 	// Call is the index of the tool call within its turn, for EventToolStart
 	// and EventToolDone.
 	Call int

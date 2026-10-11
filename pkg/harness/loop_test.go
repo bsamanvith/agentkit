@@ -7,6 +7,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
@@ -167,16 +168,18 @@ func TestBudgetExceeded(t *testing.T) {
 		name      string
 		opt       harness.Option
 		replies   []llmtest.Reply
+		lim       limits
 		wantTurns int
 	}{
-		{"turns", harness.WithMaxTurns(2), []llmtest.Reply{call, call2}, 2},
+		{"turns", harness.WithMaxTurns(2), []llmtest.Reply{call, call2}, limits{maxTurns: 2}, 2},
 		// 65 tokens only if cached tokens count too: the limit is 60.
-		{"tokens", harness.WithMaxTotalTokens(60), []llmtest.Reply{call}, 1},
+		{"tokens", harness.WithMaxTotalTokens(60), []llmtest.Reply{call}, limits{maxTokens: 60}, 1},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := llmtest.NewFake(t, tc.replies...)
 			h := newHarness(t, fake, newRegistry(t, tooltest.Fixtures()...), tc.opt)
+			h.lim = tc.lim
 
 			_, res, err := run(t, h, prompt("go"))
 			if !errors.Is(err, harness.ErrBudgetExceeded) {
@@ -214,29 +217,20 @@ func TestCancelMidToolStopsRun(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	var res harness.Result
-	var runErr error
-	for ev, err := range h.Run(ctx, prompt("go")) {
-		if err != nil {
-			runErr = err
-			var re *harness.RunError
-			if errors.As(err, &re) {
-				res = partial(re)
-			}
-			break
-		}
+	o := h.drive(ctx, t, prompt("go"), func(ev harness.Event) bool {
 		if ev.Kind == harness.EventToolStart {
 			cancel() // the tool is running and blocked
 		}
-	}
-	if !errors.Is(runErr, context.Canceled) {
-		t.Fatalf("err = %v, want context.Canceled", runErr)
+		return false
+	})
+	if !errors.Is(o.err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", o.err)
 	}
 	if got := len(fake.Requests()); got != 1 || fake.Remaining() != 1 {
 		t.Errorf("%d model calls, %d replies left: no further call may happen", got, fake.Remaining())
 	}
 	// The turn that was interrupted is not in the transcript: only the prompt is.
-	diff(t, "transcript", harness.Transcript{harness.UserText("go")}, res.Transcript)
+	diff(t, "transcript", harness.Transcript{harness.UserText("go")}, o.res.Transcript)
 }
 
 func TestCancelBetweenTurnsMakesNoModelCall(t *testing.T) {
@@ -249,21 +243,109 @@ func TestCancelBetweenTurnsMakesNoModelCall(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	var runErr error
-	for ev, err := range h.Run(ctx, prompt("go")) {
-		if err != nil {
-			runErr = err
-			break
-		}
+	o := h.drive(ctx, t, prompt("go"), func(ev harness.Event) bool {
 		if ev.Kind == harness.EventTurnDone {
 			cancel() // between two turns: nothing is running
 		}
-	}
-	if !errors.Is(runErr, context.Canceled) {
-		t.Fatalf("err = %v, want context.Canceled", runErr)
+		return false
+	})
+	if !errors.Is(o.err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", o.err)
 	}
 	if got := len(fake.Requests()); got != 1 {
 		t.Errorf("%d model calls, want 1: a cancelled run asks the model nothing more", got)
+	}
+	// The turn that finished before the cancel is kept.
+	if len(o.res.Transcript) != 3 {
+		t.Errorf("transcript has %d messages, want the prompt and the finished turn", len(o.res.Transcript))
+	}
+}
+
+// Cancelling while some calls wait for a free slot ends the run without
+// announcing calls that never began.
+func TestCancelWithQueuedToolCalls(t *testing.T) {
+	leakcheck(t)
+	fake := llmtest.NewFake(t, llmtest.ToolCalls(
+		use("c1", "block", `{}`), use("c2", "block", `{}`), use("c3", "block", `{}`)))
+	h := newHarness(t, fake, newRegistry(t, tooltest.Fixtures()...), harness.WithMaxParallelTools(1))
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	var started []int
+	o := h.drive(ctx, t, prompt("go"), func(ev harness.Event) bool {
+		if ev.Kind == harness.EventToolStart {
+			started = append(started, ev.Call)
+			cancel() // c1 is running, c2 and c3 wait for its slot
+		}
+		return false
+	})
+	if !errors.Is(o.err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", o.err)
+	}
+	diff(t, "calls announced as started", []int{0}, started)
+}
+
+// A tool failure that ends the run does not wait for the other calls of the
+// turn, and is reported as the cause rather than their cancellation.
+func TestFatalToolErrorCancelsSiblings(t *testing.T) {
+	leakcheck(t)
+	errDown := errors.New("registry down")
+	down := &failingRegistry{inner: newRegistry(t, tooltest.Fixtures()...), name: "echo", err: errDown}
+	fake := llmtest.NewFake(t, llmtest.ToolCalls(use("c1", "block", `{}`), use("c2", "echo", `{"text":"x"}`)))
+	h := newHarness(t, fake, down)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel() // a harness that waits for c1 would only get past it here
+	o := h.drive(ctx, t, prompt("go"), nil)
+	if !errors.Is(o.err, errDown) {
+		t.Fatalf("err = %v, want the registry's error, not the cancellation of c1", o.err)
+	}
+	diff(t, "transcript", harness.Transcript{harness.UserText("go")}, o.res.Transcript)
+}
+
+// failingRegistry fails calls to one tool with an error the harness does not
+// recognize, as a remote registry does when its connection drops.
+type failingRegistry struct {
+	inner tool.Registry
+	name  string
+	err   error
+}
+
+func (f *failingRegistry) List(ctx context.Context) ([]tool.Definition, error) {
+	return f.inner.List(ctx)
+}
+
+func (f *failingRegistry) Invoke(ctx context.Context, name string, in json.RawMessage) (json.RawMessage, error) {
+	if name == f.name {
+		return nil, f.err
+	}
+	return f.inner.Invoke(ctx, name, in)
+}
+
+// A turn whose calls all finished is part of the conversation, even if the
+// context is cancelled just after: its tools have run, and dropping it would
+// have them run again on resume.
+func TestFinishedTurnIsKeptWhenCancelledJustAfter(t *testing.T) {
+	leakcheck(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	// This tool ignores its context: it cancels the run while it works, and
+	// finishes normally.
+	rude := fn(t, "rude", func(context.Context) (string, error) { cancel(); return "done anyway", nil })
+	fake := llmtest.NewFake(t, llmtest.ToolCalls(use("c1", "rude", `{}`)), llmtest.Text("never asked"))
+	h := newHarness(t, fake, newRegistry(t, rude))
+
+	o := h.drive(ctx, t, prompt("go"), nil)
+	if !errors.Is(o.err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", o.err)
+	}
+	if len(o.res.Transcript) != 3 || len(o.res.Record.Turns) != 1 {
+		t.Fatalf("transcript has %d messages and %d turns, want the prompt and the finished turn",
+			len(o.res.Transcript), len(o.res.Record.Turns))
+	}
+	diff(t, "the kept results", []llm.ToolResult{{ToolUseID: "c1", Content: `"done anyway"`}}, results(t, o.res.Transcript[2]))
+	if len(fake.Requests()) != 1 {
+		t.Errorf("%d model calls: a cancelled run asks the model nothing more", len(fake.Requests()))
 	}
 }
 
@@ -402,8 +484,9 @@ func TestHookPanicEndsRunWithoutCrashing(t *testing.T) {
 		harness.WithBeforeTool(func(context.Context, llm.ToolUse) error { panic("hook bug") }))
 
 	_, res, err := run(t, h, prompt("go"))
-	if err == nil || !strings.Contains(err.Error(), "hook bug") {
-		t.Fatalf("err = %v, want the hook's panic", err)
+	var pe *tool.PanicError
+	if !errors.Is(err, tool.ErrPanic) || !errors.As(err, &pe) || pe.Value != "hook bug" {
+		t.Fatalf("err = %v, want a tool.PanicError for the hook's panic", err)
 	}
 	if len(res.Transcript) != 1 {
 		t.Errorf("transcript has %d messages, want only the prompt", len(res.Transcript))

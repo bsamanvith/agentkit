@@ -1,6 +1,9 @@
 package harness
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/llm"
@@ -33,10 +36,14 @@ func (t Transcript) Clone() Transcript {
 	return out
 }
 
-// Validate checks that t can be sent to a model: roles alternate starting with
-// the user, every assistant message that calls tools is followed by a user
-// message of results for exactly those calls in the same order, and results
+// Validate checks that t can be sent to a model and saved: roles alternate
+// starting with the user; every message is well formed ([shapeProblem]);
+// every assistant message that calls tools is followed by a user message of
+// results for exactly those calls in the same order; and results and calls
 // appear nowhere else. A transcript that fails wraps [ErrInvalidInput].
+//
+// It checks structure only. Whether a provider accepts the content (an empty
+// reply, say) is for its adapter.
 func (t Transcript) Validate() error {
 	var pending []llm.ToolUse // calls of the previous assistant message
 	for i, m := range t {
@@ -47,17 +54,10 @@ func (t Transcript) Validate() error {
 		if m.Role != want {
 			return invalidInput("message %d has role %q, want %q", i, m.Role, want)
 		}
-		for _, b := range m.Content {
-			switch b.(type) {
-			case llm.Text, llm.ToolUse, llm.ToolResult, llm.Opaque:
-			default:
-				return invalidInput("message %d has a block of unsupported type %T", i, b)
-			}
+		if err := shapeProblem(m); err != nil {
+			return invalidInput("message %d: %v", i, err)
 		}
 		if m.Role == llm.RoleUser {
-			if len(m.Content) == 0 {
-				return invalidInput("message %d is empty", i)
-			}
 			if err := checkResults(i, m, pending); err != nil {
 				return err
 			}
@@ -65,21 +65,72 @@ func (t Transcript) Validate() error {
 			continue
 		}
 		pending = toolUses(m)
-		seen := make(map[string]bool, len(pending))
-		for _, u := range pending {
-			if u.ID == "" || u.Name == "" {
-				return invalidInput("message %d has a tool call without an ID or name", i)
-			}
-			if seen[u.ID] {
-				return invalidInput("message %d repeats tool call ID %q", i, u.ID)
-			}
-			seen[u.ID] = true
-		}
 	}
 	if len(pending) > 0 {
 		return invalidInput("the last message calls tools that have no results")
 	}
 	return nil
+}
+
+// shapeProblem reports what is wrong with one message on its own, apart from
+// where it sits in a conversation. Both [Transcript.Validate] and the check on
+// the model's replies use it, so the harness never commits a message that
+// Validate or JSON encoding would reject.
+func shapeProblem(m llm.Message) error {
+	for _, b := range m.Content {
+		switch b := b.(type) {
+		case llm.Text:
+		case llm.ToolUse:
+			if m.Role != llm.RoleAssistant {
+				return errors.New("a tool call outside an assistant message")
+			}
+			if b.ID == "" || b.Name == "" {
+				return errors.New("a tool call without an ID or name")
+			}
+			if len(b.Input) > 0 && !json.Valid(b.Input) {
+				return fmt.Errorf("tool call %q has input that is not JSON", b.ID)
+			}
+		case llm.ToolResult:
+			if m.Role != llm.RoleUser {
+				return errors.New("a tool result outside a user message")
+			}
+			if b.ToolUseID == "" {
+				return errors.New("a tool result without a tool call ID")
+			}
+		case llm.Opaque:
+			if b.Provider == "" || !json.Valid(b.Data) {
+				return errors.New("an opaque block without a provider or with data that is not JSON")
+			}
+		default:
+			return fmt.Errorf("a block of unsupported type %T", b)
+		}
+	}
+	switch m.Role {
+	case llm.RoleUser:
+		if len(m.Content) == 0 {
+			return errors.New("an empty user message")
+		}
+	case llm.RoleAssistant:
+		seen := map[string]bool{}
+		for _, u := range toolUses(m) {
+			if seen[u.ID] {
+				return fmt.Errorf("tool call ID %q is repeated", u.ID)
+			}
+			seen[u.ID] = true
+		}
+	default:
+		return fmt.Errorf("unknown role %q", m.Role)
+	}
+	return nil
+}
+
+// replyProblem reports what is wrong with a reply that would be added to the
+// transcript.
+func replyProblem(m llm.Message) error {
+	if m.Role != llm.RoleAssistant {
+		return fmt.Errorf("the reply has role %q, want %q", m.Role, llm.RoleAssistant)
+	}
+	return shapeProblem(m)
 }
 
 // checkResults checks the user message at index i against the calls of the

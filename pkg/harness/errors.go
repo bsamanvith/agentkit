@@ -70,8 +70,9 @@ func (e *RunError) Unwrap() error { return e.Err }
 // passed to a later run. It is a copy.
 func (e *RunError) Transcript() Transcript { return e.transcript.Clone() }
 
-// Usage returns the tokens used by the run, including turns that did not
-// complete.
+// Usage returns the tokens used by the run, including those of a turn that
+// got a reply but did not complete (so it is in no [TurnRecord]): billing from
+// events alone undercounts such a run, this does not.
 func (e *RunError) Usage() llm.Usage { return e.usage }
 
 // Turns returns how many model calls the run made.
@@ -84,7 +85,7 @@ func (e *RunError) Record() Record { return e.record.clone() }
 func (e *RunError) result() Result {
 	res := Result{Transcript: e.Transcript(), Usage: e.usage, Turns: e.turns, Record: e.Record()}
 	if n := len(res.Transcript); n > 0 && res.Transcript[n-1].Role == llm.RoleAssistant {
-		res.Final = res.Transcript[n-1]
+		res.Final = res.Transcript[n-1] // Transcript() is already a copy
 	}
 	return res
 }

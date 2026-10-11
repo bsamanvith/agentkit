@@ -118,10 +118,12 @@ case "local":
 case "remote":
     tools = toolclient.New(cfg.Harness.Tools.URL)
 }
-h, err := harness.New(model, tools, store)
+h, err := harness.New(model, tools)
 ```
 
 Wrong wiring is a compile error, not a runtime type assertion.
+
+The harness takes no store. The component that runs it feeds it a transcript loaded from the store and writes each turn event back, so the loop has no storage dependency and any backend works.
 
 **Every dependency between components is an interface, and config picks local or remote:**
 
@@ -239,6 +241,16 @@ New implementation = one line of test code + passing the suite.
 - **Fuzz** anything that takes untrusted input (tool input, JSON-RPC decoding, JWT parsing). The seed corpus runs with the unit tests; `make fuzz` runs each target for a short time and CI runs it on every PR.
 - Every test calls `t.Parallel()` unless it has a documented reason not to.
 - Always run with `-race -shuffle=on`. CI runs `-count=1`.
+
+### 2.6 Invariants and simulation: for code with many paths
+
+One test per criterion proves each criterion once, in the one scenario it uses. It says nothing about the paths no criterion mentions (a failure while another call is waiting, a cancel between two turns, a consumer that writes to what it is given), and that is where review finds bugs. For code with many interacting paths (the agent loop first of all):
+
+- **Write the invariants down and check them after every run**, in the shared test helper, so every test checks all of them, not only the one it is about. For the harness: the model is only ever sent valid conversations, each extending the last and never changed after sending; the transcript is valid and survives save and load; events are well-formed; the record adds up.
+- **Add a seeded simulation** that generates scripts (including inputs no sane caller sends) and runs them through the same helper, plus a fuzz target over the seed. A failure names its seed and reruns exactly.
+- **Compare runs** where a property is a comparison: a consumer that scribbles over everything it is handed must not change the outcome.
+- **When review finds a bug, ask which invariant it broke** and add that to the checks, instead of one test for the one case. Planting the bug again should fail a general check.
+- **Concurrency tests are driven from the consumer's side** (what it does when it sees an event happens at a fixed point of the run), never by hoping a goroutine is scheduled first. A wait for something that must not happen is allowed only if it can make a broken implementation pass, never fail a correct one.
 
 ---
 

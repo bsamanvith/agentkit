@@ -3,6 +3,9 @@ package harness_test
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"math/rand/v2"
+	"strings"
 	"testing"
 	"time"
 
@@ -102,6 +105,21 @@ func TestInvalidInputIsRejectedBeforeAnyModelCall(t *testing.T) {
 			llm.User(llm.ToolResult{ToolUseID: "other", Content: "x"}),
 		}}},
 		{"results with no call", harness.Input{Transcript: harness.Transcript{user, asst, result}, Message: user}},
+		{"tool call in a user message", harness.Input{Message: llm.User(use("c1", "echo", `{}`))}},
+		{"tool result in an assistant message", harness.Input{
+			Transcript: harness.Transcript{user, llm.Assistant(llm.ToolResult{ToolUseID: "c1", Content: "x"})}, Message: user,
+		}},
+		{"tool call without a name", harness.Input{
+			Transcript: harness.Transcript{user, llm.Assistant(use("c1", "", `{}`)), result},
+		}},
+		{"tool call with input that is not JSON", harness.Input{
+			Transcript: harness.Transcript{user, llm.Assistant(use("c1", "echo", `{`)), result},
+		}},
+		{"opaque block without a provider", harness.Input{
+			Transcript: harness.Transcript{user, llm.Assistant(llm.Opaque{Data: json.RawMessage(`{}`)})}, Message: user,
+		}},
+		{"new message with a nil block", harness.Input{Message: llm.User(nil)}},
+		{"new message without content", harness.Input{Message: llm.User()}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -189,6 +207,118 @@ func TestTurnRecordsAndDeltas(t *testing.T) {
 	diff(t, "turn records in events and in the result", rec.Turns, fromEvents)
 }
 
+// referenceValid says whether a conversation is well formed, written down
+// again from the rules in the Transcript documentation and sharing no code
+// with Validate. The tests compare the two.
+func referenceValid(msgs []llm.Message) bool {
+	var awaiting []llm.ToolUse // calls the next message must answer
+	for i, m := range msgs {
+		if i%2 == 0 && m.Role != llm.RoleUser || i%2 == 1 && m.Role != llm.RoleAssistant {
+			return false
+		}
+		if m.Role == llm.RoleUser {
+			if len(m.Content) == 0 || (len(awaiting) > 0 && len(m.Content) != len(awaiting)) {
+				return false
+			}
+			for j, b := range m.Content {
+				switch b := b.(type) {
+				case llm.Text:
+					if len(awaiting) > 0 {
+						return false
+					}
+				case llm.Opaque:
+					if len(awaiting) > 0 || b.Provider == "" || !json.Valid(b.Data) {
+						return false
+					}
+				case llm.ToolResult:
+					if b.ToolUseID == "" || len(awaiting) == 0 || b.ToolUseID != awaiting[j].ID {
+						return false
+					}
+				default: // a tool call, or no block at all
+					return false
+				}
+			}
+			awaiting = nil
+			continue
+		}
+		seen := map[string]bool{}
+		for _, b := range m.Content {
+			switch b := b.(type) {
+			case llm.Text:
+			case llm.ToolUse:
+				if b.ID == "" || b.Name == "" || seen[b.ID] || len(b.Input) > 0 && !json.Valid(b.Input) {
+					return false
+				}
+				seen[b.ID] = true
+				awaiting = append(awaiting, b)
+			case llm.Opaque:
+				if b.Provider == "" || !json.Valid(b.Data) {
+					return false
+				}
+			default: // a tool result, or no block at all
+				return false
+			}
+		}
+	}
+	return len(awaiting) == 0
+}
+
+// Validate agrees with the reference on conversations built from blocks that
+// are right and wrong in every way the rules name, in every order.
+func TestValidateAgreesWithTheRules(t *testing.T) {
+	rng := rand.New(rand.NewPCG(1, 2))
+	pool := []llm.Block{
+		llm.Text{Text: "text"},
+		use("c1", "echo", `{}`), use("c2", "echo", `{"a":1}`), use("c1", "echo", `{}`),
+		use("", "echo", `{}`), use("c3", "", `{}`), use("c4", "echo", `{`),
+		llm.ToolResult{ToolUseID: "c1", Content: "r"},
+		llm.ToolResult{ToolUseID: "c2", Content: "r"},
+		llm.ToolResult{ToolUseID: "", Content: "r"},
+		llm.ToolResult{ToolUseID: "zzz", Content: "r"},
+		llm.Opaque{Provider: "p", Data: json.RawMessage(`{"a":1}`)},
+		llm.Opaque{Data: json.RawMessage(`{}`)},
+		llm.Opaque{Provider: "p", Data: json.RawMessage(`{`)},
+		nil,
+	}
+	agree, valid := 0, 0
+	for range 20000 {
+		var msgs harness.Transcript
+		for i := range rng.IntN(6) {
+			role := llm.RoleUser
+			if i%2 == 1 {
+				role = llm.RoleAssistant
+			}
+			if rng.IntN(25) == 0 {
+				role = "robot"
+			}
+			m := llm.Message{Role: role}
+			for range rng.IntN(4) {
+				m.Content = append(m.Content, pool[rng.IntN(len(pool))])
+			}
+			msgs = append(msgs, m)
+		}
+		got, want := msgs.Validate() == nil, referenceValid(msgs)
+		if got != want {
+			t.Fatalf("Validate = %v, the rules say %v, for %s", got, want, mustMarshal2(msgs))
+		}
+		agree++
+		if want {
+			valid++
+		}
+	}
+	if valid < 200 {
+		t.Errorf("only %d of %d random conversations were valid: the generator no longer reaches the valid ones", valid, agree)
+	}
+}
+
+func mustMarshal2(msgs harness.Transcript) string {
+	var parts []string
+	for _, m := range msgs {
+		parts = append(parts, fmt.Sprintf("%s%v", m.Role, m.Content))
+	}
+	return strings.Join(parts, " | ")
+}
+
 func FuzzTranscript(f *testing.F) {
 	valid, _ := json.Marshal(harness.Transcript{
 		harness.UserText("hi"),
@@ -210,6 +340,9 @@ func FuzzTranscript(f *testing.F) {
 		err := tr.Validate()
 		if err != nil && !errors.Is(err, harness.ErrInvalidInput) {
 			t.Fatalf("Validate error %v does not match ErrInvalidInput", err)
+		}
+		if (err == nil) != referenceValid(tr) {
+			t.Fatalf("Validate = %v, the rules say %v", err, referenceValid(tr))
 		}
 		// Saving and loading changes nothing.
 		again, merr := json.Marshal(tr)

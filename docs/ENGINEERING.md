@@ -18,7 +18,7 @@ Build the product from the inside out. Add infrastructure when there is somethin
 | **M2** *(done)* | Toolsets from config; one MCP server process, one URL path per toolset | E03 (T026, T018) | Many connectors behind one server, usable from any MCP client. Independent of M3; can run in parallel |
 | **M3** | `llm` + Anthropic adapter + harness + `pkg/flow` | [E04](../tasks/E04-llm-harness-flow.md) (T020-T025) | An agent loop and a multi-step flow run, with checkpoints and resume. **Current focus** |
 | **M4** | `store` (SQLite), `pkg/runner`, compaction, flow shape check | [E05](../tasks/E05-store-runner.md) (T019, T027-T032) | Runs and conversations persist, resume and compact |
-| **M5** | `pkg/component`, `cmd/agentkit`, `fakellm`, image, Compose, smoke tests, full CI | E01 (T003-T008) | Mix-and-match deployment |
+| **M5** | `pkg/component`, `agentkit serve` (done), agent API, `fakellm`, image, Compose, smoke tests, full CI | E01 (T003-T008), [E09](../tasks/E09-agent-api.md) (T036, T037) | Mix-and-match deployment; agents callable over HTTP |
 | **M6** | Tool protocol over ConnectRPC; remote registry | to plan | The `split` topology |
 
 Skills ([E02](../tasks/E02-agent-skills.md)) grow alongside: the skill layout and review checklist come with M0/M1; each other skill is written right after the first piece of real code it describes.

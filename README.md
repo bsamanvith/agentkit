@@ -21,7 +21,8 @@ Each package can be imported on its own or run as a lightweight server. One `age
 | M2 Toolsets from config; one MCP server, one URL path per toolset | Done ([T026](tasks/T026-toolsets-from-config.md), [T018](tasks/T018-mcp-server.md)) |
 | M3 `llm`, Anthropic adapter, harness, `flow` | Done ([E04](tasks/E04-llm-harness-flow.md)): `pkg/llm`, the Anthropic adapter (live-tested), `pkg/harness`, `pkg/flow`, `pkg/agentstep` (agents as resumable flow steps) and `agentkit run` / `agentkit flow demo`, run end to end against Claude ([T024](tasks/T024-run-cli.md)). The OpenAI-compatible adapter moved to [E08](tasks/E08-model-providers.md) |
 | M4 Store, runner and compaction | **In progress** ([E05](tasks/E05-store-runner.md)): `pkg/clock`, `pkg/tenancy` and the flow step-tree check done; next [T028](tasks/T028-store-interfaces.md), the store interfaces |
-| M5 containers and pods, M6 remote tools | Planned |
+| M5 Agent API, containers and pods | **In progress**: `agentkit serve` (component runtime, health endpoints, MCP toolsets) done ([T003](tasks/T003-skeleton-binaries.md)); next the agent API ([E09](tasks/E09-agent-api.md)) and the image ([T005](tasks/T005-container-image.md)) |
+| M6 remote tools | Planned |
 
 ## What works today
 

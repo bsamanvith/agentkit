@@ -205,7 +205,7 @@ Build the product from the inside out, and add infrastructure when there is some
 3. **M2 Toolsets and MCP server**: toolsets built from config, many toolsets served by one HTTP process at one path each. Usable from Claude Code, Codex or any MCP client. *Done.*
 4. **M3 `llm` + Anthropic adapter + harness + `flow`**: run an agent loop and a multi-step flow from a small CLI. *Done* (E04; the OpenAI-compatible adapter moved to [E08](../tasks/E08-model-providers.md), built when a second provider is needed).
 5. **M4 `store` (SQLite), `runner`, compaction** ([E05](../tasks/E05-store-runner.md)): runs, conversations and checkpoints persist; resume works; long conversations compact. **Current focus.**
-6. **M5 Components and containers**: `pkg/component`, `cmd/agentkit`, `fakellm`, image, Compose, smoke tests.
+6. **M5 Agent API and containers**: `pkg/component` and `agentkit serve` (*done*, T003); the agent API over HTTP + SSE ([E09](../tasks/E09-agent-api.md): v0 in memory now, v1 on the runner after M4); `fakellm`, image, Compose, smoke tests.
 7. **M6 Tool protocol over ConnectRPC**: remote registry; the `split` topology.
 8. Then MCP client and bridge, Postgres and tenancy, credentials, observability.
 

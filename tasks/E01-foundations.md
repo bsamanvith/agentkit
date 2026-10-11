@@ -17,7 +17,7 @@ Put [docs/ENGINEERING.md](../docs/ENGINEERING.md) into practice. Split in two ph
 
 - [x] [T003](T003-skeleton-binaries.md) `agentkit` binary with component runtime and health endpoints
 - [ ] [T004](T004-fakellm.md) `fakellm` scripted model server (needs the `llm` work from M3)
-- [ ] [T005](T005-container-image.md) Distroless container image
+- [ ] [T005](T005-container-image.md) Distroless container image (read T003's "For T005" Notes first) **← next, with T036**
 - [ ] [T006](T006-compose-and-dev-script.md) Compose topologies and `scripts/dev.sh`
 - [ ] [T007](T007-e2e-smoke-suite.md) E2E smoke suite
 - [ ] [T008](T008-ci-pipeline.md) Full CI pipeline (images, integration, smoke)

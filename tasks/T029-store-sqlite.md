@@ -3,7 +3,7 @@ id: T029
 title: "pkg/store/sqlite: schema, migrations, all suites"
 epic: E05
 status: todo
-depends_on: [T028]
+depends_on: [T028, T038]
 ---
 
 # T029: `pkg/store/sqlite`
@@ -24,13 +24,12 @@ The local and single-node backend. It must keep the binary static (distroless im
 - WAL mode and a busy timeout. Concurrent writers from several goroutines and from two processes on one file.
 - Cursors are opaque, encoding `(seq)` or `(created_at, seq)`.
 - Schema written to port column for column to Postgres (no SQLite-only types in the contract).
-- **`store.Admin`** (planner decision, see E05): a separate interface with `ListResumableAll(ctx, now, limit) ([]TenantRun, error)`, the one cross-tenant read, for the runner's recovery loop. Add it to `pkg/store` with `storetest.RunAdmin`, implement it in `store/memory` and here. It must not be reachable through `ConversationStore` or `RunStore`.
+- **`store.Admin`** (T038, planner decision, see E05): implement the one cross-tenant read for SQLite and pass `storetest.RunAdmin`.
 - Read T028's "For T029 (SQLite)" Notes first: they give the exact transaction and query shapes (create-if-absent `Append`, keyset cursors, conditional lease and transition updates, the partial unique index for one unfinished run per conversation).
 
 ## Acceptance criteria
 
 - [ ] Passes `storetest.RunConversationStore`, `storetest.RunRunStore`, `storetest.RunCheckpointer` and `storetest.RunAdmin` on a temp-file database.
-- [ ] `ListResumableAll` returns resumable runs of every tenant, each with its tenant, and nothing else; the memory store passes the same suite.
 - [ ] Opening an old-version database applies the missing migrations; opening one newer than the binary fails clearly.
 - [ ] Two processes appending to one conversation on the same file: no lost entries, conflicts reported (test via a helper subprocess or two connections; recorded how).
 - [ ] Mutation list recorded in Notes (at least: `INSERT OR REPLACE` instead of create-if-absent, tenant filter dropped from one query, a cursor that skips an entry, messages re-encoded on write).

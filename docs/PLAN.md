@@ -1,6 +1,6 @@
 # agentkit: Scope and Module Plan
 
-> Status: agreed scope and module shape, being implemented in the [build order](#build-order). Done so far: M0 (tooling), M1 (`pkg/tool`), M2 (toolsets and the MCP server) and M3 (`pkg/llm`, the Anthropic adapter, `pkg/harness`, `pkg/flow`, `pkg/agentstep` and `agentkit run`, run end to end against Claude; the OpenAI-compatible adapter moved to E08). Current focus: M4 ([E05](../tasks/E05-store-runner.md): `pkg/clock`, `pkg/tenancy` and the flow step-tree check done, T028 next).
+> Status: agreed scope and module shape, being implemented in the [build order](#build-order). Done so far: M0 (tooling), M1 (`pkg/tool`), M2 (toolsets and the MCP server) and M3 (`pkg/llm`, the Anthropic adapter, `pkg/harness`, `pkg/flow`, `pkg/agentstep` and `agentkit run`, run end to end against Claude; the OpenAI-compatible adapter moved to E08). Current focus: M4 ([E05](../tasks/E05-store-runner.md): `pkg/store` done, SQLite and the runner next) and M5 (agent API v0 and the image done; deployable). Overview: [tasks/STATUS.md](../tasks/STATUS.md).
 
 ## Goals
 

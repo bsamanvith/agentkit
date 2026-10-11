@@ -1,6 +1,6 @@
 # Plan status
 
-> Maintained by the planner ([docs/WORKFLOW.md](../docs/WORKFLOW.md)). Updated 2026-10-11 at `main` `ee02b0f`, CI green. Task files are the source of truth for each task; this page is the overview.
+> Maintained by the planner ([docs/WORKFLOW.md](../docs/WORKFLOW.md)). Updated 2026-10-11 at `main` `b138b44` plus planner commits, CI green. Task files are the source of truth for each task; this page is the overview.
 
 ## Milestones
 
@@ -10,51 +10,65 @@
 | M1 `pkg/tool` | [E03](E03-tool-core-and-mcp.md) | Done |
 | M2 Toolsets from config; one MCP server, one path per toolset | [E03](E03-tool-core-and-mcp.md) | Done |
 | M3 `llm`, Anthropic adapter, harness, `flow`, `agentstep`, `agentkit run` | [E04](E04-llm-harness-flow.md) | Done |
-| M4 Store, runner, compaction | [E05](E05-store-runner.md) | In progress |
-| M5 Agent API, `agentkit serve`, image, Compose, smoke tests | [E09](E09-agent-api.md), [E01](E01-foundations.md) | In progress |
+| M4 Store, runner, compaction | [E05](E05-store-runner.md) | In progress: `pkg/store` (interfaces, memory store, suites, run lifecycle) done |
+| M5 Agent API, `agentkit serve`, image, Compose, smoke tests | [E09](E09-agent-api.md), [E01](E01-foundations.md) | In progress: `agentkit serve`, agent API v0 and the image done; **deployable** |
 | M6 Remote tools over ConnectRPC | E06 (to plan) | Planned |
-| Credentials, auth, tenancy at the edge | E07 (to plan) | Planned |
+| Credentials, auth, tenancy at the edge | E07 (to plan) | **Plan next** (needed before any public deployment) |
 | More model providers | [E08](E08-model-providers.md) | Later |
-| Agent skills | [E02](E02-agent-skills.md) | In progress (`write-tests` exists) |
+| Agent skills | [E02](E02-agent-skills.md) | In progress: `write-tests` exists and was dry-run on `pkg/flow` |
+
+## Verified end to end (planner, 2026-10-11)
+
+The stripped binary of `main` (14.5 MB; image about 17.9 MB of the 20 MB budget), run as a deployment would run it: `AGENTKIT_COMPONENTS=agent,mcp-server`, listening on `0.0.0.0` with `AGENTKIT_API_TOKEN`, real Claude.
+- `/readyz` ready (agent, mcp-server); `/v1/runs` without the token: 401.
+- A streamed run used the demo arithmetic tool and answered 391 (17×23); events `run_start`, `text_delta`, `tool_call`, `tool_result`, 2× `turn_done`, `run_done`.
+- A JSON follow-up in the same conversation answered 400.
+- `/mcp/demo` listed `calculate`, `current_time`, `echo` from the same process.
+- SIGTERM: draining runs, shutting down, stopped, exit 0.
+
+Not verified here: the container itself (no Docker daemon in the planner's environment; T005 verified the image with Docker).
 
 ## Done
 
-T001 tooling · T002 testkit · T003 `agentkit serve` · T017 `pkg/tool` · T018 MCP server · T019 `pkg/clock` · T020 `pkg/llm` · T021 Anthropic adapter · T022 harness · T023 `flow` · T024 `agentkit run`, `agentstep` · T026 `pkg/toolset` · T027 `pkg/tenancy` · T032 flow step-tree check
+T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentkit healthcheck` · T017 `pkg/tool` · T018 MCP server · T019 `pkg/clock` · T020 `pkg/llm` · T021 Anthropic adapter · T022 harness · T023 `flow` · T024 `agentkit run`, `agentstep` · T026 `pkg/toolset` · T027 `pkg/tenancy` · T028 `pkg/store` · T032 flow step-tree check · T036 agent API v0
 
-## Running
+## Running or waiting
 
-| Task | What | Notes |
-|---|---|---|
-| [T028](T028-store-interfaces.md) | Store interfaces, in-memory store, conformance suites | Scope grew (run lifecycle); may split RunStore parts out |
-| [T013](T013-skill-write-tests.md) | `write-tests` skill | Skill exists; dry runs pending |
+| Task | State |
+|---|---|
+| [T013](T013-skill-write-tests.md) `write-tests` dry runs | The `pkg/flow` dry run found **a real bug** (resuming a rejected run whose cancelled `Parallel` sibling failed returns that error and flips the run to `failed`). Fix and new flow tests are ready in the T024 session, **waiting for the owner's approval there** (its permission check blocks `pkg/flow` edits). The T018 dry run stopped unfinished. |
 
 ## Next (ready to start)
 
 | Task | What | Why now |
 |---|---|---|
-| [T036](T036-agent-api-v0.md) | Agent API v0: runs over HTTP + SSE, in memory | Shortest path to a deployable agent API (card queued) |
-| [T005](T005-container-image.md) | Distroless image, `agentkit healthcheck` | With T036, enough to deploy and test (card queued) |
+| [T038](T038-store-admin.md) | `store.Admin`, the cross-tenant read for recovery | Small; unblocks T029 and T030 in parallel |
+| [T029](T029-store-sqlite.md) | SQLite store | After T038; persistence for the API (T037) |
+| [T030](T030-runner.md) | Runner: entries, cache, leases, recovery, retry, approvals, cancel | After T038; the core of M4 |
+| [T006](T006-compose-and-dev-script.md) | Compose topologies and `scripts/dev.sh` | Image exists; repeatable local runs |
 | [T033](T033-harness-clock.md) | Harness on `pkg/clock` | Small, independent |
-| [T035](T035-rerecord-anthropic-fixtures.md) | Re-record Anthropic fixtures from the real API | A key is available now |
-| [T010](T010-skills-layout.md) | `AGENTS.md`, `CLAUDE.md`, skills README, skill and task lint | Small, independent |
+| [T035](T035-rerecord-anthropic-fixtures.md) | Re-record Anthropic fixtures from the real API | A key is available |
+| [T010](T010-skills-layout.md) | `AGENTS.md`, `CLAUDE.md`, skills README, lint | Small, independent |
 
 ## Blocked on other tasks
 
 | Task | Waits for |
 |---|---|
-| [T029](T029-store-sqlite.md) SQLite store | T028 |
-| [T030](T030-runner.md) Runner (recovery, retry, approvals, cancel) | T028 (and T033 is nice to have) |
 | [T031](T031-compaction.md) Compaction | T030 |
-| [T037](T037-agent-api-v1.md) Agent API v1 on the runner | T036, T030 |
-| [T006](T006-compose-and-dev-script.md) Compose, [T007](T007-e2e-smoke-suite.md) smoke suite, [T008](T008-ci-pipeline.md) full CI | T005 (T004 `fakellm` for keyless CI) |
+| [T037](T037-agent-api-v1.md) Agent API v1 on the runner | T030, T029 |
+| [T004](T004-fakellm.md) `fakellm`, [T007](T007-e2e-smoke-suite.md) smoke suite, [T008](T008-ci-pipeline.md) full CI | T006 |
 | [T034](T034-nightly-ci.md) Nightly live tests and perf report | The `ANTHROPIC_API_KEY` repository secret |
 
 ## Waiting on the owner
 
-- **Where to deploy** the API server (a VM with Docker, Cloud Run, Fly.io, Kubernetes, ...). A deploy task is written once this is known.
-- **`ANTHROPIC_API_KEY` repository secret** on GitHub, for T034.
-- **Delete the `review/t022-base` branch**: everything in it is on `main`.
-- Whether to start the queued cards (T033, T035, T010).
+1. **Approve the flow fix in the T024 session** (or say to drop it; the new flow tests are lost when that container ends).
+2. **Where to deploy** the API server (a VM with Docker, Cloud Run, Fly.io, Kubernetes, ...). The binary and image are ready; a deploy task is written once this is known.
+3. **`ANTHROPIC_API_KEY` repository secret** on GitHub, for T034.
+4. **Delete the `review/t022-base` branch**, and the merged `claude/*` session branches (all their work is on `main`).
+
+## Watch items
+
+- One local `make check` failed under CPU load and could not be identified (its output was discarded); 6 repeated runs and CI were clean. If it recurs, keep the log and fix the test.
 
 ## Decisions log (recent)
 
@@ -64,6 +78,7 @@ Each is recorded in the linked file; this list is for orientation.
 - One MCP server process, one URL path per toolset; toolsets compiled in, chosen by config (E03).
 - Store: `ConversationStore`, `RunStore` with leases and a run lifecycle, `flow.Checkpointer`; `pkg/runner` turns events into entries; SQLite with a pure-Go driver ([E05](E05-store-runner.md)).
 - When stopped runs continue: approval, recovery after a crash, retry with backoff, compaction; final runs never resume; one unfinished run per conversation ([E05](E05-store-runner.md)).
+- Recovery across tenants through a separate `store.Admin` (T038), never reachable from request handling.
 - Saved transcripts are not deleted at run end; agent step output holds a reference ([T030](T030-runner.md)).
 - Public agent API is HTTP + JSON with SSE; ConnectRPC stays internal ([E09](E09-agent-api.md)).
 - E04 closed; T025 moved to E08. `fakellm` kept, extracted from the replay server ([T004](T004-fakellm.md)).

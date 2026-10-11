@@ -1,0 +1,32 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/bin/
+/dist/
+
+# Test artifacts
+*.test
+*.out
+coverage.*
+*.coverprofile
+profile.cov
+
+# Go workspace
+go.work
+go.work.sum
+
+# Env and local data
+.env
+.env.*
+*.db
+*.sqlite
+*.sqlite3
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store

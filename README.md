@@ -11,7 +11,11 @@ Each package can be imported on its own or run as a lightweight server.
 
 ## Status
 
-**Planning.** No code yet. See the scope and module plan in [docs/PLAN.md](docs/PLAN.md).
+**Planning.** No code yet.
+
+- Scope and module plan: [docs/PLAN.md](docs/PLAN.md)
+- Module design, testing, and local environments: [docs/ENGINEERING.md](docs/ENGINEERING.md)
+- Work items: [tasks/](tasks/) (start with [E01](tasks/E01-foundations.md))
 
 ## License
 

@@ -2,7 +2,7 @@
 id: T022
 title: "pkg/harness: the agent loop"
 epic: E04
-status: todo
+status: done
 depends_on: [T020]
 ---
 
@@ -23,7 +23,7 @@ They are separate types because `llm.Message` is strict JSON sent to the provide
 
 ### API
 
-- `harness.New(model llm.Model, tools tool.Registry, opts...) (*Harness, error)`. Options: `WithSystem`, `WithMaxTurns` (model calls per `Run`, default 25), `WithMaxTotalTokens` (0 = unlimited), `WithMaxParallelTools` (default 8), `BeforeTool` (a non-nil error denies the call), `AfterTool` (can replace the result; its `ToolUseID` is kept), `WithNow` (the clock, `func() time.Time`; `time.Now` by default; `pkg/clock` does not exist yet).
+- `harness.New(model llm.Model, tools tool.Registry, opts...) (*Harness, error)`. Options: `WithSystem`, `WithMaxTurns` (model calls per `Run`, default 25), `WithMaxTotalTokens` (0 = unlimited), `WithMaxParallelTools` (default 8), `WithBeforeTool` (a non-nil error denies the call), `WithAfterTool` (can replace the result; its `ToolUseID` is kept), `WithNow` (the clock, `func() time.Time`; `time.Now` by default; `pkg/clock` does not exist yet).
 - `Run(ctx, Input) iter.Seq2[Event, error]`, and `harness.Collect(seq) (Result, error)`.
 - `Input{Message llm.Message; Transcript Transcript; At time.Time}`: the new user message, the prior transcript (for follow-ups and resume), and when the user sent the message (default: now).
 - `Transcript` is `[]llm.Message`, JSON through `llm.Message`'s own encoding (Opaque blocks byte-exact), with `Clone` and `Validate`.
@@ -35,15 +35,16 @@ One flat `Event` struct; every event has `Kind`, `Turn` and `At` (from the clock
 
 | Kind | Carries |
 |---|---|
+| `EventRunStart` | `Prompt`: the user message the run added (nil when it resumed without one) |
 | `EventTextDelta` | `Text` |
 | `EventToolStart` | `Call` (index in the turn's tool calls), the `llm.ToolUse` |
 | `EventToolDone` | `Call`, the `llm.ToolResult` (`IsError`), `Duration` |
-| `EventTurnDone` | a `TurnRecord`: the messages this turn appended, each with its time; request, first-token and done times; `Usage`; `StopReason`; per tool `{ToolUseID, Name, StartedAt, Duration, IsError}` |
+| `EventTurnDone` | a `TurnRecord`: the messages this turn appended, each with its time; request, first-event and done times (`RequestedAt`, `FirstEventAt`, `DoneAt`); `Usage`; `StopReason`; per tool `{ToolUseID, Name, StartedAt, Duration, IsError}` |
 | `EventRunDone` | the `Result` |
 
 `EventTurnDone` carries the **delta**, not the whole transcript: a store writes one turn per transaction, and `harness.Step` (T024) saves after every turn by appending the delta to the transcript it started from. Deltas carry no index; the store numbers messages.
 
-Message times: a user message is stamped when the run receives it (or `Input.At`), an assistant message when its stream finishes, a tool-results message when the last tool finishes. Durations use the monotonic clock.
+Message times: a user message is stamped when the run receives it (or `Input.At`), an assistant message when its stream finishes, a tool-results message when all the turn's tools have finished. Durations use the monotonic clock.
 
 ### Loop
 
@@ -75,6 +76,7 @@ Every error from `Run` is a `*RunError` with `Transcript()`, `Usage()`, `Turns()
 - `ErrRefused`, matched by a `*RefusalError{Category, Explanation}`
 - `ErrUnexpectedStop` (`StopToolUse` with no tool calls, `StopOther`, duplicate tool-use IDs, a stream without a final message)
 - `ErrInvalidInput`
+- `ErrInvalidConfig` (from `New`, not a run)
 - model errors, wrapped and never retried here (retries are a later wrapper)
 - the context's error
 
@@ -82,25 +84,76 @@ Every error from `Run` is a `*RunError` with `Transcript()`, `Usage()`, `Turns()
 
 All tests use `llmtest.Fake` and `tooltest.Fixtures` (or small `tool.Func`s).
 
-- [ ] A run with no tool calls returns the model's answer and one turn.
-- [ ] Two tool calls in one turn run concurrently (both start before either finishes) and their results come back in one message in call order.
-- [ ] A failing tool and an unknown tool name become `IsError` results; the run continues.
-- [ ] Every request the model receives extends the previous one; earlier messages are never changed (checked on every turn of a multi-turn run).
-- [ ] Max turns and max tokens stop the run with `ErrBudgetExceeded` and keep the transcript.
-- [ ] Cancelling the context mid-tool stops the run with the context error and no further model calls.
-- [ ] `MaxTokens` and `Refusal` stop reasons end the run with their typed errors.
-- [ ] `BeforeTool` denial and `AfterTool` replacement are visible in what the model receives.
-- [ ] Events arrive in order, and text deltas concatenate to the final text.
-- [ ] A run resumed from its serialized transcript continues with the same next request as an uninterrupted run.
-- [ ] Each turn reports its appended messages with timestamps, its model and tool timings, usage and stop reason; applying the turn deltas to the input transcript gives the final transcript.
-- [ ] Stopping the iteration early cancels the model stream and running tools, and no goroutine outlives the run.
-- [ ] Model errors are returned wrapped (`llm.IsRetryable` still works) and not retried.
-- [ ] A transcript that fails `Validate` is rejected before any model call (fuzzed).
+- [x] A run with no tool calls returns the model's answer and one turn. (`TestRunWithoutTools`)
+- [x] Two tool calls in one turn run concurrently (both start before either finishes) and their results come back in one message in call order. (`TestParallelToolsRunConcurrentlyResultsInCallOrder` (and `TestMaxParallelToolsBoundsConcurrency``)
+- [x] A failing tool and an unknown tool name become `IsError` results; the run continues. (`TestToolFailuresBecomeErrorResults`)
+- [x] Every request the model receives extends the previous one; earlier messages are never changed (checked on every turn of a multi-turn run). (`TestHistoryIsAppendOnly`)
+- [x] Max turns and max tokens stop the run with `ErrBudgetExceeded` and keep the transcript. (`TestBudgetExceeded`)
+- [x] Cancelling the context mid-tool stops the run with the context error and no further model calls. (`TestCancelMidToolStopsRun` (and `TestCancelBetweenTurnsMakesNoModelCall``)
+- [x] `MaxTokens` and `Refusal` stop reasons end the run with their typed errors. (`TestStopReasonsAreTypedErrors`)
+- [x] `BeforeTool` denial and `AfterTool` replacement are visible in what the model receives. (`TestHooksShapeWhatTheModelSees`)
+- [x] Events arrive in order, and text deltas concatenate to the final text. (`TestEventOrder`)
+- [x] A run resumed from its serialized transcript continues with the same next request as an uninterrupted run. (`TestResumeFromSerializedTranscript`)
+- [x] Each turn reports its appended messages with timestamps, its model and tool timings, usage and stop reason; applying the turn deltas to the input transcript gives the final transcript. (`TestTurnRecordsAndDeltas`)
+- [x] Stopping the iteration early cancels the model stream and running tools, and no goroutine outlives the run. (`TestConsumerStopCancelsEverything`)
+- [x] Model errors are returned wrapped (`llm.IsRetryable` still works) and not retried. (`TestModelErrorIsWrappedAndNotRetried`)
+- [x] A transcript that fails `Validate` is rejected before any model call (fuzzed). (`TestInvalidInputIsRejectedBeforeAnyModelCall` and `FuzzTranscript`)
 
 ## Notes
 
-- archtest: `pkg/harness` imports `pkg/llm` and `pkg/tool` only (never an adapter).
-- Tests are not parallel: each checks that the goroutine count returns to its baseline (`testkit.Eventually`), which parallel tests would disturb.
+- archtest: `pkg/harness` imports `pkg/llm` and `pkg/tool` only (never an adapter); no allowlist entry was needed.
+- Tests are not parallel: each checks that the goroutine count returns to its baseline (`leakcheck`, with `testkit.Eventually`), which parallel tests would disturb.
+
+### Decisions
+
+- **Turns are atomic; budgets are checked before each model call.** The tools of the last permitted turn still run, so a token budget can be overshot by one turn; `ErrBudgetExceeded` leaves a transcript that validates and resumes with a bigger budget. Budgets count per `Run`, not over the prior transcript.
+- **A reply that ends the run is appended only if it has no tool calls.** `max_tokens`, refusal and other-stop replies are kept and announced by an `EventTurnDone` before the error. A reply with calls nothing will answer (for example cut off by the output limit) is not appended, because no model accepts a transcript with unanswered tool calls. Likewise `end_turn` with calls, `tool_use` without calls, and a repeated or empty call ID are `ErrUnexpectedStop` and not appended.
+- **Tool errors:** the three `tool` sentinels, a `tool.Timeout` deadline while the run's context is live, and `BeforeTool` denials become `IsError` results with the error message as `Content`. If the run's context is done, the run ends with its error. Any other error (a remote registry down) ends the run, wrapped with the tool's name. A panicking hook ends the run (value only, no stack) instead of crashing the process.
+- **`tools.List` is called once per `Run`.**
+- **Events are yielded from the goroutine that iterates `Run` only.** Tool workers send over a channel with room for every event they will send, so none can block on a consumer that has stopped. When the consumer stops, the tool context is cancelled and `Run` returns after every worker has.
+- **The clock is `WithNow`**, not `pkg/clock` (not built yet). Message times: user prompt `Input.At` (or run start), assistant reply when its stream finished, results message when all tools had finished.
+- **Added beyond the first design:** `EventRunStart` (so a store can write the prompt at once), `ErrInvalidConfig`, `Transcript.Validate`, `TimedMessage`, and `Record.Prompt`.
+- Private helpers `toolUses` and `addUsage` stay in this package; promote `Message.ToolUses()` and `Usage.Add` into `pkg/llm` when a second caller appears. No change to `pkg/llm` or `pkg/tool` was needed.
+
+### Mutation checks
+
+Each bug was planted alone, `go test -race -shuffle=on ./pkg/harness/` was run, and the change was reverted (the tree was diffed against a backup afterwards). Every one makes a test fail, none by a compile error.
+
+| Planted bug | Caught by |
+|---|---|
+| tool results sent in finish order | `TestParallelToolsRunConcurrentlyResultsInCallOrder`, `TestToolFailuresBecomeErrorResults`, `TestTurnRecordsAndDeltas` |
+| tools run sequentially | `TestParallelToolsRunConcurrentlyResultsInCallOrder` |
+| one result per message | `TestHistoryIsAppendOnly` and five more |
+| an earlier message edited | `TestHistoryIsAppendOnly`, `TestFollowUpContinuesTheConversation`, `TestRunWithoutTools` and two more |
+| an Opaque block dropped from the history | `TestHistoryIsAppendOnly` |
+| a tool failure ends the run | `TestToolFailuresBecomeErrorResults`, `TestTurnRecordsAndDeltas` |
+| max turns not enforced | `TestBudgetExceeded`, `TestResumeFromSerializedTranscript` |
+| max tokens not enforced | `TestBudgetExceeded` |
+| cached tokens left out of the token budget (extra) | `TestBudgetExceeded` |
+| cancellation lets one more model call happen | `TestCancelBetweenTurnsMakesNoModelCall` |
+| `BeforeTool` denial ignored | `TestHooksShapeWhatTheModelSees` |
+| `AfterTool` replacement ignored | `TestHooksShapeWhatTheModelSees` |
+| a stack trace placed in `Content` | `TestToolFailuresBecomeErrorResults` |
+| resume sends a different next request (drops Opaque blocks from the history) | `TestResumeFromSerializedTranscript` |
+
+`TestCancelMidToolStopsRun` does not catch a missing check before the model call (the check after the tools also stops the run), which is why `TestCancelBetweenTurnsMakesNoModelCall` cancels between turns.
+
+Also run: `go test -race -shuffle=on -count=20 ./pkg/harness/...` (clean), `FuzzTranscript` for 30 s (1.3M executions, clean), `make check`.
+
+### For T024 (`harness.Step`)
+
+- Keep the transcript in state under the step's own key, and save it after every turn: append the messages of each `EventTurnDone` (`ev.TurnRecord.Messages`) to the transcript the step started from. flow only checkpoints finished steps, so this is what lets a crashed step continue instead of paying for its turns again.
+- To continue, pass `Input{Transcript: saved}` with no `Message` when the saved transcript ends with a user message (a crash between turns), or with the new message for a follow-up. A transcript that ends with an assistant message is a finished conversation (or one that stopped on `ErrMaxTokens`, `ErrRefused`) and needs a new message.
+- A step that returns `ErrBudgetExceeded` has a transcript that resumes with a bigger budget: `RunError.Transcript()` or `harness.Collect`'s partial `Result`.
+- The run's context is the step's; cancellation arrives as the context's error.
+- The tools of a turn that crashed before its `EventTurnDone` are not in the saved transcript, so on resume the model is asked again and may call them again (with new call IDs): tools with side effects should be idempotent.
+- Two `Step`s in one `flow.Parallel` must use different keys; the harness itself has no shared state.
+
+### Deferred
+
+- Retries around model calls (wrap the `llm.Model`; `llm.IsRetryable` works on the returned errors).
+- Compaction inside a run, an output token limit option (`Request.MaxTokens`), and per-turn re-listing of tools.
+- Tools that can ask the user (approval) belong to `flow.Approve` at step boundaries for now.
 
 ### For E05 (store, conversation memory)
 

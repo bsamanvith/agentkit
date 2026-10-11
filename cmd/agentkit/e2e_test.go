@@ -38,6 +38,13 @@ const (
 	upstream  = "https://api.anthropic.com"
 )
 
+// Build information the test binary is stamped with.
+const (
+	e2eVersion = "1.2.3-e2e"
+	e2eCommit  = "e2ecommit"
+	e2eDate    = "2026-10-11T00:00:00Z"
+)
+
 var (
 	buildOnce sync.Once
 	binPath   string
@@ -57,7 +64,8 @@ func binary(t *testing.T) string {
 			return
 		}
 		binPath = filepath.Join(dir, "agentkit")
-		out, err := exec.Command("go", "build", "-o", binPath, ".").CombinedOutput()
+		ldflags := fmt.Sprintf("-X main.version=%s -X main.commit=%s -X main.date=%s", e2eVersion, e2eCommit, e2eDate)
+		out, err := exec.Command("go", "build", "-ldflags", ldflags, "-o", binPath, ".").CombinedOutput()
 		if err != nil {
 			errBuild = fmt.Errorf("go build: %w\n%s", err, out)
 		}

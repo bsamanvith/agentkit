@@ -15,7 +15,7 @@ Put [docs/ENGINEERING.md](../docs/ENGINEERING.md) into practice. Split in two ph
 
 ## Phase 2: M5, after E03 (real components exist)
 
-- [ ] [T003](T003-skeleton-binaries.md) `agentkit` binary with component runtime and health endpoints
+- [x] [T003](T003-skeleton-binaries.md) `agentkit` binary with component runtime and health endpoints
 - [ ] [T004](T004-fakellm.md) `fakellm` scripted model server (needs the `llm` work from M3)
 - [ ] [T005](T005-container-image.md) Distroless container image
 - [ ] [T006](T006-compose-and-dev-script.md) Compose topologies and `scripts/dev.sh`

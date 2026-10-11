@@ -1,10 +1,18 @@
-// Command agentkit runs agents and flows.
+// Command agentkit runs agents, flows and servers.
 //
 //	agentkit run [flags] "<prompt>"            one agent against Claude, with the demo tools
 //	agentkit flow demo [flags] ["<topic>"]     research → approval → write, resumable
+//	agentkit serve [-config file]              serve the components in $AGENTKIT_COMPONENTS
 //
 // Credentials come from the Anthropic SDK's chain: ANTHROPIC_API_KEY,
 // ANTHROPIC_AUTH_TOKEN or an `ant auth login` profile.
+//
+// serve reads AGENTKIT_COMPONENTS (default mcp-server), AGENTKIT_ADDR
+// (default 127.0.0.1:8080), AGENTKIT_LOG_LEVEL (default info),
+// AGENTKIT_CONFIG (the config file, if -config is not given) and
+// AGENTKIT_SHUTDOWN_TIMEOUT (default 15s). It logs JSON to stderr, answers
+// /healthz, /readyz and /version, and shuts down gracefully on SIGINT or
+// SIGTERM.
 package main
 
 import (
@@ -23,9 +31,17 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
+// Build information, set with
+// -ldflags "-X main.version=... -X main.commit=... -X main.date=...".
+var (
+	version = "dev"
+	commit  string
+	date    string
+)
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	code := cli{stdout: os.Stdout, stderr: os.Stderr, newModel: newClaude}.main(ctx, os.Args[1:])
+	code := cli{stdout: os.Stdout, stderr: os.Stderr, getenv: os.Getenv, newModel: newClaude}.main(ctx, os.Args[1:])
 	stop()
 	os.Exit(code)
 }
@@ -33,14 +49,23 @@ func main() {
 // cli is the command line, with what tests replace.
 type cli struct {
 	stdout, stderr io.Writer
+	getenv         func(string) string // nil: os.Getenv
 	newModel       func(modelFlags) (llm.Model, error)
+}
+
+func (c cli) env(key string) string {
+	if c.getenv == nil {
+		return os.Getenv(key)
+	}
+	return c.getenv(key)
 }
 
 const usage = `usage:
   agentkit run [flags] "<prompt>"          run one agent against Claude with the demo tools
   agentkit flow demo [flags] ["<topic>"]   research → approval → write; run again with -approve to continue
+  agentkit serve [-config file]            serve the components in $AGENTKIT_COMPONENTS (default mcp-server)
 
-Run "agentkit run -h" or "agentkit flow demo -h" for flags.
+Run "agentkit <command> -h" for flags.
 `
 
 // errUsage means the command line was wrong; the message is already printed.
@@ -53,6 +78,8 @@ func (c cli) main(ctx context.Context, args []string) int {
 		err = c.run(ctx, args[1:])
 	case len(args) >= 2 && args[0] == "flow" && args[1] == "demo":
 		err = c.flowDemo(ctx, args[2:])
+	case len(args) >= 1 && args[0] == "serve":
+		err = c.serve(ctx, args[1:])
 	default:
 		fmt.Fprint(c.stderr, usage)
 		return 2
@@ -90,7 +117,7 @@ func newClaude(f modelFlags) (llm.Model, error) {
 
 // demoTools builds the built-in demo toolset (echo, current_time, calculate).
 func demoTools(ctx context.Context) (tool.Registry, error) {
-	catalog, err := toolset.NewCatalog(toolset.Demo())
+	catalog, err := newCatalog()
 	if err != nil {
 		return nil, err
 	}

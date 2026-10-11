@@ -14,6 +14,7 @@ func ModuleRules() Rules {
 				"github.com/anthropics/anthropic-sdk-go/packages/param",
 				"github.com/anthropics/anthropic-sdk-go/shared/constant",
 			},
+			"cmd/agentkit":         {"github.com/modelcontextprotocol/go-sdk/mcp"}, // its serve e2e test uses the SDK client
 			"examples/mcp-gateway": {"github.com/modelcontextprotocol/go-sdk/mcp"}, // its test uses the SDK client
 			"pkg/mcp/server":       {"github.com/modelcontextprotocol/go-sdk/jsonrpc", "github.com/modelcontextprotocol/go-sdk/mcp"},
 			"pkg/tool":             {"github.com/google/jsonschema-go/jsonschema"},

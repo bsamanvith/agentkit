@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"slices"
 	"unicode/utf8"
 )
@@ -65,7 +66,12 @@ func (m Message) Clone() Message {
 }
 
 // Block is one piece of a message's content. The set of blocks is closed:
-// [Text], [ToolUse], [ToolResult] and [Opaque].
+// [Text], [ToolUse], [ToolResult] and [Opaque]. Blocks are values, never
+// pointers: marshaling a pointer block is an error.
+//
+// Strings in blocks are JSON strings, so invalid UTF-8 in them is replaced by
+// U+FFFD when a message is marshaled. [Opaque] data is the exception: it is
+// rejected if it is not valid UTF-8.
 type Block interface {
 	// wire returns the JSON-encodable form of the block, tagged with its type.
 	wire() (any, error)
@@ -79,11 +85,15 @@ type Text struct {
 
 // ToolUse is the model asking for a tool to be run.
 type ToolUse struct {
-	// ID links the call to its [ToolResult]. It is chosen by the provider.
+	// ID links the call to its [ToolResult]. It is chosen by the provider and
+	// must not be empty.
 	ID string
-	// Name is the tool's name, as in tool.Definition.
+	// Name is the tool's name, as in tool.Definition. It must not be empty.
 	Name string
-	// Input is the tool's input: valid JSON, normally an object. Marshaling
+	// Input is the tool's input: valid JSON, normally an object, and `{}`
+	// (not nil) for a call without arguments. Adapters must not put
+	// incomplete JSON here, for example from a reply cut off by the token
+	// limit: drop that block and report [StopMaxTokens]. Marshaling
 	// keeps it semantically identical but compact and with <, > and & written
 	// as \u escapes, so Input of a decoded message is already in that form.
 	Input json.RawMessage
@@ -91,7 +101,7 @@ type ToolUse struct {
 
 // ToolResult is the answer to a [ToolUse], sent in a user message.
 type ToolResult struct {
-	// ToolUseID is the ID of the [ToolUse] this answers.
+	// ToolUseID is the ID of the [ToolUse] this answers. It must not be empty.
 	ToolUseID string
 	// Content is what the model is shown. For a failure, it describes the error.
 	Content string
@@ -165,8 +175,11 @@ func (u ToolUse) clone() Block {
 }
 
 func (u ToolUse) wire() (any, error) {
+	if u.ID == "" || u.Name == "" {
+		return nil, fmt.Errorf("%w: tool use needs an ID and a name", ErrInvalidMessage)
+	}
 	input := u.Input
-	if len(input) == 0 {
+	if len(input) == 0 || string(input) == "null" {
 		input = json.RawMessage(`{}`)
 	}
 	if !json.Valid(input) {
@@ -177,6 +190,9 @@ func (u ToolUse) wire() (any, error) {
 
 func (r ToolResult) clone() Block { return r }
 func (r ToolResult) wire() (any, error) {
+	if r.ToolUseID == "" {
+		return nil, fmt.Errorf("%w: tool result needs a tool use ID", ErrInvalidMessage)
+	}
 	return toolResultWire{Type: typeToolResult, ToolUseID: r.ToolUseID, Content: r.Content, IsError: r.IsError}, nil
 }
 
@@ -237,6 +253,9 @@ func (m Message) MarshalJSON() ([]byte, error) {
 	for i, b := range content {
 		if b == nil {
 			return nil, fmt.Errorf("%w: block %d is nil", ErrInvalidMessage, i)
+		}
+		if reflect.ValueOf(b).Kind() == reflect.Pointer {
+			return nil, fmt.Errorf("%w: block %d is a %T; blocks are values", ErrInvalidMessage, i, b)
 		}
 	}
 	return json.Marshal(struct {
@@ -299,6 +318,9 @@ func UnmarshalBlock(data []byte) (Block, error) {
 		if err := strictDecode(data, &w); err != nil {
 			return nil, err
 		}
+		if w.ToolUseID == "" {
+			return nil, fmt.Errorf("%w: tool result needs a tool use ID", ErrInvalidMessage)
+		}
 		return ToolResult{ToolUseID: w.ToolUseID, Content: w.Content, IsError: w.IsError}, nil
 	case typeOpaque:
 		var w opaqueWire
@@ -317,6 +339,9 @@ func UnmarshalBlock(data []byte) (Block, error) {
 // decodeToolUse puts Input in the form Marshal writes (compact, HTML
 // characters escaped), so that decode, encode and decode again is stable.
 func decodeToolUse(w toolUseWire) (Block, error) {
+	if w.ID == "" || w.Name == "" {
+		return nil, fmt.Errorf("%w: tool use needs an ID and a name", ErrInvalidMessage)
+	}
 	input := w.Input
 	if len(input) == 0 || string(input) == "null" {
 		input = json.RawMessage(`{}`)

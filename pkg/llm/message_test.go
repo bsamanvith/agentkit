@@ -11,6 +11,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/internal/testkit"
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/tool"
 )
 
 // signature is a long, deterministic base64 string, like the signature of a
@@ -141,6 +142,60 @@ func TestToolUseInputIsSemanticallyPreserved(t *testing.T) {
 	}
 }
 
+// An omitted or null tool input is written as an empty object, the same thing
+// a decoded message has, so a message encodes to what it decodes from.
+func TestToolUseWithoutInputMarshalsAsEmptyObject(t *testing.T) {
+	t.Parallel()
+	for name, input := range map[string]json.RawMessage{"nil": nil, "null": json.RawMessage(`null`)} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			data, err := json.Marshal(llm.Assistant(llm.ToolUse{ID: "t", Name: "n", Input: input}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Contains(data, []byte(`"input":{}`)) {
+				t.Errorf("encoded as %s, want an empty object as input", data)
+			}
+			var back llm.Message
+			if err := json.Unmarshal(data, &back); err != nil {
+				t.Fatal(err)
+			}
+			if got := string(back.Content[0].(llm.ToolUse).Input); got != "{}" {
+				t.Errorf("input = %s, want {}", got)
+			}
+		})
+	}
+}
+
+// Clones share no memory with the original, down to the bytes of raw JSON.
+func TestRequestCloneIsDeep(t *testing.T) {
+	t.Parallel()
+	req := llm.Request{
+		Messages: []llm.Message{
+			llm.Assistant(
+				llm.ToolUse{ID: "t", Name: "n", Input: json.RawMessage(`{"a":1}`)},
+				llm.Opaque{Provider: "p", Data: json.RawMessage(`{"b":2}`)},
+			),
+		},
+		Tools: []tool.Definition{{Name: "n", InputSchema: json.RawMessage(`{"type":"object"}`)}},
+	}
+	clone := req.Clone()
+	clone.Messages[0].Content[0].(llm.ToolUse).Input[2] = 'X'
+	clone.Messages[0].Content[1].(llm.Opaque).Data[2] = 'X'
+	clone.Messages[0].Content[0] = llm.Text{Text: "replaced"}
+	clone.Tools[0].InputSchema[2] = 'X'
+
+	if got := string(req.Messages[0].Content[0].(llm.ToolUse).Input); got != `{"a":1}` {
+		t.Errorf("tool input changed to %s", got)
+	}
+	if got := string(req.Messages[0].Content[1].(llm.Opaque).Data); got != `{"b":2}` {
+		t.Errorf("opaque data changed to %s", got)
+	}
+	if got := string(req.Tools[0].InputSchema); got != `{"type":"object"}` {
+		t.Errorf("tool schema changed to %s", got)
+	}
+}
+
 func TestMarshalRejectsInvalidMessages(t *testing.T) {
 	t.Parallel()
 	for name, msg := range map[string]llm.Message{
@@ -152,6 +207,11 @@ func TestMarshalRejectsInvalidMessages(t *testing.T) {
 		"opaque not utf-8":     llm.Assistant(llm.Opaque{Provider: "p", Data: json.RawMessage("\"\xff\"")}),
 		"tool use bad input":   llm.Assistant(llm.ToolUse{ID: "t", Name: "n", Input: json.RawMessage(`{`)}),
 		"tool use bad input 2": llm.Assistant(llm.ToolUse{ID: "t", Name: "n", Input: json.RawMessage(`{} {}`)}),
+		"tool use no id":       llm.Assistant(llm.ToolUse{Name: "n"}),
+		"tool use no name":     llm.Assistant(llm.ToolUse{ID: "t"}),
+		"tool result no id":    llm.User(llm.ToolResult{Content: "x"}),
+		"pointer block":        llm.Assistant(&llm.Text{Text: "x"}),
+		"typed nil block":      llm.Assistant((*llm.Text)(nil)),
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -165,16 +225,19 @@ func TestMarshalRejectsInvalidMessages(t *testing.T) {
 func TestUnknownBlockType(t *testing.T) {
 	t.Parallel()
 	for name, doc := range map[string]string{
-		"unknown type":    `{"role":"user","content":[{"type":"text","text":"a"},{"type":"image","source":"x"}]}`,
-		"no type":         `{"role":"user","content":[{"text":"a"}]}`,
-		"null block":      `{"role":"user","content":[null]}`,
-		"not an object":   `{"role":"user","content":["a"]}`,
-		"unknown role":    `{"role":"system","content":[]}`,
-		"no role":         `{"content":[]}`,
-		"unknown field":   `{"role":"user","content":[{"type":"text","text":"a","cache":true}]}`,
-		"unknown message": `{"role":"user","content":[],"name":"x"}`,
-		"opaque as value": `{"role":"assistant","content":[{"type":"opaque","provider":"p","data":{"a":1}}]}`,
-		"opaque bad data": `{"role":"assistant","content":[{"type":"opaque","provider":"p","data":"{\"a\":"}]}`,
+		"unknown type":      `{"role":"user","content":[{"type":"text","text":"a"},{"type":"image","source":"x"}]}`,
+		"no type":           `{"role":"user","content":[{"text":"a"}]}`,
+		"null block":        `{"role":"user","content":[null]}`,
+		"not an object":     `{"role":"user","content":["a"]}`,
+		"unknown role":      `{"role":"system","content":[]}`,
+		"no role":           `{"content":[]}`,
+		"unknown field":     `{"role":"user","content":[{"type":"text","text":"a","cache":true}]}`,
+		"unknown message":   `{"role":"user","content":[],"name":"x"}`,
+		"tool use no id":    `{"role":"assistant","content":[{"type":"tool_use","name":"n","input":{}}]}`,
+		"tool use no name":  `{"role":"assistant","content":[{"type":"tool_use","id":"t","input":{}}]}`,
+		"tool result no id": `{"role":"user","content":[{"type":"tool_result","content":"x"}]}`,
+		"opaque as value":   `{"role":"assistant","content":[{"type":"opaque","provider":"p","data":{"a":1}}]}`,
+		"opaque bad data":   `{"role":"assistant","content":[{"type":"opaque","provider":"p","data":"{\"a\":"}]}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

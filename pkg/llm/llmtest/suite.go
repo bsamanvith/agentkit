@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"iter"
 	"reflect"
 	"testing"
 	"time"
@@ -16,12 +17,18 @@ import (
 
 // Scenario is one conversation the conformance suite runs. The model returned
 // by the adapter's factory must answer its Generate calls with Replies, one
-// per call, in order: an adapter test serves them from a replay server
-// (typically from a recorded fixture named after Name) and asserts nothing
-// else about the wire.
+// per call, in order. An adapter test serves them from a replay server, from a
+// fixture named after Name that is written by hand to say exactly what the
+// reply says (the suite compares against these constants, so a recording of
+// the real API cannot match).
+//
+// The suite sees only what a model returns. What an adapter sends, such as an
+// [llm.Opaque] block going back unchanged in the next request, is checked by
+// the adapter's own test of the request body.
 type Scenario struct {
-	// Name identifies the scenario: "text", "tool_call", "opaque", "cancel",
-	// "cancelled_context", "error_rate_limited", "error_overloaded",
+	// Name identifies the scenario: "text", "tool_call", "tool_call_no_input",
+	// "max_tokens", "refusal", "stop_other", "opaque", "cancel", "cancelled_context",
+	// "stop_early", "error_rate_limited", "error_overloaded",
 	// "error_invalid_request", "error_auth", "error_context_too_long" and
 	// "error_mid_stream".
 	Name string
@@ -54,10 +61,11 @@ const watchdog = 10 * time.Second
 //
 // The suite checks that a model streams events in the order [llm.EventKind]
 // describes and consistently with its final message; that text, tool calls,
-// usage, stop reasons and [llm.Opaque] blocks come through intact; that a tool
-// call can be answered and the conversation continued; that the request is
-// never modified; that cancellation ends the stream with the context's error;
-// and that failures map to the [llm] sentinels.
+// usage, stop reasons and [llm.Opaque] blocks come through intact (tool input
+// is compared as JSON, not byte for byte); that a tool call can be answered and
+// the conversation continued; that the request is never modified; that
+// cancellation ends the stream with the context's error and nothing else;
+// that stopping early is honored; and that failures map to the [llm] sentinels.
 func RunModel(t *testing.T, newModel func(t *testing.T, s Scenario) llm.Model, opts ...Option) {
 	t.Helper()
 	cfg := config{opaque: llm.Opaque{
@@ -125,38 +133,55 @@ func RunModel(t *testing.T, newModel func(t *testing.T, s Scenario) llm.Model, o
 		}
 	})
 
+	noInput := ToolCalls(llm.ToolUse{ID: "toolu_2", Name: "now"}) // input is {}
+	run("tool_call_no_input", []Reply{noInput}, func(t *testing.T, m llm.Model) {
+		generate(t, m, userRequest("What time is it?"), noInput)
+	})
+
+	for _, c := range []struct {
+		name string
+		stop llm.StopReason
+		text string
+	}{
+		{"max_tokens", llm.StopReason{Kind: llm.StopMaxTokens}, "The answer is cut o"},
+		{"refusal", llm.StopReason{Kind: llm.StopRefusal, Category: "policy", Explanation: "This request is not allowed."}, "I can't help with that."},
+		{"stop_other", llm.StopReason{Kind: llm.StopOther, Raw: "pause_turn"}, "Paused."},
+	} {
+		reply := Text(c.text)
+		reply.Response.Stop = c.stop
+		run(c.name, []Reply{reply}, func(t *testing.T, m llm.Model) {
+			generate(t, m, userRequest("Hello."), reply)
+		})
+	}
+
 	run("cancel", []Reply{{Response: textReply.Response, Stall: true}}, func(t *testing.T, m llm.Model) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		events, err := drainWith(t, m.Generate(ctx, userRequest("Hello.")), func(n int) {
+		events, err := drainWith(t, m.Generate(ctx, userRequest("Hello.")), func(n int) bool {
 			if n == 1 {
 				cancel() // after the first event, with the server silent
 			}
+			return true
 		})
-		if !errors.Is(err, context.Canceled) {
-			t.Errorf("err = %v, want context.Canceled", err)
-		}
 		if len(events) == 0 {
 			t.Error("no event before the cancellation")
 		}
-		for _, ev := range events {
-			if ev.Kind == llm.EventMessageDone {
-				t.Error("message done after cancellation")
-			}
-		}
+		checkCancelled(t, events, err)
 	})
 
 	run("cancelled_context", []Reply{textReply}, func(t *testing.T, m llm.Model) {
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 		events, err := drainWith(t, m.Generate(ctx, userRequest("Hello.")), nil)
-		if !errors.Is(err, context.Canceled) {
-			t.Errorf("err = %v, want context.Canceled", err)
-		}
-		for _, ev := range events {
-			if ev.Kind == llm.EventMessageDone {
-				t.Error("message done on a cancelled context")
-			}
+		checkCancelled(t, events, err)
+	})
+
+	run("stop_early", []Reply{{Response: textReply.Response, Stall: true}}, func(t *testing.T, m llm.Model) {
+		// Breaking out of the loop must end the stream (and cancel the request)
+		// without the model yielding again, which the runtime reports as a panic.
+		events, err := drainWith(t, m.Generate(t.Context(), userRequest("Hello.")), func(n int) bool { return n < 1 })
+		if err != nil || len(events) != 1 {
+			t.Errorf("got %d events and error %v, want exactly one event and no error", len(events), err)
 		}
 	})
 
@@ -172,13 +197,13 @@ func RunModel(t *testing.T, newModel func(t *testing.T, s Scenario) llm.Model, o
 		{"error_context_too_long", llm.ErrContextTooLong, false},
 	} {
 		run(c.name, []Reply{Fail(c.err)}, func(t *testing.T, m llm.Model) {
-			checkFailure(t, m, c.err, c.retryable)
+			checkFailure(t, m, c.err, c.retryable, false)
 		})
 	}
 
 	midStream := Reply{Response: textReply.Response, Err: llm.ErrOverloaded, After: 2}
 	run("error_mid_stream", []Reply{midStream}, func(t *testing.T, m llm.Model) {
-		checkFailure(t, m, llm.ErrOverloaded, true)
+		checkFailure(t, m, llm.ErrOverloaded, true, true)
 	})
 }
 
@@ -190,7 +215,7 @@ func userRequest(text string) llm.Request {
 }
 
 // generate runs one request to the end, checks the stream and the request,
-// and that the response equals want's.
+// and that the response equals want's (tool input compared as JSON).
 func generate(t *testing.T, m llm.Model, req llm.Request, want Reply) llm.Response {
 	t.Helper()
 	snapshot := req.Clone()
@@ -202,8 +227,8 @@ func generate(t *testing.T, m llm.Model, req llm.Request, want Reply) llm.Respon
 	if err != nil {
 		t.Fatalf("event stream: %v", err)
 	}
-	if !reflect.DeepEqual(got, want.Response) {
-		t.Errorf("response:\n got %#v\nwant %#v", got, want.Response)
+	if !reflect.DeepEqual(canonical(got), canonical(want.Response)) {
+		t.Fatalf("response:\n got %#v\nwant %#v", got, want.Response)
 	}
 	if !reflect.DeepEqual(req, snapshot) {
 		t.Errorf("the model modified its request:\n got %#v\nwant %#v", req, snapshot)
@@ -211,16 +236,67 @@ func generate(t *testing.T, m llm.Model, req llm.Request, want Reply) llm.Respon
 	return got
 }
 
-// checkFailure checks a stream that must fail with want, and that Collect then
-// returns that error and no response.
-func checkFailure(t *testing.T, m llm.Model, want error, retryable bool) {
+// canonical returns a copy of r in which tool inputs are written the same way
+// whatever spacing, key order or escaping the model used.
+func canonical(r llm.Response) llm.Response {
+	r.Message = r.Message.Clone()
+	for i, b := range r.Message.Content {
+		if u, ok := b.(llm.ToolUse); ok {
+			u.Input = canonicalJSON(u.Input)
+			r.Message.Content[i] = u
+		}
+	}
+	return r
+}
+
+func canonicalJSON(in []byte) []byte {
+	dec := json.NewDecoder(bytes.NewReader(in))
+	dec.UseNumber()
+	var v any
+	if err := dec.Decode(&v); err != nil {
+		return in // reported as an invalid input where it matters
+	}
+	out, err := json.Marshal(v)
+	if err != nil {
+		return in
+	}
+	return out
+}
+
+// checkCancelled checks a stream that ended because its context was cancelled:
+// the context's error, not a failure of the provider, and no final message.
+func checkCancelled(t *testing.T, events []llm.Event, err error) {
 	t.Helper()
-	seq := m.Generate(t.Context(), userRequest("Hello."))
-	events, err := drainWith(t, seq, nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("err = %v, want context.Canceled", err)
+	}
+	if llm.IsRetryable(err) {
+		t.Error("a cancelled request must not be retryable")
+	}
+	for _, s := range sentinels {
+		if errors.Is(err, s) {
+			t.Errorf("a cancelled request also matches %v", s)
+		}
+	}
+	for _, ev := range events {
+		if ev.Kind == llm.EventMessageDone {
+			t.Error("message done after cancellation")
+		}
+	}
+}
+
+var sentinels = []error{llm.ErrRateLimited, llm.ErrOverloaded, llm.ErrInvalidRequest, llm.ErrAuth, llm.ErrContextTooLong}
+
+// checkFailure checks a stream that must fail with want: no final message,
+// the right sentinel and only that one, and that Collect returns the error and
+// no response. If midStream is set, events must arrive before the failure.
+func checkFailure(t *testing.T, m llm.Model, want error, retryable, midStream bool) {
+	t.Helper()
+	events, err := drainWith(t, m.Generate(t.Context(), userRequest("Hello.")), nil)
 	if !errors.Is(err, want) {
 		t.Fatalf("err = %v, want %v", err, want)
 	}
-	for _, other := range []error{llm.ErrRateLimited, llm.ErrOverloaded, llm.ErrInvalidRequest, llm.ErrAuth, llm.ErrContextTooLong} {
+	for _, other := range sentinels {
 		if !errors.Is(want, other) && errors.Is(err, other) {
 			t.Errorf("err also matches %v", other)
 		}
@@ -228,42 +304,65 @@ func checkFailure(t *testing.T, m llm.Model, want error, retryable bool) {
 	if llm.IsRetryable(err) != retryable {
 		t.Errorf("IsRetryable = %v, want %v", !retryable, retryable)
 	}
+	if midStream && len(events) == 0 {
+		t.Error("no event before the failure; the failure must arrive in the middle of the stream")
+	}
 	for _, ev := range events {
 		if ev.Kind == llm.EventMessageDone {
 			t.Error("message done in a failed stream")
 		}
 	}
+	replay := func(yield func(llm.Event, error) bool) {
+		for _, ev := range events {
+			if !yield(ev, nil) {
+				return
+			}
+		}
+		yield(llm.Event{}, err)
+	}
+	if resp, cerr := llm.Collect(replay); !errors.Is(cerr, want) || !reflect.DeepEqual(resp, llm.Response{}) {
+		t.Errorf("Collect = %#v, %v; want no response and %v", resp, cerr, want)
+	}
 }
 
-// drainWith reads a stream until it ends or fails, calling each (if not nil)
-// with the number of events read so far after each event. It fails the test
-// if the stream does not end in time.
-func drainWith(t *testing.T, seq func(yield func(llm.Event, error) bool), each func(n int)) ([]llm.Event, error) {
+// drainWith reads a stream until it ends or fails. After each event it calls
+// each (if not nil) with the number of events read so far, and stops reading
+// when each returns false. A panic in the model fails the test instead of
+// crashing the run. It also fails the test if the stream does not end in time:
+// a model that is silent must still react to the context.
+func drainWith(t testing.TB, seq iter.Seq2[llm.Event, error], each func(n int) bool) ([]llm.Event, error) {
 	t.Helper()
 	type result struct {
-		events []llm.Event
-		err    error
+		events   []llm.Event
+		err      error
+		panicked any
 	}
 	done := make(chan result, 1)
 	go func() {
 		var r result
+		defer func() {
+			r.panicked = recover()
+			done <- r
+		}()
 		for ev, err := range seq {
 			if err != nil {
 				r.err = err
 				break
 			}
 			r.events = append(r.events, ev)
-			if each != nil {
-				each(len(r.events))
+			if each != nil && !each(len(r.events)) {
+				break
 			}
 		}
-		done <- r
 	}()
 	select {
 	case r := <-done:
+		if r.panicked != nil {
+			t.Errorf("the model panicked: %v", r.panicked)
+		}
 		return r.events, r.err
 	case <-time.After(watchdog):
-		t.Fatalf("stream did not end within %v", watchdog)
+		t.Fatalf("stream did not end within %v; after its first event a silent model must still end when the context is cancelled", watchdog)
 		return nil, nil
 	}
 }
@@ -282,7 +381,7 @@ func checkStream(events []llm.Event) (llm.Response, error) {
 	)
 	for i, ev := range events {
 		if finished != nil {
-			return llm.Response{}, fmt.Errorf("event %d (kind %d) after message done", i, ev.Kind)
+			return llm.Response{}, fmt.Errorf("event %d (kind %v) after message done", i, ev.Kind)
 		}
 		if ev.Kind != llm.EventMessageDone && ev.Index != len(blocks) {
 			return llm.Response{}, fmt.Errorf("event %d: index %d, want %d (blocks are streamed in order)", i, ev.Index, len(blocks))
@@ -323,7 +422,7 @@ func checkStream(events []llm.Event) (llm.Response, error) {
 			}
 			finished = ev.Response
 		default:
-			return llm.Response{}, fmt.Errorf("event %d: unknown kind %d", i, ev.Kind)
+			return llm.Response{}, fmt.Errorf("event %d: unknown kind %v", i, ev.Kind)
 		}
 	}
 	if finished == nil {
@@ -358,16 +457,19 @@ func checkBlock(b llm.Block, inBlock bool, kind llm.EventKind, text, input []byt
 		if b.ID != started.ID || b.Name != started.Name {
 			return fmt.Errorf("tool use %s/%s differs from its start %s/%s", b.ID, b.Name, started.ID, started.Name)
 		}
-		var want, got bytes.Buffer
-		if err := json.Compact(&want, b.Input); err != nil {
-			return fmt.Errorf("tool input is not valid JSON: %w", err)
+		if !json.Valid(b.Input) {
+			return fmt.Errorf("tool input %q is not valid JSON", b.Input)
+		}
+		want := canonicalJSON(b.Input)
+		if len(input) == 0 && string(want) != "{}" {
+			return fmt.Errorf("tool input %s was not streamed as input deltas", want)
 		}
 		if len(input) > 0 {
-			if err := json.Compact(&got, input); err != nil {
-				return fmt.Errorf("tool input deltas are not valid JSON together: %w", err)
+			if !json.Valid(input) {
+				return fmt.Errorf("tool input deltas %q are not valid JSON together", input)
 			}
-			if !bytes.Equal(want.Bytes(), got.Bytes()) {
-				return fmt.Errorf("tool input %s differs from its deltas %s", want.Bytes(), got.Bytes())
+			if got := canonicalJSON(input); !bytes.Equal(want, got) {
+				return fmt.Errorf("tool input %s differs from its deltas %s", want, got)
 			}
 		}
 	case llm.Opaque:

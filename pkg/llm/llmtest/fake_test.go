@@ -2,7 +2,7 @@ package llmtest_test
 
 import (
 	"errors"
-	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -84,7 +84,7 @@ func TestFake(t *testing.T) {
 		t.Fatalf("recorded %d requests, want 2", len(got))
 	}
 	for i, want := range []llm.Request{want1, want2} {
-		if fmt.Sprintf("%#v", got[i]) != fmt.Sprintf("%#v", want) {
+		if !reflect.DeepEqual(got[i], want) {
 			t.Errorf("request %d changed after the fact:\n got %#v\nwant %#v", i, got[i], want)
 		}
 	}
@@ -104,6 +104,34 @@ func TestFake(t *testing.T) {
 	}
 	if !rec.failed {
 		t.Error("running out of replies did not fail the test")
+	}
+}
+
+// Err and After script a failure after a number of events; Remaining counts
+// the replies not used yet.
+func TestFakeFailsAfterEvents(t *testing.T) {
+	t.Parallel()
+	reply := llmtest.Text("one two three four five six")
+	reply.Err, reply.After = llm.ErrRateLimited, 2
+	fake := llmtest.NewFake(t, reply, llmtest.Text("unused"))
+
+	var got []llm.EventKind
+	var gotErr error
+	for ev, err := range fake.Generate(t.Context(), llm.Request{}) {
+		if err != nil {
+			gotErr = err
+			break
+		}
+		got = append(got, ev.Kind)
+	}
+	if !errors.Is(gotErr, llm.ErrRateLimited) {
+		t.Errorf("err = %v, want ErrRateLimited", gotErr)
+	}
+	if want := []llm.EventKind{llm.EventTextDelta, llm.EventTextDelta}; !reflect.DeepEqual(got, want) {
+		t.Errorf("events = %v, want %v before the failure", got, want)
+	}
+	if fake.Remaining() != 1 {
+		t.Errorf("Remaining = %d, want 1", fake.Remaining())
 	}
 }
 

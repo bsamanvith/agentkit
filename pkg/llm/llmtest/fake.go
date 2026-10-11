@@ -14,8 +14,10 @@ package llmtest
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"iter"
+	"slices"
 	"sync"
 	"testing"
 	"unicode/utf8"
@@ -37,7 +39,9 @@ type Reply struct {
 	After int
 	// Stall makes the stream stop after its first event and wait until the
 	// context is done, then fail with the context's error. It stands for a
-	// model that is slow, and is how cancellation is tested.
+	// model that is slow, and is how cancellation is tested. For a replay
+	// server it means: go quiet only after the first event that the adapter
+	// turns into an [llm.Event], since the suite cancels when it sees one.
 	Stall bool
 }
 
@@ -53,6 +57,9 @@ func Text(s string) Reply {
 func ToolCalls(calls ...llm.ToolUse) Reply {
 	blocks := make([]llm.Block, len(calls))
 	for i, c := range calls {
+		if len(c.Input) == 0 {
+			c.Input = json.RawMessage(`{}`) // a call without arguments has an empty object as input
+		}
 		blocks[i] = c
 	}
 	return Reply{Response: llm.Response{
@@ -84,7 +91,15 @@ type Fake struct {
 // NewFake returns a Fake that plays back replies. A call beyond the last
 // reply fails the test through tb and returns [ErrNoReply].
 func NewFake(tb testing.TB, replies ...Reply) *Fake {
-	return &Fake{tb: tb, replies: replies}
+	return &Fake{tb: tb, replies: slices.Clone(replies)}
+}
+
+// Remaining returns how many scripted replies have not been used. A test that
+// expects the code under test to use all of them asserts it is zero.
+func (f *Fake) Remaining() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.replies) - f.next
 }
 
 // Requests returns copies of the requests received so far, oldest first.
@@ -100,7 +115,9 @@ func (f *Fake) Requests() []llm.Request {
 }
 
 // Generate records req and streams the next scripted reply. It never modifies
-// req. The context is checked before every event.
+// req. The context is checked before every event. Unlike a real model, the Fake
+// takes its reply and records the request when Generate is called, and the
+// sequence it returns replays that reply every time it is iterated.
 func (f *Fake) Generate(ctx context.Context, req llm.Request) iter.Seq2[llm.Event, error] {
 	f.tb.Helper()
 	f.mu.Lock()

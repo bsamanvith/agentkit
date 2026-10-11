@@ -3,7 +3,7 @@ id: T030
 title: "pkg/runner: run agents with persistence"
 epic: E05
 status: todo
-depends_on: [T019, T022, T024, T028]
+depends_on: [T019, T022, T024, T028, T029]
 ---
 
 # T030: `pkg/runner`
@@ -27,8 +27,9 @@ The component that runs agents ([E05 decisions](E05-store-runner.md)): the only 
 - In-process context cache per conversation, keyed by the log position it was built from, appended to and never invalidated (the log only grows); bounded by an LRU.
 - `Resume`: a run whose stored transcript ends on a user message continues with `harness.Input{Transcript}` and no message.
 - Implements `agentstep.TranscriptSaver` (`Load(ctx, runID, path)`, `Append(ctx, runID, path, msgs)`) on top of `ConversationStore`, so agent steps in flows persist through the store, and runs `agentsteptest.RunSaver` against it.
+- Read T028's "For T030 (runner)" Notes first: sequence assignment, the cache update, leases, transitions (not idempotent), errors.
 - **Decided (planner), when stopped runs continue.** The runner owns the policy; `RunStore` (T028) holds the statuses.
-  - **Recovery after a crash or deploy:** `runner.Recover(ctx)` lists `ListResumable` runs, claims each (the lease stops two replicas resuming the same run) and resumes it, with bounded concurrency. `agentkit serve` runs it at startup and then periodically once the runner is a component. A recovered agent step continues from its last saved turn.
+  - **Recovery after a crash or deploy:** `runner.Recover(ctx)` lists runs across tenants with `store.Admin.ListResumableAll` (T029), and for each puts its tenant in `ctx`, then claims each (the lease stops two replicas resuming the same run) and resumes it, with bounded concurrency. `agentkit serve` runs it at startup and then periodically once the runner is a component. A recovered agent step continues from its last saved turn.
   - **Retry policy:** a run that fails with an error matching `llm.IsRetryable` becomes `failed` + retryable with `NextAttemptAt` = now + exponential backoff with jitter (from the injected clock), up to a maximum number of attempts, then `failed` for good. `ErrBudgetExceeded`, `ErrRefused`, `ErrMaxTokens`, `ErrShapeChanged` and invalid-input errors are not retried automatically; an operator can resume them explicitly (for example with a bigger budget). `llm.ErrContextTooLong` goes to compaction (T031).
   - **Approvals:** a flow that suspends sets the run to `suspended` with its pending paths and releases the lease. `runner.Decide(ctx, runID, path, flow.Decision)` records the decision and resumes the run; a rejection makes it `rejected` (final).
   - **One unfinished run per conversation:** `Run(ctx, convID, message)` fails with `ErrRunUnfinished` (carrying the run ID) while the conversation has an unfinished run; the caller resumes it or calls `runner.Cancel(ctx, runID)`. `Cancel` makes the run `canceled`; if the conversation ends on a user message (the run stopped before the model answered), it appends a marker assistant message saying the run was canceled, so the next run sends a valid, alternating conversation. Nothing is edited.

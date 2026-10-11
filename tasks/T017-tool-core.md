@@ -2,7 +2,7 @@
 id: T017
 title: "pkg/tool: definition, Func, registry, middleware, conformance suite"
 epic: E03
-status: review
+status: done
 depends_on: [T001, T002]
 ---
 

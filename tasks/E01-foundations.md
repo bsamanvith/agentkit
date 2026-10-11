@@ -11,7 +11,7 @@ Put [docs/ENGINEERING.md](../docs/ENGINEERING.md) into practice. Split in two ph
 ## Phase 1: M0, before any feature
 
 - [ ] [T001](T001-tooling-and-lint.md) *(review: CI run pending)* Toolchain, Makefile, lint, architecture test, minimal CI
-- [ ] [T002](T002-testkit.md) Test helpers (testkit) *(in review)*
+- [x] [T002](T002-testkit.md) Test helpers (testkit)
 
 ## Phase 2: M5, after E03 (real components exist)
 
@@ -37,8 +37,8 @@ T001 ─ T002 ─ (E03: T017 ─ T018) ─ T003 ─ T005 ─ T006 ─ T007 ─ T
 
 - E01 Foundations (this file).
 - [E02](E02-agent-skills.md) Agent skills, growing alongside the code.
-- [E03](E03-tool-core-and-mcp.md) Tool core and MCP server (M1, M2). **Start here after T001/T002.**
-- E04 `llm` + Anthropic adapter + in-process harness (M3). *(to be planned)*
+- [E03](E03-tool-core-and-mcp.md) Tool core and MCP server (M1, M2).
+- [E04](E04-llm-harness-flow.md) `llm`, Anthropic adapter, harness and `flow` (M3). **Current focus.**
 - E05 `store` SQLite, runs and checkpoints (M4). *(to be planned)*
 - E06 Tool protocol over ConnectRPC, remote registry, `split` topology (M6). *(to be planned)*
 - E07 Credentials backends (`secrets` topology, kind). *(to be planned)*

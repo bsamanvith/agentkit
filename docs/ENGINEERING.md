@@ -15,8 +15,8 @@ Build the product from the inside out. Add infrastructure when there is somethin
 |---|---|---|---|
 | **M0** | `make check`, lint, architecture test, test helpers, minimal CI | [E01](../tasks/E01-foundations.md) (T001, T002) | Every later change is checked the same way |
 | **M1** | `pkg/tool`: definition, `tool.Func[In, Out]`, registry, middleware, conformance suite | [E03](../tasks/E03-tool-core-and-mcp.md) (T017) | The core abstraction and all conventions on real code |
-| **M2** | MCP server over stdio for any registry | E03 (T018) | Claude Code / Codex can call our Go tools: the first real end-to-end test |
-| **M3** | `llm` + Anthropic adapter + in-process harness | to plan | An agent loop runs |
+| **M2** | MCP server over stdio for any registry | E03 (T018) | Claude Code / Codex can call our Go tools: the first real end-to-end test. Independent of M3; can run in parallel |
+| **M3** | `llm` + Anthropic adapter + harness + `pkg/flow` | [E04](../tasks/E04-llm-harness-flow.md) (T020-T025) | An agent loop and a multi-step flow run, with checkpoints and resume. **Current focus** |
 | **M4** | `store` (SQLite) | to plan | Runs persist and resume |
 | **M5** | `pkg/component`, `cmd/agentkit`, `fakellm`, image, Compose, smoke tests, full CI | E01 (T003-T008) | Mix-and-match deployment |
 | **M6** | Tool protocol over ConnectRPC; remote registry | to plan | The `split` topology |

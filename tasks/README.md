@@ -36,7 +36,9 @@ An epic uses the same fields minus `epic`, and lists its tasks in the body.
 
 ## Lifecycle
 
-1. `todo` -> `in-progress` when someone starts (update in the same branch as the work).
-2. `review` when the PR is open.
-3. `done` when merged: tick the criteria, update the epic's checklist.
+Work is committed and pushed directly to `main`.
+
+1. `todo` -> `in-progress` when someone starts.
+2. `review` while the work is pushed but something in the criteria is still being verified (for example the first CI run).
+3. `done` once it is on `main` with every criterion ticked: update the epic's checklist in the same commit.
 4. `blocked`: add a line under Notes saying on what.

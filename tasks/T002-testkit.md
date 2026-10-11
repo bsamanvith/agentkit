@@ -2,7 +2,7 @@
 id: T002
 title: Test helpers (testkit)
 epic: E01
-status: review
+status: done
 depends_on: [T001]
 ---
 

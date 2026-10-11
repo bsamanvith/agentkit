@@ -50,16 +50,28 @@ The agent loop: **plan -> model -> tools -> observe**.
 - Step and token budgets.
 - Pre- and post-tool-call hooks.
 - Depends only on interfaces: `Model`, `ToolRegistry`, `Memory`, `Store`.
+- Append-only conversation history: model output (including thinking blocks) is passed back unchanged, never edited.
+
+### `flow`
+
+Multi-step and multi-agent execution on top of the harness, as plain Go plus a few combinators. No graph DSL.
+
+- `Step` interface: anything that turns `State` into new `State`. An agent run is a `Step`; so is a plain Go function.
+- Combinators: `Sequence`, `Parallel` (fan out, merge), `Loop` (until a condition or a limit), `Route` (pick the next step from output), `Approve` (pause until a human decides).
+- The runner checkpoints `State` after every step through a `Checkpointer` interface (in memory first, `store` later). Resume loads the last checkpoint and skips finished steps; `Approve` is a checkpoint that waits.
+- Every step emits the same event type, so logs, UI and the audit trail see one stream.
+- A declarative (config-defined) graph is built only if it is ever needed, on top of these combinators. Durable-execution engines (DBOS, Temporal, Restate) stay an option for runs that must survive for days, behind the same `Checkpointer` interface.
 
 ### `llm`
 
 Provider-agnostic `Model` interface. The harness never sees provider-specific types.
 
-- Adapters:
-  - Anthropic (Claude) first.
-  - OpenAI-compatible APIs (OpenAI, Grok, Groq, vLLM, Ollama).
-  - Later: Bedrock, Gemini.
+- Native adapters, each on the provider's official SDK:
+  - Anthropic (Claude) first, with full feature support (thinking blocks, prompt caching, effort, refusal stop reasons).
+  - OpenAI-compatible APIs (OpenAI, Grok, Groq, vLLM, Ollama). This adapter also covers gateways such as the LiteLLM proxy or OpenRouter, for deployments that want one; we never require a gateway.
+  - Later: Gemini, Bedrock.
 - Handles streaming, provider tool-call formats, and retries.
+- Provider features with no neutral equivalent are carried as typed, provider-scoped options and opaque blocks, never dropped silently.
 
 ### `tool`
 
@@ -149,6 +161,10 @@ Details: [ENGINEERING.md §1.5](ENGINEERING.md#15-components-mix-and-match-deplo
 | MCP library | Official Go SDK (`github.com/modelcontextprotocol/go-sdk`) |
 | JSON Schema | `github.com/google/jsonschema-go` (same library the MCP SDK uses): derive schemas from Go structs and validate input |
 | Go version | `go 1.26.0` minimum in `go.mod` (oldest supported release); `toolchain go1.27.2` for development |
+| Agent loop | Our own `pkg/harness`, not an agent framework (Google ADK, Genkit, Eino). Frameworks bring their own model, tool and session types; ADK Go has no Claude support and its model interface is built on Gemini types; Eino is pre-1.0 |
+| Workflows | Our own `pkg/flow` (sequence, parallel, loop, route, approve) with a checkpoint at every step |
+| Model gateways | Native adapters; LiteLLM-style gateways work through the OpenAI-compatible adapter, never required |
+| Other agent frameworks | Integrations, not foundations: ADK, Genkit and Eino agents use our tools through our MCP server; a Claude adapter for ADK may ship later as a separate optional module |
 | Go modules | One module for the whole repo; split out a nested module only if a backend's dependencies cause problems for users |
 | Deployment | One `agentkit` binary/image; components and local-vs-remote wiring chosen by config |
 
@@ -159,7 +175,7 @@ Build the product from the inside out, and add infrastructure when there is some
 1. **M0 Tooling**: `make check`, lint, architecture test, minimal CI.
 2. **M1 `pkg/tool`**: tool definition, `tool.Func[In, Out]`, registry, middleware, conformance suite.
 3. **M2 MCP server over stdio**: any registry becomes an MCP server that Claude Code or Codex can use. First real end-to-end test.
-4. **M3 `llm` + Anthropic adapter + in-process harness**: run an agent loop from a small CLI.
+4. **M3 `llm` + Anthropic adapter + harness + `flow`**: run an agent loop and a multi-step flow from a small CLI. **Current focus** (E04); M2 can proceed in parallel.
 5. **M4 `store` (SQLite)**: runs and checkpoints persist; resume works.
 6. **M5 Components and containers**: `pkg/component`, `cmd/agentkit`, `fakellm`, image, Compose, smoke tests.
 7. **M6 Tool protocol over ConnectRPC**: remote registry; the `split` topology.

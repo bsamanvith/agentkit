@@ -10,7 +10,7 @@ The first real feature. `pkg/tool` is what every other part depends on (harness,
 
 ## Tasks
 
-- [ ] [T017](T017-tool-core.md) `pkg/tool`: definition, `tool.Func[In, Out]`, registry, middleware, conformance suite *(in review)*
+- [x] [T017](T017-tool-core.md) `pkg/tool`: definition, `tool.Func[In, Out]`, registry, middleware, conformance suite
 - [ ] [T018](T018-mcp-stdio-server.md) MCP server over stdio for any `tool.Registry`
 
 Depends on [E01](E01-foundations.md) T001 and T002.

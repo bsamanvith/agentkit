@@ -22,6 +22,15 @@ func ModuleRules() Rules {
 		TestOnly: []string{
 			"github.com/google/go-cmp/cmp",
 		},
+		ModuleImports: map[string][]string{
+			// The store's interfaces and backends know messages, flow
+			// checkpoints, tenants and time, and never the harness: the
+			// runner turns harness events into entries (E05).
+			"pkg/store": {
+				"pkg/llm", "pkg/flow", "pkg/flow/flowtest", "pkg/tenancy",
+				"pkg/clock", "pkg/clock/clocktest",
+			},
+		},
 		Banned: []string{
 			"github.com/golang/mock",
 			"go.uber.org/mock",

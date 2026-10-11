@@ -37,7 +37,7 @@ From the groundwork handoff; details in those task files' "For T028/T030" Notes.
 
 - [x] [T019](T019-clock.md) `pkg/clock` and fake clock (from E01; the runner and store need it, and the harness switches from `WithNow`)
 - [x] [T027](T027-tenancy.md) `pkg/tenancy`: tenant in `ctx`
-- [ ] [T028](T028-store-interfaces.md) `pkg/store`: interfaces, in-memory store, `storetest` conformance suites
+- [x] [T028](T028-store-interfaces.md) `pkg/store`: interfaces, in-memory store, `storetest` conformance suites
 - [ ] [T029](T029-store-sqlite.md) `pkg/store/sqlite`: schema, migrations, all suites
 - [ ] [T030](T030-runner.md) `pkg/runner`: run agents with persistence (entries, context, cache, lease, resume)
 - [ ] [T031](T031-compaction.md) Compaction in the runner (reactive and proactive)

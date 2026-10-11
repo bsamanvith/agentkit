@@ -31,6 +31,11 @@ type Rules struct {
 	TestOnly []string
 	// Banned lists import path prefixes no file may import, tests included.
 	Banned []string
+	// ModuleImports lists, per package tree (a path relative to Module and
+	// every package under it), the module packages its files may import,
+	// tests included. Packages of the tree itself are always allowed. A tree
+	// with no entry may import any module package.
+	ModuleImports map[string][]string
 }
 
 // Violation is one broken rule.
@@ -51,6 +56,7 @@ const (
 	RuleNoTestHelpers     = "no-test-helpers-in-non-test-code"
 	RuleThirdPartyAllowed = "third-party-allowlist"
 	RuleBanned            = "banned-import"
+	RuleModuleAllowed     = "module-import-allowlist"
 )
 
 // Check returns every violation of the rules in pkgs, sorted for stable output.
@@ -94,6 +100,15 @@ func Check(rules Rules, pkgs []Package) []Violation {
 			check3p(imp, true)
 		}
 
+		if tree, ok := treeOf(rules.ModuleImports, rel); ok {
+			for _, imp := range concat(p.Imports, p.TestImports, p.XTestImports) {
+				impRel, internal := relativeOK(rules.Module, imp)
+				if internal && !within(impRel, tree) && !slices.Contains(rules.ModuleImports[tree], impRel) {
+					add(RuleModuleAllowed, rel, imp)
+				}
+			}
+		}
+
 		for _, imp := range concat(p.Imports, p.TestImports, p.XTestImports) {
 			for _, b := range rules.Banned {
 				if imp == b || strings.HasPrefix(imp, b+"/") {
@@ -106,6 +121,22 @@ func Check(rules Rules, pkgs []Package) []Violation {
 	out = dedupe(out)
 	sort.Slice(out, func(i, j int) bool { return out[i].String() < out[j].String() })
 	return out
+}
+
+// treeOf returns the longest key of trees that rel is in.
+func treeOf(trees map[string][]string, rel string) (string, bool) {
+	best, found := "", false
+	for tree := range trees {
+		if within(rel, tree) && len(tree) >= len(best) {
+			best, found = tree, true
+		}
+	}
+	return best, found
+}
+
+// within reports whether rel is tree or a package under it.
+func within(rel, tree string) bool {
+	return rel == tree || strings.HasPrefix(rel, tree+"/")
 }
 
 // isTestHelper reports whether a module package is itself test support code

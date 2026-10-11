@@ -22,6 +22,10 @@ func rules() archtest.Rules {
 		ThirdParty: map[string][]string{"pkg/a": {"example.org/lib"}},
 		TestOnly:   []string{"example.org/cmp"},
 		Banned:     []string{"go.uber.org/mock"},
+		ModuleImports: map[string][]string{
+			"pkg/store":        {"pkg/llm"},
+			"pkg/store/sqlite": {"pkg/llm", "pkg/clock"},
+		},
 	}
 }
 
@@ -92,6 +96,29 @@ func TestRules(t *testing.T) {
 				Imports:      []string{"context", "example.org/lib", mod + "/pkg/b", mod + "/internal/x"},
 				TestImports:  []string{"testing", "example.org/cmp"},
 				XTestImports: []string{mod + "/pkg/a/atest", mod + "/internal/testkit"},
+			},
+		},
+		{
+			name: "store imports the harness",
+			pkg: archtest.Package{
+				ImportPath:   mod + "/pkg/store/memory",
+				Imports:      []string{mod + "/pkg/store", mod + "/pkg/llm", mod + "/pkg/harness"},
+				XTestImports: []string{mod + "/pkg/store/storetest", mod + "/pkg/harness/sub"},
+			},
+			want: []archtest.Violation{
+				{Rule: archtest.RuleModuleAllowed, Package: "pkg/store/memory", Import: mod + "/pkg/harness"},
+				{Rule: archtest.RuleModuleAllowed, Package: "pkg/store/memory", Import: mod + "/pkg/harness/sub"},
+			},
+		},
+		{
+			name: "the longest tree's allowlist applies",
+			pkg: archtest.Package{
+				ImportPath: mod + "/pkg/store/sqlite/migrate",
+				Imports:    []string{mod + "/pkg/clock", mod + "/pkg/store", mod + "/pkg/tool", "context"},
+			},
+			want: []archtest.Violation{
+				{Rule: archtest.RuleModuleAllowed, Package: "pkg/store/sqlite/migrate", Import: mod + "/pkg/store"},
+				{Rule: archtest.RuleModuleAllowed, Package: "pkg/store/sqlite/migrate", Import: mod + "/pkg/tool"},
 			},
 		},
 		{

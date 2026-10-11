@@ -1,7 +1,7 @@
 # agentkit: Engineering Plan
 
-> Status: proposal. How we design modules, how we test them, how we run the system locally, and the agent skills that encode all of it.
-> The work to put this in place is tracked in [E01 foundations](../tasks/E01-foundations.md) and [E02 agent skills](../tasks/E02-agent-skills.md).
+> Status: agreed and in use. How we design modules, how we test them, how we run the system locally, and the agent skills that encode all of it.
+> M0 put the tooling and test rules in place ([E01](../tasks/E01-foundations.md)); `pkg/tool` ([E03](../tasks/E03-tool-core-and-mcp.md)) is the first package built to these rules and the reference example. Skills: [E02](../tasks/E02-agent-skills.md).
 
 This complements [PLAN.md](PLAN.md) (what we build) with how we build it.
 
@@ -13,8 +13,8 @@ Build the product from the inside out. Add infrastructure when there is somethin
 
 | Milestone | What | Epic | Proves |
 |---|---|---|---|
-| **M0** | `make check`, lint, architecture test, test helpers, minimal CI | [E01](../tasks/E01-foundations.md) (T001, T002) | Every later change is checked the same way |
-| **M1** | `pkg/tool`: definition, `tool.Func[In, Out]`, registry, middleware, conformance suite | [E03](../tasks/E03-tool-core-and-mcp.md) (T017) | The core abstraction and all conventions on real code |
+| **M0** *(done)* | `make check`, lint, architecture test, test helpers, minimal CI | [E01](../tasks/E01-foundations.md) (T001, T002) | Every later change is checked the same way |
+| **M1** *(done)* | `pkg/tool`: definition, `tool.Func[In, Out]`, registry, middleware, conformance suite | [E03](../tasks/E03-tool-core-and-mcp.md) (T017) | The core abstraction and all conventions on real code |
 | **M2** | MCP server over stdio for any registry | E03 (T018) | Claude Code / Codex can call our Go tools: the first real end-to-end test. Independent of M3; can run in parallel |
 | **M3** | `llm` + Anthropic adapter + harness + `pkg/flow` | [E04](../tasks/E04-llm-harness-flow.md) (T020-T025) | An agent loop and a multi-step flow run, with checkpoints and resume. **Current focus** |
 | **M4** | `store` (SQLite) | to plan | Runs persist and resume |
@@ -350,6 +350,9 @@ Decided:
 - Compose is the default local runtime; kind is opt-in and comes with credentials.
 - ConnectRPC only for our protocol; official MCP Go SDK; `google/jsonschema-go` for schemas.
 - Go: `go 1.26.0` minimum, `toolchain go1.27.2`.
+- Our own harness and `pkg/flow` rather than an agent framework; native model adapters; ADK, Genkit and Eino are integrations through MCP ([PLAN.md decisions](PLAN.md#decisions)).
+- Golden files are rewritten with `make golden` (env `AGENTKIT_UPDATE_GOLDEN=1`), not a `-update` flag, so it works across `./...`.
+- Work is committed straight to `main` after `make check`; CI runs it again on every push.
 
 Open:
 - Image size budget: set after measuring the first real image (M5).

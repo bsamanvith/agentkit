@@ -1,11 +1,11 @@
 # agentkit: Scope and Module Plan
 
-> Status: planning. This document captures the agreed scope and module shape. Nothing here is implemented yet.
+> Status: agreed scope and module shape, being implemented in the [build order](#build-order). Done so far: M0 (tooling) and M1 (`pkg/tool`). Current focus: M3 ([E04](../tasks/E04-llm-harness-flow.md)).
 
 ## Goals
 
 - **Go** for fast startup, concurrency, and efficiency.
-- **Lightweight containers**: distroless images of roughly 10-20 MB, startup under 50 ms.
+- **Lightweight containers**: distroless images, startup under 50 ms. Size target 10-20 MB; the enforced budget is set after measuring the first real image (M5).
 - **Modular**: every package is usable on its own as a library, or run as a server.
 
 ### Design rules
@@ -172,8 +172,8 @@ Details: [ENGINEERING.md §1.5](ENGINEERING.md#15-components-mix-and-match-deplo
 
 Build the product from the inside out, and add infrastructure when there is something real for it to run. Detail and task links: [ENGINEERING.md §0](ENGINEERING.md#0-build-order).
 
-1. **M0 Tooling**: `make check`, lint, architecture test, minimal CI.
-2. **M1 `pkg/tool`**: tool definition, `tool.Func[In, Out]`, registry, middleware, conformance suite.
+1. **M0 Tooling**: `make check`, lint, architecture test, minimal CI. *Done.*
+2. **M1 `pkg/tool`**: tool definition, `tool.Func[In, Out]`, registry, middleware, conformance suite. *Done.*
 3. **M2 MCP server over stdio**: any registry becomes an MCP server that Claude Code or Codex can use. First real end-to-end test.
 4. **M3 `llm` + Anthropic adapter + harness + `flow`**: run an agent loop and a multi-step flow from a small CLI. **Current focus** (E04); M2 can proceed in parallel.
 5. **M4 `store` (SQLite)**: runs and checkpoints persist; resume works.

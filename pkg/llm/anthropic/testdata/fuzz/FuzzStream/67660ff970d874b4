@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("event:content_block_start\ndata:{\"type\":\"content_block_start\"}\n\nevent:message\ndata:{\"type\":\"message_stop\"}\n\n")

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"iter"
+	"net/http"
 	"reflect"
 	"testing"
 
@@ -168,6 +169,36 @@ func TestStreamCutShortIsOverloaded(t *testing.T) {
 	}
 	if len(events) == 0 {
 		t.Error("no event before the stream broke off")
+	}
+}
+
+// A block start the API sent without a block is a garbled stream, not an
+// empty Opaque block (whose data would not be JSON).
+func TestBlockStartWithoutBlockIsOverloaded(t *testing.T) {
+	t.Parallel()
+	for name, start := range map[string]string{
+		"missing":  `{"type":"content_block_start","index":0}`,
+		"null":     `{"type":"content_block_start","index":0,"content_block":null}`,
+		"no type":  `{"type":"content_block_start","index":0,"content_block":{}}`,
+		"no index": `{"type":"content_block_start"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			body := "event:content_block_start\ndata:" + start + "\n\n" +
+				"event:message_stop\ndata:{\"type\":\"message_stop\"}\n\n"
+			m, err := anthropicllm.New(
+				anthropicllm.WithBaseURL("http://replay.invalid"),
+				anthropicllm.WithHTTPClient(&http.Client{Transport: sseBody(body)}),
+				anthropicllm.WithClientOptions(option.WithAPIKey("test-key"), option.WithMaxRetries(0)),
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			events, err := drain(m.Generate(t.Context(), userText("Hello.")))
+			if !errors.Is(err, llm.ErrOverloaded) {
+				t.Errorf("err = %v, want ErrOverloaded; events %#v", err, events)
+			}
+		})
 	}
 }
 

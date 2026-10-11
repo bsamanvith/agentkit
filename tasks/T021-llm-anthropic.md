@@ -57,6 +57,7 @@ Claude is the first provider, through the official `github.com/anthropics/anthro
 - **Max tokens**: `DefaultMaxTokens` = 64000 when the request leaves it zero (the claude-api guidance for streaming; thinking counts toward it). `WithMaxTokens` changes it.
 - **Retries**: the SDK default (2 retries, honoring `retry-after`) stays on. The conformance and error tests turn them off (`option.WithMaxRetries(0)`) so each error fixture is served once; `TestRetriesStayOn` checks the default retries a 529.
 - The SDK honors `ANTHROPIC_BASE_URL`; `WithBaseURL` overrides it, and every unit test sets it.
+- **A `content_block_start` without a `content_block`** (missing, null, or without a `type`) is a garbled stream: `read` returns an error, which `classify` maps to `ErrOverloaded` like any other malformed event (an out-of-order index, a delta for a block that is not open). It used to start an Opaque block that never got content, so `Opaque.Data` was empty, not JSON. CI's 10 s `make fuzz` found it intermittently (runs 38164093662 and 38165450005); the reproducer is kept as `testdata/fuzz/FuzzStream/67660ff970d874b4` and `TestBlockStartWithoutBlockIsOverloaded` covers the variants. Three further 60 s fuzz runs were clean.
 
 ### For T022 and T024
 

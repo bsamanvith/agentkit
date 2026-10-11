@@ -64,9 +64,12 @@ func (r *reader) read(ev anthropic.BetaRawMessageStreamEventUnion) ([]llm.Event,
 		if ev.Index != r.next {
 			return nil, fmt.Errorf("anthropic: content block %d started, want %d", ev.Index, r.next)
 		}
+		cb := ev.ContentBlock
+		if cb.Type == "" {
+			return nil, fmt.Errorf("anthropic: content block %d started without a content_block", ev.Index)
+		}
 		r.next++
 		b := &block{index: ev.Index}
-		cb := ev.ContentBlock
 		switch cb.Type {
 		case "text":
 			b.kind = kindText

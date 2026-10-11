@@ -14,6 +14,8 @@ The harness reads time only through `WithNow` because `pkg/clock` (T019) did not
 
 ## Scope
 
+From the T019 handoff: the clock API is `Now`, `NewTimer`, `NewTicker`, `After`. Keep `WithNow` working or remove it in the same change (not half-way). Test with `clocktest.Fake` (start the code, `WaitForTimers` before `Advance`, one interval at a time). This was deliberately not done in T019.
+
 - `harness.WithClock(clock.Clock)`; `WithNow` kept as a thin deprecated wrapper (or removed if nothing outside the package uses it; check `cmd/`, `pkg/agentstep`, examples).
 - Harness tests use `clocktest.Fake` where they control time.
 

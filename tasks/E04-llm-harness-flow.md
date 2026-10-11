@@ -34,6 +34,7 @@ T021, T022 and T023 can run in parallel once T020 is done (T023 even before). T0
 From the T020 and T022 handoffs. Each becomes its own task when its first real caller appears; until then the detail lives in the linked Notes.
 - Harness ([T022 Deferred](T022-harness-loop.md)): compaction inside a run, a replaceable `Validate`, a between-turns hook, a "model call started" event, JSON wire forms for `Event` and `Record` (needed for the remote harness, M6), continuing after `pause_turn`, retries as an `llm.Model` wrapper.
 - `pkg/llm`: promote `Message.ToolUses()` and `Usage.Add` once a second caller exists.
+- `agentkit flow demo`: its `ErrShapeChanged` message mentions `flow.WithAllowShapeChange`, which the CLI cannot pass. **Decided:** no override flag on a demo; print a CLI hint instead ("the flow's steps changed since this run was checkpointed: start a new run, or finish it with the binary that started it"). Small; do after T003 lands (both touch `cmd/agentkit`).
 - `agentkit flow demo` interleaves text when agents run in parallel. The demo is sequential; fix it with the first parallel demo (prefix lines by step path).
 - `Validate` strictness: answered in T024. Claude accepts a user message mixing tool results and text; the harness keeps rejecting it **on purpose**. Allowing it belongs with the deferred replaceable `Validate` and the between-turns hook (reminder or compaction layers may want it).
 - `pkg/clock` (T019) has landed: switching the harness from `WithNow` is scheduled as [T033](T033-harness-clock.md).

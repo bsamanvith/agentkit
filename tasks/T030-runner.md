@@ -27,6 +27,12 @@ The component that runs agents ([E05 decisions](E05-store-runner.md)): the only 
 - In-process context cache per conversation, keyed by the log position it was built from, appended to and never invalidated (the log only grows); bounded by an LRU.
 - `Resume`: a run whose stored transcript ends on a user message continues with `harness.Input{Transcript}` and no message.
 - Implements `agentstep.TranscriptSaver` (`Load(ctx, runID, path)`, `Append(ctx, runID, path, msgs)`) on top of `ConversationStore`, so agent steps in flows persist through the store, and runs `agentsteptest.RunSaver` against it.
+- **Decided (T032 handoff), flow shape changes:**
+  - `flow.Resume` returns `ErrShapeChanged` before anything runs and writes nothing. The runner reports it as a **distinct, non-retryable run failure**, releases the lease, and leaves the run resumable (by the old code, or by an operator decision).
+  - `flow.WithAllowShapeChange` is passed only on an **explicit operator decision** (a per-resume option), never by default.
+  - **A completed run is never resumed.** The runner checks the run's status in `RunStore` first; for a finished run it reads the final state from the checkpoint (`Checkpointer.Load`) and returns it, without calling `Resume`. So a changed step tree can never make a completed run fail.
+  - `flow.EventWarning` is surfaced in the run's events (`errors.Is` `ErrNoShape`: no fingerprint or one of another version; `ErrShapeChanged`: the opt-in was used). Event observers must tolerate event kinds they do not know.
+  - Custom leaf steps (`agentstep`) count in the fingerprint by **name only**: changing an agent's model or prompt does not change it. Documented in the runner's package docs; operators who want such changes detected put a version in the step name.
 - **Decided (T024 handoff):**
   - **Saved transcripts are not deleted** when a run completes or is rejected. They are the conversation log (append-only, used for history, audit and billing). Removing old data is a separate retention policy per tenant, planned later; it never runs as a side effect of a run finishing.
   - **Agent step output holds a reference, not the transcript.** With a store-backed saver, `agentstep.Output` keeps the answer plus a reference (conversation ID and the sequence number it ends at), so flow checkpoints stay small however many turns an agent takes. The memory and file savers keep the current behavior. This changes `pkg/agentstep`: owned by this task, keeping its tests and `RunSaver` green.
@@ -38,6 +44,9 @@ The component that runs agents ([E05 decisions](E05-store-runner.md)): the only 
 - [ ] Two runners on one conversation: one wins the lease, the other gets `ErrLeased`; a stale writer that loses a sequence race stops without overwriting.
 - [ ] The cache returns the same context as a cold load after every append; it never serves entries from another tenant or conversation.
 - [ ] Invariants named and checked after every run (§2.6): stored entries are a prefix-consistent copy of the harness's turn events; the stored context round-trips to the harness transcript; the lease is released on every exit path.
+- [ ] Resuming against a changed step tree fails with a distinct, non-retryable error, writes nothing, releases the lease, and a later resume with the original tree succeeds; with the explicit operator option it proceeds.
+- [ ] A completed run is returned from its checkpoint without `Resume`, even when the current step tree differs.
+- [ ] `flow.EventWarning` reaches the run's event stream; an observer given an unknown event kind does not fail.
 - [ ] The store-backed saver passes `agentsteptest.RunSaver`; an agent step in a flow resumes from it after a simulated crash.
 - [ ] With the store-backed saver, a flow checkpoint after an N-turn agent step holds a reference, not the transcript (its size does not grow with N), and the transcript reads back from the store byte-identical.
 - [ ] Seeded simulation of crashes, retries and concurrent runners against `store/memory`, plus a fuzz target over the seed. Mutation list recorded.

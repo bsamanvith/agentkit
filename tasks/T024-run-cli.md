@@ -157,7 +157,7 @@ These tests build the binary and run it as separate OS processes. They talk to a
 
 ### Follow-ups (not done here)
 
-- The step tree given to `flow.Resume` must match the one that checkpointed; not detected (T032).
+- The step tree given to `flow.Resume` must match the one that checkpointed; detected since T032 (`ErrShapeChanged`).
 - `README.md` and `docs/PLAN.md` still say T024 is next and the adapter's live test is pending; they were outside this task's files.
 - The printer interleaves the text of agents running in parallel; the demo is sequential.
 
@@ -165,4 +165,4 @@ These tests build the binary and run it as separate OS processes. They talk to a
 
 - **flow only checkpoints when a step completes**, and a step that crashes is re-run from the state it started with. An agent step can run for many turns, so on its own a crash would lose every turn and repay for them. `harness.Step` therefore saves its own transcript after every turn, keyed by run id plus step path, through a small interface (memory implementation here; the SQLite store later), and on re-run resumes from it instead of starting over. Test: a step killed after turn 2 of 3 resumes and makes exactly one more model call.
 - **Steps must be safe to re-run.** Tool side effects are not undone on resume: document that tools with side effects should be idempotent (or guarded by a key derived from the tool-use ID). Correction, as documented in `pkg/agentstep`: a turn lost in a crash is asked again and its calls get new tool-use IDs, so the key must come from the run, the step path and the input, not the tool-use ID alone.
-- **The step tree passed to `flow.Resume` must match the one that checkpointed**; this is not detected yet (a shape fingerprint is a candidate follow-up before checkpoints outlive deployments with the SQLite store).
+- **The step tree passed to `flow.Resume` must match the one that checkpointed**; since T032 a changed tree is detected (`flow.Fingerprint`, `ErrShapeChanged`, opt-out `flow.WithAllowShapeChange`).

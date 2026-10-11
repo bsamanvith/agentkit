@@ -20,6 +20,17 @@ Runs and conversations persist and resume. Direction: [PLAN.md `store`](../docs/
 | Agent step transcripts (T024 handoff) | The store-backed saver is the conversation log: transcripts are **not deleted** when a run finishes (retention is a later per-tenant policy), and agent step output holds a **reference** to the conversation instead of the whole transcript, so checkpoints stay small. Both in T030. |
 | Resuming a changed step tree | A shape fingerprint in flow checkpoints (T032), required now that checkpoints outlive deployments. |
 
+## Contracts from T019, T027 and T032 (binding for T028, T029, T030)
+
+From the groundwork handoff; details in those task files' "For T028/T030" Notes.
+
+- **Tenancy.** Every store method starts with `tenant, err := tenancy.Require(ctx)` and returns that error unchanged; `tenant.ID()` is in every key and every `WHERE` clause. Suites check "no tenant → `ErrNoTenant`" and "tenant A cannot touch tenant B".
+  - `tenancy.With` on the same tenant starts a fresh scope and drops an earlier user or request ID (by design): callers re-asserting a tenant call `WithUser`/`WithRequest` after it.
+  - Tenant IDs are case-sensitive: never use a raw ID as a file name (case-insensitive file systems).
+- **Checkpoint shape.** Persist `flow.Checkpoint.Shape` (SQLite: `shape TEXT NOT NULL DEFAULT ''`); an empty value stays empty. `flowtest.RunCheckpointer` fails a store that loses it.
+- **Leases and time.** Leases take a `clock.Clock` (`WithClock`, default `clock.Real()`); expiry is `clock.Now().Add(ttl)`. Compare `Now()` with a deadline; never count ticks (a ticker holds one tick).
+  - Tests: build `clocktest.NewFake`, start the code, `WaitForTimers(ctx, n)` before `Advance`, one interval at a time (`Advance` is one step). The fake is for tests only (abandoned `After` timers stay in its waiting set).
+
 ## Tasks
 
 - [x] [T019](T019-clock.md) `pkg/clock` and fake clock (from E01; the runner and store need it, and the harness switches from `WithNow`)

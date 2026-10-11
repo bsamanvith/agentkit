@@ -19,6 +19,8 @@ The local and single-node backend. It must keep the binary static (distroless im
   - `entries(tenant, conversation, seq, kind, messages, record, run_id, created_at, covers)`, primary key `(tenant, conversation, seq)`, which makes create-if-absent a plain `INSERT`;
   - `runs`, `leases`, `checkpoints`.
   - Messages are stored as `TEXT` holding the exact JSON bytes.
+  - `checkpoints` has `shape TEXT NOT NULL DEFAULT ''` for `flow.Checkpoint.Shape` (an empty value stays empty).
+  - `tenant` is part of every primary key and every query (see the E05 contracts section); tenant IDs are case-sensitive, so compare them as stored, never case-folded.
 - WAL mode and a busy timeout. Concurrent writers from several goroutines and from two processes on one file.
 - Cursors are opaque, encoding `(seq)` or `(created_at, seq)`.
 - Schema written to port column for column to Postgres (no SQLite-only types in the contract).

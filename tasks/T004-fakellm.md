@@ -14,6 +14,9 @@ Local runs and e2e tests must be deterministic and must not need an API key. `fa
 
 ## Scope
 
+Start from what exists: T024's replay end-to-end tests (`cmd/agentkit/e2e_test.go`) already run a local server that replays recorded Claude responses (`testdata/e2e/<scenario>/NN.http`). Extract that server into `cmd/fakellm` rather than writing a second one, so recorded fixtures and scripted replies share one format where possible.
+
+
 - `cmd/fakellm`: HTTP server implementing a subset of the Anthropic Messages API: `POST /v1/messages`, non-streaming and SSE streaming, `tool_use` content blocks.
 - Script format: JSONL in `deploy/local/fakellm/`, each entry = optional match (substring of last user message or tool result) + response (text and/or tool calls). First match wins; a default fallback response.
 - Select a script per request with an `X-Fakellm-Script` header, else the server default (`FAKELLM_SCRIPT`).

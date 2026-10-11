@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "run_id": "r",
+  "status": "suspended",
+  "initial": {
+    "topic": "q3"
+  },
+  "steps": {
+    "review/check[0]/lint": {
+      "topic": "q3",
+      "trail": [
+        "draft",
+        "lint"
+      ]
+    },
+    "review/draft": {
+      "topic": "q3",
+      "trail": [
+        "draft"
+      ]
+    }
+  },
+  "pending": [
+    "review/check[1]/legal"
+  ]
+}

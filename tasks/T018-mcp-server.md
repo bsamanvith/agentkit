@@ -65,6 +65,9 @@ WithStateful()         // default stateless
 WithMaxBodyBytes(n)    // default: the SDK's 4 MiB
 WithMiddleware(mw)     // func(http.Handler) http.Handler; repeatable, first is outermost
 WithLogger(*slog.Logger)
+WithCallTimeout(d)     // cancel a call after d; the client gets an isError result
+WithMaxInFlight(n)     // past n concurrent toolset requests: 503 + Retry-After, before any decoding
+WithSessionTimeout(d)  // stateful mode: close idle sessions
 
 func ServeStdio(ctx, reg tool.Registry, opts ...Option) error
 func ServeTransport(ctx, reg tool.Registry, t mcp.Transport, opts ...Option) error
@@ -83,6 +86,29 @@ var ErrInvalidName, ErrInvalidConfig
 - **`ServeTransport`** is an addition to the spec: `ServeStdio` is a one-line call of it with `mcp.StdioTransport`, and the in-memory test needs a transport parameter.
 - The toolset name rule is duplicated from `pkg/tool` / `pkg/toolset` so the packages stay independent.
 - `FuzzServeHTTP` posts arbitrary paths and bodies at the handler: valid status, no panic.
+
+### Performance and reliability (stress-tested)
+
+Load test: the real server over loopback TCP, 4 shared cores (server and load generator on the same box, so these are floors), tiny `echo` call, stateless mode. The harness was throwaway; `BenchmarkCallTool` in the package is the rerunnable part.
+
+| Load | Result |
+|---|---|
+| `tools/call`, 16 / 64 / 512 concurrent clients | 3.6k / 5.0k / 7.3k req/s, 0 errors; p50 3.9 ms / 12 ms / 64 ms, p99 13 / 36 / 188 ms |
+| `tools/list`, 64 clients | 7.0k req/s |
+| full SDK client sessions (`initialize` + calls), 64 clients | 2.7k calls/s |
+| 128 clients cancelling blocked calls after 5-35 ms, 10 s | 31k cancelled calls; goroutines back to baseline (2) and heap flat afterwards: no leaks |
+| `-race` build, mixed list/call load, 64 clients | no data races |
+| 512 clients with `WithMaxInFlight(64)` | 41% shed as instant 503s; the rest got p50 39 ms (vs 63 ms unlimited), p99 139 ms (vs 178 ms) |
+
+Findings:
+
+- **Our layer is not the cost.** CPU and allocation profiles put `route` and `callHandler` under 1% of allocations. Per stateless request the server allocates about 320 KB / 290 allocs, and 93% of that is inside the SDK (v1.8.0): it builds a fresh buffered `segmentio/encoding` JSON decoder several times per request (`readBatch`, `extractRequestMeta`, `validateRequestMeta`), each with a large buffer. GC is therefore about a third of CPU under load. We cannot fix that without forking the SDK; options if it ever matters: report upstream, or raise `GOGC` / set `GOMEMLIMIT` in the deployment. Stateful mode was not measured (session reuse might allocate less, but it needs session affinity); stateless stays the default.
+- `StreamableHTTPOptions.JSONResponse` (plain JSON instead of SSE framing) made no measurable difference, so the SDK default stays.
+- Memory is stable: heap after GC stays at 3-12 MB at 64-512 clients.
+- Added after the test, because a stuck connector or an overload is the realistic failure: `WithCallTimeout` (cooperative tools only; a tool that ignores its context keeps its goroutine, which the `tool.Tool` contract forbids), `WithMaxInFlight` (cheapest possible load shedding: the check happens before the SDK decodes anything), `WithSessionTimeout`. `examples/mcp-gateway` shows the settings to copy: 30 s call timeout, 512 in flight, and `http.Server` header/idle timeouts and a header size cap (no read/write timeouts, because responses can stream).
+- Not done here, on purpose: per-client rate limiting and auth (middleware, E07), health and readiness endpoints (`Component`, T003), metrics and tracing (observability epic).
+
+Mutation check for these options (each planted alone, each caught): call timeout not applied (`TestCallTimeout`); timeout reported as a protocol error (`TestCallTimeout`); in-flight limit ignored (`TestMaxInFlight`); in-flight slot never released (`TestMaxInFlight`); no `Retry-After` on the 503 (`TestMaxInFlight`).
 
 ### For T003 (wiring)
 

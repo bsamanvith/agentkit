@@ -4,6 +4,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"time"
 )
 
 // Option configures [New] and [ServeStdio].
@@ -15,6 +16,9 @@ type config struct {
 	maxBodyBytes int64 // 0: the SDK default
 	middleware   []func(http.Handler) http.Handler
 	logger       *slog.Logger
+	callTimeout  time.Duration
+	maxInFlight  int
+	sessionIdle  time.Duration
 }
 
 func newConfig(opts []Option) *config {
@@ -51,3 +55,20 @@ func WithMiddleware(mw func(http.Handler) http.Handler) Option {
 // WithLogger sets the logger for unexpected errors, such as a registry
 // failing in a way that is not a tool error (default: discard).
 func WithLogger(l *slog.Logger) Option { return func(c *config) { c.logger = l } }
+
+// WithCallTimeout limits every tool call to d (default: no limit). A call that
+// runs longer has its context cancelled and the client gets an isError result
+// saying so. It only helps tools that honor their context, which the
+// [tool.Tool] contract requires; a tool that ignores it keeps its goroutine.
+func WithCallTimeout(d time.Duration) Option { return func(c *config) { c.callTimeout = d } }
+
+// WithMaxInFlight caps the toolset requests being served at once across all
+// toolsets (default: no cap). Past the cap a request is answered at once with
+// 503 and Retry-After, before any JSON is decoded, so an overload costs almost
+// nothing. It counts HTTP requests, including streams held open in stateful
+// mode. Per-client rate limits belong in a middleware.
+func WithMaxInFlight(n int) Option { return func(c *config) { c.maxInFlight = n } }
+
+// WithSessionTimeout closes a stateful session after d without requests
+// (default: sessions never expire). Only meaningful with [WithStateful].
+func WithSessionTimeout(d time.Duration) Option { return func(c *config) { c.sessionIdle = d } }

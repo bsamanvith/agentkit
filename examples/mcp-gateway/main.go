@@ -80,7 +80,15 @@ func run(ctx context.Context, configPath string) error {
 		return err
 	}
 
-	srv := &http.Server{Addr: cfg.Addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
+	// No ReadTimeout/WriteTimeout: MCP responses can stream. The header and
+	// idle timeouts still stop slow-loris clients from holding connections.
+	srv := &http.Server{
+		Addr:              cfg.Addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       2 * time.Minute,
+		MaxHeaderBytes:    64 << 10,
+	}
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()
 	slog.Info("serving", "addr", cfg.Addr, "base_path", cfg.MCP.BasePath)
@@ -122,7 +130,12 @@ func newHandler(ctx context.Context, cfg config) (http.Handler, error) {
 	for _, p := range problems {
 		slog.Warn("toolset skipped", "toolset", p.Toolset, "err", p.Err)
 	}
-	opts := []server.Option{}
+	opts := []server.Option{
+		// Reliability defaults worth copying: a stuck connector must not pin a
+		// request forever, and overload should shed load instead of queueing.
+		server.WithCallTimeout(30 * time.Second),
+		server.WithMaxInFlight(512),
+	}
 	if cfg.MCP.BasePath != "" {
 		opts = append(opts, server.WithBasePath(cfg.MCP.BasePath))
 	}

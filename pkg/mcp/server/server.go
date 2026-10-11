@@ -34,6 +34,7 @@ type Server struct {
 	listing  []ToolsetInfo // sorted by name
 	handler  http.Handler  // routes, wrapped in the middleware
 	listBody []byte
+	inFlight chan struct{} // nil: unlimited
 }
 
 var _ http.Handler = (*Server)(nil)
@@ -56,7 +57,13 @@ func New(toolsets map[string]tool.Registry, opts ...Option) (*Server, error) {
 		return nil, err
 	}
 
+	if c.maxInFlight < 0 || c.callTimeout < 0 || c.sessionIdle < 0 {
+		return nil, fmt.Errorf("%w: limits and timeouts must not be negative", ErrInvalidConfig)
+	}
 	s := &Server{base: base, toolsets: make(map[string]http.Handler, len(toolsets))}
+	if c.maxInFlight > 0 {
+		s.inFlight = make(chan struct{}, c.maxInFlight)
+	}
 	names := make([]string, 0, len(toolsets))
 	for name := range toolsets {
 		names = append(names, name)
@@ -71,7 +78,7 @@ func New(toolsets map[string]tool.Registry, opts ...Option) (*Server, error) {
 		if reg == nil {
 			return nil, fmt.Errorf("%w: toolset %q has a nil registry", ErrInvalidConfig, name)
 		}
-		srv, n, err := newMCPServer(context.Background(), name, reg, c.logger)
+		srv, n, err := newMCPServer(context.Background(), name, reg, c.logger, c.callTimeout)
 		if err != nil {
 			return nil, err
 		}
@@ -81,6 +88,7 @@ func New(toolsets map[string]tool.Registry, opts ...Option) (*Server, error) {
 				Stateless:                    !c.stateful,
 				MaxRequestBodyBytes:          c.maxBodyBytes,
 				PropagateRequestCancellation: true,
+				SessionTimeout:               c.sessionIdle,
 				Logger:                       c.logger,
 			})
 		s.listing = append(s.listing, ToolsetInfo{Name: name, Tools: n})
@@ -136,6 +144,16 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 	if !found {
 		http.NotFound(w, r)
 		return
+	}
+	if s.inFlight != nil {
+		select {
+		case s.inFlight <- struct{}{}:
+			defer func() { <-s.inFlight }()
+		default:
+			w.Header().Set("Retry-After", "1")
+			http.Error(w, "server busy", http.StatusServiceUnavailable)
+			return
+		}
 	}
 	h.ServeHTTP(w, r)
 }

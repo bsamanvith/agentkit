@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -15,14 +16,14 @@ import (
 
 // newMCPServer builds the MCP server for one toolset and reports how many
 // tools it has. Both the HTTP handler and ServeStdio use it.
-func newMCPServer(ctx context.Context, name string, reg tool.Registry, log *slog.Logger) (*mcp.Server, int, error) {
+func newMCPServer(ctx context.Context, name string, reg tool.Registry, log *slog.Logger, timeout time.Duration) (*mcp.Server, int, error) {
 	defs, err := reg.List(ctx)
 	if err != nil {
 		return nil, 0, fmt.Errorf("toolset %q: listing tools: %w", name, err)
 	}
 	srv := mcp.NewServer(&mcp.Implementation{Name: "agentkit-" + name, Version: "0.1.0"}, &mcp.ServerOptions{Logger: log})
 	for _, def := range defs {
-		if err := addTool(srv, reg, def, log); err != nil {
+		if err := addTool(srv, reg, def, log, timeout); err != nil {
 			return nil, 0, fmt.Errorf("toolset %q: %w", name, err)
 		}
 	}
@@ -31,7 +32,7 @@ func newMCPServer(ctx context.Context, name string, reg tool.Registry, log *slog
 
 // addTool registers one tool with its schemas passed through as raw JSON, so
 // clients see exactly what the registry declared.
-func addTool(srv *mcp.Server, reg tool.Registry, def tool.Definition, log *slog.Logger) (err error) {
+func addTool(srv *mcp.Server, reg tool.Registry, def tool.Definition, log *slog.Logger, timeout time.Duration) (err error) {
 	// The SDK panics on a definition it cannot use; a remote registry could
 	// send one, so turn that into an error.
 	defer func() {
@@ -43,18 +44,28 @@ func addTool(srv *mcp.Server, reg tool.Registry, def tool.Definition, log *slog.
 	if len(def.OutputSchema) > 0 {
 		t.OutputSchema = def.OutputSchema
 	}
-	srv.AddTool(t, callHandler(reg, def, log))
+	srv.AddTool(t, callHandler(reg, def, log, timeout))
 	return nil
 }
 
-func callHandler(reg tool.Registry, def tool.Definition, log *slog.Logger) mcp.ToolHandler {
+func callHandler(reg tool.Registry, def tool.Definition, log *slog.Logger, timeout time.Duration) mcp.ToolHandler {
 	structured := len(def.OutputSchema) > 0
 	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		out, err := reg.Invoke(ctx, def.Name, req.Params.Arguments)
+		callCtx := ctx
+		if timeout > 0 {
+			var cancel context.CancelFunc
+			callCtx, cancel = context.WithTimeout(ctx, timeout)
+			defer cancel()
+		}
+		out, err := reg.Invoke(callCtx, def.Name, req.Params.Arguments)
 		switch {
 		case err == nil:
 		case errors.Is(err, tool.ErrNotFound):
 			return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: fmt.Sprintf("unknown tool %q", def.Name)}
+		case ctx.Err() == nil && callCtx.Err() != nil:
+			// Our own call timeout, not the client leaving: the model should
+			// see that the tool was too slow.
+			return errorResult(fmt.Sprintf("tool %q timed out after %v", def.Name, timeout)), nil
 		case ctx.Err() != nil:
 			// The client went away or the deadline passed; no one is reading
 			// a tool result, and it must not look like the tool failed.
@@ -86,8 +97,8 @@ func errorResult(msg string) *mcp.CallToolResult {
 
 // ServeStdio serves reg as a single MCP server over stdin/stdout until ctx is
 // done or the client disconnects, for desktop clients that launch a local
-// process. It uses the same server construction as [New]. Options other than
-// [WithLogger] do not apply.
+// process. It uses the same server construction as [New]. Only [WithLogger] and
+// [WithCallTimeout] apply.
 func ServeStdio(ctx context.Context, reg tool.Registry, opts ...Option) error {
 	return ServeTransport(ctx, reg, &mcp.StdioTransport{}, opts...)
 }
@@ -99,7 +110,7 @@ func ServeTransport(ctx context.Context, reg tool.Registry, t mcp.Transport, opt
 		return fmt.Errorf("%w: registry is nil", ErrInvalidConfig)
 	}
 	c := newConfig(opts)
-	srv, _, err := newMCPServer(ctx, "stdio", reg, c.logger)
+	srv, _, err := newMCPServer(ctx, "stdio", reg, c.logger, c.callTimeout)
 	if err != nil {
 		return err
 	}

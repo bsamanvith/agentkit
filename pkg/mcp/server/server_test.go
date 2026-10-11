@@ -337,6 +337,11 @@ func TestNewRejects(t *testing.T) {
 	if _, err := server.New(map[string]tool.Registry{"ok": nil}); !errors.Is(err, server.ErrInvalidConfig) {
 		t.Errorf("nil registry: err = %v, want ErrInvalidConfig", err)
 	}
+	for _, opt := range []server.Option{server.WithMaxInFlight(-1), server.WithCallTimeout(-1), server.WithSessionTimeout(-1)} {
+		if _, err := server.New(nil, opt); !errors.Is(err, server.ErrInvalidConfig) {
+			t.Errorf("negative limit: err = %v, want ErrInvalidConfig", err)
+		}
+	}
 	for _, base := range []string{"", "mcp", "/a//b"} {
 		if _, err := server.New(nil, server.WithBasePath(base)); !errors.Is(err, server.ErrInvalidConfig) {
 			t.Errorf("base %q: err = %v, want ErrInvalidConfig", base, err)
@@ -539,4 +544,90 @@ func TestServeStdio(t *testing.T) {
 	_ = cs.Close()
 	cancel()
 	<-done
+}
+
+// holdRegistry has one tool, "hold", that reports it started and then waits
+// for its context or for release.
+func holdRegistry(t testing.TB, started chan<- struct{}, release <-chan struct{}) tool.Registry {
+	return registry(t, fixture(t, "hold", func(ctx context.Context, _ struct{}) (struct{}, error) {
+		started <- struct{}{}
+		select {
+		case <-ctx.Done():
+		case <-release:
+		}
+		return struct{}{}, ctx.Err()
+	}))
+}
+
+func TestCallTimeout(t *testing.T) {
+	t.Parallel()
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	ts := start(t, map[string]tool.Registry{"h": holdRegistry(t, started, release)}, server.WithCallTimeout(50*time.Millisecond))
+	t.Cleanup(func() { close(release) }) // a server that ignores the timeout must not hang the test
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	res, err := connect(t, ts.URL+"/mcp/h", nil).CallTool(ctx, &mcp.CallToolParams{Name: "hold", Arguments: map[string]any{}})
+	if err != nil {
+		t.Fatalf("CallTool: %v, want an isError result saying the tool timed out", err)
+	}
+	if !res.IsError {
+		t.Errorf("result = %+v, want isError", res)
+	}
+}
+
+func TestMaxInFlight(t *testing.T) {
+	t.Parallel()
+	started := make(chan struct{}, 8)
+	release := make(chan struct{})
+	ts := start(t, map[string]tool.Registry{"h": holdRegistry(t, started, release)}, server.WithMaxInFlight(2))
+	released := false
+	releaseOnce := func() {
+		if !released {
+			released = true
+			close(release)
+		}
+	}
+	t.Cleanup(releaseOnce)
+
+	// Fill both slots with calls that stay open.
+	var wg sync.WaitGroup
+	for range 2 {
+		cs := connect(t, ts.URL+"/mcp/h", nil)
+		wg.Go(func() {
+			_, _ = cs.CallTool(t.Context(), &mcp.CallToolParams{Name: "hold", Arguments: map[string]any{}})
+		})
+	}
+	<-started
+	<-started
+
+	post := func() int {
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		defer cancel()
+		req, _ := http.NewRequestWithContext(ctx, "POST", ts.URL+"/mcp/h", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode == http.StatusServiceUnavailable && resp.Header.Get("Retry-After") == "" {
+			t.Error("503 without Retry-After")
+		}
+		return resp.StatusCode
+	}
+	if got := post(); got != http.StatusServiceUnavailable {
+		t.Errorf("request over the limit = %d, want 503", got)
+	}
+	// The listing and unknown paths are not limited.
+	if resp, err := http.Get(ts.URL + "/mcp/"); err != nil || resp.StatusCode != 200 {
+		t.Errorf("listing while busy: %v %v", resp, err)
+	}
+
+	releaseOnce()
+	wg.Wait()
+	// The slot is freed just after the response is sent, so poll briefly.
+	testkit.Eventually(t, 10*time.Second, func() bool { return post() == http.StatusOK })
 }

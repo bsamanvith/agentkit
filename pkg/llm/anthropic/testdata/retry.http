@@ -1,0 +1,6 @@
+HTTP/1.1 529 Site Overloaded
+Content-Type: application/json
+Request-Id: req_replay
+Retry-After-Ms: 0
+
+{"type": "error", "error": {"type": "overloaded_error", "message": "Overloaded"}, "request_id": "req_replay"}

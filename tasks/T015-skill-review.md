@@ -20,10 +20,11 @@ Reviews a diff against our own rules, so review comments are consistent whoever 
 2. Check, in order, citing the doc section for each finding:
    - correctness bugs;
    - boundaries and dependency direction (§1.4), package shape (§1.2), design rules (§1.3), component contract (§1.5);
-   - tests: one per criterion, right tier, black-box, no brittleness (§2);
+   - tests: one per criterion, right tier, black-box, no brittleness (§2); **and whether they would catch a wrong implementation** (below);
    - task file updated; criteria actually covered.
-3. **Optional second opinion**: if another agent CLI is on `PATH` (`codex`, `claude`), run it read-only and non-interactive on the same diff with the same checklist (`references/second-opinion.md` has the exact commands and prompt). Merge its findings, drop duplicates, and verify each one before reporting it. If none is available, skip silently.
-4. Output findings ranked: **blocking** (bug, rule violation, missing test for a criterion) vs **optional** (style, nits). Each with file:line, what is wrong, and the fix.
+3. **Test the tests** (§2.6): for a change with concurrency, state or hostile input, check that invariants are asserted after every run and not only per scenario. Then plant 3 to 5 plausible bugs in the changed code (the bug classes in `write-tests/references/mutation-checklist.md`), run the changed tests, and report every bug that no test catches as **blocking**, with the invariant that would have caught it. Run each changed test `-race -count=50` (`-count=300` if it depends on timing) and report any failure as blocking: a flaky test is a bug in the test.
+4. **Optional second opinion**: if another agent CLI is on `PATH` (`codex`, `claude`), run it read-only and non-interactive on the same diff with the same checklist (`references/second-opinion.md` has the exact commands and prompt). Merge its findings, drop duplicates, and verify each one before reporting it. If none is available, skip silently.
+5. Output findings ranked: **blocking** (bug, rule violation, missing test for a criterion) vs **optional** (style, nits). Each with file:line, what is wrong, and the fix.
 
 `references/checklist.md`: the checklist above in compact form, also usable by humans.
 
@@ -34,6 +35,7 @@ Reviews a diff against our own rules, so review comments are consistent whoever 
 ## Acceptance criteria
 
 - [ ] Run on a branch with planted problems (a `pkg/` → `cmd/` import, a `time.Sleep` in a test, an error-string assertion, a criterion with no test): all four reported as blocking. Fixture branch or patch kept under `.agents/skills/review/testdata/`.
+- [ ] Run on a branch whose tests pass but are weak (a test that still passes with the bug planted; a timing-dependent concurrency test that fails 1 run in 30): both reported as blocking.
 - [ ] Run on a clean change: no blocking findings.
 - [ ] With no second agent installed, the skill completes without errors; with one installed, its findings appear merged and marked by source. Recorded in Notes.
 

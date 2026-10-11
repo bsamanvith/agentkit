@@ -1,0 +1,5 @@
+HTTP/1.1 403 Forbidden
+Content-Type: application/json
+Request-Id: req_replay
+
+{"type": "error", "error": {"type": "permission_error", "message": "Your API key does not have permission to use the specified resource."}, "request_id": "req_replay"}

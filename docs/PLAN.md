@@ -44,15 +44,16 @@ cmd/
 
 ### `harness`
 
-The agent loop: **plan -> model -> tools -> observe**.
+The agent loop: **model -> tools -> results -> model**, until the model answers.
 
 - Streaming of model output and run events.
-- Cancellation via `context.Context`.
-- Parallel tool calls using goroutines.
-- Step and token budgets.
+- Cancellation via `context.Context`; stopping iteration early cancels the model call and the running tools.
+- Parallel tool calls using goroutines, bounded; results go back in one message, in call order.
+- Turn and token budgets.
 - Pre- and post-tool-call hooks.
-- Depends only on interfaces: `Model`, `ToolRegistry`, `Memory`, `Store`.
-- Append-only conversation history: model output (including thinking blocks) is passed back unchanged, never edited.
+- Depends only on two interfaces, `llm.Model` and `tool.Registry`, plus an injected clock. It stores nothing and imports no adapter, so providers, tool backends, storage and tracing all plug in from other packages.
+- Memory is a value, not a dependency: a run takes a `Transcript` (JSON-serializable) and returns the grown one. Each finished turn is delivered as an event carrying the messages it added and a `Record` (message times, model and tool timings, usage), so a store, a tracing exporter or a UI consume events, and retries, provider options or tracing wrap the model and registry.
+- Append-only conversation history: model output (including thinking blocks) is passed back unchanged, never edited. A run that stops early leaves a transcript that ends after a whole turn and can be resumed.
 
 ### `flow`
 
@@ -125,9 +126,15 @@ Framework to maintain and store credentials securely.
 
 Stateful from day one.
 
-- **SQLite** (local) and **Postgres** (server) implementations.
+- **SQLite** (local) and **Postgres** (server) first. The interfaces must not assume SQL, so key-value and document backends can implement them later.
 - Holds runs, messages, tool calls, checkpoints (for resume), and tenant data.
-- Several small interfaces, one per kind of data (`RunStore`, `CheckpointStore`, ...), not one large `Store`. A backend can implement all of them.
+- Several small interfaces, one per kind of data (`RunStore`, `CheckpointStore`, `ConversationStore`, ...), not one large `Store`. A backend can implement all of them.
+- **Conversations** (direction for E05; the harness holds no store, see [`harness`](#harness)):
+  - A conversation is an append-only log. A message's JSON (`llm.Message`) is stored exactly and is the only thing ever read back into a request; times, usage and tool-call timings sit beside it, for display and billing.
+  - Two reads: **history** for people (every message, paged with opaque backend cursors, seek by message ID or time) and **context** for the agent (the latest compaction summary plus the messages after it). Compaction adds a checkpoint; it never edits or deletes messages.
+  - Writes need one primitive that every backend has: create an entry only if it is absent, numbered per conversation, so concurrent writers conflict instead of interleaving. One entry per turn makes a turn atomic.
+  - Active conversations keep their decoded context in an in-process cache keyed by the log position it was built from. The log only grows, so the cache is appended to, never invalidated.
+  - The store never imports `harness`. The component that runs agents turns events into entries and a stored context back into a `Transcript`.
 
 ### `tenancy`
 
@@ -182,6 +189,7 @@ Details: [ENGINEERING.md §1.5](ENGINEERING.md#15-components-mix-and-match-deplo
 | JSON Schema | `github.com/google/jsonschema-go` (same library the MCP SDK uses): derive schemas from Go structs and validate input |
 | Go version | `go 1.26.0` minimum in `go.mod` (oldest supported release); `toolchain go1.27.2` for development |
 | Agent loop | Our own `pkg/harness`, not an agent framework (Google ADK, Genkit, Eino). Frameworks bring their own model, tool and session types; ADK Go has no Claude support and its model interface is built on Gemini types; Eino is pre-1.0 |
+| Agent memory | The harness holds no store: a run takes a `Transcript` and returns a grown one, and each turn is an event (messages plus a `Record`). Persistence, history, compaction and caching live in `store` and the component that runs agents |
 | Workflows | Our own `pkg/flow` (sequence, parallel, loop, route, approve) with a checkpoint at every step |
 | Model gateways | Native adapters; LiteLLM-style gateways work through the OpenAI-compatible adapter, never required |
 | Other agent frameworks | Integrations, not foundations: ADK, Genkit and Eino agents use our tools through our MCP server; a Claude adapter for ADK may ship later as a separate optional module |

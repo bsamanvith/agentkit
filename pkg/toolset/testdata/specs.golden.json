@@ -1,0 +1,28 @@
+[
+  {
+    "name": "salesforce",
+    "type": "salesforce",
+    "settings": {
+      "instance_url": "https://acme.my.salesforce.com"
+    }
+  },
+  {
+    "name": "salesforce-sandbox",
+    "type": "salesforce",
+    "settings": {
+      "instance_url": "https://acme--sbx.my.salesforce.com"
+    }
+  },
+  {
+    "name": "gmail-readonly",
+    "type": "gmail",
+    "include": [
+      "gmail_search",
+      "gmail_read*"
+    ],
+    "exclude": [
+      "gmail_read_all"
+    ],
+    "optional": true
+  }
+]

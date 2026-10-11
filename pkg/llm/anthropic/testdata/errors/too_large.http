@@ -1,0 +1,5 @@
+HTTP/1.1 413 Request Entity Too Large
+Content-Type: application/json
+Request-Id: req_replay
+
+{"type": "error", "error": {"type": "request_too_large", "message": "Request exceeds the maximum allowed number of bytes."}, "request_id": "req_replay"}

@@ -54,5 +54,7 @@ check: tidy-check fmt-check lint test ## Everything a change must pass
 
 $(GOLANGCI):
 	@mkdir -p bin
-	GOBIN=$(CURDIR)/bin $(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
+	@# Build the linter with this repo's toolchain: it refuses to lint code that
+	@# targets a newer Go than the one it was built with.
+	GOBIN=$(CURDIR)/bin GOTOOLCHAIN=$$($(GO) env GOVERSION) $(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
 	mv bin/golangci-lint $@

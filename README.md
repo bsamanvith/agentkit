@@ -19,8 +19,8 @@ Each package can be imported on its own or run as a lightweight server. One `age
 | M0 Tooling: `make check`, lint, architecture test, test helpers, CI | Done |
 | M1 `pkg/tool`: tool definitions, `tool.Func[In, Out]`, registry, middleware, conformance suite | Done |
 | M2 Toolsets from config; one MCP server, one URL path per toolset | Done ([T026](tasks/T026-toolsets-from-config.md), [T018](tasks/T018-mcp-server.md)) |
-| M3 `llm`, Anthropic adapter, harness, `flow` | **In progress** ([E04](tasks/E04-llm-harness-flow.md)): `pkg/llm`, `pkg/harness` and `pkg/flow` done; Anthropic adapter built (live test pending); next [T024](tasks/T024-run-cli.md), the first end-to-end run against Claude |
-| M4 Store, runner and compaction | Planned ([E05](tasks/E05-store-runner.md)) |
+| M3 `llm`, Anthropic adapter, harness, `flow` | Done ([E04](tasks/E04-llm-harness-flow.md)): `pkg/llm`, the Anthropic adapter (live-tested), `pkg/harness`, `pkg/flow`, `pkg/agentstep` (agents as resumable flow steps) and `agentkit run` / `agentkit flow demo`, run end to end against Claude ([T024](tasks/T024-run-cli.md)). Still open: the OpenAI-compatible adapter ([T025](tasks/T025-llm-openai-compatible.md)) |
+| M4 Store, runner and compaction | **In progress** ([E05](tasks/E05-store-runner.md)): `pkg/clock`, `pkg/tenancy` and the flow step-tree check done; next [T028](tasks/T028-store-interfaces.md), the store interfaces |
 | M5 containers and pods, M6 remote tools | Planned |
 
 ## What works today
@@ -47,6 +47,14 @@ out, err := reg.Invoke(ctx, "add", json.RawMessage(`{"a":2,"b":3}`)) // {"sum":5
 ```
 
 Errors are classified for the caller: `tool.ErrInvalidInput` (bad input, the model can retry), `tool.ErrToolFailed` (the tool ran and failed, panics included), `tool.ErrNotFound`, and the context's own error when a run is cancelled.
+
+Run an agent against Claude with the built-in demo tools, or a two-step flow that stops for approval and is resumed by a second process (credentials from `ANTHROPIC_API_KEY` or `ant auth login`):
+
+```sh
+go run ./cmd/agentkit run "What is 48271 times 9733?"
+go run ./cmd/agentkit flow demo -state demo.json "Go generics"   # researches, then waits for approval
+go run ./cmd/agentkit flow demo -state demo.json -approve        # a new process writes the draft
+```
 
 ## Development
 

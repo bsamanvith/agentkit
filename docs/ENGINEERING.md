@@ -190,10 +190,15 @@ A test should fail only when a **feature** breaks, not when code is refactored.
 | **Unit** | Pure logic, fakes, `httptest` servers | next to code | `make test` | nothing | whole repo < 30 s |
 | **Integration** | Real backends: Postgres, Vault, LocalStack, real MCP servers | next to code, `//go:build integration` | `make test-integration` | `scripts/dev.sh up deps` | < 3 min |
 | **E2E / smoke** | Real binaries in containers, black-box over HTTP/gRPC/MCP | `test/e2e`, `//go:build e2e` | `scripts/dev.sh smoke <topology>` | running topology | < 2 min per topology |
+| **Replay E2E** | The real binary as separate processes, against a local server replaying recorded provider responses | next to the `cmd`, no tag (skips under `-short`) | `make test` | nothing | seconds |
 | **Live** | Real model providers (Anthropic, OpenAI-compatible) | next to adapter, `//go:build live` | `make test-live` | API keys | manual / nightly |
+| **Perf** | Benchmarks (rerunnable) and load tests (recorded) | `Benchmark*` next to code; load-test results in the task's Notes | `go test -bench` | nothing | not in CI until a budget is set |
 
 - Integration tests read connection strings from env (`AGENTKIT_PG_URL`, `AGENTKIT_VAULT_ADDR`, ...) and **skip** if unset, so a laptop without Docker still runs them cleanly. In CI `AGENTKIT_REQUIRE_INTEGRATION=1` turns those skips into failures, so nothing silently stops running.
 - We do not use testcontainers; `scripts/dev.sh` already provides the dependencies, and it keeps the dependency list small.
+
+- **Replay E2E** proves the pieces fit through the real entry point (flags, files, signals, several processes) without a key: see `cmd/agentkit/e2e_test.go`. Re-record from the real API with an env switch; the binary only ever gets a dummy key, and fixtures keep no account headers.
+- **Evals** (scoring model quality on a task set) are a separate, later tier; nothing in the unit, replay or live tiers asserts on what a model says beyond what the test scripted.
 
 ### 2.3 How many tests: one per behavior, not per function
 
@@ -251,6 +256,13 @@ One test per criterion proves each criterion once, in the one scenario it uses. 
 - **Compare runs** where a property is a comparison: a consumer that scribbles over everything it is handed must not change the outcome.
 - **When review finds a bug, ask which invariant it broke** and add that to the checks, instead of one test for the one case. Planting the bug again should fail a general check.
 - **Concurrency tests are driven from the consumer's side** (what it does when it sees an event happens at a fixed point of the run), never by hoping a goroutine is scheduled first. A wait for something that must not happen is allowed only if it can make a broken implementation pass, never fail a correct one.
+
+### 2.7 Performance tests
+
+- **Measure before setting a budget.** A load test runs the real thing (real server, real transport) at a few concurrency levels and records throughput, latency percentiles, errors, allocations and leaks (goroutines, heap) in the task's Notes, with the machine it ran on. Profile before optimizing; say where the cost is (T018: 93% of allocations in the SDK, not our layer).
+- **Keep a rerunnable `Benchmark*`** for the hot path (`b.ReportAllocs()`, `b.RunParallel` where it is concurrent), so a later change can be compared with `benchstat`. The throwaway load generator need not be kept.
+- **No timing assertions in unit tests.** A test asserts behavior under load (no errors, limits enforced, nothing leaks, the 503 when over capacity), never "faster than X ms". A CI perf budget comes only after numbers exist, with headroom, and lives outside `make test`.
+- Findings become features when they protect the service (T018 added a call timeout, an in-flight cap and a session timeout); each gets a behavior test and a mutation check like any other.
 
 ---
 

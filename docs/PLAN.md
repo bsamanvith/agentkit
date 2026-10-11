@@ -1,6 +1,6 @@
 # agentkit: Scope and Module Plan
 
-> Status: agreed scope and module shape, being implemented in the [build order](#build-order). Done so far: M0 (tooling), M1 (`pkg/tool`), M2 (toolsets and the MCP server), and in M3 `pkg/llm`, `pkg/harness` and `pkg/flow`. Current focus: M3 ([E04](../tasks/E04-llm-harness-flow.md), T024 next); M4 planned ([E05](../tasks/E05-store-runner.md)).
+> Status: agreed scope and module shape, being implemented in the [build order](#build-order). Done so far: M0 (tooling), M1 (`pkg/tool`), M2 (toolsets and the MCP server) and M3 (`pkg/llm`, the Anthropic adapter, `pkg/harness`, `pkg/flow`, `pkg/agentstep` and `agentkit run`, run end to end against Claude; the OpenAI-compatible adapter T025 is still open). Current focus: M4 ([E05](../tasks/E05-store-runner.md): `pkg/clock`, `pkg/tenancy` and the flow step-tree check done, T028 next).
 
 ## Goals
 
@@ -203,8 +203,8 @@ Build the product from the inside out, and add infrastructure when there is some
 1. **M0 Tooling**: `make check`, lint, architecture test, minimal CI. *Done.*
 2. **M1 `pkg/tool`**: tool definition, `tool.Func[In, Out]`, registry, middleware, conformance suite. *Done.*
 3. **M2 Toolsets and MCP server**: toolsets built from config, many toolsets served by one HTTP process at one path each. Usable from Claude Code, Codex or any MCP client. *Done.*
-4. **M3 `llm` + Anthropic adapter + harness + `flow`**: run an agent loop and a multi-step flow from a small CLI. **Current focus** (E04); M2 can proceed in parallel.
-5. **M4 `store` (SQLite), `runner`, compaction** ([E05](../tasks/E05-store-runner.md)): runs, conversations and checkpoints persist; resume works; long conversations compact.
+4. **M3 `llm` + Anthropic adapter + harness + `flow`**: run an agent loop and a multi-step flow from a small CLI. *Done* (E04; the OpenAI-compatible adapter T025 is still open).
+5. **M4 `store` (SQLite), `runner`, compaction** ([E05](../tasks/E05-store-runner.md)): runs, conversations and checkpoints persist; resume works; long conversations compact. **Current focus.**
 6. **M5 Components and containers**: `pkg/component`, `cmd/agentkit`, `fakellm`, image, Compose, smoke tests.
 7. **M6 Tool protocol over ConnectRPC**: remote registry; the `split` topology.
 8. Then MCP client and bridge, Postgres and tenancy, credentials, observability.

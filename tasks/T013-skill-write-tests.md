@@ -2,7 +2,7 @@
 id: T013
 title: write-tests skill
 epic: E02
-status: todo
+status: in-progress
 depends_on: [T010, T017]
 ---
 
@@ -43,4 +43,15 @@ Lesson from T022 (`pkg/harness`): its first tests had one test per criterion and
 
 ## Notes
 
--
+- 2026-10-11: first version written after T024, at the user's request: `.agents/skills/write-tests/SKILL.md` (steps 1-10 above, condensed) and `references/`:
+  - `examples.md`: good/bad pairs, taken from `pkg/agentstep`, `cmd/agentkit` and `pkg/llm/anthropic` rather than `pkg/tool`.
+  - `invariants.md`: `pkg/harness` and `pkg/agentstep`.
+  - `mutation-checklist.md`.
+  - `e2e-replay.md`: the replay tier from T024.
+  - `perf.md`: benchmarks and load tests, from T018.
+- Scope added beyond the plan above:
+  - **Behaviors over volume** as the headline: test outcomes a caller depends on, prefer comparisons (interrupted vs. uninterrupted run) to pasted expectations, prune tests that break on refactors.
+  - **Replay e2e** and **perf** tiers, now in ENGINEERING §2.2 and the new §2.7.
+  - **Evals** are named as a later tier: the skill says not to write them yet.
+- `.claude/skills` → `../.agents/skills` symlink added so Claude Code loads it (part of T010; the rest of T010 — `AGENTS.md`, the skill lint — is still open).
+- Still open: the three dry-run criteria above.

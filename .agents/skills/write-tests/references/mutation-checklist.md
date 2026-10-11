@@ -14,7 +14,7 @@ Plant one bug at a time in the code under test, run the package's tests (`-race 
 - **Errors:** a wrong sentinel or class; a failure swallowed; a stack trace shown to the model.
 - **Validation weakened:** malformed input accepted, or a half-written turn saved.
 
-## A small driver (keep it out of the repo)
+## A small driver (keep it out of the repo, in a directory of your own: agents sharing a scratch directory overwrite each other's files)
 
 ```python
 plants = {"save skipped on turn 2": ("pkg/x/x.go", "old line", "new line"), ...}
@@ -22,8 +22,13 @@ for name, (f, a, b) in plants.items():
     orig = open(f).read(); assert orig.count(a) == 1
     try:
         open(f, "w").write(orig.replace(a, b))
-        out = subprocess.run(["go", "test", "-race", "-count=2", "./pkg/x/"], capture_output=True, text=True)
-        print(name, sorted(set(re.findall(r"--- FAIL: (Test\w+)", out.stdout))) or "SURVIVED")
+        out = subprocess.run(["go", "test", "-race", "-count=2", "-timeout=5m", "./pkg/x/"], capture_output=True, text=True)
+        o = out.stdout + out.stderr
+        caught = sorted(set(re.findall(r"--- FAIL: (Test\w+)", o)))
+        if "panic: test timed out" in o: caught.append("TIMEOUT")
+        if "WARNING: DATA RACE" in o: caught.append("RACE")
+        if "build failed" in o: caught = ["COMPILE ERROR (does not count)"]
+        print(name, caught or "SURVIVED")
     finally:
         open(f, "w").write(orig)
 ```

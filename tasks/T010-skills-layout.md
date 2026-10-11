@@ -43,3 +43,4 @@ One copy of every skill and every agent instruction, readable by Claude Code, Co
 
 - If `make lint` (E01/T001) does not exist yet, add a minimal `Makefile` target and let T001 absorb it.
 - 2026-10-11 (with T013): `.agents/skills/` and the `.claude/skills` → `../.agents/skills` symlink exist, holding `write-tests`. Not done yet: `.agents/skills/README.md`, `AGENTS.md`, `CLAUDE.md`, `lint-skills.sh`.
+- 2026-10-11: Claude Code listed `write-tests` among the session's skills right after `.claude/skills` was pushed (first criterion, observed; not yet ticked because Codex is unchecked).

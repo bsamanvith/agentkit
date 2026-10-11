@@ -54,4 +54,27 @@ Lesson from T022 (`pkg/harness`): its first tests had one test per criterion and
   - **Replay e2e** and **perf** tiers, now in ENGINEERING §2.2 and the new §2.7.
   - **Evals** are named as a later tier: the skill says not to write them yet.
 - `.claude/skills` → `../.agents/skills` symlink added so Claude Code loads it (part of T010; the rest of T010 — `AGENTS.md`, the skill lint — is still open).
-- Still open: the three dry-run criteria above.
+- 2026-10-11, dry runs, each by a fresh agent that had only the skill and the task spec:
+  - **Criterion 3, on `pkg/flow`: done, but not merged.** The agent named 13 invariants (state vs. error, refused calls change nothing, event grammar and nesting, checkpoint well-formedness and frontier, records only after Finished, progress never lost, finished steps never re-run, rejected and completed runs stay so). It checked them after every Run/Resume through one helper, routing 25+ existing tests through it. It added a seeded simulation of random step trees with failures, panics, cancellations, failed saves and approvals: 300 seeds per run, about 1 s under `-race`, checked against an independent reference interpreter. It also added `FuzzSimulatedFlow`.
+    - Mutation check, 21 plants: the original tests missed 6; round 1 still missed 3; round 2 missed none.
+    - What round 1 missed:
+      - observer calls not serialized: needed a race-visible check;
+      - branch index taken from goroutine start order: needed each leaf to check its own path;
+      - pending approvals not sorted: the check existed but the generator never made Parallels wider than 10.
+    - `-count=20` and `-count=300` clean; fuzz 30 s clean.
+    - **It found a real bug in `pkg/flow`**, reproduced deterministically by `TestResumeOfARejectedRunIsRejectedEvenIfASiblingFails`. When a rejection inside a `Parallel` cancels a sibling branch, `Resume` runs that sibling again, returns its error instead of `ErrRejected`, and flips the stored status from `rejected` to `failed`. This contradicts "a rejection is final" (T023).
+    - Proposed fix, about 5 lines: in `Resume`, after the shape check, if `ckpt.Status == StatusRejected`, return the recorded `RejectedError` (smallest rejected path) without running anything. Then drop the simulation's temporary tolerance `failedBesideRejection` and also assert that such a Resume emits no events.
+    - Not applied here: `pkg/flow` belongs to the flow tasks, and the change was left to its owner. The new tests stay unmerged until the fix lands, since they include the failing regression test. They are in the local worktree branch `worktree-agent-a33f09ba8020c8abe`, which is not pushed.
+  - **Criteria 1 and 2, on T018 (`pkg/mcp/server`): stopped before finishing**, at the user's request to wrap up. No result. Rerun later the same way: move the package's tests aside, have a fresh agent write them from T018's criteria with the skill, then compare count, mutations and `-count=20`.
+  - **The skill was improved from the flow agent's notes**:
+    - per-call plus cross-call invariant checks;
+    - check only documented guarantees, including ownership;
+    - chain single-slot options in the helper;
+    - goroutine proxies under `t.Parallel()`;
+    - reference interpreters as the oracle;
+    - assert the generator's case mix;
+    - fuzz new invariants;
+    - gates need an escape;
+    - the mutation driver counts timeouts and races and uses a private directory;
+    - note catches that are timing luck;
+    - how to handle a real bug found while testing.

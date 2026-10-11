@@ -56,6 +56,7 @@ func sample(runID string, n int) flow.Checkpoint {
 	return flow.Checkpoint{
 		Version: flow.CheckpointVersion,
 		RunID:   runID,
+		Shape:   "v1:" + runID, // opaque to a Checkpointer; it must round-trip
 		Status:  flow.StatusSuspended,
 		Initial: json.RawMessage(`{"n":0}`),
 		Steps: map[string]json.RawMessage{
@@ -102,6 +103,7 @@ func RunCheckpointer(t *testing.T, newCheckpointer func(t *testing.T) flow.Check
 		first := sample("r1", 1)
 		second := sample("r1", 2)
 		second.Status = flow.StatusCompleted
+		second.Shape = "v1:second"
 		second.Rejected, second.Pending = nil, nil
 		delete(second.Steps, "main/b")
 		for _, c := range []flow.Checkpoint{first, second} {
@@ -222,6 +224,9 @@ func RunCheckpointer(t *testing.T, newCheckpointer func(t *testing.T) flow.Check
 // equal compares checkpoints by value, treating nil and empty collections as
 // the same (a store may not preserve the difference).
 func equal(a, b flow.Checkpoint) bool {
+	if a.Shape != b.Shape { // before norm, which copies through Clone
+		return false
+	}
 	norm := func(c flow.Checkpoint) flow.Checkpoint {
 		c = c.Clone()
 		if len(c.Rejected) == 0 {

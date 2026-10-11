@@ -30,7 +30,11 @@ const (
 type Checkpoint struct {
 	Version int    `json:"version"`
 	RunID   string `json:"run_id"`
-	Status  Status `json:"status"`
+	// Shape is the [Fingerprint] of the step tree that produced the
+	// checkpoint. [Resume] compares it with the tree it is given. It is empty
+	// in checkpoints written before fingerprints existed.
+	Shape  string `json:"shape,omitempty"`
+	Status Status `json:"status"`
 	// Initial is the state the run started with.
 	Initial json.RawMessage `json:"initial"`
 	// Steps maps the path of each completed step to the state as it was when

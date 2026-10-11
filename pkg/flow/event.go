@@ -16,6 +16,12 @@ const (
 	EventFailed EventKind = "failed"
 	// EventSuspended is emitted when a step ends waiting for an approval.
 	EventSuspended EventKind = "suspended"
+	// EventWarning is emitted by [Resume], before any step runs, when it
+	// resumes although the step tree may differ from the one that produced the
+	// checkpoint: Err matches [ErrNoShape] (an old checkpoint with no
+	// fingerprint) or [ErrShapeChanged] ([WithAllowShapeChange] was given).
+	// Path is the root step.
+	EventWarning EventKind = "warning"
 )
 
 // Event reports one step's progress. Every kind of step emits the same type,

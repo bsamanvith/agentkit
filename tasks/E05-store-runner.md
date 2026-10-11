@@ -27,7 +27,7 @@ Runs and conversations persist and resume. Direction: [PLAN.md `store`](../docs/
 - [ ] [T029](T029-store-sqlite.md) `pkg/store/sqlite`: schema, migrations, all suites
 - [ ] [T030](T030-runner.md) `pkg/runner`: run agents with persistence (entries, context, cache, lease, resume)
 - [ ] [T031](T031-compaction.md) Compaction in the runner (reactive and proactive)
-- [ ] [T032](T032-flow-shape-fingerprint.md) `flow`: detect a changed step tree on resume
+- [x] [T032](T032-flow-shape-fingerprint.md) `flow`: detect a changed step tree on resume
 
 ```
 T019 ─────────────────┐

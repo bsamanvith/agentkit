@@ -47,6 +47,16 @@
 // passed to [Resume] must be the one that produced the checkpoint, and loop
 // conditions and route keys must be pure functions of the state.
 //
+// # Changed step trees
+//
+// A checkpoint can outlive the code that wrote it. [Run] therefore saves the
+// [Fingerprint] of the step tree (names, combinator kinds, nesting, route keys
+// and loop maxima; never closures) in the checkpoint, and [Resume] refuses a
+// different tree with [ErrShapeChanged] instead of skipping or misplacing
+// steps. [WithAllowShapeChange] resumes anyway, for a change known to be safe.
+// A checkpoint written before fingerprints existed resumes as before, with an
+// [EventWarning].
+//
 // [NewMemory] is an in-process Checkpointer. Conformance tests for any
 // Checkpointer live in package flowtest.
 //

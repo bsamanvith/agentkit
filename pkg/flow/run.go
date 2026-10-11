@@ -23,10 +23,11 @@ type Decision struct {
 type Option func(*options)
 
 type options struct {
-	cp        Checkpointer
-	observer  func(Event)
-	initial   *State
-	decisions map[string]Decision
+	cp         Checkpointer
+	observer   func(Event)
+	initial    *State
+	decisions  map[string]Decision
+	allowShape bool
 }
 
 // WithCheckpointer sets where checkpoints are saved. It is required.
@@ -58,6 +59,17 @@ func WithDecision(path string, d Decision) Option {
 	}
 }
 
+// WithAllowShapeChange lets [Resume] continue a run whose checkpoint was
+// written by a different step tree (see [ErrShapeChanged]) instead of failing.
+// The steps that have a record are still skipped by path, so this is sound only
+// if every recorded path still means the same step: a renamed or moved step
+// that completed is skipped wherever its old path now leads, and one that was
+// removed leaves its record unused. [Resume] emits an [EventWarning] and saves
+// the new fingerprint.
+func WithAllowShapeChange() Option {
+	return func(o *options) { o.allowShape = true }
+}
+
 // Run starts a new run of step, saving a checkpoint after every completed
 // step. It returns the final state. On error it returns a nil state; a
 // run that is waiting for an approval returns an error matching [ErrSuspended]
@@ -87,6 +99,7 @@ func Run(ctx context.Context, id string, step Step, opts ...Option) (*State, err
 	ckpt := Checkpoint{
 		Version: CheckpointVersion,
 		RunID:   id,
+		Shape:   shapeOf(step),
 		Status:  StatusRunning,
 		Initial: initial,
 		Steps:   map[string]json.RawMessage{},
@@ -99,9 +112,15 @@ func Run(ctx context.Context, id string, step Step, opts ...Option) (*State, err
 
 // Resume continues a run from its checkpoint: steps that completed are
 // skipped and the state is restored to what it was after them. step must be
-// the step tree that produced the checkpoint. Resuming a completed run returns
-// its final state; resuming a rejected run returns [ErrRejected] again.
-// Resume fails with [ErrNotFound] if the run does not exist.
+// the step tree that produced the checkpoint: Resume compares the [Fingerprint]
+// of step with the one in the checkpoint and fails with [ShapeChangedError]
+// (matching [ErrShapeChanged]) if they differ, before running anything, unless
+// [WithAllowShapeChange] is given. A checkpoint written before fingerprints
+// existed has none and resumes as before. In both cases Resume emits an
+// [EventWarning] and the run's next checkpoint carries the current fingerprint.
+// Resuming a completed run returns its final state; resuming a rejected run
+// returns [ErrRejected] again. Resume fails with [ErrNotFound] if the run does
+// not exist.
 func Resume(ctx context.Context, id string, step Step, opts ...Option) (*State, error) {
 	o, err := prepare(id, step, opts)
 	if err != nil {
@@ -117,11 +136,27 @@ func Resume(ctx context.Context, id string, step Step, opts ...Option) (*State, 
 	if ckpt.Version != CheckpointVersion {
 		return nil, fmt.Errorf("%w: run %q has checkpoint version %d, want %d", ErrCheckpoint, id, ckpt.Version, CheckpointVersion)
 	}
+	shape := shapeOf(step)
+	if ckpt.Shape != shape {
+		var warning error
+		if ckpt.Shape == "" {
+			warning = fmt.Errorf("%w: run %q", ErrNoShape, id)
+		} else {
+			warning = &ShapeChangedError{RunID: id, Stored: ckpt.Shape, Current: shape}
+			if !o.allowShape {
+				return nil, warning
+			}
+		}
+		if o.observer != nil {
+			o.observer(Event{Kind: EventWarning, Path: nameOf(step), Err: warning})
+		}
+	}
 	st := NewState()
 	if err := json.Unmarshal(ckpt.Initial, st); err != nil {
 		return nil, fmt.Errorf("%w: run %q initial state: %w", ErrCheckpoint, id, err)
 	}
 	ckpt = ckpt.Clone()
+	ckpt.Shape = shape
 	if ckpt.Steps == nil {
 		ckpt.Steps = map[string]json.RawMessage{}
 	}

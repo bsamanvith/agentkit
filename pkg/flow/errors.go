@@ -36,6 +36,15 @@ var (
 	// ErrNoCheckpointer means [Run] or [Resume] was called without
 	// [WithCheckpointer].
 	ErrNoCheckpointer = errors.New("no checkpointer")
+	// ErrShapeChanged means [Resume] was given a step tree whose [Fingerprint]
+	// differs from the one stored in the run's checkpoint. Resuming would skip
+	// or misplace steps. [ShapeChangedError] carries both fingerprints;
+	// [WithAllowShapeChange] resumes anyway.
+	ErrShapeChanged = errors.New("step tree changed since the run was checkpointed")
+	// ErrNoShape is the cause of the warning [Event] that [Resume] emits for a
+	// checkpoint written before fingerprints existed. The run resumes, and its
+	// next checkpoint carries the fingerprint.
+	ErrNoShape = errors.New("checkpoint has no step tree fingerprint")
 	// ErrCheckpoint means a checkpoint could not be saved or loaded, or the
 	// stored one is unusable. The cause is wrapped.
 	ErrCheckpoint = errors.New("checkpoint failed")

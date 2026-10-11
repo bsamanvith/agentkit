@@ -52,8 +52,8 @@ type entry struct {
 var _ Registry = (*LocalRegistry)(nil)
 
 // NewRegistry builds a registry of tools. It fails with [ErrInvalidDefinition]
-// for a tool with an invalid name and [ErrDuplicateName] if two tools share a
-// name. Panics in any tool are recovered and returned as [ErrToolFailed].
+// for a tool with an invalid name or an input schema that is not a JSON object,
+// and with [ErrDuplicateName] if two tools share a name. Panics in any tool are recovered and returned as [ErrToolFailed].
 func NewRegistry(tools []Tool, opts ...Option) (*LocalRegistry, error) {
 	var o registryOptions
 	for _, opt := range opts {
@@ -66,7 +66,7 @@ func NewRegistry(tools []Tool, opts ...Option) (*LocalRegistry, error) {
 			return nil, fmt.Errorf("%w: tool %d is nil", ErrInvalidDefinition, i)
 		}
 		def := t.Definition()
-		if err := checkName(def.Name); err != nil {
+		if err := checkDefinition(def); err != nil {
 			return nil, err
 		}
 		if _, dup := r.byName[def.Name]; dup {

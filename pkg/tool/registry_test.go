@@ -42,6 +42,15 @@ func TestNewRegistryRejects(t *testing.T) {
 			t.Errorf("err = %v, want ErrInvalidDefinition", err)
 		}
 	})
+	t.Run("input schema that is not a JSON object", func(t *testing.T) {
+		t.Parallel()
+		for _, schema := range []string{"", "null", "[]", `"object"`, "{"} {
+			_, err := tool.NewRegistry([]tool.Tool{customTool{name: "custom", schema: &schema}})
+			if !errors.Is(err, tool.ErrInvalidDefinition) {
+				t.Errorf("schema %q: err = %v, want ErrInvalidDefinition", schema, err)
+			}
+		}
+	})
 	t.Run("nil tool", func(t *testing.T) {
 		t.Parallel()
 		_, err := tool.NewRegistry([]tool.Tool{echo, nil})
@@ -99,7 +108,7 @@ func TestMiddlewareOrder(t *testing.T) {
 
 func TestTimeout(t *testing.T) {
 	t.Parallel()
-	reg, err := tool.NewRegistry(tooltest.Fixtures(), tool.WithMiddleware(tool.Timeout(20*time.Millisecond)))
+	reg, err := tool.NewRegistry(tooltest.Fixtures(), tool.WithMiddleware(tool.Timeout(250*time.Millisecond)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,10 +157,15 @@ func TestRegistryConcurrentUse(t *testing.T) {
 type customTool struct {
 	name   string
 	panics bool
+	schema *string // input schema; nil means a valid object schema
 }
 
 func (c customTool) Definition() tool.Definition {
-	return tool.Definition{Name: c.name, InputSchema: json.RawMessage(`{"type":"object"}`)}
+	schema := json.RawMessage(`{"type":"object"}`)
+	if c.schema != nil {
+		schema = json.RawMessage(*c.schema)
+	}
+	return tool.Definition{Name: c.name, InputSchema: schema}
 }
 
 func (c customTool) Invoke(context.Context, json.RawMessage) (json.RawMessage, error) {

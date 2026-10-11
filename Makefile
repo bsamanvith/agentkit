@@ -29,6 +29,10 @@ test-integration: ## Unit + integration tests (needs: scripts/dev.sh up deps)
 test-live: ## Live tests against real model providers (needs API keys)
 	$(GO) test $(TESTFLAGS) -tags live -count=1 ./...
 
+.PHONY: golden
+golden: ## Rewrite golden files from current output (review the diff!)
+	AGENTKIT_UPDATE_GOLDEN=1 $(GO) test -count=1 ./...
+
 .PHONY: fuzz
 fuzz: ## Run every fuzz target for FUZZTIME (default 10s)
 	scripts/fuzz.sh $(FUZZTIME)

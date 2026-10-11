@@ -15,7 +15,7 @@ A few shared helpers make the rules in [ENGINEERING.md §2.5](../docs/ENGINEERIN
 ## Scope
 
 `internal/testkit`:
-- `Golden(t, path, got []byte)` with a `-update` flag.
+- `Golden(t, path, got []byte)`; `make golden` (env `AGENTKIT_UPDATE_GOLDEN=1`) rewrites the files.
 - `IntegrationEnv(t, key) string`: returns the env value; skips if unset, fails if `AGENTKIT_REQUIRE_INTEGRATION=1`.
 - `Eventually(t, timeout, cond)`: poll with a deadline, the only sanctioned way to wait.
 
@@ -25,11 +25,12 @@ A few shared helpers make the rules in [ENGINEERING.md §2.5](../docs/ENGINEERIN
 
 ## Acceptance criteria
 
-- [x] `Golden` passes on a match, fails with a line diff on a mismatch, and rewrites the file with `-update`.
-- [x] `Golden` fails clearly when the golden file is missing (and `-update` creates it).
+- [x] `Golden` passes on a match, fails with a line diff on a mismatch, and rewrites the file in update mode.
+- [x] `Golden` fails clearly when the golden file is missing (and update mode creates it).
 - [x] `IntegrationEnv` returns the value when set, skips when unset, and fails when unset with `AGENTKIT_REQUIRE_INTEGRATION=1`.
 - [x] `Eventually` returns as soon as the condition holds and fails after the timeout when it never does.
 
 ## Notes
 
+- Review fix: the documented `go test ./... -update` failed with "flag provided but not defined" in packages that do not import testkit. Golden updates now use `AGENTKIT_UPDATE_GOLDEN=1` behind `make golden`, which works across `./...`.
 - Tests are white-box (`package testkit`) so they can drive the unexported update switch instead of the global `-update` flag; they use a recording `testing.TB` that stops on `Fatalf`/`Skipf` with `runtime.Goexit`, like the real one.

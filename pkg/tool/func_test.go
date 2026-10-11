@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/bsamanvith/agentkit/internal/testkit"
@@ -218,6 +219,15 @@ func TestFuncPanic(t *testing.T) {
 	_, err = pt.Invoke(t.Context(), nil)
 	if !errors.Is(err, tool.ErrToolFailed) || !errors.Is(err, tool.ErrPanic) {
 		t.Errorf("err = %v, want ErrToolFailed and ErrPanic", err)
+	}
+	var pe *tool.PanicError
+	if !errors.As(err, &pe) || pe.Value != "boom" || len(pe.Stack) == 0 {
+		t.Fatalf("errors.As(*tool.PanicError) = %+v, want value and stack", pe)
+	}
+	// The message may reach a model or an MCP client: it must not carry the
+	// stack (internal paths). A string check is the behavior under test here.
+	if strings.Contains(err.Error(), "goroutine") || strings.Contains(err.Error(), ".go:") {
+		t.Errorf("error message leaks the stack trace:\n%s", err)
 	}
 }
 

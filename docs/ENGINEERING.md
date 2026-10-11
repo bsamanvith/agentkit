@@ -230,7 +230,7 @@ New implementation = one line of test code + passing the suite.
 - **No `time.Sleep`.** Use `clocktest.Fake`, channels, or poll-with-deadline helpers.
 - **No assertions on log lines or error message strings.** Use `errors.Is` / `errors.As`.
 - **Table-driven** when the same behavior varies by input; separate tests when behavior differs.
-- **Golden files** only for wire formats (MCP JSON-RPC, tool protocol JSON, provider request bodies). Stored in `testdata/`, regenerated with `go test ./... -update`, reviewed in the diff.
+- **Golden files** only for wire formats (MCP JSON-RPC, tool protocol JSON, provider request bodies). Stored in `testdata/`, regenerated with `make golden`, reviewed in the diff.
 - **Recorded fixtures for LLM providers**: an `httptest` server replays `testdata/*.jsonl` responses. Unit tests never touch the network.
 - **Fuzz** anything that takes untrusted input (tool input, JSON-RPC decoding, JWT parsing). The seed corpus runs with the unit tests; `make fuzz` runs each target for a short time and CI runs it on every PR.
 - Every test calls `t.Parallel()` unless it has a documented reason not to.

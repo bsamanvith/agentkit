@@ -95,6 +95,13 @@ func TestRules(t *testing.T) {
 			},
 		},
 		{
+			name: "a package whose name only ends in test is not a test helper",
+			pkg:  archtest.Package{ImportPath: mod + "/pkg/latest", Imports: []string{"testing", mod + "/pkg/b/latest"}},
+			want: []archtest.Violation{
+				{Rule: archtest.RuleNoTestHelpers, Package: "pkg/latest", Import: "testing"},
+			},
+		},
+		{
 			name: "test helper packages may import testing and test-only libraries",
 			pkg: archtest.Package{
 				ImportPath: mod + "/pkg/a/atest",

@@ -68,3 +68,9 @@ How it was tested beyond the criteria:
   - Slices get schema type `["null","array"]` from `jsonschema-go` (a nil Go slice marshals to `null`). Revisit if a model provider rejects type arrays.
   - A cancelled context is checked before decoding, and again after a failed call: if the caller's context is done, the context error wins over `ErrToolFailed`. A tool's own internal timeout (caller context still live) is `ErrToolFailed`.
   - `Timeout` relies on tools honoring their context; it does not abandon goroutines.
+
+Code review after the first push (all fixed, each with a test, and each new test checked by planting the bug it guards against):
+- A panic's stack trace was part of the error message, which can reach a model or an MCP client. The stack now lives in `*tool.PanicError` (`errors.As`), and the message holds only the panic value.
+- A custom `Tool` with a missing or non-object input schema was accepted, and would have been listed with `"inputSchema": null`. `NewRegistry` now rejects it with `ErrInvalidDefinition`.
+- Removed a redundant conformance subtest (`OutputIsJSON` repeated what `InvokeRoutesByName` already proves).
+- `TestTimeout` used a 20 ms limit that a fast tool could exceed on a slow runner; now 250 ms.

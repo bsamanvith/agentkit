@@ -52,7 +52,8 @@ var (
 	// ErrToolFailed reports that the tool ran and returned an error (or
 	// panicked). The tool's own error is still reachable with errors.Is/As.
 	ErrToolFailed = errors.New("tool failed")
-	// ErrPanic is joined with ErrToolFailed when the tool panicked.
+	// ErrPanic is joined with ErrToolFailed when the tool panicked. The cause
+	// is a *PanicError carrying the stack.
 	ErrPanic = errors.New("tool panicked")
 	// ErrNotFound reports a call to a tool name the registry does not have.
 	ErrNotFound = errors.New("tool not found")
@@ -77,6 +78,19 @@ func (e *Error) Unwrap() []error { return []error{e.Kind, e.Err} }
 
 var namePattern = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`)
 
+// checkDefinition validates what every consumer (models, MCP clients) relies
+// on: a valid name and an input schema that is a JSON object.
+func checkDefinition(d Definition) error {
+	if err := checkName(d.Name); err != nil {
+		return err
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(d.InputSchema, &schema); err != nil || schema == nil {
+		return fmt.Errorf("%w: tool %q: input schema must be a JSON object", ErrInvalidDefinition, d.Name)
+	}
+	return nil
+}
+
 func checkName(name string) error {
 	if !namePattern.MatchString(name) {
 		return fmt.Errorf("%w: name %q must match %s", ErrInvalidDefinition, name, namePattern)
@@ -84,10 +98,23 @@ func checkName(name string) error {
 	return nil
 }
 
+// PanicError is the cause of a call that panicked. Its message holds only the
+// panic value, so it is safe to show to a model or an MCP client; the stack is
+// kept separately for logs (use errors.As).
+type PanicError struct {
+	Value any
+	Stack []byte
+}
+
+func (e *PanicError) Error() string { return fmt.Sprintf("%v: %v", ErrPanic, e.Value) }
+
+// Is reports whether target is [ErrPanic].
+func (e *PanicError) Is(target error) bool { return target == ErrPanic }
+
 // recovered converts a recovered panic value into an error matching
 // ErrToolFailed and ErrPanic.
 func recovered(name string, v any) error {
-	return &Error{Tool: name, Kind: ErrToolFailed, Err: fmt.Errorf("%w: %v\n%s", ErrPanic, v, debug.Stack())}
+	return &Error{Tool: name, Kind: ErrToolFailed, Err: &PanicError{Value: v, Stack: debug.Stack()}}
 }
 
 // contextError reports that the call stopped because ctx is done.

@@ -10,7 +10,7 @@ Put [docs/ENGINEERING.md](../docs/ENGINEERING.md) into practice. Split in two ph
 
 ## Phase 1: M0, before any feature
 
-- [ ] [T001](T001-tooling-and-lint.md) *(review: CI run pending)* Toolchain, Makefile, lint, architecture test, minimal CI
+- [x] [T001](T001-tooling-and-lint.md) Toolchain, Makefile, lint, architecture test, minimal CI
 - [x] [T002](T002-testkit.md) Test helpers (testkit)
 
 ## Phase 2: M5, after E03 (real components exist)

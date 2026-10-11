@@ -109,10 +109,33 @@ func Check(rules Rules, pkgs []Package) []Violation {
 }
 
 // isTestHelper reports whether a module package is itself test support code
-// (an xxxtest package or internal/testkit); such packages may import testing.
+// (internal/testkit, or an xxxtest package directly under package xxx, such
+// as pkg/tool/tooltest); such packages may import testing.
 func isTestHelper(rel string) bool {
-	last := rel[strings.LastIndex(rel, "/")+1:]
-	return strings.HasSuffix(last, "test") || rel == "internal/testkit" || strings.HasPrefix(rel, "internal/testkit/")
+	return rel == "internal/testkit" || strings.HasPrefix(rel, "internal/testkit/") || isXXXTest(rel)
+}
+
+// isXXXTest reports whether the last path element is the parent's name plus
+// "test", the convention of net/http/httptest and our own pkg/tool/tooltest.
+// A package that merely ends in "test" (pkg/latest) does not count.
+func isXXXTest(path string) bool {
+	dir, last, ok := cutLast(path)
+	if !ok {
+		return false
+	}
+	_, parent, ok := cutLast(dir)
+	if !ok {
+		parent = dir
+	}
+	return last == parent+"test"
+}
+
+func cutLast(path string) (dir, last string, ok bool) {
+	i := strings.LastIndex(path, "/")
+	if i < 0 {
+		return "", path, false
+	}
+	return path[:i], path[i+1:], true
 }
 
 func isTestHelperImport(module, imp string) bool {
@@ -122,8 +145,7 @@ func isTestHelperImport(module, imp string) bool {
 	if rel, ok := relativeOK(module, imp); ok {
 		return isTestHelper(rel)
 	}
-	last := imp[strings.LastIndex(imp, "/")+1:]
-	return isStdlib(imp) && strings.HasSuffix(last, "test") // e.g. net/http/httptest
+	return isStdlib(imp) && isXXXTest(imp) // e.g. net/http/httptest
 }
 
 // isStdlib uses the go command's own heuristic: standard library import paths

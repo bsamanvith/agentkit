@@ -6,7 +6,6 @@ package testkit
 import (
 	"bytes"
 	"errors"
-	"flag"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -16,13 +15,17 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-var update = flag.Bool("update", false, "rewrite golden files with the current output")
+// UpdateGoldenEnv is the environment variable that, set to 1, makes [Golden]
+// rewrite golden files instead of comparing. It is an env var rather than a
+// -update flag so that `make golden` (go test ./...) also works for packages
+// that never call Golden.
+const UpdateGoldenEnv = "AGENTKIT_UPDATE_GOLDEN"
 
-// Golden compares got with the contents of the golden file at path. Run the
-// tests with -update to write got to the file instead; review the diff.
+// Golden compares got with the contents of the golden file at path. Run
+// `make golden` to write got to the file instead; review the diff.
 func Golden(tb testing.TB, path string, got []byte) {
 	tb.Helper()
-	golden(tb, path, got, *update)
+	golden(tb, path, got, os.Getenv(UpdateGoldenEnv) == "1")
 }
 
 func golden(tb testing.TB, path string, got []byte, update bool) {
@@ -38,13 +41,13 @@ func golden(tb testing.TB, path string, got []byte, update bool) {
 	}
 	want, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		tb.Fatalf("golden file %s does not exist; run the test with -update to create it", path)
+		tb.Fatalf("golden file %s does not exist; run `make golden` to create it", path)
 	}
 	if err != nil {
 		tb.Fatalf("golden: %v", err)
 	}
 	if !bytes.Equal(want, got) {
-		tb.Errorf("output differs from golden file %s (-want +got):\n%s\nrun the test with -update if the change is intended",
+		tb.Errorf("output differs from golden file %s (-want +got):\n%s\nrun `make golden` if the change is intended",
 			path, cmp.Diff(string(want), string(got)))
 	}
 }

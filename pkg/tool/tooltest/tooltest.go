@@ -12,7 +12,6 @@
 package tooltest
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -157,17 +156,6 @@ func RunRegistry(t *testing.T, newRegistry func(t *testing.T, tools []tool.Tool)
 		_, err := setup(t).Invoke(ctx, "block", nil)
 		if !errors.Is(err, context.DeadlineExceeded) || errors.Is(err, tool.ErrToolFailed) {
 			t.Errorf("err = %v, want context.DeadlineExceeded and not ErrToolFailed", err)
-		}
-	})
-
-	t.Run("OutputIsJSON", func(t *testing.T) {
-		t.Parallel()
-		out, err := setup(t).Invoke(t.Context(), "echo", json.RawMessage(`{"text":"x"}`))
-		if err != nil {
-			t.Fatalf("Invoke: %v", err)
-		}
-		if !json.Valid(out) || !bytes.HasPrefix(bytes.TrimSpace(out), []byte("{")) {
-			t.Errorf("output is not a JSON object: %s", out)
 		}
 	})
 }

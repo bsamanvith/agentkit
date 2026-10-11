@@ -32,7 +32,7 @@ Read first: `tasks/T022-harness-loop.md` (sections "Pluggability" and "Contract 
 - [x] Mutation list recorded in Notes (at least: save skipped on one turn, resume sends the prompt again, output key ignored, resume restarts from scratch), every planted bug caught. — 11 plants, all caught (table below)
 - [x] `-tags live`: `agentkit run` with a question that needs a tool completes against the real API and uses the tool. This also runs T021's live test; when both pass, T021 moves to `done`. — `cmd/agentkit.TestLiveRunUsesTool` and `pkg/llm/anthropic.TestLiveToolCall`, both passed on 2026-10-11 (results below); T021 is `done`
 - [x] Live check of the T022 `Validate` concern: a real Claude conversation with a user message that mixes tool results and text is either accepted by `Validate` or the restriction is documented as intended (see T022 handoff). Recorded in Notes. — `cmd/agentkit.TestLiveMixedToolResultsAndText`: Claude accepts it, `Validate` rejects it; the restriction is kept as intended (below)
-- [x] Manual: the flow demo stops at approval, and a second process resumes it to completion. Recorded in Notes. — run on 2026-10-11 against Claude (below); also automated with the fake model in `cmd/agentkit.TestFlowDemoStopsAndResumesInAnotherProcess`
+- [x] Manual: the flow demo stops at approval, and a second process resumes it to completion. Recorded in Notes. — run on 2026-10-11 against Claude (below); now also automated with the built binary as separate processes, replaying recorded Claude responses, in `cmd/agentkit.TestE2EFlowKilledResumedApproved` (and with the fake model in `TestFlowDemoStopsAndResumesInAnotherProcess`)
 
 ## Notes
 
@@ -133,6 +133,18 @@ Also run by hand: a research agent **killed with SIGINT right after turn 1** (`a
 - The file held 3 messages: the prompt; a reply with a thinking block, text and a tool call; and the tool result.
 - Running the same command again resumed it. The new process made only the remaining two model calls: it did not call `current_time` again and went straight to `calculate`.
 - Claude accepted the thinking block replayed from the file (read 676 cached tokens) and stopped at the approval as before.
+
+### End-to-end replay tests (`cmd/agentkit/e2e_test.go`)
+
+These tests build the binary and run it as separate OS processes. They talk to a local server that replays Claude responses recorded from the real API (`testdata/e2e/<scenario>/NN.http`, the raw-HTTP form the adapter tests use). They run with the unit tests in about 1 s, need no network or key, and skip under `-short`.
+- `TestE2ERun`: `agentkit run` makes a tool call (`calculate`) and answers in two turns.
+- `TestE2EFlowKilledResumedApproved`: three processes share one state file.
+  - **Process A** starts the demo flow. The server holds A's second model call until the test sends SIGINT, so A is killed while research turn 1 (with a thinking block) is saved. A exits 1, and the file holds 3 messages with status `running`.
+  - **Process B** resumes the research. Its first request is byte-for-byte the one A was killed waiting for, and it never sends turn 1 again. B stops at the approval.
+  - **Process C** approves. Only the writer runs, and the flow completes.
+- After every test, `checkConversation` checks all requests across processes: each agent's request extends its previous one exactly, byte for byte (so a thinking block read back from the file is unchanged), and ends with a user message. The server also checks that every fixture was used, so a change in the number of model calls fails the test.
+- **To record again**: `AGENTKIT_E2E_RECORD=1 ANTHROPIC_API_KEY=... go test -count=1 -run TestE2E ./cmd/agentkit/`. The server forwards to the API with the real key (the binary only ever gets a dummy key) and rewrites the fixtures, keeping only status, Content-Type and the event stream. Recorded on 2026-10-11 with Claude Opus 5.5. The flow scenario runs at default effort so turn 1 has a thinking block; recording can take a second try to get one.
+- Bugs planted to check them: agentstep resuming from scratch, and the file store not writing transcripts to disk. `TestE2EFlowKilledResumedApproved` caught both.
 
 ### For E05 / T030 (the store's `TranscriptSaver`)
 

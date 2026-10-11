@@ -1,0 +1,61 @@
+HTTP/1.1 200 OK
+Content-Type: text/event-stream; charset=utf-8
+Request-Id: req_replay
+
+event: message_start
+data: {"type":"message_start","message":{"model":"claude-opus-5-5","id":"msg_011CfvyyKSBJ4LvQciyJhBoM","type":"message","role":"assistant","content":[],"container":null,"stop_reason":null,"stop_sequence":null,"stop_details":null,"usage":{"input_tokens":4,"cache_creation_input_tokens":0,"cache_read_input_tokens":676,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":8,"service_tier":"standard","inference_geo":"global"},"diagnostics":null}               }
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}            }
+
+event: ping
+data: {"type": "ping"}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":""}      }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"CAQS5wQKEAgSGAI4AUIIdGhpbmtpbmcSDFlVPLwCDxRDL1B3zRoMSgVd7GkMnx9tlOw5IjBqTMPt9Fo0XKdYoyMBA6+mx0D3a2OKs5mMcWdAKMP4tERCMnsdBRQP5CfaoG7h56wqhAQ/9Ch3MQ5fEUhcejlIktNtZAjrnmK7W5e8aY5kH3BoR3jkaUCB0lo0KF2vf9YKerbUU10OyB1gVLEv7EDl/jcLPtUrxYUtd1tclx8oCAw8zoH9hwpK11hG5aFcVN6dd7C6WXBrW7J9oMZ/JJykaUYDq0eMCMLTmIfynbsNNIncZUjzCvC9afKmQ1s33U4WqdTmipBRFSbqRtOsfkxb/1GSTzEYeoX5zd8YiHTbG2RgwvZ3Yx5Hj5aFFu5dszWW1EQZiBlJ8SF4JuLBHUYtH5Lmp3PEVMeTvvUKN1hT4gtp/YGKqDytIQk+HDQBk+WPCb0ohYEEwT+85+TlGN/Ovu51t79Lhn9FP44apnvZn95k38rY5k8zVG7zkgISmI9gAg5yUnsj5jWy3jxr85k96c8TqrAqEJWurKgf7AM3pBQZgY3bdRzP6q2Bx6ZC+sJTqR8hhDW+C3rZ1qVAxBo0EJK0UMkSCDBnbjyKTNh67waMP+jYSjg8rK3aIaqf55RPynAcV3Uaa4kyEIuBF+Tcqq0B6q2J0Jhofz5+KTUMs078zFbwfJQY7ZOdM9YiQFRH+UT90WKVm7WllmM+V7nV0JVKER7TKHR1KlzoFT3nuz9cW0EckXATv/YAY4i0bQGTGz5OSi9o3gpG8KlfusQ+W2lVarLHp5e9lNX2QIug6om+HJWGcu4YAQ=="}               }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0           }
+
+event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}     }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"I"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"'ll get the date"}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" first,"}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" then do"}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" the multiplication on"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" the next turn."}   }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1      }
+
+event: content_block_start
+data: {"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"toolu_01UYacUznsUPoHuaunMFQ74W","name":"current_time","input":{},"caller":{"type":"direct"}}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":""}         }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":2              }
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null,"stop_details":null,"container":null},"usage":{"input_tokens":4,"cache_creation_input_tokens":0,"cache_read_input_tokens":676,"output_tokens":63,"output_tokens_details":{"thinking_tokens":15},"iterations":[{"input_tokens":4,"output_tokens":63,"cache_read_input_tokens":676,"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"type":"message","model":null}]}    }
+
+event: message_stop
+data: {"type":"message_stop"}
+

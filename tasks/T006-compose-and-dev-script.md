@@ -16,11 +16,11 @@ One command brings up any topology from [ENGINEERING.md §3.2](../docs/ENGINEERI
 
 - `deploy/local/compose.yaml` with profiles: `allinone`, `split`, `deps`, `obs`. (`mcp` and `secrets` profiles are added by their epics; leave a commented placeholder.)
 - Healthchecks on every service; `depends_on: condition: service_healthy`.
-- Per-topology config in `deploy/local/config/`; fixed host ports documented in `deploy/local/README.md`.
+- One `agentkit` image everywhere; each container gets its own config in `deploy/local/config/` (e.g. `split-harness`, `split-tools`); fixed host ports documented in `deploy/local/README.md`.
 - `fakellm` is part of every app topology; `AGENTKIT_LLM=anthropic` + `ANTHROPIC_API_KEY` switches to the real API.
 - `scripts/dev.sh` subcommands: `up`, `down [-v]`, `status`, `logs`, `smoke`, `reset`, `run`, `help`.
   - Remembers the last topology in `.data/dev-topology` so `reset`/`smoke` need no args.
-  - `run <cmd>` does `go run ./cmd/<cmd>` with SQLite under `.data/`, fakellm started alongside if needed.
+  - `run [config]` does `go run ./cmd/agentkit` with the `allinone` config (or the one given), SQLite under `.data/`, and starts fakellm alongside if needed.
   - `bash` + `set -euo pipefail`, `shellcheck`-clean, works on Linux and macOS.
 - Prints URLs of the running services after `up`.
 
@@ -31,8 +31,8 @@ One command brings up any topology from [ENGINEERING.md §3.2](../docs/ENGINEERI
 
 ## Acceptance criteria
 
-- [ ] `scripts/dev.sh up` (default `allinone`) returns with all services healthy; `status` shows them.
-- [ ] `scripts/dev.sh up split` starts `harnessd`, `toolserver`, `postgres`, `fakellm`, all healthy.
+- [ ] `scripts/dev.sh up` (default `allinone`) returns with `agentkit` and `fakellm` healthy; `status` shows them.
+- [ ] `scripts/dev.sh up split` starts `harness` and `tools` (same image, different config), `postgres`, `fakellm`, all healthy.
 - [ ] `scripts/dev.sh up deps` exposes Postgres at the documented port and `AGENTKIT_PG_URL` from `status` connects.
 - [ ] `scripts/dev.sh down -v` leaves no containers or volumes for the project.
 - [ ] `scripts/dev.sh up split obs` combines profiles.

@@ -1,7 +1,7 @@
 # agentkit: Engineering Plan
 
-> Status: proposal. How we design modules, how we test them, and how we run the system locally.
-> The work to put this in place is tracked in [tasks/E01-foundations.md](../tasks/E01-foundations.md).
+> Status: proposal. How we design modules, how we test them, how we run the system locally, and the agent skills that encode all of it.
+> The work to put this in place is tracked in [E01 foundations](../tasks/E01-foundations.md) and [E02 agent skills](../tasks/E02-agent-skills.md).
 
 This complements [PLAN.md](PLAN.md) (what we build) with how we build it.
 
@@ -11,8 +11,15 @@ This complements [PLAN.md](PLAN.md) (what we build) with how we build it.
 
 ### 1.1 One Go module, many packages
 
-- A single `go.mod` at the root. Go's module graph pruning means importing `pkg/tool` does not compile the Vault SDK.
-- What keeps packages independent is **package boundaries**, not separate modules. Split into separate modules later only if a dependency becomes a real problem for consumers.
+- A single `go.mod` at the root. What keeps packages independent is **package boundaries**, not separate modules.
+- What a single module does **not** cost:
+  - Binary size: the linker only includes packages that are actually imported. A binary that never imports `credentials/vault` contains no Vault code.
+  - Build time: only imported packages are compiled.
+- What it **does** cost, and how we handle it:
+  - Everyone who imports any agentkit package gets our whole `go.mod` in their dependency graph. Go picks the highest required version of each shared dependency, so a heavy backend (AWS SDK, Kubernetes client) can raise the minimum version of something the user also depends on (gRPC, OpenTelemetry, protobuf).
+  - Mitigations: prefer the standard library and thin clients (for example, call the Kubernetes Secrets REST API with `net/http` instead of pulling in `client-go`); keep each heavy backend in its own subpackage so it can be moved out cleanly.
+  - If one backend still becomes a problem, give that subpackage its own nested `go.mod` (for example `pkg/credentials/aws/go.mod`). The import path stays the same, so this does not break users.
+  - All packages share one version number. That is fine before 1.0.
 
 ### 1.2 Standard package shape
 
@@ -62,6 +69,61 @@ cmd/*  ──wires──▶  adapters (llm/anthropic, store/postgres, credential
 - Arrows only point down. `harness` depends on the `llm.Model` interface, never on `llm/anthropic`.
 - Nothing in `pkg/` imports `cmd/`. Nothing imports another package's `internal/`.
 - Enforced by lint (`depguard` rules in `.golangci.yml`), not by review.
+
+### 1.5 Components: mix-and-match deployment
+
+Goal: any set of packages can run in one container, or be spread across containers that talk to each other, **without code changes**.
+
+**One binary, components chosen by config.** `cmd/agentkit` is thin wiring. Each deployable piece (`harness`, `tools`, `mcp-server`, ...) implements a small contract in `pkg/component`:
+
+```go
+type Component interface {
+    Name() string
+    Start(ctx context.Context, deps Deps) error // build the component from its deps
+    Register(mux *http.ServeMux)                 // mount HTTP, ConnectRPC and gRPC handlers
+    Ready(ctx context.Context) error             // feeds /readyz
+    Shutdown(ctx context.Context) error
+}
+```
+
+**Every dependency between components is an interface, and config picks local or remote:**
+
+```yaml
+# one container
+components: [harness, tools, mcp-server]
+harness:
+  tools: { mode: local }
+
+# two containers, same image
+# container A
+components: [harness]
+harness:
+  tools: { mode: remote, url: http://tools:8081 }
+# container B
+components: [tools, mcp-server]
+```
+
+- `local`: the harness gets the in-process `tool.Registry`. No network, no serialization.
+- `remote`: the harness gets a ConnectRPC client that implements the same `tool.Registry` interface.
+- Each remote client is tested with the **same conformance suite** as the local implementation (§2.4), so swapping one for the other is safe by construction.
+
+**Communication between containers:**
+
+| Path | Protocol | Why |
+|---|---|---|
+| Component to component (ours) | gRPC / ConnectRPC over HTTP/2 | Typed, streaming, one definition for Go and non-Go clients |
+| To and from external agents and tools | MCP (stdio, Streamable HTTP) | Spec-compliant interop |
+| Browser / curl | ConnectRPC JSON over HTTP/1.1 | No gRPC tooling needed |
+
+- Plain h2c locally; mTLS between containers in real deployments, with certificates from `pkg/credentials`.
+- Tenant and request scope travel in request metadata and are restored into `context.Context` by middleware on the receiving side.
+- Addresses come from config (compose service names locally, Kubernetes Services in a cluster). No service-discovery system in v1.
+
+**Images:**
+
+- The default image is `agentkit` (everything in the core build) plus `fakellm` for dev and tests. Deployment shape is config, not image choice.
+- Heavy optional backends sit behind build tags (for example `-tags aws,vault`) so the default image stays small. `make image TAGS=...` builds a variant.
+- If you need a truly custom bundle, write a 20-line `main` that imports the components you want. They are ordinary packages.
 
 ---
 
@@ -142,15 +204,15 @@ New implementation = one line of test code + passing the suite.
 
 - **Docker Compose with profiles** is the default local runtime: fast, one file, no cluster needed.
 - **kind** (Kubernetes in Docker) is optional and only for things that need real Kubernetes (the k8s secrets backend, manifests, probes). Same images, same config.
-- One `Dockerfile`, parameterized by `--build-arg BIN=<cmd>`, producing distroless images.
+- One `Dockerfile` producing distroless images: `agentkit` and `fakellm`. Topologies differ by config, not by image.
 - **`fakellm`**: a small scripted model server speaking the Anthropic Messages API (subset). Every topology uses it by default, so local runs and e2e tests are deterministic and need no API key. Set `AGENTKIT_LLM=anthropic` plus a key to use the real provider.
 
 ### 3.2 Topologies
 
 | Topology | Containers | Use it for |
 |---|---|---|
-| `allinone` (default) | `allinone` (SQLite), `fakellm` | Day-to-day dev, fastest loop |
-| `split` | `harnessd`, `toolserver`, `postgres`, `fakellm` | Remote tools, Postgres, multi-tenancy |
+| `allinone` (default) | `agentkit` (all components, SQLite), `fakellm` | Day-to-day dev, fastest loop |
+| `split` | `harness` and `tools` (both the `agentkit` image, different config), `postgres`, `fakellm` | Remote tools over gRPC, Postgres, multi-tenancy |
 | `mcp` | `split` + fixture MCP server(s) | MCP client/server/bridge |
 | `secrets` | `allinone` + `vault` + `localstack` | Credential backends |
 | `obs` | add-on: `otel-collector` + `jaeger` | Traces and metrics; combine with any topology |
@@ -169,11 +231,11 @@ scripts/dev.sh status               containers, health, URLs
 scripts/dev.sh logs [service]       follow logs
 scripts/dev.sh smoke [topology]     run the e2e suite against what is running
 scripts/dev.sh reset                down -v, then up the same topology
-scripts/dev.sh run <cmd>            go run a binary on the host (no Docker), SQLite in .data/
+scripts/dev.sh run [config]         go run agentkit on the host (no Docker), SQLite in .data/
 ```
 
 - `up` waits on container healthchecks (`/readyz`), so when it returns, the stack is usable.
-- `run allinone` is the fastest inner loop: no image build at all.
+- `run` is the fastest inner loop: `go run ./cmd/agentkit` with the `allinone` config, no image build at all.
 - `scripts/kind.sh up|down|load|apply <topology>` mirrors this for Kubernetes, using kustomize overlays in `deploy/k8s/overlays/<topology>`.
 - `Makefile` holds build, lint, and test targets and delegates environment work to the scripts.
 
@@ -189,13 +251,14 @@ scripts/
 deploy/
   local/
     compose.yaml          all services, gated by profiles
-    config/*.yaml         per-topology agentkit config
+    config/*.yaml         agentkit config per topology and per container
     fakellm/*.jsonl       default scripts for fakellm
     README.md             ports, topologies, env vars
   k8s/
     base/
     overlays/<topology>/
 cmd/
+  agentkit/               the binary: parse config, start components
   fakellm/                scripted model server (dev/test only)
 test/
   e2e/                    black-box smoke tests (//go:build e2e)
@@ -205,13 +268,43 @@ internal/
 
 ---
 
-## 4. Workflow: tasks folder
+## 4. Agent skills
+
+We keep coding-agent skills in the repo and improve them like code. They turn this document into steps an agent (or a person) can follow.
+
+### 4.1 Where they live
+
+- **`.agents/skills/<name>/SKILL.md`** is the single source. This is the open Agent Skills format (`name` + `description` front matter, Markdown body, optional `scripts/` and `references/`), read by Codex and other agents.
+- **`.claude/skills`** is a symlink to `.agents/skills`, so Claude Code loads the same files.
+- **`AGENTS.md`** at the root is the short repo guide every agent reads (commands, layout, links to these docs). **`CLAUDE.md`** just imports it (`@AGENTS.md`), so there is one copy.
+
+### 4.2 The set
+
+| Skill | Use it to | Built on |
+|---|---|---|
+| `plan` | Turn an idea into an epic and task files with testable acceptance criteria | §5, `tasks/README.md` |
+| `design-module` | Shape a new package: interfaces, subpackages, `xxxtest`, component wiring | §1 |
+| `write-tests` | Pick the tier, write one test per criterion, add or reuse a conformance suite | §2 |
+| `implement-task` | Take a task from `todo` to `review`: branch, code, tests, `make check`, update the task file | §1, §2, §5 |
+| `review` | Review a diff against our rules: boundaries, brittle tests, test budget, errors, ctx, goroutines | §1, §2 |
+| `local-env` | Bring up a topology, run smoke tests, read logs | §3 |
+
+### 4.3 Rules for skills
+
+- **Point to the docs; don't copy them.** A skill says *what to do, in what order*, and links the section of this file that says *why*. Rules live in one place.
+- **Short.** A skill body should fit on a couple of screens. Long reference material goes in `references/` and is loaded only when needed.
+- **Agent-neutral.** No instructions that only one agent can follow. Where a skill can use another agent, it is optional and degrades gracefully. For example, `review` can ask for a second opinion from a different agent CLI if one is installed (`codex exec`, `claude -p`), read-only, and merges the findings. If none is installed, it skips that step.
+- **Linted.** `make lint` checks the front matter, that `name` matches the directory, that every link resolves, and that `.claude/skills` points at `.agents/skills`.
+- **Improve in the same PR.** When a review finds the same mistake twice, or a skill sent an agent the wrong way, fix the skill in the PR that fixes the code.
+
+## 5. Workflow: tasks folder
 
 - `tasks/` holds one Markdown file per task, plus epic files that reference tasks. Conventions and template are in [tasks/README.md](../tasks/README.md).
-- A task's **acceptance criteria are its test list** (section 2.3). A task is done when each criterion has a passing test (or a stated reason it is covered elsewhere) and `make check` is green.
+- A task's **acceptance criteria are its test list** (§2.3). A task is done when each criterion has a passing test (or a stated reason it is covered elsewhere) and `make check` is green.
 
-## 5. Open questions
+## 6. Open questions
 
 - Compose as the default and kind as opt-in: agreed?
+- Which build tags gate heavy backends, and what is the size budget for the default `agentkit` image?
 - Is `fakellm` speaking the Anthropic wire format enough, or do we also want an OpenAI-compatible mode from day one?
 - Go version: `go.mod` says 1.23; we may want to move to the current stable release before writing code.

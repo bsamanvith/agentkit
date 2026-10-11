@@ -20,7 +20,7 @@ Ordered roughly by dependency.
 
 - [ ] [T001](T001-tooling-and-lint.md) Toolchain, Makefile, lint, import boundaries
 - [ ] [T002](T002-testkit.md) Test helpers: testkit and fake clock
-- [ ] [T003](T003-skeleton-binaries.md) Skeleton binaries with health endpoints
+- [ ] [T003](T003-skeleton-binaries.md) `agentkit` binary with component runtime and health endpoints
 - [ ] [T004](T004-fakellm.md) `fakellm` scripted model server
 - [ ] [T005](T005-container-image.md) Distroless container image
 - [ ] [T006](T006-compose-and-dev-script.md) Compose topologies and `scripts/dev.sh`
@@ -34,10 +34,11 @@ T001 ─┬─ T002
            T004┘                  └─ T009
 ```
 
-## Next epics (to be broken down)
+## Next epics
 
-- E02 Core interfaces: `llm.Model`, `tool.Tool`/registry, `store.Store`, credential store, tenancy context, each with its `xxxtest` package and conformance suite.
-- E03 Tool protocol: protobuf, gRPC + ConnectRPC, `toolserver`.
-- E04 Harness loop on top of E02 (with `fakellm`).
-- E05 MCP client/server/bridge (`mcp` topology).
-- E06 Credentials backends (`secrets` topology).
+- [E02](E02-agent-skills.md) Agent skills (can run in parallel with E01).
+- E03 Core interfaces: `llm.Model`, `tool.Tool`/registry, `store.Store`, credential store, tenancy context, each with its `xxxtest` package and conformance suite. *(to be broken down)*
+- E04 Tool protocol: protobuf, gRPC + ConnectRPC, `tools` and remote-registry client. *(to be broken down)*
+- E05 Harness loop on top of E03 (with `fakellm`). *(to be broken down)*
+- E06 MCP client/server/bridge (`mcp` topology). *(to be broken down)*
+- E07 Credentials backends (`secrets` topology). *(to be broken down)*

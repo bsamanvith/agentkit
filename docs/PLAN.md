@@ -32,10 +32,10 @@ pkg/
   transport/      shared HTTP/gRPC and streaming plumbing
   observability/  tracing, metrics, logging, audit
   config/         unified YAML/env configuration
+  component/      component contract and runtime (what cmd/agentkit runs)
 cmd/
-  toolserver/     lightweight tools API
-  harnessd/       harness API server
-  allinone/       both in one binary
+  agentkit/       one binary; which components run is set by config
+  fakellm/        scripted model server for local runs and tests
 ```
 
 ## Packages (`pkg/`)
@@ -116,13 +116,24 @@ OpenTelemetry traces and metrics, `slog` logging, and a tool-call audit log.
 
 One YAML/env configuration for enabled tools, MCP servers, credentials, and models.
 
-## Binaries (`cmd/`)
+## Components and deployment (`cmd/`)
 
-- **`toolserver`**: lightweight tools API serving a registry over our protocol and MCP simultaneously.
-- **`harnessd`**: the harness as an API: start a run, stream events, resume, cancel. Uses local tools or remote tool/MCP servers.
-- **`allinone`**: both in one binary, for development and small deployments.
+There is one binary, `agentkit`. It is made of **components**, and config decides which components run in a given process:
 
-Running split or combined is a configuration choice only: the harness reaches tools through the same interface whether they are in-process or remote.
+- **`harness`**: the harness as an API: start a run, stream events, resume, cancel.
+- **`tools`**: a tool registry served over our protocol (gRPC/ConnectRPC).
+- **`mcp-server`**: the same registry exposed as a spec-compliant MCP server.
+- More as needed (for example a credentials broker), each one a package with the same component contract.
+
+Each dependency between components is configured as **`local`** (in-process, a direct call) or **`remote`** (a URL; reached through a client that implements the same Go interface). The harness reaches tools through `tool.Registry` whether that is an in-memory registry or a gRPC client to another container.
+
+That gives three ways to package, all from the same code:
+
+1. **Everything in one container**: `components: [harness, tools, mcp-server]`, all deps `local`.
+2. **Split across containers**: the same image run several times with different configs, talking over gRPC (internal) or MCP (external).
+3. **Embedded**: a Go program imports the packages and wires its own `main`, without our binary at all.
+
+Details: [ENGINEERING.md §1.5](ENGINEERING.md#15-components-mix-and-match-deployment).
 
 ## Decisions
 
@@ -133,6 +144,8 @@ Running split or combined is a configuration choice only: the harness reaches to
 | State | Stateful; SQLite locally, Postgres for servers |
 | Tenancy | Multi-tenant in v1, scope carried in `context.Context` |
 | Protocols | gRPC (plus ConnectRPC JSON/HTTP) internally; spec MCP externally |
+| Go modules | One module for the whole repo; split out a nested module only if a backend's dependencies cause problems for users |
+| Deployment | One `agentkit` binary/image; components and local-vs-remote wiring chosen by config |
 
 ## Open items / next steps
 

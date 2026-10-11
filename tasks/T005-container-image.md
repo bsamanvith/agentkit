@@ -10,14 +10,15 @@ depends_on: [T003, T004]
 
 ## Context
 
-[PLAN.md](../docs/PLAN.md) targets 10-20 MB images. One Dockerfile builds every binary.
+[PLAN.md](../docs/PLAN.md) targets 10-20 MB images. Deployment shape is config, not image choice, so we ship one app image ([ENGINEERING.md §1.5](../docs/ENGINEERING.md#15-components-mix-and-match-deployment)).
 
 ## Scope
 
 - Multi-stage `Dockerfile`: Go build stage with module and build caches, `CGO_ENABLED=0`, `-trimpath`, `-ldflags "-s -w"` + version info; final stage `gcr.io/distroless/static:nonroot`.
-- `--build-arg BIN=<harnessd|toolserver|allinone|fakellm>`.
+- Two images from the same file: `agentkit` (default) and `fakellm` (`--build-arg BIN=fakellm`).
+- `--build-arg TAGS=...` passes Go build tags, for variants with heavy optional backends.
 - Health checking without a shell: the binary supports `<bin> healthcheck` (hits its own `/healthz`), used by compose and k8s probes.
-- `make image BIN=...` and `make images`.
+- `make image BIN=... TAGS=...` and `make images`.
 - `.dockerignore`.
 
 ## Out of scope

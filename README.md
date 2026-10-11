@@ -15,7 +15,7 @@ Each package can be imported on its own or run as a lightweight server.
 
 - Scope and module plan: [docs/PLAN.md](docs/PLAN.md)
 - Module design, testing, and local environments: [docs/ENGINEERING.md](docs/ENGINEERING.md)
-- Work items: [tasks/](tasks/) (start with [E01](tasks/E01-foundations.md))
+- Work items: [tasks/](tasks/) (start with [E01](tasks/E01-foundations.md) and [E02](tasks/E02-agent-skills.md))
 
 ## License
 

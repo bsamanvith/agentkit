@@ -107,7 +107,7 @@ func TestScopeSurvivesDerivedContextsButNotSiblings(t *testing.T) {
 	derived := map[string]context.Context{
 		"WithCancel":    cancelled,
 		"WithTimeout":   timed,
-		"WithValue":     context.WithValue(inAcme, struct{}{}, 1),
+		"WithValue":     context.WithValue(inAcme, otherKey{}, 1),
 		"WithoutCancel": context.WithoutCancel(inAcme),
 		"after cancel":  afterCancel(inAcme),
 	}
@@ -138,6 +138,9 @@ func TestScopeSurvivesDerivedContextsButNotSiblings(t *testing.T) {
 		t.Errorf("user of the original context = %q after a child set another, want ann", u)
 	}
 }
+
+// otherKey is the key of an unrelated context value.
+type otherKey struct{}
 
 func afterCancel(parent context.Context) context.Context {
 	ctx, cancel := context.WithCancel(parent)

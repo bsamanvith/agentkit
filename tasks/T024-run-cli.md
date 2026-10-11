@@ -14,7 +14,7 @@ The first real end-to-end run: our harness, our tools, the real Claude API, and 
 
 ## Scope
 
-- `harness.Step`: wraps a harness run as a `flow.Step` (input from state, transcript and answer into state).
+- `harness.Step`: wraps a harness run as a `flow.Step` (input from state, transcript and answer into state). It takes an explicit output key, so two agents in one `flow.Parallel` write different keys (the same key in two branches is `flow.ErrConflict`).
 - `cmd/agentkit run`: runs one prompt with a few demo tools (for example read a file from a sandbox directory, current time, arithmetic) and streams events to the terminal.
 - `cmd/agentkit flow demo`: a two-step flow (research → `Approve` → write) that can be stopped at the approval and resumed in a new process (in-memory checkpoints persisted to a JSON file for this demo only).
 
@@ -26,4 +26,7 @@ The first real end-to-end run: our harness, our tools, the real Claude API, and 
 
 ## Notes
 
--
+Contracts from `pkg/flow` (T023 handoff) that shape `harness.Step`:
+- **flow only checkpoints when a step completes**, and a step that crashes is re-run from the state it started with. An agent step can run for many turns, so on its own a crash would lose every turn and repay for them. `harness.Step` therefore saves its own transcript after every turn, keyed by run id plus step path, through a small interface (memory implementation here; the SQLite store later), and on re-run resumes from it instead of starting over. Test: a step killed after turn 2 of 3 resumes and makes exactly one more model call.
+- **Steps must be safe to re-run.** Tool side effects are not undone on resume: document that tools with side effects should be idempotent (or guarded by a key derived from the tool-use ID).
+- **The step tree passed to `flow.Resume` must match the one that checkpointed**; this is not detected yet (a shape fingerprint is a candidate follow-up before checkpoints outlive deployments with the SQLite store).

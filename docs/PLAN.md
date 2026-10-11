@@ -1,6 +1,6 @@
 # agentkit: Scope and Module Plan
 
-> Status: agreed scope and module shape, being implemented in the [build order](#build-order). Done so far: M0 (tooling) and M1 (`pkg/tool`). Current focus: M3 ([E04](../tasks/E04-llm-harness-flow.md)).
+> Status: agreed scope and module shape, being implemented in the [build order](#build-order). Done so far: M0 (tooling), M1 (`pkg/tool`), and in M3 `pkg/llm` and `pkg/flow`. Current focus: M3 ([E04](../tasks/E04-llm-harness-flow.md)).
 
 ## Goals
 

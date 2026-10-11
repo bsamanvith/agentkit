@@ -5,7 +5,7 @@ A modular Go framework for building agentic harnesses, tools, MCP servers/client
 - **Harness**: provider-agnostic agent loop with streaming, cancellation, parallel tool calls, budgets and hooks.
 - **Flows**: multi-step and multi-agent runs (sequence, parallel, loop, route, human approval) with a checkpoint after every step, so runs resume.
 - **Tools**: our own lightweight tool protocol (ConnectRPC: gRPC and JSON/HTTP from one handler).
-- **MCP**: connect to external MCP servers and expose any tool registry as a spec-compliant MCP server.
+- **MCP**: one server process serves many toolsets (Salesforce, HubSpot, Gmail, ...), each at its own URL path, chosen by config; also connects to external MCP servers.
 - **Credentials**: API key, OAuth2, JWT, basic, and mTLS with pluggable secure storage backends.
 
 Each package can be imported on its own or run as a lightweight server. One `agentkit` binary runs any mix of components, in one container or spread across several.
@@ -18,7 +18,7 @@ Each package can be imported on its own or run as a lightweight server. One `age
 |---|---|
 | M0 Tooling: `make check`, lint, architecture test, test helpers, CI | Done |
 | M1 `pkg/tool`: tool definitions, `tool.Func[In, Out]`, registry, middleware, conformance suite | Done |
-| M2 MCP server over stdio | Planned ([T018](tasks/T018-mcp-stdio-server.md)) |
+| M2 Toolsets from config; one MCP server, one URL path per toolset | Planned ([T026](tasks/T026-toolsets-from-config.md), [T018](tasks/T018-mcp-server.md)) |
 | M3 `llm`, Anthropic adapter, harness, `flow` | **In progress** ([E04](tasks/E04-llm-harness-flow.md)): `pkg/llm` done, next [T021](tasks/T021-llm-anthropic.md) (Anthropic adapter) and [T022](tasks/T022-harness-loop.md) (harness) |
 | M4 SQLite store, M5 containers and pods, M6 remote tools | Planned |
 

@@ -22,9 +22,10 @@ pkg/
   harness/        agent loop
   llm/            provider-agnostic model interface + adapters
   tool/           our tool protocol and core abstraction
+  toolset/        named toolsets built from config (factories, catalog, filters)
   mcp/
     client/       connect to external MCP servers
-    server/       expose a tool registry as an MCP server
+    server/       serve many toolsets over MCP, one URL path each
     bridge/       two-way MCP <-> tool protocol mapping
   credentials/    credential types and secure storage backends
   store/          persistence (SQLite, Postgres)
@@ -33,6 +34,7 @@ pkg/
   observability/  tracing, metrics, logging, audit
   config/         unified YAML/env configuration
   component/      component contract and runtime (what cmd/agentkit runs)
+connectors/       one package per external system (salesforce, hubspot, gmail, ...), each a toolset factory
 cmd/
   agentkit/       one binary; which components run is set by config
   fakellm/        scripted model server for local runs and tests
@@ -87,8 +89,26 @@ Our own tool protocol and the core abstraction.
 ### `mcp`
 
 - **`mcp/client`**: connects the harness to external MCP servers over stdio, Streamable HTTP, and SSE. Discovers their tools and wraps them as `tool.Tool`, so the harness does not care where a tool comes from.
-- **`mcp/server`**: exposes any tool registry as a spec-compliant MCP server. This is how new MCP tools are declared.
+- **`mcp/server`**: **one process serves many toolsets, each at its own URL path** over Streamable HTTP: `/mcp/salesforce`, `/mcp/hubspot`, `/mcp/gmail`. A client connects to the path of the toolset it wants and sees only those tools. No stdio server per connector. Stateless mode by default, so replicas scale behind a plain load balancer. A single toolset can also be served over stdio for desktop clients, from the same code.
 - **`mcp/bridge`**: two-way mapping between MCP and our tool protocol.
+
+**Toolsets and connectors** (`pkg/toolset`):
+
+- A **connector** is a Go package (for example `connectors/salesforce`) that provides a toolset factory: given its settings, it returns its tools.
+- **Build time** decides which connectors are compiled into the image (all by default; build tags drop heavy ones). Go cannot load packages at runtime, so this is the only way to choose code.
+- **Config** decides which toolsets run, under which names and with which settings. Two instances of one connector (two Salesforce orgs) are two named toolsets. Include/exclude filters expose a subset of a connector's tools.
+- The harness uses the same toolsets in process, with no MCP hop.
+
+```yaml
+mcp:
+  base_path: /mcp
+  toolsets:
+    - { name: salesforce, type: salesforce, settings: { instance_url: https://acme.my.salesforce.com } }
+    - { name: hubspot,    type: hubspot }
+    - { name: gmail,      type: gmail, include: [gmail_search, gmail_read*] }
+```
+
+Auth, tenant resolution and per-tenant credentials plug in as HTTP middleware in front of every toolset path (credentials, E07).
 
 External-facing MCP stays **spec-compliant** (stdio and Streamable HTTP, JSON-RPC). A gRPC transport for MCP exists only as a proposal and is not part of the spec, so gRPC is used only for our internal protocol.
 
@@ -174,7 +194,7 @@ Build the product from the inside out, and add infrastructure when there is some
 
 1. **M0 Tooling**: `make check`, lint, architecture test, minimal CI. *Done.*
 2. **M1 `pkg/tool`**: tool definition, `tool.Func[In, Out]`, registry, middleware, conformance suite. *Done.*
-3. **M2 MCP server over stdio**: any registry becomes an MCP server that Claude Code or Codex can use. First real end-to-end test.
+3. **M2 Toolsets and MCP server**: toolsets built from config, many toolsets served by one HTTP process at one path each. Usable from Claude Code, Codex or any MCP client.
 4. **M3 `llm` + Anthropic adapter + harness + `flow`**: run an agent loop and a multi-step flow from a small CLI. **Current focus** (E04); M2 can proceed in parallel.
 5. **M4 `store` (SQLite)**: runs and checkpoints persist; resume works.
 6. **M5 Components and containers**: `pkg/component`, `cmd/agentkit`, `fakellm`, image, Compose, smoke tests.

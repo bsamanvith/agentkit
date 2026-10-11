@@ -3,7 +3,7 @@ id: T003
 title: agentkit binary with component runtime and health endpoints
 epic: E01
 status: todo
-depends_on: [T001, T018]
+depends_on: [T001, T018, T026]
 ---
 
 # T003: `agentkit` binary with component runtime and health endpoints
@@ -17,7 +17,7 @@ The binary that runs any set of components, as in [ENGINEERING.md §1.5](../docs
 - `pkg/component`: the `Component` interface (`Name`, `Handler`, `Ready`, `Shutdown`); a runtime that mounts each component's handler on one `net/http` server (h2c enabled for ConnectRPC), aggregates readiness, and shuts components down in reverse order.
 - Server: `GET /healthz`, `GET /readyz`, `GET /version` (build info via `-ldflags`), `slog` JSON logging, graceful shutdown on SIGINT/SIGTERM with a deadline.
 - `cmd/agentkit`: explicit wiring code; component list from env for now (`AGENTKIT_COMPONENTS=tools,mcp-server`), YAML config later.
-- First real components: `tools` (a registry with a few built-in demo tools) and `mcp-server` (T018 over Streamable HTTP).
+- First real component: `mcp-server`. `cmd/agentkit` builds the toolsets listed in config with `toolset.Build` (T026) from a catalog of the compiled-in connector factories (one file per build tag), and mounts the T018 handler at `mcp.base_path`. Per-toolset readiness feeds `/readyz`.
 
 ## Out of scope
 

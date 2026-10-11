@@ -39,5 +39,7 @@ One copy of every skill and every agent instruction, readable by Claude Code, Co
 
 ## Notes
 
+- Progress (after T024/T013): `.agents/skills/write-tests` exists and `.claude/skills` is a symlink to it; Claude Code listing the repo skills (first criterion) has been observed. Still to do: `AGENTS.md`, `CLAUDE.md`, the skills README and template, and the skill and task lint script.
+
 - If `make lint` (E01/T001) does not exist yet, add a minimal `Makefile` target and let T001 absorb it.
 - 2026-10-11 (with T013): `.agents/skills/` and the `.claude/skills` → `../.agents/skills` symlink exist, holding `write-tests`. Not done yet: `.agents/skills/README.md`, `AGENTS.md`, `CLAUDE.md`, `lint-skills.sh`.

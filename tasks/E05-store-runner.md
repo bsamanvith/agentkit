@@ -17,6 +17,7 @@ Runs and conversations persist and resume. Direction: [PLAN.md `store`](../docs/
 | SQLite and Postgres schemas | SQLite in this epic (T029), with a pure-Go driver so the image stays static. Postgres comes with tenancy and row-level security in a later epic; the schema is written so it ports column for column. |
 | When to compact | Both: **reactively** when a run fails with `llm.ErrContextTooLong` (compact, then resume), and **proactively** after a run when the last turn's prompt size (input + cache read + cache write tokens) passed a configured share of the model's context window. Compaction appends an entry; it never edits or deletes. |
 | One writer per run | A lease in `RunStore` (owner, expiry, renewal), taken by the runner before running or resuming. `flow.Checkpointer` stays as it is. |
+| Agent step transcripts (T024 handoff) | The store-backed saver is the conversation log: transcripts are **not deleted** when a run finishes (retention is a later per-tenant policy), and agent step output holds a **reference** to the conversation instead of the whole transcript, so checkpoints stay small. Both in T030. |
 | Resuming a changed step tree | A shape fingerprint in flow checkpoints (T032), required now that checkpoints outlive deployments. |
 
 ## Tasks
@@ -28,6 +29,7 @@ Runs and conversations persist and resume. Direction: [PLAN.md `store`](../docs/
 - [ ] [T030](T030-runner.md) `pkg/runner`: run agents with persistence (entries, context, cache, lease, resume)
 - [ ] [T031](T031-compaction.md) Compaction in the runner (reactive and proactive)
 - [x] [T032](T032-flow-shape-fingerprint.md) `flow`: detect a changed step tree on resume
+- [ ] [T033](T033-harness-clock.md) harness: use `pkg/clock` instead of `WithNow` (small; any time)
 
 ```
 T019 ─────────────────┐

@@ -22,6 +22,10 @@ Put [docs/ENGINEERING.md](../docs/ENGINEERING.md) into practice. Split in two ph
 - [ ] [T007](T007-e2e-smoke-suite.md) E2E smoke suite
 - [ ] [T008](T008-ci-pipeline.md) Full CI pipeline (images, integration, smoke)
 
+## CI follow-ups
+
+- [ ] [T034](T034-nightly-ci.md) Nightly CI: live tests and a non-gating perf report (needs the `ANTHROPIC_API_KEY` repository secret)
+
 ## When first needed
 
 - [ ] [T019](T019-clock.md) `clock` package and fake clock (moved to [E05](E05-store-runner.md))

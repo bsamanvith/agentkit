@@ -14,7 +14,7 @@ Local runs and e2e tests must be deterministic and must not need an API key. `fa
 
 ## Scope
 
-Start from what exists: T024's replay end-to-end tests (`cmd/agentkit/e2e_test.go`) already run a local server that replays recorded Claude responses (`testdata/e2e/<scenario>/NN.http`). Extract that server into `cmd/fakellm` rather than writing a second one, so recorded fixtures and scripted replies share one format where possible.
+**Decision (planner, after T024):** `fakellm` is still needed, because Compose and the smoke suite need a model endpoint that runs as its own container with no key, and T024's replay server exists only inside a test. It is not a second implementation. Start from what exists: T024's replay end-to-end tests (`cmd/agentkit/e2e_test.go`) already run a local server that replays recorded Claude responses (`testdata/e2e/<scenario>/NN.http`). Extract that server into `cmd/fakellm` rather than writing a second one, so recorded fixtures and scripted replies share one format where possible.
 
 
 - `cmd/fakellm`: HTTP server implementing a subset of the Anthropic Messages API: `POST /v1/messages`, non-streaming and SSE streaming, `tool_use` content blocks.

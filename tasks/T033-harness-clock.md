@@ -1,0 +1,24 @@
+---
+id: T033
+title: "harness: use pkg/clock instead of WithNow"
+epic: E05
+status: todo
+depends_on: [T019, T022]
+---
+
+# T033: Harness on `pkg/clock`
+
+## Context
+
+The harness reads time only through `WithNow` because `pkg/clock` (T019) did not exist yet. It does now, and the runner (T030) passes one `clock.Clock` to everything it builds.
+
+## Scope
+
+- `harness.WithClock(clock.Clock)`; `WithNow` kept as a thin deprecated wrapper (or removed if nothing outside the package uses it; check `cmd/`, `pkg/agentstep`, examples).
+- Harness tests use `clocktest.Fake` where they control time.
+
+## Acceptance criteria
+
+- [ ] Record timings (message times, model and tool durations) come from the injected clock: with `clocktest.Fake`, advancing it by fixed amounts gives exactly those durations in the `Record`.
+- [ ] All existing harness tests, invariants and the seeded simulation pass unchanged.
+- [ ] archtest: `pkg/harness` may import `pkg/clock` (update the rule if needed).

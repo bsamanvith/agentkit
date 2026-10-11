@@ -383,6 +383,8 @@ Decided:
 - Work is committed straight to `main` after `make check`; CI runs it again on every push.
 
 Open:
-- Image size budget: set after measuring the first real image (M5).
-- Does `fakellm` need an OpenAI-compatible mode from day one, or only Anthropic?
+- Image size budget: set after measuring the first real image (T005).
+- Perf budgets: after two weeks of nightly benchstat numbers (T034); until then the perf report does not gate.
+- Evals (§2): on hold. To decide when started: what to score, the task set, how to grade, and the cost per run.
+- `fakellm` is Anthropic-only (replaying recorded responses); an OpenAI-compatible mode comes with E08 if needed.
 - Which build tags gate which backends (decided per backend as each one lands).

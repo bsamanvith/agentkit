@@ -14,6 +14,9 @@ A small black-box suite that proves a running topology works. It grows by a few 
 
 ## Scope
 
+**Decision (planner, after T024):** the smoke suite reuses the replay approach from `cmd/agentkit/e2e_test.go`: the same recorded fixtures, served by `fakellm` (T004) as a container, with the binary pointed at it through `ANTHROPIC_BASE_URL`. It adds only what replay e2e cannot cover: real containers, networking between them, healthchecks.
+
+
 - `test/e2e` package, `//go:build e2e`.
 - Targets come from env (`AGENTKIT_HARNESS_URL`, `AGENTKIT_TOOLS_URL`, ...) set by `scripts/dev.sh smoke`; tests for services not in the current topology skip.
 - Helpers: a client for each service, `testkit.Eventually` for async results.

@@ -217,6 +217,19 @@ func scopeOf(ctx context.Context, name string) *scope {
 	return &scope{rt: &runtime{ckpt: Checkpoint{Steps: map[string]json.RawMessage{}}}, path: name}
 }
 
+// StepPath returns the run id and the path of the step whose Run is executing
+// with ctx, for a step that keeps progress of its own between checkpoints (an
+// agent step saving its transcript turn by turn) and needs a key that is unique
+// within the run and the same when the step runs again on resume. ok is false
+// when the step is not running under [Run] or [Resume].
+func StepPath(ctx context.Context) (runID, path string, ok bool) {
+	sc, found := ctx.Value(scopeKey{}).(*scope)
+	if !found || sc.rt.cp == nil {
+		return "", "", false
+	}
+	return sc.rt.id, sc.path, true
+}
+
 // step runs one step at path: skipped if it completed before, otherwise run,
 // checkpointed and reported. Every combinator runs its children through it.
 func (rt *runtime) step(ctx context.Context, path string, step Step, st *State) error {

@@ -2,7 +2,7 @@
 id: T021
 title: "pkg/llm/anthropic: adapter on the official Go SDK"
 epic: E04
-status: review
+status: done
 depends_on: [T020]
 ---
 
@@ -29,7 +29,7 @@ Claude is the first provider, through the official `github.com/anthropics/anthro
 - [x] A recorded response with thinking blocks round-trips: the next request contains them byte-identical. — `TestThinkingBlocksRoundTrip`
 - [x] A refusal response gives `StopReason` `Refusal` with its category. — `TestRefusalStopReason`
 - [x] 429, 529, 400 and 401 responses map to `ErrRateLimited`, `ErrOverloaded`, `ErrInvalidRequest`, `ErrAuth`. — `TestErrorMapping`
-- [ ] `-tags live`: one real streaming request with one tool call completes against the API (skips without credentials). — `TestLiveToolCall` is written and compiles, but **has not run**: this environment has no `ANTHROPIC_API_KEY`, no `ANTHROPIC_AUTH_TOKEN` and no `ant` CLI, so it skipped. Run `go test -tags live -count=1 -run TestLiveToolCall -v ./pkg/llm/anthropic/` with a key, then tick this and set the status to `done`.
+- [x] `-tags live`: one real streaming request with one tool call completes against the API (skips without credentials). — `TestLiveToolCall`, run in T024 (2026-10-11) against the real API with Claude Opus 5.5: turn 1 `tool_use` (418 input / 49 output tokens), turn 2 `end_turn` with the tool's answer (476 / 15), 4.5 s. T024's own live tests and the manual flow demo ran the adapter further: multi-turn tool use, prompt-cache reads from the second turn, and a transcript with a thinking block saved to a file and replayed by a second process (accepted, cache read).
 
 ## Notes
 
@@ -90,7 +90,6 @@ Also run: `go test -race -shuffle=on -count=20 ./pkg/llm/...` (clean), `make fuz
 
 ### Deferred
 
-- The live criterion above.
 - After a mid-reply fallback the API also wants unpaired `tool_use` (and server-tool) blocks before the switch left out. Dropping a `tool_use` means dropping its `tool_result` in the next user message too, so it is not done; it needs a complete tool call in the declined part of a reply, which should be rare.
 - No way to omit `effort` for models that reject it (Claude Haiku 4.5); add an explicit "unset" when a caller needs such a model.
 - 1-hour cache TTL, `strict` tool definitions, `eager_input_streaming` (which would also need a way to retract a started tool block), a retry-after hint on `ErrRateLimited`.

@@ -1,0 +1,65 @@
+[
+  {
+    "role": "user",
+    "content": [
+      {
+        "type": "text",
+        "text": "Search for Go \u003citerators\u003e \u0026 tell me about it. Ünïcode ✓"
+      }
+    ]
+  },
+  {
+    "role": "assistant",
+    "content": [
+      {
+        "type": "opaque",
+        "provider": "anthropic",
+        "data": "{\"type\":\"thinking\",\"thinking\":\"if a \u003c b \u0026\u0026 c \u003e d then \u003cb\u003enaïve\u003c/b\u003e ✓ 日本語 \\u2603 \u2028end\",\"signature\":\"PF6BtAxexo4Eo0Bsl9Y8+9xTrog3GhJRIbWVYUPA7i1V+2OMd/7gtvX5J1+vKX4sl99UBPM71AZiC1ghz2glnMvuAgf/zXRkq/e7fWol5r+ilIkNa5DyVsZG6fBubloFqb9xf9dIAFmpFEs3PsWAnZP7ekz8uKBzmR7w0wIxjwSPeXRxBK7zvIHOWaP3TMeVlCMGkNYUCvU5UktvwFQ9GrGshXxiA7MV3aace7Q9rllincHM/MxO2BmmCRIwvk6q12rUZp8Pl1F6HwAc52OZgE5/8xZGyX16v95xqzCaIv5cTUEYO2DswijCo4lZyWODP2GZq2K4oJ/Gx/vO8leNQC9vYp6OQ/MdyxzXaCTCWMKtYmHnzw2vbtwvVbL6qdWD1G+CKsLO33tdvSUBt+E6fagjr0/i/JpzxeddNCGFtrlkcp4P1dnZWuo6RkPWAT/c0MmdiMKBQ51WxyvTlihgvIkeaMeZ//6bkywrwJc+D+la//Vea1iAPnupB7LXD3ZHhKBG77SgXoOMLvWtZ/rIkhLxN8CuBRsPMmxtm7z/D/oop1JHoeH9vB7i++QD2PyqVFGYvy/N1CqP8Q74bf+3W9xmWrStqtNSpuvJ44DDsOYSVQCUZ7pcD7Yh0NpnWG3RnZXfP/qnzreU8x3MROdd4dG2CZigmlqi5OXM83ybpan6cBkVgEfOwG2m62QKtfEZrLIFS/z/aClnK02c0JpGEha28IYHv6anyrVYFePjzvFPC/dQb0AVT6Hn1tHdbasiqaoCBy8HIAlX1MHuMGnIr/4FlmzAduMkCQ8aMnBupNAAFKIxadv459W7tJ+ohSl8jGpQi4x/SRwqnAQCqj10+flA1cH7ut6mGSf0f1m3rmhliEO8Q/6wDaOPsCgAvNNcCP1WmADpdxAL2XeHn8WJZYUxRDEqWHgzJupuMjsS7J82n5G6ZnFaUqiValYvt2BIfrraQle38i55ssRNeateShz9qVDuHBX9ASQpLA/bS813/EJpuQpm/3jyalArNj7I7HN1pjB7KAc6Ukrwm8HYkSdVbEQNAg0QEbpOsBWlEWtp330vleIHyYvwkiyCPwgX3qf6l+oWFipHG5GKUTDUZuunAH5caRr/Q9L8DcdtUsV9VkZIt3+jfTAthp5NUfbRXLHwTJbsv8zA0rdlwaqd5XlOW2OwPMud9wm4UMnIW6o+afJ3\"}"
+      },
+      {
+        "type": "opaque",
+        "provider": "anthropic",
+        "data": "{\n  \"signature\": \"AbC+/9==\",\n  \"type\": \"redacted_thinking\",\n  \"data\": [1, 2.50, true, null]\n}"
+      },
+      {
+        "type": "text",
+        "text": "I'll look that up."
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01",
+        "name": "search",
+        "input": {
+          "query": "go iterators",
+          "limit": 3
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_02",
+        "name": "now",
+        "input": {}
+      }
+    ]
+  },
+  {
+    "role": "user",
+    "content": [
+      {
+        "type": "tool_result",
+        "tool_use_id": "toolu_01",
+        "content": "{\"results\":[\"iter.Seq\"]}"
+      },
+      {
+        "type": "tool_result",
+        "tool_use_id": "toolu_02",
+        "content": "tool \"now\" failed: no clock",
+        "is_error": true
+      }
+    ]
+  },
+  {
+    "role": "assistant",
+    "content": []
+  }
+]

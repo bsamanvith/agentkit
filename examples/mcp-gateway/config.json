@@ -1,0 +1,23 @@
+{
+  "addr": "127.0.0.1:8080",
+  "mcp": {
+    "base_path": "/mcp",
+    "toolsets": [
+      {
+        "name": "demo-eu",
+        "type": "demo",
+        "settings": { "echo_prefix": "[eu] ", "utc_offset_minutes": 60 }
+      },
+      {
+        "name": "demo-ist",
+        "type": "demo",
+        "settings": { "echo_prefix": "[ist] ", "utc_offset_minutes": 330 }
+      },
+      {
+        "name": "demo-maths",
+        "type": "demo",
+        "include": ["calculate"]
+      }
+    ]
+  }
+}

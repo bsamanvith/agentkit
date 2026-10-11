@@ -2,7 +2,7 @@
 id: T018
 title: "MCP server: many toolsets on one HTTP server, one URL path each"
 epic: E03
-status: todo
+status: done
 depends_on: [T017]
 ---
 
@@ -38,16 +38,99 @@ This task is only the HTTP/MCP layer. It takes already-built toolsets as input (
 
 Use the SDK's own client over `httptest` (no subprocesses, no sleeps).
 
-- [ ] Two toolsets on one server: a client at `{base}/a` lists exactly toolset `a`'s tools with their schemas, and a client at `{base}/b` exactly `b`'s. Golden file for one `tools/list` result.
-- [ ] `tools/call` with valid input returns the tool's output as text and as `structuredContent` when the tool has an output schema.
-- [ ] Invalid input and tool failure come back as `isError: true` results whose text has no stack trace; an unknown tool is a protocol error.
-- [ ] An unknown toolset path returns 404; an invalid toolset name is rejected by `New`.
-- [ ] Cancelling the client request cancels the tool's context.
-- [ ] Stateless mode: two clients with no session affinity can call the same toolset concurrently (`-race`).
-- [ ] Middleware option wraps every toolset endpoint (a test middleware rejecting a missing header blocks all paths).
-- [ ] `ServeStdio` serves one toolset to an SDK client over an in-memory transport.
-- [ ] Manual: the example server added to Claude Code as an HTTP MCP server (`claude mcp add --transport http a http://localhost:PORT/mcp/a`) lists and calls its tools. Recorded in Notes.
+- [x] Two toolsets on one server: a client at `{base}/a` lists exactly toolset `a`'s tools with their schemas, and a client at `{base}/b` exactly `b`'s. Golden file for one `tools/list` result. — `TestToolsetsAreIsolated` (golden `testdata/tools_list_a.golden.json`)
+- [x] `tools/call` with valid input returns the tool's output as text and as `structuredContent` when the tool has an output schema. — `TestCallTool`
+- [x] Invalid input and tool failure come back as `isError: true` results whose text has no stack trace; an unknown tool is a protocol error. — `TestCallErrors`
+- [x] An unknown toolset path returns 404; an invalid toolset name is rejected by `New`. — `TestRouting`, `TestNewRejects`
+- [x] Cancelling the client request cancels the tool's context. — `TestCancellation`
+- [x] Stateless mode: two clients with no session affinity can call the same toolset concurrently (`-race`). — `TestStatelessConcurrentClients` (and `TestStateful` for the option)
+- [x] Middleware option wraps every toolset endpoint (a test middleware rejecting a missing header blocks all paths). — `TestMiddleware`
+- [x] `ServeStdio` serves one toolset to an SDK client over an in-memory transport. — `TestServeStdio` (through `ServeTransport`, which `ServeStdio` calls with stdin/stdout)
+- [x] Manual: the example server added to Claude Code as an HTTP MCP server (`claude mcp add --transport http a http://localhost:PORT/mcp/a`) lists and calls its tools. Recorded in Notes. Ran and recorded in Notes.
 
 ## Notes
 
-- archtest allowlist: `pkg/mcp/server` → `github.com/modelcontextprotocol/go-sdk/mcp`.
+- archtest allowlist: `pkg/mcp/server` → `github.com/modelcontextprotocol/go-sdk/mcp` and `.../jsonrpc` (the SDK's JSON-RPC error type). One line in `internal/archtest/rules.go`, plus a second for `examples/mcp-gateway` (its test imports the SDK client, as the example criterion requires): one line more than the brief allowed, scoped to that package and to `mcp` only.
+- `go.mod`: `github.com/modelcontextprotocol/go-sdk v1.8.0` plus its transitive requirements (`golang.org/x/sync` moves to v0.20.0). `pkg/tool` was not changed.
+
+### Public API
+
+```go
+func New(toolsets map[string]tool.Registry, opts ...Option) (*Server, error) // *Server is an http.Handler
+func (s *Server) Toolsets() []ToolsetInfo                                    // name + tool count, sorted
+func (s *Server) ServeHTTP(w, r)
+
+WithBasePath(p)        // default "/mcp"
+WithStateful()         // default stateless
+WithMaxBodyBytes(n)    // default: the SDK's 4 MiB
+WithMiddleware(mw)     // func(http.Handler) http.Handler; repeatable, first is outermost
+WithLogger(*slog.Logger)
+
+func ServeStdio(ctx, reg tool.Registry, opts ...Option) error
+func ServeTransport(ctx, reg tool.Registry, t mcp.Transport, opts ...Option) error
+var ErrInvalidName, ErrInvalidConfig
+```
+
+### Decisions
+
+- **Raw schemas pass through.** `mcp.Tool.InputSchema` and `OutputSchema` are `any`, and the SDK accepts a `json.RawMessage`, so tools are registered with the low-level `Server.AddTool` and our schemas reach clients unchanged (checked against `Registry.List` in `TestToolsetsAreIsolated`). The low-level API does no input validation; the registry already validates every call (`tool.Func`), so the server does not do it twice. The SDK panics on an unusable definition; `addTool` recovers and `New` returns an error instead.
+- **One `mcp.Server` per toolset, built once in `New`**; its tools are listed once there, so a registry whose tools change later needs a new `Server`. All endpoints share one `http.Handler` that routes on the path.
+- **Error mapping**, in `callHandler`: `ErrInvalidInput` / `ErrToolFailed` → `isError` result with `err.Error()` (a `*tool.PanicError` keeps its stack out of `Error()`, so no stack reaches the client; `TestCallErrors` asserts this, which is a case where the message is the behavior). `ErrNotFound` → JSON-RPC invalid-params (the SDK itself answers the same for names it never had). A done context → the context's error. Any other error is a generic `internal error` to the client and is logged (`WithLogger`), so a remote registry's transport failures do not leak internals.
+- **Results**: text is the tool's output JSON; `structuredContent` is the same JSON when the tool declares an output schema.
+- **Cancellation**: `StreamableHTTPOptions.PropagateRequestCancellation` is set so the tool's context ends when the client's request does. `TestCancellation` guards it.
+- **Middleware wraps the whole handler**, not just toolset paths: also the `GET {base}/` listing and unknown paths, so an auth middleware reveals nothing (not even which toolsets exist) to unauthenticated callers. Values the middleware puts in the request context reach the tool's context (`TestMiddleware`), which is how tenant resolution (E07) will work.
+- **`GET {base}/`** returns `{"toolsets":[{"name":"a","tools":2}, ...]}`. In stateless mode the SDK answers GET/DELETE on a toolset path with 405; clients cope (Claude Code connected fine).
+- **`ServeTransport`** is an addition to the spec: `ServeStdio` is a one-line call of it with `mcp.StdioTransport`, and the in-memory test needs a transport parameter.
+- The toolset name rule is duplicated from `pkg/tool` / `pkg/toolset` so the packages stay independent.
+- `FuzzServeHTTP` posts arbitrary paths and bodies at the handler: valid status, no panic.
+
+### For T003 (wiring)
+
+```go
+catalog, _ := toolset.NewCatalog(toolset.Demo() /*, connectors... */)
+regs, problems, err := toolset.Build(ctx, catalog, cfg.MCP.Toolsets)
+srv, err := server.New(regs, server.WithBasePath(cfg.MCP.BasePath), server.WithMiddleware(auth))
+mux.Handle(cfg.MCP.BasePath+"/", srv) // mount WITHOUT http.StripPrefix
+```
+
+`examples/mcp-gateway` is exactly this on one port. `Server.ServeHTTP` is the `Component.Handler()` for an `mcp-server` component; it never listens (only `cmd/` does).
+
+### Deferred / watch out for
+
+- **DNS-rebinding protection**: the SDK rejects (403) requests that arrive over a loopback address with a non-localhost `Host` header. A reverse proxy on the same host that forwards the public `Host` to `127.0.0.1:port` will hit this; `StreamableHTTPOptions.DisableLocalhostProtection` exists but is not exposed here. Decide when T003 / the image topology is known.
+- **Stateful mode** exposes no session timeout or `Close`; sessions live until the process ends. Add `WithSessionTimeout` if stateful mode is used for real.
+- An aggregate endpoint serving all toolsets, auth, per-tenant credentials: out of scope, as planned.
+
+### Manual check (Claude Code)
+
+Ran with `claude` 2.1.296 in this environment, against the example built from `examples/mcp-gateway` and listening on `127.0.0.1:8080`:
+
+```
+claude mcp add --transport http demo-maths http://127.0.0.1:8080/mcp/demo-maths
+claude mcp list        -> demo-maths: http://127.0.0.1:8080/mcp/demo-maths (HTTP) - Connected
+claude -p "Using only the demo-maths MCP server: list the tool names it offers, then call its calculate tool with op=mul a=6 b=7 ..." --model claude-haiku-5-5 --allowedTools mcp__demo-maths__calculate
+  -> "exposes one tool, calculate ... calculate(6 x 7) returned 42"
+```
+
+The path served only the filtered tool (`include: [calculate]`), and the call went through. One model call, Haiku, to keep cost down.
+
+### Example (T018 scope + the end-to-end proof)
+
+`examples/mcp-gateway`: `config.json` (embedded, or `-config file`) has two differently configured `demo` instances (`demo-eu`, `demo-ist`) and one filtered (`demo-maths`, `include: [calculate]`), built with `toolset.Build` and served by `server.New` on one port. `TestGateway` starts it on `httptest` and checks with the SDK client that each path lists exactly its own tools and that calls work (including that the two instances behave differently).
+
+### Mutation check
+
+Each bug planted alone; each made a test fail (no compile errors).
+
+| Planted bug | Caught by |
+|---|---|
+| tool failure sent as a protocol error | `TestCallErrors` (invalid input, tool failure, panic) |
+| invalid input sent as success | `TestCallErrors/invalid_input`, `/missing_input` |
+| a stack trace in the error text | `TestCallErrors/tool_panic` |
+| an unknown tool returned as `isError` | `TestCallErrors/tool_that_vanished_from_the_registry_is_a_protocol_error` |
+| cancellation not propagated | `TestCancellation` |
+| `structuredContent` missing | `TestCallTool`, `TestServeStdio`, `TestStatelessConcurrentClients` |
+| toolset `a`'s tools visible at path `b` | `TestToolsetsAreIsolated`, `TestCallTool`, `TestMiddleware` |
+| an unknown path not 404 | `TestRouting` |
+| middleware skipped on one path | `TestMiddleware/blocks_every_path_without_the_header` |
+| the stateless option ignored | `TestStatelessConcurrentClients`, `TestToolsetsAreIsolated` |

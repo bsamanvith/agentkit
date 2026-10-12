@@ -60,6 +60,7 @@ if [ "$use_docker" = 1 ]; then
   docker run -d --rm --name "$container" --stop-timeout 20 -p "${port}:8080" \
     -e ANTHROPIC_API_KEY="$key" -e AGENTKIT_API_TOKEN="$token" \
     -e AGENTKIT_COMPONENTS=agent,mcp-server \
+    -e TAVILY_API_KEY -e EXA_API_KEY -e PARALLEL_API_KEY \
     -v "$PWD/$config:/etc/agentkit/config.json:ro" \
     agentkit:latest >/dev/null
   log="(docker logs $container)"

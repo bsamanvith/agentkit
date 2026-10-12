@@ -14,7 +14,7 @@
 | M5 Agent API, `agentkit serve`, image, Compose, smoke tests | [E09](E09-agent-api.md), [E01](E01-foundations.md) | In progress: `agentkit serve`, agent API v0 and the image done; **deployable** |
 | M6 Remote tools over ConnectRPC | E06 (to plan) | Planned |
 | Credentials, auth, tenancy at the edge | [E07](E07-auth-credentials.md) | **Planned** (T039–T045); T039 and T042 ready. Needed before any public deployment: `/mcp/` has no auth today |
-| First connectors: Tavily, Exa, Parallel (search, extract) | [E10](E10-search-connectors.md) | **In progress**: T046–T048 running; T049 test kit first cut on `main`; no auth work needed (Tavily keyless or keyed; Exa and Parallel keyed from env) |
+| First connectors: Tavily, Exa, Parallel (search, extract) | [E10](E10-search-connectors.md) | **In review**: T046–T048 on `main` on the T049 kit (done); Exa and Parallel wait for keys; no auth work needed (Tavily keyless or keyed; Exa and Parallel keyed from env) |
 | More model providers | [E08](E08-model-providers.md) | Later |
 | Agent skills | [E02](E02-agent-skills.md) | In progress: `write-tests` exists and was dry-run on `pkg/flow` |
 
@@ -45,12 +45,12 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 
 | Task | What | Why now |
 |---|---|---|
-| [T049](T049-connector-test-kit.md) | `toolsettest`: cassettes, `RunConnector` suite, honest fakes | **Running**: on `main` (`686b6ff`, `b59c7ff`): Upstream, RunConnector, fakes, check IDs with skip/opt-in, schema honesty, secret scans, `synthetic`, Drift, cmd seam. Per-call Settings, archtest rule and gates next |
-| [T051](T051-openapi-cassette-validation.md) | Validate cassettes against vendored OpenAPI specs | After T049, T047, T048 |
-| [T050](T050-connector-tool-evals.md) | Tool-use evals: real Claude with faked connectors | After T049 and one connector; model tokens only |
+| [T049](T049-connector-test-kit.md) | `toolsettest`: cassettes, `RunConnector` suite, honest fakes | **Done** (`cfb8cd5`): Upstream, RunConnector, fakes, check IDs with skip/opt-in, schema honesty, secret scans, `synthetic`, Drift, per-call Settings, archtest rule (every connector runs the kit) |
+| [T051](T051-openapi-cassette-validation.md) | Validate cassettes against vendored OpenAPI specs | **Ready** (T049, T047, T048 on `main`) |
+| [T050](T050-connector-tool-evals.md) | Tool-use evals: real Claude with faked connectors | **Ready** (T049 done, Tavily on `main`); model tokens only |
 | [T046](T046-connector-tavily.md) | `connectors/tavily`: search and extract, keyless or keyed | **Review**: on `main` (`d4a4e86`, `c0af020`, on the T049 suite); waiting for its handoff |
-| [T047](T047-connector-exa.md) | `connectors/exa`: search and extract | **Running**; live tests need `EXA_API_KEY` in sessions |
-| [T048](T048-connector-parallel.md) | `connectors/parallel`: search and extract | **Running**; live tests need `PARALLEL_API_KEY` in sessions |
+| [T047](T047-connector-exa.md) | `connectors/exa`: search and extract | **Review**: on `main`, on the kit (`2f7b951`, `049a7cc`); waits for `EXA_API_KEY` (live test, re-recording synthetic cassettes) |
+| [T048](T048-connector-parallel.md) | `connectors/parallel`: search and extract | **Review**: on `main`, on the kit (`baf4248`); waits for `PARALLEL_API_KEY` (live test, re-recording synthetic cassettes) |
 | [T039](T039-auth-principals-middleware.md) | `pkg/auth`: principals, API keys, edge middleware | Starts E07's inbound track; new package only, parallel with E05 |
 | [T042](T042-credentials-core.md) | `pkg/credentials`: secrets, sealer, vault, memory backend | Starts E07's credentials track; new package only, parallel with everything |
 | [T029](T029-store-sqlite.md) | SQLite store | Unblocked (T038 done); persistence for the API (T037) |
@@ -99,6 +99,7 @@ Each is recorded in the linked file; this list is for orientation.
 - Recovery across tenants through a separate `store.Admin` (T038), never reachable from request handling: handed out by a package function (`memory.Admin(s)`), not a method, so no type assertion on a `RunStore` reaches it (T038 review fix, `db65096`).
 - Saved transcripts are not deleted at run end; agent step output holds a reference ([T030](T030-runner.md)).
 - Public agent API is HTTP + JSON with SSE; ConnectRPC stays internal ([E09](E09-agent-api.md)).
+- Connectors (2026-10-12): outputs identical across providers, inputs may follow the provider (Parallel extract takes `objective`); `max_content_chars` `{search, extract}`; `Retry-After` honored up to 10 s ([E10](E10-search-connectors.md)).
 - Connector testing (2026-10-12): one kit (T049) with cassettes, a conformance suite with check IDs and staged rollout, honest fakes, drift checks, secret scans, `synthetic` fixtures kept in review; a separate eval tier (T050) for model behavior. Informed by Airbyte, LangChain, Meltano and Nango practice ([E10](E10-search-connectors.md)).
 - E07 (2026-10-12): one auth middleware for `/v1` and `/mcp/`; API keys (hashed) then OIDC/JWT, we are a resource server only; hidden toolsets answer 404; no open MCP off loopback; credentials sealed with AES-GCM bound to tenant/user/slot, tools get a source for one slot, no token passthrough ([E07](E07-auth-credentials.md)).
 - E04 closed; T025 moved to E08. `fakellm` kept, extracted from the replay server ([T004](T004-fakellm.md)).

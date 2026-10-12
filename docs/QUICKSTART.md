@@ -59,6 +59,10 @@ curl -s localhost:8080/v1/runs -H "Authorization: Bearer $AGENTKIT_API_TOKEN" \
 curl -s localhost:8080/v1/runs/run_...          -H "Authorization: Bearer $AGENTKIT_API_TOKEN"
 curl -s localhost:8080/v1/conversations/conv_... -H "Authorization: Bearer $AGENTKIT_API_TOKEN"
 
+# create an empty conversation first (its ID before any message: what a UI page needs), then run in it
+curl -s -X POST localhost:8080/v1/conversations -H "Authorization: Bearer $AGENTKIT_API_TOKEN" -d '{"agent":"default"}'
+curl -sN localhost:8080/v1/runs -H "Authorization: Bearer $AGENTKIT_API_TOKEN" -d '{"message":"Hi","conversation_id":"conv_..."}'
+
 # list the conversations, newest first (next page: ?cursor=<next_cursor>), and delete one
 curl -s 'localhost:8080/v1/conversations?limit=10' -H "Authorization: Bearer $AGENTKIT_API_TOKEN"
 curl -s -X DELETE localhost:8080/v1/conversations/conv_... -H "Authorization: Bearer $AGENTKIT_API_TOKEN"
@@ -76,7 +80,7 @@ curl -s localhost:8080/healthz; curl -s localhost:8080/readyz; curl -s localhost
 
 Use the tools from Claude Code: `claude mcp add --transport http agentkit-demo http://localhost:8080/mcp/demo`.
 
-### From the terminal: `agentkit chat` and `agentkit ask`
+### From the terminal: `agentkit chat`, `agentkit ask` and `agentkit create`
 
 The same binary is a client of the agent API. It reads the server from `-server` or `AGENTKIT_SERVER` (default `http://127.0.0.1:8080`) and the token from `AGENTKIT_API_TOKEN`, and never prints the token.
 
@@ -110,6 +114,14 @@ bin/agentkit ask -json -agent search "What is the latest Go release? Cite the so
 | 130 | interrupted |
 
 For code 3, `-retry N` waits the server's `Retry-After` (1 s for a busy conversation) and tries again, up to N times.
+
+A conversation can also be created before its first message; `agentkit create` prints its ID (`-json`: the conversation):
+
+```sh
+conv=$(bin/agentkit create -agent search)
+bin/agentkit ask -conversation "$conv" "What is the latest Go release?"
+bin/agentkit chat -conversation "$conv"
+```
 
 ## 4. Container
 

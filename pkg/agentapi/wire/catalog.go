@@ -82,12 +82,22 @@ type AgentList struct {
 type ConversationSummary struct {
 	ID    string `json:"id"`
 	Agent string `json:"agent"`
-	// Title is the start of the conversation's first message.
+	// Title is the start of the conversation's first message: empty for a
+	// conversation created without one, until its first message.
 	Title        string    `json:"title"`
 	Status       string    `json:"status"`
 	MessageCount int       `json:"message_count"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+// CreateConversationRequest is the body of POST /v1/conversations, which
+// creates an empty conversation: a client gets its ID before the first
+// message (POST /v1/runs with that conversation_id).
+type CreateConversationRequest struct {
+	// Agent names the conversation's agent (empty: the default agent). The
+	// conversation stays with it.
+	Agent string `json:"agent,omitempty"`
 }
 
 // ConversationList is the body of GET /v1/conversations: a page of the

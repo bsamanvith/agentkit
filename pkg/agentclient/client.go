@@ -177,7 +177,12 @@ func (c *Client) request(ctx context.Context, method, path string, body io.Reade
 // decode reads a JSON response into v, or the API error it is, and closes
 // the body.
 func (c *Client) decode(resp *http.Response, what string, v any) error {
-	if resp.StatusCode != http.StatusOK {
+	return c.decodeStatus(resp, http.StatusOK, what, v)
+}
+
+// decodeStatus is decode for a response whose success is status.
+func (c *Client) decodeStatus(resp *http.Response, status int, what string, v any) error {
+	if resp.StatusCode != status {
 		return c.apiError(resp)
 	}
 	defer resp.Body.Close()

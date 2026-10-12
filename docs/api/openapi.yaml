@@ -186,6 +186,89 @@
       }
     },
     "/v1/conversations": {
+      "post": {
+        "operationId": "createConversation",
+        "summary": "Create an empty conversation",
+        "description": "Creates a conversation with no messages, of the agent named or the default one, so a client has its ID before the first message: then POST /v1/runs with that conversation_id. A run without conversation_id still creates one itself. The conversation is idle, with an empty title until its first message. When retention must drop conversations, empty ones go first.",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateConversationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new conversation.",
+            "headers": {
+              "Location": {
+                "description": "The conversation's URL path, /v1/conversations/{id}.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: the body is not a CreateConversationRequest, or no agent is named and the server has no default.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such agent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "too_large: the body is over the server's limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
       "get": {
         "operationId": "listConversations",
         "summary": "List the caller's conversations",
@@ -1072,7 +1155,7 @@
           },
           "conversation_id": {
             "type": "string",
-            "description": "Continues this conversation; absent starts a new one."
+            "description": "Continues this conversation (started by an earlier run, or created by POST /v1/conversations); absent starts a new one."
           },
           "agent": {
             "type": "string",
@@ -1082,6 +1165,17 @@
         "required": [
           "message"
         ],
+        "additionalProperties": false
+      },
+      "CreateConversationRequest": {
+        "type": "object",
+        "description": "The body of POST /v1/conversations (optional: no body is {}). Unknown fields are refused.",
+        "properties": {
+          "agent": {
+            "type": "string",
+            "description": "The conversation's agent (absent: the default agent). The conversation stays with it."
+          }
+        },
         "additionalProperties": false
       },
       "Event": {
@@ -1310,7 +1404,7 @@
           },
           "title": {
             "type": "string",
-            "description": "The start of the first message, on one line (80 characters at most)."
+            "description": "The start of the first message, on one line (80 characters at most); empty for a conversation created without a message, until its first one."
           },
           "status": {
             "enum": [

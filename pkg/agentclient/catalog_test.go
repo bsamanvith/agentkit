@@ -18,7 +18,7 @@ import (
 // tools, and an unknown agent or toolset matches ErrNotFound.
 func TestCatalog(t *testing.T) {
 	t.Parallel()
-	replies := make([]llmtest.Reply, 5)
+	replies := make([]llmtest.Reply, 6)
 	for i := range replies {
 		replies[i] = llmtest.Text("ok")
 	}
@@ -80,6 +80,20 @@ func TestCatalog(t *testing.T) {
 	}
 	if page, err := c.Conversations(ctx, agentclient.ConversationsQuery{}); err != nil || len(page.Conversations) != 4 || page.Conversations[0].ID != started[1] {
 		t.Errorf("after the delete: %+v, %v", page, err)
+	}
+
+	conv, err := c.CreateConversation(ctx, agentclient.ConversationRequest{})
+	if err != nil || conv.Agent != agentapi.DefaultAgent || conv.Status != wire.StatusIdle || conv.Messages == nil || len(conv.Messages) != 0 {
+		t.Fatalf("CreateConversation = %+v, %v; want an empty, idle conversation of the default agent", conv, err)
+	}
+	if run, err := c.Run(ctx, agentclient.RunRequest{Message: "hi", ConversationID: conv.ID}); err != nil || run.ConversationID != conv.ID {
+		t.Errorf("a run in the created conversation = %+v, %v", run, err)
+	}
+	if got, err := c.GetConversation(ctx, conv.ID); err != nil || len(got.Messages) != 2 {
+		t.Errorf("the created conversation after a run: %+v, %v; want 2 messages", got, err)
+	}
+	if _, err := c.CreateConversation(ctx, agentclient.ConversationRequest{Agent: "nobody"}); !errors.Is(err, agentclient.ErrNotFound) {
+		t.Errorf("CreateConversation(nobody): %v, want ErrNotFound", err)
 	}
 
 	sets, err := c.Toolsets(ctx)

@@ -89,6 +89,21 @@ func askRun(t *testing.T, c *replayAPI, api *httptest.Server, p *serveProcess, t
 	return out.String(), errOut.String(), cmd.ProcessState.ExitCode()
 }
 
+// createRun runs agentkit create and returns the ID it printed.
+func createRun(t *testing.T, c *replayAPI, api *httptest.Server, p *serveProcess, token string, args ...string) string {
+	t.Helper()
+	cmd, out, errOut := cliCommand(t, c, api, p, token, "", append([]string{"create"}, args...)...)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("agentkit create %q: %v\nstderr:\n%s", args, err, errOut)
+	}
+	checkCLIOutput(t, out.String()+errOut.String(), e2eToken, token)
+	id, ok := strings.CutSuffix(out.String(), "\n")
+	if !ok || strings.Contains(id, "\n") {
+		t.Fatalf("agentkit create printed %q, want one line", out)
+	}
+	return id
+}
+
 // parseJSONL decodes ask -json output: every line one event.
 func parseJSONL(t *testing.T, out string) []wire.Event {
 	t.Helper()
@@ -113,19 +128,21 @@ func TestE2EAsk(t *testing.T) {
 	c.holdAt = 5
 	p := startAgentServe(t, api)
 
-	// Plain: the answer only (not the text before the tool call); -v shows
-	// the conversation and the tool call on stderr.
-	stdout, stderr, code := askRun(t, c, api, p, e2eToken, "", "-v",
+	// create: an empty conversation, its ID alone on stdout.
+	conv := createRun(t, c, api, p, e2eToken)
+	if !regexp.MustCompile(`^conv_\w+$`).MatchString(conv) {
+		t.Fatalf("agentkit create printed %q, want a conversation ID", conv)
+	}
+
+	// Plain, in the created conversation: the answer only (not the text
+	// before the tool call); -v shows the conversation and the tool call on
+	// stderr.
+	stdout, stderr, code := askRun(t, c, api, p, e2eToken, "", "-v", "-conversation", conv,
 		"Use demo-a__calculate to multiply 48271 by 9733, then tell me the result.")
 	if code != exitDone || stdout != "48271 × 9733 = 469821643.\n" {
 		t.Fatalf("ask: exit %d, stdout %q; want 0 and the final answer alone", code, stdout)
 	}
-	mustContain(t, stderr, "→ demo-a__calculate", `← {"result":469821643}`, "2 turns")
-	m := regexp.MustCompile(`conversation (conv_\w+)`).FindStringSubmatch(stderr)
-	if m == nil {
-		t.Fatalf("ask -v does not show the conversation: %q", stderr)
-	}
-	conv := m[1]
+	mustContain(t, stderr, "→ demo-a__calculate", `← {"result":469821643}`, "2 turns", "conversation "+conv)
 
 	// -json, the message on stdin, continuing the conversation: one event
 	// per line, ending with run_done.
@@ -179,8 +196,32 @@ func TestE2EAsk(t *testing.T) {
 	mustContain(t, chatOut.String(), "> ", "→ demo-a__calculate", "unknown command /bogus")
 	checkCLIOutput(t, chatOut.String()+chatErr.String(), e2eToken)
 
+	// create refused: exit 2, nothing on stdout. With -json, the
+	// conversation.
+	for name, args := range map[string][]string{
+		"unknown agent": {"-agent", "nosuchagent"},
+		"an argument":   {"hi"},
+		"server down":   {"-server", "http://127.0.0.1:1"},
+	} {
+		cmd, out, errOut := cliCommand(t, c, api, p, e2eToken, "", append([]string{"create"}, args...)...)
+		if err := cmd.Run(); cmd.ProcessState.ExitCode() != exitClient || out.Len() != 0 {
+			t.Errorf("create %s: %v, stdout %q, stderr %q; want exit 2 and no stdout", name, err, out, errOut)
+		}
+		checkCLIOutput(t, out.String()+errOut.String(), e2eToken)
+	}
+	create, cOut, cErr := cliCommand(t, c, api, p, "", "", "create")
+	if err := create.Run(); create.ProcessState.ExitCode() != exitClient || !strings.Contains(cErr.String(), envAPIToken) {
+		t.Errorf("create without a token: %v, stdout %q, stderr %q; want exit 2 and a hint", err, cOut, cErr)
+	}
+	create, cOut, cErr = cliCommand(t, c, api, p, e2eToken, "", "create", "-json", "-agent", "default")
+	var created wire.Conversation
+	if err := create.Run(); err != nil || json.Unmarshal(cOut.Bytes(), &created) != nil || created.Agent != "default" || created.Status != wire.StatusIdle || len(created.Messages) != 0 {
+		t.Errorf("create -json: %v, stdout %q, stderr %q; want an empty conversation of default", err, cOut, cErr)
+	}
+	checkCLIOutput(t, cOut.String()+cErr.String(), e2eToken)
+
 	if n := len(c.all()); n != 4 {
-		t.Errorf("%d model requests after the refused runs and chat, want 4", n)
+		t.Errorf("%d model requests after the refused runs, chat and create, want 4", n)
 	}
 
 	// A busy conversation: exit 3 while another run of it goes on.

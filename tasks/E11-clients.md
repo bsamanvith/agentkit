@@ -48,6 +48,7 @@ Both talk to the public agent API (`/v1`, HTTP + SSE; [E09](E09-agent-api.md)). 
 - [x] [T053](T053-agentclient.md) `pkg/agentclient`: the Go client for `/v1` (wire types moved to `pkg/agentapi/wire`; read its "For T054" and "For T055" Notes first)
 - [x] [T054](T054-cli-client.md) `agentkit chat` and `agentkit ask` (interactive and headless; read its "For T050" Notes before writing evals on `ask -json`)
 - [x] [T062](T062-api-agents-catalog.md) API: several agents, conversation listing, toolsets and tools catalog, OpenAPI spec (`docs/api/openapi.yaml`; read its "Endpoints (for T055/T064)" and "For T063" Notes first)
+- [x] [T092](T092-create-conversation.md) `POST /v1/conversations`: create an empty conversation, then run in it; `agentclient.CreateConversation`, `agentkit create` (owner's request, 2026-10-12; read its "For T055" Notes before building the chat page)
 - [ ] [T063](T063-agents-over-mcp.md) Agents over MCP (`/mcp/agentkit`), so Claude Code and other harnesses can drive them
 - [ ] [T061](T061-local-users-login.md) Local users and login sessions (E07 track, needs T039)
 - [ ] [T078](T078-web-workspace.md) Web workspace: React + TS + shadcn/ui, packages `ui` / `agent-ui` / `apps/console`, embedding, CI

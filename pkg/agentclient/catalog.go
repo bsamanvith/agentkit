@@ -1,7 +1,9 @@
 package agentclient
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -57,6 +59,31 @@ func (c *Client) Conversations(ctx context.Context, q ConversationsQuery) (wire.
 	}
 	var list wire.ConversationList
 	return list, c.get(ctx, path, &list)
+}
+
+// ConversationRequest is the body of [Client.CreateConversation].
+type ConversationRequest = wire.CreateConversationRequest
+
+// CreateConversation creates an empty conversation (POST /v1/conversations)
+// of req.Agent, or of the default agent, and returns it: a client has its ID
+// before the first message, which [Client.Stream] or [Client.Run] then sends
+// with that ConversationID. An unknown agent matches [ErrNotFound].
+func (c *Client) CreateConversation(ctx context.Context, req ConversationRequest) (wire.Conversation, error) {
+	var conv wire.Conversation
+	body, err := json.Marshal(req)
+	if err != nil { // cannot happen: a string
+		return conv, err
+	}
+	r, err := c.request(ctx, http.MethodPost, "/v1/conversations", bytes.NewReader(body), "application/json")
+	if err != nil {
+		return conv, err
+	}
+	r.Header.Set("Content-Type", "application/json")
+	resp, err := c.hc.Do(r)
+	if err != nil {
+		return conv, err
+	}
+	return conv, c.decodeStatus(resp, http.StatusCreated, "POST /v1/conversations", &conv)
 }
 
 // DeleteConversation deletes a conversation and its runs

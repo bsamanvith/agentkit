@@ -38,8 +38,11 @@
 //
 // A server runs one or more agents ([Client.Agents], [Client.Agent]); a run
 // names one in [RunRequest].Agent, or gets the default. A conversation stays
-// with its agent. [Client.Conversations] pages through the caller's
-// conversations, newest first, and [Client.DeleteConversation] deletes one.
+// with its agent. [Client.CreateConversation] creates an empty one, for a
+// client that needs its ID before the first message (a page addressed by
+// the conversation); a run without a ConversationID creates one too.
+// [Client.Conversations] pages through the caller's conversations, newest
+// first, and [Client.DeleteConversation] deletes one.
 // [Client.Toolsets] and [Client.Tools] describe the toolsets the agents use,
 // and [Client.MCPURL] where each is served over MCP.
 //

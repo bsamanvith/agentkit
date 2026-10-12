@@ -406,6 +406,16 @@ func TestOpenAPIResponses(t *testing.T) {
 	rec.probe(r, "list_conversations_unauthorized", 401, "GET", "/v1/conversations", "", "", bearer...)
 	rec.probe(r, "list_conversations_no_agent", 404, "GET", "/v1/conversations?agent=nobody", "", "")
 
+	var created agentapi.Conversation
+	if err := json.Unmarshal(rec.probe(r, "create_conversation", 201, "POST", "/v1/conversations", `{"agent":"other"}`, ""), &created); err != nil {
+		t.Fatal(err)
+	}
+	rec.probe(r, "run_in_created", 200, "POST", "/v1/runs", `{"message":"hi","conversation_id":"`+created.ID+`"}`, "", jsonAccept...)
+	rec.probe(r, "create_conversation_bad_request", 400, "POST", "/v1/conversations", `{"title":"x"}`, `{"agent":"an unknown field instead"}`)
+	rec.probe(r, "create_conversation_unauthorized", 401, "POST", "/v1/conversations", `{}`, "", bearer...)
+	rec.probe(r, "create_conversation_no_agent", 404, "POST", "/v1/conversations", `{"agent":"nobody"}`, "")
+	rec.probe(r, "create_conversation_too_large", 413, "POST", "/v1/conversations", `{"agent":"`+strings.Repeat("x", 600)+`"}`, `{"agent":"too long"}`)
+
 	rec.probe(r, "get_conversation", 200, "GET", "/v1/conversations/"+conv, "", "")
 	rec.probe(r, "get_conversation_unauthorized", 401, "GET", "/v1/conversations/"+conv, "", "", bearer...)
 	rec.probe(r, "get_conversation_not_found", 404, "GET", "/v1/conversations/nope", "", "")

@@ -18,6 +18,7 @@ Swap T036's in-memory runs for `pkg/runner` (T030), keeping the API, so runs sur
 - New endpoints: `GET /v1/runs?conversation_id=&status=` (paged), `POST /v1/runs/{id}/resume`, `POST /v1/runs/{id}/decisions` (approve or reject a pending step), `POST /v1/runs/{id}/cancel`, `GET /v1/runs/{id}/events` (replay a run's stored events, then follow it live if still running).
 - `POST /v1/runs` on a conversation with an unfinished run → 409 with the run ID (`ErrRunUnfinished`).
 - The runner's recovery loop runs inside `agentkit serve`.
+- **Conversations without messages (T092):** `POST /v1/conversations` creates an empty conversation (id, tenant, agent, created, empty title until its first run). `store.ConversationStore` only knows a conversation once it has an entry, so the store needs a conversation record of its own (id, tenant, agent, title, created/updated) for creation, listing and the agent check; keep both creation paths (explicit, and a run without `conversation_id`).
 
 ## Acceptance criteria
 

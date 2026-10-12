@@ -60,7 +60,7 @@ func (c cli) sleep(ctx context.Context, d time.Duration) error {
 	}
 }
 
-// clientFlags are the flags of chat and ask.
+// clientFlags are the flags of chat, ask and create.
 type clientFlags struct {
 	server       string
 	agent        string
@@ -68,13 +68,18 @@ type clientFlags struct {
 }
 
 func (f *clientFlags) register(fs *flag.FlagSet, c cli) {
+	f.registerServer(fs, c)
+	fs.StringVar(&f.conversation, "conversation", "", "continue this conversation (default: start a new one)")
+}
+
+// registerServer registers -server and -agent only.
+func (f *clientFlags) registerServer(fs *flag.FlagSet, c cli) {
 	server := c.env(envServer)
 	if server == "" {
 		server = defaultServer
 	}
 	fs.StringVar(&f.server, "server", server, "the agent API's base URL, from $"+envServer+" if set")
 	fs.StringVar(&f.agent, "agent", "", "the agent of a new conversation (default: the server's default agent)")
-	fs.StringVar(&f.conversation, "conversation", "", "continue this conversation (default: start a new one)")
 }
 
 // client returns the agent API client: the token comes from

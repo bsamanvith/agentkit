@@ -15,6 +15,7 @@
 //
 //	POST   /v1/runs                      {"message", "conversation_id"?, "agent"?}
 //	GET    /v1/runs/{id}                 a recent run: status, answer, usage, record
+//	POST   /v1/conversations             {"agent"?}: 201, an empty conversation
 //	GET    /v1/conversations             ?agent=&limit=&cursor=: the caller's conversations
 //	GET    /v1/conversations/{id}        a conversation's messages
 //	DELETE /v1/conversations/{id}        204; the conversation and its runs are gone
@@ -23,10 +24,16 @@
 //	GET    /v1/toolsets                  status, skip reason, MCP path, credential status
 //	GET    /v1/toolsets/{name}/tools     the toolset's tool definitions
 //
-// A conversation belongs to one agent: the run that starts it names the agent
-// ("agent"), or gets the default one (the only agent, else the one named
+// A conversation belongs to one agent: the request that creates it names the
+// agent ("agent"), or gets the default one (the only agent, else the one named
 // [DefaultAgent]). A run that continues it may leave "agent" out; naming
 // another agent is 409 agent_mismatch.
+//
+// A conversation is created either by a run without "conversation_id", or
+// empty by POST /v1/conversations, for a client that needs the ID first (a
+// page addressed by its conversation, before anything is sent). An empty
+// conversation is "idle", has no messages and an empty title until its first
+// run; when retention must drop conversations, empty ones go first.
 //
 // GET /v1/conversations lists the conversations most recently started first,
 // in pages of ?limit= (default [DefaultListLimit], at most [MaxListLimit]).

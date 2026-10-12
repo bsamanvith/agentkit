@@ -97,7 +97,7 @@ type conversation struct {
 	seq              uint64 // order of creation, from 1: the listing order
 	title            string
 	created, updated time.Time
-	touched          uint64 // Server.touches when a run of it last started or ended: the eviction order
+	touched          uint64 // Server.touches when it was created or a run of it last started or ended: the eviction order
 	messages         []harness.TimedMessage
 	running          bool
 }
@@ -156,6 +156,7 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 	}{
 		{"POST /v1/runs", s.postRun},
 		{"GET /v1/runs/{id}", s.getRun},
+		{"POST /v1/conversations", s.createConversation},
 		{"GET /v1/conversations", s.listConversations},
 		{"GET /v1/conversations/{id}", s.getConversation},
 		{"DELETE /v1/conversations/{id}", s.deleteConversation},
@@ -299,18 +300,27 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 // trailing data are errors.
 func (s *Server) decode(w http.ResponseWriter, r *http.Request) (RunRequest, *Error, int) {
 	var req RunRequest
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, s.cfg.maxBodyBytes))
-	if err != nil {
-		var tooLarge *http.MaxBytesError
-		if errors.As(err, &tooLarge) {
-			return req, &Error{Code: CodeTooLarge, Message: fmt.Sprintf("the body is larger than %d bytes", s.cfg.maxBodyBytes)}, http.StatusRequestEntityTooLarge
-		}
-		return req, &Error{Code: CodeInvalidRequest, Message: "reading the body: " + err.Error()}, http.StatusBadRequest
+	body, apiErr, code := s.readBody(w, r)
+	if apiErr != nil {
+		return req, apiErr, code
 	}
 	if err := decodeStrict(body, &req); err != nil {
 		return req, &Error{Code: CodeInvalidRequest, Message: "the body must be a JSON object {\"message\": ..., \"conversation_id\": ...}: " + err.Error()}, http.StatusBadRequest
 	}
 	return req, nil, 0
+}
+
+// readBody reads a request's body, up to the body limit.
+func (s *Server) readBody(w http.ResponseWriter, r *http.Request) ([]byte, *Error, int) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, s.cfg.maxBodyBytes))
+	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			return nil, &Error{Code: CodeTooLarge, Message: fmt.Sprintf("the body is larger than %d bytes", s.cfg.maxBodyBytes)}, http.StatusRequestEntityTooLarge
+		}
+		return nil, &Error{Code: CodeInvalidRequest, Message: "reading the body: " + err.Error()}, http.StatusBadRequest
+	}
+	return body, nil, 0
 }
 
 func decodeStrict(body []byte, v any) error {
@@ -341,7 +351,7 @@ func (s *Server) admit(req RunRequest, tenant string) (*started, *Error, int) {
 		return nil, &Error{Code: CodeShuttingDown, Message: "the server is shutting down", Retryable: true}, http.StatusServiceUnavailable
 	}
 	now := s.cfg.clock.Now()
-	s.evict(now)
+	s.evict(now, nil)
 	hasMessage := strings.TrimSpace(req.Message) != ""
 	conv := (*conversation)(nil)
 	var ag *agent
@@ -383,6 +393,9 @@ func (s *Server) admit(req RunRequest, tenant string) (*started, *Error, int) {
 		conv = &conversation{id: s.cfg.newID("conv_"), agent: ag, tenant: tenant, seq: s.convSeq, title: title(req.Message), created: now}
 		s.convs[conv.id] = conv
 	}
+	if conv.title == "" && hasMessage { // a conversation created empty (POST /v1/conversations)
+		conv.title = title(req.Message)
+	}
 	s.touches++
 	conv.running, conv.updated, conv.touched = true, now, s.touches
 	transcript := make(harness.Transcript, len(conv.messages))
@@ -392,7 +405,7 @@ func (s *Server) admit(req RunRequest, tenant string) (*started, *Error, int) {
 	ru := &run{id: s.cfg.newID("run_"), convID: conv.id, agent: ag.Name, tenant: tenant, created: now, status: StatusRunning}
 	s.runs[ru.id] = ru
 	s.runOrder = append(s.runOrder, ru)
-	s.evict(now)
+	s.evict(now, nil)
 	s.active.Add(1)
 	msg := ""
 	if hasMessage {
@@ -402,8 +415,9 @@ func (s *Server) admit(req RunRequest, tenant string) (*started, *Error, int) {
 }
 
 // evict drops what retention no longer allows: finished runs and idle
-// conversations older than the retention, then the oldest past the counts.
-func (s *Server) evict(now time.Time) {
+// conversations older than the retention, then the oldest past the counts,
+// conversations without messages before the others. It never drops keep.
+func (s *Server) evict(now time.Time, keep *conversation) {
 	cutoff := now.Add(-s.cfg.retention)
 	kept := s.runOrder[:0]
 	finished := 0
@@ -425,7 +439,7 @@ func (s *Server) evict(now time.Time) {
 
 	var idle []*conversation
 	for _, c := range s.convs {
-		if c.running {
+		if c.running || c == keep {
 			continue
 		}
 		if c.updated.Before(cutoff) {
@@ -435,7 +449,11 @@ func (s *Server) evict(now time.Time) {
 		idle = append(idle, c)
 	}
 	if extra := len(s.convs) - s.cfg.maxConvs; extra > 0 {
-		slices.SortFunc(idle, func(a, b *conversation) int { return cmp.Compare(a.touched, b.touched) })
+		slices.SortFunc(idle, func(a, b *conversation) int {
+			// An empty conversation goes first: a client that creates many
+			// and never uses them loses its own, not others' conversations.
+			return cmp.Or(cmp.Compare(min(len(a.messages), 1), min(len(b.messages), 1)), cmp.Compare(a.touched, b.touched))
+		})
 		for _, c := range idle[:min(extra, len(idle))] {
 			delete(s.convs, c.id)
 		}
@@ -693,10 +711,7 @@ func (s *Server) getConversation(w http.ResponseWriter, r *http.Request) {
 	var body []byte
 	var err error
 	if c != nil {
-		body, err = json.Marshal(Conversation{
-			V: WireVersion, ID: c.id, Agent: c.agent.Name, Status: c.status(), CreatedAt: c.created, UpdatedAt: c.updated,
-			Messages: timedMessages(c.messages),
-		})
+		body, err = json.Marshal(conversationView(c))
 	}
 	s.mu.Unlock()
 	switch {
@@ -707,6 +722,15 @@ func (s *Server) getConversation(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, &Error{Code: CodeInternal, Message: "the conversation could not be encoded"})
 	default:
 		writeRaw(w, http.StatusOK, append(body, '\n'))
+	}
+}
+
+// conversationView is c as GET /v1/conversations/{id} returns it. Called
+// with Server.mu held.
+func conversationView(c *conversation) Conversation {
+	return Conversation{
+		V: WireVersion, ID: c.id, Agent: c.agent.Name, Status: c.status(), CreatedAt: c.created, UpdatedAt: c.updated,
+		Messages: timedMessages(c.messages),
 	}
 }
 

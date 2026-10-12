@@ -729,6 +729,8 @@ func TestRequests(t *testing.T) {
 	_, _ = c.Conversations(ctx, agentclient.ConversationsQuery{})
 	_, _ = c.Conversations(ctx, agentclient.ConversationsQuery{Agent: "a&b", Limit: 5, Cursor: "c+/="})
 	_ = c.DeleteConversation(ctx, "conv/1")
+	_, _ = c.CreateConversation(ctx, agentclient.ConversationRequest{Agent: "search"})
+	_, _ = c.CreateConversation(ctx, agentclient.ConversationRequest{})
 	_, _ = c.Toolsets(ctx)
 	_, _ = c.Tools(ctx, "web search")
 	for _, want := range []struct{ method, path, accept, body string }{
@@ -741,6 +743,8 @@ func TestRequests(t *testing.T) {
 		{"GET", "/agent/v1/conversations", "application/json", ""},
 		{"GET", "/agent/v1/conversations?agent=a%26b&cursor=c%2B%2F%3D&limit=5", "application/json", ""},
 		{"DELETE", "/agent/v1/conversations/conv%2F1", "application/json", ""},
+		{"POST", "/agent/v1/conversations", "application/json", `{"agent":"search"}`},
+		{"POST", "/agent/v1/conversations", "application/json", `{}`},
 		{"GET", "/agent/v1/toolsets", "application/json", ""},
 		{"GET", "/agent/v1/toolsets/web%20search/tools", "application/json", ""},
 	} {

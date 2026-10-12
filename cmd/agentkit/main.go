@@ -5,6 +5,7 @@
 //	agentkit serve [-config file]              serve the components in $AGENTKIT_COMPONENTS
 //	agentkit chat [flags]                      talk to an agent on a server, interactively
 //	agentkit ask [flags] "<message>" | -       one run on a server, for scripts (-json: JSONL events)
+//	agentkit create [flags]                    create an empty conversation on a server; prints its ID
 //
 // Credentials come from the Anthropic SDK's chain: ANTHROPIC_API_KEY,
 // ANTHROPIC_AUTH_TOKEN or an `ant auth login` profile.
@@ -84,6 +85,7 @@ const usage = `usage:
   agentkit healthcheck [-ready]            exit 0 if the server on $AGENTKIT_ADDR is live (or ready)
   agentkit chat [flags]                    talk to an agent on a server ($AGENTKIT_SERVER), interactively
   agentkit ask [flags] "<message>" | -     one run on a server, for scripts; -json prints the events as JSONL
+  agentkit create [flags]                  create an empty conversation on a server; prints its ID for -conversation
 
 Run "agentkit <command> -h" for flags.
 `
@@ -106,6 +108,8 @@ func (c cli) main(ctx context.Context, args []string) int {
 		return c.chat(ctx, args[1:])
 	case len(args) >= 1 && args[0] == "ask":
 		return c.ask(ctx, args[1:])
+	case len(args) >= 1 && args[0] == "create":
+		return c.create(ctx, args[1:])
 	default:
 		fmt.Fprint(c.stderr, usage)
 		return 2

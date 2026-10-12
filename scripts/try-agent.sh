@@ -2,7 +2,8 @@
 # Try the agentkit server locally: the agent API (Claude + our harness + tools)
 # and the MCP toolsets, in one process. Works with the stock bash on macOS.
 #
-#   scripts/try-agent.sh             build, start, run a short demo, keep serving (Ctrl-C stops)
+#   scripts/try-agent.sh             build, start, run a short demo (curl, then agentkit ask),
+#                                    keep serving (Ctrl-C stops); then try bin/agentkit chat
 #   scripts/try-agent.sh --demo      build, start, run the demo, stop
 #   scripts/try-agent.sh --docker    same, but run the container image instead of the binary
 #   scripts/try-agent.sh --agent search
@@ -26,7 +27,7 @@ while [ $# -gt 0 ]; do
     --docker) use_docker=1 ;;
     --agent) [ $# -ge 2 ] || { echo "--agent needs a name" >&2; exit 2; }; agent="$2"; shift ;;
     --agent=*) agent="${1#--agent=}" ;;
-    -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1 (try --help)" >&2; exit 2 ;;
   esac
   shift
@@ -147,6 +148,21 @@ echo
 echo "==> 5. no token is refused"
 echo "   status $(curl -s -o /dev/null -w '%{http_code}' "$base/v1/runs" -d '{"message":"hi"}')"
 
+# The CLI client: the binary we built, or the one in the container.
+if [ -n "$container" ]; then
+  cli() { docker exec -e AGENTKIT_API_TOKEN="$token" -e AGENTKIT_SERVER=http://127.0.0.1:8080 "$container" /app "$@"; }
+else
+  cli() { AGENTKIT_API_TOKEN="$token" AGENTKIT_SERVER="$base" bin/agentkit "$@"; }
+fi
+agent_flag=()
+[ -z "$agent" ] || agent_flag=(-agent "$agent")
+
+echo
+echo "==> 6. agentkit ask -json: the same run from the CLI, one event per line (types shown)"
+cli ask -json ${agent_flag[@]+"${agent_flag[@]}"} "Use the calculate tool to compute 6 * 7. Answer with just the number." \
+  | grep -o '"type":"[a-z_]*"' | head -1000 | cut -d'"' -f4 | uniq -c | sed 's/^/   /'
+echo "   answer: $(cli ask ${agent_flag[@]+"${agent_flag[@]}"} "What is 2 + 2? Answer with just the number.")"
+
 if [ "$mode" = demo ]; then
   echo
   echo "==> demo done; stopping"
@@ -157,7 +173,9 @@ cat <<INFO
 
 The server keeps running at $base. Ctrl-C stops it. Log: $log
 
-  export AGENTKIT_API_TOKEN=$token
+  export AGENTKIT_API_TOKEN=$token AGENTKIT_SERVER=$base
+  bin/agentkit chat                                                # talk to the agent (/help for commands)
+  bin/agentkit ask -json "What time is it?"                        # one run, as JSONL events (exit 0 done, 1 failed)
   curl -sN $base/v1/runs -H "Authorization: Bearer \$AGENTKIT_API_TOKEN" -d '{"message":"What time is it?"}'
   curl -s  $base/v1/conversations/$conv -H "Authorization: Bearer \$AGENTKIT_API_TOKEN"
   curl -s  $base/v1/agents -H "Authorization: Bearer \$AGENTKIT_API_TOKEN"        # the agents; a run picks one with "agent"

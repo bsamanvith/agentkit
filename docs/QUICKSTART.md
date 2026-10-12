@@ -76,6 +76,41 @@ curl -s localhost:8080/healthz; curl -s localhost:8080/readyz; curl -s localhost
 
 Use the tools from Claude Code: `claude mcp add --transport http agentkit-demo http://localhost:8080/mcp/demo`.
 
+### From the terminal: `agentkit chat` and `agentkit ask`
+
+The same binary is a client of the agent API. It reads the server from `-server` or `AGENTKIT_SERVER` (default `http://127.0.0.1:8080`) and the token from `AGENTKIT_API_TOKEN`, and never prints the token.
+
+```sh
+# talk to an agent: answers stream in, with each tool call and its result, then the usage
+bin/agentkit chat                       # -agent search picks another agent; -conversation conv_... continues one
+```
+
+In `chat`:
+- `/new` starts a new conversation, `/conv` prints its ID, `/history` shows it, `/details` shows the last tool call and its result in full, and `/quit` (or Ctrl-D) quits.
+- Ctrl-C while an answer is coming cancels the run on the server and returns to the prompt. If the run had not answered yet, Enter on an empty line resumes it.
+- Ctrl-C at the prompt quits.
+
+```sh
+# one run, for scripts: prints the answer only (-v adds the conversation, tool calls and usage on stderr)
+bin/agentkit ask "What is 17 * 23? Use a tool."
+echo "Double it." | bin/agentkit ask -conversation conv_... -     # the message from stdin
+
+# headless: every event of the run as one JSON line (the SSE data, unchanged)
+bin/agentkit ask -json -agent search "What is the latest Go release? Cite the source." | jq -c '{type, name}'
+```
+
+`ask` exits with:
+
+| Code | Meaning |
+|---|---|
+| 0 | `run_done` |
+| 1 | `run_error` (its code is on stderr) |
+| 2 | usage, HTTP or stream error |
+| 3 | `conversation_busy`, `over_capacity` or `shutting_down` |
+| 130 | interrupted |
+
+For code 3, `-retry N` waits the server's `Retry-After` (1 s for a busy conversation) and tries again, up to N times.
+
 ## 4. Container
 
 ```sh

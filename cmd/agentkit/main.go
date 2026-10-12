@@ -3,6 +3,8 @@
 //	agentkit run [flags] "<prompt>"            one agent against Claude, with the demo tools
 //	agentkit flow demo [flags] ["<topic>"]     research → approval → write, resumable
 //	agentkit serve [-config file]              serve the components in $AGENTKIT_COMPONENTS
+//	agentkit chat [flags]                      talk to an agent on a server, interactively
+//	agentkit ask [flags] "<message>" | -       one run on a server, for scripts (-json: JSONL events)
 //
 // Credentials come from the Anthropic SDK's chain: ANTHROPIC_API_KEY,
 // ANTHROPIC_AUTH_TOKEN or an `ant auth login` profile.
@@ -40,7 +42,11 @@ var (
 )
 
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	sigs := []os.Signal{os.Interrupt, syscall.SIGTERM}
+	if len(os.Args) > 1 && os.Args[1] == "chat" {
+		sigs = sigs[1:] // chat takes Ctrl-C itself: it cancels a run, not the program
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), sigs...)
 	code := cli{stdout: os.Stdout, stderr: os.Stderr, getenv: os.Getenv, newModel: newClaude}.main(ctx, os.Args[1:])
 	stop()
 	os.Exit(code)
@@ -52,6 +58,7 @@ type cli struct {
 	getenv         func(string) string // nil: os.Getenv
 	newModel       func(modelFlags) (llm.Model, error)
 	catalog        func() (*toolset.Catalog, error) // nil: newCatalog
+	term           clientTerm                       // chat's and ask's input, Ctrl-C and waits
 }
 
 // toolsets returns the catalog of connectors: the compiled-in one, or the
@@ -75,6 +82,8 @@ const usage = `usage:
   agentkit flow demo [flags] ["<topic>"]   research → approval → write; run again with -approve to continue
   agentkit serve [-config file]            serve the components in $AGENTKIT_COMPONENTS (default mcp-server)
   agentkit healthcheck [-ready]            exit 0 if the server on $AGENTKIT_ADDR is live (or ready)
+  agentkit chat [flags]                    talk to an agent on a server ($AGENTKIT_SERVER), interactively
+  agentkit ask [flags] "<message>" | -     one run on a server, for scripts; -json prints the events as JSONL
 
 Run "agentkit <command> -h" for flags.
 `
@@ -93,6 +102,10 @@ func (c cli) main(ctx context.Context, args []string) int {
 		err = c.serve(ctx, args[1:])
 	case len(args) >= 1 && args[0] == "healthcheck":
 		err = c.healthcheck(ctx, args[1:])
+	case len(args) >= 1 && args[0] == "chat":
+		return c.chat(ctx, args[1:])
+	case len(args) >= 1 && args[0] == "ask":
+		return c.ask(ctx, args[1:])
 	default:
 		fmt.Fprint(c.stderr, usage)
 		return 2

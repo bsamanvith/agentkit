@@ -49,6 +49,7 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 | [T033](T033-harness-clock.md) | Harness on `pkg/clock` | Small, independent |
 | [T035](T035-rerecord-anthropic-fixtures.md) | Re-record Anthropic fixtures from the real API | A key is available |
 | [T010](T010-skills-layout.md) | `AGENTS.md`, `CLAUDE.md`, skills README, lint | Small, independent |
+| [T034](T034-nightly-ci.md) | Nightly benchstat report (non-gating, no secrets) | Small; starts the perf history |
 
 ## Blocked on other tasks
 
@@ -57,14 +58,17 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 | [T031](T031-compaction.md) Compaction | T030 |
 | [T037](T037-agent-api-v1.md) Agent API v1 on the runner | T030, T029 |
 | [T004](T004-fakellm.md) `fakellm`, [T007](T007-e2e-smoke-suite.md) smoke suite, [T008](T008-ci-pipeline.md) full CI | T006 |
-| [T034](T034-nightly-ci.md) Nightly live tests and perf report | The `ANTHROPIC_API_KEY` repository secret |
 
 ## Waiting on the owner
 
 1. **Approve the flow fix in the T024 session** (or say to drop it; the new flow tests are lost when that container ends).
 2. **Where to deploy** the API server (a VM with Docker, Cloud Run, Fly.io, Kubernetes, ...). The binary and image are ready; a deploy task is written once this is known.
-3. **`ANTHROPIC_API_KEY` repository secret** on GitHub, for T034.
-4. **Delete the `review/t022-base` branch**, and the merged `claude/*` session branches (all their work is on `main`).
+3. **Delete the `review/t022-base` branch**, and the merged `claude/*` session branches (all their work is on `main`).
+
+## Owner decisions recorded
+
+- 2026-10-12: no Anthropic key in GitHub. Live tests run in Claude sessions (`ANTHROPIC_KEY`, mapped by `make test-live`); T034 is a perf report only.
+- 2026-10-12: the planner approves and lands the `pkg/flow` rejected-resume fix from the T013 dry run.
 
 ## Watch items
 

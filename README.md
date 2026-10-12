@@ -65,6 +65,7 @@ Requires Go (the right toolchain is fetched automatically from `go.mod`).
 make check    # tidy, format, lint, architecture rules, unit tests (race, shuffled)
 make fuzz     # run every fuzz target (FUZZTIME=10s by default)
 make golden   # rewrite golden files after an intended change; review the diff
+make test-live  # live tests against Claude (ANTHROPIC_API_KEY, or ANTHROPIC_KEY as set in Claude sessions); never run in CI
 make help     # all targets
 ```
 

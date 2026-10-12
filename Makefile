@@ -26,8 +26,8 @@ test-integration: ## Unit + integration tests (needs: scripts/dev.sh up deps)
 	$(GO) test $(TESTFLAGS) -tags integration ./...
 
 .PHONY: test-live
-test-live: ## Live tests against real model providers (needs API keys)
-	$(GO) test $(TESTFLAGS) -tags live -count=1 ./...
+test-live: ## Live tests against real model providers (ANTHROPIC_API_KEY, or ANTHROPIC_KEY as in Claude sessions)
+	ANTHROPIC_API_KEY="$${ANTHROPIC_API_KEY:-$$ANTHROPIC_KEY}" $(GO) test $(TESTFLAGS) -tags live -count=1 ./...
 
 .PHONY: golden
 golden: ## Rewrite golden files from current output (review the diff!)

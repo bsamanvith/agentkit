@@ -30,8 +30,9 @@ change, keep it minimal, keep its tests green, and record why in your task file.
 One per acceptance criterion; invariants after every test; <replay e2e / live / fuzz>.
 
 ## Credentials / environment
-<keys needed, how to map them at the call site; what to do if missing: leave the box
-unticked, status `review`, never fake a result>
+Claude sessions have the Anthropic key as `ANTHROPIC_KEY`; `make test-live` maps it. Tasks touching a
+model adapter, provider wiring or the agent API run `make test-live` before done (there is no key in
+CI). If a key is missing: leave the box unticked, status `review`, never fake a result.
 
 ## Definition of done
 1. Every acceptance criterion ticked with test names (live/manual/Docker only if they ran).

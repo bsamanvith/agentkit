@@ -128,6 +128,17 @@
         "results"
       ],
       "additionalProperties": false
+    },
+    "kind": "read",
+    "risk": "low",
+    "tags": [
+      "external"
+    ],
+    "display": {
+      "title": "Web search (Tavily)",
+      "icon": "search",
+      "present": "Searching the web",
+      "past": "Searched the web"
     }
   },
   {
@@ -215,6 +226,17 @@
         "failed"
       ],
       "additionalProperties": false
+    },
+    "kind": "read",
+    "risk": "low",
+    "tags": [
+      "external"
+    ],
+    "display": {
+      "title": "Read web pages (Tavily)",
+      "icon": "page",
+      "present": "Reading pages",
+      "past": "Read pages"
     }
   }
 ]

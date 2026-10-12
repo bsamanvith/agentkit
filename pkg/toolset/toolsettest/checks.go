@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
@@ -71,6 +72,28 @@ func (s *suite) definitions(t *testing.T) {
 	}
 	if n := len(r.up.Requests()); n != 0 {
 		t.Errorf("[definitions] Build sent %d request(s); Build must make no request", n)
+	}
+}
+
+// classified: every tool declares its kind and risk, under every settings
+// the calls use (settings can change the tools), so no policy has to fall
+// back to the default class (write/medium) for it.
+func (s *suite) classified(t *testing.T) {
+	t.Parallel()
+	r := s.newRig(t, modeKeyed)
+	sets := [][]tool.Tool{r.mustBuild()}
+	for _, c := range s.c.Calls {
+		sets = append(sets, r.toolsFor(c))
+	}
+	seen := map[string]bool{}
+	for _, tools := range sets {
+		for _, tl := range tools {
+			d := tl.Definition()
+			if (d.Kind == "" || d.Risk == "") && !seen[d.Name] {
+				seen[d.Name] = true
+				t.Errorf("[classified] tool %q declares kind %q and risk %q; declare both with tool.WithMetadata (unclassified counts as write/medium)", d.Name, d.Kind, d.Risk)
+			}
+		}
 	}
 }
 
@@ -592,6 +615,9 @@ func (s *suite) mcpCheck(t *testing.T) {
 		}
 		if got.Description != d.Description || !jsonEqual(got.InputSchema, d.InputSchema) || !jsonEqual(got.OutputSchema, d.OutputSchema) {
 			t.Errorf("[mcp] %s is listed over MCP as %+v, want %+v", d.Name, got, d)
+		}
+		if want := d.Annotations(); !reflect.DeepEqual(got.annotations, want) {
+			t.Errorf("[mcp] %s is listed over MCP with annotations %+v, want %+v (its metadata's)", d.Name, got.annotations, want)
 		}
 	}
 	if len(listed) != len(tools) {

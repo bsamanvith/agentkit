@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"regexp"
 	"runtime/debug"
+	"slices"
 )
 
 // Tool is a single callable tool.
@@ -33,18 +34,23 @@ type Definition struct {
 	InputSchema json.RawMessage `json:"inputSchema"`
 	// OutputSchema is a JSON Schema for the output, if the output is an object.
 	OutputSchema json.RawMessage `json:"outputSchema,omitempty"`
+	// Metadata says what the tool does (kind, risk, tags, display). It is
+	// optional; [Classify] gives an unclassified tool its default class.
+	Metadata
 }
 
 // Clone returns a deep copy of d.
 func (d Definition) Clone() Definition {
 	d.InputSchema = bytes.Clone(d.InputSchema)
 	d.OutputSchema = bytes.Clone(d.OutputSchema)
+	d.Tags = slices.Clone(d.Tags)
 	return d
 }
 
 var (
 	// ErrInvalidDefinition reports a tool that cannot be built or registered:
-	// a bad name, or input/output types with no usable JSON Schema.
+	// a bad name, input/output types with no usable JSON Schema, or metadata
+	// that breaks its rules (an unknown kind or risk, a malformed tag).
 	ErrInvalidDefinition = errors.New("invalid tool definition")
 	// ErrInvalidInput reports input that is not valid JSON or does not match
 	// the tool's input schema. The tool was not run.
@@ -78,8 +84,9 @@ func (e *Error) Unwrap() []error { return []error{e.Kind, e.Err} }
 
 var namePattern = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`)
 
-// checkDefinition validates what every consumer (models, MCP clients) relies
-// on: a valid name and an input schema that is a JSON object.
+// checkDefinition validates what every consumer (models, MCP clients,
+// policies) relies on: a valid name, an input schema that is a JSON object,
+// and metadata that follows its rules.
 func checkDefinition(d Definition) error {
 	if err := checkName(d.Name); err != nil {
 		return err
@@ -87,6 +94,9 @@ func checkDefinition(d Definition) error {
 	var schema map[string]any
 	if err := json.Unmarshal(d.InputSchema, &schema); err != nil || schema == nil {
 		return fmt.Errorf("%w: tool %q: input schema must be a JSON object", ErrInvalidDefinition, d.Name)
+	}
+	if err := checkMetadata(d.Metadata); err != nil {
+		return fmt.Errorf("%w: tool %q: %w", ErrInvalidDefinition, d.Name, err)
 	}
 	return nil
 }

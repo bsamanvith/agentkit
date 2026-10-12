@@ -32,7 +32,7 @@ This is harness and runner work. The console screens are designed in T087 and bu
 
 ## Tasks
 
-- [ ] [T082](T082-tool-metadata.md) Tool metadata: kind, risk, interrupts, approval, tags, display; MCP annotation mapping; connectors classified
+- [x] [T082](T082-tool-metadata.md) Tool metadata: kind, risk, interrupts, approval, tags, display; MCP annotation mapping; connectors classified
 - [ ] [T083](T083-tool-policy.md) Tool policy engine: rules, presets, agent and environment policies, decisions in events
 - [ ] [T084](T084-interrupts-approvals.md) Interrupts and approvals: interaction modes, `ask_user`, approval holds, suspend and answer
 - [ ] [T085](T085-deferred-tool-loading.md) Deferred tool loading and skills that load tools

@@ -402,3 +402,26 @@ func TestDemoConformance(t *testing.T) {
 		t.Errorf("current_time = %s, want %s", got, want)
 	}
 }
+
+// TestDemoToolsAreClassified: every demo tool declares its class, read/low
+// (they change nothing and reach nothing outside), and the display a console
+// shows its calls with.
+func TestDemoToolsAreClassified(t *testing.T) {
+	t.Parallel()
+	tools, err := toolset.Demo().Build(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tl := range tools {
+		d := tl.Definition()
+		if d.Kind != tool.KindRead || d.Risk != tool.RiskLow {
+			t.Errorf("%s declares %q/%q, want read/low", d.Name, d.Kind, d.Risk)
+		}
+		if d.Display.Title == "" || d.Display.Icon == "" || d.Display.Present == "" || d.Display.Past == "" {
+			t.Errorf("%s has display %+v, want every field set", d.Name, d.Display)
+		}
+		if d.HasTag(tool.TagExternal) || d.Interrupts || d.RequiresApproval {
+			t.Errorf("%s: %+v, want no external tag, no interrupt and no approval", d.Name, d.Metadata)
+		}
+	}
+}

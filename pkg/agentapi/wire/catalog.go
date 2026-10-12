@@ -140,12 +140,37 @@ type ToolsetList struct {
 	Toolsets []Toolset `json:"toolsets"`
 }
 
-// Tool is a tool's definition, under the name its toolset gives it.
+// Tool is a tool's definition, under the name its toolset gives it, with
+// what its metadata says it does (tool.Metadata).
 type Tool struct {
 	Name         string          `json:"name"`
 	Description  string          `json:"description"`
 	InputSchema  json.RawMessage `json:"input_schema"`
 	OutputSchema json.RawMessage `json:"output_schema,omitempty"`
+	// Kind (read, write, delete, send or execute) and Risk (low, medium or
+	// high) are the tool's class as policies see it (tool.Classify): what the
+	// tool declares, with write and medium for what it leaves unset.
+	Kind string `json:"kind"`
+	Risk string `json:"risk"`
+	// Classified is false when the tool left its kind or risk unset, so Kind
+	// and Risk are partly or wholly the defaults.
+	Classified bool `json:"classified"`
+	// Interrupts marks a tool that needs a person to answer (ask_user).
+	Interrupts bool `json:"interrupts,omitempty"`
+	// RequiresApproval asks that a person approve each call.
+	RequiresApproval bool `json:"requires_approval,omitempty"`
+	// Tags are labels policies match, such as "external".
+	Tags    []string     `json:"tags,omitempty"`
+	Display *ToolDisplay `json:"display,omitempty"`
+}
+
+// ToolDisplay is how a console shows a tool's calls (docs/UI.md, "Tool
+// calls"); a tool without one is shown as "Ran <name>".
+type ToolDisplay struct {
+	Title   string `json:"title,omitempty"`
+	Icon    string `json:"icon,omitempty"`    // an icon name of the console's set
+	Present string `json:"present,omitempty"` // the verb phrase while the call runs
+	Past    string `json:"past,omitempty"`    // the verb phrase once it is done
 }
 
 // ToolList is the body of GET /v1/toolsets/{name}/tools.

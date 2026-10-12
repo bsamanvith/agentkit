@@ -158,6 +158,7 @@ type customTool struct {
 	name   string
 	panics bool
 	schema *string // input schema; nil means a valid object schema
+	meta   tool.Metadata
 }
 
 func (c customTool) Definition() tool.Definition {
@@ -165,7 +166,7 @@ func (c customTool) Definition() tool.Definition {
 	if c.schema != nil {
 		schema = json.RawMessage(*c.schema)
 	}
-	return tool.Definition{Name: c.name, InputSchema: schema}
+	return tool.Definition{Name: c.name, InputSchema: schema, Metadata: c.meta}
 }
 
 func (c customTool) Invoke(context.Context, json.RawMessage) (json.RawMessage, error) {

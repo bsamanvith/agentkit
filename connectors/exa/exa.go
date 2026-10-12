@@ -235,7 +235,7 @@ func (f *factory) Build(_ context.Context, raw json.RawMessage) ([]tool.Tool, er
 	}
 	extract, err := tool.Func("exa_extract", extractDescription, func(ctx context.Context, in extractIn) (extractOut, error) {
 		return extractCall(ctx, c, s, in)
-	})
+	}, tool.WithMetadata(extractMeta))
 	if err != nil {
 		return nil, err
 	}

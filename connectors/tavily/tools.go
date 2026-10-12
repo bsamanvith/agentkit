@@ -134,6 +134,20 @@ type (
 	}
 )
 
+// The tools' classes: both only read public web pages, through a paid API,
+// so read/low and external. A policy that should not reach the web matches
+// the tag.
+var (
+	searchMeta = tool.Metadata{
+		Kind: tool.KindRead, Risk: tool.RiskLow, Tags: []string{tool.TagExternal},
+		Display: tool.Display{Title: "Web search (Tavily)", Icon: "search", Present: "Searching the web", Past: "Searched the web"},
+	}
+	extractMeta = tool.Metadata{
+		Kind: tool.KindRead, Risk: tool.RiskLow, Tags: []string{tool.TagExternal},
+		Display: tool.Display{Title: "Read web pages (Tavily)", Icon: "page", Present: "Reading pages", Past: "Read pages"},
+	}
+)
+
 // tools is one toolset's tools over one client.
 type tools struct {
 	c *client
@@ -148,18 +162,18 @@ func newTools(c *client, s settings) ([]tool.Tool, error) {
 	if s.SearchDefaults.ModelChoosesDepth {
 		search, err = tool.Func("tavily_search", searchDesc, func(ctx context.Context, in searchDepthIn) (searchOut, error) {
 			return ts.search(ctx, searchIn{in.Query, in.MaxResults, in.Topic, in.TimeRange, in.IncludeDomains, in.ExcludeDomains}, in.SearchDepth)
-		})
+		}, tool.WithMetadata(searchMeta))
 	} else {
 		search, err = tool.Func("tavily_search", searchDesc, func(ctx context.Context, in searchIn) (searchOut, error) {
 			return ts.search(ctx, in, "")
-		})
+		}, tool.WithMetadata(searchMeta))
 	}
 	if err != nil {
 		return nil, err
 	}
 	extract, err := tool.Func("tavily_extract",
 		"Extract the text of web pages (as markdown or plain text) with Tavily. Pages that cannot be fetched are listed in failed."+untrusted,
-		ts.extract)
+		ts.extract, tool.WithMetadata(extractMeta))
 	if err != nil {
 		return nil, err
 	}

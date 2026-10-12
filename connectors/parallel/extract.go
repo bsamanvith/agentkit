@@ -76,7 +76,7 @@ type extractTool struct {
 
 func newExtractTool(c *client, cfg config) (tool.Tool, error) {
 	e := &extractTool{c: c, cfg: cfg}
-	return classify(tool.Func("parallel_extract", extractDescription, e.run))
+	return classify(tool.Func("parallel_extract", extractDescription, e.run, tool.WithMetadata(extractMeta)))
 }
 
 func (e *extractTool) run(ctx context.Context, in extractInput) (extractOutput, error) {

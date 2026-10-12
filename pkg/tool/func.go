@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/google/jsonschema-go/jsonschema"
 )
@@ -27,7 +28,9 @@ type FuncTool[In, Out any] struct {
 //
 // Every call's input is validated against the schema before fn runs, and a
 // panic in fn is returned as an error matching [ErrToolFailed] and [ErrPanic].
-func Func[In, Out any](name, description string, fn func(ctx context.Context, in In) (Out, error)) (*FuncTool[In, Out], error) {
+//
+// Options add to the definition, such as its [Metadata] with [WithMetadata].
+func Func[In, Out any](name, description string, fn func(ctx context.Context, in In) (Out, error), opts ...FuncOption) (*FuncTool[In, Out], error) {
 	if err := checkName(name); err != nil {
 		return nil, err
 	}
@@ -63,16 +66,29 @@ func Func[In, Out any](name, description string, fn func(ctx context.Context, in
 		}
 	}
 
-	return &FuncTool[In, Out]{
-		def: Definition{
-			Name:         name,
-			Description:  description,
-			InputSchema:  inJSON,
-			OutputSchema: outJSON,
-		},
-		input: resolved,
-		fn:    fn,
-	}, nil
+	def := Definition{
+		Name:         name,
+		Description:  description,
+		InputSchema:  inJSON,
+		OutputSchema: outJSON,
+	}
+	for _, opt := range opts {
+		opt(&def)
+	}
+	if err := checkDefinition(def); err != nil {
+		return nil, err
+	}
+	return &FuncTool[In, Out]{def: def, input: resolved, fn: fn}, nil
+}
+
+// FuncOption configures a tool built by [Func].
+type FuncOption func(*Definition)
+
+// WithMetadata sets the tool's [Metadata]: its kind, risk, tags and display.
+// [Func] fails with [ErrInvalidDefinition] if m breaks its rules.
+func WithMetadata(m Metadata) FuncOption {
+	m.Tags = slices.Clone(m.Tags) // the tool never writes to it; Definition returns copies
+	return func(d *Definition) { d.Metadata = m }
 }
 
 // Definition implements [Tool].

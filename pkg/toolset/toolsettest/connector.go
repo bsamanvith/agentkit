@@ -287,7 +287,7 @@ func checkCalls(tb testing.TB, c Connector, files bool) {
 //	func TestConformance(t *testing.T) { toolsettest.RunConnector(t, connector()) }
 //
 // Its subtests are a contract, each a check with a [CheckID]
-// (docs/CONNECTORS.md lists what each checks): definitions;
+// (docs/CONNECTORS.md lists what each checks): definitions; classified;
 // settings/{unknown_field,literal_api_key,missing_key,plain_http_base_url,
 // base_url,honored}; calls/<call>; keyless/<call> (KeyOptional only);
 // invalid/<call>; cassettes/openapi; errors/{400,422,401,403,500,502,503,
@@ -304,6 +304,7 @@ func RunConnector(t *testing.T, c Connector) {
 	s := newSuite(t, c, false)
 	s.reportSynthetic(t)
 	s.run(t, "definitions", s.definitions)
+	s.run(t, "classified", s.classified)
 	t.Run("settings", s.settings)
 	s.run(t, "calls", func(t *testing.T) { s.calls(t, modeKeyed) })
 	if s.c.KeyOptional {

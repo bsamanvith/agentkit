@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -630,4 +631,57 @@ func TestMaxInFlight(t *testing.T) {
 	wg.Wait()
 	// The slot is freed just after the response is sent, so poll briefly.
 	testkit.Eventually(t, 10*time.Second, func() bool { return post() == http.StatusOK })
+}
+
+// TestToolsListPublishesAnnotations: over MCP, each tool's annotations are
+// its metadata mapped by tool.Metadata.Annotations, and a tool whose
+// metadata MCP cannot express has none.
+func TestToolsListPublishesAnnotations(t *testing.T) {
+	t.Parallel()
+	del, err := tool.Func("drop", "Delete a thing.",
+		func(context.Context, struct{}) (struct{}, error) { return struct{}{}, nil },
+		tool.WithMetadata(tool.Metadata{
+			Kind: tool.KindDelete, Risk: tool.RiskHigh, Tags: []string{tool.TagExternal},
+			Display: tool.Display{Title: "Drop a thing", Present: "Dropping", Past: "Dropped"},
+		}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fx := fixtureTools()
+	plain := fixture(t, "plain", func(context.Context, struct{}) (struct{}, error) { return struct{}{}, nil })
+	tools := []tool.Tool{fx["echo"], del, plain}
+	cs := connect(t, start(t, map[string]tool.Registry{"a": registry(t, tools...)}).URL+"/mcp/a", nil)
+	res, err := cs.ListTools(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed := map[string]*mcp.ToolAnnotations{}
+	for _, tl := range res.Tools {
+		listed[tl.Name] = tl.Annotations
+	}
+	for _, tl := range tools {
+		d := tl.Definition()
+		want := d.Annotations()
+		got, ok := listed[d.Name]
+		if !ok {
+			t.Errorf("%s is not listed", d.Name)
+			continue
+		}
+		var gotA *tool.Annotations
+		if got != nil {
+			gotA = &tool.Annotations{
+				Title: got.Title, ReadOnlyHint: got.ReadOnlyHint, DestructiveHint: got.DestructiveHint,
+				IdempotentHint: got.IdempotentHint, OpenWorldHint: got.OpenWorldHint,
+			}
+		}
+		if !reflect.DeepEqual(gotA, want) {
+			t.Errorf("%s: listed annotations %+v, want %+v", d.Name, gotA, want)
+		}
+	}
+	if listed["drop"] == nil || listed["drop"].DestructiveHint == nil || !*listed["drop"].DestructiveHint {
+		t.Errorf("drop, a delete, is listed with annotations %+v; want destructiveHint true", listed["drop"])
+	}
+	if listed["plain"] != nil {
+		t.Errorf("plain, unclassified, is listed with annotations %+v; want none", listed["plain"])
+	}
 }

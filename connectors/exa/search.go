@@ -95,15 +95,29 @@ type searchResponse struct {
 	} `json:"output"`
 }
 
+// The tools' classes: both only read public web pages, through a paid API,
+// so read/low and external. A policy that should not reach the web matches
+// the tag.
+var (
+	searchMeta = tool.Metadata{
+		Kind: tool.KindRead, Risk: tool.RiskLow, Tags: []string{tool.TagExternal},
+		Display: tool.Display{Title: "Web search (Exa)", Icon: "search", Present: "Searching the web", Past: "Searched the web"},
+	}
+	extractMeta = tool.Metadata{
+		Kind: tool.KindRead, Risk: tool.RiskLow, Tags: []string{tool.TagExternal},
+		Display: tool.Display{Title: "Read web pages (Exa)", Icon: "page", Present: "Reading pages", Past: "Read pages"},
+	}
+)
+
 func newSearchTool(c *client, s settings) (tool.Tool, error) {
 	if s.SearchDefaults.ModelChoosesType {
 		return tool.Func("exa_search", searchDescription, func(ctx context.Context, in searchTypedIn) (searchOut, error) {
 			return searchCall(ctx, c, s, in.searchIn, in.Type)
-		})
+		}, tool.WithMetadata(searchMeta))
 	}
 	return tool.Func("exa_search", searchDescription, func(ctx context.Context, in searchIn) (searchOut, error) {
 		return searchCall(ctx, c, s, in, "")
-	})
+	}, tool.WithMetadata(searchMeta))
 }
 
 func searchCall(ctx context.Context, c *client, s settings, in searchIn, searchType string) (searchOut, error) {

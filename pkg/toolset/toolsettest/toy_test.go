@@ -53,7 +53,7 @@ func toyConnector(bug toy.Bug) toolsettest.Connector {
 		},
 		ErrorBody: toy.ErrorBody,
 		OpenAPI:   "testdata/openapi.json",
-		Enable:    []toolsettest.CheckID{"schema_honesty.dead_fields"},
+		Enable:    []toolsettest.CheckID{"schema_honesty.dead_fields", "classified"},
 		SettingCalls: []toolsettest.Call{
 			{Name: "with_summary", Tool: "toy_search", Input: json.RawMessage(`{"query": "go", "max_results": 2}`), Settings: json.RawMessage(`{"with_summary": true}`)},
 		},
@@ -184,6 +184,9 @@ var plantedBugs = map[toy.Bug]string{
 	toy.BugIgnoreTimeout:        "TestToyConnector/errors/attempt_timeout",
 	toy.BugCutBytes:             "TestToyConnector/limits/rune_boundary",
 	toy.BugIgnoreSummarySetting: "TestToyConnector/settings/honored",
+	toy.BugNoRisk:               "TestToyConnector/classified",
+	// Only under with_summary, which only the call search_summary uses.
+	toy.BugNoKindUnderSetting: "TestToyConnector/classified",
 }
 
 // TestPlantedBugs: each planted bug makes the suite fail, on the check meant

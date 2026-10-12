@@ -10,6 +10,12 @@
   "cacheScope": "public",
   "tools": [
     {
+      "annotations": {
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Echo"
+      },
       "description": "Repeat the input text.",
       "inputSchema": {
         "additionalProperties": false,

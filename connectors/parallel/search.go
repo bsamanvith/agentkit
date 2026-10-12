@@ -105,18 +105,32 @@ type searchTool struct {
 	cfg config
 }
 
+// The tools' classes: both only read public web pages, through a paid API,
+// so read/low and external. A policy that should not reach the web matches
+// the tag.
+var (
+	searchMeta = tool.Metadata{
+		Kind: tool.KindRead, Risk: tool.RiskLow, Tags: []string{tool.TagExternal},
+		Display: tool.Display{Title: "Web search (Parallel)", Icon: "search", Present: "Searching the web", Past: "Searched the web"},
+	}
+	extractMeta = tool.Metadata{
+		Kind: tool.KindRead, Risk: tool.RiskLow, Tags: []string{tool.TagExternal},
+		Display: tool.Display{Title: "Read web pages (Parallel)", Icon: "page", Present: "Reading pages", Past: "Read pages"},
+	}
+)
+
 func newSearchTool(c *client, cfg config) (tool.Tool, error) {
 	s := &searchTool{c: c, cfg: cfg}
 	const name = "parallel_search"
 	if cfg.allowMode {
 		t, err := tool.Func(name, searchDescription, func(ctx context.Context, in searchInputWithMode) (searchOutput, error) {
 			return s.run(ctx, in.searchInput, in.Mode)
-		})
+		}, tool.WithMetadata(searchMeta))
 		return classify(t, err)
 	}
 	t, err := tool.Func(name, searchDescription, func(ctx context.Context, in searchInput) (searchOutput, error) {
 		return s.run(ctx, in, "")
-	})
+	}, tool.WithMetadata(searchMeta))
 	return classify(t, err)
 }
 

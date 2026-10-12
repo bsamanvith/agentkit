@@ -262,10 +262,24 @@ func (s *Server) listTools(w http.ResponseWriter, r *http.Request) {
 		}
 		out.Status = wire.ToolsetReady
 		for _, d := range defs {
-			out.Tools = append(out.Tools, wire.Tool{Name: d.Name, Description: d.Description, InputSchema: d.InputSchema, OutputSchema: d.OutputSchema})
+			out.Tools = append(out.Tools, wireTool(d))
 		}
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// wireTool is a tool's definition as the API shows it.
+func wireTool(d tool.Definition) wire.Tool {
+	kind, risk := tool.Classify(d)
+	t := wire.Tool{
+		Name: d.Name, Description: d.Description, InputSchema: d.InputSchema, OutputSchema: d.OutputSchema,
+		Kind: string(kind), Risk: string(risk), Classified: d.Kind != "" && d.Risk != "",
+		Interrupts: d.Interrupts, RequiresApproval: d.RequiresApproval, Tags: d.Tags,
+	}
+	if d.Display != (tool.Display{}) {
+		t.Display = &wire.ToolDisplay{Title: d.Display.Title, Icon: d.Display.Icon, Present: d.Display.Present, Past: d.Display.Past}
+	}
+	return t
 }
 
 // createConversation creates an empty conversation of the agent named (or

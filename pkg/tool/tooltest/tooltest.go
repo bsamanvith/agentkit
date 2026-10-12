@@ -40,7 +40,7 @@ type EchoOutput struct {
 // Fixtures returns the tools the conformance suite expects the registry under
 // test to contain:
 //
-//   - "echo" repeats its input text;
+//   - "echo" repeats its input text, and carries [EchoMetadata];
 //   - "fail" always returns ErrFixture;
 //   - "block" waits until its context is done.
 func Fixtures() []tool.Tool {
@@ -48,7 +48,7 @@ func Fixtures() []tool.Tool {
 		func(_ context.Context, in EchoInput) (EchoOutput, error) {
 			n := max(in.Times, 1)
 			return EchoOutput{Text: strings.Repeat(in.Text, n)}, nil
-		})
+		}, tool.WithMetadata(EchoMetadata()))
 	must(err)
 	fail, err := tool.Func("fail", "Always fail.",
 		func(context.Context, struct{}) (struct{}, error) { return struct{}{}, ErrFixture })
@@ -60,6 +60,18 @@ func Fixtures() []tool.Tool {
 		})
 	must(err)
 	return []tool.Tool{echo, fail, block}
+}
+
+// EchoMetadata is the metadata of the "echo" fixture, so the suite can check a
+// registry lists metadata whole. It leaves Interrupts and RequiresApproval
+// unset: a fixture that held or hid its calls would get in the way of tests
+// that call it.
+func EchoMetadata() tool.Metadata {
+	return tool.Metadata{
+		Kind: tool.KindRead, Risk: tool.RiskLow,
+		Tags:    []string{tool.TagIdempotent, "fixture"},
+		Display: tool.Display{Title: "Echo", Icon: "tool", Present: "Echoing", Past: "Echoed"},
+	}
 }
 
 // RunRegistry runs the conformance suite. newRegistry must return a registry
@@ -107,6 +119,19 @@ func RunRegistry(t *testing.T, newRegistry func(t *testing.T, tools []tool.Tool)
 		}
 		if again[0].Name != "block" || string(again[0].InputSchema) != before {
 			t.Errorf("modifying a listed definition changed the registry: %+v", again[0])
+		}
+	})
+
+	t.Run("ListKeepsMetadata", func(t *testing.T) {
+		t.Parallel()
+		reg := setup(t)
+		echo := listed(t, reg, "echo")
+		if !reflect.DeepEqual(echo.Metadata, EchoMetadata()) {
+			t.Fatalf("echo is listed with metadata %+v, want %+v", echo.Metadata, EchoMetadata())
+		}
+		echo.Tags[0] = "scribbled" // a caller writing to what it was given
+		if again := listed(t, reg, "echo"); !reflect.DeepEqual(again.Metadata, EchoMetadata()) {
+			t.Errorf("modifying a listed definition's tags changed the registry: %+v", again.Metadata)
 		}
 	})
 
@@ -158,6 +183,22 @@ func RunRegistry(t *testing.T, newRegistry func(t *testing.T, tools []tool.Tool)
 			t.Errorf("err = %v, want context.DeadlineExceeded and not ErrToolFailed", err)
 		}
 	})
+}
+
+// listed returns the definition reg lists under name.
+func listed(t *testing.T, reg tool.Registry, name string) tool.Definition {
+	t.Helper()
+	defs, err := reg.List(t.Context())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	for _, d := range defs {
+		if d.Name == name {
+			return d
+		}
+	}
+	t.Fatalf("List has no %q", name)
+	return tool.Definition{}
 }
 
 func must(err error) {

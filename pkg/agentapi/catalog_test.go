@@ -1,6 +1,7 @@
 package agentapi_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -525,6 +526,59 @@ func TestNewAgentsRejectsBadConfig(t *testing.T) {
 	} {
 		if _, err := agentapi.NewAgents(tc.agents, agentapi.WithToolsets(tc.sets...)); !errors.Is(err, agentapi.ErrInvalidConfig) {
 			t.Errorf("%s: %v, want ErrInvalidConfig", name, err)
+		}
+	}
+}
+
+// TestToolListMetadata: GET /v1/toolsets/{name}/tools gives each tool's
+// class as policies see it (declared, or write/medium with classified false),
+// and its flags, tags and display as declared.
+func TestToolListMetadata(t *testing.T) {
+	t.Parallel()
+	ask, err := tool.Func("ask", "Ask the user.",
+		func(context.Context, struct{}) (struct{}, error) { return struct{}{}, nil },
+		tool.WithMetadata(tool.Metadata{
+			Kind: tool.KindSend, Risk: tool.RiskHigh, Interrupts: true, RequiresApproval: true,
+			Tags:    []string{"pii", tool.TagExternal},
+			Display: tool.Display{Title: "Ask", Icon: "chat", Present: "Asking", Past: "Asked"},
+		}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	half, err := tool.Func("half", "Classified by kind only.",
+		func(context.Context, struct{}) (struct{}, error) { return struct{}{}, nil },
+		tool.WithMetadata(tool.Metadata{Kind: tool.KindRead, Display: tool.Display{Icon: "tool"}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, err := tool.Func("plain", "Unclassified.", func(context.Context, struct{}) (struct{}, error) { return struct{}{}, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := registry(t, ask, half, plain)
+	r := newRig(t, echo(t), rigConfig{api: []agentapi.Option{agentapi.WithToolsets(
+		agentapi.Toolset{Name: "m", Type: "test", Tools: reg, Credential: agentapi.Credential{Status: wire.CredentialNotNeeded}},
+	)}})
+
+	var got struct {
+		Tools []map[string]json.RawMessage `json:"tools"`
+	}
+	if code := r.get("/v1/toolsets/m/tools", &got); code != http.StatusOK || len(got.Tools) != 3 {
+		t.Fatalf("GET /v1/toolsets/m/tools = %d %+v", code, got)
+	}
+	want := []map[string]string{
+		{
+			"name": `"ask"`, "kind": `"send"`, "risk": `"high"`, "classified": `true`, "interrupts": `true`, "requires_approval": `true`,
+			"tags": `["pii","external"]`, "display": `{"title":"Ask","icon":"chat","present":"Asking","past":"Asked"}`,
+		},
+		{"name": `"half"`, "kind": `"read"`, "risk": `"medium"`, "classified": `false`, "display": `{"icon":"tool"}`},
+		{"name": `"plain"`, "kind": `"write"`, "risk": `"medium"`, "classified": `false`},
+	}
+	for i, w := range want {
+		for _, k := range []string{"kind", "risk", "classified", "interrupts", "requires_approval", "tags", "display"} {
+			if g, ok := got.Tools[i][k]; string(g) != w[k] && (ok || w[k] != "") {
+				t.Errorf("tool %s: %s = %s, want %s", w["name"], k, g, w[k])
+			}
 		}
 	}
 }

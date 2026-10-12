@@ -27,6 +27,7 @@ const (
 // both).
 var checks = []checkInfo{
 	{"definitions", mandatory},
+	{"classified", optIn},
 	{"settings.unknown_field", optOut},
 	{"settings.literal_api_key", mandatory},
 	{"settings.missing_key", optOut},

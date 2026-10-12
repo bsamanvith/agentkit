@@ -21,6 +21,8 @@ type DemoOption func(*demo)
 func DemoClock(now func() time.Time) DemoOption { return func(d *demo) { d.now = now } }
 
 // Demo returns the built-in "demo" factory: echo, current_time and calculate.
+// All three are read/low: they change nothing and reach nothing outside the
+// process.
 // It needs no external accounts, so examples and smoke tests have a real
 // toolset to serve.
 //
@@ -80,14 +82,20 @@ func (d *demo) Build(_ context.Context, settings json.RawMessage) ([]tool.Tool, 
 	echo, err := tool.Func("echo", "Repeat the input text.",
 		func(_ context.Context, in echoIn) (echoOut, error) {
 			return echoOut{Text: s.EchoPrefix + in.Text}, nil
-		})
+		}, tool.WithMetadata(tool.Metadata{
+			Kind: tool.KindRead, Risk: tool.RiskLow,
+			Display: tool.Display{Title: "Echo", Icon: "tool", Present: "Echoing", Past: "Echoed"},
+		}))
 	if err != nil {
 		return nil, err
 	}
 	now, err := tool.Func("current_time", "Return the current time.",
 		func(context.Context, struct{}) (timeOut, error) {
 			return timeOut{Time: d.now().In(zone).Format(time.RFC3339)}, nil
-		})
+		}, tool.WithMetadata(tool.Metadata{
+			Kind: tool.KindRead, Risk: tool.RiskLow,
+			Display: tool.Display{Title: "Current time", Icon: "clock", Present: "Checking the time", Past: "Checked the time"},
+		}))
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +103,10 @@ func (d *demo) Build(_ context.Context, settings json.RawMessage) ([]tool.Tool, 
 		func(_ context.Context, in calcIn) (calcOut, error) {
 			r, err := calculate(in)
 			return calcOut{Result: r}, err
-		})
+		}, tool.WithMetadata(tool.Metadata{
+			Kind: tool.KindRead, Risk: tool.RiskLow,
+			Display: tool.Display{Title: "Calculator", Icon: "calc", Present: "Calculating", Past: "Calculated"},
+		}))
 	if err != nil {
 		return nil, err
 	}

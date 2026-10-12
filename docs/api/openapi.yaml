@@ -1554,13 +1554,79 @@
           "output_schema": {
             "type": "object",
             "description": "The JSON Schema of the tool's output, when it has one."
+          },
+          "kind": {
+            "enum": [
+              "read",
+              "write",
+              "delete",
+              "send",
+              "execute"
+            ],
+            "description": "What the tool does, as policies see it: what it declares, or write when it declares nothing."
+          },
+          "risk": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "description": "How much harm a wrong call could do, as policies see it: what the tool declares, or medium when it declares nothing."
+          },
+          "classified": {
+            "type": "boolean",
+            "description": "False when the tool left its kind or risk unset, so kind and risk are partly or wholly the defaults (write, medium)."
+          },
+          "interrupts": {
+            "type": "boolean",
+            "description": "The tool needs a person to answer (like ask_user). Omitted when false."
+          },
+          "requires_approval": {
+            "type": "boolean",
+            "description": "A person approves each call before it runs, unless a policy says otherwise. Omitted when false."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Labels policies match, such as external (reaches the open web), idempotent, billing or pii."
+          },
+          "display": {
+            "$ref": "#/components/schemas/ToolDisplay"
           }
         },
         "required": [
           "name",
           "description",
-          "input_schema"
-        ]
+          "input_schema",
+          "kind",
+          "risk",
+          "classified"
+        ],
+        "description": "A tool's definition, under the name its toolset gives it, with what its metadata says it does."
+      },
+      "ToolDisplay": {
+        "type": "object",
+        "description": "How a console shows the tool's calls (one line: an icon and a verb phrase). Omitted when the tool declares none; it is then shown as \"Ran <name>\".",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "The tool's human-readable name."
+          },
+          "icon": {
+            "type": "string",
+            "description": "An icon name of the console's set (search, page, calc, ...); an unknown name draws nothing."
+          },
+          "present": {
+            "type": "string",
+            "description": "The verb phrase while a call runs (\"Searching the web\")."
+          },
+          "past": {
+            "type": "string",
+            "description": "The verb phrase once a call is done (\"Searched the web\")."
+          }
+        }
       },
       "ToolList": {
         "type": "object",

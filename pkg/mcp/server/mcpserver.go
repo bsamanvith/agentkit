@@ -31,7 +31,8 @@ func newMCPServer(ctx context.Context, name string, reg tool.Registry, log *slog
 }
 
 // addTool registers one tool with its schemas passed through as raw JSON, so
-// clients see exactly what the registry declared.
+// clients see exactly what the registry declared, and its metadata published
+// as MCP tool annotations (none for a tool whose metadata MCP cannot express).
 func addTool(srv *mcp.Server, reg tool.Registry, def tool.Definition, log *slog.Logger, timeout time.Duration) (err error) {
 	// The SDK panics on a definition it cannot use; a remote registry could
 	// send one, so turn that into an error.
@@ -44,8 +45,24 @@ func addTool(srv *mcp.Server, reg tool.Registry, def tool.Definition, log *slog.
 	if len(def.OutputSchema) > 0 {
 		t.OutputSchema = def.OutputSchema
 	}
+	t.Annotations = annotations(def.Metadata)
 	srv.AddTool(t, callHandler(reg, def, log, timeout))
 	return nil
+}
+
+// annotations converts a tool's metadata to the SDK's annotations type.
+func annotations(m tool.Metadata) *mcp.ToolAnnotations {
+	a := m.Annotations()
+	if a == nil {
+		return nil
+	}
+	return &mcp.ToolAnnotations{
+		Title:           a.Title,
+		ReadOnlyHint:    a.ReadOnlyHint,
+		DestructiveHint: a.DestructiveHint,
+		IdempotentHint:  a.IdempotentHint,
+		OpenWorldHint:   a.OpenWorldHint,
+	}
 }
 
 func callHandler(reg tool.Registry, def tool.Definition, log *slog.Logger, timeout time.Duration) mcp.ToolHandler {

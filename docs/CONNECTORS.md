@@ -160,6 +160,7 @@ Each check has an ID: its subtest path with dots. The subtest names are a contra
 | ID | Stage | What it checks | Bug it catches |
 |---|---|---|---|
 | `definitions` | mandatory | type and tool names, descriptions, object input and output schemas, a happy call per tool, `Build` sends nothing | a tool with no output schema; a request in `Build` |
+| `classified` | opt-in | every tool, under every settings the calls use, declares its `kind` and `risk` (`tool.WithMetadata`) | a tool that policies must treat as unclassified (`write`/`medium`), so a read-only run cannot use a search tool |
 | `settings.unknown_field` | opt-out | an unknown settings field fails `Build` | settings decoded loosely: typos silently ignored |
 | `settings.literal_api_key` | mandatory | a literal `api_key` fails `Build` | keys pasted into config files |
 | `settings.missing_key` | opt-out | a missing key fails, naming the variable | a confusing error, or a run without a key |

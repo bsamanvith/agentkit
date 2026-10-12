@@ -47,21 +47,34 @@ func serveMCP(t testing.TB, tools []tool.Tool, log *slog.Logger) *mcp.ClientSess
 	return cs
 }
 
-// listMCP returns the tools listed over MCP by name, as definitions.
-func listMCP(t testing.TB, cs *mcp.ClientSession) map[string]tool.Definition {
+// mcpTool is a tool as listed over MCP: its definition and its annotations.
+type mcpTool struct {
+	tool.Definition
+	annotations *tool.Annotations
+}
+
+// listMCP returns the tools listed over MCP by name.
+func listMCP(t testing.TB, cs *mcp.ClientSession) map[string]mcpTool {
 	t.Helper()
 	res, err := cs.ListTools(t.Context(), nil)
 	if err != nil {
 		t.Fatalf("[mcp] ListTools: %v", err)
 	}
-	out := map[string]tool.Definition{}
+	out := map[string]mcpTool{}
 	for _, tl := range res.Tools {
 		d := tool.Definition{Name: tl.Name, Description: tl.Description}
 		d.InputSchema, _ = json.Marshal(tl.InputSchema)
 		if tl.OutputSchema != nil {
 			d.OutputSchema, _ = json.Marshal(tl.OutputSchema)
 		}
-		out[tl.Name] = d
+		lt := mcpTool{Definition: d}
+		if a := tl.Annotations; a != nil {
+			lt.annotations = &tool.Annotations{
+				Title: a.Title, ReadOnlyHint: a.ReadOnlyHint, DestructiveHint: a.DestructiveHint,
+				IdempotentHint: a.IdempotentHint, OpenWorldHint: a.OpenWorldHint,
+			}
+		}
+		out[tl.Name] = lt
 	}
 	return out
 }

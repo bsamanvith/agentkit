@@ -27,7 +27,7 @@ func connector() toolsettest.Connector {
 			"extract_defaults": {"max_characters": 5000, "max_age_hours": 24}}`),
 		KeyEnv:  "EXA_API_KEY",
 		OpenAPI: "testdata/openapi.json",
-		Enable:  []toolsettest.CheckID{"schema_honesty.dead_fields"},
+		Enable:  []toolsettest.CheckID{"schema_honesty.dead_fields", "classified"},
 		Calls: []toolsettest.Call{
 			{
 				Name: "search_defaults", Tool: "exa_search",

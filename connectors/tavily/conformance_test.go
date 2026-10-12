@@ -27,6 +27,7 @@ func connector() toolsettest.Connector {
 		// null for them: make openapi-specs corrects the cut with
 		// testdata/openapi-overlay.json.
 		OpenAPI: "testdata/openapi.json",
+		Enable:  []toolsettest.CheckID{"classified"},
 		Calls: []toolsettest.Call{
 			{
 				Name: "search_go_release", Tool: "tavily_search",

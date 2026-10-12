@@ -39,6 +39,14 @@ export class BadResponseError extends Error {
   }
 }
 
+/** The server couldn't be reached, or the connection broke while reading a response. */
+export class NetworkError extends Error {
+  constructor(options?: ErrorOptions) {
+    super("couldn't reach the server", options);
+    this.name = "NetworkError";
+  }
+}
+
 /** The stream ended before run_done or run_error: the connection was lost. */
 export class StreamTruncatedError extends Error {
   constructor(options?: ErrorOptions) {
@@ -104,7 +112,9 @@ export class AgentClient {
       return (await resp.json()) as T;
     } catch (e) {
       if (isAbort(e)) throw e;
-      throw new BadResponseError(`${path}: the response is not JSON`);
+      // A SyntaxError is the body; anything else is reading it (a reset).
+      if (e instanceof SyntaxError) throw new BadResponseError(`${path}: the response is not JSON`);
+      throw new NetworkError({ cause: e });
     }
   }
 
@@ -159,14 +169,20 @@ export class AgentClient {
     if (body !== undefined) headers.set("Content-Type", "application/json");
     const token = this.#token();
     if (token) headers.set("Authorization", `Bearer ${token}`);
-    const resp = await this.#fetch(this.#base + path, {
-      method,
-      headers,
-      body: body ?? null,
-      signal: signal ?? null,
-      credentials: "same-origin",
-      cache: "no-store",
-    });
+    let resp: Response;
+    try {
+      resp = await this.#fetch(this.#base + path, {
+        method,
+        headers,
+        body: body ?? null,
+        signal: signal ?? null,
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+    } catch (e) {
+      if (isAbort(e)) throw e;
+      throw new NetworkError({ cause: e });
+    }
     if (!resp.ok) throw await errorFrom(resp);
     return resp;
   }
@@ -203,7 +219,7 @@ function isAbort(e: unknown): boolean {
  * nil slice as null); anything else that isn't a list is a bad response,
  * not an empty one, so a broken proxy isn't shown as "nothing configured".
  */
-function listField<T>(body: unknown, key: string, path: string): T[] {
+export function listField<T>(body: unknown, key: string, path: string): T[] {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
     throw new BadResponseError(`${path}: the response is not an object`);
   }

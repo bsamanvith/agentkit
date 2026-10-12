@@ -12,7 +12,7 @@ import { useApi } from "./api";
 export function TokenPrompt() {
   const { prompt, setToken } = useApi();
   const [value, setValue] = useState("");
-  const [empty, setEmpty] = useState(false);
+  const [invalid, setInvalid] = useState<null | "empty" | "unsendable">(null);
   const errorId = useId();
   if (prompt === null) return null;
 
@@ -20,7 +20,13 @@ export function TokenPrompt() {
     e.preventDefault();
     const t = value.trim();
     if (!t) {
-      setEmpty(true);
+      setInvalid("empty");
+      return;
+    }
+    // A token is printable ASCII. A pasted zero-width space or curly quote
+    // can't go in a header (fetch throws), so say so here, with no request.
+    if (!/^[\x21-\x7e]+$/.test(t)) {
+      setInvalid("unsendable");
       return;
     }
     setValue("");
@@ -28,13 +34,14 @@ export function TokenPrompt() {
   }
 
   // docs/UI.md "Sign in": the token card's errors.
-  const error = empty
-    ? "Enter a token"
-    : prompt === "refused"
-      ? "That token wasn't accepted."
-      : prompt === "rejected"
-        ? "Your token was rejected or has expired."
-        : null;
+  const error =
+    invalid === "empty"
+      ? "Enter a token"
+      : invalid === "unsendable" || prompt === "refused"
+        ? "That token wasn't accepted."
+        : prompt === "rejected"
+          ? "Your token was rejected or has expired."
+          : null;
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-ak-bg p-4">
       <Card role="dialog" aria-modal="true" aria-labelledby="token-title" className="w-full max-w-sm shadow-ak">
@@ -58,7 +65,7 @@ export function TokenPrompt() {
                 value={value}
                 onChange={(e) => {
                   setValue(e.target.value);
-                  setEmpty(false);
+                  setInvalid(null);
                 }}
                 aria-invalid={error !== null}
                 aria-describedby={error ? errorId : undefined}

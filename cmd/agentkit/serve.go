@@ -19,6 +19,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/component"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
+	"github.com/bsamanvith/agentkit/pkg/web"
 )
 
 // Environment read by agentkit serve.
@@ -31,7 +32,7 @@ const (
 )
 
 // knownComponents are the names AGENTKIT_COMPONENTS accepts.
-var knownComponents = []string{mcpServerName, agentapi.Name}
+var knownComponents = []string{mcpServerName, agentapi.Name, web.Name}
 
 // serveConfig is the config file of agentkit serve, as loadServeConfig reads
 // it. The file is JSON; YAML (with the same keys) comes with pkg/config.
@@ -98,6 +99,8 @@ func (c cli) serve(ctx context.Context, args []string) error {
 			m, err = newMCPServer(ctx, cfg.MCP, built, problems, log)
 		case agentapi.Name:
 			m, err = c.newAgents(ctx, cfg, built, problems, env, log)
+		case web.Name:
+			m = newWeb()
 		default: // in knownComponents but not wired here
 			err = errors.New("component not wired in cmd/agentkit")
 		}

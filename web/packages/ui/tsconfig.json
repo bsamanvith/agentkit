@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["vite/client", "@testing-library/jest-dom/vitest"],
+    // Lets the shadcn CLI resolve components.json's aliases; at build time
+    // the same names resolve through package.json "exports".
+    "paths": { "@agentkit/ui/*": ["./src/*"] }
+  },
+  "include": ["src", "*.ts"]
+}

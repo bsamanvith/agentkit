@@ -1,0 +1,67 @@
+/* Generated from docs/UI.md ("Tokens") by scripts/tokens.mjs. Do not edit:
+   change docs/UI.md, then run `pnpm --filter @agentkit/ui tokens`. */
+:root {
+  /* Surfaces */
+  --ak-bg: #f4f4f5;            /* ground: rail, list, sign-in */
+  --ak-surface: #ffffff;       /* working surfaces: content, cards, inputs */
+  --ak-surface-2: #fafafa;     /* raised inside a surface: details, code */
+  --ak-hover: #ececee;         /* row hover on --ak-bg; on --ak-surface use --ak-surface-hover */
+  --ak-surface-hover: #f4f4f5;
+  --ak-select: #e7e7ea;        /* current row; user bubble */
+  /* Text */
+  --ak-text: #0a0a0a;
+  --ak-text-2: #3f3f46;
+  --ak-muted: #63636b;         /* secondary text, meta, placeholders: >= 4.5:1 on every surface */
+  --ak-faint: #a1a1aa;         /* decoration only (skeletons), never text */
+  /* Lines */
+  --ak-line: #e4e4e7;          /* dividers and card edges (decorative) */
+  --ak-line-strong: #d4d4d8;   /* secondary button edges (the label identifies the button) */
+  --ak-control: #8a8a93;       /* edges of text inputs, selects, checkboxes, the composer: >= 3:1 */
+  --ak-focus: #0a0a0a;
+  /* Actions */
+  --ak-primary: #0a0a0a;
+  --ak-on-primary: #ffffff;
+  /* Status (dot and the word next to it) */
+  --ak-ok: #137333;
+  --ak-warn: #9a5800;
+  --ak-bad: #b91c1c;
+  /* Elevation (popovers, sheets, dialogs, toast) */
+  --ak-shadow: 0 8px 24px rgba(0,0,0,.10), 0 1px 3px rgba(0,0,0,.08);
+  /* Type */
+  --ak-font-ui: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ak-font-mono: "Geist Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --ak-text-xs: 12px;  --ak-text-sm: 13px;  --ak-text-md: 14px;  --ak-text-lg: 16px;  --ak-text-xl: 20px;  --ak-text-2xl: 24px;
+  --ak-leading: 1.55;  --ak-leading-tight: 1.3;
+  --ak-weight: 400;  --ak-weight-medium: 500;  --ak-weight-strong: 600;
+  /* Space (4 px grid) */
+  --ak-s-1: 4px; --ak-s-2: 8px; --ak-s-3: 12px; --ak-s-4: 16px; --ak-s-5: 20px; --ak-s-6: 24px; --ak-s-8: 32px; --ak-s-10: 40px;
+  /* Radius */
+  --ak-r-sm: 6px; --ak-r-md: 8px; --ak-r-lg: 12px; --ak-r-full: 999px;
+  /* Layout */
+  --ak-rail-w: 56px; --ak-list-w: 288px; --ak-list-w-laptop: 248px; --ak-chat-w: 720px; --ak-detail-w: 880px;
+  /* Motion */
+  --ak-ease: cubic-bezier(.2, 0, 0, 1); --ak-fast: 120ms; --ak-slow: 240ms;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ak-bg: #0b0b0c; --ak-surface: #141415; --ak-surface-2: #1a1a1c;
+    --ak-hover: #1c1c1f; --ak-surface-hover: #1c1c1f; --ak-select: #232327;
+    --ak-text: #ededee; --ak-text-2: #c8c8cc; --ak-muted: #9a9aa2; --ak-faint: #3a3a40;
+    --ak-line: #26262a; --ak-line-strong: #34343a; --ak-control: #6b6b73; --ak-focus: #ededee;
+    --ak-primary: #ededee; --ak-on-primary: #0b0b0c;
+    --ak-ok: #4ade80; --ak-warn: #facc15; --ak-bad: #f87171;
+    --ak-shadow: 0 8px 24px rgba(0,0,0,.5), 0 0 0 1px #26262a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ak-bg: #0b0b0c; --ak-surface: #141415; --ak-surface-2: #1a1a1c;
+  --ak-hover: #1c1c1f; --ak-surface-hover: #1c1c1f; --ak-select: #232327;
+  --ak-text: #ededee; --ak-text-2: #c8c8cc; --ak-muted: #9a9aa2; --ak-faint: #3a3a40;
+  --ak-line: #26262a; --ak-line-strong: #34343a; --ak-control: #6b6b73; --ak-focus: #ededee;
+  --ak-primary: #ededee; --ak-on-primary: #0b0b0c;
+  --ak-ok: #4ade80; --ak-warn: #facc15; --ak-bad: #f87171;
+  --ak-shadow: 0 8px 24px rgba(0,0,0,.5), 0 0 0 1px #26262a;
+  color-scheme: dark;
+}

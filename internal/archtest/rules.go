@@ -63,6 +63,11 @@ func ModuleRules() Rules {
 				"pkg/agentapi/wire", "pkg/llm",
 				"pkg/agentapi", "pkg/harness", "pkg/tool", "pkg/toolset", "pkg/llm/llmtest", "internal/testkit",
 			},
+			// The web component serves the embedded console build over
+			// net/http and nothing else: it is a component by shape, and
+			// knows no other part of the module (E11, T078). The console
+			// reaches the server only through /v1.
+			"pkg/web": {},
 			// Connectors are toolset factories over plain net/http: the tool
 			// abstraction, the factory contract and the clock, never the
 			// server, the harness or another connector (E10). Their tests

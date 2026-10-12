@@ -31,3 +31,34 @@ jobs:
           go-version-file: go.mod
       - name: make fuzz
         run: make fuzz FUZZTIME=10s
+
+  # The web workspace (web/): lint, typecheck, unit tests, audit, and a
+  # rebuild that must match the committed pkg/web/dist; then the browser
+  # smoke test against agentkit serve, in the runner's Google Chrome (no
+  # browser download).
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: web/.nvmrc
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: make web-check
+        run: make web-check
+      - name: make web-smoke
+        run: make web-smoke
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: web/apps/console/playwright-report
+          retention-days: 7

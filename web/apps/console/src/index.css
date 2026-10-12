@@ -1,0 +1,6 @@
+@import "tailwindcss";
+@import "@agentkit/ui/styles.css";
+
+/* Generate the classes the shared packages use, not only the console's. */
+@source "../../../packages/ui/src";
+@source "../../../packages/agent-ui/src";

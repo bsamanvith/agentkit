@@ -1,0 +1,9 @@
+{
+  "mcp": {
+    "toolsets": [{ "name": "demo", "type": "demo" }]
+  },
+  "agent": {
+    "system": "The console smoke test's agent. The test never runs it.",
+    "toolsets": ["demo"]
+  }
+}

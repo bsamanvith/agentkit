@@ -1,0 +1,8 @@
+node_modules/
+# Package builds and test output. The console's build goes to ../pkg/web/dist,
+# which is committed (see README.md).
+dist/
+coverage/
+test-results/
+playwright-report/
+*.tsbuildinfo

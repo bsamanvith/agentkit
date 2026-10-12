@@ -1,0 +1,145 @@
+/*
+ * The agentkit theme for Tailwind v4 and shadcn/ui. An app imports it once,
+ * from its own CSS, after `@import "tailwindcss"`:
+ *
+ *   @import "tailwindcss";
+ *   @import "@agentkit/ui/styles.css";
+ *   @source "../../../packages";   (so classes used in the packages are generated)
+ *
+ * Values live in tokens.css (generated from docs/UI.md). This file only maps
+ * shadcn's variable names onto them (the table in docs/UI.md "In packages/ui")
+ * and exposes both to Tailwind.
+ */
+@import "tw-animate-css";
+@import "./fonts.css";
+@import "./tokens.css";
+
+/* Dark utilities follow the resolved theme, not a .dark class. */
+@custom-variant dark {
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) & {
+      @slot;
+    }
+  }
+  :root[data-theme="dark"] & {
+    @slot;
+  }
+}
+
+:root {
+  --background: var(--ak-surface);
+  --foreground: var(--ak-text);
+  --card: var(--ak-surface);
+  --card-foreground: var(--ak-text);
+  --popover: var(--ak-surface);
+  --popover-foreground: var(--ak-text);
+  --primary: var(--ak-primary);
+  --primary-foreground: var(--ak-on-primary);
+  --secondary: var(--ak-select);
+  --secondary-foreground: var(--ak-text);
+  --muted: var(--ak-surface-2);
+  --muted-foreground: var(--ak-muted);
+  --accent: var(--ak-surface-hover);
+  --accent-foreground: var(--ak-text);
+  --destructive: var(--ak-bad);
+  --border: var(--ak-line);
+  --input: var(--ak-control);
+  --ring: var(--ak-focus);
+  --sidebar: var(--ak-bg);
+  --sidebar-foreground: var(--ak-text-2);
+  --sidebar-primary: var(--ak-primary);
+  --sidebar-primary-foreground: var(--ak-on-primary);
+  --sidebar-accent: var(--ak-select);
+  --sidebar-accent-foreground: var(--ak-text);
+  --sidebar-border: var(--ak-line);
+  --sidebar-ring: var(--ak-focus);
+}
+
+@theme inline {
+  --font-sans: "Geist Variable", var(--ak-font-ui);
+  --font-mono: "Geist Mono Variable", var(--ak-font-mono);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Ours, with no shadcn equivalent: text-ak-muted, bg-ak-bg, text-ak-ok, ... */
+  --color-ak-bg: var(--ak-bg);
+  --color-ak-surface: var(--ak-surface);
+  --color-ak-surface-2: var(--ak-surface-2);
+  --color-ak-hover: var(--ak-hover);
+  --color-ak-select: var(--ak-select);
+  --color-ak-text: var(--ak-text);
+  --color-ak-text-2: var(--ak-text-2);
+  --color-ak-muted: var(--ak-muted);
+  --color-ak-faint: var(--ak-faint);
+  --color-ak-line: var(--ak-line);
+  --color-ak-line-strong: var(--ak-line-strong);
+  --color-ak-ok: var(--ak-ok);
+  --color-ak-warn: var(--ak-warn);
+  --color-ak-bad: var(--ak-bad);
+
+  /* Radii are set directly (docs/UI.md), not derived from --radius. */
+  --radius-sm: var(--ak-r-sm);
+  --radius-md: var(--ak-r-md);
+  --radius-lg: var(--ak-r-lg);
+  --radius-xl: var(--ak-r-lg);
+
+  --shadow-ak: var(--ak-shadow);
+  --ease-ak: var(--ak-ease);
+
+  --breakpoint-md: 768px;
+  --breakpoint-xl: 1200px;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    font-family: var(--font-sans);
+    font-size: var(--ak-text-md);
+    line-height: var(--ak-leading);
+  }
+  body {
+    @apply bg-background text-foreground;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ak-focus);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

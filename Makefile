@@ -86,6 +86,31 @@ $(GOLANGCI):
 	GOBIN=$(CURDIR)/bin GOTOOLCHAIN=$$($(GO) env GOVERSION) $(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
 	mv bin/golangci-lint $@
 
+# The web workspace (web/, see web/README.md): Node and pnpm only here; go
+# build and the image use the committed build in pkg/web/dist. Kept out of
+# check so Go feedback stays fast; CI runs it as its own job.
+PNPM ?= pnpm
+
+.PHONY: web
+web: ## Build the console into pkg/web/dist (commit it with the sources)
+	$(PNPM) --dir web install --frozen-lockfile
+	$(PNPM) --dir web build
+
+.PHONY: web-check
+web-check: ## Web: lint, format, typecheck, unit tests, audit, build; fail if pkg/web/dist is stale
+	$(PNPM) --dir web install --frozen-lockfile
+	$(PNPM) --dir web lint
+	$(PNPM) --dir web format:check
+	$(PNPM) --dir web typecheck
+	$(PNPM) --dir web test
+	$(PNPM) --dir web audit --audit-level high
+	web/scripts/check-build.sh
+
+.PHONY: web-smoke
+web-smoke: ## Browser smoke test (Playwright) against agentkit serve; uses installed browsers, never downloads
+	$(GO) build -o bin/agentkit-e2e ./cmd/agentkit
+	AGENTKIT_BIN=$(CURDIR)/bin/agentkit-e2e $(PNPM) --dir web e2e
+
 # Images (see Dockerfile). BIN picks the binary in cmd/, TAGS its build tags.
 DOCKER ?= docker
 comma := ,

@@ -5,6 +5,7 @@
 !go.mod
 !go.sum
 !cmd/
+!connectors/
 !internal/
 !pkg/
 **/*_test.go

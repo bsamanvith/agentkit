@@ -2,7 +2,7 @@
 id: T070
 title: "Console UX design: layout, navigation, components and states, before any console code"
 epic: E11
-status: review
+status: done
 depends_on: []
 ---
 
@@ -71,7 +71,7 @@ This is a design task: the output is a spec and a clickable mockup the owner app
 - [x] **States:** every one listed in Scope 3 has a design in the mockup or the doc.
 - [x] **Components:** the inventory and tokens are written down. Contrast ratios for text, muted text, borders and status colours meet WCAG 2.2 AA in both themes (the table is in Notes).
 - [x] **Shortcuts:** the keyboard shortcuts are listed and work in the mockup.
-- [ ] **Owner review:** the owner approves mockup v3 (record the date and any changes asked for). T055 starts from it.
+- [x] **Owner review:** the owner approves mockup v3 (record the date and any changes asked for). T055 starts from it. *Approved with changes on 2026-10-12, after a four-reviewer pass; the changes are in Notes, "Review (2026-10-12)".*
 
 ## Notes
 
@@ -87,7 +87,7 @@ This is a design task: the output is a spec and a clickable mockup the owner app
   - **Theme**: System, Light or Dark.
   - **Width**: Fit, or a 1280, 1024 or 400 px frame. The layout uses container queries on the frame, so the widths are real layouts, not scaled screenshots.
   - **Role**: Admin or User.
-  - **State**: every state in Scope 3, from 21 options.
+  - **State**: every state in Scope 3 and the review's additions, from 31 options.
   - **Show later features**: shows or hides Activity, the background-run row and the Memories item.
 
   The tokens are copied verbatim from UI.md.
@@ -168,7 +168,8 @@ This is a design task: the output is a spec and a clickable mockup the owner app
 - **Tokens:** `packages/ui` (T078) owns the token block, prefixed `--ak-`, and sets shadcn's variables from it. T055 uses them through shadcn's variables and the `--ak-` names; it doesn't copy the block again. Use the breakpoints 768 and 1200 as media queries; the mockup's container queries exist only so the frame can show three widths.
 - **Thread semantics:** use `role="log"` with `aria-live="off"`. Keep one hidden `role="status"` region that announces "X is answering", each settled step ("Searched the web, 1.4 seconds") and the end. Never announce token deltas. Set `aria-busy` on the streaming message.
 - **Scrolling:** stick to the bottom only while the user is there; otherwise show "Jump to latest". The mockup's `atBottom` threshold is 40 px.
-- **Shortcuts:** use `metaKey || ctrlKey`. Single keys (`/`, `?`) don't fire inside fields. Esc stops a run before it closes anything else only when no overlay is open. Match `?` by `key === "?"`; one test harness sent Shift+/ with an empty `key`, so also accept `/` with Shift.
+- **Shortcuts:** use the platform's modifier only: `metaKey` on macOS, `ctrlKey` elsewhere, never both (Ctrl+K edits text on a Mac), and never Alt. Ignore `e.repeat`; match letters by `e.code`; set `aria-keyshortcuts`. Single keys (`/`, `?`) don't fire inside fields or while a dialog is open, and can be turned off. Esc closes overlays first, then the drawer, then stops the run of the open conversation. Match `?` by `key === "?"`, and also accept Slash with Shift (one test harness sent an empty `key`).
+- **Runs:** keep runs in an app-level store keyed by conversation (UI.md "Runs and conversations"). Stop is an `AbortController` abort; Enter never stops; leaving a conversation never stops its run.
 - **Rendering untrusted text:** tool output and model text are React text children, never `dangerouslySetInnerHTML`. Markdown goes through an allowlist renderer to React elements: no raw HTML, `http(s)` links only. The mockup builds every node with `textContent` for the same reason.
 - **The mockup is plain HTML and JS**, so it opens anywhere. Take its behaviour and measurements, not its code. The component-to-shadcn mapping is in UI.md's Components.
 
@@ -296,8 +297,102 @@ v2's failures, for the record:
 5. **A2UI Link.** E13 lists "Link", which is not in the v0.9.1 basic catalog (Heading and Select map to Text variants and ChoicePicker). Should E13 drop it, or render links inside Text?
 6. **Activity for users.** The design shows users their own background runs and threads, and Triggers only to admins. Is that right?
 
+### Review (2026-10-12)
+
+Before approving, the owner asked for the flows to be examined closely. Four reviewers each took one area:
+
+- sign-in and access;
+- chat and the agent picker;
+- errors and edge states;
+- navigation, admin pages and accessibility.
+
+All four said "approve with listed fixes". The owner chose to fix all of them, then approve. Duplicates were merged, and the API claims were checked against T036 and T061.
+
+**Blockers, fixed:**
+
+1. **Stop and errors led to a dead end.**
+   - An unfinished turn isn't saved, so the conversation is `interrupted` and a new message is `409 conversation_interrupted` (T036; `Transcript.Validate` requires user and assistant to alternate).
+   - The owner chose (2026-10-12): Stop aborts the request, the composer stays usable, and the partial answer shows "Stopped. This part isn't saved." with **Resume**. The server should merge a new message into the open user turn instead of a 409 (see "Found out of scope").
+   - Retry on a retryable run error is now Resume, never a resend.
+   - The interrupted copy no longer blames a restart.
+   - A stopped step reads "Stopped: searching the web" in neutral grey, not as a failure.
+2. **Runs and navigation had no rule.** A run now belongs to its conversation in an app-level store (UI.md "Runs and conversations"):
+   - leaving or New chat doesn't stop it, and each conversation has its own Stop;
+   - Enter never stops a run;
+   - the row shows "Answering", and an unread dot when the run ends elsewhere;
+   - the browser asks before closing a tab while a run streams;
+   - deleting a running conversation stops it first.
+3. **Sign-in couldn't tell which method the server uses.** The design now reads a public `GET /v1/auth/config`, which belongs to T061 (see "Found out of scope").
+
+**Should-fixes, done in UI.md and the mockup:**
+
+- **Errors:**
+  - a run-error table per `run_error` code, keyed on `retryable`;
+  - 413 too large, 400, 503 `shutting_down` and Load failed;
+  - 503 counts down from a fixed 2 s, with one automatic retry;
+  - offline and busy disable only Send;
+  - "Thinking…" before the first event;
+  - a conversation whose agent was removed is read-only;
+  - a first message that fails before `run_start` goes back to the composer.
+- **Chat:**
+  - drafts per conversation;
+  - tool groups: a lone call is a plain step; a running group shows the latest 5 and the done group the first 5; failed calls are always shown; open state survives re-renders;
+  - A2UI keeps the values chosen, the sent message is a "Sent:" summary, the surface is disabled while a run streams, and it shows "Not used" when you type instead;
+  - code blocks take focus.
+- **Auth:**
+  - the token card has an error, a 401 back to it, and Forget token;
+  - login errors cover 429 with a countdown, unreachable, and empty fields; a wrong password clears the field and marks both fields invalid;
+  - the draft and route are restored only for the same user;
+  - sign-out confirms while a run streams and unmounts the app;
+  - a CSRF 403 is told apart from the role 403, and `/me` is re-read when the role changes.
+- **Navigation:**
+  - a route table, and rows and rail items are real links;
+  - the page title and the h1 take focus on a route change (New chat on desktop focuses the composer);
+  - search says it covers loaded chats only, with "Load older to search more";
+  - "Skip to content" and "Skip to message box".
+- **Shortcuts:**
+  - the platform's modifier only;
+  - Shift+Esc dropped;
+  - single keys can be turned off and don't fire in dialogs;
+  - the Esc order is written down and matches the mockup.
+- **Phone:**
+  - the drawer's sections are a 2-row icon grid, so all five fit;
+  - admin and run headers stack;
+  - nothing raises the keyboard by itself (the drawer, a conversation, the picker);
+  - the picker sheet has a Close button;
+  - the credentials cards keep provider, scope and the action.
+- **Accessibility:**
+  - toasts stay 8 s and pause on hover or focus;
+  - toolset chips say their status in words;
+  - the picker is a combobox with `aria-activedescendant`;
+  - the agent chip opens a dialog, not a menu, and menus close on Tab;
+  - disabled buttons point at the note that explains them;
+  - Activity has a Cancelled state;
+  - the status region is announced after the re-render, not before.
+
+**Nits, done:**
+
+- a 12 px text floor;
+- tags as 24 px targets;
+- no opacity on dimmed states (it broke 4.5:1);
+- UI.md's dark token block written out in full, plus `--shadow`;
+- headings: one h1 per page, list group headings as h3, rows as list items;
+- the forbidden page lost its API line;
+- the 404 copy covers expiry.
+
+**Moved to T087** (console design part 2, which arrived on main during this review): everything about editing agent definitions (E15):
+
+- Edit and Versions on the agent detail;
+- a Skills rail entry;
+- the builder as a full-width page. Beside the list it would get 1200 − 56 − 288 = 856 px, too narrow for the editor and a test chat.
+
+T087 also renames Activity to Tasks. UI.md points to T087 and doesn't draw these.
+
 ### Found out of scope (not changed)
 
+- **T061, `GET /v1/auth/config`:** the signed-out console needs a public endpoint that lists the sign-in methods the server accepts (`password`, `token`, both, or none on a loopback dev server). T061 has login, logout and me, but nothing to ask before signing in. The design also relies on T061's 429 carrying `Retry-After`, and on a CSRF 403 having its own error code.
+- **T036/T037, a new message after Stop:** today a new message to an `interrupted` conversation is `409 conversation_interrupted`. The owner's decision (2026-10-12) is that the server merges the new message into the open user turn and runs it. Until then, the console keeps the message in the composer and shows the interrupted notice with Resume.
+- **T062, search:** `GET /v1/conversations` has no `q`, so the console searches loaded rows only. A `q` parameter would let search cover every conversation.
 - **E13 component names:** E13's A2UI list says Heading, Select/ChoicePicker and Link. The catalog names are Text (h1–h5), ChoicePicker, and no Link (open question 5). E13 needs a wording fix.
 - **T055 wording:** T055 says a "tool call appears as a card", which predates the quiet-steps style. It should say "a step row (docs/UI.md, Components)".
 - **T066 references:** T066 should point at UI.md's "A2UI → console" table as its mapping.
@@ -317,4 +412,24 @@ v2's failures, for the record:
   - the search field showed a double border;
   - repeated hosts appeared in "Read N pages".
 - **Contrast:** computed with the script that produced the tables above.
-- **Repository:** `make check` exited 0 on the final tree, rebased onto `a4846cf`, before the push.
+- **Repository (v3 push):** `make check` exited 0 on the final tree, rebased onto `a4846cf`, before the push.
+- **After the review (2026-10-12):**
+  - All 31 State options were switched through at 1280, 1024 and 400, in light and dark (186 runs). There were no script errors, no "null", "undefined" or "NaN" in the page text, and no sideways overflow of the app.
+  - The admin pages were opened in each combination too.
+  - The flows were driven with events:
+    - Stop: the stopped step and note, focus back in the composer;
+    - leaving a running conversation: the run continues, the row gets an unread dot, and "researcher finished in “Latest Go release”" is announced;
+    - deleting a running conversation;
+    - wrong password, empty fields, the 429 countdown, password or token, and 401 restoring the draft;
+    - the 503 retry ending in "Still busy.", and Cancel merging the message into a draft;
+    - busy: Check again;
+    - offline, and an agent that was removed;
+    - the picker combobox;
+    - the platform modifier, with the other modifier ignored;
+    - a dialog blocking `Mod+K`;
+    - Enter not stopping a run, Esc stopping it;
+    - an A2UI surface sent as a "Sent:" summary.
+  - Looked at in the browser: Stopped, the phone drawer in dark, and the 429 sign-in card in dark. The card printed a stray "null"; it was fixed and checked again.
+  - Also fixed: rows that became links were underlined, and the composer was measured before layout and drawn too tall.
+  - The browser pane couldn't show the 1280 and 1024 frames whole, so those widths were checked by script, not by eye.
+  - `make check` exited 0 on the final tree before the approval push.

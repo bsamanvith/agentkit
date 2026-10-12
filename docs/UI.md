@@ -1,6 +1,6 @@
 # agentkit console: UI plan
 
-> The web client is an **admin console** served by `agentkit` itself (component `web`). Every screen is built only on the public `/v1` API ([docs/api/openapi.yaml](api/openapi.yaml), T062), so Claude Code, scripts and other harnesses can do everything the console does. Decisions: [E11](../tasks/E11-clients.md). Layout, states, components and tokens: [T070](../tasks/T070-console-ux-design.md) (its Notes hold the reasons, the references and the contrast table). Clickable mockup v3 with sample data, both themes, three widths and every state: [ui/console-mockup.html](ui/console-mockup.html) (also published as an artifact for review).
+> The web client is an **admin console** served by `agentkit` itself (component `web`). Every screen is built only on the public `/v1` API ([docs/api/openapi.yaml](api/openapi.yaml), T062), so Claude Code, scripts and other harnesses can do everything the console does. Decisions: [E11](../tasks/E11-clients.md). Layout, states, components and tokens: [T070](../tasks/T070-console-ux-design.md) (its Notes hold the reasons, the references, the contrast table and the review record). Clickable mockup v3 with sample data, both themes, three widths and every state: [ui/console-mockup.html](ui/console-mockup.html) (also published as an artifact for review). **Approved by the owner on 2026-10-12**, with the review changes in T070 Notes; T055 starts from it. Skills, the agent builder, tool policies, interrupts and tasks are designed in T087 (part 2), on top of this.
 
 ## Information architecture
 
@@ -8,50 +8,109 @@ Three columns, each with one job:
 
 | Column | What it holds |
 |---|---|
-| **Rail** (56 px, icons with labels on hover and for screen readers) | The sections: **Chats**; **Activity** (later, T074); a divider; **Agents**, **Toolsets**, **Credentials** (admin only). At the bottom: **Shortcuts** (`?`) and the **user menu** (name, role, tenant; theme; Memories later; sign out). |
+| **Rail** (56 px, icons with labels in a tooltip and for screen readers) | The sections: **Chats**; **Activity** (later, T074; T087 renames it **Tasks**); a divider; **Agents**, **Toolsets**, **Credentials** (admin only; T087 adds **Skills**). At the bottom: **Shortcuts** (`?`) and the **user menu** (name, role, tenant; theme; Memories later; sign out). |
 | **List** (288 px desktop, 248 px laptop, collapsible) | The current section's list. In Chats it is **the conversation list**; in Agents the agents; in Toolsets the toolsets; in Activity the runs and threads. Credentials has no list (one table). |
 | **Content** | The chat, or the selected item's detail. |
 
 Decisions (reasons in T070 Notes):
 
-- **Conversations have one home: the Chats list.** No separate Conversations page and no "Recent" block. The list has **New chat**, **search** (titles), an **agent filter**, date groups (Today, Yesterday, Previous 7 days, Older), a status mark on rows that need attention (running, interrupted), and loads more by cursor as you scroll. Each row: the title, then the agent name in mono and the time. Hover or focus shows a **⋯** menu (Copy ID, Delete).
+- **Conversations have one home: the Chats list.** No separate Conversations page and no "Recent" block. The list has **New chat**, **search**, an **agent filter**, date groups (Today, Yesterday, Previous 7 days, Older), a status mark on rows that need attention (running, interrupted, finished while you were elsewhere), and loads more by cursor as you scroll. Each row: the title, then the agent name in mono and the time. A **⋯** menu (Copy ID, Delete) shows on hover or focus, and always on touch.
+  - **Search** matches titles. Until `GET /v1/conversations` gains a `q` parameter (asked of T062, see T070 Notes), it filters the loaded rows: its placeholder says "Search loaded chats", and with more pages on the server the results end with **Load older to search more**.
 - **Admin pages live in the rail**, under a divider, with their own list column (list on the left, detail on the right, as in Linear and Vercel settings). A `user` sees only Chats (and Activity later). Hiding them is a convenience; the API answers 403 (a direct link shows the 403 page).
 - **The agent picker** sits in the chat header's left slot, in both cases:
-  - **New chat:** a button showing the chosen agent with a chevron. It opens a searchable list (name, description, toolset readiness such as "2 of 3 toolsets ready"). The default is the agent of your last new chat (kept in `localStorage`), else `default`, else the first. The empty chat shows the chosen agent's description and readiness above the composer.
-  - **Existing conversation:** a **read-only chip** with the agent's name (a conversation belongs to one agent; continuing with another is `409 agent_mismatch`). The chip opens a small card (description, model) with **New chat with researcher** and **New chat with another agent…**. There is no "switch agent" that silently starts a new chat.
+  - **New chat:** a button showing the chosen agent with a chevron. It opens a searchable list (name, description, toolset readiness such as "2 of 3 toolsets ready"). The default is the agent of your last new chat (kept in `localStorage`) if it still exists, else `default`, else the first. The empty chat shows the chosen agent's description and readiness above the composer.
+  - **Existing conversation:** a **read-only chip** with the agent's name (a conversation belongs to one agent; continuing with another is `409 agent_mismatch`). The chip opens a small card (description, model) with **New chat with researcher**, **New chat with another agent…** and, for admins, **Open agent details**. There is no "switch agent" that silently starts a new chat.
   - **One agent configured:** no picker, just the chip.
   - **"Chat with this agent"** on the Agents page opens a new chat with the picker preset.
 - **Later features have a slot now:**
-  - **Activity** in the rail (T074): background runs, agent threads, triggers and notifications. Its Runs list is also where E16's jobs land, shown with the same run viewer.
-  - **Approvals** (T030/T037): an inline card in the chat, plus a "Needs you" filter and the Activity badge.
+  - **Activity** in the rail (T074): background runs, agent threads, triggers and notifications. Its Runs list is also where E16's jobs land, shown with the same run viewer. T087 renames it **Tasks** and designs the task list, task view and steering.
+  - **Approvals** (T030/T037): an inline card in the chat, plus a "Needs you" filter and the Activity badge. T087 designs them with E17's interrupts.
   - **Memories** (E12): from the user menu, as a side panel.
-  - **Skills** (T057): on the agent detail.
-  - **Editing agents and skills** (E15: T075, T077): the agent detail gains **Edit** and a **Versions** list (each change is a version you can roll back). The page keeps its list + detail shape.
+  - **Skills** (T057): on the agent detail now; T087 gives them a rail entry and an editor.
+  - **Editing agents and skills** (E15: T075, T077): T087 designs the agent builder. It is a **full-width page that hides the list**, because a builder with a test chat beside it doesn't fit next to the list (at 1200 px the content column is 856 px). The agent detail's **Edit** and **Versions** lead there.
 
 ## Layouts
 
 | Width | Shell | Notes |
 |---|---|---|
-| **Desktop** (≥ 1200 px) | Rail · list 288 px · content | Chat column max 720 px, centred. Admin detail max 880 px. |
-| **Laptop** (768–1199 px, designed at 1024) | Rail · list 248 px · content | `Mod+Shift+S` or the header's toggle hides the list; the choice is remembered. |
-| **Phone** (< 768 px, designed at 400) | Top bar · content | No rail. The top bar has the menu button, the agent chip or page title, and New chat. The menu opens a **drawer** with the sections as a row of tabs at the top and the section's list below; picking an item closes it. Admin pages: the list is the page, an item opens its detail with a Back button. Pickers and menus open as **bottom sheets**. 16 px side gutter; the composer sits above the safe area. |
+| **Desktop** (≥ 1200 px) | Rail · list 288 px · content | Chat column max 720 px, centred. Admin detail max 880 px. `Mod+Shift+S` or the header's toggle hides the list; the choice is remembered. |
+| **Laptop** (768–1199 px, designed at 1024) | Rail · list 248 px · content | The same toggle. Below 900 px the list starts hidden (the content would be under 600 px), unless you showed it. |
+| **Phone** (< 768 px, designed at 400) | Top bar · content | No rail. The top bar has the menu button, the agent chip or page title, and New chat. The menu opens a **drawer** with the sections as a **two-row grid of icon and label** (every section fits at 360 px) and the section's list below; picking an item closes it. Opening the drawer does not focus its search (`Mod+K` does), and opening a conversation does not focus the composer, so the keyboard doesn't cover the thread. Admin pages: the list is the page, an item opens its detail with a Back button; the detail header holds Back and the title, and the status and the page's action sit on a row below. Pickers and menus open as **bottom sheets** with a Close button; a sheet's search is not focused until tapped. 16 px side gutter; the composer sits above the safe area. |
 
 Breakpoints are the same numbers in the console's CSS (Tailwind breakpoints at 768 and 1200; the mockup uses container queries on its frame so it can show all three widths in one page). The console is desktop-first; `agent-ui` components are designed to work at phone width on their own, because consumer apps are mobile-first.
+
+## Routes
+
+Every view has a URL, so links, Back and reloads work. Rail items, list rows and "Chat with this agent" are links (`<a>`), not buttons.
+
+| Route | Shows |
+|---|---|
+| `/` | The last open conversation, else New chat |
+| `/new`, `/new?agent=researcher` | New chat, with the picker preset |
+| `/c/{conversation_id}` | A conversation. A new chat moves here when `run_start` gives its ID (replacing `/new` in history) |
+| `/agents`, `/agents/{name}` | Agents list, agent detail |
+| `/toolsets`, `/toolsets/{name}` | Toolsets list, toolset detail |
+| `/credentials` | Credentials |
+| `/activity/…` | Later (T074; T087 defines `/tasks/…`) |
+
+- On a route change the document title becomes "{page} · agentkit" (a conversation's title, "New chat", the agent's name) and focus moves to the page's `h1`, so a screen reader hears where it landed. The exception is **New chat** on desktop (the button or `Mod+Shift+O`): focus goes to the message box, because typing is why you pressed it. Every page has one `h1`; in a chat it is the title in the header.
+- On phones, opening a detail pushes a history entry, so the system Back returns to the list.
+- An unknown route or ID shows the 404 page; an admin route as a user shows the 403 page.
+- Signed out, a deep link shows the sign-in card and then opens the link. The route is kept in the router, not in a `?next=` parameter.
+- Sign-in is an overlay over the route, not a route of its own.
 
 ## Screens
 
 | Screen | Who | What it shows and does | API | Task |
 |---|---|---|---|---|
-| **Sign in** | everyone | A small card on the grey ground: username, password, Sign in; one generic error ("Wrong username or password."). Shown when the server has users; otherwise an **API token** prompt (kept in `sessionStorage`, cleared with the tab). A 401 later shows the same card with "Your session ended. Sign in again; your draft is kept." | `POST /v1/auth/login`, `GET /v1/auth/me`, `POST /v1/auth/logout` | T061, T055 |
-| **Chat** | user, admin | Header: agent picker or chip, title, ⋯ (Copy ID, Delete). The thread: user messages as grey bubbles on the right, answers as plain text, tool calls as quiet steps (below), A2UI surfaces inline, then source chips and a usage line. Composer: Enter sends, Shift+Enter is a new line; the send button becomes **Stop** while a run streams. | `POST /v1/runs` (SSE), `GET /v1/conversations/{id}`, `GET /v1/agents` | T055 |
-| **Chats list** | user, admin | The caller's conversations (see IA). Delete asks first. | `GET /v1/conversations?agent=&limit=&cursor=`, `DELETE /v1/conversations/{id}` | T055, T062 |
-| **Agents** | admin | List: name (mono), description, a status dot (ready, or a warning when a toolset it uses is skipped). Detail: description; model and effort; toolsets with status; skills; memory; UI (text or A2UI); the system prompt (admin only, collapsed); **Chat with this agent**. | `GET /v1/agents`, `GET /v1/agents/{name}` | T064 |
-| **Toolsets** | admin | List: name, status dot, tool count. Detail: status (ready, or skipped with the reason), the MCP URL and a copyable `claude mcp add` command (token placeholder, never the token), then each tool: name, description, a readable field list (name, type, required, help) and the raw schema on demand. | `GET /v1/toolsets`, `GET /v1/toolsets/{name}/tools` | T064 |
-| **Credentials** | admin | One table: toolset, provider, status (configured, missing, keyless, not needed), source (env var or slot), scope, and how to fix a missing one. Values are never sent to the page. v2: set, rotate and delete keys, connect OAuth accounts (the buttons are drawn disabled until then). | `GET /v1/toolsets` (v1); T045's `/v1/credentials` (v2) | T064, T045 |
-| **Activity** (later) | user (own), admin | List: segments **Runs** and **Threads** (and **Triggers** for admins), a filter (Running, Needs you, Recent), unread dots. Run detail: agent, status, origin (API, schedule, webhook, another agent), elapsed, tokens and cost, **Cancel**, and the live transcript with the same tool steps as chat. Thread detail: participants, hops (3 of 8), budget used, the messages in order, each labelled with its sender agent and linked to its run. Triggers: name, agent, schedule or webhook, next firing, last outcome, Pause/Resume. | T071 `GET /v1/runs?background=true`, `GET /v1/runs/{id}/events`; T072; T073 | T074 |
-| **403** and **404** | everyone | "Admins only" with the signed-in role and Back to chats; "This conversation doesn't exist or was deleted." | | T055 |
+| **Sign in** | everyone | A small card on the grey ground. The method comes from the server (below, "Sign in"): username and password, an **API token** prompt, or both. One generic error for a wrong password; throttling, empty fields and an unreachable server have their own messages. A 401 later shows the same card over the app with "Your session ended…". | `GET /v1/auth/config` (asked of T061), `POST /v1/auth/login`, `GET /v1/auth/me`, `POST /v1/auth/logout` | T061, T055 |
+| **Chat** | user, admin | Header: agent picker or chip, title (`h1`), ⋯ (Copy ID, Delete). The thread: user messages as grey bubbles on the right, answers as plain text, tool calls as quiet steps (below), A2UI surfaces inline, then source chips and a usage line. Composer: Enter sends, Shift+Enter is a new line; while this conversation answers, the send button becomes **Stop** and Enter does nothing (the draft waits). How runs, Stop and drafts behave: "Runs and conversations". | `POST /v1/runs` (SSE), `GET /v1/conversations/{id}`, `GET /v1/agents` | T055 |
+| **Chats list** | user, admin | The caller's conversations (see IA). Delete asks first; when the conversation is answering, the confirm says it also stops the answer. | `GET /v1/conversations?agent=&limit=&cursor=`, `DELETE /v1/conversations/{id}` | T055, T062 |
+| **Agents** | admin | List: name (mono), description, a status dot with its word for screen readers (ready, or a warning when a toolset it uses is skipped). Detail: description; model and effort; toolsets with status; skills; memory; UI (text or A2UI); the system prompt (admin only, collapsed); **Chat with this agent**. T087 adds Edit and Versions. | `GET /v1/agents`, `GET /v1/agents/{name}` | T064 |
+| **Toolsets** | admin | List: name, status dot, tool count. Detail: status (ready, or skipped with the reason), the MCP URL and a copyable `claude mcp add` command (token placeholder, never the token; a note says the token is an API token from your admin, `AGENTKIT_API_TOKEN` on a single-token server), then each tool as a disclosure with a chevron: name, description, a readable field list (name, type, required, help) and the raw schema on demand. A skipped toolset shows how to fix it instead of the command. The command wraps on phones. | `GET /v1/toolsets`, `GET /v1/toolsets/{name}/tools` | T064 |
+| **Credentials** | admin | One table: toolset, provider, status (configured, missing, keyless, not needed), source (env var or slot), scope, and how to fix a missing one. Values are never sent to the page. v2: set, rotate and delete keys, connect OAuth accounts; until then the buttons are drawn disabled with "Available with stored credentials (T045)" as visible text. On phones each row is a card that keeps provider, scope and the action. The rail badge counts missing keys that a configured agent needs (a toolset no agent uses, or a key that only raises limits like Tavily's, is not counted). | `GET /v1/toolsets` (v1); T045's `/v1/credentials` (v2) | T064, T045 |
+| **Activity** (later) | user (own), admin | List: segments **Runs** and **Threads** (and **Triggers** for admins), a filter (Running, Needs you, Recent), unread dots. Run detail: agent, status (running, needs you, done, failed, **cancelled**), origin (API, schedule, webhook, another agent), elapsed, tokens and cost, **Cancel**, and the live transcript with the same tool steps as chat. Thread detail: participants, hops (3 of 8), budget used, the messages in order, each labelled with its sender agent and linked to its run. Triggers: name, agent, schedule or webhook, next firing, last outcome, Pause/Resume. T087 redesigns this as Tasks. | T071 `GET /v1/runs?background=true`, `GET /v1/runs/{id}/events`; T072; T073 | T074 |
+| **403** | everyone | "Admins only": "This page shows server configuration. Ask an admin if you need access." and **Back to chats**. No request lines for users. | | T055 |
+| **404** | everyone | "This conversation doesn't exist, was deleted or expired." and **Back to chats**; the list drops the row. | | T055 |
 
-**Agent-made UI (A2UI)**: an agent can show a small form or set of choices inline (the mockup's "Narrow the news search"), rendered with the console's own components; submitting sends the values back as the next message, and the surface then shows "Sent" and is disabled ([E13](../tasks/E13-agent-protocols.md): T065, T066). Basic-catalog mapping: see Components.
+**Agent-made UI (A2UI)**: an agent can show a small form or set of choices inline (the mockup's "Narrow the news search"), rendered with the console's own components. Submitting sends the values back as a `ui_action` part in the next message; that message shows as a labelled summary ("Sent: published after 10 Feb 2026 · topic news · go.dev, news sites"), never as raw JSON. The surface then shows "Sent", keeps the values chosen, and is disabled. "Sent" comes from the conversation (a later `ui_action` for the same surface ID), so it survives a reload. A live surface is disabled while a run is active. If you type a reply instead, the surface shows "Not used" and is disabled. ([E13](../tasks/E13-agent-protocols.md): T065, T066.) Basic-catalog mapping: see Components.
+
+### Sign in
+
+- **Which method:** the console asks `GET /v1/auth/config` (public; asked of T061, see T070 Notes), which lists the methods the server accepts:
+  - `password`: the username and password card;
+  - `token` only: the token card ("Paste an API token; it's kept for this tab only", in `sessionStorage`);
+  - both: the password card with **Use an API token instead**;
+  - none (a loopback dev server without auth): no sign-in; the user menu says "Local, no sign-in".
+- **Who you are** comes from `GET /v1/auth/me` for both methods (name, role, tenant in the user menu).
+- **Errors** (password card):
+  - wrong username or password: one generic message, the password is cleared and focused, and both fields are marked invalid;
+  - an empty field: "Enter your username" or "Enter your password" under that field, with no request;
+  - throttled (429): "Too many attempts. Try again in 30 s.", counting down from `Retry-After`, with the button disabled until then;
+  - 5xx or no connection: "Couldn't reach the server. Try again."
+- **Errors** (token card): "That token wasn't accepted." A later 401 in token mode returns to the token card with "Your token was rejected or has expired."
+- **Submitting:** the button shows a spinner and "Signing in…", the inputs are disabled, and the form is `aria-busy`.
+- **Session ended (401):** the card opens over the app with "Your session ended. Sign in again; your draft is kept." as the dialog's description. An error after a failed attempt shows under the fields, and the reason stays. The app behind is `inert`. If the same user signs in (compared with the last `/me`), the draft and route are restored; another user gets a fresh start. A message that got the 401 goes back into the composer as the draft.
+- **Sign out** (or **Forget token** in token mode): if an answer is running it asks first, because signing out stops it. It calls `POST /v1/auth/logout`, then clears everything the console holds (drafts, cached lists and threads, the token, the last agent) except the theme, and unmounts the app. If logout fails, it still clears locally and says "Signed out on this device. The server session ends when it expires."
+
+## Runs and conversations
+
+A run belongs to its conversation, not to the screen showing it. The console keeps runs in an app-level store keyed by conversation ID.
+
+- **Leaving a conversation doesn't stop its run.** Opening another conversation, starting a new chat or going to an admin page leaves it running. Its row shows a spinner and "Answering". When it ends while you're elsewhere, the row gets an unread dot and the status region says "researcher finished in “Latest Go release”". Each conversation has its own Stop; only that conversation's Stop, or Esc while you're in it, stops it.
+- **Closing or reloading the tab** ends the stream, which cancels the run on the server (T036). While a run streams, the browser's "Leave site?" prompt asks first.
+- **Deleting a running conversation:** the confirm says "This also stops the running answer". The console stops the run, then deletes. If it was open, you land on New chat with the same agent, with focus on the page's `h1`. Deleting another row moves focus to the next row (or the previous one at the end).
+- **Stop:**
+  - The console aborts the request (`AbortController`); the server sees the request end and cancels the run (T036). There is no separate cancel call and no WebSocket. `POST /v1/runs/{id}/cancel` (T037) is for runs not tied to this request: another tab, or background tasks.
+  - The partial answer stays on screen with "Stopped. This part isn't saved." (unfinished turns aren't saved, T036). Finished tool steps stay; a step that was still running reads "Stopped: searching the web" in neutral grey, not as a failure.
+  - The composer stays ready and the next message is sent as usual. The note also offers **Resume** ("let researcher continue"), because the conversation is `interrupted` on the server until the next message.
+  - *API dependency (owner decision, 2026-10-12):* today a new message to an interrupted conversation is `409 conversation_interrupted` (T036). The design needs the server to accept it by merging the new message into the open user turn. This is recorded for T036/T037 in T070 Notes. Until then, a 409 here keeps the message in the composer and shows the interrupted notice with Resume.
+- **Interrupted:** any run that ended before its answer (a run error, a lost connection, `shutdown`; a user Stop shows the quieter note above). The row gets an amber mark, and the composer shows "The last answer didn't finish. Resume continues from the last saved step, or send a new message." **Resume** is `POST /v1/runs` with the conversation and an empty message (T037: `POST /v1/runs/{id}/resume`). It never adds a user bubble.
+- **Retry** on a retryable run error is Resume: it never sends the text again.
+- **Drafts are per conversation**, plus one for New chat that survives changing the picker's agent. They live in memory and `sessionStorage`, keyed by user and conversation. They are cleared on send and on sign-out.
+- **Waiting:** after Send, a muted "Thinking…" line with a spinner sits under your message until the first event (a step or text).
+- **The first message of a new chat:** the message shows pending until `run_start` gives the conversation's ID; then the route and the list update. If the request fails before `run_start` (401, 413, 503, no connection), the message goes back into the composer, the error shows above it, and nothing is added to the list.
+- **Titles** are made by the server from the first message (T062). The list shows one line with an ellipsis. The chat header shows the full title (up to two lines on phones), and it is the row's accessible name.
 
 ## States
 
@@ -60,21 +119,45 @@ Each has a design in the mockup (the **State** menu in its top bar) or here.
 | State | Where | Design |
 |---|---|---|
 | **No conversations** | Chats list, chat | List: "No conversations yet" and New chat. Content: the new-chat empty state. |
-| **No agents** | Chat | "No agents are configured. An admin adds them to the server config (`agents:`)." Composer disabled. Admins get a link to the docs. |
+| **No agents** | Chat | "No agents are configured. An admin adds them to the server config (`agents:`)." Composer disabled. Admins get a link to the configuration docs. |
+| **Agent removed** | Chat | A conversation whose agent is no longer configured: the chip reads "researcher (removed)", the composer is disabled with "This agent no longer exists, so this conversation is read-only.", and **New chat** is offered. |
 | **Toolset skipped** | Toolsets, Agents, picker, new chat | Amber dot and "Skipped: EXA_API_KEY is not set". The agent shows a warning dot and "1 of 3 toolsets skipped"; the agent still works with the rest. |
-| **Loading** | Every list and the thread | Skeleton rows the size of real rows (no spinners for page loads); a thread shows two skeleton messages. Nothing shifts when data arrives. |
-| **Streaming** | Chat | The user message appears at once; a running step reads in the present tense with a spinner; text streams in; Stop replaces Send; `Esc` stops. Scroll follows only if you are at the bottom; otherwise a **Jump to latest** pill appears. |
-| **Stopped** | Chat | "Stopped. The conversation keeps everything up to here." in muted text after the partial answer. |
-| **401** | Anywhere | The sign-in card over the app, "Your session ended…"; the composer's draft and the route are kept and restored after sign-in. No request loop. |
-| **403** | Admin pages | The 403 page (a direct link or a stale tab after a role change). |
-| **409 busy** | Chat | A notice above the composer: "This conversation is answering in another tab or client. You can send when it finishes." Composer disabled, **Check again**. |
-| **409 interrupted** | Chat, list (amber mark) | A notice: "The last run was interrupted (the server restarted). Resume continues from the last saved turn." **Resume**. |
-| **503 over capacity** | Chat | The message stays pending (dimmed) and a line under it: "The server is busy. Retrying in 8 s" counting down from `Retry-After`, with **Retry now** and **Cancel**. One automatic retry, then manual. |
-| **Run error** | Chat | After any partial answer, a red-marked block: what happened and what to do. Retryable codes (`rate_limited`, `overloaded`, provider timeouts) get **Retry**; `refused`, `max_turns`, `budget_exceeded` explain and offer none. A failed tool step reads "… failed" in red with the reason in its details; the run may still finish. |
-| **Offline** | Anywhere | A thin bar at the top of the content: "You're offline. Messages will not send until the connection is back." Send disabled. |
-| **Connection lost mid-run** | Chat | Until T071 a closed stream cancels the run, so the honest message is: "Connection lost. The run was stopped on the server; everything saved up to that point is kept." **Reload conversation**. With T071: "Reconnecting…" and the stream resumes from `Last-Event-ID`. |
-| **Long content** | Chat, details | A long answer flows normally, code blocks scroll sideways, a Jump to latest pill. More than 3 tool calls collapse to a summary ("Used 20 tools · 34.2 s · searched the web 12 times, read 8 pages"); opened, it shows the first 5 and "Show 15 more". A huge result shows the first 20 results or 4,000 characters, then "Show all (1.2 MB)" and **Copy raw JSON**. Long titles end in an ellipsis with the full title in a tooltip. |
-| **Not found** | Chat | The 404 message and Back to chats; the list drops the row. |
+| **Loading** | Every list and the thread | Skeleton rows the size of real rows (no spinners for page loads); a thread shows two skeleton messages. The region is `aria-busy` with a hidden "Loading". Nothing shifts when data arrives. |
+| **Load failed** | Every list and the thread | A 5xx or no connection on a `GET`: "Couldn't load conversations." (or the page's name) and **Retry**, in place of the skeletons. |
+| **Streaming** | Chat | The user message appears at once; "Thinking…" until the first event; a running step reads in the present tense with a spinner; text streams in; Stop replaces Send; `Esc` stops when no menu or sheet is open. Scroll follows only if you are at the bottom; otherwise a **Jump to latest** pill appears. |
+| **Stopped** | Chat | "Stopped. This part isn't saved." in muted text after the partial answer, with **Resume**. The composer stays ready (see "Runs and conversations"). |
+| **401** | Anywhere | The sign-in card over the app (see "Sign in"). No request loop. |
+| **403** | Admin pages | The 403 page: a direct link, or a stale tab after a role change. On a 403 the console re-reads `/v1/auth/me`. If the role changed, it updates the rail and says "Your access changed". It also re-reads `/me` when the tab regains focus, so a promotion shows up. A **CSRF** 403 (a different error code, T061) is never shown as "Admins only": the console re-reads `/me` for a fresh token and retries once. |
+| **409 busy** | Chat | A notice above the composer: "This conversation is answering in another tab or client. You can send when it finishes." The textarea stays editable; Send is disabled. **Check again** reads the conversation's status: "Still answering…" if it is running, else the notice goes. |
+| **409 interrupted** | Chat, list (amber mark) | See "Runs and conversations": "The last answer didn't finish. Resume continues from the last saved step, or send a new message." **Resume**. |
+| **409 agent mismatch** | Chat | Shouldn't happen (the chip prevents it). If it does: "This conversation belongs to researcher." with **New chat with researcher**, keeping the draft. |
+| **413 too large** | Composer | "This message is too long to send (the limit is 1 MiB)." The draft is kept. |
+| **400 invalid request** | Composer | "The server couldn't read this request." with the error's message. The draft is kept. This is a console bug, so it is logged. |
+| **503 over capacity** | Chat | The message stays pending and a line under it says "The server is busy. Retrying in 2 s…" (`Retry-After` is a fixed 2 s). It retries once by itself, then says "Still busy." with **Retry now** and **Cancel** (Cancel returns the message to the composer and keeps any draft you typed meanwhile). The line is announced once; the countdown is `aria-hidden`; the buttons stay in place. Send is disabled while a message is pending. |
+| **503 shutting down** | Chat | The same mechanics, with "The server is restarting. Retrying in 2 s…". |
+| **Run error** | Chat | After any partial answer, a red-marked block: what happened and what to do, from the table below. A failed tool step reads "… failed" in red with the reason in its details; the run may still finish. |
+| **Offline** | Anywhere | A thin bar at the top of the content: "You're offline. Messages will not send until the connection is back." The textarea stays editable; Send is disabled. "Back online" is announced when the bar goes. |
+| **Connection lost mid-run** | Chat | Until T071 a closed stream cancels the run, so the honest message is: "Connection lost. The run was stopped on the server. Your messages and finished steps are saved; the unfinished part of this answer isn't." with **Reload conversation**. The server can report the run as running for up to a minute after; Reload then shows the 409 busy notice with Check again. With T071: "Reconnecting…", and the stream resumes from `Last-Event-ID`. |
+| **Long content** | Chat, details | A long answer flows normally, code blocks scroll sideways (and take focus, so the keyboard can scroll them), a Jump to latest pill. Tool groups collapse (see Rules, "Tool calls"). A huge result shows the first 20 results or 4,000 characters, then "Show all (1.2 MB)" and **Copy raw JSON**. Long titles end in an ellipsis in the list. |
+| **Not found** | Chat | The 404 page and Back to chats; the list drops the row. A 404 on send keeps the draft and offers **New chat with this message**. |
+
+**Run errors** (`run_error` codes, T036). The button follows the error's `retryable` flag, and **Retry** means Resume. Codes that leave the conversation interrupted offer Resume too. An unknown code shows its message and the code, with no button.
+
+| Code | Message | Action |
+|---|---|---|
+| `rate_limited` | The model provider is rate-limiting requests. Try again in a minute. | Retry |
+| `overloaded` | The model provider is overloaded right now. | Retry |
+| `timeout` | The answer took longer than the run limit. | Resume |
+| `shutdown` | The server restarted while answering. | Resume |
+| `unexpected_stop` | The model stopped unexpectedly. | Resume |
+| `cancelled` | The answer was stopped. (Seen after a reload.) | Resume |
+| `max_tokens` | The answer was cut off at the output limit. Ask it to continue. | — |
+| `budget_exceeded` | This run used up its budget (turns or tokens). | — |
+| `refused` | The model declined this request, plus its explanation. Rephrase it or ask something else. | — |
+| `context_too_long` | This conversation is too long for the model. | New chat |
+| `model_auth` | The server's model API key was rejected. Ask an admin. | (admins: a link to the setup docs) |
+| `model_rejected` | The model rejected the request, plus the error's message. | — |
+| `internal` | Something went wrong on the server. | Copy run ID |
 
 ## Components
 
@@ -88,34 +171,38 @@ Built with React, shadcn/ui and Radix (E11, T078). Each component has a home:
 
 | Component | Package | Built from | Variants | States |
 |---|---|---|---|---|
-| **App shell** (rail + list + content) | console | shadcn `Sidebar` in its nested form (an icon rail plus a second sidebar, like the "sidebar-09" block), `SidebarProvider` for the collapse state | desktop; laptop (list collapsed or not); phone (`Sheet` from the left as the drawer) | offline bar |
-| **Rail item** | console | `SidebarMenuButton` + `Tooltip`, `Badge` | icon + tooltip label; badge (count or dot) | default, hover, current (`aria-current="page"`), focus |
-| **List item** (conversation) | console | `SidebarMenuItem` + `SidebarMenuAction` (⋯) + `DropdownMenu` | title + agent + time; with a status mark (running spinner, interrupted amber dot, unread dot) | default, hover, current, focus, menu open, skeleton (`Skeleton`). On touch the ⋯ is always visible |
-| **List item** (admin) | console | `SidebarMenuButton` | name + one-line description + status dot | as above |
-| **Agent picker** | agent-ui | `Popover` + `Command` (a combobox); a bottom `Drawer` on phones | button (new chat), read-only chip with a card (existing), sheet (phone) | closed, open, filtered, no match, one agent (static) |
-| **Composer** | agent-ui | `InputGroup` + `Textarea` + `Button` | idle, with draft, running (Stop), disabled with a reason | focus, multi-line (grows to 8 lines, then scrolls) |
-| **Thread** | agent-ui | ours: a native scroll container (`role="log"`), stick-to-bottom, the Jump to latest pill | | at bottom, scrolled up (pill), loading (`Skeleton`) |
-| **Message** | agent-ui | ours; Markdown through an allowlist renderer to React elements | user bubble; assistant text; pending (dimmed); stopped note; origin label ("From schedule …") | streaming (`aria-busy="true"`), actions (Copy) |
-| **Tool step** | agent-ui | ours, on Radix `Collapsible` | an icon per kind (search, page, calc, tool) | running (shimmer + `Spinner`), done, failed; collapsed, open (request, results, raw JSON) |
-| **Step group** | agent-ui | ours, on `Collapsible` | ≤ 3 calls open by default; > 3 collapsed with a summary; "Show N more" | running, done, some failed ("Used 4 tools · 1 failed") |
+| **App shell** (rail + list + content) | console | shadcn `Sidebar` in its nested form (an icon rail plus a second sidebar, like the "sidebar-09" block), `SidebarProvider` for the collapse state | desktop; laptop (list collapsed or not); phone (`Sheet` from the left as the drawer, `inert` when closed) | offline bar |
+| **Skip links** | console | ours | "Skip to content"; in a chat also "Skip to message box" | shown on focus |
+| **Rail item** | console | `SidebarMenuButton` as a link + `Tooltip`, `Badge` | icon + tooltip label; badge (count or dot) | default, hover, current (`aria-current="page"`), focus |
+| **List item** (conversation) | console | `SidebarMenuItem` (in a `ul`, date groups as headings) + `SidebarMenuAction` (⋯) + `DropdownMenu` | title + agent + time; with a status mark (running spinner, interrupted amber dot, unread dot), each with an accessible name | default, hover, current, focus, menu open, skeleton (`Skeleton`). On touch the ⋯ is always visible |
+| **List item** (admin) | console | `SidebarMenuButton` as a link | name + one-line description + status dot (with its word for screen readers) | as above |
+| **Agent picker** | agent-ui | `Popover` + `Command` (a combobox: focus stays in the search, arrows move the highlight, Enter picks the highlighted option); a bottom `Drawer` with a Close button on phones | button (new chat), read-only chip with a card (existing; the card is a `Popover`, not a menu), sheet (phone) | closed, open, filtered, no match, one agent (static), agent removed |
+| **Composer** | agent-ui | `InputGroup` + `Textarea` + `Button` | idle, with draft, running (Stop; Enter does nothing), Send disabled with a reason (typing still works), fully disabled (no agent, agent removed) | focus, multi-line (grows to 8 lines, then scrolls) |
+| **Thread** | agent-ui | ours: a native scroll container (`role="log"`), stick-to-bottom, the Jump to latest pill | | at bottom, scrolled up (pill), loading (`Skeleton`), load failed |
+| **Message** | agent-ui | ours; Markdown through an allowlist renderer to React elements | user bubble; assistant text; pending (muted text, no opacity); thinking line; stopped note (with Resume); origin label ("From schedule …"); `ui_action` summary | streaming (`aria-busy="true"`), actions (Copy, also on a stopped answer) |
+| **Tool step** | agent-ui | ours, on Radix `Collapsible` | an icon per kind (search, page, calc, tool) | running (shimmer + `Spinner`), done, failed (red), stopped (neutral); collapsed, open (request, results, raw JSON) |
+| **Step group** | agent-ui | ours, on `Collapsible` | one call is a plain step; a group forms at the second consecutive call; ≤ 3 calls open by default; > 3 collapsed with a summary | running (shows the latest 5, "Show N earlier"), done ("Show N more"), some failed (failed calls always shown); the open state is kept across updates |
 | **Source chip** | agent-ui | ours (a link styled like `Badge`) | site initial + host + path | hover, focus |
 | **Usage line** | agent-ui | ours | turns · tokens (cached) · time | |
-| **Run notice** (above the composer) | agent-ui | `Alert` + `Button` | info (busy), warning (interrupted), with an action | |
-| **Inline error** (in the thread) | agent-ui | `Alert` (destructive) | retryable (Retry), final | |
-| **A2UI surface** | agent-ui | ours, rendering the catalog with `ui` components (table below) | | live, sent (disabled) |
-| **Run viewer** (Activity, later jobs) | agent-ui | Thread + Message + Step group, read-only, plus a key/value header | | running, needs you, done, failed |
-| **Status** | ui | ours (dot + word) | ok (green), warn (amber), bad (red), neutral (grey), running (`Spinner`) | |
-| **Tag** | ui | `Badge` (outline, mono) | agent or toolset name | |
+| **Run notice** (above the composer) | agent-ui | `Alert` + `Button` | info (busy), warning (interrupted), agent removed, with an action | |
+| **Inline error** (in the thread) | agent-ui | `Alert` (destructive) | Retry (retryable), Resume, final | |
+| **A2UI surface** | agent-ui | ours, rendering the catalog with `ui` components (table below) | | live, disabled while a run is active, sent (keeps the values), not used |
+| **Run viewer** (Activity, later jobs) | agent-ui | Thread + Message + Step group, read-only, plus a key/value header | | running, needs you, done, failed, cancelled |
+| **Status** | ui | ours (dot + word, or dot + hidden word where space is tight) | ok (green), warn (amber), bad (red), neutral (grey), running (`Spinner`) | |
+| **Tag** | ui | `Badge` (outline, mono) | agent or toolset name; with a status dot and its hidden word | at least 24 px tall when clickable |
 | **Kbd** | ui | `Kbd` | single key, combination | |
-| **Table** | ui | `Table` (no data-table chrome: no sorting or selection yet) | dense rows, header in small caps, status column, action column; on phones each row becomes a card | row hover, empty, skeleton |
-| **Detail pane** | console | ours: a header row (`Button`s), a key/value list, sections, `Collapsible` for the system prompt | | loading, not found |
+| **Table** | ui | `Table` (no data-table chrome: no sorting or selection yet) | dense rows, header in small caps, status column, action column; on phones each row becomes a card (real cards, not a restyled `tr`) | row hover, empty, skeleton |
+| **Detail pane** | console | ours: a header row (`Button`s), a key/value list, sections, `Collapsible` for the system prompt and for tools (with a chevron) | | loading, not found |
 | **Empty state** | ui | `Empty` | icon, one sentence, one action | |
-| **Toast** | ui | `Sonner` | text, text + action ("Open") | auto-hides after 4 s; announced politely |
-| **Menu** | ui | `DropdownMenu` (with a radio group for the theme); `Drawer` on phones | anchored (desktop), bottom sheet (phone) | Esc and outside click close it; focus returns to the trigger |
+| **Toast** | ui | `Sonner` | text, text + action ("Open") | stays 8 s and pauses on hover and focus; announced politely; never the only way to reach something (badges and dots stay) |
+| **Tooltip** | ui | `Tooltip` | label, label + shortcut | shown on hover and on keyboard focus; never on disabled controls (their reason is visible text) |
+| **Menu** | ui | `DropdownMenu` (with a radio group for the theme); `Drawer` on phones | anchored (desktop), bottom sheet (phone) | Esc, Tab and outside click close it; focus returns to the trigger |
 | **Dialog** | ui | `AlertDialog` (Delete), `Dialog` (shortcuts) | confirm, informational | focus trapped, Esc closes |
-| **Sign-in form** | console | `Card` + `Field` + `Input` + `Button` | password, token, session ended | default, submitting, error |
-| **Button** | ui | `Button` | primary (ink), secondary (`outline`), ghost, icon | hover, focus, disabled, busy (`Spinner`) |
-| **Inputs** | ui | `Input`, `InputGroup` (search with `Kbd`), `Select`, `Textarea`, `Checkbox`, `ToggleGroup` (segments) | text, password, search, select, textarea, checkbox, segmented | focus, invalid, disabled |
+| **Sign-in form** | console | `Card` + `Field` + `Input` + `Button` | password, token, password with "Use an API token instead", session ended | default, submitting (inputs disabled), error (wrong, empty field, throttled with a countdown, server unreachable) |
+| **Button** | ui | `Button` | primary (ink), secondary (`outline`), ghost, icon, link | hover, focus, disabled, busy (`Spinner`); at least 24 × 24 px |
+| **Inputs** | ui | `Input`, `InputGroup` (search with `Kbd`), `Select`, `Textarea`, `Checkbox`, `ToggleGroup` (segments) | text, password (with show/hide), search, select, textarea, checkbox, segmented | focus, invalid, disabled |
+
+T087 adds the components its pages need: a diff, a version list, a file tree and the editor fields.
 
 **A2UI basic catalog (v0.9.1)** drawn with these components:
 
@@ -164,6 +251,8 @@ T078 puts this block in `packages/ui`, prefixed `--ak-` (see the mapping after i
   --ok: #137333;
   --warn: #9a5800;
   --bad: #b91c1c;
+  /* Elevation (popovers, sheets, dialogs, toast) */
+  --shadow: 0 8px 24px rgba(0,0,0,.10), 0 1px 3px rgba(0,0,0,.08);
   /* Type */
   --font-ui: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "Geist Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
@@ -181,7 +270,16 @@ T078 puts this block in `packages/ui`, prefixed `--ak-` (see the mapping after i
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { /* the dark block below */ }
+  :root:not([data-theme="light"]) {
+    --bg: #0b0b0c; --surface: #141415; --surface-2: #1a1a1c;
+    --hover: #1c1c1f; --surface-hover: #1c1c1f; --select: #232327;
+    --text: #ededee; --text-2: #c8c8cc; --muted: #9a9aa2; --faint: #3a3a40;
+    --line: #26262a; --line-strong: #34343a; --control: #6b6b73; --focus: #ededee;
+    --primary: #ededee; --on-primary: #0b0b0c;
+    --ok: #4ade80; --warn: #facc15; --bad: #f87171;
+    --shadow: 0 8px 24px rgba(0,0,0,.5), 0 0 0 1px #26262a;
+    color-scheme: dark;
+  }
 }
 :root[data-theme="dark"] {
   --bg: #0b0b0c; --surface: #141415; --surface-2: #1a1a1c;
@@ -190,11 +288,12 @@ T078 puts this block in `packages/ui`, prefixed `--ak-` (see the mapping after i
   --line: #26262a; --line-strong: #34343a; --control: #6b6b73; --focus: #ededee;
   --primary: #ededee; --on-primary: #0b0b0c;
   --ok: #4ade80; --warn: #facc15; --bad: #f87171;
+  --shadow: 0 8px 24px rgba(0,0,0,.5), 0 0 0 1px #26262a;
   color-scheme: dark;
 }
 ```
 
-Every text colour clears **4.5:1** on every surface it can sit on, and control edges, status dots and the focus ring clear **3:1**, in both themes (WCAG 2.2 AA; the table is in T070 Notes). Motion respects `prefers-reduced-motion` (no shimmer, no spinner rotation; the word "Running" stays).
+Every text colour clears **4.5:1** on every surface it can sit on, and control edges, status dots and the focus ring clear **3:1**, in both themes (WCAG 2.2 AA; the table is in T070 Notes). Nothing lowers those ratios with opacity: a dimmed state (a pending message, a sent surface) uses `--muted` text instead. Text is never smaller than `--text-xs` (12 px). Motion respects `prefers-reduced-motion` (no shimmer, no spinner rotation; the word "Running" stays).
 
 **In `packages/ui`.** shadcn's components read their own variable names, so `packages/ui` sets those from ours.
 
@@ -229,44 +328,58 @@ Radii are set directly rather than derived from `--radius`: `--radius-sm` 6 px, 
 | `--sidebar-primary` | `--primary` | |
 | `--sidebar-primary-foreground` | `--on-primary` | |
 
-Status colours (`--ak-ok`, `--ak-warn`, `--ak-bad`) have no shadcn equivalent and stay ours.
+Status colours (`--ak-ok`, `--ak-warn`, `--ak-bad`) and `--ak-shadow` have no shadcn equivalent and stay ours.
 
 ## Keyboard
 
-`Mod` is ⌘ on macOS and Ctrl elsewhere. Single-key shortcuts work only when focus is not in a text field.
+`Mod` is ⌘ on macOS and Ctrl elsewhere. The console matches only that key: `metaKey` on macOS and `ctrlKey` elsewhere, never both (Ctrl+K is "delete to end of line" in a macOS text field). A shortcut never fires with Alt held (AltGr on Windows is Ctrl+Alt) or on key repeat. Letters are matched by `KeyboardEvent.code`, so they work on non-Latin layouts. Controls with a shortcut carry `aria-keyshortcuts`, and the hints show the platform's key (⌘K or Ctrl+K).
 
 | Keys | Does |
 |---|---|
 | `Mod+Shift+O` | New chat |
 | `Mod+K` | Search conversations (opens the drawer on phones) |
-| `/` or `Shift+Esc` | Focus the composer |
-| `Enter` / `Shift+Enter` | Send / new line |
-| `Esc` | Stop the running answer; otherwise close the open menu, sheet, dialog or drawer |
-| `Mod+Shift+S` | Show or hide the conversation list |
+| `/` | Focus the message box |
+| `Enter` / `Shift+Enter` | Send / new line. Enter does nothing while the conversation is answering |
+| `Esc` | Close the topmost menu, sheet, dialog or the drawer; otherwise, in a conversation that is answering, stop it |
+| `Mod+Shift+S` | Show or hide the list |
 | `?` or `Mod+/` | Keyboard shortcuts |
-| `↑` `↓` `Enter` `Esc` | Move, pick and close in the agent picker, menus and the list |
+| `↑` `↓` `Enter` `Esc` | Move, pick and close in the agent picker and menus |
+
+- **Single-key shortcuts** (`/`, `?`) fire only when focus is not in a text field. They can be turned off in the shortcuts dialog (WCAG 2.1.4); the setting is kept in `localStorage`.
+- **While a dialog or sheet is open**, only Esc and that dialog's own keys work.
+- **List rows** are one Tab stop each; arrow keys move only inside the picker and menus.
 
 ## Accessibility
 
-- **Focus order:** rail, list (New chat, search, filter, rows), content (header, thread, composer). A **Skip to composer** link is the first focusable element. Every interactive element shows a 2 px `--focus` ring with a 2 px offset. Menus, sheets and dialogs return focus to their trigger.
-- **Landmarks:** rail `nav` "Sections", list `nav` "Conversations", content `main`, the thread `role="log"` (`aria-live="off"`) labelled with the conversation title.
-- **Streaming:** token deltas are **not** announced. One visually hidden `role="status"` region announces "researcher is answering", each settled tool step ("Searched the web, 1.4 seconds"), and "Answer complete" or the error. The streaming message has `aria-busy="true"` until it ends. Step groups and details are buttons with `aria-expanded`.
-- **Status** is never colour alone: a dot plus a word, and errors also have an icon.
-- **Targets** are at least 24 × 24 px (WCAG 2.2 2.5.8); phone rows are 44 px tall.
+- **Focus order:** rail, list (New chat, search, filter, rows), content (header, thread, composer). **Skip to content** is the first focusable element; in a chat, **Skip to message box** follows it. Every interactive element shows a 2 px `--focus` ring with a 2 px offset. Menus, sheets and dialogs return focus to their trigger; when the trigger is gone (a deleted row), focus goes where "Runs and conversations" says.
+- **Routes:** a route change sets the document title and moves focus to the page's `h1` (see Routes).
+- **Landmarks:** rail `nav` "Sections", the list column's `nav` named after its section ("Conversations", "Agents", "Toolsets"), content `main`, the thread `role="log"` (`aria-live="off"`) labelled with the conversation title. Conversation rows are a list (`ul`) with the date groups as headings.
+- **Overlays:** a closed drawer is `inert`. While the sign-in card is open, the app behind is `inert`; after sign-out it is unmounted.
+- **Streaming:** token deltas are **not** announced. One visually hidden `role="status"` region announces:
+  - "researcher is answering";
+  - each settled tool step ("Searched the web, 1.4 seconds"), and failed ones ("Reading pages failed");
+  - "Answer complete", "Stopped", or the error;
+  - a run that finished in another conversation.
+
+  The streaming message has `aria-busy="true"` until it ends. `role="alert"` is kept for a run's final error only. Step groups and details are buttons with `aria-expanded`.
+- **Status** is never colour alone: a dot plus a word, a visually hidden word where space is tight (list rows, toolset chips), and errors also have an icon.
+- **Targets** are at least 24 × 24 px, including link-style buttons and clickable chips (WCAG 2.2 2.5.8); phone rows are 44 px tall.
+- **Names:** icon-only buttons have an accessible name and a `Tooltip` that also shows on keyboard focus, not a `title` attribute. A disabled control's reason is visible text.
+- **Scrollable regions** (code blocks, raw JSON) are focusable and labelled, so the keyboard can scroll them.
 - **Contrast**: see Tokens.
 
 ## Rules
 
 - **Roles are enforced by the API**, not by hiding pages: a `user` gets 403 on admin data even with a hand-made request. The console hides admin navigation for users only as a convenience.
-- **Untrusted content stays text.** Tool results are third-party web pages, rendered as React text children (never `dangerouslySetInnerHTML`). Answers are Markdown, rendered to React elements by a renderer with a fixed element allowlist, no raw HTML and only `http(s)` links. A strict Content-Security-Policy (`default-src 'self'`, no inline scripts) is served with the page.
+- **Untrusted content stays text.** Tool results are third-party web pages, rendered as React text children (never `dangerouslySetInnerHTML`). Answers are Markdown, rendered to React elements by a renderer with a fixed element allowlist, no raw HTML and only `http(s)` links. A strict Content-Security-Policy (`default-src 'self'`, no inline scripts) is served with the page, and `/v1` responses carry `Cache-Control: no-store`.
 - **Name things by what people recognize**: "Credentials", "Toolsets", "Stop", "Resume"; errors say what happened and what to do ("EXA_API_KEY is not set: set it in the server's environment and restart").
 - **Look (owner, 2026-10-12): neutral.** No brand colour. **Light**: grey ground, white working surfaces, near-black text and primary buttons, used sparingly. **Dark**: not pure black; a near-black ground with slightly lighter surfaces for depth, off-white text and an off-white primary button, so contrast is high without glare. Status is a small coloured dot plus a word (green ready, amber missing, skipped or interrupted, red error), never a coloured block. Geist for UI, Geist Mono for names, IDs and schemas. Theme follows the OS, with System/Light/Dark in the user menu. Exact values: Tokens.
 - **Tool calls** (the part of chat people read most):
   - each call is **one quiet line**: an icon for its kind, a verb phrase people understand ("Searched the web", "Read 2 pages", "Calculated"), the key argument in muted text (the query in quotes, the page hosts), and the time it took. No borders, no JSON, no tool IDs at rest;
-  - **while running** the verb reads in the present tense ("Searching the web") with a shimmer and a small spinner; **errors** read "… failed" in red with the reason in the details;
-  - several calls in one turn group under **"Used 3 tools · 2.6 s"** with a thin guide line: open by default for up to 3 calls, collapsed with a summary above that (see Long content);
+  - **while running** the verb reads in the present tense ("Searching the web") with a shimmer and a small spinner; **errors** read "… failed" in red with the reason in the details; a call cut short by Stop reads "Stopped: searching the web" in neutral grey, not as a failure;
+  - **groups:** one call is a plain step. Consecutive calls with no text between them form a group under **"Used 3 tools · 2.6 s"** with a thin guide line, from the second call on. A group is open by default for up to 3 calls and collapsed with a summary above that ("Used 20 tools · 1 failed · 34.2 s · searched the web 12 times, read 8 pages"). Open, a finished group shows its first 5 calls and "Show 15 more"; a running group shows its latest 5 and "Show N earlier". Failed calls are always shown, even in a collapsed range. A group the user opened or closed keeps that state while the run goes on;
   - **details** open in place: the request as a key/value list, results as a compact list (site initial, title, host, one-line snippet), and "Show raw JSON" for the exact input and output;
-  - the answer ends with **source chips** (host and path) for the URLs it cites, then a muted line with turns, tokens (cached) and time;
+  - the answer ends with **source chips** (host and path) for the `http(s)` links in the final answer, one per URL (tool results alone don't make chips), then a muted line with turns, tokens (cached) and time;
   - display text comes from tool metadata: each tool may declare a title, an icon kind and present/past verbs (MCP's `annotations.title` plus our own optional display fields on `tool.Definition`); tools without them fall back to "Ran `tool_name`" with the first argument.
 - **Stack** (owner, 2026-10-12): React + TypeScript with shadcn/ui and Radix, in a `web/` workspace (`ui`, `agent-ui`, `apps/console`); the console build is embedded in the binary; Vitest and Playwright tests against a replayed model and faked connectors (E11, T078). The console is desktop-first; `agent-ui` components also serve mobile-first consumer apps ([PRODUCT.md](PRODUCT.md)).
 

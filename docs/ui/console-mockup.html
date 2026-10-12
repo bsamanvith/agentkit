@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
 <style>
-/* agentkit console, mockup v3 (T070).
+/* agentkit console, mockup v3 (T070), approved by the owner on 2026-10-12 after the review fixes.
    The token block is the one in docs/UI.md "Tokens"; packages/ui (T078) takes it, prefixed --ak-, and maps shadcn's variables to it.
    The app sits in a resizable frame, and its layout uses container queries on that frame,
    so the mockup can show desktop, laptop and phone widths side by side with the real page.
@@ -81,7 +81,7 @@ h3 { font-size: var(--text-md); font-weight: 600; }
 p { margin: 0; }
 [hidden] { display: none !important; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
-.label { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 500; }
+.label { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 500; }
 .muted { color: var(--muted); }
 svg.i { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 
@@ -110,17 +110,17 @@ svg.i { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none;
 
 .rail { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 0; border-right: 1px solid var(--line); background: var(--bg); min-height: 0; }
 .brand-mark { width: 28px; height: 28px; border-radius: 7px; background: var(--primary); color: var(--on-primary); display: grid; place-items: center; font-family: var(--font-mono); font-size: 12px; font-weight: 500; margin-bottom: 10px; flex: none; }
-.rail-btn { position: relative; width: 40px; height: 40px; border-radius: var(--r-md); border: 0; background: none; color: var(--muted); display: grid; place-items: center; }
+.rail-btn { position: relative; width: 40px; height: 40px; border-radius: var(--r-md); border: 0; background: none; color: var(--muted); display: grid; place-items: center; text-decoration: none; }
 .rail-btn svg.i { width: 18px; height: 18px; }
 .rail-btn:hover { background: var(--hover); color: var(--text); }
 .rail-btn[aria-current="page"] { background: var(--select); color: var(--text); }
-.rail-btn .badge { position: absolute; top: 5px; right: 4px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: var(--r-full); background: var(--primary); color: var(--on-primary); font-size: 10px; font-weight: 600; display: grid; place-items: center; font-variant-numeric: tabular-nums; }
+.rail-btn .badge { position: absolute; top: 3px; right: 2px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: var(--r-full); background: var(--primary); color: var(--on-primary); font-size: 12px; font-weight: 600; display: grid; place-items: center; font-variant-numeric: tabular-nums; }
 .rail-btn .tip { position: absolute; left: 48px; top: 50%; transform: translateY(-50%); background: var(--primary); color: var(--on-primary); font-size: 12px; padding: 3px 8px; border-radius: var(--r-sm); white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity var(--fast); z-index: 30; }
 .rail-btn:hover .tip, .rail-btn:focus-visible .tip { opacity: 1; }
 .rail-sep { width: 24px; height: 1px; background: var(--line-strong); margin: 6px 0; flex: none; }
 .rail .grow { flex: 1; }
 .avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--select); color: var(--text); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
-.later-tag { font-size: 10px; font-weight: 500; letter-spacing: .04em; color: var(--muted); border: 1px dashed var(--control); border-radius: var(--r-sm); padding: 0 5px; white-space: nowrap; }
+.later-tag { font-size: 12px; font-weight: 500; letter-spacing: .04em; color: var(--muted); border: 1px dashed var(--control); border-radius: var(--r-sm); padding: 0 5px; white-space: nowrap; }
 
 /* List column */
 .list { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); border-right: 1px solid var(--line); }
@@ -131,19 +131,19 @@ svg.i { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none;
 .search { display: flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--control); border-radius: var(--r-md); padding: 0 8px; color: var(--muted); }
 .search:focus-within { outline: 2px solid var(--focus); outline-offset: 1px; }
 .search input, .search input[type="search"] { border: 0; min-height: 0; border-radius: 0; background: transparent; outline: none; padding: 5px 0; min-width: 0; flex: 1; color: var(--text); font-size: var(--text-sm); }
-.search kbd { font-family: var(--font-ui); font-size: 11px; color: var(--muted); border: 1px solid var(--line-strong); border-radius: 4px; padding: 0 4px; }
+.search kbd { font-family: var(--font-ui); font-size: 12px; color: var(--muted); border: 1px solid var(--line-strong); border-radius: 4px; padding: 0 4px; }
 .filters { display: flex; gap: 6px; }
 .filters select { flex: 1; min-width: 0; }
 select, input[type="text"], input[type="password"], input[type="search"], input[type="date"], textarea.field { background: var(--surface); border: 1px solid var(--control); border-radius: var(--r-md); padding: 5px 10px; font-size: var(--text-sm); min-height: 32px; }
 .list-body { flex: 1; min-height: 0; overflow: auto; padding: 0 8px 12px; }
 .group-label { padding: 12px 8px 4px; }
-.row { position: relative; display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: none; text-align: left; border-radius: var(--r-md); padding: 6px 8px; color: var(--text-2); min-height: 40px; }
+.row { position: relative; display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: none; text-align: left; border-radius: var(--r-md); padding: 6px 8px; color: var(--text-2); min-height: 40px; text-decoration: none; }
 .row:hover { background: var(--hover); color: var(--text); }
 .row[aria-current="page"] { background: var(--select); color: var(--text); }
 .row .main { min-width: 0; flex: 1; display: flex; flex-direction: column; }
 .row .t { font-size: var(--text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row .sub { font-size: var(--text-xs); color: var(--muted); display: flex; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; }
-.row .sub .mono { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; }
+.row .sub .mono { font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
 .row-wrap { position: relative; }
 .row-wrap .more { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); opacity: 0; }
 .row-wrap:hover .more, .row-wrap:focus-within .more, .row-wrap .more[aria-expanded="true"] { opacity: 1; }
@@ -151,6 +151,8 @@ select, input[type="text"], input[type="password"], input[type="search"], input[
 .mark { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .mark.warn { background: var(--warn); }
 .mark.unread { background: var(--text); }
+.group-h { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 500; padding: 12px 8px 4px; }
+.conv-ul { list-style: none; margin: 0; padding: 0; }
 .list-foot { display: none; }
 .load-more { text-align: center; padding: 10px; font-size: var(--text-xs); color: var(--muted); }
 
@@ -159,7 +161,9 @@ select, input[type="text"], input[type="password"], input[type="search"], input[
 .offline { flex: none; display: flex; align-items: center; gap: 8px; justify-content: center; padding: 6px 16px; font-size: var(--text-sm); background: var(--surface-2); border-bottom: 1px solid var(--line); color: var(--text-2); }
 .view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .head { flex: none; display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 8px 16px; border-bottom: 1px solid var(--line); }
-.head .title { min-width: 0; flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.head .title { min-width: 0; flex: 1; font-weight: 500; font-size: var(--text-md); line-height: var(--leading); letter-spacing: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.head .title:focus { outline: none; }
+.head-break { display: none; }
 .icon-btn { width: 32px; height: 32px; border-radius: var(--r-md); border: 0; background: none; color: var(--muted); display: inline-grid; place-items: center; flex: none; }
 .icon-btn:hover { background: var(--surface-hover); color: var(--text); }
 .list .icon-btn:hover { background: var(--hover); }
@@ -183,8 +187,9 @@ select, input[type="text"], input[type="password"], input[type="search"], input[
 .status.warn::before { background: var(--warn); }
 .status.bad::before { background: var(--bad); }
 .status.run::before { width: 9px; height: 9px; background: none; border: 1.5px solid var(--line-strong); border-top-color: var(--text); animation: rot .8s linear infinite; }
-.tag { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: var(--r-sm); padding: 0 6px; font-family: var(--font-mono); font-size: 11.5px; color: var(--text-2); background: var(--surface-2); white-space: nowrap; }
-.kbd { font-family: var(--font-ui); font-size: 11.5px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; background: var(--surface-2); color: var(--text-2); white-space: nowrap; }
+.tag { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: var(--r-sm); padding: 0 6px; font-family: var(--font-mono); font-size: 12px; color: var(--text-2); background: var(--surface-2); white-space: nowrap; text-decoration: none; }
+button.tag { min-height: 24px; }
+.kbd { font-family: var(--font-ui); font-size: 12px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; background: var(--surface-2); color: var(--text-2); white-space: nowrap; }
 
 /* Chat */
 .agent-btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-strong); background: var(--surface); border-radius: var(--r-md); padding: 3px 6px 3px 8px; min-height: 30px; font-family: var(--font-mono); font-size: 12.5px; color: var(--text); flex: none; max-width: 46%; }
@@ -196,7 +201,8 @@ select, input[type="text"], input[type="password"], input[type="search"], input[
 .thread { flex: 1; min-height: 0; overflow: auto; padding: 28px 24px 12px; }
 .thread-inner { max-width: var(--chat-w); margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
 .msg-user { align-self: flex-end; max-width: 80%; background: var(--select); border-radius: 14px; padding: 9px 14px; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
-.msg-user.pending { opacity: .55; }
+.msg-user.pending { color: var(--muted); }
+.thinking { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: var(--text-sm); }
 .msg-ai { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .prose { display: flex; flex-direction: column; gap: 10px; overflow-wrap: anywhere; }
 .prose h3 { font-size: var(--text-lg); margin-top: 6px; }
@@ -227,6 +233,7 @@ select, input[type="text"], input[type="password"], input[type="search"], input[
 .chev { color: var(--muted); display: inline-flex; transition: transform var(--fast) var(--ease); }
 [aria-expanded="true"] > .chev { transform: rotate(90deg); }
 .step.err .verb, .step.err .step-row > svg.i { color: var(--bad); }
+.step.stopped .verb, .step.stopped .step-row > svg.i { color: var(--muted); }
 .step.running .verb { background: linear-gradient(90deg, var(--muted) 0%, var(--text) 50%, var(--muted) 100%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: shimmer 1.4s linear infinite; }
 @keyframes shimmer { to { background-position: -200% 0; } }
 .spin { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--line-strong); border-top-color: var(--text); animation: rot .8s linear infinite; flex: none; }
@@ -248,7 +255,7 @@ select, input[type="text"], input[type="password"], input[type="search"], input[
 .hit a { color: var(--text); text-decoration: none; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hit a:hover { text-decoration: underline; }
 .hit small { grid-column: 2; color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.link-btn { justify-self: start; background: none; border: 0; padding: 0; color: var(--muted); font-size: var(--text-xs); text-decoration: underline; text-underline-offset: 2px; align-self: flex-start; }
+.link-btn { justify-self: start; background: none; border: 0; padding: 0; min-height: 24px; color: var(--muted); font-size: var(--text-xs); text-decoration: underline; text-underline-offset: 2px; align-self: flex-start; }
 .link-btn:hover { color: var(--text); }
 pre.raw { margin: 0; padding: 8px 10px; border-radius: var(--r-sm); background: var(--surface); border: 1px solid var(--line); overflow: auto; max-height: 260px; white-space: pre-wrap; word-break: break-word; }
 .sources { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -300,7 +307,7 @@ pre.raw { margin: 0; padding: 8px 10px; border-radius: var(--r-sm); background: 
 .chip-pick { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip-pick button { border: 1px solid var(--control); background: var(--surface); border-radius: var(--r-full); padding: 2px 12px; min-height: 28px; font-size: 12.5px; color: var(--text-2); }
 .chip-pick button[aria-pressed="true"] { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
-.surface.sent { opacity: .7; }
+.surface.sent, .surface.unused { background: var(--surface-2); }
 
 /* Pages (admin) */
 .page { flex: 1; min-height: 0; overflow: auto; }
@@ -310,7 +317,7 @@ pre.raw { margin: 0; padding: 8px 10px; border-radius: var(--r-sm); background: 
 .page-head p { margin-top: 4px; color: var(--muted); max-width: 62ch; }
 .section { display: flex; flex-direction: column; gap: 10px; }
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); }
-.api { color: var(--muted); font-family: var(--font-mono); font-size: 11.5px; overflow-wrap: anywhere; }
+.api { color: var(--muted); font-family: var(--font-mono); font-size: 12px; overflow-wrap: anywhere; }
 .kv { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 8px 14px; font-size: var(--text-sm); margin: 0; }
 .kv dt { color: var(--muted); }
 .kv dd { margin: 0; min-width: 0; }
@@ -321,17 +328,19 @@ details.sys pre { white-space: pre-wrap; background: var(--surface-2); border: 1
 .tools details { border-top: 1px solid var(--line); }
 .tools details:first-child { border-top: 0; }
 .tools summary { padding: 10px 14px; cursor: pointer; display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; list-style: none; }
+.tools summary .chev { align-self: center; }
+.tools details[open] > summary .chev { transform: rotate(90deg); }
 .tools summary::-webkit-details-marker { display: none; }
 .tools summary b { font-family: var(--font-mono); font-weight: 500; font-size: 13px; }
 .tools summary span { color: var(--muted); min-width: 0; font-size: var(--text-sm); }
 .fields { padding: 0 14px 14px 14px; display: grid; gap: 6px; }
 .field-row { display: grid; grid-template-columns: minmax(120px, 190px) 80px minmax(0, 1fr); gap: 10px; font-size: var(--text-sm); }
 .field-row .ty { color: var(--muted); font-family: var(--font-mono); font-size: 12px; }
-.req { color: var(--muted); font-size: 11px; margin-left: 6px; font-family: var(--font-ui); }
+.req { color: var(--muted); font-size: 12px; margin-left: 6px; font-family: var(--font-ui); }
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
 th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
-th { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 500; white-space: nowrap; }
+th { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 500; white-space: nowrap; }
 tr:last-child td { border-bottom: 0; }
 td .fix { color: var(--muted); font-size: var(--text-xs); margin-top: 2px; }
 .seg-tabs { display: flex; gap: 2px; background: var(--hover); border-radius: var(--r-md); padding: 2px; }
@@ -360,6 +369,8 @@ td .fix { color: var(--muted); font-size: var(--text-xs); margin-top: 2px; }
 .pick-opt .l1 b { font-family: var(--font-mono); font-weight: 500; font-size: 13px; }
 .pick-opt small { color: var(--muted); font-size: var(--text-xs); }
 .pick-opt[aria-selected="true"] { background: var(--select) !important; }
+.pick-opt.hi { box-shadow: inset 0 0 0 2px var(--focus); cursor: pointer; }
+.pick-opt { cursor: pointer; }
 .pop .search { margin: 2px 2px 6px; }
 .dialog { position: absolute; z-index: 45; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(460px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow: auto; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-lg); box-shadow: var(--shadow); padding: 20px; display: flex; flex-direction: column; gap: 14px; }
 .dialog .acts { display: flex; justify-content: flex-end; gap: 8px; }
@@ -391,9 +402,14 @@ td .fix { color: var(--muted); font-size: var(--text-xs); margin-top: 2px; }
   .app.no-list .list { display: flex; }
   .list { position: absolute; z-index: 30; top: 0; bottom: 0; left: 0; width: min(320px, 86%); transform: translateX(-102%); transition: transform var(--slow) var(--ease); border-right: 1px solid var(--line-strong); }
   .app.drawer .list { transform: none; box-shadow: var(--shadow); }
-  .sections-tabs { display: flex; gap: 2px; overflow-x: auto; padding-bottom: 2px; }
-  .sections-tabs button { border: 0; background: none; border-radius: var(--r-md); padding: 4px 10px; min-height: 32px; font-size: var(--text-sm); color: var(--muted); white-space: nowrap; display: inline-flex; gap: 6px; align-items: center; }
-  .sections-tabs button[aria-current="page"] { background: var(--select); color: var(--text); }
+  .sections-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; padding-bottom: 2px; }
+  .sections-tabs a { border-radius: var(--r-md); padding: 6px 4px; min-height: 44px; font-size: var(--text-xs); color: var(--muted); text-decoration: none; display: flex; flex-direction: column; gap: 2px; align-items: center; justify-content: center; text-align: center; }
+  .sections-tabs a[aria-current="page"] { background: var(--select); color: var(--text); }
+  .sections-tabs .tag { padding: 0 4px; }
+  .head.wrap { flex-wrap: wrap; row-gap: 4px; }
+  .head.wrap .head-break { display: block; flex-basis: 100%; height: 0; }
+  .head.wrap .title { flex-basis: 0; }
+  .copy-line code { white-space: pre-wrap; word-break: break-all; }
   .list-foot { display: flex; align-items: center; gap: 10px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line); }
   .row { min-height: 44px; }
   .row-wrap .more { opacity: 1; }
@@ -414,6 +430,7 @@ td .fix { color: var(--muted); font-size: var(--text-xs); margin-top: 2px; }
   .tbl-cards tr:last-child { border-bottom: 0; }
   .tbl-cards td { padding: 0; border: 0; }
   .tbl-cards td[data-wide] { grid-column: 1 / -1; }
+  .tbl-cards td[data-label]::before { content: attr(data-label) ": "; color: var(--muted); }
 }
 </style>
 </head>
@@ -472,13 +489,19 @@ td .fix { color: var(--muted); font-size: var(--text-xs); margin-top: 2px; }
     <optgroup label="Sign in">
       <option value="signin">Sign in</option>
       <option value="signin-error">Sign in: wrong password</option>
-      <option value="token">Token prompt (no users configured)</option>
+      <option value="signin-throttled">Sign in: too many attempts (429)</option>
+      <option value="signin-unreachable">Sign in: server unreachable</option>
+      <option value="signin-both">Sign in: password or token</option>
+      <option value="token">Token prompt (token only)</option>
+      <option value="token-error">Token prompt: token rejected</option>
       <option value="401">401: session ended (draft kept)</option>
     </optgroup>
     <optgroup label="Empty">
       <option value="empty">No conversations</option>
       <option value="no-agents">No agents configured</option>
       <option value="loading">Loading</option>
+      <option value="load-failed">Load failed (5xx or no connection)</option>
+      <option value="agent-removed">Conversation whose agent was removed</option>
     </optgroup>
     <optgroup label="Errors">
       <option value="403">403: admin page as a user</option>
@@ -486,8 +509,11 @@ td .fix { color: var(--muted); font-size: var(--text-xs); margin-top: 2px; }
       <option value="busy">409: conversation busy</option>
       <option value="interrupted">409: conversation interrupted</option>
       <option value="503">503: over capacity (Retry-After)</option>
+      <option value="503-restart">503: server restarting</option>
       <option value="err-rate">Run error: rate-limited (retryable)</option>
       <option value="err-refused">Run error: refused</option>
+      <option value="err-context">Run error: conversation too long</option>
+      <option value="too-large">413: message too large</option>
       <option value="tool-failed">A tool call failed, run finished</option>
       <option value="offline">Offline</option>
       <option value="lost">Connection lost mid-run</option>
@@ -545,7 +571,8 @@ const CONVS_ALL = [
   { id: "conv_d1x0aa", title: "Draft release notes for v0.4", agent: "default", when: "Oct 7", group: "Previous 7 days" },
   { id: "conv_z7c3ke", title: "Readiness vs liveness probes in Kubernetes", agent: "ops-helper", when: "Sep 30", group: "Older" },
   { id: "conv_p3n8mt", title: "Explain A2UI in two paragraphs", agent: "researcher", when: "Sep 28", group: "Older" },
-  { id: "conv_y2w5gh", title: "Rate limits on Tavily keyless mode", agent: "researcher", when: "Sep 22", group: "Older" }
+  { id: "conv_y2w5gh", title: "Rate limits on Tavily keyless mode", agent: "researcher", when: "Sep 22", group: "Older" },
+  { id: "conv_s0rm1x", title: "Summarize the Q3 planning notes", agent: "summarizer", when: "Sep 15", group: "Older" }
 ];
 const RUNS = [
   { id: "run_8d2kq1", title: "Daily news digest", agent: "researcher", origin: "Schedule · daily-digest", status: "running", elapsed: "2 min 14 s", tokens: "18,402 (6,110 cached)", cost: "$0.21", conv: "conv_bg91dd" },
@@ -635,8 +662,16 @@ const S = {
   section: "chats", conv: "conv_7f3k2q", newAgent: "researcher",
   agentSel: "researcher", toolsetSel: "tavily", actTab: "runs", actSel: "run_8d2kq1", actFilter: "all",
   listOff: false, drawer: false, search: "", filterAgent: "",
-  draft: "", run: null, threads: {}, signin: null, deleted: new Set(), retry: null
+  drafts: {}, run: null, threads: {}, deleted: new Set(), retry: null, pending: null, busyChecks: 0,
+  // Sign-in overlay: null when signed in; else { card: "password" | "token", reason: null | "401", err: null | "wrong" | "throttled" | "unreachable" | "token" | "empty", both: bool }
+  signin: null, authMode: "password", singleKeys: true
 };
+try { S.singleKeys = localStorage.getItem("ak-mock-single-keys") !== "off"; } catch (e) { /* storage blocked: keep the default */ }
+// Drafts are per conversation, plus one for New chat that survives changing the picker's agent.
+const draftKey = () => S.conv || "new";
+const getDraft = () => S.drafts[draftKey()] || "";
+const setDraft = v => { S.drafts[draftKey()] = v; };
+const runHere = () => !!S.run && S.section === "chats" && S.run.conv === S.conv;
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 
@@ -666,11 +701,15 @@ function readiness(a) {
   const ready = a.toolsets.filter(t => (TOOLSETS.find(x => x.name === t) || {}).status === "ready").length;
   return { ready, total: a.toolsets.length, text: ready === a.toolsets.length ? "All " + a.toolsets.length + (a.toolsets.length === 1 ? " toolset ready" : " toolsets ready") : ready + " of " + a.toolsets.length + " toolsets ready" };
 }
-function announce(t) { const n = $("#sr"); if (n) { n.textContent = ""; setTimeout(() => n.textContent = t, 30); } }
+function announce(t) { const n = $("#sr"); if (n) { n.textContent = ""; setTimeout(() => { const m = $("#sr"); if (m) m.textContent = t; }, 30); } }
+// Toasts stay 8 s and pause while hovered or focused; they are never the only way to reach something.
 function toast(text, action) {
   const old = $(".toast", app); if (old) old.remove();
   const t = el("div", { class: "toast", role: "status" }, el("span", { text }), action ? el("button", { type: "button", text: action[0], onclick: () => { t.remove(); action[1](); } }) : null);
-  app.append(t); clearTimeout(toast._t); toast._t = setTimeout(() => t.remove(), 4000);
+  const arm = () => { clearTimeout(toast._t); toast._t = setTimeout(() => t.remove(), 8000); };
+  t.addEventListener("mouseenter", () => clearTimeout(toast._t)); t.addEventListener("mouseleave", arm);
+  t.addEventListener("focusin", () => clearTimeout(toast._t)); t.addEventListener("focusout", arm);
+  app.append(t); arm();
 }
 function copy(text, what) {
   const ok = () => toast(what + " copied"), bad = () => toast("Select the text to copy it");
@@ -683,19 +722,49 @@ function render() {
   closeLayers(false);
   stopRetry();
   app.replaceChildren();
+  app.append(el("div", { id: "sr", class: "sr-only", role: "status", "aria-live": "polite" }));
+  // Signed out (not a 401): the app is unmounted, only the sign-in card is left.
+  if (S.signin && !S.signin.reason) { app.className = "app"; app.append(renderSignin()); return; }
   const noList = S.mode !== "phone" && (S.listOff || S.section === "credentials");
   app.className = "app" + (noList ? " no-list" : "") + (S.drawer && S.mode === "phone" ? " drawer" : "");
-  app.append(el("a", { class: "skip", href: "#msg", text: "Skip to composer", onclick: e => { e.preventDefault(); focusComposer(); } }));
-  app.append(renderRail(), renderList(), renderContent());
-  app.append(el("div", { id: "sr", class: "sr-only", role: "status", "aria-live": "polite" }));
+  const skips = el("div", {}, el("a", { class: "skip", href: "#content", text: "Skip to content", onclick: e => { e.preventDefault(); focusHeading(); } }),
+    S.section === "chats" ? el("a", { class: "skip", href: "#msg", text: "Skip to message box", onclick: e => { e.preventDefault(); focusComposer(); } }) : null);
+  const list = renderList();
+  if (S.mode === "phone" && !S.drawer) list.inert = true; // a closed drawer is out of the tab order
+  app.append(skips, renderRail(), list, renderContent());
   if (S.drawer && S.mode === "phone") app.append(el("div", { class: "scrim", onclick: () => { S.drawer = false; render(); } }));
-  if (S.signin) app.append(renderSignin());
+  if (S.signin) { for (const n of [...app.children]) if (n.id !== "sr") n.inert = true; app.append(renderSignin()); }
   if (keepFocus && document.getElementById(keepFocus)) document.getElementById(keepFocus).focus();
   const th = $("#thread"), how = S.scrollTop;
-  const place = () => { if (th && th.isConnected && how !== "keep") th.scrollTop = how === "top" ? 0 : th.scrollHeight; updateJump(); };
+  const place = () => { const m = $("#msg"); if (m) grow(m); if (th && th.isConnected && how !== "keep") th.scrollTop = how === "top" ? 0 : th.scrollHeight; updateJump(); };
   place(); requestAnimationFrame(place); // again after the composer has grown to fit the draft
   S.scrollTop = null;
+  pushRoute();
 }
+
+/* Routes: every view has a URL, so links, Back and reloads work (UI.md "Routes"). The mockup keeps them in the hash. */
+function routeOf() {
+  if (S.section === "chats") return S.conv ? "#/c/" + S.conv : "#/new";
+  if (S.section === "agents") return "#/agents" + (S.agentSel ? "/" + S.agentSel : "");
+  if (S.section === "toolsets") return "#/toolsets" + (S.toolsetSel ? "/" + S.toolsetSel : "");
+  if (S.section === "activity") return "#/activity" + (S.actSel ? "/" + S.actSel : "");
+  return "#/" + S.section;
+}
+function pushRoute() { const r = routeOf(); if (location.hash !== r) try { history.pushState(null, "", r); } catch (e) { /* sandboxed: routes are a nicety here */ } }
+function applyRoute() {
+  const [, sec, id] = (location.hash.match(/^#\/([a-z]+)\/?([\w-]*)/) || []);
+  if (!sec) return false;
+  if (sec === "c") { S.section = "chats"; S.conv = id || null; }
+  else if (sec === "new") { S.section = "chats"; S.conv = null; }
+  else if (["agents", "toolsets", "credentials", "activity"].includes(sec)) {
+    S.section = sec;
+    if (sec === "agents") S.agentSel = id || null; if (sec === "toolsets") S.toolsetSel = id || null; if (sec === "activity") S.actSel = id || null;
+  } else return false;
+  return true;
+}
+window.addEventListener("popstate", () => { if (applyRoute()) { S.drawer = false; render(); focusHeading(); } });
+// A route change moves focus to the page's h1, so a screen reader hears where it landed.
+function focusHeading() { const h = $("#page-h1"); if (h) h.focus(); }
 
 const SECTIONS = () => [
   { id: "chats", label: "Chats", icon: "chat" },
@@ -703,14 +772,18 @@ const SECTIONS = () => [
   isAdmin() ? { sep: true } : null,
   isAdmin() ? { id: "agents", label: "Agents", icon: "bot" } : null,
   isAdmin() ? { id: "toolsets", label: "Toolsets", icon: "plug" } : null,
-  isAdmin() ? { id: "credentials", label: "Credentials", icon: "key", badge: CREDS.filter(c => c.st === "missing").length, warn: true } : null
+  // The badge counts missing keys that a configured agent needs; an unused toolset or a limits-only key doesn't nag.
+  isAdmin() ? { id: "credentials", label: "Credentials", icon: "key", badge: CREDS.filter(c => c.st === "missing" && AGENTS_ALL.some(a => a.toolsets.includes(c.ts))).length, warn: true } : null
 ].filter(Boolean);
+const sectionHref = id => id === "chats" ? (S.conv ? "#/c/" + S.conv : "#/new") : "#/" + id;
+// Rail items and rows are links: open in a new tab works, and the click is handled in place.
+const go = fn => e => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return; e.preventDefault(); fn(); };
 
 function renderRail() {
   const nav = el("nav", { class: "rail", "aria-label": "Sections" }, el("div", { class: "brand-mark", "aria-hidden": "true", text: "ak" }));
   for (const s of SECTIONS()) {
     if (s.sep) { nav.append(el("div", { class: "rail-sep", role: "separator" })); continue; }
-    nav.append(el("button", { type: "button", class: "rail-btn", "aria-current": S.section === s.id ? "page" : null, "aria-label": s.label + (s.badge ? ", " + s.badge + (s.warn ? " missing" : " unread") : ""), onclick: () => goSection(s.id) },
+    nav.append(el("a", { class: "rail-btn", href: sectionHref(s.id), "aria-current": S.section === s.id ? "page" : null, "aria-label": s.label + (s.badge ? ", " + s.badge + (s.warn ? " missing" : " unread") : ""), onclick: go(() => goSection(s.id)) },
       icon(s.icon), s.badge ? el("span", { class: "badge", text: String(s.badge), "aria-hidden": "true" }) : null,
       el("span", { class: "tip", "aria-hidden": "true", text: s.label + (s.later ? " (later, T074)" : "") })));
   }
@@ -727,16 +800,18 @@ function goSection(id) {
   if (S.mode === "phone" && id === "toolsets") S.toolsetSel = null;
   if (S.mode === "phone" && id === "activity") S.actSel = null;
   if (S.mode !== "phone") { S.agentSel = S.agentSel || "researcher"; S.toolsetSel = S.toolsetSel || "tavily"; S.actSel = S.actSel || "run_8d2kq1"; }
-  render();
+  render(); focusHeading();
 }
 
 /* ============ List column ============ */
+// Phone: the sections as a grid of icon and label, so every section fits at 360 px.
 function sectionTabs() {
-  return el("div", { class: "sections-tabs", role: "navigation", "aria-label": "Sections" },
-    SECTIONS().filter(s => !s.sep).map(s => el("button", { type: "button", "aria-current": S.section === s.id ? "page" : null, onclick: () => goSection(s.id) }, s.label, s.badge ? el("span", { class: "tag", text: String(s.badge) }) : null)));
+  return el("nav", { class: "sections-tabs", "aria-label": "Sections" },
+    SECTIONS().filter(s => !s.sep).map(s => el("a", { href: sectionHref(s.id), "aria-current": S.section === s.id ? "page" : null, onclick: go(() => goSection(s.id)) }, icon(s.icon),
+      el("span", {}, s.label, s.badge ? el("span", { class: "sr-only", text: ", " + s.badge + (s.warn ? " missing" : " unread") }) : null))));
 }
 function renderList() {
-  const aside = el("aside", { class: "list", id: "list" });
+  const aside = el("div", { class: "list", id: "list" });
   // On phones the drawer always holds the sections and the conversations; admin lists are pages there.
   const sec = S.mode === "phone" ? "chats" : S.section;
   if (sec === "chats") aside.append(...convList());
@@ -756,10 +831,10 @@ function listHeadTop(title, extra) {
 }
 function convList() {
   const head = el("div", { class: "list-head" }, sectionTabs(),
-    listHeadTop("Chats", el("button", { type: "button", class: "icon-btn", "aria-label": "New chat (Mod+Shift+O)", title: "New chat  ⌘⇧O", onclick: () => newChat() }, icon("edit"))),
-    el("label", { class: "search" }, icon("search"), el("span", { class: "sr-only", text: "Search conversations" }),
-      el("input", { type: "search", id: "conv-search", placeholder: "Search", value: S.search, autocomplete: "off", oninput: e => { S.search = e.target.value; refreshConvRows(); } }),
-      el("kbd", { text: "⌘K", class: "not-phone" })),
+    listHeadTop("Chats", tip(el("button", { type: "button", class: "icon-btn", "aria-label": "New chat", "aria-keyshortcuts": KS("Shift+O"), onclick: () => newChat() }, icon("edit")), "New chat  " + MOD_HINT + "⇧O")),
+    el("label", { class: "search" }, icon("search"), el("span", { class: "sr-only", text: "Search loaded conversations" }),
+      el("input", { type: "search", id: "conv-search", placeholder: "Search loaded chats", value: S.search, autocomplete: "off", "aria-keyshortcuts": KS("K"), oninput: e => { S.search = e.target.value; refreshConvRows(); } }),
+      el("kbd", { text: MOD_HINT + "K", class: "not-phone" })),
     el("div", { class: "filters" }, el("select", { id: "conv-agent", "aria-label": "Filter by agent", onchange: e => { S.filterAgent = e.target.value; refreshConvRows(); } },
       el("option", { value: "", text: "All agents" }), ...agents().map(a => el("option", { value: a.name, text: a.name, selected: S.filterAgent === a.name })))));
   const body = el("nav", { class: "list-body", id: "conv-rows", "aria-label": "Conversations" });
@@ -776,24 +851,32 @@ function fillConvRows(body) {
       el("button", { type: "button", class: "btn", onclick: () => newChat() }, icon("plus"), "New chat")));
     return;
   }
+  if (S.state === "load-failed") { body.append(loadFailed("conversations")); return; }
   const q = S.search.toLowerCase();
   const list = all.filter(c => (!S.filterAgent || c.agent === S.filterAgent) && c.title.toLowerCase().includes(q));
-  if (!list.length) { body.append(el("p", { class: "muted", style: "padding:16px 8px;font-size:13px", text: "No conversations match “" + S.search + "”" + (S.filterAgent ? " with " + S.filterAgent : "") + "." })); return; }
-  let group = null;
+  // Search filters the loaded rows until GET /v1/conversations has a q parameter; older pages load on request.
+  const older = () => el("button", { type: "button", class: "btn sm ghost", style: "margin:8px", onclick: () => toast("Would load the next page (cursor) and search it too") }, "Load older to search more");
+  if (!list.length) { body.append(el("p", { class: "muted", style: "padding:16px 8px 0;font-size:13px", text: "No loaded conversations match “" + S.search + "”" + (S.filterAgent ? " with " + S.filterAgent : "") + "." }), older()); return; }
+  let group = null, ul = null;
   for (const c of list) {
-    if (c.group !== group) { group = c.group; body.append(el("div", { class: "label group-label", text: group })); }
+    if (c.group !== group) { group = c.group; ul = el("ul", { class: "conv-ul" }); body.append(el("h3", { class: "group-h", text: group }), ul); }
     const cur = S.section === "chats" && S.conv === c.id;
     const live = S.run && S.run.conv === c.id;
-    const mark = live || c.running ? el("span", { class: "spin", title: "Running", "aria-label": "Running" })
-      : c.interrupted ? el("span", { class: "mark warn", title: "Interrupted", "aria-label": "Interrupted" }) : null;
-    const wrap = el("div", { class: "row-wrap" },
-      el("button", { type: "button", class: "row", "aria-current": cur ? "page" : null, title: c.title, onclick: () => openConv(c.id) },
+    const mark = live || c.running ? el("span", { class: "spin", role: "img", "aria-label": "Answering" })
+      : c.interrupted ? el("span", { class: "mark warn", role: "img", "aria-label": "Interrupted" })
+      : c.unread ? el("span", { class: "mark unread", role: "img", "aria-label": "New answer" }) : null;
+    const wrap = el("li", { class: "row-wrap" },
+      el("a", { class: "row", id: "row-" + c.id, href: "#/c/" + c.id, "aria-current": cur ? "page" : null, onclick: go(() => openConv(c.id)) },
         el("span", { class: "main" }, el("span", { class: "t", text: c.title }), el("span", { class: "sub" }, el("span", { class: "mono", text: c.agent }), el("span", { text: "· " + (live ? "Answering" : c.when) }))),
         mark, el("span", { style: "width:24px;flex:none" })),
       el("button", { type: "button", class: "icon-btn more", "aria-label": "Actions for " + c.title, "aria-haspopup": "menu", "aria-expanded": "false", onclick: e => convMenu(e.currentTarget, c) }, icon("more")));
-    body.append(wrap);
+    ul.append(wrap);
   }
-  body.append(el("div", { class: "load-more", text: "Older conversations load as you scroll" }));
+  body.append(q ? older() : el("div", { class: "load-more", text: "Older conversations load as you scroll" }));
+}
+function loadFailed(what) {
+  return el("div", { class: "empty", style: "padding-top:32px", role: "alert" }, el("p", { text: "Couldn't load " + what + "." }),
+    el("button", { type: "button", class: "btn sm", onclick: () => { S.state = "normal"; $("#dv-state").value = "normal"; render(); } }, icon("retry"), "Retry"));
 }
 function skelRow(k) {
   return el("div", { class: "skel-row", "aria-hidden": "true" }, el("div", { class: "skel", style: "height:12px;width:" + (55 + (k * 17) % 40) + "%" }), el("div", { class: "skel", style: "height:10px;width:30%" }));
@@ -805,7 +888,7 @@ function adminList(title, items, key, isCur, pick, info, emptyText) {
   else if (!items.length) body.append(el("p", { class: "muted", style: "padding:8px;font-size:13px", text: emptyText || "Nothing here." }));
   else for (const it of items) {
     const [sub, st] = info(it);
-    body.append(el("button", { type: "button", class: "row", "aria-current": isCur(it) ? "page" : null, onclick: () => pick(it) },
+    body.append(el("a", { class: "row", href: "#/" + title.toLowerCase() + "/" + key(it), "aria-current": isCur(it) ? "page" : null, onclick: go(() => { pick(it); focusHeading(); }) },
       el("span", { class: "main" }, el("span", { class: "t mono", text: key(it) }), el("span", { class: "sub" }, el("span", { text: sub, style: "overflow:hidden;text-overflow:ellipsis" }))),
       el("span", { class: "status " + st, title: st === "ok" ? "Ready" : "Needs attention" }, el("span", { class: "sr-only", text: st === "ok" ? "Ready" : "Needs attention" }))));
   }
@@ -828,17 +911,17 @@ function renderContent() {
 }
 function listToggle() {
   // Laptop and desktop: shows or hides the list (Mod+Shift+S). Phone: opens the drawer.
-  if (S.mode === "phone") return el("button", { type: "button", class: "icon-btn", "aria-label": "Open menu", onclick: () => { S.drawer = true; render(); setTimeout(() => { const f = $("#conv-search"); if (f) f.focus(); }, 0); } }, icon("menu"));
+  // Phone: the drawer opens without focusing its search, so the keyboard doesn't pop up (Mod+K does focus it).
+  if (S.mode === "phone") return el("button", { type: "button", class: "icon-btn", "aria-label": "Menu", "aria-expanded": "false", "aria-controls": "list", onclick: () => { S.drawer = true; render(); const f = $("#list a[aria-current], #list a, #list button"); if (f) f.focus(); } }, icon("menu"));
   if (S.section === "credentials") return null;
-  return el("button", { type: "button", class: "icon-btn", "aria-label": S.listOff ? "Show the list" : "Hide the list", title: (S.listOff ? "Show" : "Hide") + " the list  ⌘⇧S", "aria-pressed": String(!S.listOff), onclick: toggleList }, icon("panel"));
+  return tip(el("button", { type: "button", class: "icon-btn", "aria-label": "List", "aria-expanded": String(!S.listOff), "aria-controls": "list", "aria-keyshortcuts": KS("Shift+S"), onclick: toggleList }, icon("panel")), (S.listOff ? "Show" : "Hide") + " the list  " + MOD_HINT + "⇧S");
 }
 function toggleList() { if (S.mode === "phone") { S.drawer = !S.drawer; } else S.listOff = !S.listOff; render(); }
 
 function forbidden() {
   return el("div", { class: "view" }, el("div", { class: "head" }, listToggle(), el("span", { class: "title", text: "Admins only" })),
-    el("div", { class: "empty" }, el("div", { class: "ico" }, icon("lock")), el("h1", { text: "Admins only" }),
-      el("p", { text: "This page shows server configuration. You're signed in as samanvith with the user role; ask an admin if you need access." }),
-      el("p", { class: "api", text: "GET /v1/agents → 403 forbidden" }),
+    el("div", { class: "empty" }, el("div", { class: "ico" }, icon("lock")), el("h1", { id: "page-h1", tabindex: "-1", text: "Admins only" }),
+      el("p", { text: "This page shows server configuration. Ask an admin if you need access." }),
       el("button", { type: "button", class: "btn", onclick: () => { S.state = "normal"; $("#dv-state").value = "normal"; goSection("chats"); } }, "Back to chats")));
 }
 
@@ -863,19 +946,20 @@ function chatView() {
   const c = isNew ? null : convById(S.conv);
   const view = el("section", { class: "view", "aria-label": "Chat" });
   const head = el("div", { class: "head" }, listToggle());
-  if (S.state === "404") {
+  if (S.state === "404" || !c && !isNew) {
     head.append(el("span", { class: "title", text: "Not found" }));
-    view.append(head, el("div", { class: "empty" }, el("div", { class: "ico" }, icon("info")), el("h1", { text: "Conversation not found" }),
-      el("p", { text: "conv_9zz0q1 doesn't exist or was deleted. If it was yours, it was removed from the list too." }),
-      el("button", { type: "button", class: "btn", onclick: () => newChat() }, icon("plus"), "New chat")));
+    view.append(head, el("div", { class: "empty" }, el("div", { class: "ico" }, icon("info")), el("h1", { id: "page-h1", tabindex: "-1", text: "Conversation not found" }),
+      el("p", { text: "This conversation doesn't exist, was deleted or expired." }),
+      el("button", { type: "button", class: "btn", onclick: () => { S.state = "normal"; $("#dv-state").value = "normal"; newChat(); } }, "Back to chats")));
     return view;
   }
   if (isNew) {
     if (agents().length) head.append(pickerButton());
-    head.append(el("span", { class: "title muted", text: "New chat" }));
+    head.append(el("h1", { class: "title muted", id: "page-h1", tabindex: "-1", text: "New chat" }));
   } else {
-    head.append(el("button", { type: "button", class: "agent-btn chip", id: "agent-chip", "aria-haspopup": "dialog", "aria-expanded": "false", "aria-label": "Agent: " + c.agent + ". Show details", onclick: e => agentCard(e.currentTarget, c.agent) }, icon("bot"), el("span", { text: c.agent })));
-    head.append(el("span", { class: "title", title: c.title, text: c.title }));
+    const gone = !agentByName(c.agent);
+    head.append(el("button", { type: "button", class: "agent-btn chip", id: "agent-chip", "aria-haspopup": "dialog", "aria-expanded": "false", "aria-label": "Agent: " + c.agent + (gone ? ", removed" : "") + ". Show details", onclick: e => agentCard(e.currentTarget, c.agent) }, icon("bot"), el("span", { text: c.agent + (gone ? " (removed)" : "") })));
+    head.append(el("h1", { class: "title", id: "page-h1", tabindex: "-1", text: c.title }));
     head.append(el("button", { type: "button", class: "icon-btn", "aria-label": "Conversation actions", "aria-haspopup": "menu", "aria-expanded": "false", onclick: e => convMenu(e.currentTarget, c) }, icon("more")));
   }
   head.append(el("button", { type: "button", class: "icon-btn only-phone", "aria-label": "New chat", onclick: () => newChat() }, icon("edit")));
@@ -912,7 +996,7 @@ function newChatEmpty() {
     el("div", { class: "agent-card" },
       el("div", { class: "top" }, el("b", { class: "mono", text: a.name }), el("span", { class: "status " + (r.ready === r.total ? "ok" : "warn"), text: r.text })),
       el("div", { style: "color:var(--text-2);font-size:13px", text: a.desc }),
-      el("div", { class: "chips" }, ...a.toolsets.map(t => { const ts = TOOLSETS.find(x => x.name === t); return el("span", { class: "tag", title: ts.status === "ready" ? "Ready" : "Skipped: " + ts.note }, el("span", { class: "mark " + (ts.status === "ready" ? "" : "warn"), style: ts.status === "ready" ? "background:var(--ok)" : "" }), t); }))),
+      el("div", { class: "chips" }, ...a.toolsets.map(t => { const ts = TOOLSETS.find(x => x.name === t); return el("span", { class: "tag", title: ts.status === "ready" ? "Ready" : "Skipped: " + ts.note }, el("span", { class: "mark " + (ts.status === "ready" ? "" : "warn"), style: ts.status === "ready" ? "background:var(--ok)" : "", "aria-hidden": "true" }), t, el("span", { class: "sr-only", text: ts.status === "ready" ? ", ready" : ", skipped: " + ts.note })); }))),
     list.length > 1 ? el("p", { style: "font-size:13px" }, "Another agent? Use the picker at the top left.") : null);
 }
 function pickerButton() {
@@ -922,24 +1006,48 @@ function pickerButton() {
 }
 function stateInThread(inner, c) {
   const st = S.state;
-  if (st === "503") {
-    const pend = el("div", { class: "msg-user pending", text: "And what changed in the runtime?" });
-    const line = el("div", { class: "retrying", role: "status" });
+  if (st === "503" || st === "503-restart") {
+    // The message stays pending; Retry-After is a fixed 2 s; one automatic retry, then "Still busy."
+    const text = "And what changed in the runtime?";
+    S.pending = text;
+    const what = st === "503" ? "The server is busy." : "The server is restarting.";
+    const pend = el("div", { class: "msg-user pending", text });
+    const msg = el("span", { text: what + " Retrying in 2 s…" });
+    const live = el("span", { class: "sr-only", role: "status" });
+    const done = () => { stopRetry(); S.pending = null; pend.remove(); line.remove(); const sb = $("#send"); if (sb) sb.disabled = false; };
+    const line = el("div", { class: "retrying" }, icon("clock"), msg, live,
+      el("button", { type: "button", class: "btn sm", onclick: () => { done(); startRun(text, true); } }, "Retry now"),
+      el("button", { type: "button", class: "btn sm ghost", onclick: () => {
+        done();
+        // Cancel returns the message to the composer and keeps whatever was typed meanwhile.
+        const typed = getDraft(); setDraft(typed ? text + "\n" + typed : text);
+        const m = $("#msg"); if (m) { m.value = getDraft(); grow(m); m.focus(); }
+      } }, "Cancel"));
     inner.append(pend, line);
-    let n = 8;
-    const draw = () => line.replaceChildren(icon("clock"), el("span", { text: n > 0 ? "The server is busy. Retrying in " + n + " s" : "Still busy. Try again in a moment." }),
-      el("button", { type: "button", class: "btn sm", onclick: () => { stopRetry(); pend.remove(); line.remove(); startRun("And what changed in the runtime?", true); } }, "Retry now"),
-      el("button", { type: "button", class: "btn sm ghost", onclick: () => { stopRetry(); pend.remove(); line.remove(); S.draft = "And what changed in the runtime?"; const m = $("#msg"); if (m) { m.value = S.draft; m.focus(); } } }, "Cancel"));
-    draw();
-    S.retry = setInterval(() => { n--; draw(); if (n <= 0) stopRetry(); }, 1000);
+    live.textContent = what + " Retrying in 2 seconds.";
+    let n = 2, tries = 0;
+    S.retry = setInterval(() => {
+      n--;
+      if (n > 0) { msg.textContent = what + " Retrying in " + n + " s…"; return; }
+      tries++;
+      if (tries === 1) { msg.textContent = what + " Retrying…"; n = 3; return; } // the one automatic retry, which is busy again
+      stopRetry(); msg.textContent = "Still busy."; live.textContent = "Still busy. Retry now or cancel.";
+    }, 1000);
   }
-  if (st === "err-rate" || st === "err-refused") {
-    inner.append(el("div", { class: "msg-user", text: st === "err-rate" ? "Now compare it with Go 1.25." : "Write a convincing phishing email for our bank's customers." }));
+  if (st === "err-rate" || st === "err-refused" || st === "err-context") {
+    const ask = { "err-rate": "Now compare it with Go 1.25.", "err-refused": "Write a convincing phishing email for our bank's customers.", "err-context": "And one more summary of everything above, please." }[st];
+    const err = {
+      "err-rate": ["The model provider is rate-limiting requests.", "Try again in a minute. (rate_limited)"],
+      "err-refused": ["The model declined this request.", "Rephrase it or ask something else. (refused)"],
+      "err-context": ["This conversation is too long for the model.", "Start a new chat; you can paste what matters from here. (context_too_long)"] }[st];
+    inner.append(el("div", { class: "msg-user", text: ask }));
     if (st === "err-rate") inner.append(itemView({ t: "ai", text: "Go 1.25 introduced", streaming: false, cut: true }));
+    const act = st === "err-rate"
+      // Retry is Resume: it continues from the last saved step and never sends the text again.
+      ? el("button", { type: "button", class: "btn sm", onclick: () => { S.state = "normal"; $("#dv-state").value = "normal"; S.threads[c.id] = [...threadFor(c.id).filter(x => !x.cut), { t: "user", text: ask }]; render(); startRun(null, true, "Resuming from the last saved step."); } }, icon("retry"), "Retry")
+      : st === "err-context" ? el("button", { type: "button", class: "btn sm", onclick: () => { S.newAgent = c.agent; S.state = "normal"; $("#dv-state").value = "normal"; newChat(); } }, icon("plus"), "New chat") : null;
     inner.append(el("div", { class: "inline-err", role: "alert" }, icon("x"), el("div", { class: "grow" },
-      el("b", { text: st === "err-rate" ? "The model provider is rate-limiting requests." : "The model declined this request." }),
-      el("span", { class: "muted", text: st === "err-rate" ? "Nothing was lost. Try again in a minute. (run_error: rate_limited)" : "Rephrase it or ask something else. (run_error: refused)" }),
-      st === "err-rate" ? el("div", {}, el("button", { type: "button", class: "btn sm", onclick: () => startRun("Now compare it with Go 1.25.", true) }, icon("retry"), "Retry")) : null)));
+      el("b", { text: err[0] }), el("span", { class: "muted", text: err[1] }), act ? el("div", {}, act) : null)));
   }
   if (st === "lost") {
     inner.append(el("div", { class: "msg-user", text: "Now list the breaking changes." }));
@@ -947,7 +1055,7 @@ function stateInThread(inner, c) {
     inner.append(itemView({ t: "ai", text: "Go keeps its compatibility promise, so there are few breaking changes. The ones worth knowing are", cut: true }));
     inner.append(el("div", { class: "inline-err", role: "alert" }, icon("offline"), el("div", { class: "grow" },
       el("b", { text: "Connection lost." }),
-      el("span", { class: "muted", text: "The run was stopped on the server; everything saved up to that point is kept. (With T071, the console reconnects and the run continues.)" }),
+      el("span", { class: "muted", text: "The run was stopped on the server. Your messages and finished steps are saved; the unfinished part of this answer isn't. (With T071, the console reconnects and the run continues.)" }),
       el("div", {}, el("button", { type: "button", class: "btn sm", onclick: () => { S.state = "normal"; $("#dv-state").value = "normal"; render(); } }, icon("retry"), "Reload conversation")))));
   }
   if (st === "tool-failed") {
@@ -961,49 +1069,72 @@ function stateInThread(inner, c) {
 function stopRetry() { if (S.retry) { clearInterval(S.retry); S.retry = null; } }
 
 function composer(isNew, c) {
-  let reason = null;
-  if (S.state === "offline") reason = "You're offline.";
-  else if (!agents().length) reason = "There is no agent to send to.";
-  else if (S.state === "busy" && !isNew) reason = null;
+  // Only Send is disabled while sending is impossible; the textarea stays editable so a draft can be written.
+  const removed = !isNew && c && !agentByName(c.agent);
+  let reason = null, readOnly = false;
+  if (!agents().length) { reason = "There is no agent to send to."; readOnly = true; }
+  else if (removed) { reason = "This agent no longer exists, so this conversation is read-only."; readOnly = true; }
+  else if (S.state === "offline") reason = "You're offline.";
   const busy = S.state === "busy" && !isNew;
-  const interrupted = !isNew && (S.state === "interrupted" || (c && c.interrupted && S.state === "normal" && !c.resumed));
-  const disabled = !!reason || busy;
-  const box = el("div", { class: "composer" + (disabled ? " disabled" : "") });
+  const interrupted = !isNew && !runHere() && (S.state === "interrupted" || (c && c.interrupted && S.state === "normal" && !c.resumed));
+  const box = el("div", { class: "composer" + (readOnly ? " disabled" : "") });
   const inner = el("div", { class: "composer-inner" });
-  if (busy) inner.append(el("div", { class: "notice", role: "status" }, icon("info"), el("div", { class: "grow" },
-    el("b", { text: "This conversation is answering in another tab or client." }), el("span", { text: "You can send when it finishes. (409 conversation_busy)" })),
-    el("div", { class: "acts" }, el("button", { type: "button", class: "btn sm", onclick: () => { S.state = "normal"; $("#dv-state").value = "normal"; render(); toast("It finished. You can send now."); } }, "Check again"))));
+  if (removed) inner.append(el("div", { class: "notice", role: "status" }, icon("info"), el("div", { class: "grow" },
+    el("b", { text: reason }), el("span", { text: "Its messages stay readable here." })),
+    el("div", { class: "acts" }, el("button", { type: "button", class: "btn sm", onclick: () => newChat() }, icon("plus"), "New chat"))));
+  if (busy) {
+    const checking = el("span", { text: S.busyChecks ? "Still answering…" : "You can send when it finishes." });
+    inner.append(el("div", { class: "notice", role: "status" }, icon("info"), el("div", { class: "grow" },
+      el("b", { text: "This conversation is answering in another tab or client." }), checking),
+      el("div", { class: "acts" }, el("button", { type: "button", class: "btn sm", onclick: () => {
+        // The first check finds it still running; the second finds it done.
+        if (!S.busyChecks) { S.busyChecks = 1; checking.textContent = "Still answering…"; announce("Still answering"); return; }
+        S.busyChecks = 0; S.state = "normal"; $("#dv-state").value = "normal"; render(); toast("It finished. You can send now."); focusComposer();
+      } }, "Check again"))));
+  }
   if (interrupted) inner.append(el("div", { class: "notice warn", role: "status" }, icon("alert"), el("div", { class: "grow" },
-    el("b", { text: "The last run was interrupted." }), el("span", { text: "The server restarted while it was answering. Resume continues from the last saved turn." })),
-    el("div", { class: "acts" }, el("button", { type: "button", class: "btn sm primary", onclick: () => { if (c) c.resumed = true; S.state = "normal"; $("#dv-state").value = "normal"; render(); startRun(null, true, "Resuming from the last saved turn."); } }, "Resume"))));
-  const running = !!S.run;
+    el("b", { text: "The last answer didn't finish." }), el("span", { text: "Resume continues from the last saved step, or send a new message." })),
+    el("div", { class: "acts" }, el("button", { type: "button", class: "btn sm primary", onclick: () => { if (c) { c.resumed = true; c.interrupted = false; } S.state = "normal"; $("#dv-state").value = "normal"; render(); startRun(null, true, "Resuming from the last saved step."); } }, "Resume"))));
+  if (S.state === "too-large" && !isNew) inner.append(el("div", { class: "notice warn", role: "alert" }, icon("alert"), el("div", { class: "grow" },
+    el("b", { text: "This message is too long to send (the limit is 1 MiB)." }), el("span", { text: "Your draft is kept. Shorten it or attach the file when attachments arrive." }))));
+  const running = runHere();
   const a = isNew ? (agentByName(S.newAgent) || agents()[0]) : agentByName(c.agent);
-  const ta = el("textarea", { id: "msg", rows: "1", placeholder: a ? "Message " + a.name : "No agent", "aria-label": "Message" + (a ? " " + a.name : ""), disabled: disabled ? true : null,
-    oninput: e => { S.draft = e.target.value; grow(e.target); },
-    onkeydown: e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit(); } } });
-  ta.value = S.draft;
-  const send = el("button", { type: "submit", class: "send" + (running ? " stop" : ""), id: "send", "aria-label": running ? "Stop (Esc)" : "Send", title: running ? "Stop  Esc" : "Send  Enter", disabled: disabled && !running ? true : null }, icon(running ? "stop" : "up"));
+  const ta = el("textarea", { id: "msg", rows: "1", placeholder: a ? "Message " + a.name : "No agent", "aria-label": "Message" + (a ? " " + a.name : ""), disabled: readOnly ? true : null,
+    "aria-describedby": reason ? "composer-reason" : null,
+    oninput: e => { setDraft(e.target.value); grow(e.target); },
+    // Enter sends; while an answer runs it does nothing (Stop is the button or Esc), so a stray Enter never stops it.
+    onkeydown: e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (!runHere()) submit(); } } });
+  ta.value = getDraft();
+  const blocked = !!reason || busy || !!S.pending;
+  const send = el("button", { type: running ? "button" : "submit", class: "send" + (running ? " stop" : ""), id: "send", "aria-label": running ? "Stop" : "Send", "aria-keyshortcuts": running ? "Escape" : null, title: running ? "Stop  Esc" : "Send  Enter", disabled: !running && blocked ? true : null, onclick: running ? () => stopRun() : null }, icon(running ? "stop" : "up"));
   inner.append(el("form", { onsubmit: e => { e.preventDefault(); submit(); } }, ta, send));
-  inner.append(reason ? el("div", { class: "hint reason", text: reason }) : el("div", { class: "hint keys-hint", text: running ? "Esc to stop" : "Enter to send · Shift+Enter for a new line · ? for shortcuts" }));
+  inner.append(reason ? el("div", { class: "hint reason", id: "composer-reason", text: reason }) : el("div", { class: "hint keys-hint", text: running ? "Esc to stop" : "Enter to send · Shift+Enter for a new line" + (S.singleKeys ? " · ? for shortcuts" : "") }));
   box.append(inner);
   setTimeout(() => grow(ta), 0);
   return box;
 }
 function grow(t) { t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 8 * 22) + "px"; }
+// Send only sends. Stopping is the Stop button or Esc.
 function submit() {
-  if (S.run) { stopRun(true); return; }
-  const t = (S.draft || "").trim(); if (!t) return;
-  S.draft = ""; const m = $("#msg"); if (m) { m.value = ""; grow(m); }
+  if (runHere() || S.pending) return;
+  const sb = $("#send"); if (sb && sb.disabled) return;
+  const t = getDraft().trim(); if (!t) return;
+  if (S.state === "too-large") { const m = $("#msg"); if (m) m.focus(); return; }
+  setDraft(""); const m = $("#msg"); if (m) { m.value = ""; grow(m); }
+  // Typing instead of using an open A2UI surface marks it "Not used".
+  if (S.conv) threadFor(S.conv).forEach(x => { if (x.t === "a2ui" && !x.sent) x.unused = true; });
   startRun(t);
 }
 function focusComposer() { if (S.section !== "chats") { S.section = "chats"; S.drawer = false; render(); } S.drawer = false; const m = $("#msg"); if (m && !m.disabled) m.focus(); }
 
 /* Thread items */
 function itemView(m) {
-  if (m.t === "user") return el("div", { class: "msg-user" + (m.pending ? " pending" : "") }, m.origin ? el("div", { class: "label", style: "margin-bottom:4px", text: m.origin }) : null, m.text);
+  if (m.t === "user") return el("div", { class: "msg-user" + (m.pending ? " pending" : "") }, m.origin ? el("div", { class: "label", style: "margin-bottom:4px", text: m.origin }) : null,
+    m.ui ? el("span", { class: "label", style: "margin-right:6px", text: "Sent:" }) : null, m.text);
   if (m.t === "steps") return stepsView(m);
   if (m.t === "a2ui") return a2uiView(m);
   if (m.t === "note") return el("div", { class: "note", text: m.text });
+  if (m.t === "thinking") return el("div", { class: "thinking" }, el("span", { class: "spin", "aria-hidden": "true" }), "Thinking…");
   return aiView(m);
 }
 function inline(s) {
@@ -1019,7 +1150,7 @@ function inline(s) {
 function md(text) {
   const box = el("div", { class: "prose" });
   for (const block of text.split(/\n\n/)) {
-    if (block.startsWith("```")) box.append(el("pre", {}, el("code", { text: block.replace(/^```\w*\n?/, "").replace(/\n?```$/, "") })));
+    if (block.startsWith("```")) box.append(el("pre", { tabindex: "0" }, el("code", { text: block.replace(/^```\w*\n?/, "").replace(/\n?```$/, "") })));
     else if (block.startsWith("## ")) box.append(el("h3", {}, ...inline(block.slice(3))));
     else if (block.startsWith("- ")) box.append(el("ul", {}, ...block.split("\n").map(l => el("li", {}, ...inline(l.replace(/^- /, ""))))));
     else box.append(el("p", {}, ...inline(block)));
@@ -1032,30 +1163,39 @@ function aiView(m) {
   if (m.streaming) { const last = prose.lastElementChild || prose.appendChild(el("p")); last.append(el("span", { class: "caret", "aria-hidden": "true" })); }
   box.append(prose);
   if (m.sources) box.append(el("div", { class: "sources", "aria-label": "Sources" }, ...m.sources.map(u => el("a", { class: "source", href: u, target: "_blank", rel: "noopener noreferrer", title: u }, el("span", { class: "fav", text: host(u)[0] }), el("span", { text: host(u) + new URL(u).pathname })))));
-  if (m.meta) box.append(el("div", { class: "meta" }, el("div", { class: "msg-actions" }, el("button", { type: "button", class: "icon-btn", "aria-label": "Copy answer", title: "Copy answer", onclick: () => copy(m.text, "Answer") }, icon("copy"))), ...m.meta.map((t, k) => el("span", { text: (k ? "· " : "") + t }))));
-  if (m.stopped) box.append(el("div", { class: "note", text: "Stopped. The conversation keeps everything up to here." }));
+  const copyBtn = () => el("div", { class: "msg-actions" }, el("button", { type: "button", class: "icon-btn", "aria-label": "Copy answer", title: "Copy answer", onclick: () => copy(m.text, "Answer") }, icon("copy")));
+  if (m.meta) box.append(el("div", { class: "meta" }, copyBtn(), ...m.meta.map((t, k) => el("span", { text: (k ? "· " : "") + t }))));
+  if (m.stopped) box.append(el("div", { class: "meta" }, m.text ? copyBtn() : null), stoppedNote(m));
   m._node = box;
   return box;
+}
+// After Stop: the partial answer stays, the note says it isn't saved, and Resume lets the agent continue.
+function stoppedNote(m) {
+  const conv = S.conv;
+  return el("div", { class: "note", style: "display:flex;gap:10px;align-items:center;flex-wrap:wrap" }, el("span", { text: "Stopped. This part isn't saved." }),
+    m.resumed ? null : el("button", { type: "button", class: "link-btn", onclick: () => { m.resumed = true; if (S.conv === conv && !S.run) startRun(null, true, "Resuming from the last saved step."); } }, "Resume"));
 }
 function verbFor(call, state) {
   const d = DISPLAY[call.name] || { icon: "tool", run: "Running " + call.name, done: "Ran " + call.name, what: i => String(Object.values(i)[0] || "") };
   const done = typeof d.done === "function" ? d.done(call.input) : d.done;
-  return { d, verb: state === "running" ? d.run : state === "error" ? done + " failed" : done };
+  return { d, verb: state === "running" ? d.run : state === "stopped" ? "Stopped: " + d.run.toLowerCase() : state === "error" ? done + " failed" : done };
 }
 function stepView(call) {
   const state = call.state || "done";
   const { d, verb } = verbFor(call, state);
-  const wrap = el("div", { class: "step" + (state === "running" ? " running" : "") + (state === "error" ? " err" : "") });
+  const wrap = el("div", { class: "step" + (state === "running" ? " running" : "") + (state === "error" ? " err" : "") + (state === "stopped" ? " stopped" : "") });
   const detail = el("div", { class: "step-detail", hidden: true });
   const row = el("button", { type: "button", class: "step-row", "aria-expanded": "false", disabled: state === "running" ? true : null, style: state === "running" ? "cursor:default" : null },
-    state === "running" ? el("span", { class: "spin", "aria-hidden": "true" }) : icon(state === "error" ? "x" : d.icon),
+    state === "running" ? el("span", { class: "spin", "aria-hidden": "true" }) : icon(state === "error" ? "x" : state === "stopped" ? "stop" : d.icon),
     el("span", { class: "verb", text: verb }), el("span", { class: "what", text: d.what(call.input) }),
     state !== "running" && call.took ? el("span", { class: "took", text: call.took }) : null,
     state !== "running" ? el("span", { class: "chev" }, icon("chev")) : null);
-  row.addEventListener("click", () => {
+  const toggle = open => {
     if (!detail.childElementCount) fillDetail(detail, call, state);
-    detail.hidden = !detail.hidden; row.setAttribute("aria-expanded", String(!detail.hidden));
-  });
+    detail.hidden = !open; row.setAttribute("aria-expanded", String(open)); call._open = open; // kept across re-renders while a run streams
+  };
+  row.addEventListener("click", () => toggle(detail.hidden));
+  if (call._open && state !== "running") toggle(true);
   wrap.append(row, detail);
   return wrap;
 }
@@ -1064,6 +1204,7 @@ function fillDetail(detail, call, state) {
   for (const [k, v] of Object.entries(call.input)) dl.append(el("dt", { text: k }), el("dd", { text: Array.isArray(v) ? v.join(", ") : String(v) }));
   detail.append(el("div", { class: "label", text: "Request" }), dl);
   if (state === "error") detail.append(el("div", { class: "label", text: "Error" }), el("div", { text: call.error }));
+  if (state === "stopped") { detail.append(el("div", { class: "muted", text: "Stopped before it returned a result." })); return; }
   if (call.huge) {
     const lines = []; for (let k = 1; k <= 20; k++) lines.push(k + "  " + "Extracted text from the pages, shown as plain text and cut at 4,000 characters. ".repeat(1));
     detail.append(el("div", { class: "label", text: "Result · first 4,000 of 1,214,880 characters" }), el("pre", { class: "raw mono", text: lines.join("\n") }),
@@ -1090,23 +1231,31 @@ function summarize(calls) {
   if (counts.other) parts.push(counts.other + " other");
   return parts.join(", ");
 }
+// Tool groups (UI.md Rules, "Tool calls"): a lone call is a plain step. A group shows its first 5 calls when done,
+// or its latest 5 while running, with the rest one click away; failed calls are always shown.
 function stepsView(m) {
   const box = el("div", { class: "steps" });
-  if (m.calls.length === 1 && !m.running) { box.append(stepView(m.calls[0])); return box; }
+  if (m.calls.length === 1) { box.append(stepView(m.calls[0])); m._node = box; return box; }
   const failed = m.calls.filter(c => c.state === "error").length;
+  const stopped = m.calls.some(c => c.state === "stopped");
   const running = m.running || m.calls.some(c => c.state === "running");
   const big = m.calls.length > 3;
   let open = m.open != null ? m.open : (running || !big);
-  let showAll = m.calls.length <= 5;
   const body = el("div", { class: "steps-body" });
   const drawBody = () => {
-    body.replaceChildren(...(showAll ? m.calls : m.calls.slice(0, 5)).map(stepView));
-    if (!showAll) body.append(el("button", { type: "button", class: "link-btn", style: "margin:4px 0 2px", text: "Show " + (m.calls.length - 5) + " more", onclick: () => { showAll = true; drawBody(); } }));
+    const n = m.calls.length;
+    if (m.showAll || n <= 5) { body.replaceChildren(...m.calls.map(stepView)); return; }
+    const shown = new Set(running ? m.calls.slice(-5) : m.calls.slice(0, 5));
+    m.calls.forEach(c => { if (c.state === "error") shown.add(c); });
+    const more = el("button", { type: "button", class: "link-btn", style: "margin:4px 0 2px", text: (running ? "Show " + (n - shown.size) + " earlier" : "Show " + (n - shown.size) + " more"), onclick: () => { m.showAll = true; drawBody(); } });
+    const kids = m.calls.filter(c => shown.has(c)).map(stepView);
+    body.replaceChildren(...(running ? [more, ...kids] : [...kids, more]));
   };
   drawBody(); body.hidden = !open;
-  const label = running ? "Working · " + m.calls.length + " tools so far" : "Used " + m.calls.length + " tools" + (failed ? " · " + failed + " failed" : "") + (m.total ? " · " + m.total : "");
+  const label = running ? "Working · " + m.calls.length + " tools so far"
+    : "Used " + m.calls.length + " tools" + (failed ? " · " + failed + " failed" : "") + (stopped ? " · stopped" : "") + (m.total ? " · " + m.total : "");
   const head = el("button", { type: "button", class: "steps-head", "aria-expanded": String(open) },
-    running ? el("span", { class: "spin", "aria-hidden": "true" }) : icon(failed ? "alert" : "check"),
+    running ? el("span", { class: "spin", "aria-hidden": "true" }) : icon(failed ? "alert" : stopped ? "stop" : "check"),
     el("span", { class: "sum", text: label + (big && !running ? " · " + summarize(m.calls) : "") }), el("span", { class: "chev" }, icon("chev")));
   head.onclick = () => { open = body.hidden; body.hidden = !open; m.open = open; head.setAttribute("aria-expanded", String(open)); };
   box.append(head, body);
@@ -1115,63 +1264,86 @@ function stepsView(m) {
 }
 // A2UI: the agent sends a declarative surface (basic-catalog components); the console draws it with its own components.
 function a2uiView(m) {
-  const picks = ["go.dev", "github.com/golang", "news sites"];
-  const chips = el("div", { class: "chip-pick", role: "group", "aria-label": "Sources" }, ...picks.map((p, i) => el("button", { type: "button", "aria-pressed": String(i !== 1), text: p, disabled: m.sent ? true : null, onclick: e => e.currentTarget.setAttribute("aria-pressed", String(e.currentTarget.getAttribute("aria-pressed") !== "true")) })));
-  const run = el("button", { type: "button", class: "btn primary", text: m.sent ? "Sent" : "Search news", disabled: m.sent ? true : null });
-  const surf = el("div", { class: "surface" + (m.sent ? " sent" : ""), role: "group", "aria-label": "Narrow the news search" },
+  // The values chosen live on the item, so they survive re-renders and stay visible after sending.
+  const v = m.vals || (m.vals = { after: "2026-02-10", topic: "news", picks: { "go.dev": true, "github.com/golang": false, "news sites": true } });
+  const off = m.sent || m.unused || (!!S.run && S.run.conv === S.conv);
+  const chips = el("div", { class: "chip-pick", role: "group", "aria-label": "Sources" }, ...Object.keys(v.picks).map(p => el("button", { type: "button", "aria-pressed": String(v.picks[p]), text: p, disabled: off ? true : null, onclick: e => { v.picks[p] = !v.picks[p]; e.currentTarget.setAttribute("aria-pressed", String(v.picks[p])); } })));
+  const run = el("button", { type: "button", class: "btn primary", text: m.sent ? "Sent" : m.unused ? "Not used" : "Search news", disabled: off ? true : null });
+  const status = m.sent ? "Sent as your next message." : m.unused ? "Not used: you replied in the message box instead." : off ? "Available when the answer finishes." : "Sends your choices back to the agent as the next message";
+  const surf = el("div", { class: "surface" + (m.sent ? " sent" : "") + (m.unused ? " unused" : ""), role: "group", "aria-label": "Narrow the news search" },
     el("div", { class: "surface-tag" }, el("h2", { text: "Narrow the news search" }), el("span", { class: "tag", text: "A2UI · search_filters" })),
     el("div", { class: "srow" },
-      el("label", {}, "Published after", el("input", { type: "date", value: "2026-02-10", disabled: m.sent ? true : null })),
-      el("label", {}, "Topic", el("select", { disabled: m.sent ? true : null }, el("option", { text: "news" }), el("option", { text: "general" })))),
+      el("label", {}, "Published after", el("input", { type: "date", value: v.after, disabled: off ? true : null, onchange: e => { v.after = e.target.value; } })),
+      el("label", {}, "Topic", el("select", { disabled: off ? true : null, onchange: e => { v.topic = e.target.value; } }, el("option", { text: "news", selected: v.topic === "news" }), el("option", { text: "general", selected: v.topic === "general" })))),
     el("div", {}, el("div", { class: "label", style: "margin-bottom:6px", text: "Sources" }), chips),
-    el("div", { class: "srow", style: "align-items:center" }, run, el("span", { class: "meta", text: m.sent ? "Sent as your next message. The agent is answering." : "Sends your choices back to the agent as the next message" })));
-  run.onclick = () => { m.sent = true; S.scrollTop = "keep"; render(); startRun("Search news: after 2026-02-10 · topic news · go.dev, news sites", false, null, true); };
+    el("div", { class: "srow", style: "align-items:center" }, run, el("span", { class: "meta", text: status })));
+  run.onclick = () => {
+    m.sent = true; S.scrollTop = "keep";
+    const fmt = new Date(v.after + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+    const summary = "published after " + fmt + " · topic " + v.topic + " · " + Object.keys(v.picks).filter(p => v.picks[p]).join(", ");
+    startRun(summary, false, null, true);
+  };
   return el("div", { class: "msg-ai" }, md("Sure. Pick what to include and I'll search:"), surf);
 }
 
 /* ---------- Simulated run (the shape of POST /v1/runs over SSE) ---------- */
+// A run lives in an app-level store (S.run, keyed by its conversation): leaving the conversation doesn't stop it.
 function startRun(text, retrying, note, fromSurface) {
+  // The mockup simulates one stream at a time: an earlier run elsewhere finishes at once (the console runs them side by side).
+  if (S.run) S.run.flush();
   let id = S.conv;
   if (!id) {
     id = "conv_" + Math.random().toString(36).slice(2, 8);
     CONVS_ALL.unshift({ id, title: text.length > 60 ? text.slice(0, 58) + "…" : text, agent: S.newAgent, when: "Just now", group: "Today" });
-    S.threads[id] = []; S.conv = id;
+    S.threads[id] = []; S.conv = id; S.drafts[id] = S.drafts.new || ""; delete S.drafts.new;
   }
   const items = threadFor(id);
-  if (text && !fromSurface) items.push({ t: "user", text });
-  if (fromSurface) items.push({ t: "user", text });
+  const conv = convById(id); conv.interrupted = false;
+  // Resume and Retry never add a user bubble; a new chat's first message is pending until run_start.
+  const user = text ? { t: "user", text, ui: !!fromSurface, pending: true } : null;
+  if (user) items.push(user);
   if (note) items.push({ t: "note", text: note });
-  const agent = convById(id).agent;
+  const thinking = { t: "thinking" };
+  items.push(thinking);
+  const agent = conv.agent;
   const call = agent === "default" ? { name: "calculate", input: { a: 48271, op: "mul", b: 9733 }, took: "0.0 s", hits: [] }
     : { name: "tavily_search", input: { query: (text || "Go 1.26 runtime changes").slice(0, 60), max_results: 5 }, took: "1.3 s", hits: [["Example result for your question", "https://example.com/article", "A short snippet from the page, shown as plain text…"]] };
   call.state = "running";
   const steps = { t: "steps", running: true, total: "1.3 s", calls: [call] };
   const ans = { t: "ai", text: "", streaming: true };
   const words = (agent === "default" ? "48271 × 9733 = **469,821,643**. I used the calculator tool, so the digits are exact." :
-    "Here is what I found. The answer streams in as the run's `text_delta` events arrive, and the step above settles when its `tool_result` comes back. If you scroll up while it streams, the view stays put and a Jump to latest button appears.").split(" ");
-  S.run = { conv: id, timer: null, ans, steps };
+    "Here is what I found. The answer streams in as the run's `text_delta` events arrive, and the step above settles when its `tool_result` comes back. If you scroll up while it streams, the view stays put and a Jump to latest button appears. Open another conversation meanwhile and this one keeps answering; its row shows a spinner.").split(" ");
+  const drop = x => { const k = items.indexOf(x); if (k >= 0) items.splice(k, 1); };
+  S.run = { conv: id, timer: null, ans, steps, thinking, items };
   S.scrollTop = null; render();
+  if (S.conv === id) focusComposer();
   announce(agent + " is answering");
   const plan = [];
-  plan.push(() => { items.push(steps); patch(); });
-  for (let k = 0; k < 10; k++) plan.push(() => {});
-  plan.push(() => { call.state = "done"; steps.running = false; items.push(ans); patch(); announce(verbFor(call, "done").verb + ", " + call.took.replace(" s", " seconds")); });
+  plan.push(() => { if (user) user.pending = false; patch(); }); // run_start
+  for (let k = 0; k < 6; k++) plan.push(() => {});
+  plan.push(() => { drop(thinking); items.push(steps); patch(); });
+  for (let k = 0; k < 12; k++) plan.push(() => {});
+  plan.push(() => { call.state = "done"; steps.running = false; items.push(ans); patch(); if (runVisible()) announce(verbFor(call, "done").verb + ", " + call.took.replace(" s", " seconds")); });
   words.forEach(w => plan.push(() => { ans.text += (ans.text ? " " : "") + w; patchAns(); }));
   plan.push(() => { ans.streaming = false; ans.meta = ["2 turns", "1,240 tokens · 512 cached", "3.1 s"]; if (agent !== "default") ans.sources = ["https://example.com/article"]; finishRun("Answer complete"); });
   let i = 0;
   S.run.timer = setInterval(() => { if (i < plan.length) plan[i++](); }, 90);
+  S.run.flush = () => { clearInterval(S.run.timer); while (i < plan.length) plan[i++](); };
 }
+const runVisible = () => !!S.run && S.section === "chats" && S.conv === S.run.conv;
+// While a run streams, closing or reloading the tab asks first (it would cancel the run on the server).
+window.addEventListener("beforeunload", e => { if (S.run) { e.preventDefault(); e.returnValue = ""; } });
 function atBottom(th) { return th.scrollHeight - th.scrollTop - th.clientHeight < 40; }
 function patch() {
   // Re-render only the thread of the visible conversation, keeping the scroll position rule.
-  const th = $("#thread"); if (!th || !S.run || S.conv !== S.run.conv || S.section !== "chats") return;
+  const th = $("#thread"); if (!th || !runVisible()) { if (S.run) refreshConvRows(); return; }
   const stick = atBottom(th);
   const inner = $("#thread-inner"); inner.replaceChildren(...threadFor(S.conv).map(itemView));
   if (stick) th.scrollTop = th.scrollHeight;
   updateJump();
 }
 function patchAns() {
-  const th = $("#thread"); if (!th || !S.run || S.conv !== S.run.conv || S.section !== "chats") return;
+  const th = $("#thread"); if (!th || !runVisible()) return;
   const a = S.run.ans; const old = a._node; const stick = atBottom(th);
   if (old && old.isConnected) old.replaceWith(aiView(a)); else patch();
   if (stick) th.scrollTop = th.scrollHeight;
@@ -1179,23 +1351,32 @@ function patchAns() {
 }
 function finishRun(msg) {
   if (!S.run) return;
-  clearInterval(S.run.timer); S.run = null;
-  announce(msg);
+  const r = S.run, here = runVisible();
+  clearInterval(r.timer); S.run = null;
+  const c = convById(r.conv);
+  if (!here && c) c.unread = true; // it ended while you were elsewhere: the row gets an unread dot
   const th = $("#thread"); const stick = th && atBottom(th);
   S.scrollTop = stick ? null : "keep";
   const top = th ? th.scrollTop : 0;
-  render();
+  render(); // render first, then announce, so the announcement isn't lost in the re-render
   if (!stick && $("#thread")) $("#thread").scrollTop = top;
   updateJump();
-  if (S.section === "chats") { const m = $("#msg"); if (m && document.activeElement === document.body) m.focus(); }
+  announce(here ? msg : (c.agent + " finished in “" + c.title + "”"));
+  if (here) { const m = $("#msg"); if (m && document.activeElement === document.body) m.focus(); }
 }
-function stopRun(user) {
+// Stop aborts the request; the server cancels the run (T036). The partial answer stays, marked as not saved.
+function stopRun() {
   if (!S.run) return;
   const r = S.run;
-  if (r.steps.running) { r.steps.running = false; r.steps.calls.forEach(c => { if (c.state === "running") { c.state = "error"; c.error = "Stopped before it finished."; } }); }
-  if (threadFor(r.conv).includes(r.ans)) { r.ans.streaming = false; r.ans.stopped = true; }
-  else threadFor(r.conv).push({ t: "note", text: "Stopped. The conversation keeps everything up to here." });
-  finishRun(user ? "Stopped" : "Done");
+  const k = r.items.indexOf(r.thinking); if (k >= 0) r.items.splice(k, 1);
+  r.steps.running = false;
+  r.steps.calls.forEach(c => { if (c.state === "running") c.state = "stopped"; });
+  if (r.items.includes(r.ans)) { r.ans.streaming = false; r.ans.stopped = true; }
+  else r.items.push({ t: "ai", text: "", stopped: true });
+  r.items.forEach(x => { if (x.pending) x.pending = false; });
+  const c = convById(r.conv); if (c) c.interrupted = false; // the quieter Stopped note stands in for the interrupted notice
+  finishRun("Stopped");
+  focusComposer();
 }
 function updateJump() {
   const th = $("#thread"), j = $("#jump"); if (!th || !j) return;
@@ -1230,10 +1411,10 @@ function agentsView() {
     return v;
   }
   const r = readiness(a);
-  v.append(el("div", { class: "head" }, listToggle(), backBtn("agents", () => { S.agentSel = null; render(); }),
-    el("span", { class: "title mono", text: a.name }), el("span", { class: "status " + (r.ready === r.total ? "ok" : "warn"), text: r.ready === r.total ? "Ready" : r.text }),
+  v.append(el("div", { class: "head wrap" }, listToggle(), backBtn("agents", () => { S.agentSel = null; render(); }),
+    el("h1", { class: "title mono", id: "page-h1", tabindex: "-1", text: a.name }), el("span", { class: "head-break" }), el("span", { class: "status " + (r.ready === r.total ? "ok" : "warn"), text: r.ready === r.total ? "Ready" : r.text }),
     el("button", { type: "button", class: "btn primary sm", onclick: () => { S.newAgent = a.name; newChat(); } }, "Chat with " + a.name)));
-  const tsList = el("div", { class: "chips" }, ...a.toolsets.map(t => { const ts = TOOLSETS.find(x => x.name === t); return el("button", { type: "button", class: "tag", style: "cursor:pointer", title: ts.status === "ready" ? "Ready" : "Skipped: " + ts.note, onclick: () => { S.section = "toolsets"; S.toolsetSel = t; render(); } }, el("span", { class: "mark " + (ts.status === "ready" ? "" : "warn"), style: ts.status === "ready" ? "background:var(--ok)" : "" }), t); }));
+  const tsList = el("div", { class: "chips" }, ...a.toolsets.map(t => { const ts = TOOLSETS.find(x => x.name === t); return el("a", { class: "tag", href: "#/toolsets/" + t, title: ts.status === "ready" ? "Ready" : "Skipped: " + ts.note, onclick: go(() => { S.section = "toolsets"; S.toolsetSel = t; render(); focusHeading(); }) }, el("span", { class: "mark " + (ts.status === "ready" ? "" : "warn"), style: ts.status === "ready" ? "background:var(--ok)" : "", "aria-hidden": "true" }), t, el("span", { class: "sr-only", text: ts.status === "ready" ? ", ready" : ", skipped" })); }));
   const body = el("div", { class: "page-inner" },
     el("p", { style: "color:var(--text-2)", text: a.desc }),
     r.ready < r.total ? el("div", { class: "notice warn" }, icon("alert"), el("div", { class: "grow" }, el("b", { text: (r.total - r.ready) + " of its toolsets are skipped." }), el("span", { text: "The agent still runs with the rest; it can't use the skipped tools until their keys are set. See Credentials." }))) : null,
@@ -1256,20 +1437,21 @@ function toolsetsView() {
   const cmd = "claude mcp add --transport http " + ts.name + " " + url + ' --header "Authorization: Bearer $AGENTKIT_API_TOKEN"';
   const v = el("section", { class: "view", "aria-label": "Toolset" });
   v.append(el("div", { class: "head" }, listToggle(), backBtn("toolsets", () => { S.toolsetSel = null; render(); }),
-    el("span", { class: "title mono", text: ts.name }), el("span", { class: "status " + (ts.status === "ready" ? "ok" : "warn"), text: ts.status === "ready" ? "Ready" : "Skipped" })));
+    el("h1", { class: "title mono", id: "page-h1", tabindex: "-1", text: ts.name }), el("span", { class: "status " + (ts.status === "ready" ? "ok" : "warn"), text: ts.status === "ready" ? "Ready" : "Skipped" })));
   const tools = el("div", { class: "panel tools" }, ...ts.tools.map(t => {
     const raw = el("pre", { class: "raw mono", hidden: true, text: JSON.stringify({ type: "object", properties: Object.fromEntries(t.fields.map(([n, ty, , h]) => [n, { type: ty.replace("[]", ""), description: h || undefined }])), required: t.fields.filter(f => f[2]).map(f => f[0]) }, null, 2) });
     const rb = el("button", { type: "button", class: "link-btn", text: "Show raw schema", "aria-expanded": "false", onclick: e => { raw.hidden = !raw.hidden; e.currentTarget.textContent = raw.hidden ? "Show raw schema" : "Hide raw schema"; e.currentTarget.setAttribute("aria-expanded", String(!raw.hidden)); } });
-    return el("details", {}, el("summary", {}, el("b", { text: t.name }), el("span", { text: t.desc })),
+    return el("details", {}, el("summary", {}, el("span", { class: "chev" }, icon("chev")), el("b", { text: t.name }), el("span", { text: t.desc })),
       el("div", { class: "fields" }, ...t.fields.map(([n, ty, req, help]) => el("div", { class: "field-row" }, el("code", {}, n, req ? el("span", { class: "req", text: "required" }) : null), el("span", { class: "ty", text: ty }), el("span", { class: "muted", text: help }))), rb, raw));
   }));
   const body = el("div", { class: "page-inner" },
     ts.status !== "ready" ? el("div", { class: "notice warn" }, icon("alert"), el("div", { class: "grow" }, el("b", { text: "Skipped: " + ts.note + "." }), el("span", { text: "It's optional, so the server started without it. Set the key in the server's environment and restart." })), el("div", { class: "acts" }, el("button", { type: "button", class: "btn sm", onclick: () => goSection("credentials") }, "Credentials"))) : null,
     el("dl", { class: "kv" }, el("dt", { text: "Type" }), el("dd", { text: ts.type }), el("dt", { text: "Credentials" }), el("dd", { text: ts.note }), el("dt", { text: "Used by" }), el("dd", {}, el("div", { class: "chips" }, ...AGENTS_ALL.filter(a => a.toolsets.includes(ts.name)).map(a => el("span", { class: "tag", text: a.name }))))),
-    el("div", { class: "section" }, el("h2", { text: "Use it from Claude Code" }),
+    ts.status === "ready" ? el("div", { class: "section" }, el("h2", { text: "Use it from Claude Code" }),
       el("div", { class: "copy-line" }, el("code", { text: url }), el("button", { type: "button", class: "btn sm", onclick: () => copy(url, "MCP URL") }, icon("copy"), "Copy URL")),
       el("div", { class: "copy-line" }, el("code", { text: cmd }), el("button", { type: "button", class: "btn sm", onclick: () => copy(cmd, "Command") }, icon("copy"), "Copy command")),
-      el("p", { class: "muted", style: "font-size:12px", text: "The command uses a placeholder for your token; the page never has it." })),
+      el("p", { class: "muted", style: "font-size:12px", text: "$AGENTKIT_API_TOKEN stands for an API token from your admin (AGENTKIT_API_TOKEN on a single-token server). The page never has it." }))
+      : el("p", { class: "muted", style: "font-size:13px", text: "The MCP URL appears once the toolset is ready." }),
     el("div", { class: "section" }, el("h2", { text: ts.tools.length + " tools" }), tools),
     el("div", { class: "api", text: "GET /v1/toolsets · GET /v1/toolsets/" + ts.name + "/tools" }));
   v.append(el("div", { class: "page" }, body));
@@ -1282,24 +1464,24 @@ function credentialsView() {
   const rows = S.state === "loading" ? [0, 1, 2].map(k => el("tr", {}, el("td", { colspan: "6" }, el("div", { class: "skel", style: "height:14px;width:" + (60 + k * 10) + "%" }))))
     : CREDS.map(c => el("tr", {},
       el("td", {}, el("span", { class: "tag", text: c.ts })),
-      el("td", { class: "not-phone", text: c.prov }),
+      el("td", { "data-label": "Provider", text: c.prov }),
       el("td", {}, el("span", { class: "status " + st[c.st][0], text: st[c.st][1] })),
       el("td", { "data-wide": "" }, el("div", { class: "mono", style: "color:var(--text-2)", text: c.src }), c.fix ? el("div", { class: "fix", text: c.fix }) : null),
-      el("td", { class: "not-phone", text: c.scope }),
-      el("td", { class: "not-phone" }, c.st === "none" ? null : el("button", { type: "button", class: "btn sm", disabled: true, title: "Arrives with stored credentials (E07, T045)", text: c.st === "missing" ? "Set key" : "Rotate" }))));
+      el("td", { "data-label": "Scope", text: c.scope }),
+      el("td", {}, c.st === "none" ? null : el("button", { type: "button", class: "btn sm", disabled: true, "aria-describedby": "creds-later", text: c.st === "missing" ? "Set key" : "Rotate" }))));
   const body = el("div", { class: "page-inner wide" },
-    el("div", { class: "page-head" }, el("div", {}, el("h1", { text: "Credentials" }), el("p", { text: "What each toolset needs and whether it has it. Values are never shown or sent to this page." }))),
+    el("div", { class: "page-head" }, el("div", {}, el("h1", { id: "page-h1", tabindex: "-1", text: "Credentials" }), el("p", { text: "What each toolset needs and whether it has it. Values are never shown or sent to this page." }))),
     el("div", { class: "panel table-wrap" }, el("table", { class: "tbl-cards" },
-      el("thead", {}, el("tr", {}, el("th", { text: "Toolset" }), el("th", { class: "not-phone", text: "Provider" }), el("th", { text: "Status" }), el("th", { text: "Source" }), el("th", { class: "not-phone", text: "Scope" }), el("th", { class: "not-phone" }, el("span", { class: "sr-only", text: "Actions" })))),
+      el("thead", {}, el("tr", {}, el("th", { text: "Toolset" }), el("th", { text: "Provider" }), el("th", { text: "Status" }), el("th", { text: "Source" }), el("th", { text: "Scope" }), el("th", {}, el("span", { class: "sr-only", text: "Actions" })))),
       el("tbody", {}, ...rows))),
-    el("p", { class: "muted", style: "font-size:12px", text: "Setting, rotating and connecting accounts arrive with stored credentials (E07). Until then keys come from the server's environment." }),
+    el("p", { class: "muted", id: "creds-later", style: "font-size:12px", text: "Setting, rotating and connecting accounts arrive with stored credentials (E07). Until then keys come from the server's environment." }),
     el("div", { class: "api", text: "GET /v1/toolsets (credential status) · later /v1/credentials (T045)" }));
   v.append(el("div", { class: "page" }, body));
   return v;
 }
 
 /* ---------- Activity (later, T074) ---------- */
-const RUN_ST = { running: ["run", "Running"], needs: ["warn", "Needs you"], done: ["ok", "Done"], failed: ["bad", "Failed"] };
+const RUN_ST = { running: ["run", "Running"], needs: ["warn", "Needs you"], done: ["ok", "Done"], failed: ["bad", "Failed"], cancelled: ["", "Cancelled"] };
 function activityList() {
   const tabs = [["runs", "Runs"], ["threads", "Threads"]].concat(isAdmin() ? [["triggers", "Triggers"]] : []);
   const head = el("div", { class: "list-head" }, sectionTabs(), listHeadTop("Activity", el("span", { class: "later-tag", text: "LATER · T074" })),
@@ -1333,8 +1515,8 @@ function activityView() {
 }
 function runView(v, r) {
   const st = RUN_ST[r.status];
-  v.append(el("div", { class: "head" }, listToggle(), backBtn("activity", () => { S.actSel = null; render(); }), el("span", { class: "title", text: r.title }), el("span", { class: "status " + st[0], text: st[1] }),
-    r.status === "running" || r.status === "needs" ? el("button", { type: "button", class: "btn sm", onclick: () => { r.status = "failed"; r.reason = "Cancelled by samanvith."; toast("Run cancelled"); render(); } }, "Cancel run") : null));
+  v.append(el("div", { class: "head wrap" }, listToggle(), backBtn("activity", () => { S.actSel = null; render(); }), el("h1", { class: "title", id: "page-h1", tabindex: "-1", text: r.title }), el("span", { class: "head-break" }), el("span", { class: "status " + st[0], text: st[1] }),
+    r.status === "running" || r.status === "needs" ? el("button", { type: "button", class: "btn sm", onclick: () => { r.status = "cancelled"; r.elapsed = "Cancelled by samanvith"; toast("Run cancelled"); render(); } }, "Cancel run") : null));
   const items = r.status === "running" ? bgThread() : [
     { t: "user", text: r.title + ".", origin: "From " + r.origin.toLowerCase() },
     { t: "steps", total: "4.2 s", calls: [{ name: "tavily_search", took: "1.2 s", input: { query: r.title }, hits: [["Example", "https://example.com/x", "…"]] }, { name: "tavily_extract", took: "3.0 s", input: { urls: ["https://example.com/x"] }, hits: [["Example", "https://example.com/x", "6,020 characters read"]] }] }];
@@ -1410,7 +1592,9 @@ function openPop(trigger, content, opts = {}) {
   const first = pop.querySelector(opts.focus || "input, .item:not([aria-disabled='true']), button");
   if (first) first.focus();
   pop.addEventListener("keydown", e => {
+    if (e.key === "Tab" && pop.getAttribute("role") === "menu") { e.preventDefault(); closeLayers(); return; } // a menu closes on Tab
     if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    if (e.target.getAttribute("role") === "combobox") return;
     const items = [...pop.querySelectorAll(".item:not([aria-disabled='true'])")]; if (!items.length) return;
     e.preventDefault();
     const i = items.indexOf(document.activeElement);
@@ -1421,32 +1605,54 @@ function openPop(trigger, content, opts = {}) {
 }
 document.addEventListener("mousedown", e => { if (layer && !layer.nodes.some(n => n.contains(e.target)) && !layer.trigger.contains(e.target)) closeLayers(false); });
 
+// The picker is a combobox (Command): typing filters, ↑↓ move the highlight (aria-activedescendant), Enter picks it.
 function agentPicker(trigger) {
   const list = agents();
-  const opts = el("div", { role: "listbox", "aria-label": "Agents", style: "display:flex;flex-direction:column;gap:2px" });
+  let shown = list, hi = Math.max(0, list.findIndex(a => a.name === S.newAgent));
+  const opts = el("div", { role: "listbox", id: "pick-list", "aria-label": "Agents", style: "display:flex;flex-direction:column;gap:2px" });
+  const pick = a => { S.newAgent = a.name; closeLayers(false); render(); if (S.mode === "phone") focusHeading(); else focusComposer(); };
+  const input = el("input", { type: "text", role: "combobox", "aria-expanded": "true", "aria-controls": "pick-list", "aria-autocomplete": "list", placeholder: "Find an agent", autocomplete: "off",
+    oninput: e => { shown = list.filter(a => (a.name + " " + a.desc).toLowerCase().includes(e.target.value.toLowerCase())); hi = 0; draw(e.target.value); },
+    onkeydown: e => {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); if (!shown.length) return; hi = (hi + (e.key === "ArrowDown" ? 1 : shown.length - 1)) % shown.length; draw(input.value); }
+      if (e.key === "Enter") { e.preventDefault(); if (shown[hi]) pick(shown[hi]); }
+    } });
   const draw = q => {
-    const f = list.filter(a => (a.name + " " + a.desc).toLowerCase().includes(q.toLowerCase()));
-    opts.replaceChildren(...(f.length ? f.map(a => { const r = readiness(a); return el("button", { type: "button", role: "option", class: "item pick-opt", "aria-selected": String(a.name === S.newAgent), onclick: () => { S.newAgent = a.name; closeLayers(false); render(); focusComposer(); } },
+    opts.replaceChildren(...(shown.length ? shown.map((a, k) => { const r = readiness(a); return el("div", { role: "option", id: "pick-" + a.name, class: "item pick-opt" + (k === hi ? " hi" : ""), "aria-selected": String(a.name === S.newAgent), onclick: () => pick(a) },
       el("span", { class: "l1" }, el("b", { text: a.name }), el("span", { class: "status " + (r.ready === r.total ? "ok" : "warn"), style: "font-size:12px", text: r.text })), el("small", { text: a.desc })); })
       : [el("div", { class: "muted", style: "padding:8px 10px;font-size:13px", text: "No agent matches “" + q + "”." })]));
+    if (shown[hi]) { input.setAttribute("aria-activedescendant", "pick-" + shown[hi].name); const n = document.getElementById("pick-" + shown[hi].name); if (n) n.scrollIntoView({ block: "nearest" }); } else input.removeAttribute("aria-activedescendant");
   };
-  draw("");
+  const phone = S.mode === "phone";
   openPop(trigger, [
-    el("label", { class: "search" }, icon("search"), el("span", { class: "sr-only", text: "Find an agent" }), el("input", { type: "search", placeholder: "Find an agent", oninput: e => draw(e.target.value), onkeydown: e => { if (e.key === "ArrowDown") { e.preventDefault(); const f = opts.querySelector(".item"); if (f) f.focus(); } if (e.key === "Enter") { e.preventDefault(); const f = opts.querySelector(".item"); if (f) f.click(); } } })),
+    phone ? el("div", { style: "display:flex;justify-content:space-between;align-items:center;padding:2px 2px 6px 10px" }, el("h2", { style: "font-size:15px;margin:0", text: "Choose an agent" }), el("button", { type: "button", class: "icon-btn", "aria-label": "Close", onclick: () => closeLayers() }, icon("close"))) : null,
+    el("label", { class: "search" }, icon("search"), el("span", { class: "sr-only", text: "Find an agent" }), input),
     opts, el("div", { class: "sep" }), el("div", { class: "muted", style: "padding:4px 10px 2px;font-size:12px", text: "A conversation stays with the agent it starts with." })
-  ], { role: "dialog", label: "Choose an agent" });
+  ].filter(Boolean), { role: "dialog", label: "Choose an agent", focus: phone ? ".icon-btn" : "input" });
+  draw("");
 }
+// The agent chip opens a small dialog (not a menu): details plus actions.
 function agentCard(trigger, name) {
-  const a = agentByName(name); const r = readiness(a);
+  const a = agentByName(name);
+  if (!a) {
+    openPop(trigger, [
+      el("div", { class: "hdr", style: "display:flex;flex-direction:column;gap:6px;max-width:280px" }, el("b", { class: "mono", text: name }),
+        el("div", { class: "muted", style: "font-size:13px", text: "This agent was removed from the server config. The conversation stays readable." })),
+      el("div", { class: "sep" }),
+      el("button", { type: "button", class: "item", onclick: () => { closeLayers(false); newChat(); } }, icon("plus"), "New chat")
+    ], { role: "dialog", label: "Agent " + name + ", removed" });
+    return;
+  }
+  const r = readiness(a);
   openPop(trigger, [
     el("div", { class: "hdr", style: "display:flex;flex-direction:column;gap:6px" }, el("div", { style: "display:flex;justify-content:space-between;gap:8px" }, el("b", { class: "mono", text: a.name }), el("span", { class: "status " + (r.ready === r.total ? "ok" : "warn"), style: "font-size:12px", text: r.text })),
       el("div", { class: "muted", style: "font-size:13px", text: a.desc }), el("div", { class: "mono muted", style: "font-size:12px", text: a.model })),
     el("div", { class: "sep" }),
-    el("button", { type: "button", class: "item", role: "menuitem", onclick: () => { S.newAgent = a.name; closeLayers(false); newChat(); } }, icon("plus"), "New chat with " + a.name),
-    agents().length > 1 ? el("button", { type: "button", class: "item", role: "menuitem", onclick: () => { closeLayers(false); newChat(); setTimeout(() => { const p = $("#agent-pick"); if (p) p.click(); }, 0); } }, icon("bot"), "New chat with another agent…") : null,
-    isAdmin() ? el("button", { type: "button", class: "item", role: "menuitem", onclick: () => { closeLayers(false); S.section = "agents"; S.agentSel = a.name; render(); } }, icon("chev"), "Open agent details") : null,
+    el("button", { type: "button", class: "item", onclick: () => { S.newAgent = a.name; closeLayers(false); newChat(); } }, icon("plus"), "New chat with " + a.name),
+    agents().length > 1 ? el("button", { type: "button", class: "item", onclick: () => { closeLayers(false); newChat(); setTimeout(() => { const p = $("#agent-pick"); if (p) p.click(); }, 0); } }, icon("bot"), "New chat with another agent…") : null,
+    isAdmin() ? el("button", { type: "button", class: "item", onclick: () => { closeLayers(false); S.section = "agents"; S.agentSel = a.name; render(); focusHeading(); } }, icon("chev"), "Open agent details") : null,
     el("div", { class: "sep" }), el("div", { class: "muted", style: "padding:4px 10px 2px;font-size:12px;max-width:280px", text: "This conversation belongs to " + a.name + ". To talk to another agent, start a new chat." })
-  ].filter(Boolean), { label: "Agent " + a.name });
+  ].filter(Boolean), { role: "dialog", label: "Agent " + a.name });
 }
 function convMenu(trigger, c) {
   openPop(trigger, [
@@ -1465,7 +1671,7 @@ function userMenu(trigger) {
     el("button", { type: "button", class: "item", role: "menuitem", onclick: () => { closeLayers(false); showShortcuts(); } }, icon("help"), "Keyboard shortcuts"),
     S.later ? el("button", { type: "button", class: "item", role: "menuitem", "aria-disabled": "true" }, icon("info"), "Memories", el("span", { class: "later-tag", style: "margin-left:auto", text: "LATER · E12" })) : null,
     el("div", { class: "sep" }),
-    el("button", { type: "button", class: "item", role: "menuitem", onclick: () => { closeLayers(false); S.signin = "signin"; render(); } }, "Sign out")
+    el("button", { type: "button", class: "item", role: "menuitem", onclick: () => { closeLayers(false); signOut(); } }, S.authMode === "token" ? "Forget token" : "Sign out")
   ].filter(Boolean), { label: "Account" });
   if (S.mode !== "phone") { const p = layer.nodes[layer.nodes.length - 1]; const a = app.getBoundingClientRect(), r = trigger.getBoundingClientRect(); p.style.left = (r.right - a.left + 8) + "px"; p.style.top = Math.max(8, r.bottom - a.top - p.offsetHeight) + "px"; }
 }
@@ -1484,79 +1690,147 @@ function dialog(label, kids, trigger) {
   const btn = d.querySelector("[data-autofocus]") || d.querySelector("button"); if (btn) btn.focus();
 }
 function confirmDelete(c, trigger) {
+  const live = S.run && S.run.conv === c.id;
   dialog("Delete conversation", [
     el("h2", { text: "Delete this conversation?" }),
     el("p", { class: "muted", text: "“" + c.title + "” and its runs are deleted for good. Agents that remembered things from it keep those memories." }),
+    live ? el("p", { class: "notice warn", style: "margin:0" }, icon("alert"), el("span", { text: "This also stops the running answer." })) : null,
     el("div", { class: "acts" }, el("button", { type: "button", class: "btn", "data-autofocus": "", onclick: () => closeLayers() }, "Cancel"),
-      el("button", { type: "button", class: "btn primary", onclick: () => { closeLayers(false); S.deleted.add(c.id); if (S.conv === c.id) S.conv = null; render(); toast("Conversation deleted"); } }, "Delete"))
-  ], trigger);
+      el("button", { type: "button", class: "btn primary", onclick: () => {
+        closeLayers(false);
+        // The open conversation: New chat with the same agent, focus on its h1. Another row: focus the next row (or the previous one).
+        const rows = convs().map(x => x.id), i = rows.indexOf(c.id), next = rows[i + 1] || rows[i - 1];
+        if (live) { clearInterval(S.run.timer); S.run = null; }
+        S.deleted.add(c.id); delete S.drafts[c.id];
+        const wasOpen = S.conv === c.id;
+        if (wasOpen) { S.newAgent = agentByName(c.agent) ? c.agent : S.newAgent; S.conv = null; }
+        render(); toast("Conversation deleted");
+        const r = !wasOpen && next && document.getElementById("row-" + next); if (r) r.focus(); else focusHeading();
+      } }, "Delete"))
+  ].filter(Boolean), trigger);
 }
+// Shortcuts use the platform's own modifier only: ⌘ on a Mac, Ctrl elsewhere (UI.md "Keyboard").
 const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 const MOD = MAC ? "⌘" : "Ctrl";
+const MOD_HINT = MAC ? "⌘" : "Ctrl+";
+const KS = k => (MAC ? "Meta+" : "Control+") + k;
+// Tooltip stand-in: the console uses the Tooltip component (on hover and focus); the mockup uses title.
+const tip = (b, label) => { b.title = label; return b; };
 function showShortcuts() {
   const k = (...keys) => el("dt", {}, ...keys.map(x => el("kbd", { class: "kbd", text: x })));
+  const single = el("input", { type: "checkbox", checked: S.singleKeys, onchange: e => { S.singleKeys = e.target.checked; try { localStorage.setItem("ak-mock-single-keys", S.singleKeys ? "on" : "off"); } catch (er) { /* storage blocked: lasts for this page */ } } });
   dialog("Keyboard shortcuts", [
     el("div", { style: "display:flex;justify-content:space-between;align-items:center" }, el("h2", { text: "Keyboard shortcuts" }), el("button", { type: "button", class: "icon-btn", "aria-label": "Close", onclick: () => closeLayers() }, icon("close"))),
     el("dl", { class: "keys" },
       k(MOD, "Shift", "O"), el("dd", { text: "New chat" }),
       k(MOD, "K"), el("dd", { text: "Search conversations" }),
-      k("/"), el("dd", { text: "Focus the message box (also Shift+Esc)" }),
+      k(MOD, "Shift", "S"), el("dd", { text: "Show or hide the list" }),
+      k(MOD, "/"), el("dd", { text: "This list" }),
       k("Enter"), el("dd", { text: "Send" }),
       k("Shift", "Enter"), el("dd", { text: "New line" }),
-      k("Esc"), el("dd", { text: "Stop the answer; or close a menu, sheet or dialog" }),
-      k(MOD, "Shift", "S"), el("dd", { text: "Show or hide the list" }),
-      k("?"), el("dd", { text: "This list (also " + MOD + "+/)" }),
-      k("↑", "↓"), el("dd", { text: "Move in menus and the agent picker" })),
-    el("p", { class: "muted", style: "font-size:12px", text: "Single keys work when you're not typing in a field." })
+      k("Esc"), el("dd", { text: "Close a menu, sheet or dialog; then the drawer; then stop the answer" }),
+      k("↑", "↓"), el("dd", { text: "Move in menus and the agent picker" }),
+      k("/"), el("dd", { text: "Focus the message box (single key)" }),
+      k("?"), el("dd", { text: "This list (single key)" })),
+    el("label", { style: "display:flex;gap:8px;align-items:center;font-size:13px" }, single, "Single-key shortcuts (/ and ?). They work when you're not typing in a field.")
   ]);
 }
 
 /* ============ Sign in ============ */
+// S.signin = { card: "password" | "token", reason: null | "401", err: null | "wrong" | "empty-user" | "empty-pass" | "throttled" | "unreachable" | "token", both }
 function renderSignin() {
-  const kind = S.signin;
-  const wrap = el("div", { class: "signin", role: "dialog", "aria-modal": "true", "aria-label": "Sign in" });
+  const si = S.signin, tokenCard = si.card === "token";
+  const wrap = el("div", { class: "signin", role: "dialog", "aria-modal": "true", "aria-labelledby": "signin-h", "aria-describedby": si.reason ? "signin-reason" : null });
   const form = el("form", { class: "panel", novalidate: true });
-  form.append(el("div", { class: "brand" }, el("span", { class: "brand-mark", text: "ak" }), "agentkit"));
-  if (kind === "token") {
-    form.append(el("h1", { text: "Connect to agentkit" }), el("p", { class: "muted", style: "font-size:13px", text: "This server has no users configured. Paste an API token; it's kept for this tab only." }),
-      el("label", {}, "API token", el("input", { type: "password", id: "tok", autocomplete: "off", placeholder: "ak_…" })),
-      el("button", { type: "submit", class: "btn primary block" }, "Continue"));
+  form.append(el("div", { class: "brand" }, el("span", { class: "brand-mark", "aria-hidden": "true", text: "ak" }), "agentkit"));
+  const errLine = (id, text) => el("div", { class: "err", id, role: "alert" }, icon("x"), text);
+  let wait = si.err === "throttled" ? 30 : 0;
+  if (si.reason) form.append(el("div", { class: "info", id: "signin-reason", text: tokenCard ? "Your token was rejected or has expired." : "Your session ended. Sign in again; your draft is kept." }));
+  if (tokenCard) {
+    form.append(el("h1", { id: "signin-h", text: "Connect to agentkit" }),
+      el("p", { class: "muted", style: "font-size:13px", text: "Paste an API token; it's kept for this tab only." }),
+      el("label", {}, "API token", el("input", { type: "password", id: "tok", autocomplete: "off", placeholder: "ak_…", "aria-invalid": si.err === "token" ? "true" : null, "aria-describedby": si.err === "token" ? "tok-err" : null })));
+    if (si.err === "token") form.append(errLine("tok-err", "That token wasn't accepted."));
+    form.append(el("button", { type: "submit", class: "btn primary block", id: "signin-btn" }, "Continue"));
+    if (si.both) form.append(el("button", { type: "button", class: "link-btn", style: "align-self:center", onclick: () => { S.signin = { ...si, card: "password", err: null }; render(); } }, "Use a username and password instead"));
   } else {
-    if (kind === "401") form.append(el("div", { class: "info", role: "status", text: "Your session ended. Sign in again; your draft and this page are kept." }));
-    form.append(el("h1", { text: "Sign in" }),
-      el("label", {}, "Username", el("input", { type: "text", id: "user", autocomplete: "username", value: "samanvith" })),
-      el("label", {}, "Password", el("input", { type: "password", id: "pass", autocomplete: "current-password", value: kind === "signin-error" ? "wrong" : "", "aria-invalid": kind === "signin-error" ? "true" : null, "aria-describedby": kind === "signin-error" ? "login-err" : null })));
-    if (kind === "signin-error") form.append(el("div", { class: "err", id: "login-err", role: "alert" }, icon("x"), "Wrong username or password."));
-    form.append(el("button", { type: "submit", class: "btn primary block", id: "signin-btn" }, "Sign in"),
-      el("p", { class: "muted", style: "font-size:12px", text: "Local users from the server config. Sign-in through your identity provider comes later." }));
+    const wrong = si.err === "wrong";
+    form.append(...[el("h1", { id: "signin-h", text: "Sign in" }),
+      el("label", {}, "Username", el("input", { type: "text", id: "user", autocomplete: "username", value: "samanvith", "aria-invalid": wrong || si.err === "empty-user" ? "true" : null, "aria-describedby": wrong ? "login-err" : si.err === "empty-user" ? "user-err" : null })),
+      si.err === "empty-user" ? errLine("user-err", "Enter your username") : null,
+      el("label", {}, "Password", el("input", { type: "password", id: "pass", autocomplete: "current-password", value: "", "aria-invalid": wrong || si.err === "empty-pass" ? "true" : null, "aria-describedby": wrong ? "login-err" : si.err === "empty-pass" ? "pass-err" : null })),
+      si.err === "empty-pass" ? errLine("pass-err", "Enter your password") : null].filter(Boolean));
+    if (wrong) form.append(errLine("login-err", "Wrong username or password."));
+    if (si.err === "unreachable") form.append(errLine("login-err", "Couldn't reach the server. Try again."));
+    if (si.err === "throttled") form.append(el("div", { class: "err", id: "login-err", role: "alert" }, icon("clock"), el("span", { id: "throttle", text: "Too many attempts. Try again in " + wait + " s." })));
+    form.append(el("button", { type: "submit", class: "btn primary block", id: "signin-btn", disabled: wait ? true : null }, "Sign in"));
+    if (si.both) form.append(el("button", { type: "button", class: "link-btn", style: "align-self:center", onclick: () => { S.signin = { ...si, card: "token", err: null }; render(); } }, "Use an API token instead"));
+    form.append(el("p", { class: "muted", style: "font-size:12px", text: "Local users from the server config. Sign-in through your identity provider comes later." }));
+  }
+  if (wait) {
+    // The countdown runs from Retry-After; only the first message is announced (role=alert above), the ticks aren't.
+    const t = setInterval(() => {
+      const n = $("#throttle"), b = $("#signin-btn"); if (!n || !n.isConnected) { clearInterval(t); return; }
+      wait--; n.textContent = wait > 0 ? "Too many attempts. Try again in " + wait + " s." : "You can try again now.";
+      if (wait <= 0) { clearInterval(t); b.disabled = false; }
+    }, 1000);
   }
   form.addEventListener("submit", e => {
     e.preventDefault();
-    const b = form.querySelector("button[type=submit]"); b.disabled = true; b.replaceChildren(el("span", { class: "spin", style: "border-top-color:var(--on-primary)" }), kind === "token" ? "Checking…" : "Signing in…");
+    const u = $("#user"), p = $("#pass"), tk = $("#tok");
+    if (u && !u.value.trim()) { S.signin = { ...si, err: "empty-user" }; render(); $("#user").focus(); return; }
+    if (p && !p.value) { S.signin = { ...si, err: "empty-pass" }; render(); $("#pass").focus(); return; }
+    const b = $("#signin-btn"); b.disabled = true; form.setAttribute("aria-busy", "true");
+    form.querySelectorAll("input").forEach(i => { i.disabled = true; });
+    b.replaceChildren(el("span", { class: "spin", style: "border-top-color:var(--on-primary)" }), tokenCard ? "Checking…" : "Signing in…");
     setTimeout(() => {
-      const p = $("#pass");
-      if (p && !p.value) { S.signin = "signin-error"; render(); return; }
-      S.signin = null; S.state = "normal"; $("#dv-state").value = "normal"; render(); toast(kind === "401" ? "Signed in. Your draft is back." : "Signed in");
+      // In the mockup, "wrong" or a token without the ak_ prefix fails; anything else signs in.
+      if (p && p.value === "wrong") { S.signin = { ...si, err: "wrong" }; render(); $("#pass").focus(); return; }
+      if (tk && !tk.value.startsWith("ak_")) { S.signin = { ...si, err: "token" }; render(); $("#tok").focus(); return; }
+      const restore = !!si.reason; // the same user (compared with the last /me) gets the draft and the route back
+      S.authMode = tokenCard ? "token" : "password";
+      S.signin = null; S.state = "normal"; $("#dv-state").value = "normal"; render();
+      toast(restore ? "Signed in. Your draft is back." : "Signed in");
+      if (restore) focusComposer(); else focusHeading();
     }, 600);
   });
   wrap.append(form);
-  setTimeout(() => { const f = wrap.querySelector(kind === "token" ? "#tok" : "#pass"); if (f) f.focus(); }, 0);
+  // Focus: the field with the error, else the first empty one. No autofocus on a fresh page load for phones (the keyboard would cover the card).
+  setTimeout(() => {
+    const f = si.err === "empty-user" ? $("#user") : si.err === "throttled" ? null : tokenCard ? $("#tok") : $("#pass");
+    if (f && !(S.mode === "phone" && !si.err && !si.reason)) f.focus();
+  }, 0);
   return wrap;
+}
+function signOut(sure) {
+  if (S.run && !sure) {
+    dialog("Sign out", [el("h2", { text: "Sign out?" }), el("p", { class: "muted", text: "An answer is running. Signing out stops it." }),
+      el("div", { class: "acts" }, el("button", { type: "button", class: "btn", "data-autofocus": "", onclick: () => closeLayers() }, "Cancel"),
+        el("button", { type: "button", class: "btn primary", onclick: () => { closeLayers(false); signOut(true); } }, "Sign out"))], $("#user-btn"));
+    return;
+  }
+  if (S.run) { clearInterval(S.run.timer); S.run = null; }
+  // POST /v1/auth/logout, then clear everything the console holds except the theme, and unmount the app.
+  S.drafts = {}; S.threads = {}; S.conv = "conv_7f3k2q"; S.section = "chats";
+  S.signin = { card: S.authMode === "token" ? "token" : "password", reason: null, err: null, both: false };
+  render();
 }
 
 /* ============ Navigation ============ */
+// Leaving a conversation never stops its run; the run keeps streaming into the app-level store.
 function openConv(id) {
   S.section = "chats"; S.conv = id; S.drawer = false;
-  const c = convById(id);
-  if (c && c.later && S.later) { /* a background run's conversation: it streams like any other */ }
-  render(); focusComposer();
+  if (S.state === "404") { S.state = "normal"; $("#dv-state").value = "normal"; }
+  const c = convById(id); if (c) c.unread = false;
+  render(); focusHeading();
 }
 function newChat() {
-  if (S.run) stopRun(false);
   S.section = "chats"; S.conv = null; S.drawer = false;
   if (S.state === "404") { S.state = "normal"; $("#dv-state").value = "normal"; }
   if (!agentByName(S.newAgent)) S.newAgent = "researcher";
-  render(); focusComposer();
+  render();
+  // Desktop: straight to the message box. Phone: the heading, so the keyboard doesn't cover the agent card.
+  if (S.mode === "phone") focusHeading(); else focusComposer();
 }
 function focusSearch() {
   if (S.section !== "chats" || S.listOff || S.mode === "phone") { S.section = "chats"; S.listOff = false; if (S.mode === "phone") S.drawer = true; render(); }
@@ -1564,23 +1838,29 @@ function focusSearch() {
 }
 
 /* ============ Keyboard ============ */
+// The platform's modifier only (⌘ or Ctrl, never both, never Alt); no key repeat; letters by e.code so layouts agree.
 document.addEventListener("keydown", e => {
   if (e.target.closest && e.target.closest(".devbar")) return;
-  const mod = e.metaKey || e.ctrlKey;
-  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-  const inField = e.target.closest && e.target.closest("input, textarea, select, [contenteditable]");
-  if (mod && e.shiftKey && k === "o") { e.preventDefault(); newChat(); return; }
-  if (mod && !e.shiftKey && k === "k") { e.preventDefault(); closeLayers(false); focusSearch(); return; }
-  if (mod && e.shiftKey && k === "s") { e.preventDefault(); toggleList(); return; }
-  if ((mod && k === "/") || (!inField && !mod && (e.key === "?" || (e.key === "/" && e.shiftKey)))) { e.preventDefault(); showShortcuts(); return; }
-  if (e.key === "Escape" && e.shiftKey) { e.preventDefault(); closeLayers(false); focusComposer(); return; }
+  if (e.repeat || e.isComposing) return;
+  const modal = !!S.signin || (layer && layer.nodes.some(n => n.classList.contains("dialog")));
   if (e.key === "Escape") {
+    if (S.signin) return; // nothing to close behind the sign-in card
     if (closeLayers()) { e.preventDefault(); return; }
-    if (S.run) { e.preventDefault(); stopRun(true); return; }
-    if (S.drawer) { S.drawer = false; render(); return; }
+    if (S.drawer) { e.preventDefault(); S.drawer = false; render(); return; }
+    if (runHere()) { e.preventDefault(); stopRun(); return; }
     return;
   }
-  if (!inField && !mod && e.key === "/") { e.preventDefault(); focusComposer(); }
+  if (modal) return; // a dialog takes only Esc and its own keys
+  const mod = MAC ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+  if (e.altKey) return;
+  const inField = e.target.closest && e.target.closest("input, textarea, select, [contenteditable]");
+  if (mod && e.shiftKey && e.code === "KeyO") { e.preventDefault(); newChat(); return; }
+  if (mod && !e.shiftKey && e.code === "KeyK") { e.preventDefault(); closeLayers(false); focusSearch(); return; }
+  if (mod && e.shiftKey && e.code === "KeyS") { e.preventDefault(); toggleList(); return; }
+  if (mod && e.code === "Slash") { e.preventDefault(); showShortcuts(); return; }
+  if (inField || e.metaKey || e.ctrlKey || !S.singleKeys) return;
+  if (e.key === "?" || (e.code === "Slash" && e.shiftKey)) { e.preventDefault(); showShortcuts(); return; }
+  if (e.key === "/") { e.preventDefault(); focusComposer(); }
 });
 
 /* ============ Mockup controls ============ */
@@ -1603,23 +1883,34 @@ $("#dv-state").addEventListener("change", e => applyState(e.target.value));
 
 function applyState(st) {
   if (S.run) { clearInterval(S.run.timer); S.run = null; }
-  S.state = st; S.signin = null; S.drawer = false; S.threads = {}; S.deleted.clear(); S.search = ""; S.filterAgent = ""; S.draft = "";
-  CONVS_ALL.forEach(c => { delete c.resumed; });
+  stopRetry();
+  S.state = st; S.signin = null; S.drawer = false; S.threads = {}; S.deleted.clear(); S.search = ""; S.filterAgent = ""; S.drafts = {}; S.pending = null; S.busyChecks = 0;
+  CONVS_ALL.forEach(c => { delete c.resumed; delete c.unread; });
+  const si = (card, err, extra) => { S.state = "normal"; S.signin = { card, reason: null, err, both: false, ...extra }; };
   const go = (section, conv) => { S.section = section; if (conv !== undefined) S.conv = conv; };
   switch (st) {
     case "normal": go("chats", "conv_7f3k2q"); break;
-    case "streaming": go("chats", "conv_7f3k2q"); render(); S.draft = ""; startRun("And what changed in the runtime?"); return;
+    case "streaming": go("chats", "conv_7f3k2q"); render(); startRun("And what changed in the runtime?"); return;
     case "long": go("chats", "conv_long01"); S.scrollTop = "top"; break;
-    case "signin": case "signin-error": case "token": S.signin = st; break;
-    case "401": go("chats", "conv_7f3k2q"); S.draft = "Can you also check the 1.26.1 patch notes?"; S.signin = "401"; break;
+    case "signin": si("password", null); break;
+    case "signin-error": si("password", "wrong"); break;
+    case "signin-throttled": si("password", "throttled"); break;
+    case "signin-unreachable": si("password", "unreachable"); break;
+    case "signin-both": si("password", null, { both: true }); break;
+    case "token": si("token", null); break;
+    case "token-error": si("token", "token"); break;
+    case "401": go("chats", "conv_7f3k2q"); S.drafts.conv_7f3k2q = "Can you also check the 1.26.1 patch notes?"; si("password", null, { reason: "401" }); break;
     case "empty": go("chats", null); break;
     case "no-agents": go("chats", null); break;
+    case "load-failed": go("chats", "conv_7f3k2q"); break;
+    case "agent-removed": S.state = "normal"; go("chats", "conv_s0rm1x"); break;
     case "loading": if (S.section === "credentials" || S.section === "activity") go("chats", "conv_7f3k2q"); if (S.section === "chats" && !S.conv) S.conv = "conv_7f3k2q"; break;
     case "403": S.role = "user"; document.querySelectorAll("#dv-role button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === "user"))); go("agents"); break;
     case "404": go("chats", "conv_9zz0q1"); break;
     case "busy": go("chats", "conv_q81mzc"); break;
     case "interrupted": go("chats", "conv_k4p9xe"); break;
-    case "503": case "err-rate": case "err-refused": case "lost": case "tool-failed": go("chats", "conv_7f3k2q"); break;
+    case "503": case "503-restart": case "err-rate": case "err-refused": case "err-context": case "lost": case "tool-failed": go("chats", "conv_7f3k2q"); break;
+    case "too-large": go("chats", "conv_7f3k2q"); S.drafts.conv_7f3k2q = "Here is the full log:\n2026-10-12T09:14:03Z INFO server starting…\n(about 3 MB more pasted)"; break;
     case "offline": go("chats", "conv_7f3k2q"); break;
     case "notify":
       S.state = "normal"; go("chats", "conv_7f3k2q"); render();
@@ -1644,6 +1935,7 @@ function measure() {
 new ResizeObserver(measure).observe($("#frame"));
 
 try { const t = localStorage.getItem("ak-mock-theme"); if (t) setTheme(t); } catch (e) { /* storage blocked */ }
+applyRoute(); // a reload or a pasted link opens the same view
 measure(); render();
 </script>
 </body>

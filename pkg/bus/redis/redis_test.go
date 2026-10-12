@@ -7,7 +7,9 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
+	"net/url"
 	"os/exec"
 	"slices"
 	"strconv"
@@ -30,7 +32,7 @@ import (
 // Tests share one Redis (AGENTKIT_REDIS_URL): each bus writes under a prefix
 // of its own and deletes its keys when its test ends. They never FLUSHDB.
 
-func newClient(t *testing.T, url string) *goredis.Client {
+func newClient(t *testing.T, url string, configure ...func(*goredis.Options)) *goredis.Client {
 	t.Helper()
 	opt, err := goredis.ParseURL(url)
 	if err != nil {
@@ -38,6 +40,9 @@ func newClient(t *testing.T, url string) *goredis.Client {
 	}
 	opt.ClientName = "agentkit-test-" + rand.Text()
 	opt.MaintNotificationsConfig = &maintnotifications.Config{Mode: maintnotifications.ModeDisabled}
+	for _, f := range configure {
+		f(opt)
+	}
 	c := goredis.NewClient(opt)
 	t.Cleanup(func() { _ = c.Close() })
 	return c
@@ -49,6 +54,11 @@ func TestNewRejectsAutoMaintNotifications(t *testing.T) {
 	defer c.Close()
 	if _, err := redisbus.New(c); !errors.Is(err, bus.ErrInvalid) {
 		t.Errorf("New with go-redis's default options: err = %v, want ErrInvalid", err)
+	}
+	ok := goredis.NewClient(&goredis.Options{Addr: "127.0.0.1:1", MaintNotificationsConfig: &maintnotifications.Config{Mode: maintnotifications.ModeDisabled}})
+	defer ok.Close()
+	if _, err := redisbus.New(ok, redisbus.WithSubscribeClient(c)); !errors.Is(err, bus.ErrInvalid) {
+		t.Errorf("New with a default-options subscribe client: err = %v, want ErrInvalid", err)
 	}
 }
 
@@ -88,11 +98,13 @@ func TestConformance(t *testing.T) {
 		b := newBus(t, c, redisbus.WithTrim(trim))
 		return bustest.Backend{
 			Bus: b,
-			// Expiry deletes the key, as does a restart without the data.
+			// Expiry deletes the key, and the bus forgets the stream
+			// when it expires.
 			Lose: func(t *testing.T, topic bus.Topic) {
 				if err := c.Del(t.Context(), b.Key(topic)).Err(); err != nil {
 					t.Fatal(err)
 				}
+				redisbus.Forget(b, topic)
 			},
 		}
 	})
@@ -232,6 +244,198 @@ func TestCancelRacingTheRead(t *testing.T) {
 	}
 }
 
+// A publish that finds its own ID already last on the stream (go-redis
+// retried a script whose reply was lost, or an earlier attempt landed) gets
+// ErrStale, and the bus remembers the message as published: if Redis then
+// loses it, the next message is a gap, not a silent skip.
+func TestStaleOwnIDIsRemembered(t *testing.T) {
+	t.Parallel()
+	c := newClient(t, testkit.IntegrationEnv(t, "AGENTKIT_REDIS_URL"))
+	b := newBus(t, c)
+	topic := runTopic(t, "stale-own")
+	key := b.Key(topic)
+	// Another bus on the same keys stands in for the attempt that landed.
+	other, err := redisbus.New(c, redisbus.WithPrefix(strings.TrimSuffix(key, topic.String())))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	publish(t, other, topic, 1)
+	if err := b.Publish(t.Context(), topic, bus.Message{ID: bus.ID{Seq: 1}, Data: []byte("m1")}); !errors.Is(err, bus.ErrStale) {
+		t.Fatalf("publish 1 again: err = %v, want ErrStale", err)
+	}
+	if err := c.Del(t.Context(), key).Err(); err != nil { // Redis loses it
+		t.Fatal(err)
+	}
+	s := subscribe(t, b, topic, bus.ID{})
+	publish(t, b, topic, 2)
+	if err := end(t, s); !errors.Is(err, bus.ErrGap) {
+		t.Errorf("from the start after 1 was lost: err = %v, want ErrGap", err)
+	}
+}
+
+// A stream that expired starts afresh: the bus forgets what it published
+// there when the stream expires, so the next message is a restart point, not
+// a gap.
+func TestExpiredStreamRestarts(t *testing.T) {
+	t.Parallel()
+	c := newClient(t, testkit.IntegrationEnv(t, "AGENTKIT_REDIS_URL"))
+	clk := clocktest.NewFake(time.Now())
+	const maxAge = 100 * time.Millisecond
+	b := newBus(t, c, redisbus.WithClock(clk), redisbus.WithBlock(time.Second),
+		redisbus.WithTrim(func(bus.Topic) bus.Trim { return bus.Trim{MaxLen: 10, MaxAge: maxAge} }))
+	topic := runTopic(t, "expired")
+	publish(t, b, topic, 1)
+	testkit.Eventually(t, 10*time.Second, func() bool { return c.Exists(t.Context(), b.Key(topic)).Val() == 0 })
+	clk.Advance(maxAge)
+	s := subscribe(t, b, topic, bus.ID{})
+	publish(t, b, topic, 2)
+	expect(t, s, 2)
+}
+
+// Subscriptions on a client of their own leave the publishing client's pool
+// alone: with their pool of 2 held, publishes go through, and subscriptions
+// waiting for a connection get one when others end.
+func TestSubscribeClient(t *testing.T) {
+	t.Parallel()
+	url := testkit.IntegrationEnv(t, "AGENTKIT_REDIS_URL")
+	// Both pools hold 2: subscriptions on the publishing client would
+	// starve the publishes below.
+	small := func(opt *goredis.Options) { opt.PoolSize, opt.PoolTimeout = 2, 100*time.Millisecond }
+	b := newBus(t, newClient(t, url, small), redisbus.WithSubscribeClient(newClient(t, url, small)))
+	topic := runTopic(t, "subscribe-client")
+	var subs []bus.Subscription
+	var cancels []context.CancelFunc
+	for range 4 {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		s, err := b.Subscribe(ctx, topic, bus.ID{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		subs, cancels = append(subs, s), append(cancels, cancel)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	for i := range uint64(20) {
+		if err := b.Publish(ctx, topic, bus.Message{ID: bus.ID{Seq: i + 1}, Data: fmt.Appendf(nil, "m%d", i+1)}); err != nil {
+			t.Fatalf("publish %d with the subscribe pool full: %v", i+1, err)
+		}
+	}
+	// Two of the four hold the pool and read; end those, and the two that
+	// were waiting for a connection get one and read too.
+	first := make(chan int, len(subs))
+	for i, s := range subs {
+		go func() {
+			if m, ok := <-s.C(); ok && m.ID == (bus.ID{Seq: 1}) {
+				first <- i
+			}
+		}()
+	}
+	read := map[int]bool{}
+	for range 2 {
+		select {
+		case i := <-first:
+			read[i] = true
+			cancels[i]()
+		case <-time.After(10 * time.Second):
+			t.Fatal("no subscription read within 10s")
+		}
+	}
+	for range 2 {
+		select {
+		case i := <-first:
+			read[i] = true
+		case <-time.After(10 * time.Second):
+			t.Fatalf("only %d of 4 subscriptions read within 10s of two ending", len(read))
+		}
+	}
+}
+
+// A cancelled read that Redis refuses to unblock (an ACL without CLIENT
+// UNBLOCK) ends after the block time, and the bus says so once instead of
+// retrying the refused command until then.
+func TestUnblockRefused(t *testing.T) {
+	t.Parallel()
+	raw := testkit.IntegrationEnv(t, "AGENTKIT_REDIS_URL")
+	admin := newClient(t, raw)
+	user, pass := "agentkit-test-"+rand.Text(), rand.Text()
+	if err := admin.Do(t.Context(), "ACL", "SETUSER", user, "on", ">"+pass, "~*", "&*", "+@all", "-client|unblock").Err(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = admin.Do(context.Background(), "ACL", "DELUSER", user).Err() })
+	u, err := url.Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.User = url.UserPassword(user, pass)
+	logs := &records{}
+	b := newBus(t, newClient(t, u.String()), redisbus.WithBlock(2*time.Second), redisbus.WithLogger(slog.New(logs)))
+	topic := runTopic(t, "unblock-refused")
+	ctx, cancel := context.WithCancel(t.Context())
+	s, err := b.Subscribe(ctx, topic, bus.ID{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	publish(t, b, topic, 1)
+	expect(t, s, 1)
+	// Cancel only once the reader is blocked in XREAD again, so that only
+	// CLIENT UNBLOCK, refused, could end the read early.
+	testkit.Eventually(t, 10*time.Second, func() bool {
+		list, err := admin.ClientList(t.Context()).Result()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for line := range strings.Lines(list) {
+			if strings.Contains(line, " user="+user+" ") && strings.Contains(line, " flags=b ") {
+				return true
+			}
+		}
+		return false
+	})
+	cancel()
+	select {
+	case _, ok := <-s.C():
+		if ok {
+			t.Fatal("a message after cancel")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("cancel did not end the read within 10s (block time 2s)")
+	}
+	if n := logs.count("bus: cannot unblock"); n != 1 {
+		t.Errorf("logged the refused unblock %d times, want once", n)
+	}
+}
+
+// records is a slog.Handler that keeps every record's message.
+type records struct {
+	mu   sync.Mutex
+	msgs []string
+}
+
+func (r *records) Enabled(context.Context, slog.Level) bool { return true }
+func (r *records) WithAttrs([]slog.Attr) slog.Handler       { return r }
+func (r *records) WithGroup(string) slog.Handler            { return r }
+
+func (r *records) Handle(_ context.Context, rec slog.Record) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.msgs = append(r.msgs, rec.Message)
+	return nil
+}
+
+func (r *records) count(prefix string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n := 0
+	for _, m := range r.msgs {
+		if strings.HasPrefix(m, prefix) {
+			n++
+		}
+	}
+	return n
+}
+
 // Restarts of a real server (AGENTKIT_REDIS_SERVER: the redis-server binary,
 // version 7 or later). With its data kept, a subscriber continues where it
 // was; after Redis restored an older snapshot, it gets ErrGap rather than
@@ -260,11 +464,18 @@ func TestRestart(t *testing.T) {
 	resumed := subscribe(t, b, topic, bus.ID{Seq: 7})
 	expect(t, resumed, 8, 9, 10)
 
-	// Data lost: Redis comes back with the older snapshot (1-5), without 6-10.
+	// Data lost: Redis comes back with the older snapshot (1-5), without
+	// 6-10. 11 follows 10, the last this bus published: the subscribers that
+	// got 10 miss nothing and go on; one before it, or reading from the
+	// start, gets ErrGap after 5.
 	server.restart(t, "NOSAVE")
 	behind := subscribe(t, b, topic, bus.ID{Seq: 7})
+	fromStart := subscribe(t, b, topic, bus.ID{})
+	expect(t, fromStart, 1, 2, 3, 4, 5)
 	publish(t, b, topic, 11)
-	for name, s := range map[string]bus.Subscription{"live": live, "resumed": resumed, "behind": behind} {
+	expect(t, live, 11)
+	expect(t, resumed, 11)
+	for name, s := range map[string]bus.Subscription{"behind": behind, "from the start": fromStart} {
 		if err := end(t, s); !errors.Is(err, bus.ErrGap) {
 			t.Errorf("%s: err = %v, want ErrGap", name, err)
 		}
@@ -385,7 +596,7 @@ func publish(t *testing.T, b bus.Bus, topic bus.Topic, seq uint64) {
 		err = b.Publish(t.Context(), topic, bus.Message{ID: bus.ID{Seq: seq}, Data: fmt.Appendf(nil, "m%d", seq)})
 		return err == nil || errors.Is(err, bus.ErrStale)
 	})
-	if err != nil {
+	if err != nil && !errors.Is(err, bus.ErrStale) { // stale: an attempt landed
 		t.Fatalf("publish %d: %v", seq, err)
 	}
 }

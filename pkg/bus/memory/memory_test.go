@@ -2,7 +2,10 @@ package memory_test
 
 import (
 	"context"
+	"errors"
+	"runtime"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -31,9 +34,52 @@ func TestConformance(t *testing.T) {
 	})
 }
 
-// BenchmarkPublishFanOut publishes to a topic with 8 subscribers reading
-// along: the per-message cost of the in-process bus.
+// A failed publish on a topic with no message yet outlives the minute sweep,
+// which drops the topics with nothing to remember.
+func TestFailedFirstPublishOutlivesTheSweep(t *testing.T) {
+	clk := clocktest.NewFake(time.Time{})
+	m := memory.New(memory.WithClock(clk))
+	defer m.Close()
+	acme, _ := tenancy.NewTenant("acme")
+	topic, _ := bus.RunTopic(acme, "first")
+	other, _ := bus.RunTopic(acme, "other")
+	done, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := m.Publish(done, topic, bus.Message{ID: bus.ID{Seq: 1}}); err == nil {
+		t.Fatal("publish with a done context succeeded")
+	}
+	clk.Advance(2 * time.Minute)
+	for _, p := range []struct {
+		topic bus.Topic
+		seq   uint64
+	}{{other, 1}, {topic, 2}} { // the first publish sweeps
+		if err := m.Publish(t.Context(), p.topic, bus.Message{ID: bus.ID{Seq: p.seq}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s, err := m.Subscribe(t.Context(), topic, bus.ID{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case m, ok := <-s.C():
+		if ok {
+			t.Fatalf("got %s as if it were the first message", m.ID)
+		}
+		if !errors.Is(s.Err(), bus.ErrGap) {
+			t.Errorf("Err = %v, want ErrGap", s.Err())
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("subscription neither delivered nor ended in 10s")
+	}
+}
+
+// BenchmarkPublishFanOut is the cost of one message published and delivered
+// to each of 8 subscribers. The publisher waits for them every 1000
+// messages, well within the history kept, so none falls behind into ErrGap
+// and every message is delivered, which the benchmark checks.
 func BenchmarkPublishFanOut(b *testing.B) {
+	const subscribers, batch = 8, 1000
 	acme, _ := tenancy.NewTenant("acme")
 	topic, _ := bus.RunTopic(acme, "bench")
 	m := memory.New()
@@ -41,15 +87,29 @@ func BenchmarkPublishFanOut(b *testing.B) {
 	ctx, cancel := context.WithCancel(b.Context())
 	defer cancel()
 	var wg sync.WaitGroup
-	for range 8 {
+	got := make([]atomic.Uint64, subscribers)
+	subs := make([]bus.Subscription, subscribers)
+	for i := range subscribers {
 		s, err := m.Subscribe(ctx, topic, bus.ID{})
 		if err != nil {
 			b.Fatal(err)
 		}
+		subs[i] = s
 		wg.Go(func() {
-			for range s.C() {
+			for msg := range s.C() {
+				got[i].Store(msg.ID.Seq)
 			}
 		})
+	}
+	caughtUp := func(seq uint64) {
+		for i := range got {
+			for got[i].Load() < seq {
+				if err := subs[i].Err(); err != nil {
+					b.Fatalf("subscriber %d ended at %d of %d: %v", i, got[i].Load(), seq, err)
+				}
+				runtime.Gosched()
+			}
+		}
 	}
 	data := make([]byte, 256)
 	b.ReportAllocs()
@@ -59,7 +119,11 @@ func BenchmarkPublishFanOut(b *testing.B) {
 		if err := m.Publish(ctx, topic, bus.Message{ID: bus.ID{Seq: seq}, Data: data}); err != nil {
 			b.Fatal(err)
 		}
+		if seq%batch == 0 {
+			caughtUp(seq)
+		}
 	}
+	caughtUp(seq)
 	cancel()
 	wg.Wait()
 }

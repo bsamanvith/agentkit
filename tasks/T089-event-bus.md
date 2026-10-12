@@ -46,28 +46,29 @@ Live events must reach subscribers on any replica, and commands must reach the r
 - [x] **Resume after a restart:** a subscriber resuming after a Redis restart (data kept) continues; after history was trimmed, it gets `ErrGap`. (`TestRestart`, on a `redis-server` it restarts itself; it also covers a restored older snapshot and a failed publish.)
 - [x] **Slow subscribers:** a stalled subscriber doesn't slow the publisher or other subscribers (measured, not timed: the publisher never blocks). (`bustest` SlowSubscriberBlocksNobody: a subscriber that never reads, 600 publishes each checked to return, another subscriber receiving all of them; the stalled one then gets `ErrGap`.)
 - [x] **Leak checks:** no goroutine leaks after cancel (goleak or a counted check). (`goleak.VerifyTestMain` in `pkg/bus/memory` and `pkg/bus/redis`.)
-- [x] **Mutation list** recorded (Notes: 26 plants, all caught).
+- [x] **Mutation list** recorded (Notes: 37 plants, all caught; 11 added in the review).
 
 ## Notes
 
 ### API (package `bus`)
 
-- `Bus`: `Publish(ctx, Topic, Message) error`, `Subscribe(ctx, Topic, after ID) (Subscription, error)`, `Close() error`. `Subscription` has `C() <-chan Message` and `Err() error`, which is nil until `C` is closed and then says why: `ErrGap`, `ErrClosed`, the context's cause, or a backend error. (The scope's `<-chan Message` return could not say why a stream ended.)
+- `Bus`: `Publish(ctx, Topic, Message) error`, `Subscribe(ctx, Topic, after ID) (Subscription, error)`, `Last(ctx, Topic) (ID, error)` (the newest kept message's ID, zero if none), `Close() error`. `Subscription` has `C() <-chan Message` and `Err() error`, which is nil until `C` is closed and then says why: `ErrGap`, `ErrClosed`, the context's cause, or a backend error. (The scope's `<-chan Message` return could not say why a stream ended.)
 - `Message{ID, Data}`. `ID{Seq, N}` is ordered by `Seq`, then `N`; text form `"<seq>"` or `"<seq>.<n>"` (`String`, `ParseID`, which accepts only that form). The zero ID means "before everything" for `Subscribe` and is invalid for `Publish`.
 - Topics: `RunTopic(tenant, run)` is `run:{tenant}:{run}`, `CommandTopic` is `run:{tenant}:{run}:cmd`, `UserTopic(tenant, user)` is `user:{tenant}:{user}`. Every part is percent-escaped (only `[A-Za-z0-9._-]` kept), so no ID can reach another tenant's or kind's topic. Unlike E18's `run:{id}`, the run topics carry the tenant.
-- `Trim{MaxLen, MaxAge}` per topic; `DefaultTrim`: run 10000 / 24h, cmd 1000 / 24h, user 1000 / 1h. `MaxAge` is an idle expiry: a topic is dropped `MaxAge` after its last publish.
-- Errors: `ErrGap`, `ErrStale` (the ID is not after the topic's last; nothing published; benign when retrying), `ErrInvalid`, `ErrClosed`.
-- Backends: `memory.New(WithClock, WithTrim)` and `redis.New(client, WithPrefix, WithTrim, WithClock, WithBackoff, WithBlock)` (keys `agentkit:bus:<topic>`). `bustest.Run(t, NewBackend)` is the conformance suite; `Backend.Lose` makes a backend lose a topic's history (memory: idle expiry; Redis: `DEL`).
+- `Trim{MaxLen, MaxAge}` per topic; `DefaultTrim`: run 10000 / 1h, cmd and user 1000 / 1h. `MaxAge` is an idle expiry: a topic is dropped `MaxAge` after its last publish.
+- Errors: `ErrGap`, `ErrStale` (the ID is not after the topic's last; this call added nothing, but the message may already be there from an earlier attempt; benign when retrying), `ErrInvalid`, `ErrClosed`.
+- Backends: `memory.New(WithClock, WithTrim)` and `redis.New(client, WithPrefix, WithTrim, WithClock, WithBackoff, WithBlock, WithSubscribeClient, WithLogger)` (keys `agentkit:bus:<topic>`). `bustest.Run(t, NewBackend)` is the conformance suite; `Backend.Lose` makes a backend lose a topic's history the way expiry does (memory: idle expiry; Redis: `DEL`, and the bus forgets what it published there).
 
 ### Decisions
 
-- **Gaps are detected by each entry's predecessor, not by trim bookkeeping.** Every stored entry records the ID of the entry before it (`p`), or none for the first of a topic. A subscriber at cursor `c` delivers the next entry only if its predecessor is at most `c` (none: only if `c` is zero); otherwise the subscription ends with `ErrGap`. This one rule covers trimming, expiry, a `DEL`, a Redis restart that lost data, and a subscriber that fell behind. Redis's own `max-deleted-entry-id` is no help: `MAXLEN` trimming does not advance it (checked, it stays `0-0`).
+- **Gaps are detected by each entry's predecessor, not by trim bookkeeping.** Every stored entry records the ID of the entry before it (`p`), or none for the first of a topic (unless the publisher remembers one; see Lost writes). A subscriber at cursor `c` delivers the next entry only if its predecessor is at most `c` (none: only if `c` is zero); otherwise the subscription ends with `ErrGap`. This one rule covers trimming, expiry, a `DEL`, a Redis restart that lost data, and a subscriber that fell behind. Redis's own `max-deleted-entry-id` is no help: `MAXLEN` trimming does not advance it (checked, it stays `0-0`).
 - **Slow subscribers:** a publisher never waits for a subscriber. History lives in the topic (ring or stream), and each subscriber reads from it at its own pace through an unbuffered channel. A subscriber that falls further behind than `MaxLen` gets `ErrGap` when it reads on, instead of a bounded per-subscriber buffer.
 - **A missing topic with a non-zero `after` waits** instead of failing: the first entry's predecessor decides. That lets T090 subscribe after the last event it replayed before the bus has seen any.
-- **Lost writes (Redis):** each bus remembers the last ID it published per stream, until the stream would expire. If the stream's last entry is before it (Redis restored an older snapshot), the next entry is marked as having no known predecessor, so a subscriber past it gets `ErrGap`.
-- **A failed publish is a gap, on both backends.** A publish that fails (Redis down, a timeout, or a done `ctx`) may or may not have landed. The bus remembers the failed ID, and the next message links to it unless the stream reached it: subscribers past the message before it get `ErrGap` instead of silently missing it. Publishing the failed ID again links as usual. Redis marks the next entry as having no known predecessor; the memory bus gives it the failed ID as predecessor. `bustest` FailedPublishIsAGap covers both (with a done context), `TestRestart` covers Redis down.
-- **Publish is one Lua script:** stale check, predecessor, `XADD MAXLEN ~`, `PEXPIRE`. IDs are compared as decimal strings in Lua (Lua numbers lose precision past 2^53).
-- **One connection per Redis subscription**, reading with `XREAD BLOCK` (5s by default). A cancelled subscription is woken with `CLIENT UNBLOCK`, retried every 10ms while the read is in flight (a cancel racing the start of an `XREAD` made a single unblock a no-op). After a connection error the subscription drops that connection and reconnects with backoff (50ms doubling to 5s): go-redis's sticky `Conn()` would return the bad-connection error forever. Redis error replies are permanent, except `LOADING`, `BUSY`, `TRYAGAIN`, `MASTERDOWN` and `READONLY`.
+- **Lost writes (Redis):** each bus remembers the last ID it published (or tried to) per stream, until the stream would expire. If the stream's last entry is before it, or the stream is gone (Redis restored an older snapshot), the next entry's predecessor is the remembered ID, so a subscriber positioned before it gets `ErrGap`, and one that was live past it continues. Only the publishing process remembers: if another process (another replica, or this one restarted) publishes after Redis lost writes, a subscriber inside the lost range can skip it silently. The store is the source of truth; the bus only has to cover a reconnect.
+- **A failed publish is a gap, on both backends.** A publish that fails (Redis down, a timeout, or a done `ctx`) may or may not have landed. The bus remembers the failed ID, and the next message links to it unless the stream reached it: subscribers past the message before it get `ErrGap` instead of silently missing it. Publishing the failed ID again links as usual. Both backends give the next entry the failed ID as predecessor, including when the failed publish was the topic's first. `bustest` FailedPublishIsAGap covers both (with a done context, also as the first publish), `TestRestart` covers Redis down.
+- **Retention is an hour for every topic.** The bus is never the only copy of anything (the store is), so it only needs to cover a reconnect; 24h held 10000 deltas per finished run in memory or Redis for a day. A run paused longer than that restarts its stream: see For T090.
+- **Publish is one Lua script:** stale check, predecessor, `XADD MAXLEN ~`, `PEXPIRE`. A stale reply whose last entry is the message's own ID (go-redis retried a script whose reply was lost) counts as published. IDs are compared as decimal strings in Lua (Lua numbers lose precision past 2^53).
+- **One connection per Redis subscription**, from `WithSubscribeClient`'s client (the publish client by default), reading with `XREAD BLOCK` (5s by default). A separate client keeps many subscriptions from starving publishes of pool connections. A cancelled subscription is woken with `CLIENT UNBLOCK`, retried every 10ms while the read is in flight (a cancel racing the start of an `XREAD` made a single unblock a no-op). After a connection error the subscription drops that connection and reconnects with backoff (50ms doubling to 5s): go-redis's sticky `Conn()` would return the bad-connection error forever. Redis error replies are permanent, except `LOADING`, `BUSY`, `TRYAGAIN`, `MASTERDOWN`, `READONLY` and `max number of clients`. Each failed read is logged at Warn (`WithLogger`, discarded by default) before the backoff. If `CLIENT UNBLOCK` is refused (an ACL without it), the bus logs it once and the read ends after the block time instead of retrying every 10ms.
 - **`redis.New` rejects a client whose maintenance notifications are in auto mode** (go-redis's default). In v9.23 the auto mode's fallback writes the client's options while a `Conn()` derived from it reads them under a different lock, which the race detector reports. Use `ModeDisabled` (or `ModeEnabled`).
 - **archtest:** `pkg/bus` may import `pkg/tenancy`, `pkg/clock` (and `pkg/clock/clocktest`, `internal/testkit` in tests). Third party: `pkg/bus/redis` gets `go-redis/v9` (and its `maintnotifications`); `go.uber.org/goleak` is test-only.
 
@@ -81,8 +82,8 @@ Live events must reach subscribers on any replica, and commands must reach the r
 
 ### Testing
 
-- `pkg/bus/memory`: `TestConformance` (fake clock), `Example`, `BenchmarkPublishFanOut` (8 subscribers, 256 B: ~1.4 µs, 3.4 KB and 9 allocs per publish on an M-series Mac).
-- `pkg/bus/redis` (`//go:build integration`, `AGENTKIT_REDIS_URL`; skipped without it unless `AGENTKIT_REQUIRE_INTEGRATION` is set): `TestConformance`, `TestPublishSetsExpiry`, `TestReconnect` (kills the test's own connections with `CLIENT KILL ID`), `TestCancelUnblocksTheRead` (a 1-minute `BLOCK` ended by cancel), `TestNewRejectsAutoMaintNotifications`, and `TestRestart`, which runs its own `redis-server` (`AGENTKIT_REDIS_SERVER`). It covers: data kept across `SHUTDOWN SAVE` (a live subscriber continues, one resumed after 7 gets 8-10); an older snapshot restored (`SHUTDOWN NOSAVE`: live, resumed and newly subscribed all get `ErrGap`); history trimmed by `MAXLEN ~` (`ErrGap` after 11, a resume after 609 continues); and a publish that failed while Redis was down (`ErrGap` past it, or no gap once retried). `TestCancelRacingTheRead` pins the race between a cancel and an `XREAD` that has not reached Redis yet, through a test-only hook (`export_test.go`) and the fake clock.
+- `pkg/bus/memory`: `TestConformance` (fake clock), `Example`, `TestFailedFirstPublishOutlivesTheSweep`, `BenchmarkPublishFanOut` (8 subscribers that must each receive every message; see Review for the numbers).
+- `pkg/bus/redis` (`//go:build integration`, `AGENTKIT_REDIS_URL`; skipped without it unless `AGENTKIT_REQUIRE_INTEGRATION` is set): `TestConformance`, `TestPublishSetsExpiry`, `TestReconnect` (kills the test's own connections with `CLIENT KILL ID`), `TestCancelUnblocksTheRead` (a 1-minute `BLOCK` ended by cancel), `TestNewRejectsAutoMaintNotifications`, and `TestRestart`, which runs its own `redis-server` (`AGENTKIT_REDIS_SERVER`). It covers: data kept across `SHUTDOWN SAVE` (a live subscriber continues, one resumed after 7 gets 8-10); an older snapshot restored (`SHUTDOWN NOSAVE`, 6-10 lost: the two subscribers that had read 10 continue with 11; one subscribed after 7, and one from the start that read 1-5, get `ErrGap`); history trimmed by `MAXLEN ~` (`ErrGap` after 11, a resume after 609 continues); and a publish that failed while Redis was down (`ErrGap` past it, or no gap once retried). `TestStaleOwnIDIsRemembered`, `TestExpiredStreamRestarts`, `TestSubscribeClient` (both pools of size 2: subscriptions hold the subscribe client's connections, publishes still go through), `TestUnblockRefused` (an ACL user without `CLIENT UNBLOCK`: the cancel ends within the block time, logged once) and `TestPermanent` (untagged: the error classification). `TestCancelRacingTheRead` pins the race between a cancel and an `XREAD` that has not reached Redis yet, through a test-only hook (`export_test.go`) and the fake clock.
 - CI: the `integration-redis` job (Redis 7 service container, plus `redis-server` from apt for `TestRestart`). Locally the tier passed against Redis 8.2 and `redis:7` (7.4) at `-count=20`.
 - `pkg/bus`: `FuzzParseID` (round trip), `TestIDRoundTripAndOrder`, `TestTopicNamesAreDistinct`.
 
@@ -90,7 +91,9 @@ Live events must reach subscribers on any replica, and commands must reach the r
 
 Each bug was planted on its own (script in the session's scratchpad), and the whole tier run with `go test -race -count=1 -tags integration ./pkg/bus/...` against `redis:7`. Every plant compiles and fails at least one test, by name; none survives, and none is caught only by a hang.
 
-Four plants needed a second pass:
+Plants added in the review are at the end of the table. A first-pass plant that recorded a stale own ID as failed rather than published survived because it is equivalent (both make the next entry link to it); the plant that drops the record instead is the real bug. `memory: Last ignores expiry` survived until `bustest` Last checked a lost topic.
+
+Four plants needed a second pass in the first round:
 - `unblock tried once` survived: the race it guards showed up only under `-count=20`. `TestCancelRacingTheRead` now pins it.
 - `Close does not end subscriptions` and `publisher waits for each reader` were caught only by the 180s test timeout (`Close` hung). The suite now closes buses with an escape, as it already did for publishes.
 - `cancel leaves the channel open` did not compile as first written.
@@ -123,15 +126,52 @@ Four plants needed a second pass:
 | `redis: failed publish not remembered` | The next publish links past one that failed in Redis | TestRestart |
 | `redis: cancelled publish not remembered` | The next publish links past one whose context was done | TestConformance/FailedPublishIsAGap |
 | `redis: a retry of the failed ID is a gap` | Publishing the failed ID again is reported as a gap | TestConformance/FailedPublishIsAGap, TestRestart |
+| `memory: sweep forgets a failed-only topic` | The sweep drops a topic whose only publish failed | TestFailedFirstPublishOutlivesTheSweep |
+| `memory: Last returns zero` | `Last` ignores the topic | TestConformance/Last |
+| `memory: Last ignores expiry` | `Last` returns an expired topic's last | TestConformance/Last |
+| `stream: Closed never set` | Publishes after `Close` succeed | TestConformance/Close |
+| `redis: remembered ID never expires` | What a bus published outlives the stream | TestExpiredStreamRestarts |
+| `redis: stale publish not remembered` | An `ErrStale` reply leaves nothing remembered | TestStaleOwnIDIsRemembered |
+| `redis: max clients is permanent` | `max number of clients` ends subscriptions | TestPermanent |
+| `redis: unblock retries a refusal` | A refused `CLIENT UNBLOCK` is retried for the whole block | TestUnblockRefused |
+| `redis: WithSubscribeClient ignored` | Subscriptions use the publish client | TestSubscribeClient, TestNewRejectsAutoMaintNotifications |
+| `redis: Last always zero` | `Last` finds nothing | TestConformance/Last |
+| `redis: empty stream ignores the remembered ID` | A stream that is gone gets a fresh first entry despite a remembered ID | TestConformance/FailedPublishIsAGap, TestStaleOwnIDIsRemembered |
+
+### Review (2026-10-13)
+
+A review after `done`, against correctness, Go practice and performance. Fixes, each with a test:
+
+| Finding | Fix | Test |
+|---|---|---|
+| A failed first publish of a topic was skipped silently (no predecessor to link to) | Both backends link the next entry to the remembered failed ID, also on an empty topic; the memory sweep keeps a topic that only has a failed publish | `bustest` FailedPublishIsAGap (failed first), `TestFailedFirstPublishOutlivesTheSweep` |
+| After Redis lost a stream, a subscriber that was live past the publisher's last message got `ErrGap` | The next entry links to the remembered ID instead of having no predecessor: live subscribers continue, ones behind it get `ErrGap` | `TestRestart` (NOSAVE) |
+| What a bus remembers outlived the stream's expiry, so a stream restarted after expiry looked like a loss | The remembered ID expires with the stream | `TestExpiredStreamRestarts` |
+| A retried script whose reply was lost returned `ErrStale` and the message was then treated as failed | A stale reply whose last entry is the message's own ID counts as published; `ErrStale`'s doc says the message may already be there | `TestStaleOwnIDIsRemembered` |
+| Subscriptions shared the publish pool: enough subscribers starve publishes | `WithSubscribeClient` | `TestSubscribeClient` |
+| `CLIENT UNBLOCK` refused by an ACL was retried every 10ms for the whole block time; failed reads were silent | Log once and wait out the block; Warn on each failed read (`WithLogger`) | `TestUnblockRefused` |
+| `max number of clients` was permanent, ending subscriptions on a transient overload | Transient | `TestPermanent` |
+| No way in for a subscriber without a position | `Last` | `bustest` Last, InvalidArguments, Close |
+| A day of retention held 10000 deltas per finished run | An hour for every topic | (policy) |
+| Every publish took the subscription group's lock to check `Closed` | An atomic mirror | (the suite) |
+
+Not fixed, documented: a process that did not publish has no memory of what was lost (package doc, Decisions, For T090).
+
+Performance (M-series Mac, `-count` interleaved A/B):
+- The memory bus's publish copies the data and replaces the wake channel under the topic lock. Moving both allocations outside the lock was measured slower on 8 goroutines publishing to their own topics: about 159 vs 200 ns/op at `-cpu 4`, 234 vs 267 ns/op at `-cpu 14`, so it stays inside.
+- Reads copy each entry's data after unlocking, not under the lock, and the read slice is sized up front: about 23% fewer bytes per op in `BenchmarkPublishFanOut`.
+- `BenchmarkPublishFanOut` now checks that each of its 8 subscribers receives every message (before, a subscriber could fall into `ErrGap` unnoticed and make the numbers look better). With that, a 256 B message to 8 subscribers costs about 3 KB and 10 allocations; time per message is 2.7 to 7 µs, noisy because it includes waiting for the subscribers to catch up.
 
 ### For T090
 
-- Build the client with `MaintNotificationsConfig: &maintnotifications.Config{Mode: maintnotifications.ModeDisabled}`, and size `PoolSize` for one connection per live subscription plus the publishers. Many SSE clients on one replica means many connections; multiplexing many streams per `XREAD` is a follow-up if that hurts (see below).
+- Wire the backend in `cmd/agentkit` as config `bus: memory | redis`, memory by default: a single node (memory bus, SQLite store) needs no Redis. Redis only when replicas must share live events.
+- Build both Redis clients with `MaintNotificationsConfig: &maintnotifications.Config{Mode: maintnotifications.ModeDisabled}`. Pass a second client for subscriptions (`WithSubscribeClient`) with `PoolSize` sized for the live subscriptions (one connection each), so a burst of SSE clients cannot take the connections publishes need. Pass `WithLogger` so failed reads show up. Multiplexing many streams per `XREAD` is a follow-up if connection count hurts (see below).
 - Run stream: replay from the event log after `Last-Event-ID`, then `Subscribe(topic, lastReplayed)`. The bus sends only what comes after it, in order, so no dedupe is needed at the seam; a topic the bus has not seen yet just waits. On `ErrGap`, replay from the log again after the last ID sent and subscribe again. Deltas (`<seq>.<n>`) lost in a gap are gone, which is fine: the durable event that follows carries the state.
 - Publish every event of a run, in order, on the bus. The bus can only see a gap in what it was given: an event the runner skips publishing (rather than one whose publish failed) is invisible to subscribers. A failed publish is reported as `ErrGap` to subscribers past it (see Decisions), so "log it and move on" (the T090 scope) is right. `ErrStale` after a retry means it already went out.
 - The user topic needs an ID source: the bus assigns none. Per-user sequence from Postgres, or a time-based `<unix ms>.<n>` from the publishing replica (two replicas publishing to one user topic must not collide; `ErrStale` would drop the later one). Open question for T090.
-- There is no "from now" subscribe: pass the last ID you know (for `/v1/events` with no `Last-Event-ID`, the latest notification's ID, or accept the replay of the retained window).
-- After a lease failover, the new runner has no memory of what the old one published. If Redis also lost a snapshot at the same time, deltas can be skipped silently; durable events are still covered by the replay from Postgres.
+- There is no "from now" subscribe: pass the last ID you know, or `Last(topic)` when you have none (for `/v1/events` with no `Last-Event-ID`).
+- A topic idle for an hour expires, and its next message starts it afresh (no predecessor): a subscriber with a non-zero cursor then gets `ErrGap` once, by design. A run paused for approval longer than that hits this on resume. On `ErrGap`, replay from the store, then subscribe after the later of the last ID sent and `Last(topic)`; subscribing again after the same ID would get `ErrGap` again.
+- Only the process that published remembers what it published. After a lease failover or a restart, or with two replicas publishing to one user topic, a Redis that lost writes can let deltas be skipped silently; durable events are still covered by the replay from the store.
 - Commands: subscribe to `CommandTopic` after the last command the runner applied (stored in Postgres first, per E18); an `ErrGap` means reread pending commands from the store.
 
 ### Follow-ups for the planner

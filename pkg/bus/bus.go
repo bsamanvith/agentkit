@@ -20,8 +20,10 @@ var (
 	// subscribe again after what was reloaded.
 	ErrGap = errors.New("bus history has a gap")
 	// ErrStale means a published message's ID is not after the topic's last
-	// one. The message was not published. A publisher retrying after a crash
-	// sees this for messages that already went out, and may ignore it.
+	// one: this call added nothing. A message with that ID may already be on
+	// the topic, from an earlier attempt or from this call's own retry of a
+	// request whose reply was lost, so a publisher retrying sees this for
+	// messages that already went out, and may ignore it.
 	ErrStale = errors.New("message id is not after the topic's last")
 	// ErrInvalid means an argument cannot be used: a zero topic, a zero
 	// message ID, or a trim policy with no limits.
@@ -54,6 +56,11 @@ type Bus interface {
 	// everything that ends the subscription later, [ErrGap] included, is its
 	// [Subscription.Err].
 	Subscribe(ctx context.Context, topic Topic, after ID) (Subscription, error)
+	// Last returns the ID of the topic's newest kept message, or the zero ID
+	// when it has none. Subscribing after it delivers only messages published
+	// from then on: the way in for a subscriber with no position, or one that
+	// keeps getting [ErrGap] at the start of a restarted topic.
+	Last(ctx context.Context, topic Topic) (ID, error)
 	// Close ends every subscription (their Err is [ErrClosed]) and waits for
 	// them to stop. Publish and Subscribe then return [ErrClosed]. It does
 	// not close what the bus was given (a Redis client).
@@ -236,13 +243,14 @@ func (t Trim) Validate() error {
 }
 
 // DefaultTrim is the trim policy buses use unless told otherwise: room for a
-// long run's deltas for a day, and a user's recent notifications for an hour.
+// long run's deltas, and a user's recent notifications, each kept for an hour
+// after the topic's last publish. The bus is never the only copy (the store
+// is), so history only needs to cover a reconnect; a longer one is memory
+// held for runs that ended.
 func DefaultTrim(t Topic) Trim {
 	switch t.Kind() {
 	case KindRun:
-		return Trim{MaxLen: 10000, MaxAge: 24 * time.Hour}
-	case KindCommands:
-		return Trim{MaxLen: 1000, MaxAge: 24 * time.Hour}
+		return Trim{MaxLen: 10000, MaxAge: time.Hour}
 	default:
 		return Trim{MaxLen: 1000, MaxAge: time.Hour}
 	}

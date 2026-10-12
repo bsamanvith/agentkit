@@ -64,7 +64,7 @@ type topic struct {
 	// was done), zero if none: the next message must not follow last as if
 	// nothing were missing, unless it is that message retried.
 	failed  bus.ID
-	touched time.Time // last publish
+	touched time.Time // last publish, or failed one
 	// changed is closed and replaced on every publish.
 	changed chan struct{}
 	readers int
@@ -82,20 +82,23 @@ func (b *Bus) Publish(ctx context.Context, t bus.Topic, msg bus.Message) error {
 	if b.subs.Closed() {
 		return bus.ErrClosed
 	}
+	failed := ctx.Err()
 
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	now := b.clock.Now()
-	if err := ctx.Err(); err != nil {
-		// Not published, but the caller goes on without it: a gap all the
-		// same, as when a Redis publish fails.
-		if tp := b.topics[t.String()]; tp != nil && !tp.expired(now) && !tp.last.IsZero() &&
-			msg.ID.Compare(tp.last) > 0 && msg.ID.Compare(tp.failed) > 0 {
-			tp.failed = msg.ID
-		}
-		return err
-	}
 	tp := b.topic(t.String(), trim, now)
+	if failed != nil {
+		// Not published, but the caller goes on without it: a gap all the
+		// same, as when a Redis publish fails. Even on a topic with no
+		// message yet, a subscriber from the start must not take the next
+		// message for the first.
+		if msg.ID.Compare(tp.last) > 0 && msg.ID.Compare(tp.failed) > 0 {
+			tp.failed = msg.ID
+			tp.touched = now
+		}
+		return failed
+	}
 	if !tp.last.IsZero() && msg.ID.Compare(tp.last) <= 0 {
 		return fmt.Errorf("%w: %s after %s on %s", bus.ErrStale, msg.ID, tp.last, t)
 	}
@@ -119,6 +122,26 @@ func (b *Bus) Publish(ctx context.Context, t bus.Topic, msg bus.Message) error {
 	tp.changed = make(chan struct{})
 	b.sweep(now)
 	return nil
+}
+
+// Last implements [bus.Bus].
+func (b *Bus) Last(ctx context.Context, t bus.Topic) (bus.ID, error) {
+	if t.IsZero() {
+		return bus.ID{}, fmt.Errorf("%w: last needs a topic", bus.ErrInvalid)
+	}
+	if err := ctx.Err(); err != nil {
+		return bus.ID{}, err
+	}
+	if b.subs.Closed() {
+		return bus.ID{}, bus.ErrClosed
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	tp := b.topics[t.String()]
+	if tp == nil || tp.expired(b.clock.Now()) {
+		return bus.ID{}, nil
+	}
+	return tp.last, nil
 }
 
 // Subscribe implements [bus.Bus].
@@ -158,8 +181,12 @@ func (b *Bus) topic(name string, trim bus.Trim, now time.Time) *topic {
 }
 
 func (tp *topic) expired(now time.Time) bool {
-	return !tp.last.IsZero() && now.Sub(tp.touched) >= tp.trim.MaxAge
+	return !tp.empty() && now.Sub(tp.touched) >= tp.trim.MaxAge
 }
+
+// empty reports whether the topic has nothing to remember: no message, and
+// no failed publish a later message must not skip.
+func (tp *topic) empty() bool { return tp.last.IsZero() && tp.failed.IsZero() }
 
 // sweep drops expired topics that nobody reads. Call with b.mu held.
 func (b *Bus) sweep(now time.Time) {
@@ -168,22 +195,25 @@ func (b *Bus) sweep(now time.Time) {
 	}
 	b.lastSweep = now
 	for name, tp := range b.topics {
-		if tp.readers == 0 && (tp.last.IsZero() || tp.expired(now)) {
+		if tp.readers == 0 && (tp.empty() || tp.expired(now)) {
 			delete(b.topics, name)
 		}
 	}
 }
 
-// after copies up to max entries with IDs after id, oldest first.
+// after returns up to max entries with IDs after id, oldest first. Their Data
+// is the stored slice, which is never written after Publish: the reader
+// clones it once it has released the lock.
 func (tp *topic) after(id bus.ID, max int) []stream.Entry {
 	n := len(tp.ring)
 	at := func(i int) stream.Entry { return tp.ring[(tp.start+i)%n] }
 	i := sort.Search(n, func(i int) bool { return at(i).ID.Compare(id) > 0 })
-	var out []stream.Entry
+	if i == n {
+		return nil
+	}
+	out := make([]stream.Entry, 0, min(n-i, max))
 	for ; i < n && len(out) < max; i++ {
-		e := at(i)
-		e.Data = clone(e.Data)
-		out = append(out, e)
+		out = append(out, at(i))
 	}
 	return out
 }
@@ -202,6 +232,9 @@ func (r *reader) Read(ctx context.Context, after bus.ID) ([]stream.Entry, error)
 		changed := tp.changed
 		r.b.mu.Unlock()
 		if len(entries) > 0 {
+			for i := range entries {
+				entries[i].Data = clone(entries[i].Data)
+			}
 			return entries, nil
 		}
 		select {

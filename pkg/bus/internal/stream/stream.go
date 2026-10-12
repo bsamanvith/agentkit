@@ -7,6 +7,7 @@ package stream
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	"github.com/bsamanvith/agentkit/pkg/bus"
 )
@@ -48,8 +49,12 @@ func Follows(cursor bus.ID, e Entry) bool {
 type Group struct {
 	mu     sync.Mutex
 	closed bool
-	cancel map[*subscription]context.CancelCauseFunc
-	wg     sync.WaitGroup
+	// isClosed mirrors closed for Closed, which publishes call: a lock-free
+	// read that may lag a concurrent Close, which is harmless there. Start
+	// checks closed under mu.
+	isClosed atomic.Bool
+	cancel   map[*subscription]context.CancelCauseFunc
+	wg       sync.WaitGroup
 }
 
 // Start delivers what r reads after the given ID until ctx is done, the group
@@ -93,6 +98,7 @@ func (g *Group) Start(ctx context.Context, r Reader, after bus.ID) (bus.Subscrip
 func (g *Group) Close() {
 	g.mu.Lock()
 	g.closed = true
+	g.isClosed.Store(true)
 	for _, cancel := range g.cancel {
 		cancel(bus.ErrClosed)
 	}
@@ -101,11 +107,7 @@ func (g *Group) Close() {
 }
 
 // Closed reports whether Close was called.
-func (g *Group) Closed() bool {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	return g.closed
-}
+func (g *Group) Closed() bool { return g.isClosed.Load() }
 
 func deliver(ctx context.Context, r Reader, cursor bus.ID, out chan<- bus.Message) error {
 	for {

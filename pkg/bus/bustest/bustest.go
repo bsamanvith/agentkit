@@ -31,8 +31,10 @@ type Backend struct {
 	// Bus is empty and trimmed by the policy it was made with. The suite
 	// closes it.
 	Bus bus.Bus
-	// Lose drops all of a topic's history, as when it expires or the backend
-	// loses its data: the next publish starts the topic afresh.
+	// Lose drops all of a topic's history as when it expires: the backend
+	// and every publisher forget it, and the next publish starts the topic
+	// afresh. (A backend that loses data while its publisher still
+	// remembers what it published can do better, and tests that itself.)
 	Lose func(t *testing.T, topic bus.Topic)
 }
 
@@ -53,6 +55,7 @@ func Run(t *testing.T, newBackend NewBackend) {
 	t.Run("SlowSubscriberBlocksNobody", func(t *testing.T) { t.Parallel(); testSlow(t, newBackend) })
 	t.Run("LostHistoryIsAGap", func(t *testing.T) { t.Parallel(); testLost(t, newBackend) })
 	t.Run("FailedPublishIsAGap", func(t *testing.T) { t.Parallel(); testFailed(t, newBackend) })
+	t.Run("Last", func(t *testing.T) { t.Parallel(); testLast(t, newBackend) })
 	t.Run("StaleIDs", func(t *testing.T) { t.Parallel(); testStale(t, newBackend) })
 	t.Run("InvalidArguments", func(t *testing.T) { t.Parallel(); testInvalid(t, newBackend) })
 	t.Run("Cancel", func(t *testing.T) { t.Parallel(); testCancel(t, newBackend) })
@@ -215,32 +218,77 @@ func testLost(t *testing.T, nb NewBackend) {
 }
 
 // A publish that failed (here its context is done) is a gap for a subscriber
-// past the message before it, unless the publisher publishes it again.
+// past the message before it, or from the start when it was the first,
+// unless the publisher publishes it again.
 func testFailed(t *testing.T, nb NewBackend) {
 	h := newHarness(t, nb, roomy)
 	topic := runTopic(t, "acme", "failed")
 	done, cancel := context.WithCancel(t.Context())
 	cancel()
-	fail := func(id bus.ID) {
+	fail := func(topic bus.Topic, id bus.ID) {
 		t.Helper()
 		if err := h.b.Publish(done, topic, bus.Message{ID: id}); !errors.Is(err, context.Canceled) {
 			t.Fatalf("publish %s with a done context: err = %v, want context.Canceled", id, err)
 		}
 	}
+
+	first := runTopic(t, "acme", "failed-first")
+	fail(first, id(1, 0))
+	h.publish(first, id(2, 0))
+	if err := h.subscribe(t.Context(), first, bus.ID{}).end(); !errors.Is(err, bus.ErrGap) {
+		t.Errorf("from the start after a failed first publish: err = %v, want ErrGap", err)
+	}
+
 	h.publish(topic, id(1, 0))
 	past := h.subscribe(t.Context(), topic, id(1, 0))
-	fail(id(2, 0))
+	fail(topic, id(2, 0))
 	h.publish(topic, id(3, 0))
 	if err := past.end(); !errors.Is(err, bus.ErrGap) {
 		t.Errorf("after a failed publish: err = %v, want ErrGap", err)
 	}
 
 	cont := h.subscribe(t.Context(), topic, id(3, 0))
-	fail(id(4, 0))
+	fail(topic, id(4, 0))
 	h.publish(topic, id(4, 0)) // published again: no gap
 	h.publish(topic, id(5, 0))
 	cont.next()
 	cont.next()
+}
+
+// Last is the newest kept message's ID, zero on a topic with none, and a
+// subscription after it delivers what comes next, even once the history's
+// start was trimmed (where one from the start gets ErrGap).
+func testLast(t *testing.T, nb NewBackend) {
+	h := newHarness(t, nb, tight)
+	topic := runTopic(t, "acme", "last")
+	last := func() bus.ID {
+		t.Helper()
+		id, err := h.b.Last(t.Context(), topic)
+		if err != nil {
+			t.Fatalf("Last: %v", err)
+		}
+		return id
+	}
+	if got := last(); !got.IsZero() {
+		t.Errorf("Last of a topic with no message = %s, want zero", got)
+	}
+	for i := range uint64(600) {
+		h.publish(topic, id(i+1, 0))
+	}
+	got := last()
+	if got != id(600, 0) {
+		t.Fatalf("Last = %s, want 600", got)
+	}
+	s := h.subscribe(t.Context(), topic, got)
+	h.publish(topic, id(601, 0))
+	s.next()
+	if got := last(); got != id(601, 0) {
+		t.Errorf("Last = %s, want 601", got)
+	}
+	h.lose(topic)
+	if got := last(); !got.IsZero() {
+		t.Errorf("Last of a lost topic = %s, want zero", got)
+	}
 }
 
 func testStale(t *testing.T, nb NewBackend) {
@@ -266,6 +314,9 @@ func testInvalid(t *testing.T, nb NewBackend) {
 	}
 	if err := h.b.Publish(t.Context(), topic, bus.Message{}); !errors.Is(err, bus.ErrInvalid) {
 		t.Errorf("publish the zero id: err = %v, want ErrInvalid", err)
+	}
+	if _, err := h.b.Last(t.Context(), bus.Topic{}); !errors.Is(err, bus.ErrInvalid) {
+		t.Errorf("last of the zero topic: err = %v, want ErrInvalid", err)
 	}
 	if _, err := h.b.Subscribe(t.Context(), bus.Topic{}, bus.ID{}); !errors.Is(err, bus.ErrInvalid) {
 		t.Errorf("subscribe to the zero topic: err = %v, want ErrInvalid", err)
@@ -335,6 +386,9 @@ func testClose(t *testing.T, nb NewBackend) {
 	}
 	if _, err := h.b.Subscribe(t.Context(), topic, bus.ID{}); !errors.Is(err, bus.ErrClosed) {
 		t.Errorf("subscribe after Close: err = %v, want ErrClosed", err)
+	}
+	if _, err := h.b.Last(t.Context(), topic); !errors.Is(err, bus.ErrClosed) {
+		t.Errorf("last after Close: err = %v, want ErrClosed", err)
 	}
 	if err := closeBus(t, h.b); err != nil {
 		t.Errorf("second Close: %v", err)

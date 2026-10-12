@@ -3,21 +3,32 @@
 //
 // Each topic is a stream. Publish runs one script: it rejects a stale ID,
 // adds the message with the ID of the one before it ("p", empty for the first
-// of a stream, or when the stream may lack a write this bus made or tried),
-// trims with MAXLEN ~ and sets the stream to expire MaxAge after this publish. Each subscription reads with XREAD BLOCK on a connection of its
-// own and checks every entry's "p" against what it delivered last, so a trim
-// or a lost stream is [bus.ErrGap], never a silent skip.
+// of a stream), trims with MAXLEN ~ and sets the stream to expire MaxAge after
+// this publish. Each subscription reads with XREAD BLOCK on a connection of
+// its own and checks every entry's "p" against what it delivered last, so a
+// trim or a lost stream is [bus.ErrGap], never a silent skip.
 //
-// Every subscription holds one connection of the client's pool while it runs:
-// size the pool (PoolSize) for the subscribers of one process plus its
-// publishers. The client's MaintNotificationsConfig must not be in auto mode
-// (go-redis's default); see [New].
+// A bus also remembers what it published, or tried to, on each stream. When
+// the stream lacks it (Redis restored an older snapshot, or a failed publish
+// did not land), the next entry's "p" is that remembered ID rather than the
+// stream's last, so subscribers before it get ErrGap. Only the process that
+// published remembers: if Redis loses writes and another process (another
+// replica, or this one restarted) publishes next, a subscriber positioned
+// inside the lost range can skip it silently. The store, not the bus, is the
+// source of truth for what must not be lost.
+//
+// Every subscription holds one connection while it runs. Give subscriptions
+// a client of their own ([WithSubscribeClient]) sized for them, so that many
+// subscribers cannot starve publishes of connections. Clients'
+// MaintNotificationsConfig must not be in auto mode (go-redis's default); see
+// [New].
 package redis
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"sync"
@@ -38,6 +49,8 @@ const readBatch = 256
 // Bus is the Redis Streams bus. Make one with [New].
 type Bus struct {
 	client     *goredis.Client
+	subClient  *goredis.Client // subscriptions' connections; client by default
+	log        *slog.Logger
 	prefix     string
 	trim       func(bus.Topic) bus.Trim
 	clock      clock.Clock
@@ -73,6 +86,23 @@ func WithBackoff(min, max time.Duration) Option {
 	return func(b *Bus) { b.backoffMin, b.backoffMax = min, max }
 }
 
+// WithSubscribeClient makes subscriptions take their connections from c
+// instead of the publishing client. Each subscription holds one connection
+// for as long as it runs, so with a shared pool enough subscribers make every
+// Publish wait for a connection and fail. c must reach the same Redis; the bus
+// does not close it.
+func WithSubscribeClient(c *goredis.Client) Option { return func(b *Bus) { b.subClient = c } }
+
+// WithLogger sets the logger (default: discard). It logs a subscription's
+// failed reads, which it retries, and a cancel that Redis refuses to unblock.
+func WithLogger(l *slog.Logger) Option {
+	return func(b *Bus) {
+		if l != nil {
+			b.log = l
+		}
+	}
+}
+
 // WithBlock sets the longest one XREAD waits (default 5s). A cancelled
 // subscription is unblocked at once (CLIENT UNBLOCK); this bounds the wait
 // when that misses, such as a cancel racing the start of a read.
@@ -80,27 +110,34 @@ func WithBlock(d time.Duration) Option { return func(b *Bus) { b.block = d } }
 
 // New returns a bus on client. The caller keeps owning client and closes it
 // after the bus. The client's maintenance notifications must be disabled or
-// enabled, not left in go-redis's auto mode ([bus.ErrInvalid]):
+// enabled, not left in go-redis's auto mode ([bus.ErrInvalid]), and so must
+// those of a [WithSubscribeClient]:
 //
 //	opt.MaintNotificationsConfig = &maintnotifications.Config{Mode: maintnotifications.ModeDisabled}
 func New(client *goredis.Client, opts ...Option) (*Bus, error) {
 	if client == nil {
 		return nil, fmt.Errorf("%w: nil redis client", bus.ErrInvalid)
 	}
-	// In auto mode go-redis (v9.23) turns maintenance notifications off when
-	// the server refuses them by writing the shared options while a
-	// connection from Client.Conn reads them: a data race on every first
-	// connection to a server without them, such as open-source Redis.
-	if mc := client.Options().MaintNotificationsConfig; mc != nil && mc.Mode == maintnotifications.ModeAuto {
-		return nil, fmt.Errorf("%w: set the client's MaintNotificationsConfig.Mode to disabled (or enabled); "+
-			"go-redis's auto mode races with the per-subscription connections", bus.ErrInvalid)
-	}
 	b := &Bus{
-		client: client, prefix: "agentkit:bus:", trim: bus.DefaultTrim, clock: clock.Real(),
+		client: client, subClient: client, log: slog.New(slog.DiscardHandler),
+		prefix: "agentkit:bus:", trim: bus.DefaultTrim, clock: clock.Real(),
 		block: 5 * time.Second, backoffMin: 50 * time.Millisecond, backoffMax: 5 * time.Second,
 	}
 	for _, o := range opts {
 		o(b)
+	}
+	if b.subClient == nil {
+		return nil, fmt.Errorf("%w: nil subscribe client", bus.ErrInvalid)
+	}
+	// In auto mode go-redis (v9.23) turns maintenance notifications off when
+	// the server refuses them by writing the shared options while a
+	// connection from Client.Conn reads them: a data race on every first
+	// connection to a server without them, such as open-source Redis.
+	for _, c := range []*goredis.Client{b.client, b.subClient} {
+		if mc := c.Options().MaintNotificationsConfig; mc != nil && mc.Mode == maintnotifications.ModeAuto {
+			return nil, fmt.Errorf("%w: set the client's MaintNotificationsConfig.Mode to disabled (or enabled); "+
+				"go-redis's auto mode races with the per-subscription connections", bus.ErrInvalid)
+		}
 	}
 	if b.block < time.Millisecond || b.backoffMin <= 0 || b.backoffMax < b.backoffMin {
 		return nil, fmt.Errorf("%w: block %v, backoff %v to %v", bus.ErrInvalid, b.block, b.backoffMin, b.backoffMax)
@@ -115,10 +152,10 @@ func (b *Bus) Key(t bus.Topic) string { return b.prefix + t.String() }
 // ID is not after the stream's last ({0, last} then). ARGV[2] is MAXLEN and
 // ARGV[3] the expiry in milliseconds. ARGV[5] is the ID the stream must have
 // reached, or empty: the last ID this publisher put on it, or a later one
-// whose publish failed and may have landed. A stream whose last entry is
-// before it lost writes (Redis restored an older snapshot, or the failed
-// publish did not land), so the new entry's predecessor is unknown, as on a
-// new stream. IDs are compared as decimal strings, since
+// whose publish failed and may have landed. A stream that is empty or whose
+// last entry is before it lost writes (Redis restored an older snapshot, or
+// the failed publish did not land), so the new entry follows ARGV[5] instead:
+// a subscriber that got that far misses nothing, any other one gets ErrGap. IDs are compared as decimal strings, since
 // Lua numbers lose precision past 2^53.
 var publishScript = goredis.NewScript(`
 local function before(a, b)
@@ -134,8 +171,8 @@ local last = redis.call('XREVRANGE', KEYS[1], '+', '-', 'COUNT', 1)
 if #last > 0 then
   prev = last[1][1]
   if not before(prev, ARGV[1]) then return {0, prev} end
-  if ARGV[5] ~= '' and before(prev, ARGV[5]) then prev = '' end
 end
+if ARGV[5] ~= '' and (prev == '' or before(prev, ARGV[5])) then prev = ARGV[5] end
 redis.call('XADD', KEYS[1], 'MAXLEN', '~', ARGV[2], ARGV[1], 'p', prev, 'd', ARGV[4])
 redis.call('PEXPIRE', KEYS[1], ARGV[3])
 return {1}
@@ -161,16 +198,43 @@ func (b *Bus) Publish(ctx context.Context, t bus.Topic, msg bus.Message) error {
 	}
 	ttl := max(trim.MaxAge.Milliseconds(), 1)
 	res, err := publishScript.Run(ctx, b.client, []string{key},
-		redisID(msg.ID), trim.MaxLen, ttl, msg.Data, b.published.reached(key, msg.ID)).Slice()
+		redisID(msg.ID), trim.MaxLen, ttl, msg.Data, b.published.reached(key, msg.ID, b.clock.Now())).Slice()
 	if err != nil {
 		b.published.set(key, msg.ID, false, trim.MaxAge, b.clock.Now())
 		return fmt.Errorf("bus: publish to %s: %w", t, err)
 	}
 	if ok, _ := res[0].(int64); ok != 1 {
-		return fmt.Errorf("%w: %s after %v on %s", bus.ErrStale, msg.ID, res[1:], t)
+		// The stream's last is msg.ID itself when go-redis retried a script
+		// whose reply was lost after it ran, or an earlier attempt landed:
+		// remember it as published. A later last may hide this one's fate.
+		last, _ := res[1].(string)
+		b.published.set(key, msg.ID, last == redisID(msg.ID), trim.MaxAge, b.clock.Now())
+		return fmt.Errorf("%w: %s after %s on %s", bus.ErrStale, msg.ID, last, t)
 	}
 	b.published.set(key, msg.ID, true, trim.MaxAge, b.clock.Now())
 	return nil
+}
+
+// Last implements [bus.Bus].
+func (b *Bus) Last(ctx context.Context, t bus.Topic) (bus.ID, error) {
+	if t.IsZero() {
+		return bus.ID{}, fmt.Errorf("%w: last needs a topic", bus.ErrInvalid)
+	}
+	if b.subs.Closed() {
+		return bus.ID{}, bus.ErrClosed
+	}
+	msgs, err := b.client.XRevRangeN(ctx, b.Key(t), "+", "-", 1).Result()
+	if err != nil {
+		return bus.ID{}, fmt.Errorf("bus: last of %s: %w", t, err)
+	}
+	if len(msgs) == 0 {
+		return bus.ID{}, nil
+	}
+	id, err := parseRedisID(msgs[0].ID)
+	if err != nil {
+		return bus.ID{}, fmt.Errorf("%w: stream %s: %w", errMalformed, b.Key(t), err)
+	}
+	return id, nil
 }
 
 // lastPublished remembers, per stream and until the stream would have expired,
@@ -192,11 +256,16 @@ type published struct {
 }
 
 // reached returns the ID stream key must have reached for next to follow its
-// last entry (publishScript's ARGV[5]), or "" when there is none.
-func (l *lastPublished) reached(key string, next bus.ID) string {
+// last entry (publishScript's ARGV[5]), or "" when there is none, including
+// once the stream would have expired: a new stream after that is a restart,
+// not a loss.
+func (l *lastPublished) reached(key string, next bus.ID, now time.Time) string {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	p := l.ids[key]
+	if !now.Before(p.expires) {
+		return ""
+	}
 	id := p.id
 	if p.failed.Compare(id) > 0 && next.Compare(p.failed) > 0 {
 		id = p.failed
@@ -294,6 +363,11 @@ func (r *reader) Read(ctx context.Context, after bus.ID) ([]stream.Entry, error)
 		// The connection failed (or Redis restarted): drop it, wait, and
 		// read again on a new one from the same position.
 		r.drop()
+		if ctx.Err() != nil {
+			return nil, ctx.Err() // cancelled mid-read: not a failure
+		}
+		r.b.log.WarnContext(ctx, "bus: subscription read failed, retrying",
+			"key", r.key, "after", after.String(), "wait", wait, "err", err)
 		t := r.b.clock.NewTimer(wait)
 		select {
 		case <-t.C():
@@ -307,7 +381,7 @@ func (r *reader) Read(ctx context.Context, after bus.ID) ([]stream.Entry, error)
 
 func (r *reader) read(ctx context.Context, after bus.ID) ([]stream.Entry, error) {
 	if r.conn == nil {
-		r.conn = r.b.client.Conn()
+		r.conn = r.b.subClient.Conn()
 		id, err := r.conn.ClientID(ctx).Result()
 		if err != nil {
 			return nil, err
@@ -352,7 +426,10 @@ const unblockRetry = 10 * time.Millisecond
 // unblock runs once the subscription's context is done and wakes its XREAD,
 // so that a cancelled subscription ends at once rather than after the block
 // time. The read may not have reached Redis yet (CLIENT UNBLOCK then finds
-// nothing blocked), so it tries again until the read has returned.
+// nothing blocked), so it tries again until the read has returned. It goes
+// through the publishing client, whose pool subscriptions do not hold. An
+// error reply (an ACL without CLIENT UNBLOCK) ends the tries: the read then
+// ends when its block time does.
 func (r *reader) unblock() {
 	for r.reading.Load() {
 		if id := r.id.Load(); id != 0 {
@@ -360,6 +437,11 @@ func (r *reader) unblock() {
 			n, err := r.b.client.ClientUnblock(ctx, id).Result()
 			cancel()
 			if err == nil && n == 1 {
+				return
+			}
+			if err != nil && permanent(err) {
+				r.b.log.Warn("bus: cannot unblock a cancelled read; it ends after the block time",
+					"key", r.key, "block", r.b.block, "err", err)
 				return
 			}
 		}
@@ -396,7 +478,7 @@ func permanent(err error) bool {
 	if !errors.As(err, &reply) {
 		return false // the network, a pool timeout
 	}
-	for _, p := range []string{"LOADING", "BUSY", "TRYAGAIN", "MASTERDOWN", "READONLY"} {
+	for _, p := range []string{"LOADING", "BUSY", "TRYAGAIN", "MASTERDOWN", "READONLY", "max number of clients"} {
 		if goredis.HasErrorPrefix(err, p) {
 			return false
 		}

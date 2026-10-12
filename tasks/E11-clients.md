@@ -51,7 +51,7 @@ Both talk to the public agent API (`/v1`, HTTP + SSE; [E09](E09-agent-api.md)). 
 - [ ] [T063](T063-agents-over-mcp.md) Agents over MCP (`/mcp/agentkit`), so Claude Code and other harnesses can drive them
 - [ ] [T061](T061-local-users-login.md) Local users and login sessions (E07 track, needs T039)
 - [ ] [T078](T078-web-workspace.md) Web workspace: React + TS + shadcn/ui, packages `ui` / `agent-ui` / `apps/console`, embedding, CI
-- [x] [T070](T070-console-ux-design.md) Console UX design session: layout, navigation, states, components, mockup v3 (before T055). Approved by the owner on 2026-10-12, with the review's fixes; read its Notes, "Review (2026-10-12)" and "For T055", first
+- [x] [T070](T070-console-ux-design.md) Console UX design session: layout, navigation, states, components, mockup v3 (before T055). Approved by the owner on 2026-10-12, with the review's fixes; the same day, Connections (per-user credentials, org later) replaced the Credentials page (Decision 11). Read its Notes, "Review (2026-10-12)", "For T055" and "Found out of scope", first
 - [ ] [T055](T055-web-client.md) Console shell, login, chat with agent picker, conversation list
 - [ ] [T064](T064-console-admin-pages.md) Console admin pages: agents, toolsets and tools, credentials (editing agents and skills: E15's T075 and T077)
 

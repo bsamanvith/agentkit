@@ -18,7 +18,9 @@ var (
 	ErrNotFound = errors.New("not found")
 	// ErrInvalid means an argument cannot be stored or used: an entry or run
 	// that breaks the rules on its type, an empty id or owner, a lease time to
-	// live that is not positive, or a page with a bad cursor or seek.
+	// live that is not positive, a time to keep outside 1678 to 2262 (see
+	// Times in the package documentation), or a page with a bad cursor or
+	// seek.
 	ErrInvalid = errors.New("invalid argument")
 	// ErrConflict means the stored state is not what the caller expected:
 	// another entry at the same Seq of a conversation, a run with the same id

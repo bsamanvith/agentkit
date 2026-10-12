@@ -281,6 +281,36 @@ func RunAdmin(t *testing.T, newStore func(t *testing.T, clk clock.Clock) (store.
 		}
 	})
 
+	// The rules of ListResumable hold across tenants too: a retryable
+	// failure with no next attempt time is due at once, and now may be any
+	// time, even one no store could keep.
+	t.Run("RetryableFailureWithNoNextAttemptAndAnyNow", func(t *testing.T) {
+		t.Parallel()
+		r := newAdminRig(t, newStore)
+		a, b := r.ctx(tenantA), r.ctx(tenantB)
+		r.mustCreate(a, "f", "c")
+		r.mustMove(a, "f", store.StatusRunning, store.StatusFailed, store.Details{Error: "boom", Retryable: true})
+		r.clk.Advance(time.Millisecond)
+		r.mustCreate(b, "r", "c")
+		for _, c := range []struct {
+			now  time.Time
+			want []string
+		}{
+			{r.clk.Now(), []string{"f", "r"}},
+			{farFuture, []string{"f", "r"}},
+			{farPast, []string{"f", "r"}}, // f is due at any time
+		} {
+			got, err := r.admin.ListResumableAll(context.Background(), c.now, 0)
+			var ids []string
+			for _, tr := range got {
+				ids = append(ids, tr.Run.ID)
+			}
+			if err != nil || !slices.Equal(ids, c.want) {
+				t.Errorf("ListResumableAll in the year %d = %v, %v; want %v", c.now.Year(), ids, err, c.want)
+			}
+		}
+	})
+
 	t.Run("NeedsNoTenantAndIgnoresOne", func(t *testing.T) {
 		t.Parallel()
 		r := newAdminRig(t, newStore)

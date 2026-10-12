@@ -46,6 +46,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/flow"
 	"github.com/bsamanvith/agentkit/pkg/store"
+	"github.com/bsamanvith/agentkit/pkg/store/internal/backend"
 	"github.com/bsamanvith/agentkit/pkg/tenancy"
 )
 
@@ -230,23 +231,15 @@ func ignoreDone(err error) error {
 // now reads the store's clock without its monotonic reading.
 func (s *Store) now() time.Time { return s.clk.Now().Round(0) }
 
-// The range of times stored as Unix nanoseconds. The two values at the ends
-// of int64 are left out, so that clamping a query's time to them (argTime)
-// keeps every comparison with a stored time exact.
-var (
-	minTime = time.Unix(0, math.MinInt64+1)
-	maxTime = time.Unix(0, math.MaxInt64-1)
-)
-
 // storeTime encodes t for a column: nil for the zero time, else Unix
-// nanoseconds. A time outside the range is [store.ErrInvalid].
+// nanoseconds. A time outside [backend.MinTime, backend.MaxTime] is
+// [store.ErrInvalid].
 func storeTime(t time.Time) (any, error) {
 	if t.IsZero() {
 		return nil, nil
 	}
-	if t.Before(minTime) || t.After(maxTime) {
-		return nil, fmt.Errorf("%w: time %v is outside what the store can hold (%v to %v)",
-			store.ErrInvalid, t, minTime.UTC(), maxTime.UTC())
+	if err := backend.CheckTime("time", t); err != nil {
+		return nil, err
 	}
 	return t.UnixNano(), nil
 }
@@ -255,9 +248,9 @@ func storeTime(t time.Time) (any, error) {
 // stored range is clamped just past it, which compares the same.
 func argTime(t time.Time) int64 {
 	switch {
-	case t.Before(minTime):
+	case t.Before(backend.MinTime):
 		return math.MinInt64
-	case t.After(maxTime):
+	case t.After(backend.MaxTime):
 		return math.MaxInt64
 	}
 	return t.UnixNano()

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/store"
@@ -19,6 +20,15 @@ const (
 	tenantB      = "globex"
 	tenantC      = "umbrella"
 	unusedTenant = "initech"
+)
+
+// Times no store can keep (outside 1678 to 2262, what int64 Unix nanoseconds
+// hold), for the rule that a time to keep must be in range and a time a read
+// only compares with may be anything. farPast is not the zero time, which
+// means unset.
+var (
+	farFuture = time.Date(3000, 1, 1, 0, 0, 0, 0, time.UTC)
+	farPast   = time.Date(1, 1, 2, 0, 0, 0, 0, time.UTC)
 )
 
 func tenantCtx(ctx context.Context, t *testing.T, id string) context.Context {

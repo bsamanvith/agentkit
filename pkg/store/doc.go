@@ -1,8 +1,8 @@
 // Package store defines how agentkit keeps conversations and runs: small
 // interfaces that every backend (in memory, SQLite, Postgres, a key-value or
 // document store) implements the same way. It holds no data itself; backends
-// live in subpackages (package memory, and SQLite next), and the conformance
-// suites every backend passes live in package storetest.
+// live in subpackages (packages memory, sqlite and postgres), and the
+// conformance suites every backend passes live in package storetest.
 //
 // # Conversations
 //
@@ -45,6 +45,27 @@
 //
 // Backends store flow checkpoints by implementing [flow.Checkpointer]
 // directly; this package does not redefine it.
+//
+// # Event logs
+//
+// [EventLog] keeps each run's durable events (a tool call, an interrupt, a
+// finished turn, the run's end) for clients that watch a run and reconnect:
+// they ask for the events after the last one they saw. Events are numbered
+// 1, 2, 3... per run, and the writer (the runner holding the run's lease)
+// chooses each [Event.Seq], as with conversation entries: an identical retry is
+// a no-op, a different event at a taken position is [ErrConflict], and a
+// position past the next free one is [ErrGap]. So the log never has a hole, a
+// retry after a crash never stores an event twice, and a writer whose lease was
+// taken over finds out at its next append. The store does not know event
+// types: which events are durable is the runner's choice.
+//
+// # Times
+//
+// Backends keep times as int64 Unix nanoseconds, which hold 1678 to 2262. A
+// time the caller asks a store to keep outside that range (a
+// [Details.NextAttemptAt], a lease's expiry) is [ErrInvalid] in every backend,
+// and changes nothing. A time a read only compares with (the now of
+// [RunStore.ListResumable], a [Page.FromTime]) may be anything.
 //
 // # Tenants
 //

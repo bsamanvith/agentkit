@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -96,6 +97,23 @@ func CheckID(what, id string) error {
 		return fmt.Errorf("%w: empty %s id", store.ErrInvalid, what)
 	}
 	return nil
+}
+
+// The range of times a store keeps: what int64 Unix nanoseconds hold, less
+// the value at each end, so that a backend can clamp a time a query only
+// compares with to just past the range and keep every comparison exact.
+var (
+	MinTime = time.Unix(0, math.MinInt64+1).UTC()
+	MaxTime = time.Unix(0, math.MaxInt64-1).UTC()
+)
+
+// CheckTime refuses a time a caller asks the store to keep outside [MinTime,
+// MaxTime]. The zero time means unset and is allowed.
+func CheckTime(what string, t time.Time) error {
+	if t.IsZero() || (!t.Before(MinTime) && !t.After(MaxTime)) {
+		return nil
+	}
+	return fmt.Errorf("%w: %s %v is outside what the store can hold (%v to %v)", store.ErrInvalid, what, t, MinTime, MaxTime)
 }
 
 // CheckLease refuses an empty owner or a time to live that is not positive.

@@ -350,10 +350,46 @@ func RunConversationStore(t *testing.T, newStore func(t *testing.T, clk clock.Cl
 			{"from before the first down", store.Page{FromTime: at(1).Add(-time.Second), Order: store.Descending}, nil},
 			{"from after the last up", store.Page{FromTime: at(6).Add(time.Second)}, nil},
 			{"from the time of 5 down in pages of 1", store.Page{FromTime: at(5), Order: store.Descending, Limit: 1}, []int64{5, 4, 3, 2, 1}},
+			// A seek is only compared with: any time works, even one no
+			// store could keep.
+			{"from the year 3000 up", store.Page{FromTime: farFuture}, nil},
+			{"from the year 3000 down", store.Page{FromTime: farFuture, Order: store.Descending}, []int64{6, 5, 4, 3, 2, 1}},
+			{"from the year 1 up", store.Page{FromTime: farPast}, []int64{1, 2, 3, 4, 5, 6}},
+			{"from the year 1 down", store.Page{FromTime: farPast, Order: store.Descending}, nil},
 		} {
 			if got := seqs(readAll(ctx, t, r.s, "c", tc.p)); !slices.Equal(got, tc.want) {
 				t.Errorf("%s: History visited %v, want %v", tc.name, got, tc.want)
 			}
+		}
+	})
+
+	// Writers whose clocks disagree (the store's clock set an hour back
+	// between appends, as a second process an hour behind would read it)
+	// still write a log whose times never go backwards: an entry from the
+	// slow clock takes the previous entry's time, so seeks by time find
+	// every entry in order.
+	t.Run("EntryTimesNeverGoBackwards", func(t *testing.T) {
+		t.Parallel()
+		r := newConvRig(t, newStore)
+		ctx := r.ctx(tenantA)
+		for i, behind := range []bool{false, true, true, false} {
+			r.clk.skew(0)
+			if behind {
+				r.clk.skew(-time.Hour)
+			}
+			r.mustAppend(ctx, "c", nextEntry(int64(i+1), i+1))
+			r.clk.Advance(time.Second)
+		}
+		r.clk.skew(0)
+		log := readAll(ctx, t, r.s, "c", store.Page{})
+		t0 := log[0].CreatedAt
+		for i, want := range []time.Time{t0, t0, t0, t0.Add(3 * time.Second)} {
+			if !log[i].CreatedAt.Equal(want) {
+				t.Errorf("entry %d created at %v, want %v", log[i].Seq, log[i].CreatedAt, want)
+			}
+		}
+		if got := seqs(readAll(ctx, t, r.s, "c", store.Page{FromTime: t0, Order: store.Descending})); !slices.Equal(got, []int64{3, 2, 1}) {
+			t.Errorf("History down from the first entry's time visited %v, want [3 2 1]", got)
 		}
 	})
 

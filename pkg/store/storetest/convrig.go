@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -35,7 +36,7 @@ import (
 type convRig struct {
 	t   *testing.T
 	s   store.ConversationStore
-	clk *clocktest.Fake
+	clk *skewedClock
 
 	mu       sync.Mutex
 	accepted map[logKey]map[int64]snapshot
@@ -47,7 +48,7 @@ type logKey struct{ tenant, conv string }
 
 func newConvRig(t *testing.T, newStore func(t *testing.T, clk clock.Clock) store.ConversationStore) *convRig {
 	t.Helper()
-	clk := clocktest.NewFake(time.Time{})
+	clk := &skewedClock{Fake: clocktest.NewFake(time.Time{})}
 	r := &convRig{
 		t:        t,
 		s:        newStore(t, clk),
@@ -59,6 +60,20 @@ func newConvRig(t *testing.T, newStore func(t *testing.T, clk clock.Clock) store
 	t.Cleanup(r.check)
 	return r
 }
+
+// skewedClock is the suite's fake clock read with an offset the test can
+// change. Setting it back stands for a second writer whose clock is behind
+// the first one's: the times a store reads from it may go backwards.
+type skewedClock struct {
+	*clocktest.Fake
+	offset atomic.Int64 // a time.Duration
+}
+
+// Now implements [clock.Clock].
+func (c *skewedClock) Now() time.Time { return c.Fake.Now().Add(time.Duration(c.offset.Load())) }
+
+// skew makes Now read d away from the fake clock's time.
+func (c *skewedClock) skew(d time.Duration) { c.offset.Store(int64(d)) }
 
 // ctx returns a context of tenant id, derived from the test's context.
 func (r *convRig) ctx(id string) context.Context {

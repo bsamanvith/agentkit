@@ -122,6 +122,9 @@ func (s *Store) Append(ctx context.Context, id string, e store.Entry) error {
 	if n > 0 && created.Before(log[n-1].created) {
 		created = log[n-1].created // times never go backwards along the log
 	}
+	if err := backend.CheckTime("the clock's time", created); err != nil {
+		return err
+	}
 	s.convs[k] = append(log, entry{Stored: st, created: created})
 	return nil
 }
@@ -237,6 +240,9 @@ func (s *Store) Create(ctx context.Context, id, conversationID string) (store.Ru
 		return store.Run{}, fmt.Errorf("%w: conversation %q has run %q", store.ErrUnfinished, conversationID, r.ID)
 	}
 	r := store.Run{ID: id, ConversationID: conversationID, Status: store.StatusRunning, CreatedAt: s.now()}
+	if err := backend.CheckTime("the clock's time", r.CreatedAt); err != nil {
+		return store.Run{}, err
+	}
 	s.runs[k] = r
 	return r, nil
 }
@@ -365,6 +371,15 @@ func (s *Store) Transition(ctx context.Context, id string, from, to store.Status
 		return store.Run{}, err
 	}
 	pending, invalid := backend.CheckTransition(from, to, d)
+	if invalid == nil {
+		invalid = backend.CheckTime("next attempt time", d.NextAttemptAt)
+	}
+	now := s.now()
+	if to.Final() {
+		if err := backend.CheckTime("the clock's time", now); err != nil {
+			return store.Run{}, err
+		}
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	r, err := s.run(k)
@@ -386,7 +401,7 @@ func (s *Store) Transition(ctx context.Context, id string, from, to store.Status
 		r.Attempts++
 	}
 	if to.Final() {
-		r.FinishedAt = s.now()
+		r.FinishedAt = now
 	}
 	s.runs[k] = r
 	return cloneRun(r), nil
@@ -492,6 +507,10 @@ func (s *Store) lease(ctx context.Context, runID, owner string, ttl time.Duratio
 	if err := backend.CheckLease(owner, ttl); err != nil {
 		return store.Lease{}, err
 	}
+	now := s.now()
+	if err := backend.CheckTime("lease expiry", now.Add(ttl)); err != nil {
+		return store.Lease{}, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	r, err := s.run(k)
@@ -501,7 +520,6 @@ func (s *Store) lease(ctx context.Context, runID, owner string, ttl time.Duratio
 	if r.Status.Final() {
 		return store.Lease{}, fmt.Errorf("%w: run %q", store.ErrFinal, runID)
 	}
-	now := s.now()
 	held := backend.Held(r.Lease, now)
 	switch {
 	case held && r.Lease.Owner != owner:

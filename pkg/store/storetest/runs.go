@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"testing"
 	"time"
@@ -478,6 +479,75 @@ func RunRunStore(t *testing.T, newStore func(t *testing.T, clk clock.Clock) stor
 		}
 		if _, err := r.s.ListResumable(ctx, now, -1); !errors.Is(err, store.ErrInvalid) {
 			t.Errorf("ListResumable with a negative limit = %v, want ErrInvalid", err)
+		}
+	})
+
+	// A failed run marked retryable with no next attempt time is due at
+	// once: the zero NextAttemptAt is not after any now.
+	t.Run("RetryableFailureWithNoNextAttemptIsDueAtOnce", func(t *testing.T) {
+		t.Parallel()
+		r := newRunRig(t, newStore)
+		ctx := r.ctx(tenantA)
+		r.mustCreate(ctx, "r", "c")
+		if _, err := r.s.Claim(ctx, "r", "worker", time.Hour); err != nil {
+			t.Fatalf("Claim: %v", err)
+		}
+		r.mustMove(ctx, "r", store.StatusRunning, store.StatusFailed, store.Details{Error: "boom", Retryable: true})
+		runs, err := r.s.ListResumable(ctx, r.clk.Now(), 0)
+		if err != nil || !slices.Equal(runIDs(runs), []string{"r"}) {
+			t.Errorf("ListResumable = %v, %v; want the failed run", runIDs(runs), err)
+		}
+	})
+
+	// A time the caller asks the store to keep (a next attempt time, a
+	// lease's expiry) outside 1678 to 2262 is ErrInvalid and changes nothing.
+	// A time a read only compares with (now, a seek) may be anything.
+	t.Run("TimesOutsideTheStoredRange", func(t *testing.T) {
+		t.Parallel()
+		r := newRunRig(t, newStore)
+		ctx := r.ctx(tenantA)
+		r.mustCreate(ctx, "r", "c-r")
+		r.clk.Advance(time.Millisecond)
+		r.mustCreate(ctx, "f", "c-f")
+
+		for _, next := range []time.Time{farFuture, farPast} {
+			if _, err := r.transition(ctx, "f", store.StatusRunning, store.StatusFailed,
+				store.Details{Retryable: true, NextAttemptAt: next}); !errors.Is(err, store.ErrInvalid) {
+				t.Errorf("Transition with a next attempt in the year %d = %v, want ErrInvalid", next.Year(), err)
+			}
+		}
+		if _, err := r.s.Claim(ctx, "r", "worker", time.Duration(math.MaxInt64)); !errors.Is(err, store.ErrInvalid) {
+			t.Errorf("Claim for 292 years = %v, want ErrInvalid", err)
+		}
+		if run := r.mustGet(ctx, "r"); run.Lease != (store.Lease{}) {
+			t.Errorf("after the refused claim the run's lease is %+v, want none", run.Lease)
+		}
+
+		r.mustMove(ctx, "f", store.StatusRunning, store.StatusFailed, store.Details{Retryable: true, NextAttemptAt: r.clk.Now()})
+		for _, c := range []struct {
+			now  time.Time
+			want []string
+		}{
+			{farFuture, []string{"r", "f"}},
+			{farPast, []string{"r"}}, // unclaimed; f is not due yet
+		} {
+			runs, err := r.s.ListResumable(ctx, c.now, 0)
+			if err != nil || !slices.Equal(runIDs(runs), c.want) {
+				t.Errorf("ListResumable in the year %d = %v, %v; want %v", c.now.Year(), runIDs(runs), err, c.want)
+			}
+		}
+		for _, c := range []struct {
+			p    store.Page
+			want []string
+		}{
+			{store.Page{FromTime: farFuture}, nil},
+			{store.Page{FromTime: farFuture, Order: store.Descending}, []string{"r"}},
+			{store.Page{FromTime: farPast}, []string{"r"}},
+			{store.Page{FromTime: farPast, Order: store.Descending}, nil},
+		} {
+			if got := runIDs(listAll(ctx, t, r.s, "c-r", c.p)); !slices.Equal(got, c.want) {
+				t.Errorf("List %+v = %v, want %v", c.p, got, c.want)
+			}
 		}
 	})
 

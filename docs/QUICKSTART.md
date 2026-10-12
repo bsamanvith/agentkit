@@ -112,7 +112,7 @@ Each entry of `agents`:
 |---|---|---|
 | `name` | required | `^[a-zA-Z0-9_-]{1,64}$`, unique |
 | `description` | none | shown in `GET /v1/agents` |
-| `model.id` | `claude-opus-5-5` | Claude model |
+| `model.id` | `claude-haiku-5-5` | Claude model |
 | `model.effort` | adapter default (medium) | `low` … `max` |
 | `model.max_tokens` | adapter default | output limit per model call |
 | `system` | a short generic prompt | system prompt |

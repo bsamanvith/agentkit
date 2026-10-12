@@ -240,7 +240,7 @@ Each mutant was planted alone. The driver ran `go test -count=1` on the package 
 
 ### Live
 
-Run on 2026-10-12 with the owner's key, on `claude-haiku-5-5` to keep it cheap. The model was swapped locally in `anthropic.DefaultModel` and `search.json` for the run, and not committed.
+Run on 2026-10-12 with the owner's key, on `claude-haiku-5-5` to keep it cheap. The model was swapped locally in `anthropic.DefaultModel` and `search.json` for the run. Afterwards the owner made Haiku the default (`anthropic.DefaultModel`, `deploy/local/agent/*.json`, QUICKSTART), to keep runs cheap.
 
 - **`go test -tags live -run '^TestLive' ./pkg/llm/anthropic/ ./cmd/agentkit/`** passed:
   - `TestLiveToolCall`;

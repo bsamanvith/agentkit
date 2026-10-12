@@ -14,7 +14,7 @@ import (
 )
 
 // DefaultModel is the Claude model used unless [WithModel] says otherwise.
-const DefaultModel = "claude-opus-5-5"
+const DefaultModel = "claude-haiku-5-5"
 
 // DefaultMaxTokens limits a reply's output when the request does not
 // (llm.Request.MaxTokens is zero). Thinking counts toward it.

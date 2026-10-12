@@ -1,0 +1,75 @@
+{
+  "_comment": "The toy API's OpenAPI spec, written for the kit's own tests: check cassettes.openapi runs on the toy, and TestValidateCassettes breaks its cassettes against it.",
+  "openapi": "3.1.0",
+  "info": {"title": "Toy API", "version": "1"},
+  "paths": {
+    "/v1/search": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SearchRequest"}}}
+        },
+        "responses": {
+          "200": {"description": "hits", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SearchResponse"}}}},
+          "400": {"description": "bad input", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
+    "/v1/items/{id}": {
+      "get": {
+        "responses": {
+          "200": {"description": "the item", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Item"}}}},
+          "default": {"description": "an error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "SearchRequest": {
+        "type": "object",
+        "required": ["q"],
+        "properties": {
+          "q": {"type": "string", "minLength": 1},
+          "limit": {"type": "integer", "minimum": 1, "maximum": 10},
+          "summary": {"type": "boolean"}
+        },
+        "additionalProperties": false
+      },
+      "SearchResponse": {
+        "type": "object",
+        "required": ["hits", "took_ms"],
+        "properties": {
+          "hits": {"type": "array", "items": {"$ref": "#/components/schemas/Hit"}},
+          "summary": {"type": "string"},
+          "took_ms": {"type": "integer"}
+        },
+        "additionalProperties": false
+      },
+      "Hit": {
+        "allOf": [
+          {"$ref": "#/components/schemas/Link"},
+          {"type": "object", "required": ["snippet"], "properties": {"snippet": {"type": "string"}}}
+        ]
+      },
+      "Link": {
+        "type": "object",
+        "required": ["title", "link"],
+        "properties": {"title": {"type": "string"}, "link": {"type": "string", "format": "uri"}},
+        "example": {"title": "Go", "link": "https://toy.example/items/go1"}
+      },
+      "Item": {
+        "type": "object",
+        "required": ["id", "name", "text"],
+        "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "text": {"type": "string"}}
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {"type": "object", "required": ["message"], "properties": {"message": {"type": "string"}}}
+        }
+      }
+    }
+  }
+}

@@ -17,8 +17,9 @@ func connector() toolsettest.Connector {
 			return parallel.Factory(parallel.WithBaseURL(e.BaseURL), parallel.WithHTTPClient(e.HTTPClient),
 				parallel.WithLookupEnv(e.LookupEnv), parallel.WithClock(e.Clock), parallel.WithLogger(e.Logger))
 		},
-		KeyEnv: "PARALLEL_API_KEY",
-		Enable: []toolsettest.CheckID{"schema_honesty.dead_fields"},
+		KeyEnv:  "PARALLEL_API_KEY",
+		OpenAPI: "testdata/openapi.json",
+		Enable:  []toolsettest.CheckID{"schema_honesty.dead_fields", "cassettes.openapi"},
 		Calls: []toolsettest.Call{
 			{
 				Name: "search_defaults", Tool: "parallel_search",

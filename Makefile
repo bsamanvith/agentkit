@@ -33,6 +33,25 @@ test-live: ## Live tests against real model providers (ANTHROPIC_API_KEY, or ANT
 record-cassettes: ## Re-record connector cassettes from the real APIs (needs the providers' keys; review the diff, then make golden)
 	AGENTKIT_RECORD_CASSETTES=1 $(GO) test -tags live -count=1 -run 'RecordCassettes' ./...
 
+OPENAPI_CUT := $(GO) run ./pkg/toolset/toolsettest/testdata/openapi/cut.go
+EXA_SPEC := https://exa.ai/docs/exa-spec.yaml
+PARALLEL_SPEC := https://docs.parallel.ai/public-openapi.json
+TAVILY_DOCS := https://docs.tavily.com/documentation/api-reference/endpoint
+
+.PHONY: openapi-specs
+openapi-specs: ## Re-vendor the providers' OpenAPI specs (connectors/*/testdata/openapi.json; review the diff, then make test)
+	@d=$$(mktemp -d) && trap 'rm -rf "$$d"' EXIT && \
+	curl -fsSL -o $$d/exa.yaml $(EXA_SPEC) && \
+	curl -fsSL -o $$d/parallel.json $(PARALLEL_SPEC) && \
+	curl -fsSL -o $$d/search.md $(TAVILY_DOCS)/search.md && \
+	curl -fsSL -o $$d/extract.md $(TAVILY_DOCS)/extract.md && \
+	$(OPENAPI_CUT) -o connectors/exa/testdata/openapi.json -source $(EXA_SPEC) \
+		-op 'POST /search' -op 'POST /contents' $$d/exa.yaml && \
+	$(OPENAPI_CUT) -o connectors/parallel/testdata/openapi.json -source $(PARALLEL_SPEC) \
+		-op 'POST /v1/search' -op 'POST /v1/extract' $$d/parallel.json && \
+	$(OPENAPI_CUT) -o connectors/tavily/testdata/openapi.json -source $(TAVILY_DOCS)/search.md -source $(TAVILY_DOCS)/extract.md \
+		-op 'POST /search' -op 'POST /extract' $$d/search.md $$d/extract.md
+
 .PHONY: golden
 golden: ## Rewrite golden files from current output (review the diff!)
 	AGENTKIT_UPDATE_GOLDEN=1 $(GO) test -count=1 ./...

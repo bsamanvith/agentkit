@@ -37,7 +37,7 @@ The three tasks run in parallel with each other, and with E05 and E07.
 
 - [x] [T049](T049-connector-test-kit.md) `toolsettest`: cassettes, `RunConnector` suite, honest fakes (every connector adopts it)
 - [ ] [T052](T052-connector-kit-hardening.md) Kit hardening: the checks connectors still test themselves, golden first run, fuzz speed
-- [ ] [T051](T051-openapi-cassette-validation.md) Validate cassettes against vendored OpenAPI specs (shared helper; Exa and Parallel move onto it)
+- [x] [T051](T051-openapi-cassette-validation.md) Validate cassettes against vendored OpenAPI specs (shared helper; Exa and Parallel move onto it). `cassettes.openapi` stays opt-in: Tavily's published spec contradicts its real responses (three null fields), planner to decide
 - [ ] [T050](T050-connector-tool-evals.md) Tool-use evals: real Claude with faked connectors (after T049 and at least one connector)
 - [x] [T046](T046-connector-tavily.md) `connectors/tavily`: `tavily_search`, `tavily_extract`, keyless or keyed — in review: on `main`, passes T049's `RunConnector`; waits for the keyed and real-Claude live runs
 - [x] [T047](T047-connector-exa.md) `connectors/exa`: `exa_search`, `exa_extract`, keyed (in review: live test and cassette recording need `EXA_API_KEY`)

@@ -146,6 +146,23 @@ func TestEnable(t *testing.T) {
 	}
 }
 
+// TestOpenAPICheckNeedsTheSpec: check cassettes.openapi, enabled without
+// Connector.OpenAPI, fails rather than passing on nothing.
+func TestOpenAPICheckNeedsTheSpec(t *testing.T) {
+	t.Parallel()
+	c := Connector{
+		New:     func(Env) toolset.Factory { return toy.New() },
+		Calls:   []Call{{Name: "c", Tool: "toy_search", Cassettes: []string{"search_go"}}},
+		Invalid: []Call{{Name: "i", Tool: "toy_search"}},
+		Enable:  []CheckID{"cassettes.openapi"},
+	}
+	spy := NewSpy(t)
+	spy.Run(func(tb testing.TB) { newSuite(tb, c, false).openapiCheck(tb) })
+	if !spy.HasErr("check cassettes.openapi needs Connector.OpenAPI") {
+		t.Errorf("errors %q, want one asking for Connector.OpenAPI", spy.Errs())
+	}
+}
+
 // TestChecksTable: every check has a unique ID, and docs/CONNECTORS.md
 // lists each one with its stage.
 func TestChecksTable(t *testing.T) {

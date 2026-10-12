@@ -1,0 +1,913 @@
+{
+  "_comment": "Cut by make openapi-specs on 2026-10-12 from https://docs.tavily.com/documentation/api-reference/endpoint/search.md and https://docs.tavily.com/documentation/api-reference/endpoint/extract.md: the operations this connector uses and the schemas they reference, as published. Do not edit by hand: re-run it and review the diff.",
+  "components": {
+    "schemas": {
+      "ApiError": {
+        "properties": {
+          "detail": {
+            "properties": {
+              "error": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "properties": {
+                "ctx": {
+                  "type": "object"
+                },
+                "input": {},
+                "loc": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Tavily Search and Extract API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/extract": {
+      "post": {
+        "operationId": "extract",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "chunks_per_source": {
+                    "default": 3,
+                    "description": "Chunks are short content snippets (about 800 characters each) pulled directly from the source. Use `chunks_per_source` to define the maximum number of relevant chunks returned per source and to control the `raw_content` length. Chunks will appear in the `raw_content` field as: `\u003cchunk 1\u003e [...] \u003cchunk 2\u003e [...] \u003cchunk 3\u003e`. If a page splits into no more chunks than `chunks_per_source`, its full content is returned. Available only when `query` is provided. Must be between 1 and 5.",
+                    "maximum": 5,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "extract_depth": {
+                    "default": "basic",
+                    "description": "The depth of the extraction process. `advanced` extraction retrieves more data, including tables and embedded content, with higher success but may increase latency.`basic` extraction costs 1 credit per 5 successful URL extractions, while `advanced` extraction costs 2 credits per 5 successful URL extractions.",
+                    "enum": [
+                      "basic",
+                      "advanced"
+                    ],
+                    "type": "string"
+                  },
+                  "format": {
+                    "default": "markdown",
+                    "description": "The format of the extracted web page content. `markdown` returns content in markdown format. `text` returns plain text and may increase latency.",
+                    "enum": [
+                      "markdown",
+                      "text"
+                    ],
+                    "type": "string"
+                  },
+                  "include_favicon": {
+                    "default": false,
+                    "description": "Whether to include the favicon URL for each result.",
+                    "type": "boolean"
+                  },
+                  "include_images": {
+                    "default": false,
+                    "description": "Include a list of images extracted from the URLs in the response. Default is false.",
+                    "type": "boolean"
+                  },
+                  "include_usage": {
+                    "default": false,
+                    "description": "Whether to include credit usage information in the response. `NOTE:`The value may be 0 if the total successful URL extractions has not yet reached 5 calls. See our [Credits \u0026 Pricing documentation](https://docs.tavily.com/documentation/api-credits) for details.",
+                    "type": "boolean"
+                  },
+                  "query": {
+                    "description": "User intent for reranking extracted content chunks. When provided, chunks are reranked based on relevance to this query.",
+                    "type": "string"
+                  },
+                  "timeout": {
+                    "default": "None",
+                    "description": "Maximum time in seconds to wait for the URL extraction before timing out. Must be between 1.0 and 60.0 seconds. If not specified, default timeouts are applied based on extract_depth: 10 seconds for basic extraction and 30 seconds for advanced extraction.",
+                    "format": "float",
+                    "maximum": 60,
+                    "minimum": 1,
+                    "type": "number"
+                  },
+                  "urls": {
+                    "oneOf": [
+                      {
+                        "description": "The URL to extract content from.",
+                        "example": "https://en.wikipedia.org/wiki/Artificial_intelligence",
+                        "type": "string"
+                      },
+                      {
+                        "description": "A list of 1–20 URLs to extract in one request.",
+                        "example": [
+                          "https://en.wikipedia.org/wiki/Artificial_intelligence",
+                          "https://en.wikipedia.org/wiki/Machine_learning",
+                          "https://en.wikipedia.org/wiki/Data_science"
+                        ],
+                        "items": {
+                          "type": "string"
+                        },
+                        "maxItems": 20,
+                        "minItems": 1,
+                        "type": "array"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "urls"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "failed_results": {
+                      "description": "A list of URLs that could not be processed.",
+                      "example": [],
+                      "items": {
+                        "properties": {
+                          "error": {
+                            "description": "An error message describing why the URL couldn't be processed.",
+                            "type": "string"
+                          },
+                          "url": {
+                            "description": "The URL that failed to be processed.",
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "description": "A unique request identifier you can share with customer support to help resolve issues with specific requests.",
+                      "example": "123e4567-e89b-12d3-a456-426614174111",
+                      "type": "string"
+                    },
+                    "response_time": {
+                      "description": "Time in seconds it took to complete the request.",
+                      "example": 0.02,
+                      "format": "float",
+                      "type": "number"
+                    },
+                    "results": {
+                      "description": "A list of extracted content from the provided URLs.",
+                      "items": {
+                        "properties": {
+                          "favicon": {
+                            "description": "The favicon URL for the result.",
+                            "example": "https://en.wikipedia.org/static/favicon/wikipedia.ico",
+                            "type": "string"
+                          },
+                          "images": {
+                            "description": "This is only available if `include_images` is set to `true`. A list of image URLs extracted from the page.",
+                            "example": [],
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "raw_content": {
+                            "description": "The full content extracted from the page. When `query` is provided, contains the top-ranked chunks joined by `[...]` separator.",
+                            "example": "\"Jump to content\\nMain menu\\nSearch\\nAppearance\\nDonate\\nCreate account\\nLog in\\nPersonal tools\\n        Photograph your local culture, help Wikipedia and win!\\nToggle the table of contents\\nArtificial intelligence\\n161 languages\\nArticle\\nTalk\\nRead\\nView source\\nView history\\nTools\\nFrom Wikipedia, the free encyclopedia\\n\\\"AI\\\" redirects here. For other uses, see AI (disambiguation) and Artificial intelligence (disambiguation).\\nPart of a series on\\nArtificial intelligence (AI)\\nshow\\nMajor goals\\nshow\\nApproaches\\nshow\\nApplications\\nshow\\nPhilosophy\\nshow\\nHistory\\nshow\\nGlossary\\nvte\\nArtificial intelligence (AI), in its broadest sense, is intelligence exhibited by machines, particularly computer systems. It is a field of research in computer science that develops and studies methods and software that enable machines to perceive their environment and use learning and intelligence to take actions that maximize their chances of achieving defined goals.[1] Such machines may be called AIs.\\nHigh-profile applications of AI include advanced web search engines (e.g., Google Search); recommendation systems (used by YouTube, Amazon, and Netflix); virtual assistants (e.g., Google Assistant, Siri, and Alexa); autonomous vehicles (e.g., Waymo); generative and creative tools (e.g., ChatGPT and AI art); and superhuman play and analysis in strategy games (e.g., chess and Go)...................",
+                            "type": "string"
+                          },
+                          "url": {
+                            "description": "The URL from which the content was extracted.",
+                            "example": "https://en.wikipedia.org/wiki/Artificial_intelligence",
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "usage": {
+                      "description": "Credit usage details for the request.",
+                      "example": {
+                        "credits": 1
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Extraction completed. Check results and failed_results for each URL. HTTP 200 can have an empty results array when all valid URLs fail during extraction; output order is not guaranteed."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ApiError"
+                    },
+                    {
+                      "properties": {
+                        "detail": {
+                          "properties": {
+                            "failed_results": {
+                              "description": "A list of URLs that could not be processed.",
+                              "items": {
+                                "properties": {
+                                  "error": {
+                                    "description": "An error message describing why the URL couldn't be processed.",
+                                    "type": "string"
+                                  },
+                                  "url": {
+                                    "description": "The URL that failed to be processed.",
+                                    "type": "string"
+                                  }
+                                },
+                                "type": "object"
+                              },
+                              "type": "array"
+                            }
+                          },
+                          "type": "object"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Bad Request. More than 20 URLs, an empty URL list, or no URLs passing validation are rejected. When all URLs fail validation, detail.failed_results describes the individual failures."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized - Your API key is wrong or missing."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Too Many Requests. Error messages and retry delays can vary by rate-limit rule."
+          },
+          "432": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Key limit or Plan Limit exceeded"
+          },
+          "433": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "PayGo limit exceeded"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Internal Server Error - We had a problem with our server."
+          }
+        }
+      }
+    },
+    "/search": {
+      "post": {
+        "operationId": "search",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "auto_parameters": {
+                    "default": false,
+                    "description": "When `auto_parameters` is enabled, Tavily automatically configures search parameters based on your query's content and intent. You can still set other parameters manually, and your explicit values will override the automatic ones. The parameters `include_answer`, `include_raw_content`, and `max_results` must always be set manually, as they directly affect response size. Note: `search_depth` may be automatically set to advanced when it's likely to improve results. This uses 2 API credits per request. To avoid the extra cost, you can explicitly set `search_depth` to `basic`.",
+                    "type": "boolean"
+                  },
+                  "chunks_per_source": {
+                    "default": 3,
+                    "description": "Chunks are short content snippets (about 500 characters each for `basic` and `fast`, 800 for `advanced`) pulled directly from the source. Use `chunks_per_source` to define the maximum number of relevant chunks returned per source and to control the `content` length. Chunks will appear in the `content` field as: `\u003cchunk 1\u003e [...] \u003cchunk 2\u003e [...] \u003cchunk 3\u003e`. Adjacent chunks may be joined into one longer passage, so chunk length is a target, not a hard limit. Available when `search_depth` is `advanced`, `basic` or `fast`.",
+                    "maximum": 3,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "country": {
+                    "default": null,
+                    "description": "Boost search results from a specific country. This will prioritize content from the selected country in the search results. Available only if topic is `general`.",
+                    "enum": [
+                      "afghanistan",
+                      "albania",
+                      "algeria",
+                      "andorra",
+                      "angola",
+                      "argentina",
+                      "armenia",
+                      "australia",
+                      "austria",
+                      "azerbaijan",
+                      "bahamas",
+                      "bahrain",
+                      "bangladesh",
+                      "barbados",
+                      "belarus",
+                      "belgium",
+                      "belize",
+                      "benin",
+                      "bhutan",
+                      "bolivia",
+                      "bosnia and herzegovina",
+                      "botswana",
+                      "brazil",
+                      "brunei",
+                      "bulgaria",
+                      "burkina faso",
+                      "burundi",
+                      "cambodia",
+                      "cameroon",
+                      "canada",
+                      "cape verde",
+                      "central african republic",
+                      "chad",
+                      "chile",
+                      "china",
+                      "colombia",
+                      "comoros",
+                      "congo",
+                      "costa rica",
+                      "croatia",
+                      "cuba",
+                      "cyprus",
+                      "czech republic",
+                      "denmark",
+                      "djibouti",
+                      "dominican republic",
+                      "ecuador",
+                      "egypt",
+                      "el salvador",
+                      "equatorial guinea",
+                      "eritrea",
+                      "estonia",
+                      "ethiopia",
+                      "fiji",
+                      "finland",
+                      "france",
+                      "gabon",
+                      "gambia",
+                      "georgia",
+                      "germany",
+                      "ghana",
+                      "greece",
+                      "guatemala",
+                      "guinea",
+                      "haiti",
+                      "honduras",
+                      "hungary",
+                      "iceland",
+                      "india",
+                      "indonesia",
+                      "iran",
+                      "iraq",
+                      "ireland",
+                      "israel",
+                      "italy",
+                      "jamaica",
+                      "japan",
+                      "jordan",
+                      "kazakhstan",
+                      "kenya",
+                      "kuwait",
+                      "kyrgyzstan",
+                      "latvia",
+                      "lebanon",
+                      "lesotho",
+                      "liberia",
+                      "libya",
+                      "liechtenstein",
+                      "lithuania",
+                      "luxembourg",
+                      "madagascar",
+                      "malawi",
+                      "malaysia",
+                      "maldives",
+                      "mali",
+                      "malta",
+                      "mauritania",
+                      "mauritius",
+                      "mexico",
+                      "moldova",
+                      "monaco",
+                      "mongolia",
+                      "montenegro",
+                      "morocco",
+                      "mozambique",
+                      "myanmar",
+                      "namibia",
+                      "nepal",
+                      "netherlands",
+                      "new zealand",
+                      "nicaragua",
+                      "niger",
+                      "nigeria",
+                      "north korea",
+                      "north macedonia",
+                      "norway",
+                      "oman",
+                      "pakistan",
+                      "panama",
+                      "papua new guinea",
+                      "paraguay",
+                      "peru",
+                      "philippines",
+                      "poland",
+                      "portugal",
+                      "qatar",
+                      "romania",
+                      "russia",
+                      "rwanda",
+                      "saudi arabia",
+                      "senegal",
+                      "serbia",
+                      "singapore",
+                      "slovakia",
+                      "slovenia",
+                      "somalia",
+                      "south africa",
+                      "south korea",
+                      "south sudan",
+                      "spain",
+                      "sri lanka",
+                      "sudan",
+                      "sweden",
+                      "switzerland",
+                      "syria",
+                      "taiwan",
+                      "tajikistan",
+                      "tanzania",
+                      "thailand",
+                      "togo",
+                      "trinidad and tobago",
+                      "tunisia",
+                      "turkey",
+                      "turkmenistan",
+                      "uganda",
+                      "ukraine",
+                      "united arab emirates",
+                      "united kingdom",
+                      "united states",
+                      "uruguay",
+                      "uzbekistan",
+                      "venezuela",
+                      "vietnam",
+                      "yemen",
+                      "zambia",
+                      "zimbabwe"
+                    ],
+                    "type": "string"
+                  },
+                  "end_date": {
+                    "default": null,
+                    "description": "Will return all results before the specified end date based on publish date or last updated date. Required to be written in the format YYYY-MM-DD. By default, results with no detectable published date are not removed; set `filter_by_published_date` to `true` to remove them.",
+                    "example": "2025-12-29",
+                    "type": "string"
+                  },
+                  "exact_match": {
+                    "default": false,
+                    "description": "Ensure that only search results containing the exact quoted phrase(s) in the query are returned, bypassing synonyms or semantic variations. Wrap target phrases in quotes within your query (e.g. `\"John Smith\" CEO Acme Corp`). Punctuation is typically ignored inside quotes.",
+                    "type": "boolean"
+                  },
+                  "exclude_domains": {
+                    "default": [],
+                    "description": "A list of domains to specifically exclude from the search results. Maximum 150 domains.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "filter_by_language": {
+                    "default": false,
+                    "description": "Strictly filter out search results that don't match the `language` parameter, instead of only boosting them in ranking. Requires `language` to be set; returns a 400 error otherwise.",
+                    "type": "boolean"
+                  },
+                  "filter_by_published_date": {
+                    "default": false,
+                    "description": "Remove results whose published date falls outside the `time_range`, `start_date`, or `end_date` window. Results with no detectable published date are also removed. Setting this to `true` also enables `include_published_date`.\n\nIf you want date-window filtering but don't want to lose sources without a detectable date, leave this `false` and set `include_published_date: true` together with a date range instead.",
+                    "type": "boolean"
+                  },
+                  "include_answer": {
+                    "default": false,
+                    "description": "Include an LLM-generated answer to the provided query. `basic` or `true` returns a quick answer. `advanced` returns a more detailed answer.",
+                    "oneOf": [
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "enum": [
+                          "basic",
+                          "advanced"
+                        ],
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "include_domains": {
+                    "default": [],
+                    "description": "A list of domains to specifically include in the search results. Maximum 300 domains.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "include_domains_mode": {
+                    "default": "restrict",
+                    "description": "Controls how `include_domains` is applied. `restrict` limits results to only the listed domains. `prefer` also searches the rest of the web, so results outside `include_domains` can still surface, rather than excluding them. Defaults to `restrict`, so `include_domains` acts as a hard filter unless set to `prefer`. Setting it without `include_domains` returns a 400 error.",
+                    "enum": [
+                      "restrict",
+                      "prefer"
+                    ],
+                    "type": "string"
+                  },
+                  "include_favicon": {
+                    "default": false,
+                    "description": "Whether to include the favicon URL for each result.",
+                    "type": "boolean"
+                  },
+                  "include_image_descriptions": {
+                    "default": false,
+                    "description": "When `include_images` is `true`, also add a descriptive text for each image.",
+                    "type": "boolean"
+                  },
+                  "include_images": {
+                    "default": false,
+                    "description": "Include images in the response. Returns both a top-level `images` list of query-related images and an `images` array inside each result object with images extracted from that specific source.",
+                    "type": "boolean"
+                  },
+                  "include_published_date": {
+                    "default": false,
+                    "description": "Include a `published_date` field in each result. The date is Tavily's best estimate of when the source was published or last updated, so it can be later than the original publish date. Results with no detectable date return `null`. Automatically enabled when `topic` is `news`.\n\n**Note**: this feature is currently in beta.",
+                    "type": "boolean"
+                  },
+                  "include_raw_content": {
+                    "default": false,
+                    "description": "Include the cleaned and parsed HTML content of each search result. `markdown` or `true` returns search result content in markdown format. `text` returns the plain text from the results and may increase latency.",
+                    "oneOf": [
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "enum": [
+                          "markdown",
+                          "text"
+                        ],
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "include_usage": {
+                    "default": false,
+                    "description": "Whether to include credit usage information in the response.",
+                    "type": "boolean"
+                  },
+                  "language": {
+                    "default": null,
+                    "description": "Boost search results in a specific language. Accepts an ISO 639-1 code (e.g. `en`, `fr`, `zh-cn`) or an English language name (e.g. `english`, `french`). By default this only boosts matching-language results in ranking; pass `filter_by_language: true` to strictly filter out non-matching results instead. For best results, write your `query` in the same language you set here.",
+                    "example": "en",
+                    "type": "string"
+                  },
+                  "max_results": {
+                    "default": 10,
+                    "description": "The maximum number of search results to return.",
+                    "example": 1,
+                    "maximum": 20,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "query": {
+                    "description": "The search query to execute with Tavily.",
+                    "example": "who is Leo Messi?",
+                    "type": "string"
+                  },
+                  "safe_search": {
+                    "default": false,
+                    "description": "Whether to filter out adult or unsafe content from results. Not supported for `fast` or `ultra-fast` search depths.",
+                    "type": "boolean"
+                  },
+                  "search_depth": {
+                    "default": "basic",
+                    "description": "Controls the latency vs. relevance tradeoff and how `results[].content` is generated:\n- `advanced`: Highest relevance with increased latency. Best for detailed, high-precision queries. Returns multiple semantically relevant snippets per URL (configurable via `chunks_per_source`).\n- `basic`: A balanced option for relevance and latency. Ideal for general-purpose searches. Returns multiple semantically relevant snippets per URL (configurable via `chunks_per_source`).\n- `fast`: Prioritizes lower latency while maintaining good relevance. Returns multiple semantically relevant snippets per URL (configurable via `chunks_per_source`).\n- `ultra-fast`: Minimizes latency above all else. Best for time-critical use cases. Returns one NLP summary per URL.\n\n**Cost**:\n- `basic`, `fast`, `ultra-fast`: 1 API Credit\n- `advanced`: 2 API Credits\n\nSee [Search Best Practices](/documentation/best-practices/best-practices-search#search-depth) for guidance on choosing the right search depth.",
+                    "enum": [
+                      "advanced",
+                      "basic",
+                      "fast",
+                      "ultra-fast"
+                    ],
+                    "type": "string"
+                  },
+                  "start_date": {
+                    "default": null,
+                    "description": "Will return all results after the specified start date based on publish date or last updated date. Required to be written in the format YYYY-MM-DD. By default, results with no detectable published date are not removed; set `filter_by_published_date` to `true` to remove them.",
+                    "example": "2025-02-09",
+                    "type": "string"
+                  },
+                  "time_range": {
+                    "default": null,
+                    "description": "The time range back from the current date to filter results based on publish date or last updated date. Useful when looking for sources that have published or updated data. By default, results with no detectable published date are not removed; set `filter_by_published_date` to `true` to remove them.",
+                    "enum": [
+                      "day",
+                      "week",
+                      "month",
+                      "year",
+                      "d",
+                      "w",
+                      "m",
+                      "y"
+                    ],
+                    "type": "string"
+                  },
+                  "topic": {
+                    "default": "general",
+                    "description": "The category of the search.`news` is useful for retrieving real-time updates, particularly about politics, sports, and major current events covered by mainstream media sources. `general` is for broader, more general-purpose searches that may include a wide range of sources.",
+                    "enum": [
+                      "general",
+                      "news",
+                      "finance"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "query"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "answer": {
+                      "description": "A short answer to the user's query, generated by an LLM. Included in the response only if `include_answer` is requested (i.e., set to `true`, `basic`, or `advanced`)",
+                      "example": "Lionel Messi, born in 1987, is an Argentine footballer widely regarded as one of the greatest players of his generation. He spent the majority of his career playing for FC Barcelona, where he won numerous domestic league titles and UEFA Champions League titles. Messi is known for his exceptional dribbling skills, vision, and goal-scoring ability. He has won multiple FIFA Ballon d'Or awards, numerous La Liga titles with Barcelona, and holds the record for most goals scored in a calendar year. In 2014, he led Argentina to the World Cup final, and in 2015, he helped Barcelona capture another treble. Despite turning 36 in June, Messi remains highly influential in the sport.",
+                      "type": "string"
+                    },
+                    "auto_parameters": {
+                      "description": "A dictionary of the selected auto_parameters, only shown when `auto_parameters` is true.",
+                      "example": {
+                        "search_depth": "basic",
+                        "topic": "general"
+                      },
+                      "type": "object"
+                    },
+                    "images": {
+                      "description": "A list of query-related images from image search. If `include_image_descriptions` is true, each item will have `url` and `description`. Note: per-result images are also returned inside each result object's `images` field.",
+                      "example": [],
+                      "items": {
+                        "properties": {
+                          "description": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "query": {
+                      "description": "The search query that was executed.",
+                      "example": "Who is Leo Messi?",
+                      "type": "string"
+                    },
+                    "request_id": {
+                      "description": "A unique request identifier you can share with customer support to help resolve issues with specific requests.",
+                      "example": "123e4567-e89b-12d3-a456-426614174111",
+                      "type": "string"
+                    },
+                    "response_time": {
+                      "description": "Time in seconds it took to complete the request.",
+                      "example": "1.67",
+                      "format": "float",
+                      "type": "number"
+                    },
+                    "results": {
+                      "description": "A list of sorted search results, ranked by relevancy.",
+                      "items": {
+                        "properties": {
+                          "content": {
+                            "description": "A short description of the search result.",
+                            "example": "Lionel Messi, an Argentine footballer, is widely regarded as one of the greatest football players of his generation. Born in 1987, Messi spent the majority of his career playing for Barcelona, where he won numerous domestic league titles and UEFA Champions League titles. Messi is known for his exceptional dribbling skills, vision, and goal",
+                            "type": "string"
+                          },
+                          "favicon": {
+                            "description": "The favicon URL for the result.",
+                            "example": "https://britannica.com/favicon.png",
+                            "type": "string"
+                          },
+                          "id": {
+                            "description": "Unique identifier for this result",
+                            "example": "a3f9c2-04",
+                            "type": "string"
+                          },
+                          "images": {
+                            "description": "A list of images extracted from this search result. Only included when `include_images` is `true`. If `include_image_descriptions` is `true`, each item will have `url` and `description`.",
+                            "items": {
+                              "properties": {
+                                "description": {
+                                  "type": "string"
+                                },
+                                "url": {
+                                  "type": "string"
+                                }
+                              },
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
+                          "published_date": {
+                            "description": "Tavily's best estimate of when the source was published or last updated. Can be later than the original publish date. `null` if no date could be detected. Only returned when `include_published_date` is `true` (automatically enabled when `topic` is `news`).",
+                            "example": "Tue, 11 Mar 2025 17:00:00 GMT",
+                            "type": "string"
+                          },
+                          "raw_content": {
+                            "description": "The cleaned and parsed HTML content of the search result. Only if `include_raw_content` is true.",
+                            "example": null,
+                            "type": "string"
+                          },
+                          "score": {
+                            "description": "The relevance score of the search result.",
+                            "example": 0.81025416,
+                            "format": "float",
+                            "type": "number"
+                          },
+                          "title": {
+                            "description": "The title of the search result.",
+                            "example": "Lionel Messi Facts | Britannica",
+                            "type": "string"
+                          },
+                          "url": {
+                            "description": "The URL of the search result.",
+                            "example": "https://www.britannica.com/facts/Lionel-Messi",
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "usage": {
+                      "description": "Credit usage details for the request.",
+                      "example": {
+                        "credits": 1
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "query",
+                    "results",
+                    "images",
+                    "response_time",
+                    "answer"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Search results returned successfully"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Bad Request - Your request is invalid."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized - Your API key is wrong or missing."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            },
+            "description": "Request validation failed. The detail array identifies invalid fields."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Too Many Requests. Error messages and retry delays can vary by rate-limit rule."
+          },
+          "432": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Key limit or Plan Limit exceeded"
+          },
+          "433": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "PayGo limit exceeded"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Internal Server Error - We had a problem with our server."
+          }
+        }
+      }
+    }
+  }
+}

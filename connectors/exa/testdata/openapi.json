@@ -1,4 +1,5 @@
 {
+  "_comment": "Cut by make openapi-specs on 2026-10-12 from https://exa.ai/docs/exa-spec.yaml: the operations this connector uses and the schemas they reference, as published. Do not edit by hand: re-run it and review the diff.",
   "components": {
     "schemas": {
       "ContentsOptions": {
@@ -1281,6 +1282,30 @@
             "type": "number"
           }
         },
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "additionalProperties": false,
+        "description": "Standard error envelope returned by the Exa API for failed requests.",
+        "properties": {
+          "error": {
+            "description": "Human-readable message describing the error.",
+            "type": "string"
+          },
+          "requestId": {
+            "description": "Unique identifier for the request.",
+            "type": "string"
+          },
+          "tag": {
+            "description": "Machine-readable error tag identifying the failure. The set of tags is open-ended: new tags may be added at any time, so treat unrecognized tags as a generic error of the response's HTTP status. Known tags are listed as examples.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "requestId",
+          "error",
+          "tag"
+        ],
         "type": "object"
       },
       "JsonValue": {
@@ -3461,6 +3486,81 @@
           "output"
         ],
         "type": "object"
+      },
+      "X402PaymentChallenge": {
+        "additionalProperties": false,
+        "description": "x402 payment challenge: the standard error envelope extended with x402 payment metadata.",
+        "properties": {
+          "accepts": {
+            "description": "Payment requirements the server accepts, one per supported rail.",
+            "items": {
+              "additionalProperties": {},
+              "description": "An accepted x402 payment requirement (scheme, network, amount, payTo, asset, maxTimeoutSeconds, and scheme-specific `extra` fields).",
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "error": {
+            "description": "Human-readable message describing the error.",
+            "type": "string"
+          },
+          "extensions": {
+            "additionalProperties": {},
+            "description": "Optional x402 protocol extensions (e.g. Bazaar or AgentKit discovery metadata).",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "requestId": {
+            "description": "Unique identifier for the request.",
+            "type": "string"
+          },
+          "resource": {
+            "additionalProperties": false,
+            "description": "The priced resource this challenge applies to.",
+            "properties": {
+              "description": {
+                "description": "Human-readable resource description.",
+                "type": "string"
+              },
+              "mimeType": {
+                "description": "MIME type of the priced resource.",
+                "type": "string"
+              },
+              "url": {
+                "description": "URL of the priced resource being requested.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "url",
+              "description",
+              "mimeType"
+            ],
+            "type": "object"
+          },
+          "tag": {
+            "description": "Machine-readable error tag identifying the failure. The set of tags is open-ended: new tags may be added at any time, so treat unrecognized tags as a generic error of the response's HTTP status. Known tags are listed as examples.",
+            "type": "string"
+          },
+          "x402Version": {
+            "description": "Version of the x402 protocol used to build this challenge.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "requestId",
+          "error",
+          "tag",
+          "x402Version",
+          "resource",
+          "accepts"
+        ],
+        "type": "object"
       }
     }
   },
@@ -3472,21 +3572,209 @@
   "paths": {
     "/contents": {
       "post": {
-        "request": {
-          "$ref": "#/components/schemas/ContentsRequest"
+        "operationId": "getContents",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContentsRequest"
+              }
+            }
+          },
+          "required": true
         },
-        "response200": {
-          "$ref": "#/components/schemas/ContentsResponse"
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request body or query parameters failed validation."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The API key is missing or invalid."
+          },
+          "402": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/X402PaymentChallenge"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Payment required. For API-key requests this is the standard error envelope (out of credits or a budget exceeded). On x402-priced endpoints, requests without an API key instead receive an x402 payment challenge with tag `X402_PAYMENT_REQUIRED`: the envelope extended with x402 payment metadata (`x402Version`, `resource`, `accepts`, and optional `extensions`) describing how to pay for the request."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The team is not permitted to use this endpoint (`TEAM_BLOCKED`), or the feature is not enabled for it (`FEATURE_DISABLED`)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A rate limit for this API key, team, or network was exceeded."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "An unexpected error occurred while processing the request."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Exa is temporarily over capacity or unavailable. The request was not processed; retry with exponential backoff."
+          }
         }
       }
     },
     "/search": {
       "post": {
-        "request": {
-          "$ref": "#/components/schemas/SearchRequest"
+        "operationId": "search",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchRequest"
+              }
+            }
+          },
+          "required": true
         },
-        "response200": {
-          "$ref": "#/components/schemas/SearchResponse"
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request body or query parameters failed validation."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The API key is missing or invalid."
+          },
+          "402": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/X402PaymentChallenge"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Payment required. For API-key requests this is the standard error envelope (out of credits or a budget exceeded). On x402-priced endpoints, requests without an API key instead receive an x402 payment challenge with tag `X402_PAYMENT_REQUIRED`: the envelope extended with x402 payment metadata (`x402Version`, `resource`, `accepts`, and optional `extensions`) describing how to pay for the request."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The team is not permitted to use this endpoint (`TEAM_BLOCKED`), or the feature is not enabled for it (`FEATURE_DISABLED`)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A rate limit for this API key, team, or network was exceeded."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "An unexpected error occurred while processing the request."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Exa is temporarily over capacity or unavailable. The request was not processed; retry with exponential backoff."
+          }
         }
       }
     }

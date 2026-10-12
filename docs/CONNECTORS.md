@@ -16,6 +16,7 @@ connectors/<name>/
   live_test.go         //go:build live: Record and Drift
   testdata/cassettes/  <exchange>.req.json + <exchange>.res.http, recorded
   testdata/golden/     <call>.json, the output of each happy call
+  testdata/openapi.json the provider's OpenAPI spec, cut to the operations used (make openapi-specs)
 ```
 
 ## 2. The contract (the suite checks every point)
@@ -92,6 +93,7 @@ func FuzzSearchResponses(f *testing.F) { toolsettest.FuzzResponses(f, connector(
 - **`ErrorBody`** formats the provider's error body (default `{"error": message}`), so the suite can check that a 400's message reaches the model.
 - **`MaxBodyBytes`** is your body limit, if not 8 MiB.
 - **`KeyOptional` and `KeylessMarker`** are for a connector that also runs without a key.
+- **`OpenAPI`** is the provider's vendored OpenAPI spec, for check `cassettes.openapi` (see "Cassettes").
 - **`Skip` and `Enable`** skip an opt-out check, with a reason, or run an opt-in one (see "The checks").
 
 Add a fuzz target per tool. `FuzzResponses` fuzzes the 200 bodies, seeded from your cassettes. Any body must give schema-valid output or a classed error, and never a panic. `make fuzz` runs it.
@@ -121,7 +123,14 @@ Connector-specific behavior goes in ordinary tests next to the suite, for exampl
   - `TestNoSecretsInCassettes` scans every `testdata/cassettes` in the repository the same way.
 - **Schema gate.** An exchange whose output fails your output schema is not written. A cassette must show the connector working.
 - **Synthetic cassettes.** A cassette written by hand (a rare error, a case the real API will not produce on demand) is marked `"synthetic": true`. The suite lists synthetic cassettes in its log, and a connector with any stays `review` until they are recorded. Keep rare failures (auth expiry, rate limits) in the suite's scripted error matrix, not in cassettes.
-- **Drift.** `toolsettest.Drift` (in `live_test.go`, run by `make test-live`) makes the calls against the real API, writing nothing, and compares each response's shape with its cassette. The shape is JSON paths and types, not values. Added, removed and retyped fields fail the run. It also warns about cassettes recorded over 90 days ago. Where the provider publishes an OpenAPI spec (Exa, Parallel), vendor it in `testdata/` and add an offline test that validates every cassette response against the spec's response schema; the kit has no helper for this yet.
+- **Drift.** `toolsettest.Drift` (in `live_test.go`, run by `make test-live`) makes the calls against the real API, writing nothing, and compares each response's shape with its cassette. The shape is JSON paths and types, not values. Added, removed and retyped fields fail the run. It also warns about cassettes recorded over 90 days ago.
+- **OpenAPI validation.** Where the provider publishes an OpenAPI spec, vendor the operations you use in `testdata/openapi.json` and set `Connector.OpenAPI`. Check `cassettes.openapi` (`toolsettest.ValidateCassettes`) then validates every cassette offline:
+  - it finds the operation by method and path (`{param}` templates match one segment), and checks the request body against its request schema and the response body against its schema for the status (the exact code, else `4XX`, else `default`);
+  - a failure names the cassette, the JSON path and the rule: `cassette search_go: response 200 at $.hits[*].link: type: 7 has type "integer", want "string"`;
+  - an operation or status the spec lacks fails, it is never skipped;
+  - the spec is JSON, OpenAPI 3.0 (`nullable`, boolean `exclusiveMinimum`) or 3.1. A schema keyword the check does not know fails the spec, so a re-vendored spec cannot pass by being misread. `format` is not checked.
+
+  This matters most for `synthetic` cassettes, which otherwise only repeat the code's own assumptions. To refresh the specs, run `make openapi-specs` (it fetches each provider's published spec, cuts it with `pkg/toolset/toolsettest/testdata/openapi/cut.go`, and writes `testdata/openapi.json`), then review the diff. A new connector adds its line to that target. Never edit a vendored spec by hand: where the published spec is wrong, leave the check off and say why next to `OpenAPI`. For a rig that checks every request it sends, `toolsettest.LoadOpenAPI(path)` and `(*OpenAPI).CheckRequest` apply the same schemas.
 
 ```go
 //go:build live
@@ -158,6 +167,7 @@ Each check has an ID: its subtest path with dots. The subtest names are a contra
 | `calls` | mandatory | each happy call: golden output, schema-valid, exactly its cassettes requested | wrong mapping, extra or missing requests, the key in a query string |
 | `keyless` | mandatory | (`KeyOptional`) each happy call without a key sends the marker and no key | keyless mode sending nothing, or a stale key |
 | `invalid` | mandatory | each invalid input gives `ErrInvalidInput` and sends nothing | a paid request for input that was always going to fail |
+| `cassettes.openapi` | opt-in | every cassette's request and response bodies fit the provider's vendored OpenAPI spec (`Connector.OpenAPI`) for their operation and status | a hand-written (synthetic) cassette in a shape the real API never sends, so the tests pass against a fiction |
 | `errors.400` | opt-out | `ErrInvalidInput` with the provider's message, capped | the model never learns why its input was refused |
 | `errors.422` | opt-out | as 400 | as 400 |
 | `errors.401` | opt-out | `ErrToolFailed`, one request | auth errors reported as bad input |
@@ -187,6 +197,8 @@ A connector may skip an opt-out check, with a reason, in its test: `Skip: map[to
 - The skip shows as `--- SKIP` with the reason under `go test -v`.
 - Naming a mandatory check, an unknown ID or no reason fails the suite.
 - Every skip in the repository is listed below; add yours in the same change.
+
+`cassettes.openapi` is enabled by Exa, Parallel and the toy. Tavily's spec is vendored but the check is off: its docs type `answer`, `results[].raw_content` and `results[].published_date` as plain strings, and the real API sends `null` for them ([T051](../tasks/T051-openapi-cassette-validation.md) Notes).
 
 A new check rolls in, not crashes in. When a check would fail connectors that exist, it lands opt-in: a connector runs it by naming it in `Connector.Enable`, and the suite reports it skipped otherwise. Once every connector passes it, it becomes opt-out, and later mandatory. Enabling an unknown ID, or one that is not opt-in, fails the suite.
 

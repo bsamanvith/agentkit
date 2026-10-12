@@ -24,8 +24,9 @@ func connector() toolsettest.Connector {
 		},
 		Settings: json.RawMessage(`{"search_defaults": {"model_chooses_type": true},
 			"extract_defaults": {"max_characters": 5000, "max_age_hours": 24}}`),
-		KeyEnv: "EXA_API_KEY",
-		Enable: []toolsettest.CheckID{"schema_honesty.dead_fields"},
+		KeyEnv:  "EXA_API_KEY",
+		OpenAPI: "testdata/openapi.json",
+		Enable:  []toolsettest.CheckID{"schema_honesty.dead_fields", "cassettes.openapi"},
 		Calls: []toolsettest.Call{
 			{
 				Name: "search_defaults", Tool: "exa_search",

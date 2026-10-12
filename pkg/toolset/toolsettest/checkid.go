@@ -35,6 +35,7 @@ var checks = []checkInfo{
 	{"calls", mandatory},
 	{"keyless", mandatory},
 	{"invalid", mandatory},
+	{"cassettes.openapi", optIn},
 	{"errors.400", optOut},
 	{"errors.422", optOut},
 	{"errors.401", optOut},

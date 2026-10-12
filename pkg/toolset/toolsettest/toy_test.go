@@ -49,7 +49,8 @@ func toyConnector(bug toy.Bug) toolsettest.Connector {
 			{Name: "no_query", Tool: "toy_search", Input: json.RawMessage(`{}`)},
 		},
 		ErrorBody: toy.ErrorBody,
-		Enable:    []toolsettest.CheckID{"schema_honesty.dead_fields"},
+		OpenAPI:   "testdata/openapi.json",
+		Enable:    []toolsettest.CheckID{"schema_honesty.dead_fields", "cassettes.openapi"},
 	}
 }
 

@@ -46,6 +46,7 @@ import (
 	"github.com/bsamanvith/agentkit/internal/testkit"
 	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
 	"github.com/bsamanvith/agentkit/pkg/tool"
+	"github.com/bsamanvith/agentkit/pkg/toolset/toolsettest"
 )
 
 // canary is the API key in every test. It must never leave in a body, an
@@ -389,8 +390,7 @@ func (r *rig) check() {
 
 func checkRequest(t *testing.T, i int, req recorded) {
 	t.Helper()
-	es, ok := spec(t)[req.path]
-	if req.method != http.MethodPost || !ok {
+	if req.method != http.MethodPost || (req.path != "/v1/search" && req.path != "/v1/extract") {
 		t.Errorf("request %d: %s %s, want POST /v1/search or /v1/extract", i, req.method, req.path)
 		return
 	}
@@ -413,10 +413,20 @@ func checkRequest(t *testing.T, i int, req recorded) {
 	if ct := req.header.Get("Content-Type"); ct != "application/json" {
 		t.Errorf("request %d: Content-Type %q", i, ct)
 	}
-	if err := validate(es.request, req.body); err != nil {
+	spec, err := openAPI()
+	if err != nil {
+		t.Errorf("load testdata/openapi.json: %v", err)
+		return
+	}
+	if err := spec.CheckRequest(req.method, req.path, req.body); err != nil {
 		t.Errorf("request %d: body does not fit the %s request schema: %v\n%s", i, req.path, err, req.body)
 	}
 }
+
+// openAPI is Parallel's OpenAPI spec (the /v1/search and /v1/extract parts).
+var openAPI = sync.OnceValues(func() (*toolsettest.OpenAPI, error) {
+	return toolsettest.LoadOpenAPI(filepath.Join("testdata", "openapi.json"))
+})
 
 // golden compares out, indented, with testdata/golden/<name>.json.
 func golden(t *testing.T, name string, out []byte) {

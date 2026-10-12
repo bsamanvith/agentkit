@@ -80,6 +80,11 @@ type Connector struct {
 	KeylessMarker http.Header
 	// Cassettes is the cassette directory (default testdata/cassettes).
 	Cassettes string
+	// OpenAPI is the provider's OpenAPI spec, vendored as JSON (by
+	// convention testdata/openapi.json): check cassettes.openapi validates
+	// every cassette against it with [ValidateCassettes]. "" for a provider
+	// that publishes none.
+	OpenAPI string
 	// Calls are the happy paths, each answered from cassettes, its output
 	// compared with testdata/golden/<Name>.json. Every tool needs at least
 	// one. The error matrix runs on the first.
@@ -217,7 +222,7 @@ func checkCalls(tb testing.TB, c Connector, files bool) {
 // (docs/CONNECTORS.md lists what each checks): definitions;
 // settings/{unknown_field,literal_api_key,missing_key,plain_http_base_url,
 // base_url}; calls/<call>; keyless/<call> (KeyOptional only);
-// invalid/<call>; errors/{400,422,401,403,500,502,503,429_retry_after,
+// invalid/<call>; cassettes/openapi; errors/{400,422,401,403,500,502,503,429_retry_after,
 // 429_then_200,malformed_json,oversized_body,hang,connection_refused};
 // schema_honesty/{undeclared,dead_fields}; canary; hermetic; mcp; concurrency.
 //
@@ -236,6 +241,7 @@ func RunConnector(t *testing.T, c Connector) {
 		s.run(t, "keyless", func(t *testing.T) { s.calls(t, modeKeyless) })
 	}
 	s.run(t, "invalid", s.invalid)
+	t.Run("cassettes", func(t *testing.T) { s.run(t, "cassettes.openapi", func(t *testing.T) { s.openapiCheck(t) }) })
 	t.Run("errors", s.errorMatrix)
 	t.Run("schema_honesty", s.schemaHonesty)
 	s.run(t, "canary", s.canaryCheck)

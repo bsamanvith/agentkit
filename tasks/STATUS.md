@@ -14,7 +14,7 @@
 | M5 Agent API, `agentkit serve`, image, Compose, smoke tests | [E09](E09-agent-api.md), [E01](E01-foundations.md) | In progress: `agentkit serve`, agent API v0 and the image done; **deployable** |
 | M6 Remote tools over ConnectRPC | E06 (to plan) | Planned |
 | Credentials, auth, tenancy at the edge | [E07](E07-auth-credentials.md) | **Planned** (T039–T045); T039 and T042 ready. Needed before any public deployment: `/mcp/` has no auth today |
-| First connectors: Tavily, Exa (search, extract) | [E10](E10-search-connectors.md) | **Planned** (T046, T047), both ready; no auth work needed (Tavily keyless or keyed, Exa keyed from env) |
+| First connectors: Tavily, Exa, Parallel (search, extract) | [E10](E10-search-connectors.md) | **Planned** (T046–T048), all ready; no auth work needed (Tavily keyless or keyed; Exa and Parallel keyed from env) |
 | More model providers | [E08](E08-model-providers.md) | Later |
 | Agent skills | [E02](E02-agent-skills.md) | In progress: `write-tests` exists and was dry-run on `pkg/flow` |
 
@@ -48,6 +48,7 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 | [T038](T038-store-admin.md) | `store.Admin`, the cross-tenant read for recovery | Small; unblocks T029 and T030 in parallel. **Task card queued** (2026-10-12) |
 | [T046](T046-connector-tavily.md) | `connectors/tavily`: search and extract, keyless or keyed | Owner's first connector; **task card queued** |
 | [T047](T047-connector-exa.md) | `connectors/exa`: search and extract | Owner's second connector, parallel with T046; **task card queued**; live tests need `EXA_API_KEY` in sessions |
+| [T048](T048-connector-parallel.md) | `connectors/parallel`: search and extract | Owner's third connector, parallel with T046 and T047; **task card queued**; live tests need `PARALLEL_API_KEY` in sessions |
 | [T039](T039-auth-principals-middleware.md) | `pkg/auth`: principals, API keys, edge middleware | Starts E07's inbound track; new package only, parallel with E05 |
 | [T042](T042-credentials-core.md) | `pkg/credentials`: secrets, sealer, vault, memory backend | Starts E07's credentials track; new package only, parallel with everything |
 | [T029](T029-store-sqlite.md) | SQLite store | After T038; persistence for the API (T037) |
@@ -71,13 +72,13 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 
 ## Waiting on the owner
 
-1. **`EXA_API_KEY` in Claude sessions** (like `ANTHROPIC_KEY`) for T047's live tests; optional `TAVILY_API_KEY` (Tavily's live tests run keyless without it).
+1. **`EXA_API_KEY` and `PARALLEL_API_KEY` in Claude sessions** (like `ANTHROPIC_KEY`) for T047's and T048's live tests; optional `TAVILY_API_KEY` (Tavily's live tests run keyless without it).
 2. **Delete the `review/t022-base` branch**, and the merged `claude/*` session branches including `claude/t013-flow-tests` (all their work is on `main`).
 
 ## Owner decisions recorded
 
 - 2026-10-12: no Anthropic key in GitHub. Live tests run in Claude sessions (`ANTHROPIC_KEY`, mapped by `make test-live`); T034 is a perf report only.
-- 2026-10-12: first connectors are Tavily and Exa, for search and extraction ([E10](E10-search-connectors.md)); they run in parallel with E07, keys from the environment for now.
+- 2026-10-12: first connectors are Tavily, Exa and Parallel, for search and extraction ([E10](E10-search-connectors.md)); they run in parallel with E07, keys from the environment for now.
 - 2026-10-12: the owner will say how to deploy; no deploy task until then.
 - 2026-10-12: the planner approves and lands the `pkg/flow` rejected-resume fix from the T013 dry run.
 

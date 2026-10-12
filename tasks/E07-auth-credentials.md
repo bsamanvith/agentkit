@@ -57,4 +57,4 @@ Two tracks that can start in parallel, and in parallel with E05: inbound (T039 â
 - T040 changes `cmd/agentkit` and `pkg/agentapi`, and so does T037 (agent API v1). Whichever starts second rebases onto the first. T037 takes the tenant from the principal T040 provides; until then it uses `default`.
 - T043's SQLite part waits for T029, but its file backend does not.
 - T045 needs T040 (a principal for `state`) and T044.
-- The first connectors (Tavily, Exa: [E10](E10-search-connectors.md)) don't wait for E07: their keys come from the environment. T044 lets them take per-tenant keys from a credential slot instead.
+- The first connectors (Tavily, Exa, Parallel: [E10](E10-search-connectors.md)) don't wait for E07: their keys come from the environment. T044 lets them take per-tenant keys from a credential slot instead.

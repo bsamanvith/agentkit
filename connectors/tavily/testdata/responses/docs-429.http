@@ -1,0 +1,8 @@
+HTTP/1.1 429 Too Many Requests
+Content-Type: application/json
+
+{
+  "detail": {
+    "error": "Your request has been blocked due to excessive requests. Please reduce the rate of requests."
+  }
+}

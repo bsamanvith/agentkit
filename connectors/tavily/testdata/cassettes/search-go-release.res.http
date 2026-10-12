@@ -1,0 +1,58 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "query": "latest Go programming language release",
+  "follow_up_questions": null,
+  "answer": null,
+  "images": [],
+  "results": [
+    {
+      "url": "https://endoflife.date/go",
+      "title": "Go | endoflife.date",
+      "content": "Each major Go release is supported until there are two newer major releases. For example, Go 1.5 was supported until the Go 1.7 release, and Go 1.6 was supported until the Go 1.8 release. It fixes critical problems, including critical security problems, in supported releases as needed by issuing minor revisions (for example, Go 1.6.1, Go 1.6.2, and so on). The security policy can be found at .\n\nMore information is available on the Go website. [...] | Release | Released | Supported | Latest |\n ---  --- |\n| 1.27 | 1 month and 2 weeks ago (19 Aug 2026) | Yes | 1.27.1 (01 Sep 2026) |\n| 1.26 | 7 months ago (10 Feb 2026) | Yes | 1.26.8 (01 Sep 2026) |\n| 1.25 | 1 year ago (12 Aug 2025) | Ended 1 month and 2 weeks ago (19 Aug 2026) | 1.25.14 (19 Aug 2026) |\n| 1.24 | 1 year and 7 months ago (11 Feb 2025) | Ended 7 months ago (10 Feb 2026) | 1.24.13 (04 Feb 2026) | [...] | 1.10 | 8 years ago (16 Feb 2018) | Ended 7 years ago (25 Feb 2019) | 1.10.8 (23 Jan 2019) |\n|  |",
+      "score": 0.6654328,
+      "raw_content": null,
+      "published_date": "Thu, 24 Sep 2026 00:00:00 GMT",
+      "id": "378ce1-00"
+    },
+    {
+      "url": "https://www.igmguru.com/blog/what-is-golang",
+      "title": "What is Golang and What is it Used For | igmGuru",
+      "content": "Go was released as an open-source project in 2009 and reached its stable 1.0 version in 2012. Since then, it has gained massive adoption, powering major cloud and DevOps tools like Docker, Kubernetes, and Terraform. Today, Go remains one of the most preferred languages for high-performance servers, distributed systems, and cloud-native development.\n\nExplore igmGuru's best Programming Courses for a career in this field.\n\n## Why is Golang popular?\n\nImage Source: TIOBE index [...] Golang (Go) was created at Google in 2007 by Robert Griesemer, Rob Pike, and Ken Thompson) to address the challenges of building large, scalable systems. The goal was to combine the speed and efficiency of C/C++ with the simplicity of modern languages. [...] Variables and Data Types in Go\n\nSep 25th, 2026\n\nGo Packages \n\nGo Packages: What is It and How to Write One?\n\nSep 25th, 2026\n\nInterfaces in Go \n\nWhat are Interfaces in Go?\n\nSep 25th, 2026\n\nGo Pointers \n\nA Comprehensive Guide to Pointers in Go\n\nSep 25th, 2026\n\nGo Arrays \n\nWhat are Arrays in Go?\n\nSep 25th, 2026\n\nStrings in Golang \n\nWhat are Strings in Golang?\n\nSep 25th, 2026\n\ncontrol statements in Golang \n\nControl Statements in Go language\n\nSep 25th, 2026\n\n## Programming Certification Courses",
+      "score": 0.48235655,
+      "raw_content": null,
+      "published_date": "Fri, 25 Sep 2026 00:00:00 GMT",
+      "id": "da3acb-01"
+    },
+    {
+      "url": "https://en.wikipedia.org/wiki/V_(programming_language)",
+      "title": "V (programming language) - Wikipedia",
+      "content": "20. ↑ Abbas, Hazem (5 August 2024). \"Introduction to V Language and Desktop App Development\". medevel. Retrieved 3 January 2025.\n21. ↑ Rao 2021, p. 7.\n22. ↑ \"The V programming language is now open source\". Packt Hub. Packt Publishing. 24 June 2019. Retrieved 24 June 2019.\n23. 1 2 Tsoukalos 2022.\n24. ↑ Schlothauer 2019.\n25. ↑ \"Convert Go to V with go2v\". Zenn (in Japanese). 26 January 2023. Retrieved 26 January 2023. [...] V, also known as vlang, is an in-development statically typed, compiled programming language created by Alexander Medvednikov in early 2019. It was inspired by Go \"Go (programming language)\"), and other programming languages including Oberon \"Oberon (programming language)\"), Swift \"Swift (programming language)\"), and Rust \"Rust (programming language)\"). It is free and open-source software released under the MIT License, and currently in beta. [...] 11. ↑ Sharma 2024.\n12. 1 2 3 4 5 6 Chakraborty & Haldar 2023.\n13. ↑ \"A small presentation of V's features at IBM\". YouTube. Retrieved 6 March 2023.\n14. 1 2 3 4 5 6 Galuh, Rosa (8 August 2022). \"A Brief Introduction to the V Language\". MakeUseOf (MUO). Valnet. Retrieved 8 August 2022.\n15. 1 2 3 Choudhury, Ambika (3 July 2019). \"Meet V, The New Statically Typed Programming Language Inspired By Go & Rust\". Analytics India Magazine (AIM). Archived from the original on 26 January 2025.",
+      "score": 0.42319635,
+      "raw_content": null,
+      "published_date": "Mon, 21 Sep 2026 03:00:00 GMT",
+      "id": "6e1c9f-02"
+    },
+    {
+      "url": "https://www.facebook.com/nooblearn2code/posts/the-best-programming-language-released-0170-version-/1763753282424192",
+      "title": "Kunkka - The best programming language! Released 0.17.0...",
+      "content": "## Kunkka\n\n5 days ago\n\n5d  ·\n\nThe best programming language! Released 0.17.0 version ⚡\n\nMay be pop art of text",
+      "score": 0.1954869,
+      "raw_content": null,
+      "published_date": null,
+      "id": "dd2b26-03"
+    },
+    {
+      "url": "https://www.simplilearn.com/best-programming-languages-start-learning-today-article",
+      "title": "Best Programming Languages to Learn in 2026",
+      "content": "## Introduction\n\nProgramming languages continue to shift with what companies actually need, and 2026 is a mix of reliable classics and newer tools built for AI, automation, cloud, and connected devices. Python, JavaScript, and Java are still the everyday go-tos for web, data, and enterprise work. At the same time, Rust, Go, Kotlin, and TypeScript are becoming more common because teams want software that runs faster, stays secure, and scales without issues. [...] For cloud and DevOps roles, Go can be the best programming language for scaling services.\n\n### 9. Kotlin\n\nAs one of the most popular programming languages on Android, Kotlin improves safety and productivity.\n\nWhy It's Popular: [...] For engineers managing complex applications, TypeScript improves reliability and collaboration across teams. Its type safety reduces runtime errors and enhances long-term maintainability.\n\n### 8. Go (Golang)\n\nGo is redefining efficiency in cloud and automation systems. Built by Google, it combines simplicity with concurrency, making it ideal for scalable cloud-native applications.\n\nWhy It's Popular:",
+      "score": 0.18129252,
+      "raw_content": null,
+      "published_date": "Wed, 07 Oct 2026 10:06:13 GMT",
+      "id": "16c624-04"
+    }
+  ],
+  "response_time": 0.01,
+  "request_id": "00000000-0000-0000-0000-000000000000"
+}

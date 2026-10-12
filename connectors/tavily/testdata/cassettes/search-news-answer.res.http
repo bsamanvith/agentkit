@@ -1,0 +1,40 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "query": "Go 1.27 release",
+  "follow_up_questions": null,
+  "answer": "Go 1.27 was released on 19 August 2026, bringing updates to the language, runtime, tools, and standard library. It includes support for generic methods, a redesigned JSON implementation, built-in UUID support, post-quantum cryptography, better goroutine leak detection, faster small-object allocation, and experimental SIMD support. The latest version, Go 1.27.1, was released on 1 September 2026.",
+  "images": [],
+  "results": [
+    {
+      "url": "https://www.youtube.com/watch?v=2S5oMDUflQc",
+      "title": "What's new in Go 1.27?",
+      "content": "Go 1.27 has been released, bringing updates to the language, runtime, tools, and standard library. One of the major changes is support for generic methods:",
+      "score": 0.89121616,
+      "raw_content": null,
+      "published_date": null,
+      "id": "ca8af9-00"
+    },
+    {
+      "url": "https://medium.com/@danielvalev/i-fed-go-1-27s-new-leak-detector-11-goroutine-leaks-it-caught-3-fca14b3a28a2",
+      "title": "I Fed Go 1.27's New Leak Detector 11 Goroutine ...",
+      "content": "Go 1.27 was released on 19 August 2026, and made the goroutineleak profile generally available. Everything below ran on Go 1.27.1 (1 September 2026), the latest",
+      "score": 0.88564163,
+      "raw_content": null,
+      "published_date": null,
+      "id": "d0e47c-01"
+    },
+    {
+      "url": "https://www.facebook.com/TechWareHousepk/posts/go-127-is-here-what-developers-need-to-know-before-upgradinggo-127-is-more-than-/1774736431319112",
+      "title": "TechWare House - Go 1.27 Is Here: What Developers Need to...",
+      "content": "## TechWare House\n\n2 October at 20:30  ·\n\nGo 1.27 Is Here: What Developers Need to Know Before Upgrading\n\nGo 1.27 Is More Than a Routine Go Release\n\nGo 1.27 arrived on August 19, bringing one of the more substantial updates to the programming language in recent releases. The release adds generic methods, a redesigned JSON implementation, built-in UUID support, post-quantum cryptography, better goroutine leak detection, faster small-object allocation and experimental SIMD support. :contentReference[oaicite:0]{index=0}\n\nFor developers maintaining Go APIs, backend services, CLI tools or infrastructure software, the interesting question is not simply whether to install Go 1.27. It is which changes are worth adopting immediately and which ones deserve testing before they reach production.",
+      "score": 0.8665964,
+      "raw_content": null,
+      "published_date": null,
+      "id": "d58b6d-02"
+    }
+  ],
+  "response_time": 0.0,
+  "request_id": "00000000-0000-0000-0000-000000000000"
+}

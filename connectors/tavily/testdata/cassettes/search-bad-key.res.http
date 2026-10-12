@@ -1,0 +1,8 @@
+HTTP/1.1 401 Unauthorized
+Content-Type: application/json
+
+{
+  "detail": {
+    "error": "Unauthorized: missing or invalid API key."
+  }
+}

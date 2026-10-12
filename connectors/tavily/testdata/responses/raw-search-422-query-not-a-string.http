@@ -1,0 +1,16 @@
+HTTP/1.1 422 Unprocessable Entity
+Content-Type: application/json
+
+{
+    "detail": [
+        {
+            "type": "string_type",
+            "loc": [
+                "body",
+                "query"
+            ],
+            "msg": "Input should be a valid string",
+            "input": []
+        }
+    ]
+}

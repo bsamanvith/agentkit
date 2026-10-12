@@ -96,6 +96,18 @@ Inside the container the server listens on `:8080` (not loopback), so `AGENTKIT_
 
 Environment: `AGENTKIT_COMPONENTS` (`agent`, `mcp-server`, or both), `AGENTKIT_ADDR` (default `127.0.0.1:8080`), `AGENTKIT_API_TOKEN` (required off loopback), `AGENTKIT_CONFIG`, `AGENTKIT_LOG_LEVEL`, `AGENTKIT_SHUTDOWN_TIMEOUT`. The full reference, event format and error codes: [tasks/T036](../tasks/T036-agent-api-v0.md) Notes.
 
+## 6. Web search (Tavily)
+
+`deploy/local/agent/search.json` adds the `tavily` toolset: `tavily_search` (web search) and `tavily_extract` (a page's content), served at `/mcp/tavily` and given to the agent.
+
+```sh
+AGENTKIT_CONFIG=deploy/local/agent/search.json scripts/try-agent.sh
+```
+
+No Tavily key is needed: without one the toolset runs keyless, at Tavily's free rate limits. For higher limits set `TAVILY_API_KEY` in the server's environment (`"auth": "auto"` uses it when set; the startup log says which mode is in use). Settings and limits: [connectors/tavily](../connectors/tavily/doc.go).
+
+Do not expose a toolset that holds a key on a public address yet: until per-route auth for `/mcp` lands (T040), anyone who can reach the server can spend the key's quota.
+
 ## Troubleshooting
 
 - **`startup: AGENTKIT_API_TOKEN ...`**: set a token of at least 16 bytes when listening on a non-loopback address (always the case in Docker).

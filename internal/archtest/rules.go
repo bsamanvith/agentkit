@@ -20,6 +20,9 @@ func ModuleRules() Rules {
 			"pkg/tool":             {"github.com/google/jsonschema-go/jsonschema"},
 			// The connector test kit validates schemas and checks connectors over MCP.
 			"pkg/toolset/toolsettest": {"github.com/google/jsonschema-go/jsonschema", "github.com/modelcontextprotocol/go-sdk/mcp"},
+			// Its tests validate every output against the declared output
+			// schema; the connector itself uses net/http only.
+			"connectors/tavily": {"github.com/google/jsonschema-go/jsonschema"},
 		},
 		TestOnly: []string{
 			"github.com/google/go-cmp/cmp",
@@ -38,6 +41,14 @@ func ModuleRules() Rules {
 			"pkg/agentapi": {
 				"pkg/harness", "pkg/llm", "pkg/tool", "pkg/toolset", "pkg/component", "pkg/clock",
 				"pkg/llm/llmtest", "pkg/clock/clocktest", "internal/testkit", "pkg/toolset/toolsettest",
+			},
+			// Connectors are toolset factories over plain net/http: the tool
+			// abstraction, the factory contract and the clock, never the
+			// server, the harness or another connector (E10). Their tests
+			// add the fake clock and the golden helper.
+			"connectors": {
+				"pkg/tool", "pkg/toolset", "pkg/clock",
+				"pkg/clock/clocktest", "internal/testkit",
 			},
 		},
 		Banned: []string{

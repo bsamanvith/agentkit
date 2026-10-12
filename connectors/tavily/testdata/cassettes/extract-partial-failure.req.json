@@ -1,0 +1,12 @@
+{
+  "method": "POST",
+  "path": "/extract",
+  "body": {
+    "urls": [
+      "https://go.dev/doc/devel/release",
+      "https://this-domain-does-not-exist-agentkit.invalid/page"
+    ],
+    "extract_depth": "basic",
+    "format": "markdown"
+  }
+}

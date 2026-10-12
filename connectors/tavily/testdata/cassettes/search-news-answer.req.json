@@ -1,0 +1,16 @@
+{
+  "method": "POST",
+  "path": "/search",
+  "body": {
+    "query": "Go 1.27 release",
+    "max_results": 3,
+    "search_depth": "advanced",
+    "topic": "news",
+    "chunks_per_source": 2,
+    "exclude_domains": [
+      "reddit.com"
+    ],
+    "include_answer": true,
+    "include_published_date": true
+  }
+}

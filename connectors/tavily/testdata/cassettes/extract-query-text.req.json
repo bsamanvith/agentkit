@@ -1,0 +1,12 @@
+{
+  "method": "POST",
+  "path": "/extract",
+  "body": {
+    "urls": [
+      "https://www.tavily.com"
+    ],
+    "query": "pricing and free credits",
+    "extract_depth": "basic",
+    "format": "text"
+  }
+}

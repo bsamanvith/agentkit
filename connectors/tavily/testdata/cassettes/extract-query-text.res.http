@@ -1,0 +1,16 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "results": [
+    {
+      "url": "https://www.tavily.com",
+      "title": "Tavily",
+      "raw_content": "Handle thousands of web queries in seconds\nA production-grade retrieval stack with real-time search, intelligent caching, and indexing keeps latency predictable as traffic grows.\n{\"query\":\"hello@company.com\",: \" \",\"search_depth\":,: ,\"max_results\":,: ,\"include_answer\":: \"error\":\"Query blocked, PII detected with type: EMAIL\": \" Query blocked, PII detected with type: EMAIL \"}\nShip to production with built-in safeguards\nRequests pass through security, privacy, and content validation layers that block PII leakage, prompt injection, and malicious sources.\n/security\nEnterprise-grade security, built in.\n/customers\nTeams ship on Tavily\nView all stories\n Rox\nHow Rox Cut Account Research from a Week to Seconds with Tavily\nRead story→\n Jet Brains [...] Retrieval: max 10 documents per query\n/proof is in the numbers\nTrusted in production. Proven at scale.\n300M+\nmonthly requests handled\n99.99% uptime \nSLA powering mission-critical systems\n180 ms\np50 on Tavily /search making us fastest on the market\n3M+\ndevelopers using Tavily\nBillions\nof pages crawled and extracted without downtime\nDrop-in integration\nwith leading LLM providers (OpenAI, Anthropic, Groq)\n300M+\nmonthly requests handled\n99.99% uptime \nSLA powering mission-critical systems\n180 ms\np50 on Tavily /search making us fastest on the market\n3M+\ndevelopers using Tavily\nBillions\nof pages crawled and extracted without downtime\nDrop-in integration\nwith leading LLM providers (OpenAI, Anthropic, Groq)\n/press room\nTavily in action\nTavily is Joining Nebius [...] Connect your AI agents to the web\nOne secure API for real-time web access.\nTry it for free\nTrusted by 3M+ developers around the world\nWRITER\nMongoDB\nJetBrainsCase Study\nGROQ\nRoxCase Study\nLangChain\nMonday\nBellcyberCase Study\nAWS\nMastercard\nIBMCase Study\nIronclad\nTroutman Pepper Locke\nBMOCase Study\nExtend\nPeerboundCase Study\nWRITER\nMongoDB\nJetBrainsCase Study\nGROQ\nRoxCase Study\nLangChain\nMonday\nBellcyberCase Study\nAWS\nMastercard\nIBMCase Study\nIronclad\nTroutman Pepper Locke\nBMOCase Study\nExtend\nPeerboundCase Study\n/the web access layer for agents\nLoved by developers, built for enterprises\nFound sources\nRelevant chunks\nRelevant chunks\nGround models with fresh web context",
+      "images": []
+    }
+  ],
+  "failed_results": [],
+  "response_time": 0.09,
+  "request_id": "00000000-0000-0000-0000-000000000000"
+}

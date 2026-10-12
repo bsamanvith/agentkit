@@ -48,10 +48,15 @@ type Option func(*factory)
 // [http.DefaultTransport], which honors the proxy environment variables).
 func WithHTTPClient(c *http.Client) Option { return func(f *factory) { f.client = c } }
 
-// WithBaseURL sets Tavily's address (default [DefaultBaseURL]); tests point
-// it at a fake. A base_url setting overrides it for its toolset.
+// WithBaseURL sets Tavily's address (default [DefaultBaseURL]; "" keeps the
+// default); tests point it at a fake. A base_url setting overrides it for its
+// toolset.
 func WithBaseURL(u string) Option {
-	return func(f *factory) { f.baseURL = strings.TrimSuffix(u, "/") }
+	return func(f *factory) {
+		if u != "" {
+			f.baseURL = strings.TrimSuffix(u, "/")
+		}
+	}
 }
 
 // WithLookupEnv sets how the key's environment variable is read (default:

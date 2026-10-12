@@ -143,20 +143,20 @@ func tail(s string) string {
 	return s
 }
 
-// TestBodyLimit: a response over 8 MB fails cleanly, whatever its status.
+// TestBodyLimit: the edges of the 8 MB limit the suite does not try
+// (TestConformance/errors/oversized_body is a 200 well over it): an error
+// status over the limit, and a body of exactly the limit.
 func TestBodyLimit(t *testing.T) {
 	t.Parallel()
-	for _, status := range []int{http.StatusOK, http.StatusBadRequest} {
-		t.Run(fmt.Sprint(status), func(t *testing.T) {
-			t.Parallel()
-			r := newRig(t, rigOpts{})
-			body := []byte(`{"results": [], "pad": "` + strings.Repeat("x", 8<<20) + `"}`)
-			r.up.queue(reply{status: status, body: body})
-			if _, err := r.call("tavily_search", `{"query": "go release"}`); !isToolFailed(err) {
-				t.Errorf("err = %v, want ErrToolFailed", err)
-			}
-		})
-	}
+	t.Run("400 over the limit", func(t *testing.T) {
+		t.Parallel()
+		r := newRig(t, rigOpts{})
+		body := []byte(`{"detail": {"error": "` + strings.Repeat("x", 8<<20) + `"}}`)
+		r.up.queue(reply{status: http.StatusBadRequest, body: body})
+		if _, err := r.call("tavily_search", `{"query": "go release"}`); !isToolFailed(err) {
+			t.Errorf("err = %v, want ErrToolFailed", err)
+		}
+	})
 	t.Run("just under the limit", func(t *testing.T) {
 		t.Parallel()
 		r := newRig(t, rigOpts{})
@@ -218,8 +218,9 @@ func TestOutputBounded(t *testing.T) {
 	})
 }
 
-// TestKeyRedacted: Tavily echoing the key, in an error message or in any
-// field of a result, never gets it to the model. The rig's check after the
+// TestKeyRedacted: Tavily echoing the key in any field of a result, or in
+// the error shapes the suite's canary check does not send (422, extract
+// 400), never gets it to the model. The rig's check after the
 // test is what fails on a leak; this test makes the upstream try.
 func TestKeyRedacted(t *testing.T) {
 	t.Parallel()
@@ -229,7 +230,6 @@ func TestKeyRedacted(t *testing.T) {
 		input string
 		reply reply
 	}{
-		{"400 echoes the key", "tavily_search", `{"query": "go release"}`, reply{status: 400, body: []byte(`{"detail": {"error": "bad key ` + canary + ` in query"}}`)}},
 		{"422 echoes the key", "tavily_search", `{"query": "go release"}`, reply{status: 422, body: []byte(`{"detail": [{"loc": ["body", "` + canary + `"], "msg": "` + canary + `"}]}`)}},
 		{"extract 400 echoes the key", "tavily_extract", `{"urls": ["https://a.test"]}`, reply{status: 400, body: []byte(`{"detail": {"error": "x", "failed_results": [{"url": "` + canary + `", "error": "` + canary + `"}]}}`)}},
 		{"search results echo the key", "tavily_search", `{"query": "go release"}`, reply{status: 200, body: hostileSearch(2, 10, "a")}},

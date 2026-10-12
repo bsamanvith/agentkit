@@ -49,6 +49,7 @@ func ModuleRules() Rules {
 			"connectors": {
 				"pkg/tool", "pkg/toolset", "pkg/clock",
 				"pkg/clock/clocktest", "internal/testkit",
+				"pkg/toolset/toolsettest",
 			},
 		},
 		Banned: []string{

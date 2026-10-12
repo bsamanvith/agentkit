@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-	"unicode/utf8"
 
 	"github.com/bsamanvith/agentkit/connectors/tavily"
 )
@@ -69,12 +68,12 @@ func TestInvalidInput(t *testing.T) {
 	}
 }
 
-// TestUpstreamErrors: each kind of failed response gives the error class
-// E10 says, with the text the model needs and nothing else, and without a
-// retry.
+// TestUpstreamErrors: Tavily's own error bodies (recorded) give the error
+// class E10 says, with the text the model needs and nothing else, and
+// without a retry. The generic matrix (403, 5xx, garbage, the 300-character
+// cap, refused connections, a hang) is TestConformance/errors.
 func TestUpstreamErrors(t *testing.T) {
 	t.Parallel()
-	longMessage := `{"detail": {"error": "` + strings.Repeat("ü", 1000) + `"}}`
 	for _, c := range []struct {
 		name     string
 		settings string
@@ -89,11 +88,7 @@ func TestUpstreamErrors(t *testing.T) {
 		{"400 extract, recorded", "", nil, reply{status: 400, body: fixture(t, "raw-extract-400-all-urls-invalid")}, true, "not-a-url: Validation Error: Invalid URL format"},
 		{"400 without a body", "", nil, reply{status: 400}, true, "no details"},
 		{"401, recorded", "", nil, reply{status: 401, body: fixture(t, "search-bad-key")}, false, "rejected the API key"},
-		{"403", "", nil, reply{status: 403, body: []byte(`{"detail": {"error": "forbidden: ` + canary + `"}}`)}, false, "rejected the API key"},
-		{"500", "", nil, reply{status: 500, body: []byte(`{"detail": {"error": "Internal Server Error"}}`)}, false, "status 500"},
-		{"502 html", "", nil, reply{status: 502, body: []byte(`<html>bad gateway</html>`)}, false, "status 502"},
 		{"432 plan limit", "", nil, reply{status: 432, body: []byte(`{"detail": {"error": "This request exceeds your plan's set usage limit."}}`)}, false, "status 432"},
-		{"200 not JSON", "", nil, reply{status: 200, body: []byte(`<html>`)}, false, "not valid search results"},
 		{"200 wrong types", "", nil, reply{status: 200, body: []byte(`{"results": [{"title": 7}]}`)}, false, "not valid search results"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -113,34 +108,6 @@ func TestUpstreamErrors(t *testing.T) {
 			}
 		})
 	}
-
-	t.Run("400 message capped", func(t *testing.T) {
-		t.Parallel()
-		r := newRig(t, rigOpts{})
-		r.up.queue(reply{status: 400, body: []byte(longMessage)})
-		_, err := r.call("tavily_search", `{"query": "go release"}`)
-		if !isInvalidInput(err) {
-			t.Fatalf("err = %v", err)
-		}
-		i := strings.Index(err.Error(), "ü")
-		if i < 0 {
-			t.Fatalf("err = %v: Tavily's message is missing", err)
-		}
-		msg := err.Error()[i:]
-		if n := utf8.RuneCountInString(strings.TrimSuffix(msg, truncated)); n != 300 || !strings.HasSuffix(msg, truncated) {
-			t.Errorf("message has %d characters of Tavily's text (%q…), want 300 and the marker", n, msg[:20])
-		}
-	})
-
-	t.Run("transport error", func(t *testing.T) {
-		t.Parallel()
-		r := newRig(t, rigOpts{})
-		r.up.srv.Close()
-		_, err := r.call("tavily_extract", `{"urls": ["https://go.dev"]}`)
-		if !isToolFailed(err) {
-			t.Errorf("err = %v, want ErrToolFailed", err)
-		}
-	})
 
 	t.Run("timeout", func(t *testing.T) {
 		t.Parallel()
@@ -208,9 +175,10 @@ func result(t *testing.T, done <-chan error) error {
 	}
 }
 
-// TestRateLimit: a 429 is retried once, after exactly its Retry-After on the
-// injected clock; a second 429 fails with "rate limited" (and the hint to
-// set the key, in keyless mode).
+// TestRateLimit: what E10 adds to the suite's retry check
+// (TestConformance/errors/429_*): the hint to set the key in keyless mode, a
+// missing or unparseable Retry-After, and no retry past 10 s, past the
+// deadline or after a cancel.
 func TestRateLimit(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {
@@ -222,7 +190,6 @@ func TestRateLimit(t *testing.T) {
 		hint       bool // the error names TAVILY_API_KEY
 	}{
 		{"keyless, limited twice", `{"auth": "keyless"}`, "3", 3 * time.Second, reply{}, true},
-		{"keyed, limited twice", "", "3", 3 * time.Second, reply{}, false},
 		{"keyless, then ok", `{"auth": "keyless"}`, "10", 10 * time.Second, reply{status: 200}, false},
 		{"no Retry-After", "", "", time.Second, reply{status: 200}, false},
 		{"unparseable Retry-After", "", "Wed, 21 Oct 2026 07:28:00 GMT", time.Second, reply{status: 200}, false},

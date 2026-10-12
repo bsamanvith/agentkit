@@ -78,12 +78,10 @@ func TestSettingsRejected(t *testing.T) {
 		env      map[string]string
 		mentions string // what the message must name
 	}{
-		{"literal api_key", `{"api_key": "` + canary + `"}`, nil, "api_key_env"},
 		{"literal api_key, other case", `{"API_Key": "` + canary + `"}`, nil, "api_key_env"},
 		{"key in api_key_env", `{"api_key_env": "` + canary + `"}`, nil, "api_key_env"},
 		{"key mode without the variable", `{"auth": "key", "api_key_env": "MY_TAVILY_KEY"}`, map[string]string{"TAVILY_API_KEY": canary}, "MY_TAVILY_KEY"},
 		{"key mode with a blank variable", `{"auth": "key"}`, map[string]string{"TAVILY_API_KEY": ""}, "TAVILY_API_KEY"},
-		{"unknown field", `{"serach_defaults": {}}`, nil, "serach_defaults"},
 		{"unknown nested field", `{"search_defaults": {"max_results": 3}}`, nil, "max_results"},
 		{"bad auth", `{"auth": "maybe"}`, nil, "auth"},
 		{"bad search_depth", `{"search_defaults": {"search_depth": "deep"}}`, nil, "search_depth"},
@@ -94,7 +92,6 @@ func TestSettingsRejected(t *testing.T) {
 		{"bad timeout", `{"timeout": "soon"}`, nil, "timeout"},
 		{"zero timeout", `{"timeout": "0s"}`, nil, "timeout"},
 		{"content cap too small", `{"max_content_chars": {"search": 10}}`, nil, "max_content_chars"},
-		{"base_url over http", `{"base_url": "http://api.tavily.com"}`, nil, "base_url"},
 		{"base_url over http to a private IP", `{"base_url": "http://10.0.0.1:8080"}`, nil, "base_url"},
 		{"base_url other scheme", `{"base_url": "ftp://api.tavily.com"}`, nil, "base_url"},
 		{"base_url without a scheme", `{"base_url": "api.tavily.com"}`, nil, "base_url"},

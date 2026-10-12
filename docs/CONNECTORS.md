@@ -167,7 +167,8 @@ Each check has an ID: its subtest path with dots. The subtest names are a contra
 | `errors.oversized_body` | opt-out | a body over the limit fails, reading at most limit + 1 bytes | an unbounded read |
 | `errors.hang` | opt-out | a hanging upstream returns the context's error at its deadline | ignoring `ctx` |
 | `errors.connection_refused` | opt-out | `ErrToolFailed` | a raw transport error |
-| `schema_honesty` | opt-out | across the happy calls' outputs, every declared output field appears non-null at least once and none is undeclared | a dead or misnamed field, or one the schema never declared |
+| `schema_honesty.undeclared` | opt-out | no happy call's output carries a field its output schema does not declare | a field the model gets but the schema never documented (an open schema passes it) |
+| `schema_honesty.dead_fields` | opt-in | across the happy calls' outputs, every declared output field appears non-null at least once | a dead or misnamed field; for a field that depends on settings or rare inputs, it asks for a call that covers it |
 | `canary` | mandatory | the key, echoed by the upstream in error bodies, reaches no output, error, MCP result or log line | a key leaked into an error message or a debug log |
 | `hermetic` | mandatory | `Env.HTTPClient` refuses other hosts, and the calls use it | a connector that bypasses the injected client and reaches the real API from a unit test |
 | `mcp` | opt-out | served over MCP, the same definitions and output; an invalid call is an error result | a tool that breaks over the wire |
@@ -183,7 +184,7 @@ A connector may skip an opt-out check, with a reason, in its test: `Skip: map[to
 - Naming a mandatory check, an unknown ID or no reason fails the suite.
 - Every skip in the repository is listed below; add yours in the same change.
 
-A new check rolls in, not crashes in. When a check would fail connectors that exist, it lands opt-in: the first such check adds a `Connector.Enable` list. Once connectors pass it, it becomes opt-out, and later mandatory.
+A new check rolls in, not crashes in. When a check would fail connectors that exist, it lands opt-in: a connector runs it by naming it in `Connector.Enable`, and the suite reports it skipped otherwise. Once every connector passes it, it becomes opt-out, and later mandatory. Enabling an unknown ID, or one that is not opt-in, fails the suite.
 
 **Skips in the repository:**
 

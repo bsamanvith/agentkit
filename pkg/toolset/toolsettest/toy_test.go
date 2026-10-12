@@ -47,6 +47,7 @@ func toyConnector(bug toy.Bug) toolsettest.Connector {
 			{Name: "no_query", Tool: "toy_search", Input: json.RawMessage(`{}`)},
 		},
 		ErrorBody: toy.ErrorBody,
+		Enable:    []toolsettest.CheckID{"schema_honesty.dead_fields"},
 	}
 }
 
@@ -113,8 +114,8 @@ var plantedBugs = map[toy.Bug]string{
 	toy.BugIgnoreBaseURLSetting:  "TestToyConnector/settings/base_url",
 	toy.BugKeylessNoMarker:       "TestToyConnectorAuto/keyless/search_go",
 	toy.BugAcceptPlainHTTP:       "TestToyConnector/settings/plain_http_base_url",
-	toy.BugDeadOutputField:       "TestToyConnector/schema_honesty",
-	toy.BugUndeclaredOutputField: "TestToyConnector/schema_honesty",
+	toy.BugDeadOutputField:       "TestToyConnector/schema_honesty/dead_fields",
+	toy.BugUndeclaredOutputField: "TestToyConnector/schema_honesty/undeclared",
 }
 
 // TestPlantedBugs: each planted bug makes the suite fail, on the check meant
@@ -179,12 +180,13 @@ func runTest(t *testing.T, env []string, args ...string) (string, error) {
 const skipEnv = "TOOLSETTEST_TOY_SKIP"
 
 // TestToyConnectorSkips runs the suite with every check that may be skipped
-// skipped.
+// skipped, and no opt-in check enabled.
 func TestToyConnectorSkips(t *testing.T) {
 	if os.Getenv(skipEnv) == "" {
 		t.Skip("run by TestSkipsAreReported")
 	}
 	c := toyConnector(toy.BugNone)
+	c.Enable = nil
 	c.Skip = map[toolsettest.CheckID]string{}
 	for _, id := range toolsettest.OptOutChecks() {
 		c.Skip[id] = "toy: the reason for " + string(id)
@@ -193,7 +195,7 @@ func TestToyConnectorSkips(t *testing.T) {
 }
 
 // TestSkipsAreReported: each skipped check is reported, as its subtest, with
-// the connector's reason.
+// the connector's reason; so is each opt-in check left out.
 func TestSkipsAreReported(t *testing.T) {
 	t.Parallel()
 	out, err := runTest(t, []string{skipEnv + "=1"}, "-test.run=^TestToyConnectorSkips$", "-test.v")
@@ -204,6 +206,12 @@ func TestSkipsAreReported(t *testing.T) {
 		path := "TestToyConnectorSkips/" + strings.ReplaceAll(string(id), ".", "/")
 		if !strings.Contains(out, "--- SKIP: "+path+" ") || !strings.Contains(out, "skipped by Connector.Skip: toy: the reason for "+string(id)) {
 			t.Errorf("check %s is not reported skipped with its reason (as %s)", id, path)
+		}
+	}
+	for _, id := range toolsettest.OptInChecks() {
+		path := "TestToyConnectorSkips/" + strings.ReplaceAll(string(id), ".", "/")
+		if !strings.Contains(out, "--- SKIP: "+path+" ") || !strings.Contains(out, "check "+string(id)+" is opt-in") {
+			t.Errorf("opt-in check %s is not reported skipped (as %s)", id, path)
 		}
 	}
 	if t.Failed() {

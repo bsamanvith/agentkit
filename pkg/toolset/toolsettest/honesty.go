@@ -11,13 +11,40 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
-// schemaHonesty: across the outputs of the happy calls, every field each
-// output schema declares appears at least once with a non-null value, and no
-// output carries a field its schema does not declare. A schema check alone
-// passes a field the connector never fills (misnamed, or dropped by the
-// provider) and, with an open schema, a field it never declared.
+// schemaHonesty runs the two checks on the outputs of the happy calls:
+// undeclared, no output carries a field its schema does not declare (a
+// schema check passes one with an open schema); dead_fields (opt-in), every
+// field each output schema declares appears at least once with a non-null
+// value (a schema check passes a field the connector never fills, misnamed
+// or dropped by the provider).
 func (s *suite) schemaHonesty(t *testing.T) {
-	t.Parallel()
+	s.run(t, "schema_honesty.undeclared", func(t *testing.T) {
+		t.Parallel()
+		for _, h := range s.honesty(t) {
+			if len(h.undeclared) > 0 {
+				t.Errorf("[honesty] %s: outputs carry %s, which the output schema does not declare", h.tool, strings.Join(slices.Sorted(maps.Keys(h.undeclared)), ", "))
+			}
+		}
+	})
+	s.run(t, "schema_honesty.dead_fields", func(t *testing.T) {
+		t.Parallel()
+		for _, h := range s.honesty(t) {
+			var dead []string
+			for _, p := range h.declared {
+				if !h.seen[p] {
+					dead = append(dead, p)
+				}
+			}
+			if len(dead) > 0 {
+				t.Errorf("[honesty] %s: no cassette output has a non-null %s: the connector never fills it, or the calls miss the case that does (add a call, or drop the field)", h.tool, strings.Join(dead, ", "))
+			}
+		}
+	})
+}
+
+// honesty invokes every happy call on one rig and walks each tool's outputs
+// against its output schema, in tool name order.
+func (s *suite) honesty(t *testing.T) []*honesty {
 	r := s.newRig(t, modeKeyed)
 	tools := r.mustBuild()
 	byTool := map[string][]any{}
@@ -32,36 +59,28 @@ func (s *suite) schemaHonesty(t *testing.T) {
 		}
 		byTool[call.Tool] = append(byTool[call.Tool], v)
 	}
+	var all []*honesty
 	for _, name := range slices.Sorted(maps.Keys(byTool)) {
 		var sc jsonschema.Schema
 		if err := json.Unmarshal(find(tools, name).Definition().OutputSchema, &sc); err != nil {
 			t.Errorf("[honesty] %s: output schema: %v", name, err)
 			continue
 		}
-		h := honesty{seen: map[string]bool{}, undeclared: map[string]bool{}}
+		h := &honesty{tool: name, seen: map[string]bool{}, undeclared: map[string]bool{}}
 		h.declare(&sc, "")
 		for _, v := range byTool[name] {
 			h.walk(&sc, v, "")
 		}
-		var dead []string
-		for _, p := range h.declared {
-			if !h.seen[p] {
-				dead = append(dead, p)
-			}
-		}
-		if len(dead) > 0 {
-			t.Errorf("[honesty] %s: no cassette output has a non-null %s: the connector never fills it, or the calls miss the case that does (add a call, or drop the field)", name, strings.Join(dead, ", "))
-		}
-		if len(h.undeclared) > 0 {
-			t.Errorf("[honesty] %s: outputs carry %s, which the output schema does not declare", name, strings.Join(slices.Sorted(maps.Keys(h.undeclared)), ", "))
-		}
+		all = append(all, h)
 	}
+	return all
 }
 
 // honesty collects the fields a schema declares and those values fill.
 // Fields are paths: "results[].title". A schema without properties (or with
 // anyOf, a $ref, ...) is opaque: nothing under it is checked.
 type honesty struct {
+	tool       string
 	declared   []string
 	seen       map[string]bool
 	undeclared map[string]bool

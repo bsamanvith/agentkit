@@ -96,6 +96,10 @@ type Connector struct {
 	// an ID that is not a check, fails the suite. docs/CONNECTORS.md lists
 	// the checks and lists every skip in the repository.
 	Skip map[CheckID]string
+	// Enable runs opt-in checks: new checks start opt-in, so they do not
+	// break connectors already on main, and become opt-out once every
+	// connector passes them. docs/CONNECTORS.md lists them.
+	Enable []CheckID
 }
 
 var callName = regexp.MustCompile(`^[a-z0-9_]{1,64}$`)
@@ -131,6 +135,7 @@ func normalize(tb testing.TB, c Connector) Connector {
 		}
 	}
 	checkSkips(tb, c.Skip)
+	checkEnable(tb, c.Enable)
 	if c.MaxBodyBytes == 0 {
 		c.MaxBodyBytes = DefaultMaxBodyBytes
 	}
@@ -199,7 +204,7 @@ func checkCalls(tb testing.TB, c Connector, files bool) {
 // base_url}; calls/<call>; keyless/<call> (KeyOptional only);
 // invalid/<call>; errors/{400,422,401,403,500,502,503,429_retry_after,
 // 429_then_200,malformed_json,oversized_body,hang,connection_refused};
-// schema_honesty; canary; hermetic; mcp; concurrency.
+// schema_honesty/{undeclared,dead_fields}; canary; hermetic; mcp; concurrency.
 //
 // After every subtest, whatever it checked, the suite also checks that the key
 // appeared in no output, error or log line (debug level included), that every
@@ -217,7 +222,7 @@ func RunConnector(t *testing.T, c Connector) {
 	}
 	s.run(t, "invalid", s.invalid)
 	t.Run("errors", s.errorMatrix)
-	s.run(t, "schema_honesty", s.schemaHonesty)
+	t.Run("schema_honesty", s.schemaHonesty)
 	s.run(t, "canary", s.canaryCheck)
 	s.run(t, "hermetic", s.hermeticCheck)
 	s.run(t, "mcp", s.mcpCheck)

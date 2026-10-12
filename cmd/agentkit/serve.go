@@ -103,6 +103,11 @@ func (c cli) serve(ctx context.Context, args []string) error {
 	return rt.Serve(ctx, ln)
 }
 
+// buildToolsets is cli.buildToolsets with the compiled-in catalog.
+func buildToolsets(ctx context.Context, env serveEnv, cfg serveConfig, configPath string, log *slog.Logger) (map[string]tool.Registry, []toolset.Problem, error) {
+	return cli{}.buildToolsets(ctx, env, cfg, configPath, log)
+}
+
 // buildToolsets builds, once, the toolsets the components use: every one in
 // mcp.toolsets when mcp-server runs, else those the agent names. Both
 // components then share the same instances. Optional toolsets that fail are

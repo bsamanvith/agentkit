@@ -126,6 +126,26 @@ func TestSkips(t *testing.T) {
 	}
 }
 
+// TestEnable: Connector.Enable must name an opt-in check.
+func TestEnable(t *testing.T) {
+	t.Parallel()
+	newToy := func(Env) toolset.Factory { return toy.New() }
+	for _, tc := range []struct {
+		enable CheckID
+		want   string
+	}{
+		{"schema_honesty.nope", `"schema_honesty.nope", which is not a check`},
+		{"errors.500", `"errors.500", which is not opt-in`},
+		{"canary", `"canary", which is not opt-in`},
+	} {
+		spy := NewSpy(t)
+		spy.Run(func(tb testing.TB) { normalize(tb, Connector{New: newToy, Enable: []CheckID{tc.enable}}) })
+		if !spy.HasErr(tc.want) {
+			t.Errorf("Enable %s: errors %q, want one containing %q", tc.enable, spy.Errs(), tc.want)
+		}
+	}
+}
+
 // TestChecksTable: every check has a unique ID, and docs/CONNECTORS.md
 // lists each one with its stage.
 func TestChecksTable(t *testing.T) {
@@ -140,10 +160,7 @@ func TestChecksTable(t *testing.T) {
 			t.Errorf("check %s is listed twice", c.id)
 		}
 		seen[c.id] = true
-		st := "opt-out"
-		if c.stage == mandatory {
-			st = "mandatory"
-		}
+		st := map[stage]string{optIn: "opt-in", optOut: "opt-out", mandatory: "mandatory"}[c.stage]
 		if row := "| `" + string(c.id) + "` | " + st + " |"; !strings.Contains(string(doc), row) {
 			t.Errorf("docs/CONNECTORS.md has no row %q", row)
 		}
@@ -208,10 +225,16 @@ func TestShapeDiff(t *testing.T) {
 
 // OptOutChecks lists the checks a connector may skip, for the external
 // tests.
-func OptOutChecks() []CheckID {
+func OptOutChecks() []CheckID { return checksAt(optOut) }
+
+// OptInChecks lists the checks a connector must enable, for the external
+// tests.
+func OptInChecks() []CheckID { return checksAt(optIn) }
+
+func checksAt(st stage) []CheckID {
 	var ids []CheckID
 	for _, c := range checks {
-		if c.stage == optOut {
+		if c.stage == st {
 			ids = append(ids, c.id)
 		}
 	}

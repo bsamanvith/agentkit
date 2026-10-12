@@ -8,7 +8,7 @@ import (
 
 // CheckID names one check of the suite: its subtest path with dots, such as
 // "settings.unknown_field" or "errors.429_retry_after". [Connector.Skip] uses
-// it to skip a check, with a reason.
+// it to skip a check, with a reason; [Connector.Enable], to run an opt-in one.
 type CheckID string
 
 // stage is how far a check has rolled in. A new check starts opt-in, becomes
@@ -17,7 +17,8 @@ type CheckID string
 type stage int
 
 const (
-	optOut stage = iota
+	optIn stage = iota
+	optOut
 	mandatory
 )
 
@@ -47,7 +48,8 @@ var checks = []checkInfo{
 	{"errors.oversized_body", optOut},
 	{"errors.hang", optOut},
 	{"errors.connection_refused", optOut},
-	{"schema_honesty", optOut},
+	{"schema_honesty.undeclared", optOut},
+	{"schema_honesty.dead_fields", optIn},
 	{"canary", mandatory},
 	{"hermetic", mandatory},
 	{"mcp", optOut},
@@ -84,8 +86,24 @@ func checkSkips(tb testing.TB, skip map[CheckID]string) {
 	}
 }
 
+// checkEnable fails the test for an Enable entry that names no check or one
+// that is not opt-in (it runs already).
+func checkEnable(tb testing.TB, enable []CheckID) {
+	tb.Helper()
+	for _, id := range enable {
+		st, ok := checkStage(id)
+		switch {
+		case !ok:
+			tb.Fatalf("toolsettest: Connector.Enable names %q, which is not a check (docs/CONNECTORS.md lists them)", id)
+		case st != optIn:
+			tb.Fatalf("toolsettest: Connector.Enable names %q, which is not opt-in: it runs already", id)
+		}
+	}
+}
+
 // run runs check id as a subtest of t, named by the id's last element, or
-// reports it skipped with the connector's reason.
+// reports it skipped: by the connector, with its reason, or as an opt-in
+// check the connector has not enabled.
 func (s *suite) run(t *testing.T, id CheckID, fn func(t *testing.T)) {
 	t.Helper()
 	if _, ok := checkStage(id); !ok {
@@ -95,7 +113,11 @@ func (s *suite) run(t *testing.T, id CheckID, fn func(t *testing.T)) {
 	if i := strings.LastIndexByte(name, '.'); i >= 0 {
 		name = name[i+1:]
 	}
+	st, _ := checkStage(id)
 	t.Run(name, func(t *testing.T) {
+		if st == optIn && !slices.Contains(s.c.Enable, id) {
+			t.Skipf("toolsettest: check %s is opt-in: run it with Connector.Enable", id)
+		}
 		if reason, ok := s.c.Skip[id]; ok {
 			t.Skipf("toolsettest: check %s skipped by Connector.Skip: %s", id, reason)
 		}

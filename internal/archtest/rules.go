@@ -18,6 +18,9 @@ func ModuleRules() Rules {
 			"examples/mcp-gateway": {"github.com/modelcontextprotocol/go-sdk/mcp"}, // its test uses the SDK client
 			"pkg/mcp/server":       {"github.com/modelcontextprotocol/go-sdk/jsonrpc", "github.com/modelcontextprotocol/go-sdk/mcp"},
 			"pkg/tool":             {"github.com/google/jsonschema-go/jsonschema"},
+			// The SQLite store's driver: pure Go, so binaries stay static
+			// (T029). It also names the driver's error type, for SQLITE_BUSY.
+			"pkg/store/sqlite": {"modernc.org/sqlite"},
 			// The connector test kit validates schemas and checks connectors over MCP.
 			"pkg/toolset/toolsettest": {"github.com/google/jsonschema-go/jsonschema", "github.com/modelcontextprotocol/go-sdk/mcp"},
 			// Its tests validate every output against the declared output

@@ -1,0 +1,15 @@
+{
+  "mcp": {
+    "base_path": "/mcp",
+    "toolsets": [
+      {"name": "demo", "type": "demo"}
+    ]
+  },
+  "agent": {
+    "model": {"provider": "anthropic", "id": "claude-opus-5-5", "effort": "low"},
+    "system": "You are a helpful assistant. Use the tools when they help, and keep answers short.",
+    "toolsets": ["demo"],
+    "max_turns": 10,
+    "run_timeout": "5m"
+  }
+}

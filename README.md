@@ -57,6 +57,13 @@ go run ./cmd/agentkit flow demo -state demo.json "Go generics"   # researches, t
 go run ./cmd/agentkit flow demo -state demo.json -approve        # a new process writes the draft
 ```
 
+Serve the agent API and the same tools over MCP from one process, and try them with a short demo ([docs/QUICKSTART.md](docs/QUICKSTART.md)):
+
+```sh
+export ANTHROPIC_API_KEY=sk-ant-...
+scripts/try-agent.sh            # build, start, demo (a streamed tool run, a follow-up, MCP), keep serving
+```
+
 ## Development
 
 Requires Go (the right toolchain is fetched automatically from `go.mod`).

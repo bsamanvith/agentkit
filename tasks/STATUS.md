@@ -28,6 +28,8 @@ The stripped binary of `main` (14.5 MB; image about 17.9 MB of the 20 MB budget)
 
 Not verified here: the container itself (no Docker daemon in the planner's environment; T005 verified the image with Docker).
 
+The same checks are one command on a laptop: `scripts/try-agent.sh` ([docs/QUICKSTART.md](../docs/QUICKSTART.md)), verified on 2026-10-12 with `--demo` and with Ctrl-C in serve mode.
+
 ## Done
 
 T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentkit healthcheck` · T017 `pkg/tool` · T018 MCP server · T019 `pkg/clock` · T020 `pkg/llm` · T021 Anthropic adapter · T022 harness · T023 `flow` · T024 `agentkit run`, `agentstep` · T026 `pkg/toolset` · T027 `pkg/tenancy` · T028 `pkg/store` · T032 flow step-tree check · T036 agent API v0
@@ -36,7 +38,7 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 
 | Task | State |
 |---|---|
-| [T013](T013-skill-write-tests.md) `write-tests` dry runs | The `pkg/flow` dry run found a real bug (a rejected run could be resumed into `failed`); **fixed on `main`** by the planner with a deterministic regression test. The dry run's larger flow test set is still only in the T024 session's local branch: it is pushed only if the owner says "yes, go ahead" in that session. The T018 dry run stopped unfinished. |
+| [T013](T013-skill-write-tests.md) `write-tests` dry runs | The `pkg/flow` dry run found a real bug (a rejected run could be resumed into `failed`); **fixed on `main`** by the planner (`a645012`) with a deterministic regression test. The dry run's flow tests (invariants after every run, seeded simulation, `FuzzSimulatedFlow`) are on `main` as `5a13386`. The T018 dry run stopped unfinished. |
 
 ## Next (ready to start)
 
@@ -61,9 +63,8 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 
 ## Waiting on the owner
 
-1. **Optional: say "yes, go ahead" in the T024 session** to save the dry run's extra flow tests (the bug itself is fixed on `main`). Otherwise they are lost when that container ends.
-2. **Where to deploy** the API server (a VM with Docker, Cloud Run, Fly.io, Kubernetes, ...). The binary and image are ready; a deploy task is written once this is known.
-3. **Delete the `review/t022-base` branch**, and the merged `claude/*` session branches (all their work is on `main`).
+1. **Where to deploy** the API server (a VM with Docker, Cloud Run, Fly.io, Kubernetes, ...). The binary and image are ready; a deploy task is written once this is known.
+2. **Delete the `review/t022-base` branch**, and the merged `claude/*` session branches (all their work is on `main`).
 
 ## Owner decisions recorded
 

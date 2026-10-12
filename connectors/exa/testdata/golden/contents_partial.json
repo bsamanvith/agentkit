@@ -1,0 +1,23 @@
+{
+  "results": [
+    {
+      "url": "https://go.dev/doc/devel/release",
+      "title": "Release History - The Go Programming Language",
+      "content": "Release History\n\nThis page summarizes the changes between official stable releases of Go."
+    }
+  ],
+  "failed": [
+    {
+      "url": "https://example.com/missing-page",
+      "error": "CRAWL_NOT_FOUND (HTTP 404)"
+    },
+    {
+      "url": "https://slow.example.net/",
+      "error": "CRAWL_TIMEOUT"
+    },
+    {
+      "url": "https://unmentioned.example.com/a",
+      "error": "no content returned"
+    }
+  ]
+}

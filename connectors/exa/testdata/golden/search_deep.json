@@ -1,0 +1,11 @@
+{
+  "results": [
+    {
+      "title": "Release History - The Go Programming Language",
+      "url": "https://go.dev/doc/devel/release",
+      "published_date": "2026-08-12T00:00:00.000Z",
+      "content": "go1.27 (released 2026-08-12) Go 1.27 is a major release of Go."
+    }
+  ],
+  "answer": "The latest Go release is Go 1.27, released on 2026-08-12."
+}

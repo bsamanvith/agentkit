@@ -9,16 +9,23 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/toolset/toolsettest"
 )
 
-// connector describes Exa to the T049 test kit. Its calls replay the
-// cassettes of the cases that use default settings (searchCases,
-// extractCases).
+// connector describes Exa to the T049 test kit. Its calls replay cassettes
+// of the mapping cases (searchCases, extractCases). The kit takes one
+// configuration, so Settings is the union of the three cases' settings, which
+// do not interact: model_chooses_type adds the type input and leaves a call
+// without one unchanged, and extract_defaults touch only exa_extract. Text
+// mode and the highlights cap change the search request, so they stay in
+// TestSearchRequestAndMapping.
 func connector() toolsettest.Connector {
 	return toolsettest.Connector{
 		New: func(e toolsettest.Env) toolset.Factory {
 			return exa.Factory(exa.WithBaseURL(e.BaseURL), exa.WithHTTPClient(e.HTTPClient),
 				exa.WithLookupEnv(e.LookupEnv), exa.WithClock(e.Clock), exa.WithLogger(e.Logger))
 		},
+		Settings: json.RawMessage(`{"search_defaults": {"model_chooses_type": true},
+			"extract_defaults": {"max_characters": 5000, "max_age_hours": 24}}`),
 		KeyEnv: "EXA_API_KEY",
+		Enable: []toolsettest.CheckID{"schema_honesty.dead_fields"},
 		Calls: []toolsettest.Call{
 			{
 				Name: "search_defaults", Tool: "exa_search",
@@ -26,9 +33,14 @@ func connector() toolsettest.Connector {
 				Cassettes: []string{"search-defaults"},
 			},
 			{
-				Name: "contents_query", Tool: "exa_extract",
-				Input:     json.RawMessage(extractCases["contents-query"].input),
-				Cassettes: []string{"contents-query"},
+				Name: "search_deep", Tool: "exa_search",
+				Input:     json.RawMessage(searchCases["search-deep"].input),
+				Cassettes: []string{"search-deep"},
+			},
+			{
+				Name: "contents_partial", Tool: "exa_extract",
+				Input:     json.RawMessage(extractCases["contents-partial"].input),
+				Cassettes: []string{"contents-partial"},
 			},
 		},
 		Invalid: []toolsettest.Call{
@@ -52,6 +64,5 @@ func connector() toolsettest.Connector {
 // hand-written tests the suite replaces (T047 Notes, "Toward T049").
 func TestConformance(t *testing.T) {
 	t.Parallel()
-	t.Skip(`blocked on toolsettest: cassettes marked "synthetic" fail to load (T047 Notes)`)
 	toolsettest.RunConnector(t, connector())
 }

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -97,10 +96,10 @@ func (c *client) send(ctx context.Context, path string, payload []byte) (int, ht
 	if err != nil {
 		return 0, nil, nil, err
 	}
-	defer func() {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxResponseBytes))
-		_ = resp.Body.Close()
-	}()
+	// readBody reads a body within the limit to EOF, so the connection is
+	// reused; past the limit it stops at limit+1 bytes and the connection is
+	// dropped rather than drained.
+	defer func() { _ = resp.Body.Close() }()
 	body, err := readBody(resp.Body)
 	if err != nil {
 		return 0, nil, nil, err

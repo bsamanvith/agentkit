@@ -420,3 +420,50 @@ func TestRecoveryLeavesANewRunToItsCreator(t *testing.T) {
 		t.Errorf("creator's run %+v; recovery %+v, want the run skipped", lastDone(t, evs).Run, rep)
 	}
 }
+
+// A caller may resume a dead process's run itself instead of waiting for
+// recovery: Resume is refused while the dead lease holds, and afterwards
+// makes exactly the requests an uninterrupted run makes after the stored
+// turns.
+func TestDeadProcessRunIsResumedByHandAfterItsLease(t *testing.T) {
+	t.Parallel()
+	const tools = 3
+	ref := newWorld(t)
+	prompt := ref.model.on("q", tools)
+	if _, err := ref.process().run("c", prompt); err != nil {
+		t.Fatal(err)
+	}
+	want := ref.model.requestsFor(prompt)
+	for k := 2; k <= tools+1; k++ { // dies at append k: the prompt and k-2 turns are stored
+		t.Run(fmt.Sprint(k-2, " turns stored"), func(t *testing.T) {
+			t.Parallel()
+			w := newWorld(t)
+			w.model.on("q", tools)
+			dead := w.process()
+			dead.store.crashAt(crashAtNth("Append", k, false))
+			x, err := dead.r.Run(w.ctx, "c", harness.UserText(prompt))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := x.Wait(); !errors.Is(err, errCrashed) {
+				t.Fatalf("crashed run ended with %v", err)
+			}
+			p := w.process()
+			if _, err := p.r.Resume(w.ctx, x.Run.ID); !errors.Is(err, store.ErrLeased) {
+				t.Fatalf("Resume while the dead process's lease holds = %v, want ErrLeased", err)
+			}
+			w.expire()
+			before := len(w.model.requestsFor(prompt))
+			evs, err := p.resume(x.Run.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if run := lastDone(t, evs).Run; run.Status != store.StatusCompleted {
+				t.Fatalf("resumed run = %+v, want completed", run)
+			}
+			if got := w.model.requestsFor(prompt)[before:]; !sameJSON(got, want[k-2:]) {
+				t.Errorf("requests of the resumed run:\n%s\nuninterrupted run after %d turns:\n%s", js(got), k-2, js(want[k-2:]))
+			}
+		})
+	}
+}

@@ -436,3 +436,65 @@ func TestWarningReachesTheStream(t *testing.T) {
 		t.Errorf("run did not complete")
 	}
 }
+
+// An interrupted flow run, whether its consumer stopped or its process died,
+// is resumed by hand and completes without running a step its checkpoint
+// recorded.
+func TestInterruptedFlowIsResumedByHand(t *testing.T) {
+	t.Parallel()
+	for _, how := range []string{"stopped", "died"} {
+		t.Run(how, func(t *testing.T) {
+			t.Parallel()
+			w := newWorld(t)
+			var c steps
+			w.flows = func(*proc, string) (flow.Step, error) {
+				return flow.Sequence("f", c.step("a"), c.step("b"), c.step("c")), nil
+			}
+			first := w.process()
+			if how == "died" {
+				first.store.crashAt(crashAtNth("Save", 3, true)) // a and b are saved
+			}
+			x, err := first.r.RunFlow(w.ctx, "c", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if how == "stopped" {
+				_, err = first.drain(x, func(ev runner.Event) bool {
+					return ev.Kind == runner.EventFlow && ev.Flow.Kind == flow.EventFinished && ev.Flow.Path == "f/a"
+				})
+			} else if _, err = x.Wait(); errors.Is(err, errCrashed) {
+				err = nil
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if run := w.get(x.Run.ID); run.Status != store.StatusRunning {
+				t.Fatalf("interrupted run = %+v, want running", run)
+			}
+			ck, err := w.mem.Load(w.ctx, x.Run.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			before := c.counts()
+			if how == "died" {
+				w.expire()
+			}
+			evs, err := w.process().resume(x.Run.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if run := lastDone(t, evs).Run; run.Status != store.StatusCompleted {
+				t.Fatalf("resumed run = %+v, want completed", run)
+			}
+			after := c.counts()
+			for _, s := range []string{"a", "b", "c"} {
+				if _, saved := ck.Steps["f/"+s]; saved && after[s] != before[s] {
+					t.Errorf("step %s was saved before the interruption and ran again", s)
+				}
+				if after[s] == 0 {
+					t.Errorf("step %s never ran", s)
+				}
+			}
+		})
+	}
+}

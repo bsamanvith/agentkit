@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -157,6 +158,32 @@ func TestFileStoreTranscripts(t *testing.T) {
 		}
 		return s.transcripts()
 	})
+}
+
+// TestFileStoreRefusesWhatItCannotLoad: a message with a block of a newer
+// version marshals, but the file would then fail to load; Append refuses it,
+// and the file still loads.
+func TestFileStoreRefusesWhatItCannotLoad(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "s.json")
+	s, err := openFileStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newer := llm.Assistant(llm.Unknown{Type: "image", Data: json.RawMessage(`{"type":"image"}`)})
+	if err := s.transcripts().Append(t.Context(), "run", "flow/agent", []llm.Message{harness.UserText("hi"), newer}); !errors.Is(err, llm.ErrInvalidMessage) {
+		t.Fatalf("Append = %v, want ErrInvalidMessage", err)
+	}
+	if err := s.transcripts().Append(t.Context(), "run", "flow/agent", []llm.Message{harness.UserText("hi")}); err != nil {
+		t.Fatal(err)
+	}
+	again, err := openFileStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tr, err := again.transcripts().Load(t.Context(), "run", "flow/agent"); err != nil || len(tr) != 1 {
+		t.Errorf("reloaded transcript = %v, %v; want the one message", tr, err)
+	}
 }
 
 func TestFileStoreSurvivesTheProcess(t *testing.T) {

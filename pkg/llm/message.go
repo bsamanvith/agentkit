@@ -52,6 +52,19 @@ func (m Message) Text() string {
 	return string(b)
 }
 
+// HasUnknown reports whether m has an [Unknown] block: the one block that
+// marshals but that strict decoding ([Message.UnmarshalJSON]) does not read
+// back. Code that writes messages to read them back strictly, such as a
+// store, refuses such a message rather than write what it cannot read.
+func (m Message) HasUnknown() bool {
+	for _, b := range m.Content {
+		if _, ok := b.(Unknown); ok {
+			return true
+		}
+	}
+	return false
+}
+
 // Clone returns a deep copy of m.
 func (m Message) Clone() Message {
 	if m.Content != nil {
@@ -240,13 +253,18 @@ func (u Unknown) clone() Block {
 }
 
 func (u Unknown) wire() (any, error) {
-	if u.Type == "" || knownType(u.Type) {
-		return nil, fmt.Errorf("%w: unknown block of type %q", ErrInvalidMessage, u.Type)
+	switch {
+	case u.Type == "":
+		return nil, fmt.Errorf("%w: block has no type", ErrInvalidMessage)
+	case knownType(u.Type):
+		return nil, fmt.Errorf("%w: unknown block of known type %q", ErrInvalidMessage, u.Type)
+	case !utf8.Valid(u.Data):
+		return nil, fmt.Errorf("%w: block of type %q is not valid UTF-8", ErrInvalidMessage, u.Type)
 	}
 	var head struct {
 		Type *string `json:"type"`
 	}
-	if !utf8.Valid(u.Data) || json.Unmarshal(u.Data, &head) != nil || head.Type == nil || *head.Type != u.Type {
+	if json.Unmarshal(u.Data, &head) != nil || head.Type == nil || *head.Type != u.Type {
 		return nil, fmt.Errorf("%w: unknown block of type %q: data is not a JSON object of that type", ErrInvalidMessage, u.Type)
 	}
 	return u.Data, nil

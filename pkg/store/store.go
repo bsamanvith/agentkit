@@ -61,7 +61,7 @@ const (
 //
 // Rules, enforced by Append ([ErrInvalid] otherwise): Seq is at least 1; Kind
 // is one of the kinds above; Messages has at least one message and each one
-// marshals to JSON; Record is empty or valid JSON; Covers is Seq-1 for a
+// marshals to JSON and has no [llm.Unknown] block; Record is empty or valid JSON; Covers is Seq-1 for a
 // compaction and 0 for any other kind. A compaction thus summarizes everything
 // before it: one built from a context that has grown since conflicts at its
 // Seq instead of hiding the newer entries.

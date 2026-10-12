@@ -23,7 +23,8 @@ import (
 
 // Version is the "v" of every event and resource the agent API writes.
 // Changes within a version are additive only: new fields, new event types,
-// new error codes. A client must ignore what it does not know.
+// new error codes, new message block types. A client must ignore what it does
+// not know.
 const Version = 1
 
 // Event types, the "type" of an [Event] and the SSE event name.
@@ -100,6 +101,8 @@ type Event struct {
 
 // UnmarshalJSON decodes any event, ignoring unknown fields; its final message
 // is decoded leniently, like every message on the wire (see [TimedMessage]).
+// Like encoding/json, it merges into e (decode into a zero Event), except that
+// Final is always replaced.
 func (e *Event) UnmarshalJSON(data []byte) error {
 	type plain Event // without methods, so decoding it does not recurse
 	var w struct {

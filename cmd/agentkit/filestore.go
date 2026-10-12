@@ -109,6 +109,11 @@ func (t fileTranscripts) Append(ctx context.Context, runID, path string, msgs []
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	for i, m := range msgs {
+		if m.HasUnknown() { // it would marshal, but the file would no longer load
+			return fmt.Errorf("%w: message %d has a block of a newer version", llm.ErrInvalidMessage, i)
+		}
+	}
 	t.s.mu.Lock()
 	defer t.s.mu.Unlock()
 	run := t.s.data.Transcripts[runID]

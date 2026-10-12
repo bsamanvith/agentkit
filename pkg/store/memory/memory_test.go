@@ -1,6 +1,7 @@
 package memory_test
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/bsamanvith/agentkit/pkg/clock"
@@ -20,7 +21,7 @@ func newRuns(_ *testing.T, clk clock.Clock) store.RunStore {
 
 func newAdmin(_ *testing.T, clk clock.Clock) (store.RunStore, store.Admin) {
 	s := memory.New(memory.WithClock(clk))
-	return s, s.Admin()
+	return s, memory.Admin(s)
 }
 
 func TestConversationStore(t *testing.T) {
@@ -39,7 +40,8 @@ func TestAdmin(t *testing.T) {
 }
 
 // The cross-tenant read is not reachable from the tenant-scoped store: code
-// holding it cannot type-assert its way to other tenants' runs.
+// holding it cannot type-assert its way to other tenants' runs, neither to
+// store.Admin itself nor to any method that hands one out.
 func TestAdminIsASeparateValue(t *testing.T) {
 	t.Parallel()
 	s := memory.New()
@@ -47,7 +49,15 @@ func TestAdminIsASeparateValue(t *testing.T) {
 	if _, ok := rs.(store.Admin); ok {
 		t.Error("the tenant-scoped store is also a store.Admin")
 	}
-	if _, ok := s.Admin().(store.RunStore); ok {
+	admin := reflect.TypeFor[store.Admin]()
+	for m := range reflect.TypeOf(s).Methods() {
+		for out := range m.Type.Outs() {
+			if out == admin || out.Implements(admin) {
+				t.Errorf("(*memory.Store).%s returns a %v, which reaches other tenants' runs", m.Name, out)
+			}
+		}
+	}
+	if _, ok := memory.Admin(s).(store.RunStore); ok {
 		t.Error("the Admin view is also a store.RunStore")
 	}
 }

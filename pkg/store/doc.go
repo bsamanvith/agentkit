@@ -57,7 +57,8 @@
 // runs of every tenant, each with its tenant. It is the only method that
 // ignores the tenant in its context, and it is only for the runner's recovery
 // loop, which starts with no tenant. A backend hands it out as a separate
-// value, so a tenant-scoped store cannot be turned into it.
+// value, from a function rather than a method, so a tenant-scoped store cannot
+// be turned into it by a type assertion.
 //
 // The store never imports the harness: package runner turns harness events
 // into entries and a stored context back into a transcript.

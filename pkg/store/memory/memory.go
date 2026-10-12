@@ -1,6 +1,6 @@
 // Package memory is an in-process store: a [store.ConversationStore],
 // [store.RunStore] and [flow.Checkpointer] in one value, and a [store.Admin]
-// view of it as a separate value ([Store.Admin]). Nothing survives the
+// view of it as a separate value ([Admin]). Nothing survives the
 // process. It is for tests, single-process use, and as the reference every
 // other backend is compared with: it passes the same conformance suites
 // (package storetest, and flowtest for checkpoints).
@@ -417,11 +417,14 @@ func (s *Store) ListResumable(ctx context.Context, now time.Time, limit int) ([]
 	return runs[:min(n, len(runs))], nil
 }
 
-// Admin returns the store's cross-tenant view, for the runner's recovery loop
-// only. It reads the same data as s. It is a separate value on purpose: *Store
-// itself does not implement [store.Admin], so code holding s as a
-// [store.RunStore] cannot type-assert its way to other tenants' runs.
-func (s *Store) Admin() store.Admin { return admin{s} }
+// Admin returns the cross-tenant view of s, for the runner's recovery loop
+// only. It reads the same data as s.
+//
+// It is a function, not a method, on purpose: *Store has no method that leads
+// to other tenants' runs, so code holding s as a [store.RunStore] cannot reach
+// them by a type assertion. It would have to assert to *Store, which means
+// importing this package; code that serves requests has no reason to.
+func Admin(s *Store) store.Admin { return admin{s} }
 
 // admin is the [store.Admin] view of a Store.
 type admin struct{ s *Store }

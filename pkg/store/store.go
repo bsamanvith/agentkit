@@ -358,13 +358,17 @@ type TenantRun struct {
 // interrupted runs of every tenant; it is never given to code that serves
 // requests. The loop resumes each run it finds with that run's tenant in ctx.
 //
-// A backend implements Admin on a separate value that its store returns from
-// an Admin method (as package memory does), never on the value that
-// implements [RunStore]: code holding a tenant-scoped store must not be able
-// to type-assert its way to other tenants' runs. That value has no other
-// method. Implementations must be safe for concurrent use,
-// must honor ctx, and must not keep or share memory with values returned.
-// Run storetest.RunAdmin against every implementation.
+// A backend implements Admin on a separate value with no other method,
+// returned by a package-level function that takes its store (as package
+// memory's Admin does). The store must have no method that implements Admin or
+// returns one: code holding a tenant-scoped store must not be able to
+// type-assert its way to other tenants' runs. It can only get there by
+// asserting to the backend's own type, which needs an import of the backend
+// that request-handling code has no reason to make.
+//
+// Implementations must be safe for concurrent use, must honor ctx, and must
+// not keep or share memory with values returned. Run storetest.RunAdmin
+// against every implementation.
 type Admin interface {
 	// ListResumableAll is [RunStore.ListResumable] across every tenant: up
 	// to limit runs that should continue at now, by the same rule and with

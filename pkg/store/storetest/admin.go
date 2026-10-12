@@ -176,7 +176,7 @@ func RunAdmin(t *testing.T, newStore func(t *testing.T, clk clock.Clock) (store.
 		r.mustCreate(b, "a", "a")
 		r.clk.Advance(time.Second)
 		r.mustCreate(a, "a", "a") // the newest, though its tenant and id sort first
-		want := []string{"umbrella/m", "acme/y", "acme/z", "globex/a", "globex/b", "umbrella/a", "acme/a"}
+		want := []string{tenantC + "/m", tenantA + "/y", tenantA + "/z", tenantB + "/a", tenantB + "/b", tenantC + "/a", tenantA + "/a"}
 
 		now := r.clk.Now()
 		list := func(limit int) []store.TenantRun {
@@ -214,6 +214,70 @@ func RunAdmin(t *testing.T, newStore func(t *testing.T, clk clock.Clock) (store.
 		}
 		if got := list(0); !sameTenantRuns(got, all[:store.DefaultPageLimit]) {
 			t.Errorf("ListResumableAll with limit 0 = %d runs, want the first %d", len(got), store.DefaultPageLimit)
+		}
+	})
+
+	t.Run("LimitAboveTheMaximumIsLowered", func(t *testing.T) {
+		t.Parallel()
+		r := newAdminRig(t, newStore)
+		tenants := []context.Context{r.ctx(tenantA), r.ctx(tenantB), r.ctx(tenantC)}
+		for i := range store.MaxPageLimit + 1 {
+			id := fmt.Sprintf("r-%04d", i)
+			r.mustCreate(tenants[i%len(tenants)], id, id)
+		}
+		got, err := r.admin.ListResumableAll(t.Context(), r.clk.Now(), store.MaxPageLimit+50)
+		if err != nil || len(got) != store.MaxPageLimit {
+			t.Errorf("ListResumableAll with a limit above the maximum = %d runs, %v; want %d", len(got), err, store.MaxPageLimit)
+		}
+	})
+
+	// Writers in two tenants and readers with no tenant, released at once.
+	// Under the race detector this checks that the Admin is safe for
+	// concurrent use; whatever the schedule, every read is in order, without
+	// duplicates, and holds only resumable runs.
+	t.Run("Concurrently", func(t *testing.T) {
+		t.Parallel()
+		r := newAdminRig(t, newStore)
+		tenants := []context.Context{r.ctx(tenantA), r.ctx(tenantB)}
+		now := r.clk.Now()
+		const writers, readers, steps = 4, 4, 25
+		errs := race(writers+readers, func(w int) error {
+			if w < writers {
+				ctx := tenants[w%len(tenants)]
+				for i := range steps {
+					id := fmt.Sprintf("w%d-%02d", w, i)
+					if _, err := r.create(ctx, id, id); err != nil {
+						return err
+					}
+					if i%2 == 0 {
+						continue
+					}
+					if _, err := r.transition(ctx, id, store.StatusRunning, store.StatusCompleted, store.Details{}); err != nil {
+						return err
+					}
+				}
+				return nil
+			}
+			for range steps {
+				got, err := r.admin.ListResumableAll(context.Background(), now, store.MaxPageLimit)
+				if err != nil {
+					return err
+				}
+				for i, tr := range got {
+					if !resumable(tr.Run, now) {
+						return fmt.Errorf("ListResumableAll returned %s/%s, which is %s", tr.Tenant.ID(), tr.Run.ID, tr.Run.Status)
+					}
+					if i > 0 && adminOrder(got[i-1], tr) >= 0 {
+						return fmt.Errorf("ListResumableAll is out of order or repeats a run: %v", tenantRunIDs(got))
+					}
+				}
+			}
+			return nil
+		})
+		for w, err := range errs {
+			if err != nil {
+				t.Errorf("worker %d: %v", w, err)
+			}
 		}
 	})
 

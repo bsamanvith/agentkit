@@ -14,13 +14,18 @@ func ModuleRules() Rules {
 				"github.com/anthropics/anthropic-sdk-go/packages/param",
 				"github.com/anthropics/anthropic-sdk-go/shared/constant",
 			},
-			"cmd/agentkit":         {"github.com/modelcontextprotocol/go-sdk/mcp"}, // its serve e2e test uses the SDK client
+			// Its serve e2e test uses the SDK client; its migrate integration
+			// test makes a schema to migrate with pgx.
+			"cmd/agentkit":         {"github.com/modelcontextprotocol/go-sdk/mcp", "github.com/jackc/pgx/v5"},
 			"examples/mcp-gateway": {"github.com/modelcontextprotocol/go-sdk/mcp"}, // its test uses the SDK client
 			"pkg/mcp/server":       {"github.com/modelcontextprotocol/go-sdk/jsonrpc", "github.com/modelcontextprotocol/go-sdk/mcp"},
 			"pkg/tool":             {"github.com/google/jsonschema-go/jsonschema"},
 			// The SQLite store's driver: pure Go, so binaries stay static
 			// (T029). It also names the driver's error type, for SQLITE_BUSY.
 			"pkg/store/sqlite": {"modernc.org/sqlite"},
+			// The Postgres store's driver and pool (T088). pgconn names the
+			// server's error type, for SQLSTATEs.
+			"pkg/store/postgres": {"github.com/jackc/pgx/v5", "github.com/jackc/pgx/v5/pgconn", "github.com/jackc/pgx/v5/pgxpool"},
 			// The connector test kit validates schemas and checks connectors over MCP.
 			"pkg/toolset/toolsettest": {"github.com/google/jsonschema-go/jsonschema", "github.com/modelcontextprotocol/go-sdk/mcp"},
 			// Its tests validate every output against the declared output
@@ -42,10 +47,11 @@ func ModuleRules() Rules {
 		ModuleImports: map[string][]string{
 			// The store's interfaces and backends know messages, flow
 			// checkpoints, tenants and time, and never the harness: the
-			// runner turns harness events into entries (E05).
+			// runner turns harness events into entries (E05). The Postgres
+			// store's tests use the env gating helper.
 			"pkg/store": {
 				"pkg/llm", "pkg/flow", "pkg/flow/flowtest", "pkg/tenancy",
-				"pkg/clock", "pkg/clock/clocktest",
+				"pkg/clock", "pkg/clock/clocktest", "internal/testkit",
 			},
 			// The runner is the one package that knows both the harness and
 			// the store (E05). Its tests run it on the memory store and the

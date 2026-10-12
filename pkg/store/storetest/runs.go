@@ -625,6 +625,41 @@ func RunRunStore(t *testing.T, newStore func(t *testing.T, clk clock.Clock) stor
 		}
 	})
 
+	// Runs created at the same time are ordered by ID compared as bytes, as
+	// Go compares strings: "B" before "_x" before "a" before "a-b" before
+	// "ab", and "é" last. A database that orders text by a language's rules
+	// (where "a" comes before "B" and punctuation is ignored) fails this.
+	t.Run("IDsBreakTiesAsBytes", func(t *testing.T) {
+		t.Parallel()
+		r := newRunRig(t, newStore)
+		ctx := r.ctx(tenantA)
+		ids := []string{"ab", "é", "a-b", "B", "a", "Z9", "_x"}
+		want := slices.Sorted(slices.Values(ids))
+		for _, id := range ids {
+			r.mustCreateFinal(ctx, id, "c")
+			r.mustCreate(ctx, "run-"+id, "c-"+id)
+			r.mustMove(ctx, "run-"+id, store.StatusRunning, store.StatusSuspended, store.Details{Pending: []string{"main/ask"}})
+		}
+		if got := runIDs(listAll(ctx, t, r.s, "c", store.Page{Limit: 2})); !slices.Equal(got, want) {
+			t.Errorf("List = %v, want %v", got, want)
+		}
+		wantRuns := make([]string, len(want))
+		for i, id := range want {
+			wantRuns[i] = "run-" + id
+		}
+		if got := runIDs(suspendedAll(ctx, t, r.s, store.Page{Limit: 2})); !slices.Equal(got, wantRuns) {
+			t.Errorf("ListSuspended = %v, want %v", got, wantRuns)
+		}
+		// Running again, unleased: resumable, in the same order.
+		for _, id := range wantRuns {
+			r.mustMove(ctx, id, store.StatusSuspended, store.StatusRunning, store.Details{})
+		}
+		runs, err := r.s.ListResumable(ctx, r.clk.Now(), 0)
+		if got := runIDs(runs); err != nil || !slices.Equal(got, wantRuns) {
+			t.Errorf("ListResumable = %v, %v; want %v", got, err, wantRuns)
+		}
+	})
+
 	t.Run("Leases", func(t *testing.T) {
 		t.Parallel()
 		const ttl = 10 * time.Second

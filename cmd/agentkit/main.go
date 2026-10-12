@@ -6,6 +6,7 @@
 //	agentkit chat [flags]                      talk to an agent on a server, interactively
 //	agentkit ask [flags] "<message>" | -       one run on a server, for scripts (-json: JSONL events)
 //	agentkit create [flags]                    create an empty conversation on a server; prints its ID
+//	agentkit migrate                           apply the Postgres store's migrations to $AGENTKIT_STORE
 //
 // Credentials come from the Anthropic SDK's chain: ANTHROPIC_API_KEY,
 // ANTHROPIC_AUTH_TOKEN or an `ant auth login` profile.
@@ -86,6 +87,7 @@ const usage = `usage:
   agentkit chat [flags]                    talk to an agent on a server ($AGENTKIT_SERVER), interactively
   agentkit ask [flags] "<message>" | -     one run on a server, for scripts; -json prints the events as JSONL
   agentkit create [flags]                  create an empty conversation on a server; prints its ID for -conversation
+  agentkit migrate                         apply the Postgres store's migrations to $AGENTKIT_STORE, then exit
 
 Run "agentkit <command> -h" for flags.
 `
@@ -104,6 +106,8 @@ func (c cli) main(ctx context.Context, args []string) int {
 		err = c.serve(ctx, args[1:])
 	case len(args) >= 1 && args[0] == "healthcheck":
 		err = c.healthcheck(ctx, args[1:])
+	case len(args) >= 1 && args[0] == "migrate":
+		err = c.migrate(ctx, args[1:])
 	case len(args) >= 1 && args[0] == "chat":
 		return c.chat(ctx, args[1:])
 	case len(args) >= 1 && args[0] == "ask":

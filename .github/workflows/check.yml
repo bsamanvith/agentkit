@@ -20,11 +20,15 @@ jobs:
       - name: make check
         run: make check
 
-  # The integration tier of the event bus (T089): pkg/bus against a Redis 7
-  # service container, and against a redis-server binary that TestRestart
-  # starts and restarts itself (installed, never started as a service).
+  # The integration tier, required like every job here: tests built with
+  # -tags integration against real dependencies. pkg/bus (T089) runs against
+  # a Redis 7 service container, and against a redis-server binary that
+  # TestRestart starts and restarts itself (installed, never started as a
+  # service). pkg/store (T088) runs every store suite, simulation and race
+  # against a Postgres 17 service container, each test in a schema of its
+  # own; cmd/agentkit's migrate command runs against it too.
   # AGENTKIT_REQUIRE_INTEGRATION turns a missing variable into a failure.
-  integration-redis:
+  integration:
     runs-on: ubuntu-latest
     services:
       redis:
@@ -35,10 +39,23 @@ jobs:
           --health-interval 2s
           --health-timeout 3s
           --health-retries 20
+      postgres:
+        image: postgres:17
+        ports: ["5432:5432"]
+        env:
+          POSTGRES_USER: agentkit
+          POSTGRES_PASSWORD: agentkit
+          POSTGRES_DB: agentkit_test
+        options: >-
+          --health-cmd "pg_isready -U agentkit -d agentkit_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
     env:
       AGENTKIT_REQUIRE_INTEGRATION: "1"
       AGENTKIT_REDIS_URL: redis://localhost:6379/0
       AGENTKIT_REDIS_SERVER: /usr/bin/redis-server
+      AGENTKIT_PG_URL: postgres://agentkit:agentkit@localhost:5432/agentkit_test?sslmode=disable
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -52,8 +69,10 @@ jobs:
           sudo apt-get install -y -qq --no-install-recommends redis-server
           sudo rm /usr/sbin/policy-rc.d
           redis-server --version
-      - name: go test -tags integration ./pkg/bus/...
-        run: go test -race -shuffle=on -count=1 -tags integration ./pkg/bus/...
+      - name: go test -tags integration ./pkg/bus/... ./pkg/store/...
+        run: go test -race -shuffle=on -count=1 -tags integration ./pkg/bus/... ./pkg/store/...
+      - name: go test -tags integration -run '^TestMigrate' ./cmd/agentkit/
+        run: go test -race -count=1 -tags integration -run '^TestMigrate' ./cmd/agentkit/
 
   # Coverage-guided fuzzing, in parallel with check so it never delays the
   # test result. Still required: a fuzz failure turns the commit red.

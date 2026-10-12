@@ -20,6 +20,41 @@ jobs:
       - name: make check
         run: make check
 
+  # The integration tier of the event bus (T089): pkg/bus against a Redis 7
+  # service container, and against a redis-server binary that TestRestart
+  # starts and restarts itself (installed, never started as a service).
+  # AGENTKIT_REQUIRE_INTEGRATION turns a missing variable into a failure.
+  integration-redis:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      AGENTKIT_REQUIRE_INTEGRATION: "1"
+      AGENTKIT_REDIS_URL: redis://localhost:6379/0
+      AGENTKIT_REDIS_SERVER: /usr/bin/redis-server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Install redis-server for TestRestart, without starting it
+        run: |
+          printf '#!/bin/sh\nexit 101\n' | sudo tee /usr/sbin/policy-rc.d >/dev/null
+          sudo chmod +x /usr/sbin/policy-rc.d
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends redis-server
+          sudo rm /usr/sbin/policy-rc.d
+          redis-server --version
+      - name: go test -tags integration ./pkg/bus/...
+        run: go test -race -shuffle=on -count=1 -tags integration ./pkg/bus/...
+
   # Coverage-guided fuzzing, in parallel with check so it never delays the
   # test result. Still required: a fuzz failure turns the commit red.
   fuzz:

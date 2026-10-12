@@ -29,9 +29,15 @@ func ModuleRules() Rules {
 			// Its spec test checks every request and cassette against
 			// Parallel's OpenAPI schemas.
 			"connectors/parallel": {"github.com/google/jsonschema-go/jsonschema"},
+			// The Redis Streams bus (T089). maintnotifications is named
+			// only to refuse go-redis's racy auto mode. The bus backends'
+			// tests check for leaked goroutines with goleak.
+			"pkg/bus/redis":  {"github.com/redis/go-redis/v9", "github.com/redis/go-redis/v9/maintnotifications", "go.uber.org/goleak"},
+			"pkg/bus/memory": {"go.uber.org/goleak"},
 		},
 		TestOnly: []string{
 			"github.com/google/go-cmp/cmp",
+			"go.uber.org/goleak",
 		},
 		ModuleImports: map[string][]string{
 			// The store's interfaces and backends know messages, flow
@@ -78,6 +84,10 @@ func ModuleRules() Rules {
 				"pkg/agentapi/wire", "pkg/llm",
 				"pkg/agentapi", "pkg/harness", "pkg/tool", "pkg/toolset", "pkg/llm/llmtest", "internal/testkit",
 			},
+			// The event bus knows tenants (for topic names) and the clock,
+			// nothing else: the store, the runner and the API build on it
+			// (E18). Its tests use the env gating helper.
+			"pkg/bus": {"pkg/tenancy", "pkg/clock", "pkg/clock/clocktest", "internal/testkit"},
 			// The web component serves the embedded console build over
 			// net/http and nothing else: it is a component by shape, and
 			// knows no other part of the module (E11, T078). The console

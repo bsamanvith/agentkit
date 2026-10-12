@@ -12,10 +12,12 @@ import (
 )
 
 // The tenants of the suites. unusedTenant never writes anything; the
-// invariant checks read every conversation and run through it too.
+// invariant checks read every conversation and run through it too. tenantC
+// sorts after the others, for the cross-tenant order of RunAdmin.
 const (
 	tenantA      = "acme"
 	tenantB      = "globex"
+	tenantC      = "umbrella"
 	unusedTenant = "initech"
 )
 

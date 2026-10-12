@@ -34,10 +34,14 @@ import (
 //  5. ListSuspended, paged, gives exactly the suspended runs, in order.
 //  6. ListResumable at the clock's time gives exactly the running runs whose
 //     lease is not held and the retryable failed runs that are due, in order.
+//  7. With an Admin (RunAdmin), ListResumableAll at the clock's time, with no
+//     tenant in ctx, is the union of every tenant's ListResumable, each run
+//     with its tenant, ordered by CreatedAt, tenant and ID.
 type runRig struct {
-	t   *testing.T
-	s   store.RunStore
-	clk *clocktest.Fake
+	t     *testing.T
+	s     store.RunStore
+	admin store.Admin // nil outside RunAdmin
+	clk   *clocktest.Fake
 
 	mu      sync.Mutex
 	runs    map[logKey]*runModel // (tenant, run id)
@@ -60,10 +64,21 @@ type runModel struct {
 
 func newRunRig(t *testing.T, newStore func(t *testing.T, clk clock.Clock) store.RunStore) *runRig {
 	t.Helper()
+	return newAdminRig(t, func(t *testing.T, clk clock.Clock) (store.RunStore, store.Admin) {
+		return newStore(t, clk), nil
+	})
+}
+
+// newAdminRig is newRunRig for a store with an Admin view; a nil Admin skips
+// invariant 7.
+func newAdminRig(t *testing.T, newStore func(t *testing.T, clk clock.Clock) (store.RunStore, store.Admin)) *runRig {
+	t.Helper()
 	clk := clocktest.NewFake(time.Time{})
+	s, admin := newStore(t, clk)
 	r := &runRig{
 		t:       t,
-		s:       newStore(t, clk),
+		s:       s,
+		admin:   admin,
 		clk:     clk,
 		runs:    map[logKey]*runModel{},
 		ids:     map[string]bool{},
@@ -236,6 +251,9 @@ func (r *runRig) check() {
 	defer r.mu.Unlock()
 	for _, tenant := range sortedKeys(r.tenants) {
 		r.checkTenant(tenant)
+	}
+	if r.admin != nil {
+		r.checkAdmin()
 	}
 }
 

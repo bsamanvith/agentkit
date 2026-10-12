@@ -1,10 +1,12 @@
 package storetest
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"math/rand/v2"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,7 +24,19 @@ import (
 // A failure names its seed and step.
 func SimulateRuns(t *testing.T, newStore func(t *testing.T, clk clock.Clock) store.RunStore, seed uint64) {
 	t.Helper()
-	r := newRunRig(t, newStore)
+	simulateRuns(t, newRunRig(t, newStore), seed)
+}
+
+// SimulateAdmin is [SimulateRuns] for a store with an [store.Admin] view, as
+// [RunAdmin] takes it: every ListResumable read is followed by a
+// ListResumableAll at the same time, compared with the model of both tenants.
+func SimulateAdmin(t *testing.T, newStore func(t *testing.T, clk clock.Clock) (store.RunStore, store.Admin), seed uint64) {
+	t.Helper()
+	simulateRuns(t, newAdminRig(t, newStore), seed)
+}
+
+func simulateRuns(t *testing.T, r *runRig, seed uint64) {
+	t.Helper()
 	s := &runSim{
 		t:     t,
 		r:     r,
@@ -54,11 +68,18 @@ type runSim struct {
 }
 
 type simRun struct {
-	conv   string
-	status store.Status
-	lease  store.Lease
-	retry  bool
-	next   time.Time
+	conv    string
+	created time.Time
+	status  store.Status
+	lease   store.Lease
+	retry   bool
+	next    time.Time
+}
+
+// resumable restates the rule of ListResumable for the model.
+func (m *simRun) resumable(now time.Time) bool {
+	return (m.status == store.StatusRunning && (m.lease.Owner == "" || !now.Before(m.lease.Expires))) ||
+		(m.status == store.StatusFailed && m.retry && !now.Before(m.next))
 }
 
 var simOwners = []string{"o0", "o1", "o2"}
@@ -123,7 +144,7 @@ func (s *runSim) create(ctx context.Context, tenant string) {
 		s.fatalf("Create %s/%s in %s (exists %v, busy with %q) = %v, want %v", tenant, id, conv, exists, busy, err, want)
 	}
 	if want == nil && !exists {
-		s.runs[logKey{tenant, id}] = &simRun{conv: conv, status: store.StatusRunning}
+		s.runs[logKey{tenant, id}] = &simRun{conv: conv, created: s.r.clk.Now(), status: store.StatusRunning}
 		s.busy[logKey{tenant, conv}] = id
 		s.order[tenant] = append(s.order[tenant], id)
 	}
@@ -238,15 +259,13 @@ func (s *runSim) transition(ctx context.Context, tenant string) {
 	}
 }
 
-// checkReads compares ListResumable (at a time near now) and Unfinished with
-// the model.
+// checkReads compares ListResumable (at a time near now), ListResumableAll
+// when there is an Admin, and Unfinished with the model.
 func (s *runSim) checkReads(ctx context.Context, tenant string) {
 	now := s.r.clk.Now().Add(time.Duration(s.rng.IntN(4000)-2000) * time.Millisecond)
 	var want []string
 	for _, id := range s.order[tenant] {
-		m := s.runs[logKey{tenant, id}]
-		if (m.status == store.StatusRunning && (m.lease.Owner == "" || !now.Before(m.lease.Expires))) ||
-			(m.status == store.StatusFailed && m.retry && !now.Before(m.next)) {
+		if s.runs[logKey{tenant, id}].resumable(now) {
 			want = append(want, id)
 		}
 	}
@@ -255,6 +274,9 @@ func (s *runSim) checkReads(ctx context.Context, tenant string) {
 	// order is the order ListResumable gives.
 	if err != nil || !slices.Equal(runIDs(got), want) {
 		s.fatalf("ListResumable %s at %v = %v, %v; want %v", tenant, now, runIDs(got), err, want)
+	}
+	if s.r.admin != nil {
+		s.checkAdmin(ctx, now)
 	}
 	for c := range 3 {
 		conv := fmt.Sprintf("c%d", c)
@@ -269,5 +291,31 @@ func (s *runSim) checkReads(ctx context.Context, tenant string) {
 func (s *runSim) checkLease(ctx context.Context, tenant, id string, m *simRun) {
 	if got := s.r.mustGet(ctx, id).Lease; !sameLease(got, m.lease) {
 		s.fatalf("%s/%s lease is %+v, want %+v", tenant, id, got, m.lease)
+	}
+}
+
+// checkAdmin compares ListResumableAll at now with the model of both tenants.
+// ctx carries a tenant, which the call must ignore.
+func (s *runSim) checkAdmin(ctx context.Context, now time.Time) {
+	type item struct {
+		created    time.Time
+		tenant, id string
+	}
+	var items []item
+	for k, m := range s.runs {
+		if m.resumable(now) {
+			items = append(items, item{m.created, k.tenant, k.conv})
+		}
+	}
+	slices.SortFunc(items, func(a, b item) int {
+		return cmp.Or(a.created.Compare(b.created), strings.Compare(a.tenant, b.tenant), strings.Compare(a.id, b.id))
+	})
+	want := make([]string, len(items))
+	for i, it := range items {
+		want[i] = it.tenant + "/" + it.id
+	}
+	got, err := s.r.admin.ListResumableAll(ctx, now, store.MaxPageLimit)
+	if err != nil || !slices.Equal(tenantRunIDs(got), want) {
+		s.fatalf("ListResumableAll at %v = %v, %v; want %v", now, tenantRunIDs(got), err, want)
 	}
 }

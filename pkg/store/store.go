@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/tenancy"
 )
 
 // Errors returned by stores, checked with [errors.Is]. A context with no tenant
@@ -344,4 +345,31 @@ type RunStore interface {
 	// [ErrNotFound] if it has none.
 	Unfinished(ctx context.Context, conversationID string) (Run, error)
 	Leaser
+}
+
+// TenantRun is a run with the tenant it belongs to, as [Admin] lists it.
+type TenantRun struct {
+	Tenant tenancy.Tenant
+	Run    Run
+}
+
+// Admin is the one read that crosses tenants. It exists for the runner's
+// recovery loop, which starts with no request and no tenant and must find the
+// interrupted runs of every tenant; it is never given to code that serves
+// requests. The loop resumes each run it finds with that run's tenant in ctx.
+//
+// A backend implements Admin on a separate value that its store returns from
+// an Admin method (as package memory does), never on the value that
+// implements [RunStore]: code holding a tenant-scoped store must not be able
+// to type-assert its way to other tenants' runs. That value has no other
+// method. Implementations must be safe for concurrent use,
+// must honor ctx, and must not keep or share memory with values returned.
+// Run storetest.RunAdmin against every implementation.
+type Admin interface {
+	// ListResumableAll is [RunStore.ListResumable] across every tenant: up
+	// to limit runs that should continue at now, by the same rule and with
+	// limit read the same way, each with its tenant. Runs are ordered by
+	// CreatedAt, then tenant id (compared as bytes), then run ID. It needs
+	// no tenant in ctx, and ignores one that is there.
+	ListResumableAll(ctx context.Context, now time.Time, limit int) ([]TenantRun, error)
 }

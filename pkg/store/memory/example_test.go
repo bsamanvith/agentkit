@@ -38,3 +38,34 @@ func Example() {
 	// worker-b is refused: true
 	// after expiry: worker-b
 }
+
+// The recovery loop starts with no tenant. Its Admin view finds the runs that
+// should continue in every tenant, each with its tenant, which the loop puts
+// back in ctx to resume the run.
+func ExampleStore_Admin() {
+	clk := clocktest.NewFake(time.Time{})
+	s := memory.New(memory.WithClock(clk))
+	for _, id := range []string{"acme", "globex"} {
+		tenant, _ := tenancy.NewTenant(id)
+		ctx := tenancy.With(context.Background(), tenant)
+		if _, err := s.Create(ctx, "run-1", "conv-1"); err != nil {
+			fmt.Println(err)
+			return
+		}
+		if _, err := s.Claim(ctx, "run-1", "crashed-worker", time.Minute); err != nil {
+			fmt.Println(err)
+			return
+		}
+	}
+	clk.Advance(time.Minute) // the worker's leases expire
+
+	runs, _ := s.Admin().ListResumableAll(context.Background(), clk.Now(), 0)
+	for _, r := range runs {
+		ctx := tenancy.With(context.Background(), r.Tenant)
+		_, err := s.Claim(ctx, r.Run.ID, "recovery", time.Minute)
+		fmt.Println(r.Tenant.ID(), r.Run.ID, "claimed:", err == nil)
+	}
+	// Output:
+	// acme run-1 claimed: true
+	// globex run-1 claimed: true
+}

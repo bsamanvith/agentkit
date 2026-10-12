@@ -1,15 +1,18 @@
 // Package memory is an in-process store: a [store.ConversationStore],
-// [store.RunStore] and [flow.Checkpointer] in one value. Nothing survives the
+// [store.RunStore] and [flow.Checkpointer] in one value, and a [store.Admin]
+// view of it as a separate value ([Store.Admin]). Nothing survives the
 // process. It is for tests, single-process use, and as the reference every
 // other backend is compared with: it passes the same conformance suites
 // (package storetest, and flowtest for checkpoints).
 package memory
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,6 +28,7 @@ var (
 	_ store.ConversationStore = (*Store)(nil)
 	_ store.RunStore          = (*Store)(nil)
 	_ flow.Checkpointer       = (*Store)(nil)
+	_ store.Admin             = admin{}
 )
 
 // Option configures a [Store].
@@ -49,7 +53,7 @@ type Store struct {
 
 // key scopes an id by tenant: the same id in two tenants is two things.
 type key struct {
-	tenant string
+	tenant tenancy.Tenant
 	id     string
 }
 
@@ -81,7 +85,7 @@ func scope(ctx context.Context, id string) (key, error) {
 	if err != nil {
 		return key{}, err
 	}
-	return key{tenant: t.ID(), id: id}, nil
+	return key{tenant: t, id: id}, nil
 }
 
 // now reads the clock without its monotonic reading, so that times compare
@@ -239,7 +243,7 @@ func (s *Store) Create(ctx context.Context, id, conversationID string) (store.Ru
 
 // unfinished returns the run of a conversation that is not final. The caller
 // holds s.mu.
-func (s *Store) unfinished(tenant, conversationID string) (store.Run, bool) {
+func (s *Store) unfinished(tenant tenancy.Tenant, conversationID string) (store.Run, bool) {
 	for rk, r := range s.runs {
 		if rk.tenant == tenant && r.ConversationID == conversationID && !r.Status.Final() {
 			return r, true
@@ -297,7 +301,7 @@ func (s *Store) ListSuspended(ctx context.Context, p store.Page) (store.RunPage,
 
 // sorted returns the tenant's runs that match keep, ordered by CreatedAt and
 // ID. The caller holds s.mu.
-func (s *Store) sorted(tenant string, keep func(store.Run) bool) []store.Run {
+func (s *Store) sorted(tenant tenancy.Tenant, keep func(store.Run) bool) []store.Run {
 	var runs []store.Run
 	for rk, r := range s.runs {
 		if rk.tenant == tenant && keep(r) {
@@ -316,7 +320,7 @@ func (s *Store) sorted(tenant string, keep func(store.Run) bool) []store.Run {
 func keyOf(r store.Run) backend.RunKey { return backend.RunKey{Created: r.CreatedAt, ID: r.ID} }
 
 // page returns one page of the tenant's runs that match keep.
-func (s *Store) page(tenant string, p store.Page, keep func(store.Run) bool) (store.RunPage, error) {
+func (s *Store) page(tenant tenancy.Tenant, p store.Page, keep func(store.Run) bool) (store.RunPage, error) {
 	limit, start, err := backend.ParseRunPage(p)
 	if err != nil {
 		return store.RunPage{}, err
@@ -410,6 +414,42 @@ func (s *Store) ListResumable(ctx context.Context, now time.Time, limit int) ([]
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	runs := s.sorted(k.tenant, func(r store.Run) bool { return backend.Resumable(r, now) })
+	return runs[:min(n, len(runs))], nil
+}
+
+// Admin returns the store's cross-tenant view, for the runner's recovery loop
+// only. It reads the same data as s. It is a separate value on purpose: *Store
+// itself does not implement [store.Admin], so code holding s as a
+// [store.RunStore] cannot type-assert its way to other tenants' runs.
+func (s *Store) Admin() store.Admin { return admin{s} }
+
+// admin is the [store.Admin] view of a Store.
+type admin struct{ s *Store }
+
+// ListResumableAll implements [store.Admin].
+func (a admin) ListResumableAll(ctx context.Context, now time.Time, limit int) ([]store.TenantRun, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	n, err := backend.Limit(store.Page{Limit: limit})
+	if err != nil {
+		return nil, err
+	}
+	a.s.mu.Lock()
+	defer a.s.mu.Unlock()
+	var runs []store.TenantRun
+	for k, r := range a.s.runs {
+		if backend.Resumable(r, now) {
+			runs = append(runs, store.TenantRun{Tenant: k.tenant, Run: cloneRun(r)})
+		}
+	}
+	slices.SortFunc(runs, func(x, y store.TenantRun) int {
+		return cmp.Or(
+			x.Run.CreatedAt.Compare(y.Run.CreatedAt),
+			strings.Compare(x.Tenant.ID(), y.Tenant.ID()),
+			strings.Compare(x.Run.ID, y.Run.ID),
+		)
+	})
 	return runs[:min(n, len(runs))], nil
 }
 

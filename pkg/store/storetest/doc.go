@@ -8,10 +8,16 @@
 //		storetest.RunConversationStore(t, func(t *testing.T, clk clock.Clock) store.ConversationStore { return newStore(t, clk) })
 //		storetest.RunRunStore(t, func(t *testing.T, clk clock.Clock) store.RunStore { return newStore(t, clk) })
 //		storetest.RunCheckpointer(t, func(t *testing.T) flow.Checkpointer { return newStore(t, clock.Real()) })
+//		storetest.RunAdmin(t, func(t *testing.T, clk clock.Clock) (store.RunStore, store.Admin) {
+//			s := newStore(t, clk)
+//			return s, s.Admin()
+//		})
 //	}
 //
 // The factories get a fake clock and must make the store read every time it
-// records (entry and run times, lease expiry) from it.
+// records (entry and run times, lease expiry) from it. RunAdmin's factory
+// returns the store and its [store.Admin] view, a separate value over the same
+// data.
 //
 // Every test goes through one helper per interface that, when the test ends,
 // reads back everything the test touched, through every tenant it used plus
@@ -22,8 +28,9 @@
 // for runs, each tenant seeing exactly its own runs, records matching the
 // transitions the store accepted, List covering each conversation's runs once
 // in order, at most one unfinished run per conversation, and ListSuspended and
-// ListResumable returning exactly the runs the rules say. Seeded simulations
-// (SimulateConversations, SimulateRuns) check every result against a model; a
-// backend can also run them from a
-// fuzz target.
+// ListResumable returning exactly the runs the rules say; with an Admin,
+// ListResumableAll is the union of every tenant's ListResumable, re-sorted.
+// Seeded simulations (SimulateConversations, SimulateRuns, SimulateAdmin)
+// check every result against a model; a backend can also run them from a fuzz
+// target.
 package storetest

@@ -18,6 +18,11 @@ func newRuns(_ *testing.T, clk clock.Clock) store.RunStore {
 	return memory.New(memory.WithClock(clk))
 }
 
+func newAdmin(_ *testing.T, clk clock.Clock) (store.RunStore, store.Admin) {
+	s := memory.New(memory.WithClock(clk))
+	return s, s.Admin()
+}
+
 func TestConversationStore(t *testing.T) {
 	t.Parallel()
 	storetest.RunConversationStore(t, newConversations)
@@ -26,6 +31,25 @@ func TestConversationStore(t *testing.T) {
 func TestRunStore(t *testing.T) {
 	t.Parallel()
 	storetest.RunRunStore(t, newRuns)
+}
+
+func TestAdmin(t *testing.T) {
+	t.Parallel()
+	storetest.RunAdmin(t, newAdmin)
+}
+
+// The cross-tenant read is not reachable from the tenant-scoped store: code
+// holding it cannot type-assert its way to other tenants' runs.
+func TestAdminIsASeparateValue(t *testing.T) {
+	t.Parallel()
+	s := memory.New()
+	var rs store.RunStore = s
+	if _, ok := rs.(store.Admin); ok {
+		t.Error("the tenant-scoped store is also a store.Admin")
+	}
+	if _, ok := s.Admin().(store.RunStore); ok {
+		t.Error("the Admin view is also a store.RunStore")
+	}
 }
 
 func TestCheckpointer(t *testing.T) {
@@ -48,5 +72,14 @@ func FuzzRunSimulation(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, seed uint64) {
 		storetest.SimulateRuns(t, newRuns, seed)
+	})
+}
+
+func FuzzAdminSimulation(f *testing.F) {
+	for seed := range uint64(8) {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, seed uint64) {
+		storetest.SimulateAdmin(t, newAdmin, seed)
 	})
 }

@@ -1,17 +1,16 @@
 package storetest
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 	"math/rand/v2"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/store"
+	"github.com/bsamanvith/agentkit/pkg/tenancy"
 )
 
 // SimulateRuns runs one seeded simulation against a fresh store from
@@ -76,10 +75,18 @@ type simRun struct {
 	next    time.Time
 }
 
-// resumable restates the rule of ListResumable for the model.
-func (m *simRun) resumable(now time.Time) bool {
-	return (m.status == store.StatusRunning && (m.lease.Owner == "" || !now.Before(m.lease.Expires))) ||
-		(m.status == store.StatusFailed && m.retry && !now.Before(m.next))
+// run is the model of run id as a [store.Run], with the fields the resumable
+// rule and the admin order read.
+func (m *simRun) run(id string) store.Run {
+	return store.Run{
+		ID:             id,
+		ConversationID: m.conv,
+		Status:         m.status,
+		Retryable:      m.retry,
+		NextAttemptAt:  m.next,
+		CreatedAt:      m.created,
+		Lease:          m.lease,
+	}
 }
 
 var simOwners = []string{"o0", "o1", "o2"}
@@ -265,7 +272,7 @@ func (s *runSim) checkReads(ctx context.Context, tenant string) {
 	now := s.r.clk.Now().Add(time.Duration(s.rng.IntN(4000)-2000) * time.Millisecond)
 	var want []string
 	for _, id := range s.order[tenant] {
-		if s.runs[logKey{tenant, id}].resumable(now) {
+		if resumable(s.runs[logKey{tenant, id}].run(id), now) {
 			want = append(want, id)
 		}
 	}
@@ -297,25 +304,17 @@ func (s *runSim) checkLease(ctx context.Context, tenant, id string, m *simRun) {
 // checkAdmin compares ListResumableAll at now with the model of both tenants.
 // ctx carries a tenant, which the call must ignore.
 func (s *runSim) checkAdmin(ctx context.Context, now time.Time) {
-	type item struct {
-		created    time.Time
-		tenant, id string
-	}
-	var items []item
-	for k, m := range s.runs {
-		if m.resumable(now) {
-			items = append(items, item{m.created, k.tenant, k.conv})
+	var want []store.TenantRun
+	for _, tenant := range []string{tenantA, tenantB} {
+		for _, id := range s.order[tenant] {
+			if run := s.runs[logKey{tenant, id}].run(id); resumable(run, now) {
+				want = append(want, store.TenantRun{Tenant: tenancy.MustFrom(s.ctxs[tenant]), Run: run})
+			}
 		}
 	}
-	slices.SortFunc(items, func(a, b item) int {
-		return cmp.Or(a.created.Compare(b.created), strings.Compare(a.tenant, b.tenant), strings.Compare(a.id, b.id))
-	})
-	want := make([]string, len(items))
-	for i, it := range items {
-		want[i] = it.tenant + "/" + it.id
-	}
+	slices.SortFunc(want, adminOrder)
 	got, err := s.r.admin.ListResumableAll(ctx, now, store.MaxPageLimit)
-	if err != nil || !slices.Equal(tenantRunIDs(got), want) {
-		s.fatalf("ListResumableAll at %v = %v, %v; want %v", now, tenantRunIDs(got), err, want)
+	if err != nil || !slices.Equal(tenantRunIDs(got), tenantRunIDs(want)) {
+		s.fatalf("ListResumableAll at %v = %v, %v; want %v", now, tenantRunIDs(got), err, tenantRunIDs(want))
 	}
 }

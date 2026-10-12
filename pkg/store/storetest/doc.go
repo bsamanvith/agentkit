@@ -10,7 +10,7 @@
 //		storetest.RunCheckpointer(t, func(t *testing.T) flow.Checkpointer { return newStore(t, clock.Real()) })
 //		storetest.RunAdmin(t, func(t *testing.T, clk clock.Clock) (store.RunStore, store.Admin) {
 //			s := newStore(t, clk)
-//			return s, s.Admin()
+//			return s, mybackend.Admin(s)
 //		})
 //	}
 //

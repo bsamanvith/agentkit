@@ -42,7 +42,7 @@ func Example() {
 // The recovery loop starts with no tenant. Its Admin view finds the runs that
 // should continue in every tenant, each with its tenant, which the loop puts
 // back in ctx to resume the run.
-func ExampleStore_Admin() {
+func ExampleAdmin() {
 	clk := clocktest.NewFake(time.Time{})
 	s := memory.New(memory.WithClock(clk))
 	for _, id := range []string{"acme", "globex"} {
@@ -59,7 +59,7 @@ func ExampleStore_Admin() {
 	}
 	clk.Advance(time.Minute) // the worker's leases expire
 
-	runs, _ := s.Admin().ListResumableAll(context.Background(), clk.Now(), 0)
+	runs, _ := memory.Admin(s).ListResumableAll(context.Background(), clk.Now(), 0)
 	for _, r := range runs {
 		ctx := tenancy.With(context.Background(), r.Tenant)
 		_, err := s.Claim(ctx, r.Run.ID, "recovery", time.Minute)

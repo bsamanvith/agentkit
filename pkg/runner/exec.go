@@ -118,7 +118,7 @@ func (r *Runner) start(ctx context.Context, tenant tenancy.Tenant, conv string) 
 		return nil, fmt.Errorf("create run: %w", err)
 	}
 	x := &exec{r: r, tenant: tenant, run: run, owner: r.nextOwner()}
-	if _, err := r.store.Claim(ctx, run.ID, x.owner, r.ttl); err != nil {
+	if x.run.Lease, err = r.store.Claim(ctx, run.ID, x.owner, r.ttl); err != nil {
 		return nil, fmt.Errorf("run %q: claim: %w", run.ID, err)
 	}
 	return x, nil

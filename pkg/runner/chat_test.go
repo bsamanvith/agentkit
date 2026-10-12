@@ -150,11 +150,7 @@ func TestLeaseIsRenewedDuringALongTurn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	done := make(chan error, 1)
-	go func() {
-		_, err := a.drain(x, nil)
-		done <- err
-	}()
+	done := a.drainInBackground(x)
 	<-waiting
 	// The renewer re-arms its timer after each renewal, so a pending timer
 	// after an advance means the renewal is stored.
@@ -197,11 +193,7 @@ func TestStaleWriterStopsWithoutOverwriting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	done := make(chan error, 1)
-	go func() {
-		_, err := p.drain(x, nil)
-		done <- err
-	}()
+	done := p.drainInBackground(x)
 	<-waiting
 	other := store.Entry{Seq: 3, Kind: store.KindTurn, Messages: []llm.Message{llm.Assistant(llm.Text{Text: "the other writer"})}, RunID: "other"}
 	if err := w.mem.Append(w.ctx, "c", other); err != nil {
@@ -337,11 +329,7 @@ func TestCancelBeforeTheAnswerKeepsTheConversationValid(t *testing.T) {
 				if x, err = p.r.Run(w.ctx, "c", harness.UserText(prompt)); err != nil {
 					t.Fatal(err)
 				}
-				done := make(chan error, 1)
-				go func() {
-					_, err := p.drain(x, nil)
-					done <- err
-				}()
+				done := p.drainInBackground(x)
 				<-waiting
 				before = w.log("c")
 				if _, err := p.r.Cancel(w.ctx, x.Run.ID); err != nil {
@@ -563,11 +551,7 @@ func TestLostLeaseStopsTheWriter(t *testing.T) {
 			}
 		}
 	}
-	done := make(chan error, 1)
-	go func() {
-		_, err := p.drain(x, nil)
-		done <- err
-	}()
+	done := p.drainInBackground(x)
 	<-waiting
 	before := w.log("c")
 	if err := w.clk.WaitForTimers(t.Context(), 1); err != nil {
@@ -591,5 +575,50 @@ func TestLostLeaseStopsTheWriter(t *testing.T) {
 	}
 	if err := w.mem.Release(w.ctx, x.Run.ID, "intruder"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Cancel acts only on runs of its own process or nobody's: a run another
+// live process is executing is refused (the API needs a signal to that
+// process), and a run that has ended is final.
+func TestCancelOfARunHeldElsewhereIsRefused(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	prompt := w.model.on("q", 1)
+	waiting, gate := make(chan struct{}), make(chan struct{})
+	release := sync.OnceFunc(func() { close(gate) })
+	defer release()
+	w.model.gate = func(ctx context.Context, _ string, turn int) {
+		if turn == 0 {
+			close(waiting)
+			select {
+			case <-gate:
+			case <-ctx.Done():
+			}
+		}
+	}
+	a, b := w.process(), w.process()
+	x, err := a.r.Run(w.ctx, "c", harness.UserText(prompt))
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := a.drainInBackground(x)
+	<-waiting
+	before := w.log("c")
+	if _, err := b.r.Cancel(w.ctx, x.Run.ID); !errors.Is(err, store.ErrLeased) {
+		t.Errorf("Cancel of a run another process executes = %v, want ErrLeased", err)
+	}
+	if got := w.log("c"); !sameJSON(got, before) {
+		t.Errorf("a refused Cancel wrote %s", js(got[len(before):]))
+	}
+	release()
+	if err := <-done; err != nil {
+		t.Fatalf("the run interrupted by a refused Cancel ended with %v", err)
+	}
+	if run := w.get(x.Run.ID); run.Status != store.StatusCompleted {
+		t.Fatalf("run = %+v, want completed", run)
+	}
+	if _, err := b.r.Cancel(w.ctx, x.Run.ID); !errors.Is(err, store.ErrFinal) {
+		t.Errorf("Cancel of a completed run = %v, want ErrFinal", err)
 	}
 }

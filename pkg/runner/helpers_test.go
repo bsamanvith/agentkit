@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"iter"
+	"maps"
 	"math/rand/v2"
 	"strings"
 	"sync"
@@ -62,7 +63,13 @@ type world struct {
 	procs []*proc
 	seen  []seen
 	ids   int
+	// touched is every conversation any process appended to, in its
+	// tenant's context: the invariants are checked on all of them, not
+	// only on those whose executions a test drained.
+	touched map[touch]context.Context
 }
+
+type touch struct{ tenant, conv string }
 
 // seen is what a consumer saw of one execution.
 type seen struct {
@@ -116,7 +123,7 @@ func (w *world) process(opts ...runner.Option) *proc {
 	w.mu.Lock()
 	n := len(w.procs)
 	w.mu.Unlock()
-	p := &proc{w: w, store: &crashStore{Store: w.mem}, owner: fmt.Sprintf("proc%d", n)}
+	p := &proc{w: w, store: &crashStore{Store: w.mem, w: w}, owner: fmt.Sprintf("proc%d", n)}
 	agents := func(_ context.Context, conv string) (runner.Agent, error) {
 		if w.agent != nil {
 			return w.agent(conv), nil
@@ -168,14 +175,45 @@ func (p *proc) drain(x *runner.Execution, stop func(runner.Event) bool) ([]runne
 	p.w.mu.Lock()
 	p.w.seen = append(p.w.seen, seen{conv: x.Run.ConversationID, events: evs})
 	p.w.mu.Unlock()
+	p.checkAfter(x)
+	return evs, end
+}
+
+// checkAfter checks invariants 4 and 5 for an execution that has ended.
+func (p *proc) checkAfter(x *runner.Execution) {
+	p.w.t.Helper()
 	if !p.store.isDead() {
 		// The process outlived the execution: the checks below must not
 		// make it die.
 		p.store.crashAt(nil)
-		p.w.checkLeaseFree(p, x.Run.ID)
+		p.w.checkLeaseFree(x.Run)
 		p.w.checkCache(p, x.Run.ConversationID)
 	}
-	return evs, end
+}
+
+// drainInBackground drains x on another goroutine while the test acts on the
+// run, and sends the execution's end on the channel. The test may still be
+// writing when the execution ends (a Cancel appending its marker), so the
+// per-execution checks wait for the end of the test, when all is quiet.
+func (p *proc) drainInBackground(x *runner.Execution) <-chan error {
+	done := make(chan error, 1)
+	go func() {
+		var evs []runner.Event
+		var end error
+		for ev, err := range x.Events() {
+			if err != nil {
+				end = err
+				break
+			}
+			evs = append(evs, ev)
+		}
+		p.w.mu.Lock()
+		p.w.seen = append(p.w.seen, seen{conv: x.Run.ConversationID, events: evs})
+		p.w.mu.Unlock()
+		done <- end
+	}()
+	p.w.t.Cleanup(func() { p.checkAfter(x) })
+	return done
 }
 
 // run starts a chat run and drains it.
@@ -198,15 +236,25 @@ func (p *proc) resume(runID string, opts ...runner.ResumeOption) ([]runner.Event
 	return p.drain(x, nil)
 }
 
-func (w *world) checkLeaseFree(p *proc, runID string) {
+// checkLeaseFree checks that the execution made with claimed no longer holds
+// its lease. Another execution of the same process (a Cancel, say) may hold a
+// lease of its own by now, so only the execution's own owner counts.
+func (w *world) checkLeaseFree(claimed store.Run) {
 	w.t.Helper()
-	run, err := w.mem.Get(w.ctx, runID)
-	if err != nil {
-		w.t.Errorf("invariant 4: get run %q: %v", runID, err)
+	if claimed.Lease.Owner == "" {
+		if claimed.Status.Final() {
+			return // a final run is returned without a claim
+		}
+		w.t.Errorf("invariant 4: execution of run %q does not name its lease", claimed.ID)
 		return
 	}
-	if strings.HasPrefix(run.Lease.Owner, p.owner+"/") && run.Lease.Expires.After(w.clk.Now()) {
-		w.t.Errorf("invariant 4: run %q still leased to %q after its execution ended", runID, run.Lease.Owner)
+	run, err := w.mem.Get(w.ctx, claimed.ID)
+	if err != nil {
+		w.t.Errorf("invariant 4: get run %q: %v", claimed.ID, err)
+		return
+	}
+	if run.Lease.Owner == claimed.Lease.Owner && run.Lease.Expires.After(w.clk.Now()) {
+		w.t.Errorf("invariant 4: run %q still leased to %q after its execution ended", claimed.ID, run.Lease.Owner)
 	}
 }
 
@@ -229,10 +277,16 @@ func (w *world) checkCache(p *proc, conv string) {
 // log returns every entry of a conversation.
 func (w *world) log(conv string) []store.Entry {
 	w.t.Helper()
+	return w.logIn(w.ctx, conv)
+}
+
+// logIn is the log of conv in the tenant of ctx.
+func (w *world) logIn(ctx context.Context, conv string) []store.Entry {
+	w.t.Helper()
 	var out []store.Entry
 	p := store.Page{Order: store.Ascending, Limit: store.MaxPageLimit}
 	for {
-		page, err := w.mem.History(w.ctx, conv, p)
+		page, err := w.mem.History(ctx, conv, p)
 		if err != nil {
 			w.t.Fatal(err)
 		}
@@ -247,7 +301,12 @@ func (w *world) log(conv string) []store.Entry {
 // transcript is a conversation's stored context.
 func (w *world) transcript(conv string) harness.Transcript {
 	w.t.Helper()
-	cv, err := w.mem.Context(w.ctx, conv)
+	return w.transcriptIn(w.ctx, conv)
+}
+
+func (w *world) transcriptIn(ctx context.Context, conv string) harness.Transcript {
+	w.t.Helper()
+	cv, err := w.mem.Context(ctx, conv)
 	if err != nil {
 		w.t.Fatal(err)
 	}
@@ -270,13 +329,24 @@ func (w *world) check() {
 	t := w.t
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	convs := map[string]bool{}
+	convs := maps.Clone(w.touched)
+	if convs == nil {
+		convs = map[touch]context.Context{}
+	}
+	acme := tenancy.MustFrom(w.ctx).ID()
 	for _, s := range w.seen {
-		convs[s.conv] = true
+		convs[touch{acme, s.conv}] = w.ctx
 		var last int64
 		for _, ev := range s.events {
 			last = max(last, ev.Seq)
-			if ev.Kind != runner.EventHarness || ev.Seq == 0 {
+			if ev.Kind != runner.EventHarness {
+				continue
+			}
+			if ev.Seq == 0 {
+				if ev.Harness.Kind == harness.EventRunStart && ev.Harness.Prompt != nil ||
+					ev.Harness.Kind == harness.EventTurnDone && ev.Harness.TurnRecord != nil {
+					t.Errorf("invariant 1: %s event of %q names no entry", ev.Harness.Kind, s.conv)
+				}
 				continue
 			}
 			log := w.log(s.conv)
@@ -310,14 +380,15 @@ func (w *world) check() {
 			}
 		}
 	}
-	for conv := range convs {
-		if tr := w.transcript(conv); len(tr) > 0 {
+	for c, ctx := range convs {
+		conv := c.conv
+		if tr := w.transcriptIn(ctx, conv); len(tr) > 0 {
 			if err := tr.Validate(); err != nil {
 				t.Errorf("invariant 2: context of %q is not a valid transcript: %v\n%s", conv, err, js(tr))
 			}
 		}
 		ids := map[string]bool{}
-		for _, e := range w.log(conv) {
+		for _, e := range w.logIn(ctx, conv) {
 			for _, m := range e.Messages {
 				for _, b := range m.Content {
 					if u, ok := b.(llm.ToolUse); ok {
@@ -336,8 +407,9 @@ func (w *world) check() {
 			dead[p.owner] = true
 		}
 	}
-	for conv := range convs {
-		page, err := w.mem.List(w.ctx, conv, store.Page{Limit: store.MaxPageLimit})
+	for c, ctx := range convs {
+		conv := c.conv
+		page, err := w.mem.List(ctx, conv, store.Page{Limit: store.MaxPageLimit})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -494,6 +566,7 @@ func (m *scriptModel) Generate(ctx context.Context, req llm.Request) iter.Seq2[l
 // its crash reaches the store, not even releasing its leases.
 type crashStore struct {
 	runner.Store
+	w      *world // told of every conversation appended to
 	mu     sync.Mutex
 	counts map[string]int
 	total  int
@@ -578,6 +651,7 @@ func call0(c *crashStore, op string, f func() error) error {
 }
 
 func (c *crashStore) Append(ctx context.Context, id string, e store.Entry) error {
+	c.w.touch(ctx, id)
 	return call0(c, "Append", func() error { return c.Store.Append(ctx, id, e) })
 }
 
@@ -650,4 +724,17 @@ func lastDone(t *testing.T, evs []runner.Event) runner.Event {
 		t.Fatalf("execution did not end with EventDone: %s", js(evs))
 	}
 	return evs[len(evs)-1]
+}
+
+func (w *world) touch(ctx context.Context, conv string) {
+	tn, ok := tenancy.From(ctx)
+	if !ok {
+		return
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.touched == nil {
+		w.touched = map[touch]context.Context{}
+	}
+	w.touched[touch{tn.ID(), conv}] = tenancy.With(context.Background(), tn)
 }

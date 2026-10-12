@@ -3,14 +3,17 @@ package runner_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/flow"
+	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/runner"
 	"github.com/bsamanvith/agentkit/pkg/store"
 )
@@ -144,12 +147,12 @@ func TestRejectedRunIsFinal(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := lastDone(t, evs).Run.ID
-	evs, err = p.decide(id, "f/ok", flow.Decision{Reason: "no"})
+	evs, err = p.decide(id, "f/ok", flow.Decision{Reason: "the quote is too high"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	run := lastDone(t, evs).Run
-	if run.Status != store.StatusRejected || !strings.Contains(run.Error, "no") {
+	if run.Status != store.StatusRejected || !strings.Contains(run.Error, "the quote is too high") {
 		t.Fatalf("after rejection: %+v", run)
 	}
 	w.clk.Advance(1000 * ttl)
@@ -159,8 +162,8 @@ func TestRejectedRunIsFinal(t *testing.T) {
 	if _, err := p.resume(id); !errors.Is(err, store.ErrFinal) {
 		t.Errorf("Resume of a rejected run = %v, want ErrFinal", err)
 	}
-	if _, err := p.decide(id, "f/ok", flow.Decision{Approved: true}); err == nil {
-		t.Errorf("Decide on a rejected run succeeded")
+	if _, err := p.decide(id, "f/ok", flow.Decision{Approved: true}); !errors.Is(err, store.ErrFinal) {
+		t.Errorf("Decide on a rejected run = %v, want ErrFinal", err)
 	}
 	if got := c.counts(); got["send"] != 0 {
 		t.Errorf("a step after the rejected approval ran: %v", got)
@@ -496,5 +499,132 @@ func TestInterruptedFlowIsResumedByHand(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// A flow step that fails retryably fails the run as retryable; recovery
+// retries it from its checkpoint, so the steps before it do not run again.
+func TestFailedFlowStepIsRetriedFromItsCheckpoint(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	var c steps
+	var failed atomic.Bool
+	w.flows = func(*proc, string) (flow.Step, error) {
+		flaky := flow.Func("b", func(ctx context.Context, st *flow.State) error {
+			if failed.CompareAndSwap(false, true) {
+				return fmt.Errorf("drafting: %w", llm.ErrOverloaded)
+			}
+			return c.step("b").Run(ctx, st)
+		})
+		return flow.Sequence("f", c.step("a"), flaky, c.step("c")), nil
+	}
+	p := w.process()
+	_, err := p.runFlow("c")
+	var re *runner.RunError
+	if !errors.As(err, &re) || !errors.Is(err, llm.ErrOverloaded) {
+		t.Fatalf("flow with a failing step ended with %v, want a RunError for ErrOverloaded", err)
+	}
+	if run := w.get(re.Run.ID); run.Status != store.StatusFailed || !run.Retryable || run.Attempts != 1 {
+		t.Fatalf("failed flow run = %+v, want failed, retryable, 1 attempt", run)
+	}
+	w.clk.Advance(w.get(re.Run.ID).NextAttemptAt.Sub(w.clk.Now()))
+	if rep, err := w.recovery(p).Recover(w.ctx); err != nil || rep.Resumed != 1 {
+		t.Fatalf("Recover = %+v, %v", rep, err)
+	}
+	if run := w.get(re.Run.ID); run.Status != store.StatusCompleted {
+		t.Fatalf("retried flow run = %+v, want completed", run)
+	}
+	if got, want := c.counts(), map[string]int{"a": 1, "b": 1, "c": 1}; !maps.Equal(got, want) {
+		t.Errorf("successful step runs = %v, want %v: a must not rerun", got, want)
+	}
+}
+
+// Canceling a run that waits for an approval makes it final: it leaves the
+// suspended list, and a later decision is refused without running anything.
+func TestCanceledSuspendedRunIsFinal(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	var c steps
+	var v atomic.Int32
+	w.approvalFlow(&c, &v)
+	p := w.process()
+	evs, err := p.runFlow("c")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := lastDone(t, evs).Run.ID
+	run, err := p.r.Cancel(w.ctx, id)
+	if err != nil || run.Status != store.StatusCanceled {
+		t.Fatalf("Cancel = %+v, %v; want canceled", run, err)
+	}
+	if got := w.suspended(); len(got) != 0 {
+		t.Errorf("ListSuspended after cancel = %v", got)
+	}
+	if _, err := p.decide(id, "f/ok", flow.Decision{Approved: true}); !errors.Is(err, store.ErrFinal) {
+		t.Errorf("Decide on a canceled run = %v, want ErrFinal", err)
+	}
+	if _, err := p.r.Cancel(w.ctx, id); !errors.Is(err, store.ErrFinal) {
+		t.Errorf("a second Cancel = %v, want ErrFinal", err)
+	}
+	if got := c.counts(); got["send"] != 0 {
+		t.Errorf("a step after the canceled approval ran: %v", got)
+	}
+}
+
+// Two replicas deciding the same approval at once: one decision runs the
+// rest of the flow, exactly once, and the other is refused.
+func TestConcurrentDecisionsRunTheRestOnce(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	var c steps
+	// The winner's send step waits until the other decision has returned,
+	// so the two overlap.
+	oneReturned := make(chan struct{})
+	w.flows = func(*proc, string) (flow.Step, error) {
+		send := flow.Func("send", func(ctx context.Context, st *flow.State) error {
+			select {
+			case <-oneReturned:
+			case <-ctx.Done():
+			case <-time.After(30 * time.Second): // only a runner that lets both decide gets here
+			}
+			return c.step("send").Run(ctx, st)
+		})
+		return flow.Sequence("f", c.step("draft"), flow.Approve("ok"), send), nil
+	}
+	evs, err := w.process().runFlow("c")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := lastDone(t, evs).Run.ID
+	var once sync.Once
+	errs := make([]error, 2)
+	var wg sync.WaitGroup
+	for i := range errs {
+		p := w.process()
+		wg.Go(func() {
+			x, err := p.r.Decide(w.ctx, id, "f/ok", flow.Decision{Approved: true})
+			if err == nil {
+				_, err = x.Wait()
+			}
+			errs[i] = err
+			if err != nil {
+				once.Do(func() { close(oneReturned) })
+			}
+		})
+	}
+	wg.Wait()
+	once.Do(func() { close(oneReturned) })
+	wins := 0
+	for _, err := range errs {
+		switch {
+		case err == nil:
+			wins++
+		case errors.Is(err, store.ErrLeased), errors.Is(err, store.ErrFinal), errors.Is(err, runner.ErrNotPending):
+		default:
+			t.Errorf("losing Decide = %v, want ErrLeased, ErrFinal or ErrNotPending", err)
+		}
+	}
+	if wins != 1 || c.counts()["send"] != 1 || w.get(id).Status != store.StatusCompleted {
+		t.Errorf("%d decisions won, send ran %d times, run %s; want 1, 1, completed", wins, c.counts()["send"], w.get(id).Status)
 	}
 }

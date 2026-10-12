@@ -94,6 +94,8 @@ The component that runs agents ([E05 decisions](E05-store-runner.md)): the only 
 
 ### Invariants (checked after every test by `world.check`, per execution by `proc.drain`)
 
+`world.check` covers every conversation any process appended to, in that conversation's tenant. That includes executions run inside `Recover` and executions a test only `Wait`s for. Invariant 1 is checked for the executions a test drains: there it sees the events. A prompt or turn event that names no entry (`Seq` 0) also breaks invariant 1.
+
 1. Entries mirror events: every prompt or turn event a consumer saw is stored at the `Seq` it names, with the same messages, record and run.
 2. The stored context round-trips: every context is a valid transcript, and a completed run's `Result.Transcript` is exactly the log up to its last entry.
 3. No turn is stored twice: no tool call ID appears twice in a log.
@@ -123,7 +125,7 @@ The component that runs agents ([E05 decisions](E05-store-runner.md)): the only 
 
 ### Mutation list
 
-Each bug was planted on its own and the package tests run with `go test -count=1 ./pkg/runner/`. Every plant compiles, and every one fails at least one test; none survives.
+Each bug was planted on its own and the package tests run with `go test -count=1 ./pkg/runner/`. Every plant compiles. Every one fails at least one test, except `decide-ignores-lease` at the end of the table: that bug cannot happen, because a second guard stops it.
 
 Two plants survived the first pass and led to stronger checks:
 - `cache-unguarded`: a reader now refreshes the cache between a landed append and its retry.
@@ -163,6 +165,77 @@ Two plants survived the first pass and led to stronger checks:
 | `stepoutput-seq` | The step output references the entry before the last | TestAgentStepResumesFromTheStoreAfterACrash, TestCheckpointSizeDoesNotGrowWithTurns |
 | `step-output-transcript` | The checkpoint keeps the whole agent output | TestCheckpointSizeDoesNotGrowWithTurns |
 | `usage-dropped` | A completed run's usage is not stored | TestRunStoresThePromptAndEveryTurn |
+| `resume-forgets-turns` | A resumed chat run is sent only its prompt | TestDeadProcessRunIsResumedByHandAfterItsLease |
+| `release-skipped-on-stop` (again) | A stopped execution keeps its lease | TestInterruptedFlowIsResumedByHand |
+| `checkpoint-lost` | A flow resumes without its checkpoint | TestInterruptedFlowIsResumedByHand |
+| `resume-duplicates-turns` | A resumed run stores each turn twice | TestRecoveryResumesARunKilledAnywhere, TestTwoReplicasRecoverEachRunOnce (invariants 2 and 3, after `world.check` was widened; before, these tests compared only model requests) |
+| `flow-failure-not-retried` | A failing flow step loses its error class, so it is never retried | TestFailedFlowStepIsRetriedFromItsCheckpoint |
+| `cancel-skips-suspended` | Cancel leaves a suspended run waiting | TestCanceledSuspendedRunIsFinal |
+| `cancel-steals-lease` | Cancel ignores a lease held by another process | TestCancelOfARunHeldElsewhereIsRefused |
+| `decide-ignores-lease` | Decide ignores a lease held by another process | **Equivalent:** survives TestConcurrentDecisionsRunTheRestOnce because the execution's lease keeper renews before any step runs, gets `ErrLeased` and stops it. The second guard does the work. |
+
+### Test review (after merge)
+
+An independent review of the suite found five gaps. They are fixed:
+- **Invariants not checked everywhere.** `world.check` checked invariants 2–4 only on conversations a test drained, so the recovery tests did not get them. It now covers every conversation appended to.
+- **Flow failure and retry.** Covered by `TestFailedFlowStepIsRetriedFromItsCheckpoint`.
+- **Cancel of a suspended run.** Covered by `TestCanceledSuspendedRunIsFinal`.
+- **Two concurrent decisions.** Covered by `TestConcurrentDecisionsRunTheRestOnce`.
+- **Cancel of a run held elsewhere, and of a final run.** Covered by `TestCancelOfARunHeldElsewhereIsRefused`.
+
+While the gates ran, one test failed now and then (about 1 run in 1,000, under `-race`): `TestCancelBeforeTheAnswerKeepsTheConversationValid/live`. The bug was in the test, not the runner. The test reads the run's events on another goroutine, and the checks run after each execution (lease released, cache equals a cold load) ran there too, at the same moment as the test's `Cancel`, which takes its own lease and appends the marker. Fixes:
+- `proc.drainInBackground` defers those checks to the end of the test;
+- the lease check matches the execution's own lease owner, not any lease of the process;
+- `Runner.Run` now records the claimed lease in `Execution.Run`, as its doc promises ("the run as it stood when the execution was made"). Before, a new run's record had no lease.
+
+After the fix, 1,800 stress runs and 200 race runs of the package (all but the simulation) are clean.
+
+Two weak assertions in `TestRejectedRunIsFinal` were also tightened: the reason now has to match exactly, and a decision on the rejected run must be `ErrFinal`.
+
+Still open, by size:
+- **The simulation is narrower than the code.** It always uses one tenant, never runs flows or decisions, never injects store timeouts, never moves the clock during an execution, never makes a live process race a Cancel, and starts a fresh process per action. With two replicas and four workers, a seed's interleaving depends on the scheduler, so a failing seed may not replay exactly. The final checks don't depend on the interleaving.
+- **The runner suite runs only on the memory store.** The store conformance suites run on both backends, but the runner's retry under `SQLITE_BUSY` with two replicas on one file is exercised only by the load test below.
+- **Smaller untested promises:** an execution whose `ctx` ends; `Recover` with a canceled `ctx`; `ErrIterated`; `ErrNoFlows`; an execution never iterated, resumed after its lease; usage stored for failed and suspended runs.
+
+### Performance
+
+Measured on an Apple M4 Pro (14 cores) running macOS on an APFS SSD, with other sessions sharing the machine. Times vary by up to about 2× between runs. Allocations don't vary.
+
+The model is `benchModel`: a stateless fake that costs what the scripted fake costs, with optional latency. The tools are an echo tool.
+
+**Benchmarks** (`bench_test.go`, kept; `go test -run '^$' -bench . -benchtime=1000x ./pkg/runner/`)
+
+| Benchmark | Result |
+|---|---|
+| `Run`, empty conversation, 0 / 3 tool turns: harness alone vs runner on memory | The runner adds about 92 / 210 allocs and 7.5 / 20 KB per run, and 10–40 µs |
+| `Run` on SQLite, parallel | 1.2–1.6 ms per run; about 9 committed transactions per 3-tool run (create, claim, 5 appends, transition, release). Half the CPU is in fsync and other syscalls, under `sqlite.(*Store).write` |
+| `RunInLongConversation`, 200 messages: harness alone / runner warm / runner cold (memory) | 1,277 / 1,763 / 6,682 allocs; about 27 µs / 95 µs / 450 µs. Warm, the runner adds about 70 µs: it copies the transcript it hands the harness, so nothing shares memory. That copy grows with the conversation; it is small next to a model call. Cold adds the store's context read |
+| `Context`, 200 messages: cached vs from the store | Memory: 401 vs 4,510 allocs. SQLite: 438 vs 7,748 allocs, about 20–50 µs vs 0.3–1.4 ms. The cache is 10–30× cheaper |
+| `Recover`, 100 dead runs per pass | Memory: 10k–30k runs/s. SQLite: 700–950 runs/s |
+
+**Load test** (throwaway harness; SQLite file; each user sends 5 messages one after another, each run 3 tool turns)
+
+| Model latency | Users | Runs/s | p50 | p99 | Errors | Heap after GC |
+|---|---|---|---|---|---|---|
+| 0 | 16 | 300–600 | 22–36 ms | 66–150 ms | 0 | 2.4–2.8 MB |
+| 0 | 64 | 90–370 | 135–380 ms | 0.3–2.6 s | 0 | 2.5–2.8 MB |
+| 0 | 256 | 180–620 | 250–890 ms | 1.2–3.3 s | 0 | 2.8 MB |
+| 50 ms | 16 | 64 | 234 ms | 301 ms | 0 | 2.8 MB |
+| 50 ms | 64 | 235 | 252 ms | 371 ms | 0 | 2.8 MB |
+| 50 ms | 256 | 477 | 416 ms | 1.03 s | 0 | 3.0 MB |
+| 0, memory store | 16 / 64 / 256 | 14.4k / 21.8k / 27.0k | 0.8 / 2.1 / 7.3 ms | 2.9 / 7.3 / 22 ms | 0 | 2.3–2.7 MB |
+
+The SQLite rows with no model latency vary from run to run, which is why they show ranges.
+
+- **Long conversation:** 500 messages one after another in one conversation. The p50 of a run is 0.98 ms over runs 1–50, 0.59 ms over runs 226–275, and 0.69 ms over runs 451–500. The cost does not grow with the conversation, because the cache avoids rereading it.
+- **Recovery storm:** 1,000 dead runs on one file, recovered by two replicas on two handles. All were done in 1.1 s (890 runs/s): each was resumed exactly once, and each log has exactly its 3 entries. The other replica found 100 of them already leased and skipped them.
+- **Cancel storm:** 200 live runs waiting on the model were canceled at once. All 200 cancels returned within 70 ms (p50 57 ms, p99 70 ms), and every conversation ends with the marker.
+- **Leaks:** none. Goroutines return to their starting count. The +2 per SQLite store is that store's two connection pools, open until the test ends; there is no +2 with the memory store.
+
+**Findings**
+1. **The runner is not the bottleneck; SQLite's single writer is.** On the memory store the same load reaches 14k–27k runs/s. On SQLite, about 9 commits per run cap throughput at a few hundred runs/s, and with no model latency the tail reaches seconds from about 32 users on. With real model latencies (seconds per call) the write rate is far lower: 1,000 active conversations at one turn every 2 s is about 500 commits/s. That is within what SQLite sustains here, but it argues for the Postgres backend (T091) for multi-replica serving. A fix inside the runner would be batching a turn's writes; it is not needed now.
+2. **A run copies the conversation it hands to the harness.** That costs about 70 µs at 200 messages and grows with length. Removing it would mean sharing immutable message slices with the harness, which gives up the "nothing shares memory" guarantee. Not worth it now.
+3. **`memory.Store.Create` scans every run of the tenant** to enforce one unfinished run per conversation, so the memory store slows as runs accumulate (110–200 µs per run after 20k runs). It is a test and development backend; recorded for its owner.
 
 ### For T037 (API wiring)
 

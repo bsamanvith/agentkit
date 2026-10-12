@@ -54,6 +54,9 @@ func ModuleRules() Rules {
 			"pkg/runner": {
 				"pkg/harness", "pkg/store", "pkg/flow", "pkg/agentstep", "pkg/llm", "pkg/tool", "pkg/tenancy", "pkg/clock",
 				"pkg/store/memory", "pkg/llm/llmtest", "pkg/clock/clocktest", "pkg/agentstep/agentsteptest", "internal/testkit",
+				// Benchmarks measure the real backend; TestRunnerDoesNotImportABackend
+				// keeps it out of the package itself.
+				"pkg/store/sqlite",
 			},
 			// The agent API runs a harness and never a model adapter:
 			// cmd/agentkit wires the model in (E09). Its tests use the demo

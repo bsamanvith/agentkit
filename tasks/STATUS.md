@@ -14,7 +14,7 @@
 | M5 Agent API, `agentkit serve`, image, Compose, smoke tests | [E09](E09-agent-api.md), [E01](E01-foundations.md) | In progress: `agentkit serve`, agent API v0 and the image done; **deployable** |
 | M6 Remote tools over ConnectRPC | E06 (to plan) | Planned |
 | Credentials, auth, tenancy at the edge | [E07](E07-auth-credentials.md) | **Planned** (T039–T045); T039 and T042 ready. Needed before any public deployment: `/mcp/` has no auth today |
-| First connectors: Tavily, Exa, Parallel (search, extract) | [E10](E10-search-connectors.md) | **In progress**: T046–T048 running; T049 connector test kit (suite + fakes) next; no auth work needed (Tavily keyless or keyed; Exa and Parallel keyed from env) |
+| First connectors: Tavily, Exa, Parallel (search, extract) | [E10](E10-search-connectors.md) | **In progress**: T046–T048 running; T049 test kit first cut on `main`; no auth work needed (Tavily keyless or keyed; Exa and Parallel keyed from env) |
 | More model providers | [E08](E08-model-providers.md) | Later |
 | Agent skills | [E02](E02-agent-skills.md) | In progress: `write-tests` exists and was dry-run on `pkg/flow` |
 
@@ -45,7 +45,7 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 
 | Task | What | Why now |
 |---|---|---|
-| [T049](T049-connector-test-kit.md) | `toolsettest`: cassettes, `RunConnector` suite, honest fakes | **First priority**: the three connector sessions adopt it; fakes stop other tests from paying. **Task card queued** |
+| [T049](T049-connector-test-kit.md) | `toolsettest`: cassettes, `RunConnector` suite, honest fakes | **Running**; first cut on `main` (`686b6ff`: Upstream, RunConnector, fakes, 16 planted bugs caught); docs, archtest rule, cmd seam and the §6 lessons next |
 | [T050](T050-connector-tool-evals.md) | Tool-use evals: real Claude with faked connectors | After T049 and one connector; model tokens only |
 | [T046](T046-connector-tavily.md) | `connectors/tavily`: search and extract, keyless or keyed | **Running** (session started 2026-10-12) |
 | [T047](T047-connector-exa.md) | `connectors/exa`: search and extract | **Running**; live tests need `EXA_API_KEY` in sessions |

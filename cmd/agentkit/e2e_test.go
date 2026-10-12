@@ -51,6 +51,19 @@ var (
 	errBuild  error
 )
 
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if binPath != "" {
+		if err := os.RemoveAll(filepath.Dir(binPath)); err != nil {
+			fmt.Fprintf(os.Stderr, "clean up e2e binary: %v\n", err)
+			if code == 0 {
+				code = 1
+			}
+		}
+	}
+	os.Exit(code)
+}
+
 // binary builds the agentkit binary once per test process.
 func binary(t *testing.T) string {
 	t.Helper()

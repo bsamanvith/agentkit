@@ -145,6 +145,8 @@ These tests build the binary and run it as separate OS processes. They talk to a
 - After every test, `checkConversation` checks all requests across processes: each agent's request extends its previous one exactly, byte for byte (so a thinking block read back from the file is unchanged), and ends with a user message. The server also checks that every fixture was used, so a change in the number of model calls fails the test.
 - **To record again**: `AGENTKIT_E2E_RECORD=1 ANTHROPIC_API_KEY=... go test -count=1 -run TestE2E ./cmd/agentkit/`. The server forwards to the API with the real key (the binary only ever gets a dummy key) and rewrites the fixtures, keeping only status, Content-Type and the event stream. Recorded on 2026-10-11 with Claude Opus 5.5. The flow scenario runs at default effort so turn 1 has a thinking block; recording can take a second try to get one.
 - Bugs planted to check them: agentstep resuming from scratch, and the file store not writing transcripts to disk. `TestE2EFlowKilledResumedApproved` caught both.
+- The shared replay binary's directory is owned by the package test process: `TestMain` removes it after all tests finish, including failed builds. Individual tests must not remove the shared binary while parallel tests still need it.
+- Cleanup regression: `TestE2EBinaryCleanup` runs isolated test processes and checks that their temporary directories are empty after both successful and failed builds. Mutation checks removing process cleanup or skipping cleanup after a build failure both failed this test. `go test -race -shuffle=on -count=20 ./cmd/agentkit` and `make check` passed.
 
 ### For E05 / T030 (the store's `TranscriptSaver`)
 

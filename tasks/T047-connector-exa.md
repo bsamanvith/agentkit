@@ -53,18 +53,18 @@ API source of truth: the OpenAPI spec `https://exa.ai/docs/exa-spec.yaml` (`/sea
 
 - [x] **Search request:** sends the documented JSON (golden request body: `query`, `numResults`, `type`, `contents`, filters) with the `x-api-key` header; the recorded response maps to E10's search shape (golden output), for both highlights and text modes. `TestSearchRequestAndMapping` (5 cassettes: highlights with every filter, defaults, text, highlights with `maxCharacters`, deep with `answer`; the request must be JSON-equal to the cassette's `.req.json`), the header on every request by the rig's `checkTest`. The responses are **synthetic** until recorded (Notes).
 - [x] **Extract** maps successes and per-URL failures (`statuses`) (golden). `TestExtractMapsSuccessesAndFailures` (`contents-partial`, `contents-query`).
-- [x] **Settings validation:** a missing `EXA_API_KEY` fails `Build` naming the variable; an `optional` toolset is skipped and shown degraded in `/readyz`; a literal `api_key`, unknown fields and bad enums fail with clear messages. `TestBuildRejectsSettings` (21 bad settings, `base_url` included), `cmd/agentkit` `TestServeExaWithoutKeyIsDegraded`.
-- [x] **Input validation:** an empty query, `max_results` out of range, a bad date, an unknown category, a non-http(s) URL, or more than 10 URLs is `ErrInvalidInput`, and no request is sent. `TestInvalidInputSendsNothing` (26 cases).
-- [x] **Errors:** `TestUpstreamErrors`, `TestRateLimitRetry`, `TestCancelStopsRetryWait`.
+- [x] **Settings validation:** a missing `EXA_API_KEY` fails `Build` naming the variable; an `optional` toolset is skipped and shown degraded in `/readyz`; a literal `api_key`, unknown fields and bad enums fail with clear messages. Passes `RunConnector` (`settings/*`: missing key named, literal `api_key`, unknown field, plain-http and loopback `base_url`, `base_url` routing). `TestBuildRejectsSettings` (18 Exa-specific bad settings: enums, nested unknown fields, timeouts, caps, `base_url` forms; a custom variable name and a blank value), `cmd/agentkit` `TestServeExaWithoutKeyIsDegraded`.
+- [x] **Input validation:** an empty query, `max_results` out of range, a bad date, an unknown category, a non-http(s) URL, or more than 10 URLs is `ErrInvalidInput`, and no request is sent. `TestInvalidInputSendsNothing` (26 cases); five of them again in `RunConnector`'s `invalid`, which also checks that no request is sent.
+- [x] **Errors:** passes `RunConnector` (`errors/*`: 400, 401, 403, 422, 500, 502, 503, malformed JSON, oversized body, hang, connection refused, `429_retry_after`, `429_then_200`). Exa-specific, beyond the suite: `TestUpstreamErrors` (Exa's error-body format, the typed sentinels, 402, the message cap, no echo of other bodies), `TestRateLimitRetry` (the 10 s cap, a second 429, no `Retry-After`, the call timeout ending before the wait), `TestCancelStopsRetryWait`.
   - 400 gives `ErrInvalidInput` with Exa's message (capped);
   - 401/403 give "rejected the API key";
   - 429 retries once after `Retry-After` (fake clock), then fails;
   - 5xx gives the status only, with no retry;
   - a cancelled `ctx` stops the wait.
-- [x] **Limits:** truncation at a rune boundary with the marker; the body limit is enforced. `TestLimits`.
-- [x] **Canary:** the key appears in no tool output, error, log line or MCP response, including when the upstream echoes it. `TestKeyNeverLeaks`, the rig's checks after every call and test, `cmd/agentkit` `TestServeExaOverMCP`.
-- [x] **Fuzzing:** `FuzzDecodeSearch` and `FuzzDecodeContents` never panic (and return the shared shape or `ErrUpstream`).
-- [x] **Over MCP:** `/mcp/exa` lists exactly `exa_search` and `exa_extract` with schemas, and a call through the MCP client against the fake upstream returns the mapped result. `cmd/agentkit` `TestServeExaOverMCP`.
+- [x] **Limits:** truncation at a rune boundary with the marker; the body limit is enforced. `TestLimits` (the marker, and a body of exactly 8 MB accepted and one byte more refused); passes `RunConnector` (`errors/oversized_body`, which also checks that at most limit+1 bytes are read).
+- [x] **Canary:** the key appears in no tool output, error, log line or MCP response, including when the upstream echoes it. Passes `RunConnector` (`canary`: the key echoed in 400, 401 and 500 bodies, over MCP and in logs; and after every subtest). `TestKeyNeverLeaks` (the key JSON-escaped, and in every field of a 200's results), the rig's checks after every call and test, `cmd/agentkit` `TestServeExaOverMCP`.
+- [x] **Fuzzing:** `FuzzDecodeSearch` and `FuzzDecodeContents` never panic (and return the shared shape or `ErrUpstream`); `FuzzResponses` and `FuzzResponsesExtract` (T049's target, through the tools).
+- [x] **Over MCP:** `/mcp/exa` lists exactly `exa_search` and `exa_extract` with schemas, and a call through the MCP client against the fake upstream returns the mapped result. `cmd/agentkit` `TestServeExaOverMCP`; passes `RunConnector` (`mcp`, `concurrency`).
 - [ ] **Live (`-tags live`, needs `EXA_API_KEY`):** a search returns results with URLs and content, and extracting a known page returns its text. If the key is not set, leave this unticked with `status: review`.
 - [x] **Mutation list** recorded (at least: `numResults` not sent, highlights not joined, per-URL failures dropped, key header missing, key not redacted from an echoed error, retry on 5xx). In Notes.
 
@@ -99,9 +99,9 @@ make golden   # review the output goldens, then make check
     - `rig_test.go`: the fake upstream and the rig, with its invariants after every call and every test;
     - `cassette_test.go`: cassette replay, a stand-in for T049's `toolsettest.Upstream`;
     - `spec_test.go`: the OpenAPI check;
-    - `conformance_test.go`: Exa described to T049's kit, its `TestConformance` skipped until the kit accepts synthetic cassettes ("Toward T049");
+    - `conformance_test.go`: Exa described to T049's kit, `TestConformance` (`RunConnector`) and the two `FuzzResponses` targets;
     - `exa_test.go`, `fuzz_test.go`, `example_test.go`, `export_test.go`, `live_test.go` (`-tags live`);
-  - `testdata/`: `cassettes/`, `golden/` (outputs), and `openapi/`:
+  - `testdata/`: `cassettes/`, `golden/` (mapping outputs `*.output.json`, suite outputs `<call>.json`), and `openapi/`:
     - `exa.json`, the spec slice;
     - `cut.go`, which reproduces that slice byte for byte from the published YAML;
     - a `README.md`.
@@ -109,7 +109,7 @@ make golden   # review the output goldens, then make check
   - `catalog.go`: one line, the factory with `os.LookupEnv`, next to Tavily's;
   - `exa_test.go`: the MCP and degraded tests;
   - `tavily_test.go`: Tavily's `TestSearchConfigBuilds`, which collided by name with mine on rebase, became the one test for `search.json`. It now expects agent toolsets `demo`, `tavily`, `exa`, and `exa` skipped for its missing key unless `EXA_API_KEY` is set.
-- **`internal/archtest/rules.go`:** unchanged. T046's `connectors` tree rule (`pkg/tool`, `pkg/toolset`, `pkg/clock`, and in tests `clocktest`, `internal/testkit` and `toolsettest`) is a superset of the one this task first added, so the rebase kept T046's alone.
+- **`internal/archtest/rules.go`:** removes Exa's `PendingConnectors` entry (T049's exemption until adoption). Otherwise unchanged: T046's `connectors` tree rule (`pkg/tool`, `pkg/toolset`, `pkg/clock`, and in tests `clocktest`, `internal/testkit` and `toolsettest`) is a superset of the one this task first added, so the rebase kept T046's alone.
 - **`deploy/local/agent/search.json`:** shared with T046. It now holds the `demo`, `tavily` and `exa` toolsets in both `mcp.toolsets` and `agent.toolsets`, with `exa` `optional: true`, and the system prompt names both search tools.
 - **`docs/QUICKSTART.md`:** §6 "Web search", one section shared with T046, with a subsection each for Tavily and Exa.
 - No new dependency. `go.yaml.in/yaml/v4`, already in `go.mod`, is used only by `testdata/openapi/cut.go`, a `go:build ignore` tool.
@@ -160,27 +160,25 @@ Both schemas are derived by `tool.Func` from the Go types, and both tools declar
 
 ### Toward T049 (`toolsettest`)
 
-**Adoption is deferred to a follow-up.** T049's first cut (`686b6ff`) reached `main` after this connector was built and gated; Tavily adopted it in `c0af020`. Exa cannot adopt it yet:
+**Adopted.** T049's kit reached `main` while this task was in progress (`686b6ff`, then `7923283`, which accepts `synthetic` cassettes). `TestConformance` runs `RunConnector` with `schema_honesty.dead_fields` enabled, and the suite lists the seven synthetic cassettes. Its goldens (`testdata/golden/<call>.json`) equal the mapping goldens of the same cassettes.
 
-- **The suite rejects synthetic cassettes.** T049 says a fixture not recorded from the real API is marked `synthetic` in its `.req.json`, and the suite prints those. But the first cut's `CassetteRequest` has no `synthetic` field, and it decodes with `DisallowUnknownFields`. So every check fails with `cassette contents-partial.req.json: json: unknown field "synthetic"`. All seven Exa cassettes are synthetic, and dropping the marker would hide that, so the fix belongs in `toolsettest`.
-- **`Call` has no per-call `Settings`,** so only the default-settings cases (`search-defaults`, `contents-query`) can be suite calls; highlights-with-cap, text and deep mode stay in the mapping tests (below).
+- **One configuration, three calls.** `Call` has no per-call `Settings`, so `connector()` uses the union of three cases' settings: `model_chooses_type` from `search-deep`, and `extract_defaults` from `contents-partial`. They do not interact: `model_chooses_type` adds the `type` input and leaves a call without one unchanged, and `extract_defaults` touch only `exa_extract`. So `search-defaults`, `search-deep` and `contents-partial` are suite calls, and `answer` and `failed[]` appear, as `dead_fields` requires. Text mode and the highlights cap change the search request, so they stay in `TestSearchRequestAndMapping` only.
+- **The suite found a bug.** After an oversized body, the client's deferred drain read up to another 8 MB, to keep the connection; `errors/oversized_body` allows at most limit+1 bytes. My own body-limit test checked only the error. The drain is gone: a body within the limit is already read to EOF, so it only ever ran past the limit.
+- **Deleted as duplicates of the suite:**
+  - `TestConcurrentCalls`;
+  - the literal-`api_key`, unknown-field and plain-http-`base_url` rows of `TestBuildRejectsSettings`;
+  - the three raw error-echo rows of `TestKeyNeverLeaks`.
+- **Kept, because they check what the suite does not:**
+  - `TestUpstreamErrors`: Exa's error body (`requestId`, `error`, `tag`), the sentinels (`ErrKeyRejected`, `ErrUpstream`), 402, the message cap, no echo of other bodies;
+  - `TestRateLimitRetry` and `TestCancelStopsRetryWait`: the 10 s cap, a second 429, no `Retry-After`, the call timeout ending before the wait, cancel mid-wait;
+  - the 8 MB boundary in `TestLimits` (exactly 8 MB accepted; the suite sends limit+4096);
+  - `TestKeyNeverLeaks`' escaped and 200-result echoes;
+  - `cmd/agentkit` `TestServeExaOverMCP`, which goes through the binary's `/mcp/exa` route;
+  - the mapping tests, `TestInvalidInputSendsNothing`, rune truncation and the marker, the spec tests, and the two decoder fuzz targets.
+- **Not replaced yet:** `cassette_test.go` and the rig still replay the mapping cases. Moving them onto `toolsettest.Upstream` is a separate refactor (Tavily kept its own too).
 
-`conformance_test.go` already describes Exa to the kit (`connector()`: those two calls and five `Invalid` inputs). Its `TestConformance` is skipped, with the blocker as the skip reason. Once the kit accepts `synthetic`, remove the skip, add the two `FuzzResponses` targets and delete the tests listed below. Until then nothing is ticked as "passes `RunConnector`": every criterion is covered by the hand-written tests named above. One prerequisite is already done: `WithBaseURL("")` keeps the default, as the suite's `Env.BaseURL` contract requires (`TestBuildRejectsSettings`).
-
-- **Replaced by `RunConnector`** at adoption; delete these then:
-  - `TestUpstreamErrors`, `TestRateLimitRetry`, `TestCancelStopsRetryWait`;
-  - the body-limit part of `TestLimits`, `TestKeyNeverLeaks`, `TestConcurrentCalls`;
-  - the missing-key, literal-`api_key`, unknown-field and `base_url` parts of `TestBuildRejectsSettings`;
-  - the listing part of `cmd/agentkit` `TestServeExaOverMCP`;
-  - `cassette_test.go`, replaced by `toolsettest.Upstream`.
-- **Kept:**
-  - the mapping tests and goldens;
-  - `TestInvalidInputSendsNothing`;
-  - rune truncation and the marker text;
-  - the spec tests, which are Exa-specific;
-  - the two decoder fuzz targets, plus the three-line `FuzzResponses` target once the helper exists.
 - **Where T049's API does not fit Exa:**
-  - **Content mode is a setting.** One `Connector` with `Calls []Call{Tool, Input, Cassettes}` cannot cover both highlights and text. `Call` needs a per-call `Settings` (as `searchCases` has), or the connector is registered twice.
+  - **Content mode is a setting.** One `Connector` cannot cover both highlights and text, even with the settings union above. `Call` needs a per-call `Settings` (as `searchCases` has), or the connector is registered twice.
   - **Schema honesty.** `answer` appears only for deep types, so a paid deep search must be among the recordings, and `author` must appear at least once. Both are true of the synthetic set.
   - **The OpenAPI checker** in `spec_test.go` belongs in the kit, because Parallel's spec needs it too.
     - It covers the keywords Exa's slice uses: `$ref`, `type`, `enum`, `const`, `anyOf`, `oneOf`, `properties`, `required`, `additionalProperties`, `propertyNames`, `items`, `min`/`maxItems`, `min`/`maxLength`, `pattern`, `format`, `minimum`, `maximum`, `exclusiveMinimum`.
@@ -207,9 +205,11 @@ Everything downstream is unchanged:
 
 Each mutant was planted in `connectors/exa/*.go`, one at a time, on a copy of the tree. For each, `go test -count=1 -timeout 90s ./connectors/exa/` and the exa tests of `cmd/agentkit` were run.
 
-**Result: 49 of 49 caught.** None survived, none failed to compile, and none hung.
+**Result: 50 of 50 caught**, re-run after adopting `RunConnector` and deleting the tests it duplicates. None failed to compile, and none hung.
 
 Before reaching that result:
+- the re-run after adoption had one survivor, "default LookupEnv reads the process env": its only killer was the deleted "no `LookupEnv` reads nothing" subtest. The suite always passes `WithLookupEnv`, so the subtest was not a duplicate, and it is back;
+- "body read past the limit" is new: it plants the over-read the suite found. Only `RunConnector`'s `oversized_body` catches it;
 - an earlier run had one survivor, "failed result still listed in results", now covered by `TestExtractMapsSuccessesAndFailures/a failed URL's result is dropped`;
 - a panic in a `TestLimits` subtest hid other tests' results; `only()` now fails the test instead of panicking;
 - the retry tests had no real-time deadline, so a regression would have hung the run for 10 minutes. `waitDone` now gives each wait 10 s, then fails.
@@ -218,39 +218,39 @@ The six mutants the task requires are among the rows below (`numResults` not sen
 
 | Mutant | Caught by |
 |---|---|
-| numResults not sent | `TestSearchRequestAndMapping` |
-| max_results default ignored | `TestSearchRequestAndMapping` |
-| highlights not joined (first only) | `TestSearchRequestAndMapping`, `TestServeExaOverMCP` |
-| empty highlights not skipped | `TestSearchRequestAndMapping` |
+| numResults not sent | `TestConformance`, `TestSearchRequestAndMapping` |
+| max_results default ignored | `TestConformance`, `TestSearchRequestAndMapping` |
+| highlights not joined (first only) | `TestConformance`, `TestSearchRequestAndMapping`, `TestServeExaOverMCP` |
+| empty highlights not skipped | `TestConformance`, `TestSearchRequestAndMapping` |
 | search contents mode ignored | `TestLimits`, `TestSearchRequestAndMapping` |
 | text mode maxCharacters not sent | `TestSearchRequestAndMapping` |
-| author dropped | `TestSearchRequestAndMapping` |
-| answer not mapped | `TestSearchRequestAndMapping` |
+| author dropped | `TestConformance`, `TestSearchRequestAndMapping` |
+| answer not mapped | `TestConformance`, `TestSearchRequestAndMapping` |
 | unknown category accepted | `TestInvalidInputSendsNothing` |
 | end date not end of day | `TestSearchRequestAndMapping` |
 | company/people filter check removed | `TestInvalidInputSendsNothing` |
 | search content cap not applied | `TestLimits` |
-| per-URL failures dropped | `TestExtractMapsSuccessesAndFailures` |
+| per-URL failures dropped | `TestConformance`, `TestExtractMapsSuccessesAndFailures` |
 | failed result still listed in results | `TestExtractMapsSuccessesAndFailures` |
-| unmentioned URL not reported | `TestExtractMapsSuccessesAndFailures` |
+| unmentioned URL not reported | `TestConformance`, `TestExtractMapsSuccessesAndFailures` |
 | query highlights ignored in extract | `TestExtractMapsSuccessesAndFailures` |
-| max_age_hours not sent | `TestExtractMapsSuccessesAndFailures` |
-| more than 10 URLs allowed | `TestInvalidInputSendsNothing` |
-| non-http URL accepted | `TestInvalidInputSendsNothing` |
+| max_age_hours not sent | `TestConformance`, `TestExtractMapsSuccessesAndFailures` |
+| more than 10 URLs allowed | `TestConformance`, `TestInvalidInputSendsNothing` |
+| non-http URL accepted | `TestConformance`, `TestInvalidInputSendsNothing` |
 | URL credentials accepted | `TestInvalidInputSendsNothing` |
 | extract content cap not applied | `TestLimits` |
-| key header missing | `TestCancelStopsRetryWait`, `TestConcurrentCalls`, `TestExtractMapsSuccessesAndFailures`, `TestKeyNeverLeaks`, `TestLimits`, `TestRateLimitRetry`, `TestSearchRequestAndMapping`, `TestServeExaOverMCP`, `TestUpstreamErrors` |
-| key also sent as Bearer | `TestCancelStopsRetryWait`, `TestConcurrentCalls`, `TestExtractMapsSuccessesAndFailures`, `TestKeyNeverLeaks`, `TestLimits`, `TestRateLimitRetry`, `TestSearchRequestAndMapping`, `TestUpstreamErrors` |
-| key not redacted | `TestKeyNeverLeaks`, `TestServeExaOverMCP` |
-| retry on 5xx | `TestUpstreamErrors` |
-| 429 retried twice | `TestRateLimitRetry` |
-| Retry-After ignored | `TestRateLimitRetry` |
+| key header missing | every test that makes a call (the rig and `RunConnector` check the header on each request) |
+| key also sent as Bearer | every test that makes a call (the rig and `RunConnector` check the header on each request) |
+| key not redacted | `TestConformance`, `TestKeyNeverLeaks`, `TestServeExaOverMCP` |
+| retry on 5xx | `TestConformance`, `TestUpstreamErrors` |
+| 429 retried twice | `TestConformance`, `TestRateLimitRetry` |
+| Retry-After ignored | `TestConformance`, `TestRateLimitRetry` |
 | Retry-After cap not enforced | `TestRateLimitRetry` |
 | cancel does not stop the wait | `TestCancelStopsRetryWait` |
-| 400 message not carried | `TestServeExaOverMCP`, `TestUpstreamErrors` |
-| 400 message not capped | `TestUpstreamErrors` |
-| 422 not invalid input | `TestUpstreamErrors` |
-| 401 echoes the body | `TestKeyNeverLeaks`, `TestUpstreamErrors` |
+| 400 message not carried | `TestConformance`, `TestServeExaOverMCP`, `TestUpstreamErrors` |
+| 400 message not capped | `TestConformance`, `TestUpstreamErrors` |
+| 422 not invalid input | `TestConformance`, `TestUpstreamErrors` |
+| 401 echoes the body | `TestConformance`, `TestUpstreamErrors` |
 | truncation splits a rune | `TestLimits` |
 | body limit not enforced | `TestLimits` |
 | invalid input reported as tool failure | `TestInvalidInputSendsNothing`, `TestKeyNeverLeaks`, `TestUpstreamErrors` |
@@ -264,7 +264,8 @@ The six mutants the task requires are among the rows below (`numResults` not sen
 | count not grouped | `TestLimits` |
 | error message gets the content hint | `TestUpstreamErrors` |
 | titles get the content marker | `TestLimits` |
-| base_url: plain http to any host | `TestBuildRejectsSettings` |
-| base_url setting ignored | `TestBuildRejectsSettings` |
+| base_url: plain http to any host | `TestBuildRejectsSettings`, `TestConformance` |
+| base_url setting ignored | `TestBuildRejectsSettings`, `TestConformance` |
 | base_url credentials accepted | `TestBuildRejectsSettings` |
+| body read past the limit | `TestConformance` |
 

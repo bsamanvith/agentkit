@@ -145,6 +145,7 @@ func TestBuildRejectsSettings(t *testing.T) {
 			}
 		}
 	})
+	// Not in RunConnector, which always passes WithLookupEnv.
 	t.Run("no LookupEnv reads nothing", func(t *testing.T) {
 		t.Parallel()
 		_, err := exa.Factory().Build(t.Context(), nil)
@@ -195,9 +196,7 @@ func TestBuildRejectsSettings(t *testing.T) {
 	})
 
 	bad := map[string]string{
-		"literal api_key":         `{"api_key": "sk-literal-value-123"}`,
 		"literal API_KEY":         `{"API_KEY": "sk-literal-value-123"}`,
-		"unknown field":           `{"api_key_env": "EXA_API_KEY", "depth": "deep"}`,
 		"unknown nested field":    `{"search_defaults": {"type": "auto", "livecrawl": "always"}}`,
 		"bad env name":            `{"api_key_env": "EXA-KEY"}`,
 		"bad type":                `{"search_defaults": {"type": "neural"}}`,
@@ -212,7 +211,6 @@ func TestBuildRejectsSettings(t *testing.T) {
 		"content cap negative":    `{"max_content_chars": {"search": -5}}`,
 		"content cap not object":  `{"max_content_chars": 4000}`,
 		"trailing data":           `{} {}`,
-		"base_url plain http":     `{"base_url": "http://api.exa.ai"}`,
 		"base_url not absolute":   `{"base_url": "api.exa.ai"}`,
 		"base_url credentials":    `{"base_url": "https://user:pw@api.exa.ai"}`,
 		"base_url scheme":         `{"base_url": "ftp://127.0.0.1/"}`,
@@ -549,8 +547,9 @@ func TestLimits(t *testing.T) {
 	})
 }
 
-// Criterion: canary. The key appears in no output, error or log line, even
-// when Exa echoes it, raw or JSON-escaped, in an error or in results.
+// Criterion: canary, beyond RunConnector's (which echoes the key raw in
+// 400, 401 and 500 bodies): the key appears in no output, error or log line
+// when Exa echoes it JSON-escaped, or in any field of a 200's results.
 func TestKeyNeverLeaks(t *testing.T) {
 	t.Parallel()
 	escaped := strings.ReplaceAll(canaryKey, "a", `a`) // the same string, encoded differently
@@ -565,10 +564,7 @@ func TestKeyNeverLeaks(t *testing.T) {
 		settings, tool, input string
 		resp                  response
 	}{
-		"400 echoes the key":          {``, "exa_search", `{"query": "q"}`, response{status: 400, body: []byte(`{"error": "bad key ` + canaryKey + `"}`)}},
 		"400 echoes it escaped":       {``, "exa_search", `{"query": "q"}`, response{status: 400, body: []byte(`{"error": "bad key ` + escaped + `"}`)}},
-		"401 echoes the key":          {``, "exa_search", `{"query": "q"}`, response{status: 401, body: []byte(`{"error": "` + canaryKey + `"}`)}},
-		"500 echoes the key":          {``, "exa_extract", `{"urls": ["https://a.example/"]}`, response{status: 500, body: []byte(canaryKey)}},
 		"search results, highlights":  {`{"search_defaults": {"model_chooses_type": true}}`, "exa_search", `{"query": "q", "type": "deep"}`, ok([]byte(echo(canaryKey)))},
 		"search results, text":        {`{"search_defaults": {"contents": "text"}}`, "exa_search", `{"query": "q"}`, ok([]byte(echo(escaped)))},
 		"extract results and failure": {``, "exa_extract", `{"urls": ["https://a.example/"]}`, ok([]byte(echo(canaryKey)))},
@@ -584,31 +580,6 @@ func TestKeyNeverLeaks(t *testing.T) {
 				t.Errorf("output %s: want the echoed key replaced with [redacted]", out)
 			}
 		})
-	}
-}
-
-// Calls may run concurrently on one toolset (tool.Tool's contract).
-func TestConcurrentCalls(t *testing.T) {
-	t.Parallel()
-	r := newRig(t, "")
-	body := cassetteBody(t, "search-highlights")
-	r.up.respond = func(recorded) response { return ok(body) }
-	const n = 8
-	outs := make(chan string, n)
-	for range n {
-		go func() {
-			out, err := r.call(t.Context(), "exa_search", `{"query": "q"}`)
-			if err != nil {
-				t.Error(err)
-			}
-			outs <- string(out)
-		}()
-	}
-	first := <-outs
-	for range n - 1 {
-		if got := <-outs; got != first {
-			t.Errorf("concurrent outputs differ:\n%s\n%s", got, first)
-		}
 	}
 }
 

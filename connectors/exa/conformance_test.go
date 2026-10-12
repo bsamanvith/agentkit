@@ -57,12 +57,18 @@ func connector() toolsettest.Connector {
 	}
 }
 
-// TestConformance is skipped until toolsettest accepts "synthetic" in a
-// cassette's .req.json (T049 specifies it; the first cut's CassetteRequest
-// rejects it as an unknown field, and every Exa cassette is synthetic). Then
-// remove the skip, add the FuzzResponses targets for both tools, and delete the
-// hand-written tests the suite replaces (T047 Notes, "Toward T049").
+// Criteria covered by the shared suite: settings, missing key, the error
+// matrix, the retry rule, body limits, canary, no network, MCP, concurrency
+// and schema honesty (T049).
 func TestConformance(t *testing.T) {
 	t.Parallel()
 	toolsettest.RunConnector(t, connector())
+}
+
+func FuzzResponses(f *testing.F) {
+	toolsettest.FuzzResponses(f, connector(), "exa_search")
+}
+
+func FuzzResponsesExtract(f *testing.F) {
+	toolsettest.FuzzResponses(f, connector(), "exa_extract")
 }

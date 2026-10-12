@@ -1,6 +1,7 @@
 package toolsettest
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -8,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -24,11 +26,17 @@ var errRefused = errors.New("toolsettest: hermetic client refused a request to a
 // hermetic is the RoundTripper of the only HTTP client the kit hands out. It
 // lets requests reach the allowed hosts (host:port) and refuses the rest,
 // failing the test; it counts the response body bytes the connector reads.
+//
+// With a handler, it serves allowed requests in this process instead of over
+// a socket: a socket per request (a fuzz iteration makes several) leaves
+// ports in TIME_WAIT, and a fuzz run exhausts the machine's ephemeral ports.
 type hermetic struct {
 	tb      testing.TB
 	via     string
 	allowed []string
 	base    *http.Transport
+	handler http.Handler   // nil: over the network, through base
+	serving sync.WaitGroup // in-process handlers still running
 
 	mu       sync.Mutex
 	maxRead  int64 // most bytes read from one response body
@@ -58,7 +66,13 @@ func (h *hermetic) RoundTrip(req *http.Request) (*http.Response, error) {
 	h.mu.Lock()
 	h.requests++
 	h.mu.Unlock()
-	resp, err := h.base.RoundTrip(out)
+	var resp *http.Response
+	var err error
+	if h.handler != nil {
+		resp, err = h.serveInProcess(out)
+	} else {
+		resp, err = h.base.RoundTrip(out)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +80,66 @@ func (h *hermetic) RoundTrip(req *http.Request) (*http.Response, error) {
 	return resp, nil
 }
 
-func (h *hermetic) close() { h.base.CloseIdleConnections() }
+// close waits for the in-process handlers (the caller ends held requests
+// first) and closes idle connections.
+func (h *hermetic) close() {
+	h.serving.Wait()
+	h.base.CloseIdleConnections()
+}
+
+// serveInProcess runs the handler on req as a server would, and returns its
+// response once the handler is done, or the context's error if that comes
+// first (the handler ends with the context: it is the request's). The body
+// fails with the context's error once the context ends, as a connection's
+// does.
+func (h *hermetic) serveInProcess(req *http.Request) (*http.Response, error) {
+	ctx := req.Context()
+	var body []byte
+	if req.Body != nil {
+		b, err := io.ReadAll(req.Body)
+		_ = req.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+		body = b
+	}
+	sreq := req.Clone(ctx)
+	sreq.Body = io.NopCloser(bytes.NewReader(body))
+	sreq.ContentLength = int64(len(body))
+	sreq.Host = req.URL.Host
+	sreq.RequestURI = req.URL.RequestURI()
+	sreq.RemoteAddr = "127.0.0.1:1"
+	rec := httptest.NewRecorder()
+	done := make(chan struct{})
+	h.serving.Add(1)
+	go func() {
+		defer h.serving.Done()
+		defer close(done)
+		h.handler.ServeHTTP(rec, sreq)
+	}()
+	select {
+	case <-done:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	resp := rec.Result()
+	resp.Request = req
+	resp.Body = &ctxBody{ctx: ctx, ReadCloser: resp.Body}
+	return resp, nil
+}
+
+// ctxBody fails reads once ctx is done.
+type ctxBody struct {
+	ctx context.Context
+	io.ReadCloser
+}
+
+func (b *ctxBody) Read(p []byte) (int, error) {
+	if err := b.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return b.ReadCloser.Read(p)
+}
 
 // stats returns how many requests went out and the most bytes the connector
 // read from one response body.

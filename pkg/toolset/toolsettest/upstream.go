@@ -117,6 +117,9 @@ func NewUpstream(tb testing.TB, dir string) *Upstream {
 	}
 	u.srv = httptest.NewServer(http.HandlerFunc(u.serve))
 	u.hermetic = newHermetic(tb, u.via, u.srv.Listener.Addr().String())
+	// The listener stays, for URL and for a connector that bypasses the
+	// client; the client serves the same handler in process.
+	u.hermetic.handler = u.srv.Config.Handler
 	u.client = &http.Client{Transport: u.hermetic}
 	tb.Cleanup(func() {
 		u.releaseHangs() // before Close, which waits for handlers

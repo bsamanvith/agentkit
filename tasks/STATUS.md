@@ -15,7 +15,7 @@
 | M6 Remote tools over ConnectRPC | E06 (to plan) | Planned |
 | Credentials, auth, tenancy at the edge | [E07](E07-auth-credentials.md) | **Planned** (T039–T045); T039 and T042 ready. Needed before any public deployment: `/mcp/` has no auth today |
 | First connectors: Tavily, Exa, Parallel (search, extract) | [E10](E10-search-connectors.md) | **Tavily done** (live end to end with real Claude passed); Exa and Parallel on `main`, in review until keys exist; no auth work needed (Tavily keyless or keyed; Exa and Parallel keyed from env) |
-| Clients: admin console, CLI and headless, and the APIs behind them | [E11](E11-clients.md) | **In progress**: T053 done; T062 (agents, conversations, catalog API), T063 (agents over MCP), T061 (login), T055/T064 (console) planned. UI plan: [docs/UI.md](../docs/UI.md) with a clickable mockup |
+| Clients: admin console, CLI and headless, and the APIs behind them | [E11](E11-clients.md) | **In progress**: T053 done (`pkg/agentclient`, plus lenient message decoding, PR #4); T062 (agents, conversations, catalog API), T063 (agents over MCP), T061 (login), T055/T064 (console) planned. UI plan: [docs/UI.md](../docs/UI.md) with a clickable mockup |
 | Skills and memory (context store; search by keyword or embeddings, opt-in) | [E12](E12-skills-memory.md) | **Planned** (T057–T060); T057 and T058 can start now |
 | Agent protocols: A2UI (agent-driven UI), A2A (agent to agent), AG-UI, MCP Apps | [E13](E13-agent-protocols.md) | **Planned** (T065–T069); after the console basics and the agents API |
 | Background agents and agent-to-agent messaging | [E14](E14-background-agents-messaging.md) | **Planned** (T071–T074); needs the runner (T030) and SQLite store (T029), which move up to **start now** |
@@ -86,13 +86,14 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 
 1. **First embedding provider** for semantic memory (T060): Voyage AI, OpenAI, or a local model through the OpenAI-compatible endpoint.
 2. **`EXA_API_KEY` and `PARALLEL_API_KEY` in Claude sessions** (like `ANTHROPIC_KEY`) for T047's and T048's live tests; optional `TAVILY_API_KEY` (Tavily's live tests run keyless without it).
-3. **Delete the `review/t022-base` branch**, and the merged `claude/*` session branches including `claude/t013-flow-tests` (all their work is on `main`).
+3. **Delete the `review/t022-base` branch**, and the merged `claude/*` session branches including `claude/t013-flow-tests` and `claude/festive-napier-f0b111` (all their work is on `main`).
 
 ## Owner decisions recorded
 
 - 2026-10-12: no Anthropic key in GitHub. Live tests run in Claude sessions (`ANTHROPIC_KEY`, mapped by `make test-live`); T034 is a perf report only.
 - 2026-10-12: first connectors are Tavily, Exa and Parallel, for search and extraction ([E10](E10-search-connectors.md)); they run in parallel with E07, keys from the environment for now.
 - 2026-10-12: the owner will say how to deploy; no deploy task until then. First target: the Docker image locally, used through the clients.
+- 2026-10-12 (T053, PR #4): the agent API's wire types live in `pkg/agentapi/wire` (imports only `pkg/llm`). Archtest's `SharedChildren` exemption, approved by the owner, lets `pkg/agentapi` import it. Messages on the wire decode **leniently** (unknown fields ignored, unknown block types kept as `llm.Unknown` and stored nowhere), so the API's additive rule holds for messages too; roles stay strict, and a new role means `"v": 2`.
 - 2026-10-12: background agents and agent messaging (E14): detached runs with a stored, resumable event stream; schedules and webhooks; mailboxes with sync or async messages, wake on reply, allowlists and loop limits. The runner and SQLite store move to the front.
 - 2026-10-12: a dedicated UX design session (T070) lays out the console before T055 builds it; each task now lists the references to study.
 - 2026-10-12: agent protocols (E13): agents stream UI as A2UI surfaces (validated against our catalog, rendered with the console's own components); our agents served over A2A and remote A2A agents usable as tools; AG-UI and MCP Apps later. Console look: neutral (grey, white, minimal black; near-black dark mode); tool calls as quiet one-line steps with details on demand.

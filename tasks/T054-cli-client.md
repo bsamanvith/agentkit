@@ -19,6 +19,15 @@ Two ways to use a running agent from a terminal ([E11](E11-clients.md)): `chat` 
 - Config: `--server` / `AGENTKIT_SERVER` (default `http://127.0.0.1:8080`), token from `AGENTKIT_API_TOKEN`; the token never printed (including `-v`).
 - `scripts/try-agent.sh` and `docs/QUICKSTART.md` show `agentkit chat` and `agentkit ask --json` against the running server.
 
+## From T053's handoff (2026-10-12)
+
+- **`ask --json`:** print `Stream.RawData()` for each event, so unknown fields survive.
+- **Exit codes:** 0 on `run_done`, 1 on `run_error`, 2 on any client error. A failed run is not a Go error: the stream ends with `run_error`, then `io.EOF`.
+- **Ctrl-C:** calls `Stream.Close()`, which cancels the run. If the run stopped before answering, the next message gets `ErrConversationInterrupted`; offer to resume with an empty message.
+- **Retries:** retry `ErrOverCapacity` and `ErrShuttingDown` after `APIError.RetryAfter`.
+- **No default timeout:** use the context, because an HTTP client `Timeout` also cuts streams.
+- **Unknown message blocks** (`llm.Unknown`, from lenient decoding): show them as a placeholder such as `[image]`. `Message.Text()` already skips them.
+
 ## Acceptance criteria
 
 - [ ] `ask` against `agentkit serve` (replay e2e: the real binaries, replayed model): plain output is the answer; `--json` lines parse as events and end with `run_done`; exit codes 0/1/2/3 each produced by a real case.

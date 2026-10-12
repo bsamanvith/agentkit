@@ -38,6 +38,14 @@ People need to use the agent without a terminal: a chat like a terminal agent's,
 - [OWASP XSS Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html) and [CSP](https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP) (rendering untrusted text)
 - [WAI-ARIA live regions](https://www.w3.org/WAI/ARIA/apg/) (announcing streamed text politely)
 
+## From T053's handoff (2026-10-12)
+
+- **Streaming:** use `fetch` with a stream reader, not `EventSource`, because runs are POSTs.
+- **SSE framing:** port the framing rules and the cases of `pkg/agentclient`'s `TestSSEFraming` to TypeScript, with a line-length limit.
+- **Cancel:** `AbortController.abort()` cancels the run, the same as the Go client's `Close()`.
+- **Unknown events:** never stop the stream on an unknown event type (the additive rule).
+- **Messages:** parse them leniently, as the Go side does since PR #4: ignore unknown fields, and show unknown block types as placeholders.
+
 ## Acceptance criteria
 
 - [ ] In Chromium (chromedp) against `agentkit serve` (replayed model): sending a message streams the answer into the page; a tool call appears as a card with its input and result; a follow-up continues the conversation; reload + clicking the conversation in the sidebar shows the history.

@@ -240,4 +240,20 @@ Each mutant was planted alone. The driver ran `go test -count=1` on the package 
 
 ### Live
 
-Not run. This session has no `ANTHROPIC_KEY`, so `make test-live` is left to the planner. Nothing live-only changed: the model adapter is untouched, and each agent's model is built by the same `newModel` path the live tests use.
+Run on 2026-10-12 with the owner's key, on `claude-haiku-5-5` to keep it cheap. The model was swapped locally in `anthropic.DefaultModel` and `search.json` for the run, and not committed.
+
+- **`go test -tags live -run '^TestLive' ./pkg/llm/anthropic/ ./cmd/agentkit/`** passed:
+  - `TestLiveToolCall`;
+  - `TestLiveRunUsesTool`;
+  - `TestLiveMixedToolResultsAndText`;
+  - `TestLiveServeAgent` (the one-agent config);
+  - `TestLiveServeSearch` (`search.json`, two agents).
+- **Regression found and fixed.** `TestLiveServeSearch` posted its run without naming an agent. Since `search.json` has two agents, that run goes to `default`, which has only the demo tools, so it could never call `tavily_search`. The test now names `"agent": "search"` (`agentClient.agent`).
+- **By hand, against `agentkit serve` with `search.json`:**
+  - `agent: "search"` called `tavily_search` and cited go.dev;
+  - a run naming no agent got `default`, which called `calculate`;
+  - continuing the search conversation with `agent: "default"` was 409 `agent_mismatch`;
+  - continuing it with no agent stayed on `search`;
+  - the listing was newest first, `limit=1` with the cursor gave both pages with no `next_cursor` at the end, and `?agent=search` gave the one search conversation;
+  - `DELETE` was 204, then `GET` was 404;
+  - the key appeared in none of the responses.

@@ -14,8 +14,8 @@ import (
 
 // TestLiveServeSearch runs agentkit serve with deploy/local/agent/search.json
 // against Claude and the real Tavily, keyless (TAVILY_API_KEY is not passed
-// to the server): a question about the present gets a tavily_search call and
-// an answer citing a URL.
+// to the server): a question about the present, asked of the "search" agent,
+// gets a tavily_search call and an answer citing a URL.
 func TestLiveServeSearch(t *testing.T) {
 	t.Parallel()
 	key, token := os.Getenv("ANTHROPIC_API_KEY"), os.Getenv("ANTHROPIC_AUTH_TOKEN")
@@ -36,7 +36,7 @@ func TestLiveServeSearch(t *testing.T) {
 		}
 	}
 	p := startServe(t, string(config), 20*time.Second, env...)
-	a := agentClient{t: t, url: p.url, token: e2eToken}
+	a := agentClient{t: t, url: p.url, token: e2eToken, agent: "search"}
 
 	events := a.stream("What is the latest stable release of the Go programming language? Search the web, and cite the source URL.", "", nil)
 	calls, results := toolEvents(events)

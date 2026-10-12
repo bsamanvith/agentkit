@@ -48,6 +48,7 @@ type agentClient struct {
 	t     *testing.T
 	url   string
 	token string
+	agent string // the agent a new conversation gets; "" for the server's default
 }
 
 func (a agentClient) client() *agentclient.Client {
@@ -64,7 +65,7 @@ func (a agentClient) client() *agentclient.Client {
 // event as it arrives.
 func (a agentClient) stream(message, conversationID string, each func(agentapi.Event)) []agentapi.Event {
 	a.t.Helper()
-	s, err := a.client().Stream(a.t.Context(), agentclient.RunRequest{Message: message, ConversationID: conversationID})
+	s, err := a.client().Stream(a.t.Context(), agentclient.RunRequest{Message: message, ConversationID: conversationID, Agent: a.agent})
 	if err != nil {
 		a.t.Fatalf("POST /v1/runs: %v", err)
 	}

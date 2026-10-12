@@ -1,0 +1,13 @@
+{
+  "method": "POST",
+  "path": "/search",
+  "body": {
+    "query": "retrieval precision for RAG",
+    "type": "auto",
+    "numResults": 5,
+    "contents": {
+      "highlights": true
+    }
+  },
+  "synthetic": true
+}

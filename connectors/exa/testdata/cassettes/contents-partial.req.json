@@ -1,0 +1,17 @@
+{
+  "method": "POST",
+  "path": "/contents",
+  "body": {
+    "urls": [
+      "https://go.dev/doc/devel/release",
+      "https://example.com/missing-page",
+      "https://slow.example.net/",
+      "https://unmentioned.example.com/a"
+    ],
+    "text": {
+      "maxCharacters": 5000
+    },
+    "maxAgeHours": 24
+  },
+  "synthetic": true
+}

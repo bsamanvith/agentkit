@@ -1,0 +1,21 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "requestId": "e492118ccdedcba5088bfc4357a8a125",
+  "results": [
+    {
+      "id": "https://exa.ai/blog/dynamic-highlights",
+      "title": "Dynamic Highlights",
+      "url": "https://exa.ai/blog/dynamic-highlights",
+      "text": "Dynamic Highlights\n\nA new way to choose which passages of a page to return.",
+      "highlights": [
+        "With a 12k character budget, relative to existing highlights, Dynamic Highlights achieves a 40% average token efficiency gain with a notable quality increase..."
+      ]
+    }
+  ],
+  "statuses": [
+    {"id": "https://exa.ai/blog/dynamic-highlights", "status": "success", "source": "cached"}
+  ],
+  "costDollars": {"total": 0.001}
+}

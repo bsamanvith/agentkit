@@ -1,0 +1,13 @@
+{
+  "method": "POST",
+  "path": "/search",
+  "body": {
+    "query": "What is the latest Go release?",
+    "type": "deep",
+    "numResults": 1,
+    "contents": {
+      "highlights": true
+    }
+  },
+  "synthetic": true
+}

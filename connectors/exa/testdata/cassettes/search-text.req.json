@@ -1,0 +1,17 @@
+{
+  "method": "POST",
+  "path": "/search",
+  "body": {
+    "query": "latest Go release",
+    "type": "fast",
+    "numResults": 5,
+    "category": "news",
+    "startPublishedDate": "2026-08-01T07:30:00.000Z",
+    "contents": {
+      "text": {
+        "maxCharacters": 4000
+      }
+    }
+  },
+  "synthetic": true
+}

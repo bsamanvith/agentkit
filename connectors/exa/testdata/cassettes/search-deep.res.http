@@ -1,0 +1,27 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "requestId": "7c4f5e2a1b3d4c6e8f9a0b1c2d3e4f50",
+  "results": [
+    {
+      "id": "https://go.dev/doc/devel/release",
+      "title": "Release History - The Go Programming Language",
+      "url": "https://go.dev/doc/devel/release",
+      "publishedDate": "2026-08-12T00:00:00.000Z",
+      "highlights": ["go1.27 (released 2026-08-12) Go 1.27 is a major release of Go."]
+    }
+  ],
+  "output": {
+    "content": "The latest Go release is Go 1.27, released on 2026-08-12.",
+    "grounding": [
+      {
+        "field": "content",
+        "citations": [{"url": "https://go.dev/doc/devel/release", "title": "Release History - The Go Programming Language"}],
+        "confidence": "high"
+      }
+    ]
+  },
+  "searchTime": 4210.5,
+  "costDollars": {"total": 0.015}
+}

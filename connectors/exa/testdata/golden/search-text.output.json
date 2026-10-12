@@ -1,0 +1,16 @@
+{
+  "results": [
+    {
+      "title": "Release History - The Go Programming Language",
+      "url": "https://go.dev/doc/devel/release",
+      "published_date": "2026-08-12T00:00:00.000Z",
+      "content": "Release History\n\nThis page summarizes the changes between official stable releases of Go. The change log has the full details.\n\ngo1.27 (released 2026-08-12)\n\nGo 1.27 is a major release of Go. Read the Go 1.27 Release Notes for more information."
+    },
+    {
+      "title": "Go 1.27 is out",
+      "url": "https://example.com/news/go-1-27",
+      "author": "Sam Lee",
+      "content": "The Go team released Go 1.27 today with iterator improvements and a faster garbage collector."
+    }
+  ]
+}

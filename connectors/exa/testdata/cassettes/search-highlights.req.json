@@ -1,0 +1,24 @@
+{
+  "method": "POST",
+  "path": "/search",
+  "body": {
+    "query": "retrieval precision for RAG",
+    "type": "auto",
+    "numResults": 3,
+    "category": "publication",
+    "includeDomains": [
+      "arxiv.org",
+      "*.thoughtworks.com",
+      "example.org/blog"
+    ],
+    "excludeDomains": [
+      "pinterest.com"
+    ],
+    "startPublishedDate": "2025-01-01T00:00:00.000Z",
+    "endPublishedDate": "2026-06-30T23:59:59.999Z",
+    "contents": {
+      "highlights": true
+    }
+  },
+  "synthetic": true
+}

@@ -1,0 +1,22 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "requestId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+  "results": [
+    {
+      "id": "https://go.dev/doc/devel/release",
+      "title": "Release History - The Go Programming Language",
+      "url": "https://go.dev/doc/devel/release",
+      "publishedDate": "2026-08-12T00:00:00.000Z",
+      "text": "Release History\n\nThis page summarizes the changes between official stable releases of Go."
+    }
+  ],
+  "statuses": [
+    {"id": "https://go.dev/doc/devel/release", "status": "success", "source": "cached"},
+    {"id": "https://example.com/missing-page", "status": "error", "error": {"tag": "CRAWL_NOT_FOUND", "httpStatusCode": 404}},
+    {"id": "https://slow.example.net/", "status": "error", "error": {"tag": "CRAWL_TIMEOUT", "httpStatusCode": null}}
+  ],
+  "searchTime": 950.2,
+  "costDollars": {"total": 0.001}
+}

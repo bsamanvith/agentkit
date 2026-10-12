@@ -1,0 +1,45 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "requestId": "e492118ccdedcba5088bfc4357a8a125",
+  "results": [
+    {
+      "id": "https://arxiv.org/html/2608.21702",
+      "title": "From Association to Causation: Improving Retrieval Precision of Retrieval-Augmented Generation",
+      "url": "https://arxiv.org/html/2608.21702",
+      "highlights": [
+        "Retrieval-Augmented Generation (RAG) grounds LLM generation on retrieved documents, but the standard terminal retrieval stage often returns documents that merely share keywords with the query.",
+        "We propose a causal reranking stage that keeps documents containing the needed information."
+      ],
+      "highlightScores": [0.61, 0.48],
+      "image": "https://arxiv.org/static/base/1.0.1/images/icons/smileybones-small.svg",
+      "favicon": "https://arxiv.org/static/browse/0.3.4/images/icons/favicon-32x32.png"
+    },
+    {
+      "id": "https://www.thoughtworks.com/en-us/insights/blog/generative-ai/four-retrieval-techniques-improve-rag",
+      "title": "Four retrieval techniques to improve RAG you need to know",
+      "url": "https://www.thoughtworks.com/en-us/insights/blog/generative-ai/four-retrieval-techniques-improve-rag",
+      "publishedDate": "2025-04-14T00:00:00.000Z",
+      "author": null,
+      "highlights": [
+        "It's not surprising, then, that we've seen a range of different approaches emerge that attempt to address RAG's limitations over the last year or so.",
+        ""
+      ],
+      "highlightScores": [0.55, 0.0]
+    },
+    {
+      "id": "https://example.org/blog/hybrid-search",
+      "title": "Hybrid search for retrieval: BM25 plus embeddings — résumé",
+      "url": "https://example.org/blog/hybrid-search",
+      "publishedDate": "2026-02-03T00:00:00.000Z",
+      "author": "Ana Pérez",
+      "highlights": [
+        "Combining lexical and dense retrieval recovers exact-match terms that embeddings miss."
+      ],
+      "highlightScores": [0.52]
+    }
+  ],
+  "searchTime": 1324.3,
+  "costDollars": {"total": 0.007, "search": {"neural": 0.007}}
+}

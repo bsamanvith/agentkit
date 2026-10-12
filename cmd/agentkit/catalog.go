@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/bsamanvith/agentkit/connectors/exa"
 	"github.com/bsamanvith/agentkit/connectors/tavily"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
@@ -18,5 +19,6 @@ func newCatalog() (*toolset.Catalog, error) {
 		// Logs the auth mode at startup. serve's own logger is not passed here
 		// yet (newCatalog takes none), hence a JSON logger on stderr.
 		tavily.Factory(tavily.WithLookupEnv(os.LookupEnv), tavily.WithLogger(slog.New(slog.NewJSONHandler(os.Stderr, nil)))),
+		exa.Factory(exa.WithLookupEnv(os.LookupEnv)),
 	)
 }

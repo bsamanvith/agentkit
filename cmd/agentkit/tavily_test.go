@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -19,6 +20,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/bsamanvith/agentkit/connectors/exa"
 	"github.com/bsamanvith/agentkit/connectors/tavily"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
@@ -53,7 +55,7 @@ func tavilyCassette(t *testing.T, name string) []byte {
 
 // TestSearchConfigBuilds: deploy/local/agent/search.json is a valid serve
 // config, and its toolsets build from this binary's catalog (tavily
-// compiled in, no key needed).
+// compiled in, no key needed; exa skipped as optional without EXA_API_KEY).
 func TestSearchConfigBuilds(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join("..", "..", "deploy", "local", "agent", "search.json")
@@ -63,15 +65,23 @@ func TestSearchConfigBuilds(t *testing.T) {
 	}
 	env := serveEnv{components: []string{"agent", mcpServerName}}
 	built, problems, err := buildToolsets(t.Context(), env, cfg, path, slog.New(slog.DiscardHandler))
-	if err != nil || len(problems) != 0 {
-		t.Fatalf("build: %v, problems %v", err, problems)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	// The real catalog reads EXA_API_KEY through os.LookupEnv.
+	if _, ok := os.LookupEnv("EXA_API_KEY"); ok {
+		if len(problems) != 0 || built["exa"] == nil {
+			t.Errorf("problems %v, want exa built with EXA_API_KEY set", problems)
+		}
+	} else if len(problems) != 1 || problems[0].Toolset != "exa" || !errors.Is(problems[0].Err, exa.ErrMissingKey) {
+		t.Errorf("problems %v, want only exa skipped for its missing key", problems)
 	}
 	defs, err := built["tavily"].List(t.Context())
 	if err != nil || len(defs) != 2 || defs[0].Name != "tavily_extract" || defs[1].Name != "tavily_search" {
 		t.Errorf("tavily toolset: %v %v, want tavily_extract and tavily_search", defs, err)
 	}
-	if !slices.Equal(cfg.Agent.Toolsets, []string{"demo", "tavily"}) {
-		t.Errorf("agent toolsets %v, want demo and tavily", cfg.Agent.Toolsets)
+	if !slices.Equal(cfg.Agent.Toolsets, []string{"demo", "tavily", "exa"}) {
+		t.Errorf("agent toolsets %v, want demo, tavily and exa", cfg.Agent.Toolsets)
 	}
 }
 

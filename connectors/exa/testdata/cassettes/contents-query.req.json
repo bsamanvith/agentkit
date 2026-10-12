@@ -1,0 +1,16 @@
+{
+  "method": "POST",
+  "path": "/contents",
+  "body": {
+    "urls": [
+      "https://exa.ai/blog/dynamic-highlights"
+    ],
+    "text": {
+      "maxCharacters": 20000
+    },
+    "highlights": {
+      "query": "token efficiency"
+    }
+  },
+  "synthetic": true
+}

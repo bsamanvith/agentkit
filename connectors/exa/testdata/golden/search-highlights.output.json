@@ -1,0 +1,22 @@
+{
+  "results": [
+    {
+      "title": "From Association to Causation: Improving Retrieval Precision of Retrieval-Augmented Generation",
+      "url": "https://arxiv.org/html/2608.21702",
+      "content": "Retrieval-Augmented Generation (RAG) grounds LLM generation on retrieved documents, but the standard terminal retrieval stage often returns documents that merely share keywords with the query.\n…\nWe propose a causal reranking stage that keeps documents containing the needed information."
+    },
+    {
+      "title": "Four retrieval techniques to improve RAG you need to know",
+      "url": "https://www.thoughtworks.com/en-us/insights/blog/generative-ai/four-retrieval-techniques-improve-rag",
+      "published_date": "2025-04-14T00:00:00.000Z",
+      "content": "It's not surprising, then, that we've seen a range of different approaches emerge that attempt to address RAG's limitations over the last year or so."
+    },
+    {
+      "title": "Hybrid search for retrieval: BM25 plus embeddings — résumé",
+      "url": "https://example.org/blog/hybrid-search",
+      "published_date": "2026-02-03T00:00:00.000Z",
+      "author": "Ana Pérez",
+      "content": "Combining lexical and dense retrieval recovers exact-match terms that embeddings miss."
+    }
+  ]
+}

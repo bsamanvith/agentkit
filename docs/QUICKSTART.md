@@ -96,17 +96,45 @@ Inside the container the server listens on `:8080` (not loopback), so `AGENTKIT_
 
 Environment: `AGENTKIT_COMPONENTS` (`agent`, `mcp-server`, or both), `AGENTKIT_ADDR` (default `127.0.0.1:8080`), `AGENTKIT_API_TOKEN` (required off loopback), `AGENTKIT_CONFIG`, `AGENTKIT_LOG_LEVEL`, `AGENTKIT_SHUTDOWN_TIMEOUT`. The full reference, event format and error codes: [tasks/T036](../tasks/T036-agent-api-v0.md) Notes.
 
-## 6. Web search (Tavily)
+## 6. Web search
 
-`deploy/local/agent/search.json` adds the `tavily` toolset: `tavily_search` (web search) and `tavily_extract` (a page's content), served at `/mcp/tavily` and given to the agent.
+`deploy/local/agent/search.json` adds two web search toolsets to the demo tools, each served over MCP at its own route and given to the agent:
+
+- `tavily`: `tavily_search` (web search) and `tavily_extract` (a page's content), at `/mcp/tavily`. No key needed.
+- `exa`: `exa_search` and `exa_extract` through [Exa](https://exa.ai), at `/mcp/exa`. Needs `EXA_API_KEY`.
 
 ```sh
+export EXA_API_KEY=...   # optional: without it only Tavily is used
 AGENTKIT_CONFIG=deploy/local/agent/search.json scripts/try-agent.sh
 ```
 
+Then ask something current, e.g. `{"message":"What is the latest Go release? Cite the source."}`: the run's events show a `tool_call` to one of the search tools, and the answer cites URLs.
+
+Do not expose a toolset that holds a key on a public address yet: until per-route auth for `/mcp` lands (T040), anyone who can reach the server can spend the key's quota. Keep `AGENTKIT_ADDR` on loopback (the default).
+
+### Tavily
+
 No Tavily key is needed: without one the toolset runs keyless, at Tavily's free rate limits. For higher limits set `TAVILY_API_KEY` in the server's environment (`"auth": "auto"` uses it when set; the startup log says which mode is in use). Settings and limits: [connectors/tavily](../connectors/tavily/doc.go).
 
-Do not expose a toolset that holds a key on a public address yet: until per-route auth for `/mcp` lands (T040), anyone who can reach the server can spend the key's quota.
+### Exa
+
+Exa needs an API key (dashboard.exa.ai); the config names the environment variable it is read from, never the key itself. Without `EXA_API_KEY` the server still starts: the `exa` toolset is optional, so it is skipped, the log says which variable is missing, and `/readyz` reports `degraded`. With `--docker`, pass the key into the container (`-e EXA_API_KEY`).
+
+Settings of an `exa` toolset (all optional; unknown fields, including a literal `api_key`, fail startup):
+
+| Field | Default | Meaning |
+|---|---|---|
+| `api_key_env` | `EXA_API_KEY` | environment variable holding the key |
+| `base_url` | `https://api.exa.ai` | another server, e.g. a local replay (`https`, or `http` to loopback only) |
+| `timeout` | `30s` | per call, including one retry on 429 |
+| `max_content_chars` | `{"search": 4000, "extract": 20000}` | cap on each result's content; a cut ends with e.g. `…[truncated 12,400 characters; call exa_extract on this URL for the full page]` |
+| `search_defaults.type` | `auto` | `instant`, `fast`, `auto`, `deep-lite`, `deep`, `deep-reasoning` |
+| `search_defaults.model_chooses_type` | `false` | let the model pick `type` per call |
+| `search_defaults.contents` | `highlights` | `highlights` (relevant passages) or `text` (page text) |
+| `search_defaults.max_characters` | Exa's default (highlights), the content cap (text) | sent as `maxCharacters` |
+| `search_defaults.category` | none | `company`, `publication`, `news`, `personal site`, `financial report`, `people` |
+| `extract_defaults.max_characters` | the extract cap | page text fetched per URL |
+| `extract_defaults.max_age_hours` | Exa's default | freshness: `0` always fetches, `-1` always uses the cache |
 
 ## Troubleshooting
 

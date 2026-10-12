@@ -85,7 +85,7 @@ API sources (fetch with `curl`; WebFetch may fail on DNS in sessions):
 - [x] **Fuzzing:** `FuzzDecodeSearch` and `FuzzDecodeExtract` never panic, nor do the kit's `FuzzResponsesSearch` and `FuzzResponsesExtract`. `make fuzz FUZZTIME=60s` clean; they also check the output shape, error classes and the key.
 - [x] **Over MCP:** `/mcp/parallel` lists exactly `parallel_search` and `parallel_extract` with schemas, and a call through the MCP client against the fake upstream returns the mapped result. Passes `RunConnector` (`mcp`). Also `TestParallelOverMCP` (cmd/agentkit).
 - [ ] **Live (`-tags live`, needs `PARALLEL_API_KEY`):** a search returns results with URLs and excerpts, and extracting a known page returns content. If the key is not set, leave this unticked with `status: review`. **Not run: no `PARALLEL_API_KEY` in the session.** `TestLive` (`connectors/parallel/live_test.go`) is written and skips without the key.
-- [x] **Mutation list** recorded (at least: `objective` dropped, extra queries not sent, extract options sent top-level, `errors` dropped, key header missing, key not redacted from an echoed error, retry on 5xx). 21 mutants, all killed: table in Notes.
+- [x] **Mutation list** recorded (at least: `objective` dropped, extra queries not sent, extract options sent top-level, `errors` dropped, key header missing, key not redacted from an echoed error, retry on 5xx). 22 mutants, all killed: table in Notes.
 
 ## Notes
 

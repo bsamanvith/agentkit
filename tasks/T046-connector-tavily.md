@@ -2,7 +2,7 @@
 id: T046
 title: "connectors/tavily: search and extract, keyless or keyed"
 epic: E10
-status: review
+status: done
 depends_on: [T026, T036]
 ---
 
@@ -295,3 +295,8 @@ Adopted on 2026-10-12 against T049's first cut (`686b6ff`). `TestConformance` pa
   - **Schema honesty** (every declared field non-null in some cassette) is not in the first cut. If it is added, Tavily fails on `author`, which is in E10's shared search shape but which Tavily never sends. It will need a per-field exemption with a reason.
   - **`callMCP` has no watchdog.** A connector that blocks on the fake clock (one that wrongly retries a 500) hangs `canary` until the package timeout, which hides the named `errors/500` failure. `rig.invoke` already has a watchdog; `callMCP` needs the same.
   - Resolved by the first cut: per-connector error bodies (`ErrorBody`), and a `429_then_200` within 10 s (it uses `Retry-After: 1`).
+
+### Planner close-out (2026-10-12)
+
+- The live end to end ran in the planner's cloud session, which has the Anthropic key: `cmd/agentkit.TestLiveServeSearch` **passed**. Real Claude called `tavily_search` (`{"query":"Go programming language latest stable release","include_domains":["go.dev"]}`, keyless) and answered with go.dev URLs. `connectors/tavily.TestLiveKeyless` and `TestLiveRecord` passed too, and the cassettes were unchanged.
+- The keyed live run (`TestLiveKeyed`) still needs `TAVILY_API_KEY`. Keyless covers the same code path apart from the auth header, which the suite checks. Closed as done; run it whenever a key exists.

@@ -39,7 +39,7 @@ The three tasks run in parallel with each other, and with E05 and E07.
 - [ ] [T052](T052-connector-kit-hardening.md) Kit hardening: the checks connectors still test themselves, golden first run, fuzz speed
 - [ ] [T051](T051-openapi-cassette-validation.md) Validate cassettes against vendored OpenAPI specs (shared helper; Exa and Parallel move onto it)
 - [ ] [T050](T050-connector-tool-evals.md) Tool-use evals: real Claude with faked connectors (after T049 and at least one connector)
-- [ ] [T046](T046-connector-tavily.md) `connectors/tavily`: `tavily_search`, `tavily_extract`, keyless or keyed — in review: on `main`, passes T049's `RunConnector`; waits for the keyed and real-Claude live runs
+- [x] [T046](T046-connector-tavily.md) `connectors/tavily`: `tavily_search`, `tavily_extract`, keyless or keyed — in review: on `main`, passes T049's `RunConnector`; waits for the keyed and real-Claude live runs
 - [x] [T047](T047-connector-exa.md) `connectors/exa`: `exa_search`, `exa_extract`, keyed (in review: live test and cassette recording need `EXA_API_KEY`)
 - [x] [T048](T048-connector-parallel.md) `connectors/parallel`: `parallel_search`, `parallel_extract`, keyed (in review: live test and cassette recording need `PARALLEL_API_KEY`)
 

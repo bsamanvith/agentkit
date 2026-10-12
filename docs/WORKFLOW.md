@@ -69,6 +69,7 @@ Each of these happened. The rule it led to is in bold.
 - **Plans go stale fast.** Handoffs arrived describing a state already overtaken (a task finished in between). **The planner checks `main` before acting on any handoff.**
 - **Scope rules can block obvious fixes.** A session could not correct a stale line outside its files. **That is intended; it reports the line and the planner fixes it.**
 - **Review branches linger.** A throwaway base branch for a review PR stayed after the work was on `main`. **Delete review branches when the PR is merged (with the owner's yes).**
+- **A finished task is not a finished session.** The planner archived the T038 session after its commit was on `main` with CI green, while the session was still running a self-review. **Re-read a session's latest status right before archiving it, and archive only an idle one.**
 - **Never discard a gate's output.** One local `make check` failed with its output sent to `/dev/null`; eight later runs passed, so the failing test is unknown. **Keep the log of every gate run (`make check > log 2>&1`) until it passes.**
 - **Credentials differ by environment.** The key is in `ANTHROPIC_KEY` in Claude sessions, not `ANTHROPIC_API_KEY`, and the owner keeps it out of GitHub. **`make test-live` maps it; code never reads `ANTHROPIC_KEY`. Live tests run in sessions, never in CI.**
 

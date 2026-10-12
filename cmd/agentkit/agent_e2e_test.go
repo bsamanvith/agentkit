@@ -7,9 +7,7 @@ package main
 //	AGENTKIT_E2E_RECORD=1 ANTHROPIC_API_KEY=... go test -count=1 -run TestE2EServeAgent ./cmd/agentkit/
 
 import (
-	"bufio"
-	"context"
-	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -21,6 +19,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/internal/testkit"
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
+	"github.com/bsamanvith/agentkit/pkg/agentclient"
 )
 
 const e2eToken = "e2e-token-0123456789abcdef"
@@ -43,67 +42,47 @@ const agentConfigJSON = `{
   }
 }`
 
-// agentClient talks to the agent API of a serve process.
+// agentClient talks to the agent API of a serve process, through
+// pkg/agentclient.
 type agentClient struct {
 	t     *testing.T
 	url   string
 	token string
 }
 
-func (a agentClient) do(ctx context.Context, method, path, body, accept string) *http.Response {
+func (a agentClient) client() *agentclient.Client {
 	a.t.Helper()
-	req, err := http.NewRequestWithContext(ctx, method, a.url+path, strings.NewReader(body))
+	// A stream that never ends fails, not hangs.
+	c, err := agentclient.New(a.url, agentclient.WithToken(a.token), agentclient.WithHTTPClient(&http.Client{Timeout: 2 * time.Minute}))
 	if err != nil {
 		a.t.Fatal(err)
 	}
-	if a.token != "" {
-		req.Header.Set("Authorization", "Bearer "+a.token)
-	}
-	if accept != "" {
-		req.Header.Set("Accept", accept)
-	}
-	resp, err := (&http.Client{Timeout: 2 * time.Minute}).Do(req) // a stream that never ends fails, not hangs
-	if err != nil {
-		a.t.Fatal(err)
-	}
-	return resp
+	return c
 }
 
-// sseEvents reads an event stream, calling each for every event as it
-// arrives, and returns them all.
-func sseEvents(t *testing.T, r io.Reader, each func(agentapi.Event)) []agentapi.Event {
-	t.Helper()
+// stream posts a run and reads its events to the end, calling each for every
+// event as it arrives.
+func (a agentClient) stream(message, conversationID string, each func(agentapi.Event)) []agentapi.Event {
+	a.t.Helper()
+	s, err := a.client().Stream(a.t.Context(), agentclient.RunRequest{Message: message, ConversationID: conversationID})
+	if err != nil {
+		a.t.Fatalf("POST /v1/runs: %v", err)
+	}
+	defer s.Close()
 	var events []agentapi.Event
-	sc := bufio.NewScanner(r)
-	sc.Buffer(nil, 1<<20)
-	for sc.Scan() {
-		data, ok := strings.CutPrefix(sc.Text(), "data: ")
-		if !ok {
-			continue
+	for {
+		e, err := s.Next()
+		if errors.Is(err, io.EOF) {
+			break
 		}
-		var e agentapi.Event
-		if err := json.Unmarshal([]byte(data), &e); err != nil {
-			t.Fatalf("event %s: %v", data, err)
+		if err != nil {
+			a.t.Fatalf("after %d events: %v", len(events), err)
 		}
 		events = append(events, e)
 		if each != nil {
 			each(e)
 		}
 	}
-	return events
-}
-
-// stream posts a run and reads its events to the end.
-func (a agentClient) stream(message, conversationID string, each func(agentapi.Event)) []agentapi.Event {
-	a.t.Helper()
-	body, _ := json.Marshal(agentapi.RunRequest{Message: message, ConversationID: conversationID})
-	resp := a.do(a.t.Context(), http.MethodPost, "/v1/runs", string(body), "")
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(resp.Body)
-		a.t.Fatalf("POST /v1/runs = %d: %s", resp.StatusCode, b)
-	}
-	events := sseEvents(a.t, resp.Body, each)
 	checkAgentStream(a.t, events)
 	return events
 }
@@ -183,10 +162,8 @@ func TestE2EServeAgent(t *testing.T) {
 		ready.Components[0].Name != "agent" || ready.Components[0].Status != "ready" {
 		t.Errorf("/readyz = %d %+v, want agent and mcp-server ready", code, ready)
 	}
-	if resp := (agentClient{t: t, url: p.url}).do(t.Context(), http.MethodPost, "/v1/runs", `{"message":"hi"}`, ""); resp.StatusCode != http.StatusUnauthorized {
-		t.Errorf("run without the token = %d, want 401", resp.StatusCode)
-	} else {
-		resp.Body.Close()
+	if _, err := (agentClient{t: t, url: p.url}).client().Stream(t.Context(), agentclient.RunRequest{Message: "hi"}); !errors.Is(err, agentclient.ErrUnauthorized) {
+		t.Errorf("run without the token: %v, want 401 unauthorized", err)
 	}
 
 	first := a.stream("Use the demo-b__echo tool to echo the word pineapple, then tell me exactly what the tool returned.", "", nil)
@@ -207,12 +184,9 @@ func TestE2EServeAgent(t *testing.T) {
 	if end := second[len(second)-1]; end.Type != agentapi.TypeRunDone || !strings.Contains(strings.ReplaceAll(end.Answer, ",", ""), "469821643") {
 		t.Errorf("follow-up ended with %+v", end)
 	}
-	var got agentapi.Conversation
-	resp := a.do(t.Context(), http.MethodGet, "/v1/conversations/"+conv, "", "")
-	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil || got.Status != agentapi.StatusIdle || len(got.Messages) < 8 {
+	if got, err := a.client().GetConversation(t.Context(), conv); err != nil || got.Status != agentapi.StatusIdle || len(got.Messages) < 8 {
 		t.Errorf("conversation = %+v (%v), want idle with both runs (8 messages or more)", got, err)
 	}
-	resp.Body.Close()
 	checkConversation(t, c.all()) // the follow-up carried the first run unchanged
 
 	// The same process serves the toolsets over MCP.

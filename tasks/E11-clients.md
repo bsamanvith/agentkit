@@ -45,7 +45,7 @@ Both talk to the public agent API (`/v1`, HTTP + SSE; [E09](E09-agent-api.md)). 
 
 ## Tasks
 
-- [ ] [T053](T053-agentclient.md) `pkg/agentclient`: the Go client for `/v1`
+- [x] [T053](T053-agentclient.md) `pkg/agentclient`: the Go client for `/v1` (wire types moved to `pkg/agentapi/wire`; read its "For T054" and "For T055" Notes first)
 - [ ] [T054](T054-cli-client.md) `agentkit chat` and `agentkit ask` (interactive and headless)
 - [ ] [T062](T062-api-agents-catalog.md) API: several agents, conversation listing, toolsets and tools catalog, OpenAPI spec
 - [ ] [T063](T063-agents-over-mcp.md) Agents over MCP (`/mcp/agentkit`), so Claude Code and other harnesses can drive them

@@ -41,6 +41,12 @@ type Rules struct {
 	// [CheckConnectors], each with the reason, until they adopt the test kit.
 	// An entry for a connector that passes fails the check.
 	PendingConnectors map[string]string
+	// SharedChildren lists, per package (a path relative to Module), the
+	// subpackages it may import despite the no-child-imports rule: shared
+	// types split out so that other code can use them without the parent's
+	// dependencies (such as wire types for API clients), never
+	// implementations.
+	SharedChildren map[string][]string
 }
 
 // Violation is one broken rule.
@@ -84,7 +90,7 @@ func Check(rules Rules, pkgs []Package) []Violation {
 			if internal && (impRel == "cmd" || strings.HasPrefix(impRel, "cmd/")) {
 				add(RuleNoCmdImports, rel, imp)
 			}
-			if internal && strings.HasPrefix(impRel, rel+"/") {
+			if internal && strings.HasPrefix(impRel, rel+"/") && !slices.Contains(rules.SharedChildren[rel], impRel) {
 				add(RuleNoChildImports, rel, imp)
 			}
 			if !helper && isTestHelperImport(rules.Module, imp) {

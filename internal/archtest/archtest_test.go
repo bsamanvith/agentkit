@@ -27,6 +27,7 @@ func rules() archtest.Rules {
 			"pkg/store":        {"pkg/llm"},
 			"pkg/store/sqlite": {"pkg/llm", "pkg/clock"},
 		},
+		SharedChildren: map[string][]string{"pkg/api": {"pkg/api/wire"}},
 	}
 }
 
@@ -97,6 +98,11 @@ func TestRules(t *testing.T) {
 			name: "parent imports its own subpackage",
 			pkg:  archtest.Package{ImportPath: mod + "/pkg/store", Imports: []string{mod + "/pkg/store/sqlite"}},
 			want: []archtest.Violation{{Rule: archtest.RuleNoChildImports, Package: "pkg/store", Import: mod + "/pkg/store/sqlite"}},
+		},
+		{
+			name: "only a listed shared child may be imported by its parent",
+			pkg:  archtest.Package{ImportPath: mod + "/pkg/api", Imports: []string{mod + "/pkg/api/wire", mod + "/pkg/api/impl"}},
+			want: []archtest.Violation{{Rule: archtest.RuleNoChildImports, Package: "pkg/api", Import: mod + "/pkg/api/impl"}},
 		},
 		{
 			name: "non-test code imports a test helper",

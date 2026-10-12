@@ -45,6 +45,18 @@ func ModuleRules() Rules {
 				"pkg/harness", "pkg/llm", "pkg/tool", "pkg/toolset", "pkg/component", "pkg/clock",
 				"pkg/llm/llmtest", "pkg/clock/clocktest", "internal/testkit", "pkg/toolset/toolsettest",
 			},
+			// The wire format, shared by the server and its clients: messages
+			// and usage, nothing else (E11).
+			"pkg/agentapi/wire": {"pkg/llm"},
+			// The agent API's client speaks the wire format over net/http.
+			// Its tests run it against the real server (agentapi, the
+			// harness, the demo toolsets and the fake model); that its own
+			// code never imports the server or the harness is checked by
+			// its TestClientDoesNotImportTheServer.
+			"pkg/agentclient": {
+				"pkg/agentapi/wire", "pkg/llm",
+				"pkg/agentapi", "pkg/harness", "pkg/tool", "pkg/toolset", "pkg/llm/llmtest", "internal/testkit",
+			},
 			// Connectors are toolset factories over plain net/http: the tool
 			// abstraction, the factory contract and the clock, never the
 			// server, the harness or another connector (E10). Their tests
@@ -58,6 +70,9 @@ func ModuleRules() Rules {
 		// Connectors that do not yet run the connector test kit
 		// (docs/CONNECTORS.md). Each entry goes when its connector adopts it.
 		PendingConnectors: map[string]string{},
+		// The agent API's wire types live in their own package so that
+		// clients get them without the harness (E11, T053).
+		SharedChildren: map[string][]string{"pkg/agentapi": {"pkg/agentapi/wire"}},
 		Banned: []string{
 			"github.com/golang/mock",
 			"go.uber.org/mock",

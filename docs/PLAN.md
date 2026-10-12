@@ -91,7 +91,7 @@ Our own tool protocol and the core abstraction.
 
 ### `mcp`
 
-- **`mcp/client`**: connects the harness to external MCP servers over stdio, Streamable HTTP, and SSE. Discovers their tools and wraps them as `tool.Tool`, so the harness does not care where a tool comes from.
+- **`mcp/client`**: connects the harness to external MCP servers over stdio, Streamable HTTP, and SSE. Discovers their tools and wraps them as `tool.Tool`, so the harness does not care where a tool comes from. Planned in [E19](../tasks/E19-external-mcp-servers.md): an `mcp` toolset type, MCP OAuth (CIMD first), tool pinning against rug pulls, and adding servers by URL at runtime.
 - **`mcp/server`**: **one process serves many toolsets, each at its own URL path** over Streamable HTTP: `/mcp/salesforce`, `/mcp/hubspot`, `/mcp/gmail`. A client connects to the path of the toolset it wants and sees only those tools. No stdio server per connector. Stateless mode by default, so replicas scale behind a plain load balancer. A single toolset can also be served over stdio for desktop clients, from the same code.
 - **`mcp/bridge`**: two-way mapping between MCP and our tool protocol.
 

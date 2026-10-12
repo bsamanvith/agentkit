@@ -23,6 +23,7 @@
 | Runtimes and jobs: temporary environments, exported harness images, results outside chat | [E16](E16-runtimes-jobs.md) | **Shaped**, tasks to plan after the console's first version |
 | Tool safety and control: tool kinds and risk, policies, interrupts and approvals, deferred loading, steering | [E17](E17-tool-safety-control.md) | **Planned** (T082–T086); T082 can start now |
 | Streaming and the server backend: SSE + HTTP commands (WebSocket later), Postgres + Redis | [E18](E18-streaming-backend.md) | **Planned** (T088–T091, T093); T088 and T089 can start now |
+| External MCP servers: add any remote MCP server by URL, MCP OAuth, tool pinning | [E19](E19-external-mcp-servers.md) | **Planned** (T094–T097); T094 can start now |
 | More model providers | [E08](E08-model-providers.md) | Later |
 | Agent skills | [E02](E02-agent-skills.md) | In progress: `write-tests` exists and was dry-run on `pkg/flow` |
 
@@ -69,6 +70,7 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 | [T089](T089-event-bus.md) | `pkg/bus`: memory and Redis Streams backends, resumable subscribe, conformance suite | **Start now** (E18): new package, parallel with everything |
 | [T087](T087-console-ux-design-2.md) | Console UX design part 2: skills, agent builder, tool policies, interrupts and approvals, tasks with steering; mockup v4 | **Ready** (owner approved v3) |
 | [T082](T082-tool-metadata.md) | Tool metadata: kind, risk, interrupts, approval, tags, display; MCP annotations | **Ready**; small, unblocks E17 |
+| [T094](T094-mcp-client-toolset.md) | `pkg/mcp/client` and the `mcp` toolset type: use external MCP servers' tools, pin fingerprints | **Ready** (E19); new package, tests against our own MCP server |
 | [T006](T006-compose-and-dev-script.md) | Compose topologies and `scripts/dev.sh` | Image exists; repeatable local runs |
 | [T033](T033-harness-clock.md) | Harness on `pkg/clock` | Small, independent |
 | [T035](T035-rerecord-anthropic-fixtures.md) | Re-record Anthropic fixtures from the real API | A key is available |
@@ -82,6 +84,9 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 | [T043](T043-credentials-backends.md) credential backends, [T044](T044-credentials-in-tools.md) credentials in tools | T042 |
 | [T090](T090-stream-api.md) Stream API across replicas, commands to the lease holder | T088, T089, T030 |
 | [T091](T091-websocket-binding.md) WebSocket binding | T090 |
+| [T095](T095-mcp-oauth-client.md) MCP OAuth for external servers | T094, T042, T044 (shares T045's callback) |
+| [T096](T096-mcp-servers-api-console.md) Add MCP servers at runtime: API, console, SSRF guard | T094, T062 (done), T040, T082; screens from T087 |
+| [T097](T097-mcp-registry-search.md) MCP Registry search | T096 |
 | [T093](T093-postgres-rls.md) Postgres row-level security by tenant | T088 |
 | [T045](T045-connect-accounts.md) Connecting accounts (OAuth2 + PKCE) | T040, T043, T044 |
 | [T004](T004-fakellm.md) `fakellm`, [T007](T007-e2e-smoke-suite.md) smoke suite, [T008](T008-ci-pipeline.md) full CI | T006 |
@@ -131,3 +136,4 @@ Each is recorded in the linked file; this list is for orientation.
 - E07 (2026-10-12): one auth middleware for `/v1` and `/mcp/`; API keys (hashed) then OIDC/JWT, we are a resource server only; hidden toolsets answer 404; no open MCP off loopback; credentials sealed with AES-GCM bound to tenant/user/slot, tools get a source for one slot, no token passthrough ([E07](E07-auth-credentials.md)).
 - E04 closed; T025 moved to E08. `fakellm` kept, extracted from the replay server ([T004](T004-fakellm.md)).
 - 2026-10-12 (planner, T029 handoff): `IMAGE_BUDGET_MB` 20 → 30 with every store driver in the one default binary (no build tags); CI builds the image and checks its size on every push (`image` job), which would have caught the `.dockerignore` break fixed in `0f22246`. The store contract rejects times outside 1678–2262 in every backend; T088 adds T029's two `storetest` gaps before the Postgres backend. Migrations run at startup by default, `agentkit migrate` for job-style deploys. Postgres row-level security is T093.
+- 2026-10-12: external MCP servers (E19), owner's question "how do I enable my website to accept their MCP". An external server is an `mcp` toolset. Admins add it by URL (API or console, no restart) and users connect their own accounts (the Claude Team model). Auth: none, headers from a credential, or MCP OAuth (pre-registered client, then CIMD, then DCR; PKCE + `resource`). Tool definitions are pinned by hash, and a changed or new tool stays disabled until an admin reviews it. API-added URLs are https only, behind an SSRF-safe dialer. stdio only from the operator's config.

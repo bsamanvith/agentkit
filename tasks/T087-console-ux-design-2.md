@@ -53,6 +53,13 @@ Same deliverable as T070: a spec in docs/UI.md plus mockup v4. A design task, no
    - in tasks ("waiting for you" state, notification, answer from the task view or a notification);
    - approval cards show the tool, its kind and risk, the exact input, approve or deny with a reason.
 5. **Policy in transcripts:** how flagged, held, denied and approved calls look in the step list (quiet, but unmistakable), and how deferred-tool loading shows ("Loaded 3 tools").
+5a. **Adding an MCP server** (E19, T096: the "Add connector" screen T070 asked for):
+   - an admin pastes a URL; the console probes it, then shows auth (none, header from a credential, or "users sign in" with OAuth);
+   - **review tools**: each tool's raw description, its kind and risk, enable or disable;
+   - save, then assign to agents;
+   - the "review needed" state when a server changes a tool (a diff of the description and schema, approve or keep disabled);
+   - each user's **Connect** card on Connections for servers that need their own sign-in;
+   - later, a registry search box (T097).
 6. **Updates to T070's IA:** the rail gains Skills (admin) and Tasks (everyone, with a "waiting for you" badge); say what moves.
 
 ## References
@@ -61,6 +68,7 @@ Same deliverable as T070: a spec in docs/UI.md plus mockup v4. A design task, no
 - Agent builders: OpenAI GPT builder and Agent Builder, Claude Projects settings, Dify and Flowise agent configuration, LangSmith/LangGraph Studio (versions, test beside edit)
 - Task and run views: Claude Code background tasks, Devin/Jules session views (watch and steer), GitHub Actions run logs, Temporal's workflow view
 - Approvals and permissions: Claude Code permission prompts (allow once / always / deny), GitHub environment protection approvals, AWS IAM policy simulator (the "what would be allowed" preview)
+- Adding MCP servers: [Claude custom connectors](https://claude.com/docs/connectors/custom/remote-mcp) (URL → Add → Connect; org owner adds, members connect), ChatGPT developer-mode connectors, Cursor's MCP settings
 - Version history: Vercel deployments (promote, rollback), Notion and Google Docs version history (diff and restore)
 
 ## Acceptance criteria

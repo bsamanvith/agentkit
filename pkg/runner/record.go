@@ -1,0 +1,105 @@
+package runner
+
+import (
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"github.com/bsamanvith/agentkit/pkg/harness"
+	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/store"
+)
+
+// Record is the JSON the runner keeps beside an entry's messages
+// ([store.Entry.Record]): what is for people and bills, never for the model.
+// Exactly one of its parts is set.
+type Record struct {
+	// Prompt is set on a prompt entry: when the user sent the message.
+	Prompt *PromptRecord `json:"prompt,omitempty"`
+	// Turn is set on a turn entry written for a harness turn.
+	Turn *TurnRecord `json:"turn,omitempty"`
+	// Canceled is set on the marker reply [Runner.Cancel] appends after a
+	// run canceled before the model answered.
+	Canceled *CanceledRecord `json:"canceled,omitempty"`
+}
+
+// PromptRecord is the record of a prompt entry.
+type PromptRecord struct {
+	At time.Time `json:"at"`
+}
+
+// CanceledRecord is the record of a cancel marker.
+type CanceledRecord struct {
+	At time.Time `json:"at"`
+}
+
+// TurnRecord is [harness.TurnRecord] without the messages, which are the
+// entry's: MessageTimes holds when each was written.
+type TurnRecord struct {
+	Turn         int                  `json:"turn"`
+	MessageTimes []time.Time          `json:"message_times"`
+	RequestedAt  time.Time            `json:"requested_at"`
+	FirstEventAt time.Time            `json:"first_event_at"`
+	DoneAt       time.Time            `json:"done_at"`
+	Usage        llm.Usage            `json:"usage"`
+	Stop         llm.StopReason       `json:"stop"`
+	Tools        []harness.ToolRecord `json:"tools,omitempty"`
+}
+
+func turnRecord(tr *harness.TurnRecord) *TurnRecord {
+	out := &TurnRecord{
+		Turn:        tr.Turn,
+		RequestedAt: tr.RequestedAt, FirstEventAt: tr.FirstEventAt, DoneAt: tr.DoneAt,
+		Usage: tr.Usage,
+		Stop:  tr.Stop,
+		Tools: append([]harness.ToolRecord(nil), tr.Tools...),
+	}
+	for _, m := range tr.Messages {
+		out.MessageTimes = append(out.MessageTimes, m.At)
+	}
+	return out
+}
+
+// DecodeRecord reads the runner's record of an entry. An entry the runner did
+// not write (an empty record) gives the zero Record.
+func DecodeRecord(e store.Entry) (Record, error) {
+	var r Record
+	if len(e.Record) == 0 {
+		return r, nil
+	}
+	if err := json.Unmarshal(e.Record, &r); err != nil {
+		return Record{}, fmt.Errorf("entry %d: %w", e.Seq, err)
+	}
+	return r, nil
+}
+
+// HarnessTurn rebuilds the [harness.TurnRecord] of a turn entry: its messages
+// with their times, and the turn's record. It is what [harness.EventTurnDone]
+// carried when the entry was written.
+func HarnessTurn(e store.Entry) (harness.TurnRecord, error) {
+	r, err := DecodeRecord(e)
+	if err != nil {
+		return harness.TurnRecord{}, err
+	}
+	if e.Kind != store.KindTurn || r.Turn == nil || len(r.Turn.MessageTimes) != len(e.Messages) {
+		return harness.TurnRecord{}, fmt.Errorf("entry %d is not a turn the runner wrote", e.Seq)
+	}
+	t := r.Turn
+	out := harness.TurnRecord{
+		Turn: t.Turn, RequestedAt: t.RequestedAt, FirstEventAt: t.FirstEventAt, DoneAt: t.DoneAt,
+		Usage: t.Usage, Stop: t.Stop, Tools: t.Tools,
+	}
+	for i, m := range e.Messages {
+		out.Messages = append(out.Messages, harness.TimedMessage{Message: m, At: t.MessageTimes[i]})
+	}
+	return out, nil
+}
+
+func mustJSON(v any) json.RawMessage {
+	b, err := json.Marshal(v)
+	if err != nil {
+		// Records hold only times, numbers and strings.
+		panic(err)
+	}
+	return b
+}

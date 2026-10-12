@@ -41,9 +41,24 @@ func ModuleRules() Rules {
 				"pkg/llm", "pkg/flow", "pkg/flow/flowtest", "pkg/tenancy",
 				"pkg/clock", "pkg/clock/clocktest",
 			},
+			// The runner is the one package that knows both the harness and
+			// the store (E05). Its tests run it on the memory store and the
+			// fakes; that its own code never imports a store backend is
+			// checked by its TestRunnerDoesNotImportABackend.
+			"pkg/runner": {
+				"pkg/harness", "pkg/store", "pkg/flow", "pkg/agentstep", "pkg/llm", "pkg/tool", "pkg/tenancy", "pkg/clock",
+				"pkg/store/memory", "pkg/llm/llmtest", "pkg/clock/clocktest", "pkg/agentstep/agentsteptest", "internal/testkit",
+			},
 			// The agent API runs a harness and never a model adapter:
 			// cmd/agentkit wires the model in (E09). Its tests use the demo
 			// toolsets and the fakes.
+			//
+			// It serves requests, so it never imports a store backend
+			// (pkg/store/memory, pkg/store/sqlite), tests included: a backend
+			// is the only way to its store.Admin, the cross-tenant view that
+			// only the runner's recovery loop may hold (T038). cmd/ wires
+			// backends. T037 adds pkg/runner and pkg/store here, never a
+			// backend.
 			"pkg/agentapi": {
 				"pkg/harness", "pkg/llm", "pkg/tool", "pkg/toolset", "pkg/component", "pkg/clock",
 				"pkg/llm/llmtest", "pkg/clock/clocktest", "internal/testkit", "pkg/toolset/toolsettest",
@@ -68,6 +83,9 @@ func ModuleRules() Rules {
 			// knows no other part of the module (E11, T078). The console
 			// reaches the server only through /v1.
 			"pkg/web": {},
+			// The MCP server serves requests: tools only, never a store
+			// backend (and so never store.Admin; see pkg/agentapi above).
+			"pkg/mcp/server": {"pkg/tool", "pkg/tool/tooltest", "internal/testkit"},
 			// Connectors are toolset factories over plain net/http: the tool
 			// abstraction, the factory contract and the clock, never the
 			// server, the harness or another connector (E10). Their tests

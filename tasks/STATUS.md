@@ -13,7 +13,7 @@
 | M4 Store, runner, compaction | [E05](E05-store-runner.md) | In progress: `pkg/store` (interfaces, memory store, suites, run lifecycle) done |
 | M5 Agent API, `agentkit serve`, image, Compose, smoke tests | [E09](E09-agent-api.md), [E01](E01-foundations.md) | In progress: `agentkit serve`, agent API v0 and the image done; **deployable** |
 | M6 Remote tools over ConnectRPC | E06 (to plan) | Planned |
-| Credentials, auth, tenancy at the edge | [E07](E07-auth-credentials.md) | **Planned** (T039–T045); T039 and T042 ready. Needed before any public deployment: `/mcp/` has no auth today |
+| Credentials, auth, tenancy at the edge | [E07](E07-auth-credentials.md) | **In progress**: T039 done (`pkg/auth`, `f08e82e`); T040, T041 and T042 ready. Needed before any public deployment: `/mcp/` has no auth until T040 |
 | First connectors: Tavily, Exa, Parallel (search, extract) | [E10](E10-search-connectors.md) | **Tavily done** (live end to end with real Claude passed); Exa and Parallel on `main`, in review until keys exist; no auth work needed (Tavily keyless or keyed; Exa and Parallel keyed from env) |
 | Clients: admin console, CLI and headless, and the APIs behind them | [E11](E11-clients.md) | **In progress**: T053 done (`pkg/agentclient`, plus lenient message decoding, PR #4); T062 (agents, conversations, catalog API), T063 (agents over MCP), T061 (login), T055/T064 (console) planned. UI plan: [docs/UI.md](../docs/UI.md) with a clickable mockup |
 | Skills and memory (context store; search by keyword or embeddings, opt-in) | [E12](E12-skills-memory.md) | **Planned** (T057–T060); T057 and T058 can start now |
@@ -54,16 +54,16 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 |---|---|---|
 | [T049](T049-connector-test-kit.md) | `toolsettest`: cassettes, `RunConnector` suite, honest fakes | **Done** (`a5d47eb`, CI green): Upstream, RunConnector, fakes, check IDs with skip/opt-in, schema honesty, secret scans, `synthetic`, Drift, per-call Settings, archtest rule (every connector runs the kit) |
 | [T062](T062-api-agents-catalog.md) | API: several agents, conversation listing, toolsets and tools catalog, OpenAPI spec | **Ready now**; the console and Claude Code both need it |
-| [T039](T039-auth-principals-middleware.md) | `pkg/auth` (needed for login, T061) | **Ready now** |
+| [T039](T039-auth-principals-middleware.md) | `pkg/auth`: principals, API keys, edge middleware | **Done** (`f08e82e`, CI green): T040, T041 and T061 can start; read its "For T040", "For T041" and "For T061" Notes first |
+| [T040](T040-serve-auth-wiring.md), [T041](T041-auth-jwt-oidc.md) | `serve` behind auth; JWT/OIDC | **Ready** (T039 done) |
 | [T054](T054-cli-client.md) | CLI: `agentkit chat`, headless `agentkit ask --json` | **Ready** (T053 done) |
 | [T063](T063-agents-over-mcp.md) | Agents over MCP for Claude Code | After T062 |
-| [T055](T055-web-client.md), [T061](T061-local-users-login.md), [T064](T064-console-admin-pages.md) | Console shell and chat; local users and login; admin pages | T055 after T070 (design) and T062; T061 after T039; T064 after T055 |
+| [T055](T055-web-client.md), [T061](T061-local-users-login.md), [T064](T064-console-admin-pages.md) | Console shell and chat; local users and login; admin pages | T055 after T070 (design) and T062; T061 ready (T039 done); T064 after T055 |
 | [T057](T057-skills.md), [T058](T058-memory-context-store.md) | Skills (Agent Skills format, progressive disclosure); memory context store (Claude memory-tool shape) | Ready; new packages, parallel with everything |
 | [T056](T056-test-speed.md) | `make test` back under 30 s (52 s now) | Ready; small |
 | [T050](T050-connector-tool-evals.md) | Tool-use evals: real Claude with faked connectors | **Later** (owner): after the API is deployed and the clients exist; runs on `agentkit ask --json` |
 | [T047](T047-connector-exa.md) | `connectors/exa`: search and extract | **Review**: on `main`, on the kit (`2f7b951`, `049a7cc`); waits for `EXA_API_KEY` (live test, re-recording synthetic cassettes) |
 | [T048](T048-connector-parallel.md) | `connectors/parallel`: search and extract | **Review**: on `main`, on the kit (`baf4248`); waits for `PARALLEL_API_KEY` (live test, re-recording synthetic cassettes) |
-| [T039](T039-auth-principals-middleware.md) | `pkg/auth`: principals, API keys, edge middleware | Starts E07's inbound track; new package only, parallel with E05 |
 | [T042](T042-credentials-core.md) | `pkg/credentials`: secrets, sealer, vault, memory backend | Starts E07's credentials track; new package only, parallel with everything |
 | [T029](T029-store-sqlite.md) | SQLite store | **Start now**: on the critical path for background agents (E14) and persistence (T037) |
 | [T030](T030-runner.md) | Runner: entries, cache, leases, recovery, retry, approvals, cancel | **Start now**: background agents (E14) are built on it |
@@ -83,7 +83,6 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 |---|---|
 | [T031](T031-compaction.md) Compaction | T030 |
 | [T037](T037-agent-api-v1.md) Agent API v1 on the runner | T030, T029 |
-| [T040](T040-serve-auth-wiring.md) `serve` behind auth, [T041](T041-auth-jwt-oidc.md) JWT/OIDC | T039 |
 | [T043](T043-credentials-backends.md) credential backends, [T044](T044-credentials-in-tools.md) credentials in tools | T042 (T043's SQLite part also T029) |
 | [T045](T045-connect-accounts.md) Connecting accounts (OAuth2 + PKCE) | T040, T043, T044 |
 | [T004](T004-fakellm.md) `fakellm`, [T007](T007-e2e-smoke-suite.md) smoke suite, [T008](T008-ci-pipeline.md) full CI | T006 |

@@ -153,27 +153,64 @@ func (r *rig) callAsync(ctx context.Context, name, input string) <-chan error {
 	return done
 }
 
-// waitTimer waits until the call has armed its retry timer; it fails the
-// test instead of hanging when no timer is armed.
-func (r *rig) waitTimer(t *testing.T) {
+// armed blocks until the call has armed its retry timer (true), or has
+// returned without arming one (false, and its error). Neither wait has a time
+// limit: a call does one or the other, so how loaded the machine is cannot
+// change the answer.
+func (r *rig) armed(t *testing.T, done <-chan error) (bool, error) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	if err := r.clock.WaitForTimers(ctx, 1); err != nil {
-		t.Fatalf("no retry timer armed: %v", err)
+	timer := make(chan error, 1)
+	go func() { timer <- r.clock.WaitForTimers(ctx, 1) }()
+	select {
+	case err := <-timer:
+		if err != nil {
+			t.Fatalf("waiting for the retry timer: %v", err) // the test is ending
+		}
+		return true, nil
+	case err := <-done:
+		return false, err
 	}
 }
 
-func result(t *testing.T, done <-chan error) error {
+// waitTimer is armed for a call that must wait to retry.
+func (r *rig) waitTimer(t *testing.T, done <-chan error) {
 	t.Helper()
-	select {
-	case err := <-done:
-		return err
-	case <-time.After(10 * time.Second):
-		t.Fatal("the call did not finish")
-		return nil
+	if ok, err := r.armed(t, done); !ok {
+		t.Fatalf("the call returned (%v) without waiting to retry", err)
 	}
 }
+
+// pending reports, without waiting, whether a timer is armed now:
+// WaitForTimers checks before it looks at the context.
+func (r *rig) pending() bool {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	return r.clock.WaitForTimers(ctx, 1) == nil
+}
+
+// noRetry runs a call that must fail at once, without waiting to retry.
+func (r *rig) noRetry(ctx context.Context, t *testing.T) error {
+	t.Helper()
+	done := r.callAsync(ctx, "tavily_search", `{"query": "go release"}`)
+	ok, err := r.armed(t, done)
+	if ok {
+		t.Errorf("the call armed a retry timer, want an error at once")
+		r.clock.Advance(time.Hour) // let it finish
+		err = <-done
+	}
+	return err
+}
+
+// deadlineCtx reports a deadline but never expires, so the time the test
+// takes cannot change what the code decides from the deadline.
+type deadlineCtx struct {
+	context.Context
+	at time.Time
+}
+
+func (c deadlineCtx) Deadline() (time.Time, bool) { return c.at, true }
 
 // TestRateLimit: what E10 adds to the suite's retry check
 // (TestConformance/errors/429_*): the hint to set the key in keyless mode, a
@@ -206,16 +243,20 @@ func TestRateLimit(t *testing.T) {
 			r.up.queue(rateLimited(t, c.retryAfter), second)
 
 			done := r.callAsync(t.Context(), "tavily_search", `{"query": "go release"}`)
-			r.waitTimer(t)
-			// Just short of the wait the timer must still be pending: a
-			// shorter wait would have fired it, and WaitForTimers would fail.
+			r.waitTimer(t, done)
+			// Just short of the wait the timer must still be pending: Advance
+			// fires due timers before it returns, so a shorter wait would
+			// already have fired.
 			r.clock.Advance(c.wait - time.Millisecond)
-			r.waitTimer(t)
+			if !r.pending() {
+				r.clock.Advance(time.Hour)
+				t.Fatalf("the retry timer fired before Retry-After (%v): %v", c.wait, <-done)
+			}
 			if n := len(r.up.requests()); n != 1 {
 				t.Fatalf("%d requests before the wait was over, want 1", n)
 			}
 			r.clock.Advance(time.Millisecond)
-			err := result(t, done)
+			err := <-done
 
 			if n := len(r.up.requests()); n != 2 {
 				t.Errorf("%d requests, want 2", n)
@@ -239,7 +280,7 @@ func TestRateLimit(t *testing.T) {
 		t.Parallel()
 		r := newRig(t, rigOpts{settings: `{"auth": "keyless"}`})
 		r.up.queue(rateLimited(t, "11"))
-		_, err := r.call("tavily_search", `{"query": "go release"}`)
+		err := r.noRetry(t.Context(), t)
 		if !isToolFailed(err) || !strings.Contains(err.Error(), "set TAVILY_API_KEY") {
 			t.Errorf("err = %v, want rate limited with the hint", err)
 		}
@@ -252,9 +293,9 @@ func TestRateLimit(t *testing.T) {
 		t.Parallel()
 		r := newRig(t, rigOpts{})
 		r.up.queue(rateLimited(t, "5"))
-		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-		defer cancel()
-		_, err := r.reg.Invoke(ctx, "tavily_search", json.RawMessage(`{"query": "go release"}`))
+		// The deadline is 2 s away whenever the code looks, however slow the
+		// request was, and it never expires on its own.
+		err := r.noRetry(deadlineCtx{t.Context(), time.Now().Add(2 * time.Second)}, t)
 		if !isToolFailed(err) || !strings.Contains(err.Error(), "rate limited") {
 			t.Errorf("err = %v, want rate limited at once", err)
 		}
@@ -269,9 +310,9 @@ func TestRateLimit(t *testing.T) {
 		r.up.queue(rateLimited(t, "3"))
 		ctx, cancel := context.WithCancel(t.Context())
 		done := r.callAsync(ctx, "tavily_search", `{"query": "go release"}`)
-		r.waitTimer(t)
+		r.waitTimer(t, done)
 		cancel()
-		if err := result(t, done); !errors.Is(err, context.Canceled) {
+		if err := <-done; !errors.Is(err, context.Canceled) {
 			t.Errorf("err = %v, want context.Canceled", err)
 		}
 		if n := len(r.up.requests()); n != 1 {

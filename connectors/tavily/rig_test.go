@@ -3,7 +3,6 @@ package tavily_test
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -287,14 +286,13 @@ func expectedKey(settings string, env map[string]string) string {
 	return strings.TrimSpace(env[s.APIKeyEnv])
 }
 
-// call invokes a tool and checks its output's shape. The call has a real
-// deadline, so a wait on the fake clock nobody advances (an unexpected retry)
-// fails the test instead of hanging it.
+// call invokes a tool and checks its output's shape. It has no deadline of
+// its own: a deadline would change what the connector decides (whether a
+// retry fits), and could fail a correct call on a loaded machine. Calls that
+// may wait on the fake clock go through callAsync.
 func (r *rig) call(name, input string) (json.RawMessage, error) {
 	r.t.Helper()
-	ctx, cancel := context.WithTimeout(r.t.Context(), 15*time.Second)
-	defer cancel()
-	out, err := r.reg.Invoke(ctx, name, json.RawMessage(input))
+	out, err := r.reg.Invoke(r.t.Context(), name, json.RawMessage(input))
 	r.mu.Lock()
 	r.seen = append(r.seen, string(out))
 	if err != nil {

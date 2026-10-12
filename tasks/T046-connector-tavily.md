@@ -197,6 +197,14 @@ Each plant was made in a copy of the tree, run with `go test -count=1 -timeout=1
 
 The first pass had one survivor: an `answer` passed on when not asked for. `TestAnswerOnlyWhenAsked` was added for it.
 
+**No real-time waits.** The tests make no decision on a wall-clock deadline, so a loaded machine cannot fail a correct connector. This was fixed on 2026-10-12 after `TestRateLimit/keyless,_then_ok` failed once under load in another session.
+- The retry timer is awaited until it is armed or the call returns, whichever comes first.
+- "Not fired early" is checked synchronously after `Advance`.
+- The deadline case uses a context that reports a deadline but never expires.
+- `rig.call` has no deadline of its own.
+
+A plant that waits forever now hangs, and the package timeout's panic names the stuck test. Checked with `go test -race -count=200 -cpu=1,2,8 -run TestRateLimit` while `go test ./...` ran in a loop.
+
 **Retry on 500** is caught, but not by name in a full run. `TestConformance/errors/500` fails by name after the kit's 10 s watchdog when run alone (`-run TestConformance/errors/500`). In the full package, `TestConformance/canary` blocks: the kit's `callMCP` has no watchdog, and the wrongly retried 500 waits on the fake clock forever. The package then dies on its timeout before the parent test prints its subtests. This is a T049 bug, reported to its planner.
 
 | Plant | Caught by |
@@ -215,7 +223,8 @@ The first pass had one survivor: an `answer` passed on when not asked for. `Test
 | 401/403 message echoes the body | `TestConformance` (canary in the 401 body), `TestRecordedCases/search-bad-key` |
 | Keyless 429 without the key hint | `TestRateLimit/keyless,_limited_twice`, `/Retry-After_over_10s:_no_retry` |
 | `Retry-After` over 10 s still retried | `TestRateLimit/Retry-After_over_10s:_no_retry` |
-| Retry wait ignores `ctx` | `TestRateLimit/cancelled_during_the_wait` |
+| Retry wait ignores `ctx` | `TestRateLimit/cancelled_during_the_wait` (it hangs; the package timeout's panic names it under "running tests") |
+| Retry wait shorter than `Retry-After` (half, or none) | `TestRateLimit` (every waiting case: the timer is no longer pending just before `Retry-After`) |
 | Retry past the `ctx` deadline | `TestRateLimit/deadline_before_the_wait_ends:_no_retry` |
 | More than 10 URLs accepted | `TestInvalidInput/11_urls` |
 | Key logged at startup | `TestConformance` (log scan after every subtest), `FuzzResponses*` seeds, `rig.check` in every keyed test |

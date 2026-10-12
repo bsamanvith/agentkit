@@ -1,0 +1,13 @@
+[
+  {
+    "body": {
+      "extract_depth": "advanced",
+      "format": "text",
+      "urls": [
+        "https://go.dev/doc/devel/release"
+      ]
+    },
+    "method": "POST",
+    "path": "/extract"
+  }
+]

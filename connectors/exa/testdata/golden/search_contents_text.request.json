@@ -1,0 +1,17 @@
+[
+  {
+    "body": {
+      "category": "news",
+      "contents": {
+        "text": {
+          "maxCharacters": 4000
+        }
+      },
+      "numResults": 5,
+      "query": "retrieval precision for RAG",
+      "type": "auto"
+    },
+    "method": "POST",
+    "path": "/search"
+  }
+]

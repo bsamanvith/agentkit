@@ -164,6 +164,7 @@ Each check has an ID: its subtest path with dots. The subtest names are a contra
 | `settings.missing_key` | opt-out | a missing key fails, naming the variable | a confusing error, or a run without a key |
 | `settings.plain_http_base_url` | mandatory | `base_url` over plain http to a non-loopback host fails | a key sent in clear text |
 | `settings.base_url` | opt-out | the `base_url` setting alone routes requests | a setting that is accepted and ignored |
+| `settings.honored` | opt-in | each of `SettingCalls` (a tool, an input and the `Settings` under test) sends the requests in `testdata/golden/<Name>.request.json`, which differ from those sent without its settings | a setting that is accepted and ignored (a mode, a search depth) |
 | `calls` | mandatory | each happy call: golden output, schema-valid, exactly its cassettes requested | wrong mapping, extra or missing requests, the key in a query string |
 | `keyless` | mandatory | (`KeyOptional`) each happy call without a key sends the marker and no key | keyless mode sending nothing, or a stale key |
 | `invalid` | mandatory | each invalid input gives `ErrInvalidInput` and sends nothing | a paid request for input that was always going to fail |
@@ -175,12 +176,16 @@ Each check has an ID: its subtest path with dots. The subtest names are a contra
 | `errors.500` | opt-out | `ErrToolFailed`, exactly one request | a retry of a call that may have run (and been billed) |
 | `errors.502` | opt-out | as 500 | as 500 |
 | `errors.503` | opt-out | as 500 | as 500 |
+| `errors.no_retry_5xx` | opt-in | a 5xx with `Retry-After`, every wait on `Env.Clock` ended at once: `ErrToolFailed`, exactly one request | a retry of a 5xx that first waits on the clock, which `errors.500` never advances |
 | `errors.429_retry_after` | opt-out | one retry, only after `Retry-After` passes on `Env.Clock` | hammering a rate-limited API; `time.Sleep` |
 | `errors.429_then_200` | opt-out | a retry that succeeds returns the output | a retry that drops the result |
+| `errors.retry_wait_ctx` | opt-in | cancelling `ctx` during the wait for `Retry-After` returns `context.Canceled` at once, the clock not advanced | a retry wait that ignores `ctx` |
 | `errors.malformed_json` | opt-out | a 200 with broken JSON gives `ErrToolFailed` | a panic or empty output |
 | `errors.oversized_body` | opt-out | a body over the limit fails, reading at most limit + 1 bytes | an unbounded read |
 | `errors.hang` | opt-out | a hanging upstream returns the context's error at its deadline | ignoring `ctx` |
+| `errors.attempt_timeout` | opt-in | with `AttemptTimeout.Settings` and a long `ctx`, a hanging upstream fails with `ErrToolFailed` at the connector's own timeout | a timeout setting that is accepted and ignored; `errors.hang` ends through `ctx` |
 | `errors.connection_refused` | opt-out | `ErrToolFailed` | a raw transport error |
+| `limits.rune_boundary` | opt-in | multi-byte content put at `Truncation.Field` of a call's cassette comes out as its first `Limit` characters, whole, then the marker | truncation by bytes, splitting a character; an off-by-one limit; a cut with no marker |
 | `schema_honesty.undeclared` | opt-out | no happy call's output carries a field its output schema does not declare | a field the model gets but the schema never documented (an open schema passes it) |
 | `schema_honesty.dead_fields` | opt-in | across the happy calls' outputs, every declared output field appears non-null at least once | a dead or misnamed field; for a field that depends on settings or rare inputs, it asks for a call that covers it |
 | `canary` | mandatory | the key, echoed by the upstream in error bodies, reaches no output, error, MCP result or log line | a key leaked into an error message or a debug log |

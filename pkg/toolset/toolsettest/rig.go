@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"maps"
 	"os"
@@ -91,11 +92,14 @@ func (r *rig) checkInvariants() {
 }
 
 // checkRequest checks where a request carries the key.
-func (r *rig) checkRequest(req Request) error {
-	if r.s.c.KeyEnv == "" || r.s.fake {
+func (r *rig) checkRequest(req Request) error { return r.s.checkRequest(r.mode, req) }
+
+// checkRequest checks where a request made in mode carries the key.
+func (s *suite) checkRequest(mode keyMode, req Request) error {
+	if s.c.KeyEnv == "" || s.fake {
 		return nil
 	}
-	canary := r.s.canary
+	canary := s.canary
 	if strings.Contains(req.Path, canary) || strings.Contains(req.Query.Encode(), canary) {
 		return errors.New("the key is in the URL; send it in one header only")
 	}
@@ -110,7 +114,7 @@ func (r *rig) checkRequest(req Request) error {
 			}
 		}
 	}
-	switch r.mode {
+	switch mode {
 	case modeKeyed:
 		if len(carriers) != 1 {
 			return fmt.Errorf("the key is in %d header values %v, want exactly one", len(carriers), carriers)
@@ -119,7 +123,7 @@ func (r *rig) checkRequest(req Request) error {
 		if len(carriers) != 0 {
 			return fmt.Errorf("a keyless request carries the key in %v", carriers)
 		}
-		for k, vs := range r.s.c.KeylessMarker {
+		for k, vs := range s.c.KeylessMarker {
 			if got := req.Header.Values(k); !slices.Equal(got, vs) {
 				return fmt.Errorf("a keyless request has %s: %q, want %q", k, got, vs)
 			}
@@ -227,9 +231,14 @@ func (r *rig) checkOutput(tools []tool.Tool, call Call, out json.RawMessage) {
 }
 
 // sameAsGolden reports whether out equals the golden file as JSON, without
-// rewriting it.
+// rewriting it. Under make golden it writes a missing file: settings.base_url
+// runs before calls, which writes the goldens, so a new call's first make
+// golden would otherwise fail.
 func sameAsGolden(call Call, out json.RawMessage) error {
 	want, err := os.ReadFile(goldenPath(call))
+	if errors.Is(err, fs.ErrNotExist) && os.Getenv(testkit.UpdateGoldenEnv) == "1" {
+		return writeGolden(goldenPath(call), out)
+	}
 	if err != nil {
 		return fmt.Errorf("golden file: %w (run make golden)", err)
 	}
@@ -237,6 +246,19 @@ func sameAsGolden(call Call, out json.RawMessage) error {
 		return fmt.Errorf("output differs from %s:\n%s", goldenPath(call), out)
 	}
 	return nil
+}
+
+// writeGolden writes out, indented, as the golden file at path.
+func writeGolden(path string, out json.RawMessage) error {
+	var b bytes.Buffer
+	if err := json.Indent(&b, bytes.TrimSpace(out), "", "  "); err != nil {
+		return fmt.Errorf("output is not JSON: %w", err)
+	}
+	b.WriteByte('\n')
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, b.Bytes(), 0o644)
 }
 
 func goldenPath(call Call) string { return filepath.Join("testdata", "golden", call.Name+".json") }
@@ -342,6 +364,13 @@ func (l *logSink) Write(p []byte) (int, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.buf.Write(p)
+}
+
+// Reset empties the sink.
+func (l *logSink) Reset() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.buf.Reset()
 }
 
 func (l *logSink) String() string {

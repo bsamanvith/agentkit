@@ -3,6 +3,7 @@ package parallel_test
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/bsamanvith/agentkit/connectors/parallel"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
@@ -19,7 +20,10 @@ func connector() toolsettest.Connector {
 		},
 		KeyEnv:  "PARALLEL_API_KEY",
 		OpenAPI: "testdata/openapi.json",
-		Enable:  []toolsettest.CheckID{"schema_honesty.dead_fields", "cassettes.openapi"},
+		Enable: []toolsettest.CheckID{
+			"schema_honesty.dead_fields", "cassettes.openapi", "settings.honored", "errors.no_retry_5xx", "errors.retry_wait_ctx",
+			"errors.attempt_timeout", "limits.rune_boundary",
+		},
 		Calls: []toolsettest.Call{
 			{
 				Name: "search_defaults", Tool: "parallel_search",
@@ -60,6 +64,26 @@ func connector() toolsettest.Connector {
 		ErrorBody: func(message string) []byte {
 			b, _ := json.Marshal(map[string]any{"type": "error", "error": map[string]string{"ref_id": "ref_conformance", "message": message}})
 			return b
+		},
+		// Each setting shows in the request body.
+		SettingCalls: []toolsettest.Call{
+			{
+				Name: "search_mode_basic", Tool: "parallel_search", Input: json.RawMessage(`{"query": "latest Go release"}`),
+				Settings: json.RawMessage(`{"search_defaults": {"mode": "basic"}}`),
+			},
+			{
+				Name: "search_location", Tool: "parallel_search", Input: json.RawMessage(`{"query": "latest Go release"}`),
+				Settings: json.RawMessage(`{"search_defaults": {"location": "GB", "max_chars_per_result": 1500}}`),
+			},
+			{
+				Name: "extract_fetch_policy", Tool: "parallel_extract", Input: json.RawMessage(`{"urls": ["https://go.dev/doc/go1.27"]}`),
+				Settings: json.RawMessage(`{"extract_defaults": {"fetch_policy": {"max_age_seconds": 600}}}`),
+			},
+		},
+		AttemptTimeout: &toolsettest.AttemptTimeout{Settings: json.RawMessage(`{"timeout": "300ms"}`), Timeout: 300 * time.Millisecond},
+		Truncation: &toolsettest.Truncation{
+			Call: "search_defaults", Field: "/results/0/excerpts/0", Limit: 100,
+			Settings: json.RawMessage(`{"max_content_chars": {"search": 100}}`),
 		},
 	}
 }

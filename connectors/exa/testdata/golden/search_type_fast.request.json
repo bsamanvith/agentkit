@@ -1,0 +1,14 @@
+[
+  {
+    "body": {
+      "contents": {
+        "highlights": true
+      },
+      "numResults": 5,
+      "query": "retrieval precision for RAG",
+      "type": "fast"
+    },
+    "method": "POST",
+    "path": "/search"
+  }
+]

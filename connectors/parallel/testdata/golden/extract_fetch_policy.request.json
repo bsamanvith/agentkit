@@ -1,0 +1,17 @@
+[
+  {
+    "body": {
+      "advanced_settings": {
+        "fetch_policy": {
+          "max_age_seconds": 600
+        },
+        "full_content": false
+      },
+      "urls": [
+        "https://go.dev/doc/go1.27"
+      ]
+    },
+    "method": "POST",
+    "path": "/v1/extract"
+  }
+]

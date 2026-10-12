@@ -138,6 +138,7 @@ func (s *suite) settings(t *testing.T) {
 			t.Error(err)
 		}
 	})
+	s.run(t, "settings.honored", s.honored)
 }
 
 // calls: each happy call's output is golden and schema-valid, and it
@@ -265,12 +266,33 @@ func (s *suite) errorMatrix(t *testing.T) {
 			requests(t, r, 1) // no retry on 5xx: a paid call may have run
 		})
 	}
+	// errors.500 never advances the clock, so a retry that first waits on
+	// Env.Clock never sends its second request there: the call ends at the
+	// connector's own timeout (or the watchdog) after one request. This check
+	// ends every wait at once, so a retry shows as a second request.
+	s.run(t, "errors.no_retry_5xx", func(t *testing.T) {
+		for _, status := range []int{http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable} {
+			t.Run(fmt.Sprint(status), func(t *testing.T) {
+				t.Parallel()
+				r := s.newRig(t, modeKeyed)
+				tools := r.toolsFor(call)
+				resp := s.errorResponse(status, "internal error serving key "+s.canary)
+				resp.Header.Set("Retry-After", "1")
+				r.up.Script(resp) // then the cassettes answer: a retry would succeed
+				res := r.drive(r.start(t.Context(), tools, call))
+				if n := len(r.up.Requests()); n != 1 {
+					t.Errorf("[retry] %s answered %d sent %d requests, want 1: never retry a 5xx, the paid call may have run", call.Name, status, n)
+				}
+				failed(t, res.err)
+			})
+		}
+	})
 	s.run(t, "errors.429_retry_after", func(t *testing.T) {
 		t.Parallel()
 		r := s.newRig(t, modeKeyed)
 		tools := r.toolsFor(call)
 		r.up.Script(s.rateLimited(2), s.rateLimited(2))
-		done := r.start(tools, call)
+		done := r.start(context.Background(), tools, call)
 		if !r.awaitTimer(done) {
 			return
 		}
@@ -291,7 +313,7 @@ func (s *suite) errorMatrix(t *testing.T) {
 		r := s.newRig(t, modeKeyed)
 		tools := r.toolsFor(call)
 		r.up.Script(s.rateLimited(1))
-		done := r.start(tools, call)
+		done := r.start(context.Background(), tools, call)
 		if !r.awaitTimer(done) {
 			return
 		}
@@ -304,6 +326,31 @@ func (s *suite) errorMatrix(t *testing.T) {
 			t.Error(err)
 		}
 		requests(t, r, 1+len(call.Cassettes))
+	})
+	s.run(t, "errors.retry_wait_ctx", func(t *testing.T) {
+		t.Parallel()
+		r := s.newRig(t, modeKeyed)
+		tools := r.toolsFor(call)
+		r.up.Script(s.rateLimited(2))
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		done := r.start(ctx, tools, call)
+		if !r.awaitTimer(done) {
+			return
+		}
+		cancel() // during the wait for Retry-After; the fake clock stays put
+		var res result
+		select {
+		case res = <-done:
+		case <-time.After(2 * time.Second):
+			t.Errorf("[retry] %s kept waiting for Retry-After after its context was cancelled: wait in a select with ctx.Done()", call.Name)
+			r.clk.Advance(2 * time.Second)
+			res = r.await(done)
+		}
+		if !errors.Is(res.err, context.Canceled) {
+			t.Errorf("%s cancelled during the wait for Retry-After = %v, want context.Canceled", call.Name, res.err)
+		}
+		requests(t, r, 1)
 	})
 	s.run(t, "errors.malformed_json", func(t *testing.T) {
 		t.Parallel()
@@ -354,6 +401,39 @@ func (s *suite) errorMatrix(t *testing.T) {
 			t.Errorf("%s with an expired context = %v, want context.DeadlineExceeded", call.Name, res.err)
 		}
 	})
+	// errors.hang ends through ctx; this one gives a long ctx, so only the
+	// connector's own timeout can end the call in time.
+	s.run(t, "errors.attempt_timeout", func(t *testing.T) {
+		t.Parallel()
+		at := s.c.AttemptTimeout
+		if at == nil {
+			t.Fatal("Connector.AttemptTimeout is not set: say how to set the connector's timeout on a request, or skip errors.attempt_timeout with a reason")
+		}
+		r := s.newRig(t, modeKeyed)
+		settings := mergeSettings(s.settingsFor(call), at.Settings)
+		tools, err := r.build(settings)
+		if err != nil {
+			t.Fatalf("Build(%s): %v", settings, err)
+		}
+		r.up.Script(Response{Hang: true})
+		const margin = 3 * time.Second
+		ctx, cancel := context.WithTimeout(t.Context(), at.Timeout+3*margin)
+		defer cancel()
+		start := time.Now()
+		done := r.start(ctx, tools, call)
+		var res result
+		select {
+		case res = <-done:
+		case <-time.After(at.Timeout + margin):
+			t.Errorf("%s with a hanging upstream did not return within %v of its %v timeout: bound each request by the timeout setting, not only by ctx", call.Name, margin, at.Timeout)
+			r.up.releaseHangs()
+			res = r.await(done)
+		}
+		if took := time.Since(start); took < at.Timeout {
+			t.Errorf("%s returned after %v, before its %v timeout", call.Name, took, at.Timeout)
+		}
+		failed(t, res.err)
+	})
 	s.run(t, "errors.connection_refused", func(t *testing.T) {
 		t.Parallel()
 		r := s.newRig(t, modeKeyed)
@@ -372,14 +452,40 @@ func (s *suite) errorMatrix(t *testing.T) {
 	})
 }
 
-// start runs a call in the background.
-func (r *rig) start(tools []tool.Tool, call Call) <-chan result {
+// start runs a call with ctx in the background.
+func (r *rig) start(ctx context.Context, tools []tool.Tool, call Call) <-chan result {
 	done := make(chan result, 1)
 	go func() {
-		out, err := r.invoke(context.Background(), tools, call.Tool, call.Input)
+		out, err := r.invoke(ctx, tools, call.Tool, call.Input)
 		done <- result{out, err}
 	}()
 	return done
+}
+
+// drive waits for a background call, advancing the fake clock whenever the
+// call waits on it, so every wait ends at once.
+func (r *rig) drive(done <-chan result) result {
+	r.t.Helper()
+	stop := time.After(watchdog + time.Second)
+	for {
+		ctx, cancel := context.WithCancel(context.Background())
+		armed := make(chan error, 1)
+		go func() { armed <- r.clk.WaitForTimers(ctx, 1) }()
+		select {
+		case res := <-done:
+			cancel()
+			return res
+		case err := <-armed:
+			cancel()
+			if err == nil {
+				r.clk.Advance(time.Hour)
+			}
+		case <-stop:
+			cancel()
+			r.t.Fatalf("the call did not return within %s", watchdog)
+			return result{}
+		}
+	}
 }
 
 // awaitTimer waits until the call arms a timer on the fake clock (it is

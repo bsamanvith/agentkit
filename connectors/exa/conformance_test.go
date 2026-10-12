@@ -3,6 +3,7 @@ package exa_test
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/bsamanvith/agentkit/connectors/exa"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
@@ -26,7 +27,10 @@ func connector() toolsettest.Connector {
 			"extract_defaults": {"max_characters": 5000, "max_age_hours": 24}}`),
 		KeyEnv:  "EXA_API_KEY",
 		OpenAPI: "testdata/openapi.json",
-		Enable:  []toolsettest.CheckID{"schema_honesty.dead_fields", "cassettes.openapi"},
+		Enable: []toolsettest.CheckID{
+			"schema_honesty.dead_fields", "cassettes.openapi", "settings.honored", "errors.no_retry_5xx", "errors.retry_wait_ctx",
+			"errors.attempt_timeout", "limits.rune_boundary",
+		},
 		Calls: []toolsettest.Call{
 			{
 				Name: "search_defaults", Tool: "exa_search",
@@ -54,6 +58,27 @@ func connector() toolsettest.Connector {
 		ErrorBody: func(message string) []byte {
 			b, _ := json.Marshal(map[string]string{"error": message})
 			return b
+		},
+		// Each setting shows in the request body. Settings merge field by
+		// field, so each keeps model_chooses_type from Settings.
+		SettingCalls: []toolsettest.Call{
+			{
+				Name: "search_type_fast", Tool: "exa_search", Input: json.RawMessage(searchCases["search-defaults"].input),
+				Settings: json.RawMessage(`{"search_defaults": {"model_chooses_type": true, "type": "fast"}}`),
+			},
+			{
+				Name: "search_contents_text", Tool: "exa_search", Input: json.RawMessage(searchCases["search-defaults"].input),
+				Settings: json.RawMessage(`{"search_defaults": {"model_chooses_type": true, "contents": "text", "category": "news"}}`),
+			},
+			{
+				Name: "extract_max_age", Tool: "exa_extract", Input: json.RawMessage(extractCases["contents-partial"].input),
+				Settings: json.RawMessage(`{"extract_defaults": {"max_characters": 5000, "max_age_hours": 1}}`),
+			},
+		},
+		AttemptTimeout: &toolsettest.AttemptTimeout{Settings: json.RawMessage(`{"timeout": "300ms"}`), Timeout: 300 * time.Millisecond},
+		Truncation: &toolsettest.Truncation{
+			Call: "search_defaults", Field: "/results/0/highlights/0", Limit: 100,
+			Settings: json.RawMessage(`{"max_content_chars": {"search": 100}}`),
 		},
 	}
 }

@@ -1,0 +1,11 @@
+[
+  {
+    "body": {
+      "limit": 2,
+      "q": "go",
+      "summary": true
+    },
+    "method": "POST",
+    "path": "/v1/search"
+  }
+]

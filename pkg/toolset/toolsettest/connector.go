@@ -9,7 +9,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
@@ -111,7 +113,55 @@ type Connector struct {
 	// break connectors already on main, and become opt-out once every
 	// connector passes them. docs/CONNECTORS.md lists them.
 	Enable []CheckID
+
+	// SettingCalls are calls whose Settings change the request, such as a
+	// search depth or mode, for settings.honored. Each names a tool, an input
+	// and its Settings, and lists no cassettes: the suite answers with the
+	// tool's first cassette. The requests it sends are compared with
+	// testdata/golden/<Name>.request.json and must differ from those sent
+	// without the call's Settings.
+	SettingCalls []Call
+	// AttemptTimeout is how to set the connector's own timeout on a request,
+	// for errors.attempt_timeout.
+	AttemptTimeout *AttemptTimeout
+	// Truncation is how the connector cuts long content, for
+	// limits.rune_boundary.
+	Truncation *Truncation
 }
+
+// AttemptTimeout sets a connector's own timeout on one request (or one call),
+// separate from the caller's context.
+type AttemptTimeout struct {
+	// Settings, merged over the first call's settings, set the timeout to
+	// Timeout, for example {"timeout": "300ms"}.
+	Settings json.RawMessage
+	// Timeout is the timeout Settings set. The check waits for it in real
+	// time, so keep it short.
+	Timeout time.Duration
+}
+
+// Truncation describes how a connector cuts long content, for
+// limits.rune_boundary.
+type Truncation struct {
+	// Call names the happy call whose output carries the content.
+	Call string
+	// Field is a JSON pointer (RFC 6901) to the content in the response body
+	// of the call's first cassette, such as "/results/0/content". The suite
+	// puts long multi-byte text there.
+	Field string
+	// Settings, merged over the call's settings, set the content limit to
+	// Limit, for example {"max_content_chars": {"search": 50}}.
+	Settings json.RawMessage
+	// Limit is how many characters (runes) cut content keeps before its
+	// marker.
+	Limit int
+	// Marker matches all that follows the kept text. Default: E10's marker,
+	// …[truncated N characters; <how to get the rest>].
+	Marker *regexp.Regexp
+}
+
+// defaultMarker is E10's truncation marker.
+var defaultMarker = regexp.MustCompile(`^…\[truncated [\d,]+ characters?; .+\]$`)
 
 var callName = regexp.MustCompile(`^[a-z0-9_]{1,64}$`)
 
@@ -157,7 +207,7 @@ func normalize(tb testing.TB, c Connector) Connector {
 	if err := json.Unmarshal(c.Settings, &obj); err != nil || obj == nil {
 		tb.Fatalf("toolsettest: Connector.Settings must be a JSON object: %s", c.Settings)
 	}
-	for _, call := range slices.Concat(c.Calls, c.Invalid) {
+	for _, call := range slices.Concat(c.Calls, c.Invalid, c.SettingCalls) {
 		if len(call.Settings) == 0 {
 			continue
 		}
@@ -176,7 +226,7 @@ func normalize(tb testing.TB, c Connector) Connector {
 		tb.Fatal("toolsettest: Connector.Invalid is empty: give at least one input the connector must refuse")
 	}
 	seen := map[string]bool{}
-	for _, calls := range [][]Call{c.Calls, c.Invalid} {
+	for _, calls := range [][]Call{c.Calls, c.Invalid, c.SettingCalls} {
 		for _, call := range calls {
 			if !callName.MatchString(call.Name) || seen[call.Name] {
 				tb.Fatalf("toolsettest: call name %q must be unique and match %s", call.Name, callName)
@@ -187,6 +237,24 @@ func normalize(tb testing.TB, c Connector) Connector {
 	for _, call := range c.Invalid {
 		if len(call.Cassettes) != 0 {
 			tb.Fatalf("toolsettest: invalid call %s lists cassettes; it must make no request", call.Name)
+		}
+	}
+	for _, call := range c.SettingCalls {
+		if len(call.Cassettes) != 0 || len(call.Settings) == 0 {
+			tb.Fatalf("toolsettest: setting call %s must have Settings and list no cassettes (the suite answers it)", call.Name)
+		}
+	}
+	if at := c.AttemptTimeout; at != nil && (at.Timeout <= 0 || len(at.Settings) == 0) {
+		tb.Fatal("toolsettest: AttemptTimeout needs Settings and a positive Timeout")
+	}
+	if tr := c.Truncation; tr != nil {
+		if tr.Limit <= 0 || !strings.HasPrefix(tr.Field, "/") {
+			tb.Fatal("toolsettest: Truncation needs a positive Limit and a Field that is a JSON pointer (\"/results/0/content\")")
+		}
+		if tr.Marker == nil {
+			tr := *tr
+			tr.Marker = defaultMarker
+			c.Truncation = &tr
 		}
 	}
 	return c
@@ -221,9 +289,10 @@ func checkCalls(tb testing.TB, c Connector, files bool) {
 // Its subtests are a contract, each a check with a [CheckID]
 // (docs/CONNECTORS.md lists what each checks): definitions;
 // settings/{unknown_field,literal_api_key,missing_key,plain_http_base_url,
-// base_url}; calls/<call>; keyless/<call> (KeyOptional only);
-// invalid/<call>; cassettes/openapi; errors/{400,422,401,403,500,502,503,429_retry_after,
-// 429_then_200,malformed_json,oversized_body,hang,connection_refused};
+// base_url,honored}; calls/<call>; keyless/<call> (KeyOptional only);
+// invalid/<call>; cassettes/openapi; errors/{400,422,401,403,500,502,503,
+// no_retry_5xx,429_retry_after,429_then_200,retry_wait_ctx,malformed_json,
+// oversized_body,hang,attempt_timeout,connection_refused}; limits/rune_boundary;
 // schema_honesty/{undeclared,dead_fields}; canary; hermetic; mcp; concurrency.
 //
 // After every subtest, whatever it checked, the suite also checks that the key
@@ -243,6 +312,7 @@ func RunConnector(t *testing.T, c Connector) {
 	s.run(t, "invalid", s.invalid)
 	t.Run("cassettes", func(t *testing.T) { s.run(t, "cassettes.openapi", func(t *testing.T) { s.openapiCheck(t) }) })
 	t.Run("errors", s.errorMatrix)
+	t.Run("limits", s.limits)
 	t.Run("schema_honesty", s.schemaHonesty)
 	s.run(t, "canary", s.canaryCheck)
 	s.run(t, "hermetic", s.hermeticCheck)

@@ -1,6 +1,7 @@
 package toolsettest
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http/httptest"
@@ -72,14 +73,17 @@ type mcpResult struct {
 	Structured json.RawMessage
 }
 
-// callMCP calls a tool over MCP. A protocol error fails the test.
+// callMCP calls a tool over MCP, bounded by the watchdog as a direct call is.
+// A protocol error fails the test.
 func callMCP(t testing.TB, cs *mcp.ClientSession, name string, input json.RawMessage) mcpResult {
 	t.Helper()
 	var args any
 	if err := json.Unmarshal(input, &args); err != nil {
 		t.Fatalf("[mcp] input %s: %v", input, err)
 	}
-	res, err := cs.CallTool(t.Context(), &mcp.CallToolParams{Name: name, Arguments: args})
+	ctx, cancel := context.WithTimeout(t.Context(), watchdog)
+	defer cancel()
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: args})
 	if err != nil {
 		t.Fatalf("[mcp] CallTool %s: %v", name, err)
 	}

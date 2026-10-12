@@ -1,0 +1,14 @@
+[
+  {
+    "body": {
+      "include_answer": true,
+      "include_published_date": true,
+      "max_results": 5,
+      "query": "latest Go programming language release",
+      "search_depth": "basic",
+      "topic": "news"
+    },
+    "method": "POST",
+    "path": "/search"
+  }
+]

@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/tool"
@@ -37,6 +38,12 @@ const KeylessHeader = "X-Toy-Access"
 
 // maxBody is the most bytes of a response body the toy reads.
 const maxBody = 8 << 20
+
+// Defaults of the timeout and max_content_chars settings.
+const (
+	defaultTimeout         = 30 * time.Second
+	defaultMaxContentChars = 4000
+)
 
 // Bug names one planted bug. The zero value is a correct connector.
 type Bug string
@@ -63,6 +70,11 @@ const (
 	BugDeadOutputField       Bug = "dead_output_field"         // schema_honesty
 	BugUndeclaredOutputField Bug = "undeclared_output_field"   // schema_honesty
 	BugLogKeyOnRetry         Bug = "log_key_on_retry"          // the after-every-subtest log check
+	BugRetry5xxAfterWait     Bug = "retry_5xx_after_wait"      // errors/no_retry_5xx
+	BugWaitIgnoresCtx        Bug = "wait_ignores_ctx"          // errors/retry_wait_ctx
+	BugIgnoreTimeout         Bug = "ignore_timeout"            // errors/attempt_timeout
+	BugCutBytes              Bug = "cut_bytes"                 // limits/rune_boundary
+	BugIgnoreSummarySetting  Bug = "ignore_summary_setting"    // settings/honored
 )
 
 // Bugs lists every planted bug.
@@ -71,7 +83,8 @@ var Bugs = []Bug{
 	BugNoOutputSchema, BugRequestOnInvalid, BugUnboundedBody, BugIgnoreCtx, BugKeyInQuery,
 	BugRequestInBuild, BugRetryIgnoresAfter, Bug400AsFailure, BugIgnoreBaseURLSetting,
 	BugKeylessNoMarker, BugAcceptPlainHTTP, BugDeadOutputField, BugUndeclaredOutputField,
-	BugLogKeyOnRetry,
+	BugLogKeyOnRetry, BugRetry5xxAfterWait, BugWaitIgnoresCtx, BugIgnoreTimeout, BugCutBytes,
+	BugIgnoreSummarySetting,
 }
 
 // Option configures [New].
@@ -130,6 +143,10 @@ type settings struct {
 	// WithSummary asks the API for a summary of the results: the output's
 	// summary field, filled only under this setting.
 	WithSummary bool `json:"with_summary,omitempty"`
+	// Timeout bounds each request, as a Go duration ("30s").
+	Timeout string `json:"timeout,omitempty"`
+	// MaxContentChars caps each result's content, in characters.
+	MaxContentChars int `json:"max_content_chars,omitempty"`
 }
 
 func (f *factory) Build(ctx context.Context, raw json.RawMessage) ([]tool.Tool, error) {
@@ -143,7 +160,20 @@ func (f *factory) Build(ctx context.Context, raw json.RawMessage) ([]tool.Tool, 
 	} else if err := toolset.DecodeSettings(raw, &s); err != nil {
 		return nil, err
 	}
-	c := &client{f: f, base: f.baseURL, summary: s.WithSummary}
+	c := &client{f: f, base: f.baseURL, summary: s.WithSummary, timeout: defaultTimeout, maxContent: defaultMaxContentChars}
+	if s.Timeout != "" {
+		d, err := time.ParseDuration(s.Timeout)
+		if err != nil || d <= 0 {
+			return nil, fmt.Errorf("%w: timeout %q: want a positive duration such as \"30s\"", toolset.ErrInvalidSettings, s.Timeout)
+		}
+		c.timeout = d
+	}
+	if s.MaxContentChars < 0 {
+		return nil, fmt.Errorf("%w: max_content_chars %d: want a positive number", toolset.ErrInvalidSettings, s.MaxContentChars)
+	}
+	if s.MaxContentChars > 0 {
+		c.maxContent = s.MaxContentChars
+	}
 	if c.base == "" {
 		c.base = DefaultBaseURL
 	}
@@ -261,10 +291,12 @@ func (d dishonest) Invoke(ctx context.Context, input json.RawMessage) (json.RawM
 }
 
 type client struct {
-	f       *factory
-	base    string
-	key     string
-	summary bool
+	f          *factory
+	base       string
+	key        string
+	summary    bool
+	timeout    time.Duration // of one request
+	maxContent int           // characters of a result's content
 }
 
 type (
@@ -306,7 +338,7 @@ func (c *client) search(ctx context.Context, in SearchInput) (SearchOutput, erro
 		return SearchOutput{}, fmt.Errorf("%w: max_results %d: want 1 to 20", tool.ErrInvalidInput, in.MaxResults)
 	}
 	req := map[string]any{"q": in.Query, "limit": in.MaxResults}
-	if c.summary {
+	if c.summary && c.f.bug != BugIgnoreSummarySetting {
 		req["summary"] = true
 	}
 	body, _ := json.Marshal(req)
@@ -323,7 +355,7 @@ func (c *client) search(ctx context.Context, in SearchInput) (SearchOutput, erro
 	}
 	out := SearchOutput{Results: []Result{}, Summary: resp.Summary}
 	for _, h := range resp.Hits {
-		out.Results = append(out.Results, Result{Title: h.Title, URL: h.Link, Content: h.Snippet})
+		out.Results = append(out.Results, Result{Title: h.Title, URL: h.Link, Content: c.content(h.Snippet)})
 	}
 	return out, nil
 }
@@ -346,17 +378,11 @@ func (c *client) get(ctx context.Context, in GetInput) (GetOutput, error) {
 // call sends a request, retrying once on 429, and decodes a 200 into out.
 func (c *client) call(ctx context.Context, method, path string, query url.Values, body []byte, out any) error {
 	for attempt := 0; ; attempt++ {
-		resp, err := c.do(ctx, method, path, query, body)
+		resp, data, err := c.attempt(ctx, method, path, query, body)
 		if err != nil {
-			if cerr := ctx.Err(); cerr != nil {
-				return cerr
-			}
-			return fmt.Errorf("toy: request failed: %w", tool.ErrToolFailed)
+			return err
 		}
-		data, readErr := c.read(resp)
 		switch {
-		case readErr != nil:
-			return readErr
 		case resp.StatusCode == http.StatusOK:
 			if err := json.Unmarshal(data, out); err != nil {
 				return fmt.Errorf("toy: malformed response: %w", tool.ErrToolFailed)
@@ -383,18 +409,66 @@ func (c *client) call(ctx context.Context, method, path string, query url.Values
 			if c.f.bug == BugLogKeyOnRetry {
 				c.f.log.Debug("toy: rate limited, retrying", "key", c.key)
 			}
-			select {
-			case <-c.f.clock.After(wait):
-			case <-ctx.Done():
-				return ctx.Err()
+			if err := c.wait(ctx, wait); err != nil {
+				return err
 			}
 		case resp.StatusCode == http.StatusTooManyRequests:
 			return errors.New("toy: rate limited")
 		case resp.StatusCode >= 500 && attempt == 0 && c.f.bug == BugRetry500:
 			continue
+		case resp.StatusCode >= 500 && attempt == 0 && c.f.bug == BugRetry5xxAfterWait:
+			if err := c.wait(ctx, time.Second); err != nil {
+				return err
+			}
 		default:
 			return fmt.Errorf("toy: status %d", resp.StatusCode)
 		}
+	}
+}
+
+// attempt sends one request, bounded by the timeout setting, and reads the
+// response. Its error is the caller's context error or a tool.ErrToolFailed.
+func (c *client) attempt(ctx context.Context, method, path string, query url.Values, body []byte) (*http.Response, []byte, error) {
+	actx := ctx
+	if c.f.bug == BugIgnoreCtx {
+		actx = context.Background()
+	}
+	if c.f.bug != BugIgnoreTimeout {
+		var cancel context.CancelFunc
+		actx, cancel = context.WithTimeout(actx, c.timeout)
+		defer cancel()
+	}
+	resp, err := c.do(actx, method, path, query, body)
+	if err != nil {
+		switch {
+		case ctx.Err() != nil:
+			return nil, nil, ctx.Err()
+		case actx.Err() != nil:
+			return nil, nil, fmt.Errorf("toy: no response within %v: %w", c.timeout, tool.ErrToolFailed)
+		}
+		return nil, nil, fmt.Errorf("toy: request failed: %w", tool.ErrToolFailed)
+	}
+	data, err := c.read(resp)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, nil, ctx.Err()
+		}
+		return nil, nil, err
+	}
+	return resp, data, nil
+}
+
+// wait waits d on the clock, or until ctx is done.
+func (c *client) wait(ctx context.Context, d time.Duration) error {
+	if c.f.bug == BugWaitIgnoresCtx {
+		<-c.f.clock.After(d)
+		return nil
+	}
+	select {
+	case <-c.f.clock.After(d):
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
@@ -412,9 +486,6 @@ func (c *client) do(ctx context.Context, method, path string, query url.Values, 
 	var rd io.Reader
 	if body != nil {
 		rd = strings.NewReader(string(body))
-	}
-	if c.f.bug == BugIgnoreCtx {
-		ctx = context.Background()
 	}
 	req, err := http.NewRequestWithContext(ctx, method, u, rd)
 	if err != nil {
@@ -480,6 +551,22 @@ func (c *client) message(data []byte) string {
 		m = string(r[:300])
 	}
 	return m
+}
+
+// content caps a result's content at maxContent characters. Cut content
+// ends with E10's marker: how much was cut and how to get the rest.
+func (c *client) content(s string) string {
+	n := utf8.RuneCountInString(s)
+	if n <= c.maxContent {
+		return s
+	}
+	var kept string
+	if c.f.bug == BugCutBytes {
+		kept = s[:min(c.maxContent, len(s))]
+	} else {
+		kept = string([]rune(s)[:c.maxContent])
+	}
+	return fmt.Sprintf("%s…[truncated %d characters; call toy_get with the item's id for the full text]", kept, n-c.maxContent)
 }
 
 // retryAfter parses a Retry-After in seconds, up to 10.

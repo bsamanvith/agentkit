@@ -1,13 +1,16 @@
 package toolsettest_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bsamanvith/agentkit/internal/testkit"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
@@ -50,7 +53,17 @@ func toyConnector(bug toy.Bug) toolsettest.Connector {
 		},
 		ErrorBody: toy.ErrorBody,
 		OpenAPI:   "testdata/openapi.json",
-		Enable:    []toolsettest.CheckID{"schema_honesty.dead_fields", "cassettes.openapi"},
+		Enable: []toolsettest.CheckID{
+			"schema_honesty.dead_fields", "cassettes.openapi", "settings.honored", "errors.no_retry_5xx",
+			"errors.retry_wait_ctx", "errors.attempt_timeout", "limits.rune_boundary",
+		},
+		SettingCalls: []toolsettest.Call{
+			{Name: "with_summary", Tool: "toy_search", Input: json.RawMessage(`{"query": "go", "max_results": 2}`), Settings: json.RawMessage(`{"with_summary": true}`)},
+		},
+		AttemptTimeout: &toolsettest.AttemptTimeout{Settings: json.RawMessage(`{"timeout": "300ms"}`), Timeout: 300 * time.Millisecond},
+		Truncation: &toolsettest.Truncation{
+			Call: "search_go", Field: "/hits/0/snippet", Settings: json.RawMessage(`{"max_content_chars": 40}`), Limit: 40,
+		},
 	}
 }
 
@@ -166,6 +179,14 @@ var plantedBugs = map[toy.Bug]string{
 	toy.BugUndeclaredOutputField: "TestToyConnector/schema_honesty/undeclared",
 	// Only on a retry, so only the log check run after every subtest sees it.
 	toy.BugLogKeyOnRetry: "TestToyConnector/errors/429_then_200",
+	// The retry waits on the clock, which errors/500 never advances: there
+	// the call sends one request and fails only at the watchdog, and a
+	// connector whose own timeout ends the wait first passes errors/500.
+	toy.BugRetry5xxAfterWait:    "TestToyConnector/errors/no_retry_5xx",
+	toy.BugWaitIgnoresCtx:       "TestToyConnector/errors/retry_wait_ctx",
+	toy.BugIgnoreTimeout:        "TestToyConnector/errors/attempt_timeout",
+	toy.BugCutBytes:             "TestToyConnector/limits/rune_boundary",
+	toy.BugIgnoreSummarySetting: "TestToyConnector/settings/honored",
 }
 
 // TestPlantedBugs: each planted bug makes the suite fail, on the check meant
@@ -213,7 +234,14 @@ func runSuite(t *testing.T, bug toy.Bug, check string) (string, error) {
 // runTest runs this test binary in a subprocess with env added and args.
 func runTest(t *testing.T, env []string, args ...string) (string, error) {
 	t.Helper()
+	return runTestIn(t, "", env, args...)
+}
+
+// runTestIn is runTest in directory dir ("" for this one).
+func runTestIn(t *testing.T, dir string, env []string, args ...string) (string, error) {
+	t.Helper()
 	cmd := exec.CommandContext(t.Context(), os.Args[0], append([]string{"-test.count=1", "-test.timeout=2m"}, args...)...)
+	cmd.Dir = dir
 	// The subprocess must never rewrite golden files or cassettes.
 	for _, kv := range os.Environ() {
 		if !strings.HasPrefix(kv, testkit.UpdateGoldenEnv+"=") && !strings.HasPrefix(kv, toolsettest.RecordEnv+"=") {
@@ -223,6 +251,39 @@ func runTest(t *testing.T, env []string, args ...string) (string, error) {
 	cmd.Env = env
 	out, err := cmd.CombinedOutput()
 	return string(out), err
+}
+
+// TestGoldenFirstRun: make golden on a connector with no golden files yet
+// writes them all in one run, though settings.base_url reads one before calls
+// writes it.
+func TestGoldenFirstRun(t *testing.T) {
+	t.Parallel()
+	if os.Getenv(testkit.UpdateGoldenEnv) == "1" {
+		t.Skip("under make golden, TestToyConnector rewrites the committed goldens this test compares with")
+	}
+	dir := t.TempDir()
+	// All of testdata but the goldens, which the run must write.
+	if err := os.CopyFS(filepath.Join(dir, "testdata"), os.DirFS("testdata")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(dir, "testdata", "golden")); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runTestIn(t, dir, []string{testkit.UpdateGoldenEnv + "=1"}, "-test.run=^TestToyConnector$")
+	if err != nil {
+		t.Fatalf("the first make golden failed: %v\n%s", err, out)
+	}
+	want, err := os.ReadDir(filepath.Join("testdata", "golden"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range want {
+		w, _ := os.ReadFile(filepath.Join("testdata", "golden", e.Name()))
+		got, err := os.ReadFile(filepath.Join(dir, "testdata", "golden", e.Name()))
+		if err != nil || !bytes.Equal(got, w) {
+			t.Errorf("golden %s after the first make golden = %q, %v; want the committed file", e.Name(), got, err)
+		}
+	}
 }
 
 // skipEnv makes TestToyConnectorSkips run; TestSkipsAreReported sets it in a

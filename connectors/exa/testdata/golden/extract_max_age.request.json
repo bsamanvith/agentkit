@@ -1,0 +1,18 @@
+[
+  {
+    "body": {
+      "maxAgeHours": 1,
+      "text": {
+        "maxCharacters": 5000
+      },
+      "urls": [
+        "https://go.dev/doc/devel/release",
+        "https://example.com/missing-page",
+        "https://slow.example.net/",
+        "https://unmentioned.example.com/a"
+      ]
+    },
+    "method": "POST",
+    "path": "/contents"
+  }
+]

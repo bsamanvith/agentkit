@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/bsamanvith/agentkit/connectors/tavily"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
@@ -25,6 +26,10 @@ func connector() toolsettest.Connector {
 		// answer, results[].raw_content and results[].published_date as
 		// plain strings, and the real API sends null for them (T051 Notes).
 		OpenAPI: "testdata/openapi.json",
+		Enable: []toolsettest.CheckID{
+			"settings.honored", "errors.no_retry_5xx", "errors.retry_wait_ctx",
+			"errors.attempt_timeout", "limits.rune_boundary",
+		},
 		Calls: []toolsettest.Call{
 			{
 				Name: "search_go_release", Tool: "tavily_search",
@@ -46,6 +51,26 @@ func connector() toolsettest.Connector {
 		ErrorBody: func(message string) []byte {
 			b, _ := json.Marshal(map[string]any{"detail": map[string]string{"error": message}})
 			return b
+		},
+		// Each setting shows in the request body.
+		SettingCalls: []toolsettest.Call{
+			{
+				Name: "search_depth_advanced", Tool: "tavily_search", Input: json.RawMessage(`{"query": "latest Go programming language release"}`),
+				Settings: json.RawMessage(`{"search_defaults": {"search_depth": "advanced"}}`),
+			},
+			{
+				Name: "search_topic_news", Tool: "tavily_search", Input: json.RawMessage(`{"query": "latest Go programming language release"}`),
+				Settings: json.RawMessage(`{"search_defaults": {"topic": "news", "include_answer": true}}`),
+			},
+			{
+				Name: "extract_depth_advanced", Tool: "tavily_extract", Input: json.RawMessage(`{"urls": ["https://go.dev/doc/devel/release"]}`),
+				Settings: json.RawMessage(`{"extract_defaults": {"extract_depth": "advanced", "format": "text"}}`),
+			},
+		},
+		AttemptTimeout: &toolsettest.AttemptTimeout{Settings: json.RawMessage(`{"timeout": "300ms"}`), Timeout: 300 * time.Millisecond},
+		Truncation: &toolsettest.Truncation{
+			Call: "search_go_release", Field: "/results/0/content", Limit: 100,
+			Settings: json.RawMessage(`{"max_content_chars": {"search": 100}}`),
 		},
 	}
 }

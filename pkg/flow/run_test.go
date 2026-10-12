@@ -67,10 +67,10 @@ func TestRunAndResumeRefuseBadRequests(t *testing.T) {
 	step := flow.Func("f", func(context.Context, *flow.State) error { return nil })
 	ctx := t.Context()
 
-	if _, err := flow.Run(ctx, "r", step); !errors.Is(err, flow.ErrNoCheckpointer) {
+	if _, err := run(t, nil, "r", step); !errors.Is(err, flow.ErrNoCheckpointer) {
 		t.Errorf("Run without a checkpointer: error = %v, want ErrNoCheckpointer", err)
 	}
-	if _, err := flow.Resume(ctx, "r", step); !errors.Is(err, flow.ErrNoCheckpointer) {
+	if _, err := resume(t, nil, "r", step); !errors.Is(err, flow.ErrNoCheckpointer) {
 		t.Errorf("Resume without a checkpointer: error = %v, want ErrNoCheckpointer", err)
 	}
 

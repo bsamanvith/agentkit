@@ -172,7 +172,7 @@ func TestResumeOfAChangedTreeFailsWithErrShapeChanged(t *testing.T) {
 	before := load(t, cp, "r")
 	var rec flowtest.Recorder
 
-	_, err := resume(t, cp, "r", changed, approved, flow.WithObserver(rec.Observe))
+	_, err := resume(t, cp, "r", changed, approved, observer(rec.Observe))
 	if !errors.Is(err, flow.ErrShapeChanged) {
 		t.Fatalf("Resume error = %v, want ErrShapeChanged", err)
 	}
@@ -210,7 +210,7 @@ func TestResumeWithAllowShapeChangeProceedsAndWarns(t *testing.T) {
 	}
 	var rec flowtest.Recorder
 
-	st, err := resume(t, cp, "r", changed, approved, flow.WithAllowShapeChange(), flow.WithObserver(rec.Observe))
+	st, err := resume(t, cp, "r", changed, approved, flow.WithAllowShapeChange(), observer(rec.Observe))
 	if err != nil {
 		t.Fatalf("Resume: %v", err)
 	}
@@ -242,7 +242,7 @@ func TestResumeWithTheSameTreeWarnsAboutNothing(t *testing.T) {
 	}
 	var rec flowtest.Recorder
 	// A tree built again (new closures) is the same tree.
-	if _, err := resume(t, cp, "r", approvalFlow(&c, "b"), approved, flow.WithObserver(rec.Observe)); err != nil {
+	if _, err := resume(t, cp, "r", approvalFlow(&c, "b"), approved, observer(rec.Observe)); err != nil {
 		t.Fatalf("Resume: %v", err)
 	}
 	for _, e := range rec.Events() {
@@ -289,7 +289,7 @@ func TestResumeOfACheckpointWithoutAShapeStillRuns(t *testing.T) {
 	var rec flowtest.Recorder
 
 	st, err := resume(t, cp, "r", reviewFlow(&c),
-		flow.WithDecision("review/check[1]/legal", flow.Decision{Approved: true}), flow.WithObserver(rec.Observe))
+		flow.WithDecision("review/check[1]/legal", flow.Decision{Approved: true}), observer(rec.Observe))
 	if err != nil {
 		t.Fatalf("Resume: %v", err)
 	}
@@ -336,7 +336,7 @@ func TestResumeOfACheckpointWithAFingerprintOfAnotherVersionStillRuns(t *testing
 			var rec flowtest.Recorder
 
 			st, err := resume(t, cp, "r", reviewFlow(&c),
-				flow.WithDecision("review/check[1]/legal", flow.Decision{Approved: true}), flow.WithObserver(rec.Observe))
+				flow.WithDecision("review/check[1]/legal", flow.Decision{Approved: true}), observer(rec.Observe))
 			if err != nil {
 				t.Fatalf("Resume: %v", err)
 			}

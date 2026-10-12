@@ -70,7 +70,7 @@ func TestResumeAfterCancellation(t *testing.T) {
 	seq := flow.Sequence("seq", trail(&c, "a"), cancelling, trail(&c, "c"))
 	cp := flow.NewMemory()
 
-	_, err := flow.Run(ctx, "r", seq, flow.WithCheckpointer(cp))
+	_, err := runCtx(ctx, t, cp, "r", seq)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("Run error = %v, want context.Canceled", err)
 	}
@@ -232,7 +232,7 @@ func TestNestedCombinatorsCheckpointAndResume(t *testing.T) {
 			close(sideSaved)
 		}
 	}
-	if _, err := run(t, cp, "r", flowTree, flow.WithObserver(observeSide)); !errors.Is(err, errBoom) {
+	if _, err := run(t, cp, "r", flowTree, observer(observeSide)); !errors.Is(err, errBoom) {
 		t.Fatalf("Run error = %v, want errBoom", err)
 	}
 	// Branches run concurrently, so compare how often each step ran.
@@ -299,7 +299,7 @@ func TestEventsReportPathsAndOutcomes(t *testing.T) {
 	cp := flow.NewMemory()
 	fail := flow.Func("b", func(context.Context, *flow.State) error { return errBoom })
 
-	_, err := run(t, cp, "ok", flow.Sequence("main", trail(&c, "a"), trail(&c, "b")), flow.WithObserver(rec.Observe))
+	_, err := run(t, cp, "ok", flow.Sequence("main", trail(&c, "a"), trail(&c, "b")), observer(rec.Observe))
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -308,7 +308,7 @@ func TestEventsReportPathsAndOutcomes(t *testing.T) {
 	})
 
 	rec = flowtest.Recorder{}
-	if _, err := run(t, cp, "fail", flow.Sequence("main", trail(&c, "a"), fail, trail(&c, "c")), flow.WithObserver(rec.Observe)); err == nil {
+	if _, err := run(t, cp, "fail", flow.Sequence("main", trail(&c, "a"), fail, trail(&c, "c")), observer(rec.Observe)); err == nil {
 		t.Fatal("Run succeeded")
 	}
 	equalStrings(t, "events of a failing run", rec.Summary(), []string{
@@ -319,7 +319,7 @@ func TestEventsReportPathsAndOutcomes(t *testing.T) {
 	}
 
 	rec = flowtest.Recorder{}
-	if _, err := run(t, cp, "ask", flow.Sequence("main", flow.Approve("ok")), flow.WithObserver(rec.Observe)); !errors.Is(err, flow.ErrSuspended) {
+	if _, err := run(t, cp, "ask", flow.Sequence("main", flow.Approve("ok")), observer(rec.Observe)); !errors.Is(err, flow.ErrSuspended) {
 		t.Fatalf("Run error = %v, want ErrSuspended", err)
 	}
 	equalStrings(t, "events of a suspended run", rec.Summary(), []string{
@@ -332,7 +332,7 @@ func TestEventsReportPathsAndOutcomes(t *testing.T) {
 		return flow.Func(name, func(context.Context, *flow.State) error { return nil })
 	}
 	par := flow.Sequence("main", flow.Parallel("par", noop("x"), noop("y")))
-	if _, err := run(t, cp, "par", par, flow.WithObserver(rec.Observe)); err != nil {
+	if _, err := run(t, cp, "par", par, observer(rec.Observe)); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	for _, path := range []string{"main", "main/par", "main/par[0]/x", "main/par[1]/y"} {
@@ -357,7 +357,7 @@ func TestPathsAreDeterministicUnderScheduling(t *testing.T) {
 		var paths []string
 		var rec flowtest.Recorder
 		f := flow.Parallel("par", branches...)
-		if _, err := run(t, flow.NewMemory(), "r", f, flow.WithObserver(rec.Observe)); err != nil {
+		if _, err := run(t, flow.NewMemory(), "r", f, observer(rec.Observe)); err != nil {
 			t.Fatalf("order %v: Run: %v", order, err)
 		}
 		for _, e := range rec.Events() {
@@ -394,7 +394,7 @@ func TestCheckpointIsSavedAfterTheStepHasFinishedChangingState(t *testing.T) {
 	}
 	var c calls
 	f := flow.Sequence("main", trail(&c, "a"), failOnce(&c, "b"))
-	if _, err := run(t, cp, "r", f, flow.WithObserver(obs)); !errors.Is(err, errBoom) {
+	if _, err := run(t, cp, "r", f, observer(obs)); !errors.Is(err, errBoom) {
 		t.Fatalf("Run error = %v, want errBoom", err)
 	}
 	equalStrings(t, "state saved for main/a", atFinish, []string{"a"})

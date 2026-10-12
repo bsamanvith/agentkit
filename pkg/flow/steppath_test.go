@@ -31,7 +31,7 @@ func TestStepPathNamesTheRunningStep(t *testing.T) {
 		flow.Parallel("par", probe("b"), probe("b")),
 		flow.Loop("loop", probe("c"), func(*flow.State) (bool, error) { n++; return n == 2, nil }, 3),
 	)
-	if _, err := flow.Run(t.Context(), "run-1", step, flow.WithCheckpointer(flow.NewMemory())); err != nil {
+	if _, err := run(t, flow.NewMemory(), "run-1", step); err != nil {
 		t.Fatal(err)
 	}
 	slices.Sort(got)

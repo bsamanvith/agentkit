@@ -53,7 +53,7 @@ func TestResumeOfARejectedRunIsRejectedEvenIfASiblingFails(t *testing.T) {
 
 	var events atomic.Int32
 	counting := &countingSaves{Checkpointer: cp}
-	_, err = resume(t, counting, id, step, flow.WithObserver(func(flow.Event) { events.Add(1) }))
+	_, err = resume(t, counting, id, step, observer(func(flow.Event) { events.Add(1) }))
 	if !errors.As(err, &rej) || rej.Path != "par[1]/ok" || rej.Reason != "no" {
 		t.Errorf("resume 2: err = %v, want the recorded rejection of par[1]/ok", err)
 	}

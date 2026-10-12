@@ -201,7 +201,7 @@ func TestLoopStopsWhenConditionHolds(t *testing.T) {
 	}
 	var rec []string
 	st, err := run(t, flow.NewMemory(), "r", flow.Loop("count", inc, until, 10),
-		flow.WithObserver(func(e flow.Event) {
+		observer(func(e flow.Event) {
 			if e.Kind == flow.EventStarted {
 				rec = append(rec, e.Path)
 			}

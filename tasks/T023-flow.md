@@ -54,6 +54,40 @@ Each bug below was planted alone (the code compiled), `go test -race ./pkg/flow/
 | Non-deterministic step paths (branch index taken from goroutine start order) | `TestPathsAreDeterministicUnderScheduling`, `TestEventsReportPathsAndOutcomes`, `TestNestedCombinatorsCheckpointAndResume` and 2 more (fails on 10 of 10 single runs) |
 | `Memory` stores and returns checkpoints without copying (suite check) | `TestMemoryCheckpointer/StoresCopies` |
 
+### Invariants and simulation (added later, write-tests skill steps 4 to 8)
+
+- Every `Run`/`Resume` in the package's tests goes through `run`/`resume`/`runCtx`/`resumeCtx` (`helpers_test.go`), which check the invariants I1 to I13 listed in `invariants_test.go` after each call and, across the calls of one run id, when the test ends. A test's own observer is passed as `observer(fn)`, not `flow.WithObserver`.
+- `sim_test.go`: `TestSimulatedFlows` (300 seeds, about 1 s under `-race`) and `FuzzSimulatedFlow` build random trees with faults (a step failing or panicking once, cancellation inside a step, at an event or after a save, a failed save, partial or no decisions) and check S1 to S8: the uninterrupted run matches an independent reference interpreter, the crashed-and-resumed history ends in the same state with every step finished exactly once, and more. `TestSimulationCoversEveryCase` keeps the generator honest.
+- **Bug found by the simulation, since fixed** (`a645012`, test `TestResumeOfARejectedRunIsRejectedEvenIfASiblingFails` in `rejected_resume_test.go`). Resuming a rejected run ran again the `Parallel` branches the rejection had cancelled; if one of them failed, `Resume` returned that error instead of `ErrRejected`. When the tests were merged, I13's temporary tolerance for it was removed and I13 now also asserts that such a Resume emits no events. Re-planting the bug fails that test, `TestSimulatedFlows` and `TestApproveRejectionEndsRun`. Also on merge: the per-call helper keeps `main`'s fingerprint check on every saved checkpoint (`withShapeCheck`), and I3 follows T032's later rule that a fingerprint of another encoding version only warns (`ErrNoShape`).
+
+Mutation check of the invariants and the simulation (`-race -shuffle=on -count=2`; "sim" = `TestSimulatedFlows`/`FuzzSimulatedFlow`):
+
+| Planted bug | Original tests | Round 1 | Round 2 |
+|---|---|---|---|
+| `complete` edits the previous checkpoint in place | 1 test | 25 tests + sim | same |
+| a completed step keeps its children's records | 1 test | 20 tests + sim | same |
+| children dropped by name prefix without separator (`a` drops `ab`) | survived | sim | sim |
+| Finished emitted before the save | 1 test | 27 tests + sim | same |
+| no ctx check before a step starts | survived | sim | sim |
+| branch index from goroutine start order | 6 tests (by luck of scheduling) | 2 tests (sim stalled) | 7 tests + sim (152 seeds) |
+| `wg.Add` inside the goroutine | 12 tests | 15 tests + sim | same |
+| `Loop` runs one iteration too many | 1 test | 1 test + sim | same |
+| `Route` path leaves out the key | survived | sim | sim |
+| `Resume` starts from an empty state | survived | sim | sim |
+| a skipped step's record not restored | 9 tests | 10 tests + sim | same |
+| a rejection not recorded | 1 test | 1 test + sim | same |
+| pending approvals not sorted | survived | **survived** | sim (seeds 145, 247, every run) |
+| merge ignores deletions | 2 tests | 2 tests + sim | same |
+| equal writes by two branches not a conflict | 1 test | 1 test | 1 test + sim |
+| rejected run saved as failed | 1 test | 1 test + sim | same |
+| `Memory` stores without copying | suite | suite | suite |
+| `Resume` keeps the old fingerprint | 3 tests | 3 tests | 3 tests |
+| observer calls not serialized | survived | **survived** | 13 tests + sim (race detector) |
+| cancelled sibling's error reported instead of the cause | 1 test | 1 test + sim | same |
+| a suspended branch cancels its siblings | 1 test | sim | 2 tests + sim |
+
+Between the rounds: the observer check (I3: never called concurrently, through an unlocked field the race detector watches); every leaf checks it runs at the path the tree gives *it* (S4); test-side gates keyed by node, with a guard that only gives up the order, so a path bug fails instead of hanging; and inputs the generator never made: Parallels wider than 10 (where `[10]` sorts before `[2]`), a first `Run` with no decision at all, two branches writing the same value.
+
 ### Extra tests beyond the criteria
 
 Each guards a design trap: `TestCheckpointIsSavedAfterTheStepHasFinishedChangingState` (a failed step's partial writes never reach a checkpoint; a finished step is durable by the time `Finished` is emitted), `TestPathsAreDeterministicUnderScheduling` and `TestParallelMergeIsIndependentOfFinishOrder` (gates force finish order, no sleeps), `TestCompletedStepsDropTheirChildRecords`, `TestValidateRejectsMalformedFlows`, `TestRunAndResumeRefuseBadRequests`, `TestCheckpointSaveFailureFailsTheStep`, `TestPanicBecomesError`, `TestCheckpointJSONGolden` (the persisted format, `testdata/checkpoint_suspended.json`), `TestState*` and `FuzzStateUnmarshal` (decoding never panics; whatever decodes re-encodes to a fixed point), `ExampleRun` (sequence with an approval).

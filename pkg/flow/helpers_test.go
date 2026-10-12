@@ -123,16 +123,29 @@ func withShapeCheck(t testing.TB, cp flow.Checkpointer, step flow.Step) flow.Che
 	return shapeChecked{Checkpointer: cp, t: t, want: want}
 }
 
-func run(t *testing.T, cp flow.Checkpointer, id string, step flow.Step, opts ...flow.Option) (*flow.State, error) {
+// run, resume, runCtx and resumeCtx are the only way tests in this package
+// start a run: each call is checked against the invariants in
+// invariants_test.go. opts are flow.Options, or an observer (not
+// flow.WithObserver) for the test's own use of the events. A nil cp passes no
+// checkpointer.
+func run(t testing.TB, cp flow.Checkpointer, id string, step flow.Step, opts ...any) (*flow.State, error) {
 	t.Helper()
-	cp = withShapeCheck(t, cp, step)
-	return flow.Run(t.Context(), id, step, append([]flow.Option{flow.WithCheckpointer(cp)}, opts...)...)
+	return call(t.Context(), t, false, cp, id, step, opts...)
 }
 
-func resume(t *testing.T, cp flow.Checkpointer, id string, step flow.Step, opts ...flow.Option) (*flow.State, error) {
+func resume(t testing.TB, cp flow.Checkpointer, id string, step flow.Step, opts ...any) (*flow.State, error) {
 	t.Helper()
-	cp = withShapeCheck(t, cp, step)
-	return flow.Resume(t.Context(), id, step, append([]flow.Option{flow.WithCheckpointer(cp)}, opts...)...)
+	return call(t.Context(), t, true, cp, id, step, opts...)
+}
+
+func runCtx(ctx context.Context, t testing.TB, cp flow.Checkpointer, id string, step flow.Step, opts ...any) (*flow.State, error) {
+	t.Helper()
+	return call(ctx, t, false, cp, id, step, opts...)
+}
+
+func resumeCtx(ctx context.Context, t testing.TB, cp flow.Checkpointer, id string, step flow.Step, opts ...any) (*flow.State, error) {
+	t.Helper()
+	return call(ctx, t, true, cp, id, step, opts...)
 }
 
 func load(t *testing.T, cp flow.Checkpointer, id string) flow.Checkpoint {

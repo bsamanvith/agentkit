@@ -1,0 +1,8 @@
+{
+  "method": "POST",
+  "path": "/v1/search",
+  "body": {
+    "limit": 2,
+    "q": "go"
+  }
+}

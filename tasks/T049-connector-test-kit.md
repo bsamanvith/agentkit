@@ -2,7 +2,7 @@
 id: T049
 title: "toolsettest: the connector test kit (recorded upstreams, conformance suite, honest fakes)"
 epic: E10
-status: todo
+status: in-progress
 depends_on: [T026, T018]
 ---
 
@@ -64,6 +64,9 @@ type Connector struct {
     Cassettes string                         // testdata/cassettes
     Calls     []Call                         // happy paths, each answered from cassettes, output golden-compared
     Invalid   []Call                         // inputs that must fail validation without any request
+    // Optional, added in T049:
+    ErrorBody func(message string) []byte    // the provider's error body carrying message (default {"error": message})
+    MaxBodyBytes int64                       // the connector's body limit (default 8 MiB)
 }
 type Env struct { BaseURL string; HTTPClient *http.Client; LookupEnv func(string) (string, bool); Clock clock.Clock; Logger *slog.Logger }
 type Call struct { Name, Tool string; Input json.RawMessage; Cassettes []string }
@@ -97,7 +100,7 @@ Checks the suite runs on every connector:
 
 ### 4. Fakes for other tests (so nothing else pays)
 
-- **`toolsettest.Definitions(factory, settings)`** returns a connector's real tool definitions, using a dummy key and no network.
+- **`toolsettest.Definitions(tb, newFactory, settings)`** returns a connector's real tool definitions, using a dummy key and no network. (As built: `newFactory` is a `func(Env) toolset.Factory`, the same as `Connector.New`, so the kit can inject the dummy key and a client that refuses every host.)
 - **`toolsettest.NewFake(t, defs, ...Script)`** returns a `tool.Registry` with exactly those definitions:
   - **Scripts:** a static output, a function of the input, an error class, a sequence, or "replay this golden file".
   - **Input check:** every call's input is validated against the real input schema; invalid input gives `ErrInvalidInput`, as the real connector would.

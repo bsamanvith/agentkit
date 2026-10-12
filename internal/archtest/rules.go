@@ -18,6 +18,8 @@ func ModuleRules() Rules {
 			"examples/mcp-gateway": {"github.com/modelcontextprotocol/go-sdk/mcp"}, // its test uses the SDK client
 			"pkg/mcp/server":       {"github.com/modelcontextprotocol/go-sdk/jsonrpc", "github.com/modelcontextprotocol/go-sdk/mcp"},
 			"pkg/tool":             {"github.com/google/jsonschema-go/jsonschema"},
+			// The connector test kit validates schemas and checks connectors over MCP.
+			"pkg/toolset/toolsettest": {"github.com/google/jsonschema-go/jsonschema", "github.com/modelcontextprotocol/go-sdk/mcp"},
 		},
 		TestOnly: []string{
 			"github.com/google/go-cmp/cmp",
@@ -35,7 +37,7 @@ func ModuleRules() Rules {
 			// toolsets and the fakes.
 			"pkg/agentapi": {
 				"pkg/harness", "pkg/llm", "pkg/tool", "pkg/toolset", "pkg/component", "pkg/clock",
-				"pkg/llm/llmtest", "pkg/clock/clocktest", "internal/testkit",
+				"pkg/llm/llmtest", "pkg/clock/clocktest", "internal/testkit", "pkg/toolset/toolsettest",
 			},
 		},
 		Banned: []string{

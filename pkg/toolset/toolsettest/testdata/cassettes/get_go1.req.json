@@ -1,0 +1,9 @@
+{
+  "method": "GET",
+  "path": "/v1/items/go1",
+  "query": {
+    "fields": [
+      "full"
+    ]
+  }
+}

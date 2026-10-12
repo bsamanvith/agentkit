@@ -17,6 +17,7 @@
 | First connectors: Tavily, Exa, Parallel (search, extract) | [E10](E10-search-connectors.md) | **Tavily done** (live end to end with real Claude passed); Exa and Parallel on `main`, in review until keys exist; no auth work needed (Tavily keyless or keyed; Exa and Parallel keyed from env) |
 | Clients: admin console, CLI and headless, and the APIs behind them | [E11](E11-clients.md) | **In progress**: T053 running; T062 (agents, conversations, catalog API), T063 (agents over MCP), T061 (login), T055/T064 (console) planned. UI plan: [docs/UI.md](../docs/UI.md) with a clickable mockup |
 | Skills and memory (context store; search by keyword or embeddings, opt-in) | [E12](E12-skills-memory.md) | **Planned** (T057–T060); T057 and T058 can start now |
+| Agent protocols: A2UI (agent-driven UI), A2A (agent to agent), AG-UI, MCP Apps | [E13](E13-agent-protocols.md) | **Planned** (T065–T069); after the console basics and the agents API |
 | More model providers | [E08](E08-model-providers.md) | Later |
 | Agent skills | [E02](E02-agent-skills.md) | In progress: `write-tests` exists and was dry-run on `pkg/flow` |
 
@@ -92,6 +93,7 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 - 2026-10-12: no Anthropic key in GitHub. Live tests run in Claude sessions (`ANTHROPIC_KEY`, mapped by `make test-live`); T034 is a perf report only.
 - 2026-10-12: first connectors are Tavily, Exa and Parallel, for search and extraction ([E10](E10-search-connectors.md)); they run in parallel with E07, keys from the environment for now.
 - 2026-10-12: the owner will say how to deploy; no deploy task until then. First target: the Docker image locally, used through the clients.
+- 2026-10-12: agent protocols (E13): agents stream UI as A2UI surfaces (validated against our catalog, rendered with the console's own components); our agents served over A2A and remote A2A agents usable as tools; AG-UI and MCP Apps later. Console look: neutral (grey, white, minimal black; near-black dark mode); tool calls as quiet one-line steps with details on demand.
 - 2026-10-12: the web client is an admin console (login, chat with agent picker, conversations, agents, MCP toolsets and tools, credentials), API-first so Claude Code and other harnesses can drive everything; agents also over MCP ([docs/UI.md](../docs/UI.md)).
 - 2026-10-12: skills and memory for the harness (E12): Agent Skills format with progressive disclosure; a context store and an opt-in search store (keyword, semantic, hybrid).
 - 2026-10-12: two clients, a web client for people and a CLI with a headless mode for our tests and evals (E11). Evals (T050) later, after deploy and clients. Order: T052, T051, then clients.

@@ -17,7 +17,8 @@ People need to use the agent without a terminal: a chat like a terminal agent's,
 - **`web` component** (`pkg/web`): serves the embedded bundle at `/` (and its assets), with `Content-Security-Policy: default-src 'self'` (no inline scripts or styles), `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`; `index.html` not cached, hashed assets cached. Ready when the bundle is present. `AGENTKIT_COMPONENTS=agent,mcp-server,web`; the image's default config and `scripts/try-agent.sh` turn it on.
 - **UI** (TypeScript, no framework, esbuild via its Go API: `internal/webbuild`, `make web`; bundle committed in `pkg/web/dist/`, CI checks it is fresh):
   - chat: message box (Enter sends, Shift+Enter new line), streamed answer, a **Stop** button that cancels the run (closes the stream);
-  - **tool calls** as cards: tool name, input (collapsed JSON), status (running, done, error), result (collapsed, plain text, truncated with "show all");
+  - **tool calls** as quiet one-line steps, grouped when several ("Used 3 tools · 2.6 s"), with details in place (request as key/value, results as a compact list, raw JSON on demand), source chips under the answer: exactly as specified in [docs/UI.md](../docs/UI.md) "Tool calls" and the mockup;
+  - **neutral themes** per docs/UI.md "Look" (light: grey, white, minimal black; dark: near-black), with a Light/Dark/System switch;
   - per turn: usage (tokens) and time; errors from `run_error` shown inline with a retry button where retryable;
   - **agent picker** for a new chat (`GET /v1/agents`, T062); the conversation header shows its agent;
   - **conversations** in a sidebar from `GET /v1/conversations` (T062; `localStorage` only as a fallback before T062 lands): filter by agent, click to load, "New chat";

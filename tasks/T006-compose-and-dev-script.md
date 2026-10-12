@@ -14,7 +14,7 @@ One command brings up any topology from [ENGINEERING.md §3.2](../docs/ENGINEERI
 
 ## Scope
 
-- `deploy/local/compose.yaml` with profiles: `allinone`, `split`, `deps`, `obs`. (`mcp` and `secrets` profiles are added by their epics; leave a commented placeholder.)
+- `deploy/local/compose.yaml` with profiles: `allinone`, `split`, `deps`, `obs`. The `deps` profile runs **Postgres 17 and Redis 7** (E18), with `AGENTKIT_PG_URL` and `AGENTKIT_REDIS_URL` printed by `scripts/dev.sh up deps` for the integration tier; app topologies use them with `bus: redis` and two agentkit replicas in `split`, to exercise cross-replica streaming (T090). (`mcp` and `secrets` profiles are added by their epics; leave a commented placeholder.)
 - Healthchecks on every service; `depends_on: condition: service_healthy`.
 - One `agentkit` image everywhere; each container gets its own config in `deploy/local/config/` (e.g. `split-harness`, `split-tools`); fixed host ports documented in `deploy/local/README.md`.
 - `fakellm` is part of every app topology; `AGENTKIT_LLM=anthropic` + `ANTHROPIC_API_KEY` switches to the real API.

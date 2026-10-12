@@ -1,6 +1,8 @@
 package web_test
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"io"
 	"io/fs"
@@ -214,5 +216,52 @@ func TestEmbeddedBuild(t *testing.T) {
 	}
 	if inlineStyle.Match(html) || inlineHandle.Match(html) {
 		t.Error("index.html has an inline style or event handler, which the CSP blocks")
+	}
+}
+
+// TestCompression: text files go gzipped to clients that accept it, with
+// their own ETag; fonts and files that don't shrink never are.
+func TestCompression(t *testing.T) {
+	t.Parallel()
+	script := strings.Repeat("console.log('agentkit');\n", 200)
+	files := build()
+	files["assets/big-abc123.js"] = &fstest.MapFile{Data: []byte(script)}
+	h := web.New(files).Handler()
+
+	plain := get(t, h, http.MethodGet, "/assets/big-abc123.js")
+	if plain.Header.Get("Content-Encoding") != "" || body(t, plain) != script || plain.Header.Get("Vary") != "Accept-Encoding" {
+		t.Fatalf("without Accept-Encoding: Content-Encoding %q, Vary %q", plain.Header.Get("Content-Encoding"), plain.Header.Get("Vary"))
+	}
+	for _, ae := range []string{"gzip", "gzip, deflate, br, zstd", "br;q=1.0, gzip;q=0.8", "*", "GZIP"} {
+		resp := get(t, h, http.MethodGet, "/assets/big-abc123.js", "Accept-Encoding", ae)
+		if resp.Header.Get("Content-Encoding") != "gzip" {
+			t.Errorf("Accept-Encoding %q: Content-Encoding %q, want gzip", ae, resp.Header.Get("Content-Encoding"))
+			continue
+		}
+		zr, err := gzip.NewReader(bytes.NewReader([]byte(body(t, resp))))
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := io.ReadAll(zr)
+		if err != nil || string(got) != script {
+			t.Errorf("Accept-Encoding %q: the gzipped body is not the file (%v)", ae, err)
+		}
+		if etag := resp.Header.Get("ETag"); etag == plain.Header.Get("ETag") || etag == "" {
+			t.Errorf("Accept-Encoding %q: ETag %q, want one of its own", ae, etag)
+		} else if again := get(t, h, http.MethodGet, "/assets/big-abc123.js", "Accept-Encoding", ae, "If-None-Match", etag); again.StatusCode != http.StatusNotModified {
+			t.Errorf("Accept-Encoding %q with its ETag: %s, want 304", ae, again.Status)
+		}
+	}
+	for _, ae := range []string{"identity", "gzip;q=0", "*;q=0", "gzip; q=0.000", "*, gzip;q=0", "br"} {
+		if resp := get(t, h, http.MethodGet, "/assets/big-abc123.js", "Accept-Encoding", ae); resp.Header.Get("Content-Encoding") != "" {
+			t.Errorf("Accept-Encoding %q: Content-Encoding %q, want none", ae, resp.Header.Get("Content-Encoding"))
+		}
+	}
+	// A font is compressed already; a tiny file grows when gzipped.
+	for _, p := range []string{"/assets/geist-latin-x.woff2", "/theme.js"} {
+		resp := get(t, h, http.MethodGet, p, "Accept-Encoding", "gzip")
+		if resp.Header.Get("Content-Encoding") != "" || resp.Header.Get("Vary") != "" {
+			t.Errorf("GET %s: Content-Encoding %q, Vary %q; want neither", p, resp.Header.Get("Content-Encoding"), resp.Header.Get("Vary"))
+		}
 	}
 }

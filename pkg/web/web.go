@@ -9,7 +9,9 @@
 // or style, nothing from other origins), X-Content-Type-Options: nosniff and
 // Referrer-Policy: no-referrer. index.html is never cached; hashed files
 // under /assets/ are cached for a year; other files (favicon, theme.js) are
-// revalidated. Paths without a file extension get index.html, so the app's
+// revalidated. Text files (scripts, styles, HTML, SVG) are gzipped once, at
+// start, and sent compressed to clients that accept it: a third of the bytes
+// on a slow connection. Paths without a file extension get index.html, so the app's
 // routes (/c/{id}, /agents) work on reload; a missing file with an
 // extension, or anything under /assets/, is 404, so a stale tab never gets
 // HTML for a script. /v1/ and /mcp/ belong to other components and are
@@ -18,6 +20,7 @@ package web
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"embed"
@@ -26,6 +29,7 @@ import (
 	"io/fs"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -77,6 +81,51 @@ type file struct {
 	body  []byte
 	etag  string
 	ctype string
+	gz    []byte // body gzipped, when that is smaller; nil otherwise
+}
+
+// compressible reports whether a media type is worth gzipping: text, not
+// fonts or images that are compressed already.
+func compressible(ctype string) bool {
+	return strings.HasPrefix(ctype, "text/") || ctype == "image/svg+xml" || ctype == "application/json"
+}
+
+func gzipped(b []byte) []byte {
+	var buf bytes.Buffer
+	zw, _ := gzip.NewWriterLevel(&buf, gzip.BestCompression) // a valid level never errs
+	_, _ = zw.Write(b)                                       // a bytes.Buffer never errs
+	_ = zw.Close()
+	if buf.Len() >= len(b) {
+		return nil
+	}
+	return buf.Bytes()
+}
+
+// acceptsGzip reports whether a request's Accept-Encoding allows gzip
+// (RFC 9110 §12.5.3): gzip, or else "*", listed without q=0.
+func acceptsGzip(r *http.Request) bool {
+	gzipQ, starQ := -1.0, -1.0
+	for _, v := range r.Header.Values("Accept-Encoding") {
+		for part := range strings.SplitSeq(v, ",") {
+			coding, params, _ := strings.Cut(part, ";")
+			q := 1.0
+			if k, val, ok := strings.Cut(params, "="); ok && strings.EqualFold(strings.TrimSpace(k), "q") {
+				if f, err := strconv.ParseFloat(strings.TrimSpace(val), 64); err == nil {
+					q = f
+				}
+			}
+			switch coding = strings.TrimSpace(coding); {
+			case strings.EqualFold(coding, "gzip"):
+				gzipQ = q
+			case coding == "*":
+				starQ = q
+			}
+		}
+	}
+	if gzipQ >= 0 {
+		return gzipQ > 0
+	}
+	return starQ > 0
 }
 
 // Component serves a console build. It implements component.Component.
@@ -102,7 +151,11 @@ func New(files fs.FS) *Component {
 		if !ok {
 			ctype = http.DetectContentType(b)
 		}
-		c.files[name] = file{body: b, etag: `"` + hex.EncodeToString(sum[:12]) + `"`, ctype: ctype}
+		f := file{body: b, etag: `"` + hex.EncodeToString(sum[:12]) + `"`, ctype: ctype}
+		if compressible(ctype) {
+			f.gz = gzipped(b)
+		}
+		c.files[name] = f
 		return nil
 	})
 	if _, ok := c.files["index.html"]; c.err == nil && !ok {
@@ -167,6 +220,15 @@ func (c *Component) serve(w http.ResponseWriter, r *http.Request) {
 		h.Set("Cache-Control", cacheOther)
 	}
 	h.Set("Content-Type", f.ctype)
-	h.Set("ETag", f.etag)
-	http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(f.body))
+	body, etag := f.body, f.etag
+	if f.gz != nil {
+		h.Set("Vary", "Accept-Encoding")
+		if acceptsGzip(r) {
+			// Its own ETag: the two encodings are different representations.
+			body, etag = f.gz, strings.TrimSuffix(f.etag, `"`)+`-gz"`
+			h.Set("Content-Encoding", "gzip")
+		}
+	}
+	h.Set("ETag", etag)
+	http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(body))
 }

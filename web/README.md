@@ -54,6 +54,13 @@ change the build, so it doesn't fail the check either.
   inlined as a data URI, and libraries that inject `<style>` tags are
   blocked. Radix's modal scroll lock is one of these; the smoke test fails
   on any CSP violation.
+- **Size**: the console has to work on low-end machines and slow links.
+  `pkg/web` gzips text files once at start and sends them compressed;
+  fonts use `font-display: swap` and `unicode-range`, so text shows at once
+  and Latin Extended loads only when used. `make web-check` fails when the
+  first load (gzipped scripts and styles) is over 200 KB
+  (`scripts/check-size.sh`; it is 162 KB at T078). Lazy-load
+  (`React.lazy`) what the first screen doesn't need instead of raising it.
 - **Untrusted text stays text**: ESLint bans `dangerouslySetInnerHTML` and
   `innerHTML`.
 - **Tokens**: `packages/ui/src/styles/tokens.css` is generated from the

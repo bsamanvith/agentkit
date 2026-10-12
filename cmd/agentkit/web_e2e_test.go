@@ -7,6 +7,7 @@ package main
 import (
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -38,6 +39,15 @@ func TestE2EServeWeb(t *testing.T) {
 			resp.Header.Get("Content-Security-Policy") != web.CSP {
 			t.Errorf("GET %s = %s, CSP %q; want the console with its CSP", path, resp.Status, resp.Header.Get("Content-Security-Policy"))
 		}
+	}
+	// The script goes gzipped (Go's client asks for gzip and unpacks it).
+	_, index := get("/")
+	script := regexp.MustCompile(`src="(/assets/[^"]+\.js)"`).FindStringSubmatch(index)
+	if script == nil {
+		t.Fatalf("index.html loads no script: %.200s", index)
+	}
+	if resp, body := get(script[1]); resp.StatusCode != http.StatusOK || !resp.Uncompressed || len(body) == 0 {
+		t.Errorf("GET %s = %s, gzipped %v; want it gzipped", script[1], resp.Status, resp.Uncompressed)
 	}
 	// The runtime's endpoints and the other component keep their paths.
 	if resp, body := get("/healthz"); resp.StatusCode != http.StatusOK || !strings.Contains(body, `"ok"`) {

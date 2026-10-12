@@ -97,7 +97,7 @@ web: ## Build the console into pkg/web/dist (commit it with the sources)
 	$(PNPM) --dir web build
 
 .PHONY: web-check
-web-check: ## Web: lint, format, typecheck, unit tests, audit, build; fail if pkg/web/dist is stale
+web-check: ## Web: lint, format, typecheck, unit tests, audit, build; fail if pkg/web/dist is stale or over budget
 	$(PNPM) --dir web install --frozen-lockfile
 	$(PNPM) --dir web lint
 	$(PNPM) --dir web format:check
@@ -105,6 +105,7 @@ web-check: ## Web: lint, format, typecheck, unit tests, audit, build; fail if pk
 	$(PNPM) --dir web test
 	$(PNPM) --dir web audit --audit-level high
 	web/scripts/check-build.sh
+	web/scripts/check-size.sh
 
 .PHONY: web-smoke
 web-smoke: ## Browser smoke test (Playwright) against agentkit serve; uses installed browsers, never downloads

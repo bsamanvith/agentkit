@@ -42,7 +42,8 @@ Owner decision (2026-10-12): the admin console and future consumer apps use **Re
 ### Results
 
 - **`make web`** builds the console into `pkg/web/dist` (committed; about 630 KB: a 482 KB script, a 64 KB stylesheet and four woff2 fonts). With `AGENTKIT_COMPONENTS=agent,web`, `agentkit serve` serves the shell at `/` with System, Light and Dark themes from docs/UI.md's tokens.
-- **`make web-check`** runs install (frozen lockfile), lint (0 warnings), format check, typecheck, unit tests (15 in `ui`, 77 in `agent-ui`, 17 in the console), `pnpm audit --audit-level high`, and a rebuild compared with the committed build. It runs in CI's `web` job, next to `check` and `fuzz`, which are unchanged.
+- **What goes over the wire**: `pkg/web` gzips text files once, at start, and sends them compressed to clients that accept it (with `Vary: Accept-Encoding` and an ETag per encoding). The first load is 162,288 bytes gzipped: the script is 150,665 bytes and the styles 11,204, out of 546 KB raw. Fonts (84 KB, cached for a year) load after first paint (`font-display: swap`), and Latin Extended loads only when it is needed (`unicode-range`). `web/scripts/check-size.sh` fails `make web-check` above 200 KB gzipped (owner's request, 2026-10-12: the console runs on low-end PCs and bad connections).
+- **`make web-check`** runs install (frozen lockfile), lint (0 warnings), format check, typecheck, unit tests (15 in `ui`, 77 in `agent-ui`, 17 in the console), `pnpm audit --audit-level high`, a rebuild compared with the committed build, and the size budget. It runs in CI's `web` job, next to `check` and `fuzz`, which are unchanged.
 - **The stale check fails** when a component the console uses is changed without a rebuild (tried with Composer's placeholder: exit 1, naming the changed files). It compares builds, so a change to a component the console doesn't import (ToolStep, tried) changes nothing that is embedded and passes. That is intended.
 - **Builds are reproducible.** A build in `node:24.14.0` on Linux was byte-identical to the macOS build.
 - **`make web-smoke`** (Playwright, three tests) runs against the real binary (`agent,web`, with a token):
@@ -136,6 +137,8 @@ Each mutant was planted, the tests named below were run, and the source was rest
 | `theme.js` doing nothing | smoke "theme.js pins the theme before the app's script runs" |
 | A modal (scroll-locking) menu, which injects a `<style>` | smoke (found for real: the theme test failed on the CSP violation, so the menu became `modal={false}`) |
 | A used component changed without `make web` | `check-build.sh` (exit 1) |
+| gzip never sent | TestCompression, TestE2EServeWeb |
+| The bundle over its budget (tried as a 100 KB budget) | `check-size.sh` (exit 1) |
 
 One mutant could not be caught: setting a retry after a 401. The token wait stops the request anyway, so the mutant behaves the same as the original.
 
@@ -151,6 +154,7 @@ One mutant could not be caught: setting a retry after a 401. The token wait stop
   - for a run, call `for await (const ev of client.run(req, { signal }))`; abort the signal to stop. The stream ends after `run_done` or `run_error`, and throws `StreamTruncatedError` if the body ends before either. Unknown event types and blocks are passed through, never thrown;
   - errors are `ApiError` (`status`, `code`, `retryable`, `retryAfter`). Endpoints without a typed helper use `client.getJSON<T>(path)`;
   - add typed helpers to `packages/agent-ui/src/api/client.ts` as T055 needs them: conversations, `POST /v1/conversations` (T092), cancel.
+- **Keep the first load small** (under 200 KB gzipped; `make web-check` enforces it). T055's Markdown renderer and syntax highlighting, and T064's admin pages, should be `React.lazy` chunks (Vite splits them out), so the chat's first screen doesn't wait for them. Test on a throttled connection (DevTools "Slow 4G") and a 4× CPU slowdown.
 - **How to test**:
   - **unit tests** use Vitest and Testing Library (`pnpm --dir web test`). Console tests stub `fetch` with `vi.stubGlobal` and render `<App router={createMemoryRouter(routes, …)}>`, as in `app.test.tsx`;
   - **stories** are tested by being written;

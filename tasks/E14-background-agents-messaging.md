@@ -1,10 +1,12 @@
 ---
 id: E14
-title: "Background agents and agent-to-agent messaging"
+title: "Tasks (background agents) and agent-to-agent messaging"
 status: todo
 ---
 
-# E14: background agents and agent messaging
+# E14: tasks (background agents) and agent messaging
+
+**Name (owner, 2026-10-12): every agent run that isn't a chat is a _task_**: background runs here and ephemeral jobs in E16. API: `/v1/tasks`, mapping one-to-one onto A2A tasks (E13). Steering, interrupts and tool policies for tasks: [E17](E17-tool-safety-control.md).
 
 Owner request (2026-10-12): agents that **run in the background** (not tied to an open browser tab or a CLI waiting on a stream), and agents that can **message other agents**.
 

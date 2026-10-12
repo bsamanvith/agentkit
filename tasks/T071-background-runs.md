@@ -1,6 +1,6 @@
 ---
 id: T071
-title: "Background runs: detached runs, stored event log, resumable event stream, completion webhooks"
+title: "Tasks: detached runs, stored event log, resumable event stream, completion webhooks"
 epic: E14
 status: todo
 depends_on: [T030, T029, T037]
@@ -14,7 +14,7 @@ Runs that outlive the request that started them. Decisions: [E14](E14-background
 
 ## Scope
 
-- **Starting a run:** `POST /v1/runs {"background": true, ...}` returns `202` with the run and conversation IDs. The runner owns the run: a client disconnect never cancels it.
+- **Starting a task:** `POST /v1/tasks {agent, input, interaction?, policy?}` returns `202` with the task ID. *Task* is the owner's name for every run that isn't a chat; a task has its own transcript, not a chat conversation. The runner owns it: a client disconnect never cancels it. Chats keep `POST /v1/runs`.
 - **Cancel:** `POST /v1/runs/{id}/cancel`. It is idempotent, and the run ends `canceled` with the E05 marker rule.
 - **Event log:**
   - every run's events (both modes) are appended to a stored log;

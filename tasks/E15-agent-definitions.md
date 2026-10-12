@@ -12,7 +12,7 @@ Owner decision (2026-10-12, [docs/PRODUCT.md](../docs/PRODUCT.md)): agents, skil
 
 | Question | Decision |
 |---|---|
-| What is versioned | An **agent definition** (model, system prompt, toolsets and settings, skills, memory, limits, `ui`, `can_message`), a **skill** (its folder: `SKILL.md` and files), and a **toolset instance** (type, settings, credential slot). Each save creates an immutable **version** (number, author, time, message); one version per item is **published** (what runs); others are drafts. Rollback is publishing an older version. |
+| What is versioned | An **agent definition** (model, system prompt, toolsets and settings, per-tool `defer_loading`, skills, memory, limits, `ui`, `can_message`, **interaction mode** and **tool policy** from [E17](E17-tool-safety-control.md)), a **skill** (its folder: `SKILL.md` and files), and a **toolset instance** (type, settings, credential slot). Each save creates an immutable **version** (number, author, time, message); one version per item is **published** (what runs); others are drafts. Rollback is publishing an older version. |
 | Where | The store (SQLite now, T029), tenant-scoped like everything else; skills' files as blobs. |
 | Config files | Still supported: on startup, items from config are loaded as **read-only** definitions (marked "from config") so deployments stay reproducible. `agentkit export` writes stored items as files (the same JSON/YAML shape plus skill folders); `agentkit import` loads them. |
 | Runs and versions | A run records the agent version it used; changing an agent never changes a running or finished run. Conversations keep their agent; new runs use its published version. |
@@ -23,6 +23,6 @@ Owner decision (2026-10-12, [docs/PRODUCT.md](../docs/PRODUCT.md)): agents, skil
 
 - [ ] [T075](T075-agent-registry.md) Agent registry: stored, versioned agent definitions and toolset instances; publish and rollback; config as read-only; export/import
 - [ ] T076 Skills store: upload skill folders, versions, validation, used by the harness (after T057) *(to plan)*
-- [ ] T077 Console editors: agent editor (with a test chat beside it), skill editor and upload, toolset settings (after T055, T064, T075) *(to plan)*
+- [ ] T077 Console editors: the **agent builder** (skills picker, tools picker with defer-loading toggles, interaction mode, tool policy with preview, test chat beside it), skill editor and upload with the tools a skill auto-loads, toolset settings; designed in T087 (after T055, T064, T075, T087) *(to plan)*
 
 Order: T075 after T029 and T062. T076 after T057 and T075. T077 after the console basics.

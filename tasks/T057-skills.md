@@ -15,6 +15,7 @@ Skills are packaged know-how (instructions plus reference files) that the agent 
 ## Scope
 
 - **`skill.Load(fsys fs.FS, root string) ([]Skill, error)`**: reads `*/SKILL.md`.
+  - Optional front matter **`tools:`**: tool names or globs the skill auto-loads when it is loaded (used by T085, [E17](E17-tool-safety-control.md)).
   - Front matter: `name` (the same rule as tool names), `description` (required, at most 1,024 characters), optional `metadata`.
   - Body, plus an index of the other files in the folder.
   - Limits: `SKILL.md` at most 64 KB, files at most 1 MB, at most 200 files per skill.

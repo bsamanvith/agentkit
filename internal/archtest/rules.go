@@ -45,6 +45,9 @@ func ModuleRules() Rules {
 				"pkg/harness", "pkg/llm", "pkg/tool", "pkg/toolset", "pkg/component", "pkg/clock",
 				"pkg/llm/llmtest", "pkg/clock/clocktest", "internal/testkit", "pkg/toolset/toolsettest",
 			},
+			// Edge authentication knows tenants and nothing else: no server,
+			// no store, no harness (E07). Tenancy never imports it back.
+			"pkg/auth": {"pkg/tenancy"},
 			// The wire format, shared by the server and its clients: messages
 			// and usage, nothing else (E11).
 			"pkg/agentapi/wire": {"pkg/llm"},

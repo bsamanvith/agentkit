@@ -42,7 +42,7 @@ Testing: everything here is security code with hostile input, so ENGINEERING §2
 
 Two tracks that can start in parallel, and in parallel with E05: inbound (T039 → T040, T041) and credentials (T042 → T043, T044 → T045).
 
-- [ ] [T039](T039-auth-principals-middleware.md) `pkg/auth`: principals, API-key authenticator, edge middleware
+- [x] [T039](T039-auth-principals-middleware.md) `pkg/auth`: principals, API-key authenticator, edge middleware (read its "For T040", "For T041" and "For T061" Notes first)
 - [ ] [T040](T040-serve-auth-wiring.md) `agentkit serve` behind auth: `/v1` and `/mcp/`, per-principal toolsets, no open MCP off loopback
 - [ ] [T061](T061-local-users-login.md) Local users and login sessions for the console (needs T039)
 - [ ] [T041](T041-auth-jwt-oidc.md) JWT/OIDC authenticator and MCP protected resource metadata

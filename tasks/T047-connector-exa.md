@@ -99,15 +99,19 @@ make golden   # review the output goldens, then make check
     - `rig_test.go`: the fake upstream and the rig, with its invariants after every call and every test;
     - `cassette_test.go`: cassette replay, a stand-in for T049's `toolsettest.Upstream`;
     - `spec_test.go`: the OpenAPI check;
+    - `conformance_test.go`: Exa described to T049's kit, its `TestConformance` skipped until the kit accepts synthetic cassettes ("Toward T049");
     - `exa_test.go`, `fuzz_test.go`, `example_test.go`, `export_test.go`, `live_test.go` (`-tags live`);
   - `testdata/`: `cassettes/`, `golden/` (outputs), and `openapi/`:
     - `exa.json`, the spec slice;
     - `cut.go`, which reproduces that slice byte for byte from the published YAML;
     - a `README.md`.
-- **`cmd/agentkit`:** `catalog.go` (one line, the factory with `os.LookupEnv`); `exa_test.go` (MCP and degraded tests, and a test that `search.json` builds).
-- **`internal/archtest/rules.go`:** a `connectors` tree rule. Connectors may import `pkg/tool`, `pkg/toolset`, `pkg/clock`, and in tests `clocktest` and `internal/testkit`. This is the first connector on `main`; T046 and T048 reuse the rule.
-- **`deploy/local/agent/search.json`** (new): the `demo` and `exa` toolsets, with `exa` `optional: true`.
-- **`docs/QUICKSTART.md`:** §6 "Web search".
+- **`cmd/agentkit`:**
+  - `catalog.go`: one line, the factory with `os.LookupEnv`, next to Tavily's;
+  - `exa_test.go`: the MCP and degraded tests;
+  - `tavily_test.go`: Tavily's `TestSearchConfigBuilds`, which collided by name with mine on rebase, became the one test for `search.json`. It now expects agent toolsets `demo`, `tavily`, `exa`, and `exa` skipped for its missing key unless `EXA_API_KEY` is set.
+- **`internal/archtest/rules.go`:** unchanged. T046's `connectors` tree rule (`pkg/tool`, `pkg/toolset`, `pkg/clock`, and in tests `clocktest`, `internal/testkit` and `toolsettest`) is a superset of the one this task first added, so the rebase kept T046's alone.
+- **`deploy/local/agent/search.json`:** shared with T046. It now holds the `demo`, `tavily` and `exa` toolsets in both `mcp.toolsets` and `agent.toolsets`, with `exa` `optional: true`, and the system prompt names both search tools.
+- **`docs/QUICKSTART.md`:** §6 "Web search", one section shared with T046, with a subsection each for Tavily and Exa.
 - No new dependency. `go.yaml.in/yaml/v4`, already in `go.mod`, is used only by `testdata/openapi/cut.go`, a `go:build ignore` tool.
 
 ### Tools
@@ -156,13 +160,12 @@ Both schemas are derived by `tool.Func` from the Go types, and both tools declar
 
 ### Toward T049 (`toolsettest`)
 
-**Adoption is deferred to a follow-up.** T049's first cut (`686b6ff`) reached `main` after this connector was built and gated. It is not adopted here, for three reasons:
+**Adoption is deferred to a follow-up.** T049's first cut (`686b6ff`) reached `main` after this connector was built and gated; Tavily adopted it in `c0af020`. Exa cannot adopt it yet:
 
-- `Call` has no per-call `Settings`, so highlights and text mode do not fit one `Connector` (below).
-- `docs/CONNECTORS.md`, the kit's guide, is not on `main` yet, and Tavily (T046) has not adopted the kit either.
-- Adopting deletes the tests the 49-of-49 mutation run, the race run and the fuzz run were measured on, so every gate would start over.
+- **The suite rejects synthetic cassettes.** T049 says a fixture not recorded from the real API is marked `synthetic` in its `.req.json`, and the suite prints those. But the first cut's `CassetteRequest` has no `synthetic` field, and it decodes with `DisallowUnknownFields`. So every check fails with `cassette contents-partial.req.json: json: unknown field "synthetic"`. All seven Exa cassettes are synthetic, and dropping the marker would hide that, so the fix belongs in `toolsettest`.
+- **`Call` has no per-call `Settings`,** so only the default-settings cases (`search-defaults`, `contents-query`) can be suite calls; highlights-with-cap, text and deep mode stay in the mapping tests (below).
 
-Nothing is ticked as "passes `RunConnector`"; every criterion is covered by the hand-written tests named above. One prerequisite is already done: `WithBaseURL("")` keeps the default, as the suite's `Env.BaseURL` contract requires (`TestBuildRejectsSettings`). The `FuzzResponses` target comes with the adoption, since it takes the same `Connector`.
+`conformance_test.go` already describes Exa to the kit (`connector()`: those two calls and five `Invalid` inputs). Its `TestConformance` is skipped, with the blocker as the skip reason. Once the kit accepts `synthetic`, remove the skip, add the two `FuzzResponses` targets and delete the tests listed below. Until then nothing is ticked as "passes `RunConnector`": every criterion is covered by the hand-written tests named above. One prerequisite is already done: `WithBaseURL("")` keeps the default, as the suite's `Env.BaseURL` contract requires (`TestBuildRejectsSettings`).
 
 - **Replaced by `RunConnector`** at adoption; delete these then:
   - `TestUpstreamErrors`, `TestRateLimitRetry`, `TestCancelStopsRetryWait`;

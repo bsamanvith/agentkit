@@ -100,9 +100,15 @@ type Option func(*factory)
 // with no timeout of its own; each call is limited by the timeout setting).
 func WithHTTPClient(c *http.Client) Option { return func(f *factory) { f.client = c } }
 
-// WithBaseURL sets Exa's base URL (default [DefaultBaseURL]); tests point it
-// at a fake.
-func WithBaseURL(u string) Option { return func(f *factory) { f.baseURL = u } }
+// WithBaseURL sets Exa's base URL (default [DefaultBaseURL]; "" keeps the
+// default); tests point it at a fake.
+func WithBaseURL(u string) Option {
+	return func(f *factory) {
+		if u != "" {
+			f.baseURL = u
+		}
+	}
+}
 
 // WithLookupEnv sets how the API key's environment variable is read;
 // cmd/agentkit passes [os.LookupEnv]. Without it every variable reads as

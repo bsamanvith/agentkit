@@ -156,7 +156,15 @@ Both schemas are derived by `tool.Func` from the Go types, and both tools declar
 
 ### Toward T049 (`toolsettest`)
 
-- **Replaced by `RunConnector`** once it lands; delete these then:
+**Adoption is deferred to a follow-up.** T049's first cut (`686b6ff`) reached `main` after this connector was built and gated. It is not adopted here, for three reasons:
+
+- `Call` has no per-call `Settings`, so highlights and text mode do not fit one `Connector` (below).
+- `docs/CONNECTORS.md`, the kit's guide, is not on `main` yet, and Tavily (T046) has not adopted the kit either.
+- Adopting deletes the tests the 49-of-49 mutation run, the race run and the fuzz run were measured on, so every gate would start over.
+
+Nothing is ticked as "passes `RunConnector`"; every criterion is covered by the hand-written tests named above. One prerequisite is already done: `WithBaseURL("")` keeps the default, as the suite's `Env.BaseURL` contract requires (`TestBuildRejectsSettings`). The `FuzzResponses` target comes with the adoption, since it takes the same `Connector`.
+
+- **Replaced by `RunConnector`** at adoption; delete these then:
   - `TestUpstreamErrors`, `TestRateLimitRetry`, `TestCancelStopsRetryWait`;
   - the body-limit part of `TestLimits`, `TestKeyNeverLeaks`, `TestConcurrentCalls`;
   - the missing-key, literal-`api_key`, unknown-field and `base_url` parts of `TestBuildRejectsSettings`;

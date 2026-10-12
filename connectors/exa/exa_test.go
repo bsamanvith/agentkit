@@ -188,6 +188,10 @@ func TestBuildRejectsSettings(t *testing.T) {
 		if _, err := exa.Factory(exa.WithBaseURL("http://api.exa.ai"), exa.WithLookupEnv(func(string) (string, bool) { return canaryKey, true })).Build(t.Context(), nil); err == nil {
 			t.Error("WithBaseURL over plain http to a remote host built")
 		}
+		// T049's suite passes WithBaseURL("") to mean the default.
+		if _, err := exa.Factory(exa.WithBaseURL(""), exa.WithLookupEnv(func(string) (string, bool) { return canaryKey, true })).Build(t.Context(), nil); err != nil {
+			t.Errorf(`WithBaseURL(""): %v, want the default`, err)
+		}
 	})
 
 	bad := map[string]string{

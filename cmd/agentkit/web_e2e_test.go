@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -53,8 +54,10 @@ func TestE2EServeWeb(t *testing.T) {
 	if resp, body := get("/healthz"); resp.StatusCode != http.StatusOK || !strings.Contains(body, `"ok"`) {
 		t.Errorf("GET /healthz = %s %q", resp.Status, body)
 	}
-	if resp, body := get("/mcp/demo-a"); strings.Contains(body, `<div id="root">`) {
-		t.Errorf("GET /mcp/demo-a = %s with the console", resp.Status)
+	// The web component sets its CSP on every response it writes, so a
+	// response without it came from another handler.
+	if resp, body := get("/mcp/demo-a"); strings.Contains(body, `<div id="root">`) || resp.Header.Get("Content-Security-Policy") == web.CSP {
+		t.Errorf("GET /mcp/demo-a = %s, answered by the web component", resp.Status)
 	}
 	if resp, _ := get("/v1/agents"); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("GET /v1/agents without the agent component = %s, want 404", resp.Status)
@@ -64,8 +67,11 @@ func TestE2EServeWeb(t *testing.T) {
 		Status     string
 		Components []struct{ Name, Status string }
 	}
-	if code := p.getJSON(t, "/readyz", &ready); code != http.StatusOK || ready.Status != "ready" ||
-		len(ready.Components) != 2 || ready.Components[1].Name != web.Name || ready.Components[1].Status != "ready" {
+	code := p.getJSON(t, "/readyz", &ready)
+	webReady := slices.ContainsFunc(ready.Components, func(c struct{ Name, Status string }) bool {
+		return c.Name == web.Name && c.Status == "ready"
+	})
+	if code != http.StatusOK || ready.Status != "ready" || !webReady {
 		t.Errorf("/readyz = %d %+v, want web ready", code, ready)
 	}
 }

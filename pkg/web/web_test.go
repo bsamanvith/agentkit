@@ -74,6 +74,8 @@ func TestServe(t *testing.T) {
 		{"/assets/app-old999.js", "404", "", "", "no-cache"},
 		{"/assets/nothing", "404", "", "", "no-cache"},
 		{"/robots.txt", "404", "", "", "no-cache"},
+		{"/assets", "404", "", "", "no-cache"},
+		{"/assets/", "404", "", "", "no-cache"},
 		{"/../index.html", "200", index, "text/html; charset=utf-8", "no-cache, no-store, must-revalidate"},
 	}
 	for _, tt := range tests {
@@ -137,9 +139,19 @@ func TestSecurityHeaders(t *testing.T) {
 func TestNotTheApp(t *testing.T) {
 	t.Parallel()
 	h := web.New(build()).Handler()
-	for _, p := range []string{"/v1", "/v1/", "/v1/agents", "/mcp/", "/mcp/exa"} {
-		if resp := get(t, h, http.MethodGet, p); resp.StatusCode != http.StatusNotFound {
-			t.Errorf("GET %s: %s, want 404", p, resp.Status)
+	// Unclean paths too: ServeMux redirects them in agentkit serve, but the
+	// handler's own rule must not depend on it.
+	for _, p := range []string{"/v1", "/v1/", "/v1/agents", "/mcp", "/mcp/", "/mcp/exa", "//v1/agents", "/x/../v1/agents", "/./mcp/a"} {
+		for _, m := range []string{http.MethodGet, http.MethodPost, http.MethodDelete} {
+			if resp := get(t, h, m, p); resp.StatusCode != http.StatusNotFound {
+				t.Errorf("%s %s: %s, want 404", m, p, resp.Status)
+			}
+		}
+	}
+	// Paths that only start like a reserved one are the app's.
+	for _, p := range []string{"/v1x", "/mcpx/a", "/c/v1"} {
+		if resp := get(t, h, http.MethodGet, p); resp.StatusCode != http.StatusOK {
+			t.Errorf("GET %s: %s, want the app", p, resp.Status)
 		}
 	}
 	for _, m := range []string{http.MethodPost, http.MethodPut, http.MethodDelete} {

@@ -13,11 +13,10 @@ function isPreference(v: unknown): v is ThemePreference {
 }
 
 /** Reads the saved preference; "system" when none is saved or storage is blocked. */
-export function readThemePreference(
-  storage: Pick<Storage, "getItem"> | undefined = globalThis.localStorage,
-): ThemePreference {
+export function readThemePreference(storage?: Pick<Storage, "getItem">): ThemePreference {
   try {
-    const v = storage?.getItem(themeStorageKey);
+    // Inside the try: with site data blocked, reading localStorage itself throws.
+    const v = (storage ?? globalThis.localStorage)?.getItem(themeStorageKey);
     return isPreference(v) ? v : "system";
   } catch {
     return "system";

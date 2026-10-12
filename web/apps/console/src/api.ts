@@ -19,11 +19,17 @@ export type Auth = {
   hasToken: boolean;
   /** Bumped when the token changes, so loaded resources reload. */
   epoch: number;
-  /** Why the token prompt is open, or null when it isn't. */
-  prompt: null | "needed" | "rejected";
+  /**
+   * Why the token prompt is open, or null when it isn't: no token yet, the
+   * token just entered was refused, or a token that worked was rejected
+   * later (expired or revoked).
+   */
+  prompt: null | "needed" | "refused" | "rejected";
   setToken: (token: string) => void;
   forgetToken: () => void;
   unauthorized: () => void;
+  /** A request with the current token succeeded: a later 401 means it was revoked. */
+  accepted: () => void;
 };
 
 export const AuthContext = createContext<Auth | null>(null);
@@ -46,7 +52,7 @@ export function useResource<T>(
   load: (client: AgentClient, signal: AbortSignal) => Promise<T>,
   key: string,
 ): Resource<T> {
-  const { client, epoch, prompt, unauthorized } = useApi();
+  const { client, epoch, prompt, unauthorized, accepted } = useApi();
   const [attempt, setAttempt] = useState(0);
   // A result belongs to one load: a newer one (another key, token or retry)
   // shows as loading until it settles, without a setState in the effect.
@@ -58,7 +64,11 @@ export function useResource<T>(
     if (prompt !== null) return; // waiting for a token
     const ctl = new AbortController();
     run(ctl.signal).then(
-      (data) => setSettled({ loadId, res: { state: "ready", data } }),
+      (data) => {
+        if (ctl.signal.aborted) return; // a newer load owns the page
+        accepted();
+        setSettled({ loadId, res: { state: "ready", data } });
+      },
       (error: unknown) => {
         if (ctl.signal.aborted) return;
         if (error instanceof ApiError && error.status === 401) {
@@ -76,7 +86,7 @@ export function useResource<T>(
       },
     );
     return () => ctl.abort();
-  }, [client, prompt, unauthorized, loadId]);
+  }, [client, prompt, unauthorized, accepted, loadId]);
 
   return settled?.loadId === loadId ? settled.res : { state: "loading" };
 }

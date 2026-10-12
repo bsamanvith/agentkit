@@ -1,5 +1,5 @@
 import { act, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThemeProvider, readThemePreference, themeStorageKey, useTheme } from "./theme";
 
 function Picker() {
@@ -14,6 +14,7 @@ function Picker() {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   localStorage.clear();
   document.documentElement.removeAttribute("data-theme");
 });
@@ -57,5 +58,20 @@ describe("theme", () => {
       },
     };
     expect(readThemePreference(blocked)).toBe("system");
+  });
+
+  it("survives site data being blocked, where reading localStorage throws", () => {
+    vi.spyOn(window, "localStorage", "get").mockImplementation(() => {
+      throw new DOMException("The operation is insecure.", "SecurityError");
+    });
+    expect(readThemePreference()).toBe("system");
+    render(
+      <ThemeProvider>
+        <Picker />
+      </ThemeProvider>,
+    );
+    expect(screen.getByTestId("pref")).toHaveTextContent("system");
+    act(() => screen.getByText("dark").click());
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
   });
 });

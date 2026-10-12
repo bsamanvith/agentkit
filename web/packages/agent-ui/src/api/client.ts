@@ -2,7 +2,7 @@
 // It is the TypeScript counterpart of pkg/agentclient: the same endpoints,
 // error body and stream rules (tasks/T053-agentclient.md, "For T055").
 
-import { defaultMaxEventBytes, readSSE } from "./sse";
+import { defaultMaxEventBytes, readSSE, ResponseTooLargeError } from "./sse";
 import {
   decodeEvent,
   isTerminal,
@@ -41,8 +41,8 @@ export class BadResponseError extends Error {
 
 /** The stream ended before run_done or run_error: the connection was lost. */
 export class StreamTruncatedError extends Error {
-  constructor() {
-    super("the run's stream ended before the run did");
+  constructor(options?: ErrorOptions) {
+    super("the run's stream ended before the run did", options);
     this.name = "StreamTruncatedError";
   }
 }
@@ -76,8 +76,7 @@ export class AgentClient {
 
   /** GET /v1/agents: the agents the caller can use, the default first. */
   async listAgents(opts: RequestOptions = {}): Promise<Agent[]> {
-    const body = await this.getJSON<{ agents?: Agent[] }>("/v1/agents", opts);
-    return Array.isArray(body.agents) ? body.agents : [];
+    return listField<Agent>(await this.getJSON<unknown>("/v1/agents", opts), "agents", "/v1/agents");
   }
 
   /** GET /v1/conversations: one page of the caller's conversations, newest first. */
@@ -90,13 +89,11 @@ export class AgentClient {
     if (query.limit) params.set("limit", String(query.limit));
     if (query.cursor) params.set("cursor", query.cursor);
     const qs = params.size > 0 ? `?${params}` : "";
-    const body = await this.getJSON<{ conversations?: ConversationSummary[]; next_cursor?: string }>(
-      `/v1/conversations${qs}`,
-      opts,
-    );
+    const body = await this.getJSON<unknown>(`/v1/conversations${qs}`, opts);
+    const cursor = (body as { next_cursor?: unknown } | null)?.next_cursor;
     return {
-      conversations: Array.isArray(body.conversations) ? body.conversations : [],
-      nextCursor: body.next_cursor || undefined,
+      conversations: listField<ConversationSummary>(body, "conversations", "/v1/conversations"),
+      nextCursor: typeof cursor === "string" && cursor !== "" ? cursor : undefined,
     };
   }
 
@@ -105,7 +102,8 @@ export class AgentClient {
     const resp = await this.#send("GET", path, undefined, "application/json", opts.signal);
     try {
       return (await resp.json()) as T;
-    } catch {
+    } catch (e) {
+      if (isAbort(e)) throw e;
       throw new BadResponseError(`${path}: the response is not JSON`);
     }
   }
@@ -117,7 +115,8 @@ export class AgentClient {
    *
    * Abort the signal to stop the run: the server sees the request end and
    * cancels it (the conversation may be left interrupted). A body that ends
-   * before the end event throws StreamTruncatedError.
+   * or breaks (a reset connection) before the end event throws
+   * StreamTruncatedError, as pkg/agentclient does.
    */
   async *run(req: RunRequest, opts: RequestOptions = {}): AsyncGenerator<RunEvent, void, undefined> {
     const resp = await this.#send("POST", "/v1/runs", JSON.stringify(req), "text/event-stream", opts.signal);
@@ -126,13 +125,27 @@ export class AgentClient {
       throw new BadResponseError(`/v1/runs: the response is ${type || "untyped"}, not an event stream`);
     }
     if (!resp.body) throw new StreamTruncatedError();
-    for await (const data of readSSE(resp.body, this.#maxEvent)) {
-      const ev = decodeEvent(data);
-      if (!ev) throw new BadResponseError("/v1/runs: an event is not JSON with a type");
-      yield ev;
-      if (isTerminal(ev)) return;
+    const events = readSSE(resp.body, this.#maxEvent);
+    try {
+      for (;;) {
+        let next: IteratorResult<string>;
+        try {
+          next = await events.next();
+        } catch (e) {
+          // Stop stays an abort; a limit stays itself; a broken body is truncation.
+          if (isAbort(e) || opts.signal?.aborted || e instanceof ResponseTooLargeError) throw e;
+          throw new StreamTruncatedError({ cause: e });
+        }
+        if (next.done) throw new StreamTruncatedError();
+        const ev = decodeEvent(next.value);
+        if (!ev) throw new BadResponseError("/v1/runs: an event is not JSON with a type");
+        yield ev;
+        if (isTerminal(ev)) return;
+      }
+    } finally {
+      // Cancels the download when the run ends or the caller stops reading.
+      await events.return(undefined);
     }
-    throw new StreamTruncatedError();
   }
 
   async #send(
@@ -172,9 +185,30 @@ async function errorFrom(resp: Response): Promise<ApiError> {
         retryable: e.retryable === true,
       };
     }
-  } catch {
+  } catch (e) {
+    if (isAbort(e)) throw e;
     // Not JSON (a proxy's page): keep the status.
   }
   const ra = Number(resp.headers.get("Retry-After"));
   return new ApiError(resp.status, error, Number.isFinite(ra) && ra > 0 ? ra : undefined);
+}
+
+// By name: an abort is a DOMException, which isn't an Error in every realm.
+function isAbort(e: unknown): boolean {
+  return typeof e === "object" && e !== null && (e as { name?: unknown }).name === "AbortError";
+}
+
+/**
+ * The list under key in a JSON body. null or missing is empty (Go encodes a
+ * nil slice as null); anything else that isn't a list is a bad response,
+ * not an empty one, so a broken proxy isn't shown as "nothing configured".
+ */
+function listField<T>(body: unknown, key: string, path: string): T[] {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new BadResponseError(`${path}: the response is not an object`);
+  }
+  const v = (body as Record<string, unknown>)[key];
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v)) throw new BadResponseError(`${path}: "${key}" is not a list`);
+  return v as T[];
 }

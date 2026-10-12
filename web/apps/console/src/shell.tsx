@@ -96,25 +96,27 @@ function ListColumn() {
   const { pathname } = useLocation();
   const section = sectionOf(pathname);
   return (
-    <Sidebar collapsible="none" className="hidden flex-1 md:flex" aria-label={section.label}>
-      <SidebarHeader className="gap-2 border-b p-3">
-        <div className="text-sm font-semibold text-ak-text">{section.label}</div>
-        {section.to === "/" ? (
-          <SidebarMenuButton asChild className="border border-ak-line-strong bg-ak-surface">
-            <NavLink to="/new">
-              <Plus aria-hidden="true" />
-              New chat
-            </NavLink>
-          </SidebarMenuButton>
-        ) : null}
-      </SidebarHeader>
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupContent className="px-2 py-1 text-sm text-ak-muted">
-            {section.to === "/" ? "No conversations yet" : "Nothing here yet"}
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
+    <Sidebar collapsible="none" className="hidden flex-1 md:flex">
+      <nav aria-label={section.label} className="contents">
+        <SidebarHeader className="gap-2 border-b p-3">
+          <div className="text-sm font-semibold text-ak-text">{section.label}</div>
+          {section.to === "/" ? (
+            <SidebarMenuButton asChild className="border border-ak-line-strong bg-ak-surface">
+              <NavLink to="/new">
+                <Plus aria-hidden="true" />
+                New chat
+              </NavLink>
+            </SidebarMenuButton>
+          ) : null}
+        </SidebarHeader>
+        <SidebarContent>
+          <SidebarGroup>
+            <SidebarGroupContent className="px-2 py-1 text-sm text-ak-muted">
+              {section.to === "/" ? "No conversations yet" : "Nothing here yet"}
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </SidebarContent>
+      </nav>
     </Sidebar>
   );
 }

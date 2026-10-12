@@ -12,6 +12,7 @@ web/
                                           message, composer) and the /v1 client (./api)
   apps/console        @agentkit/console   the admin console: shell, routes, token prompt
   scripts/check-build.sh                  the stale-build check
+  scripts/check-size.sh                   the first-load budget
 ```
 
 `apps/*` depend on `packages/*`; `agent-ui` depends on `ui`; `ui` depends on
@@ -52,17 +53,20 @@ change the build, so it doesn't fail the check either.
   style. So: fonts are self-hosted, the theme is applied before first paint
   by `apps/console/public/theme.js` (not an inline script), nothing is
   inlined as a data URI, and libraries that inject `<style>` tags are
-  blocked. Radix's modal scroll lock is one of these; the smoke test fails
-  on any CSP violation.
+  blocked. Radix's modal scroll lock is one of these: use `modal={false}`
+  where you can. `styles/index.css` has a static rule for its
+  `data-scroll-locked`, so the lock still works, but the browser logs the
+  blocked style, and the smoke test fails on any CSP violation.
 - **Size**: the console has to work on low-end machines and slow links.
   `pkg/web` gzips text files once at start and sends them compressed;
   fonts use `font-display: swap` and `unicode-range`, so text shows at once
   and Latin Extended loads only when used. `make web-check` fails when the
-  first load (gzipped scripts and styles) is over 200 KB
-  (`scripts/check-size.sh`; it is 162 KB at T078). Lazy-load
+  first load (gzipped `index.html`, scripts and styles, plus the Latin
+  fonts) is over 240 KB (`scripts/check-size.sh`; it is 215 KB at T078). Lazy-load
   (`React.lazy`) what the first screen doesn't need instead of raising it.
-- **Untrusted text stays text**: ESLint bans `dangerouslySetInnerHTML` and
-  `innerHTML`.
+- **Untrusted text stays text**: ESLint bans `dangerouslySetInnerHTML`,
+  `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `createContextualFragment`
+  and `document.write`.
 - **Tokens**: `packages/ui/src/styles/tokens.css` is generated from the
   `## Tokens` block of `docs/UI.md`, prefixed `--ak-`. After changing UI.md,
   run `pnpm --filter @agentkit/ui tokens`; a test fails until you do.

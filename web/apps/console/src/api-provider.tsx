@@ -5,6 +5,7 @@ import { AuthContext, tokenStorageKey, type Auth } from "./api";
 /** The token, in memory and in sessionStorage. Storage may be blocked; then it lasts for this page. */
 class TokenStore {
   #value: string | undefined;
+  #unproven = false;
 
   constructor() {
     try {
@@ -18,8 +19,19 @@ class TokenStore {
     return this.#value;
   }
 
+  /** Whether the token was entered in this page and no request with it has succeeded yet. */
+  get unproven(): boolean {
+    return this.#unproven;
+  }
+
+  proven() {
+    this.#unproven = false;
+  }
+
+  /** Sets a token the user just entered, or forgets it. */
   set(token: string | undefined) {
     this.#value = token;
+    this.#unproven = token !== undefined;
     try {
       if (token === undefined) sessionStorage.removeItem(tokenStorageKey);
       else sessionStorage.setItem(tokenStorageKey, token);
@@ -52,11 +64,15 @@ export function ApiProvider({ children, client: given }: { children: ReactNode; 
     setPrompt("needed");
     setEpoch((e) => e + 1);
   }, [store]);
-  const unauthorized = useCallback(() => setPrompt(store.get() ? "rejected" : "needed"), [store]);
+  const unauthorized = useCallback(
+    () => setPrompt(store.get() === undefined ? "needed" : store.unproven ? "refused" : "rejected"),
+    [store],
+  );
+  const accepted = useCallback(() => store.proven(), [store]);
 
   const value = useMemo(
-    () => ({ client, hasToken, epoch, prompt, setToken, forgetToken, unauthorized }),
-    [client, hasToken, epoch, prompt, setToken, forgetToken, unauthorized],
+    () => ({ client, hasToken, epoch, prompt, setToken, forgetToken, unauthorized, accepted }),
+    [client, hasToken, epoch, prompt, setToken, forgetToken, unauthorized, accepted],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

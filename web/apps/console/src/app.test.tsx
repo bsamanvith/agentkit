@@ -110,6 +110,61 @@ describe("the token", () => {
     expect(seen[0]?.headers.get("Authorization")).toBe("Bearer stale");
   });
 
+  it("that was just entered and refused says so, not that it expired", async () => {
+    fakeServer();
+    renderAt("/agents");
+    const input = await screen.findByLabelText("API token");
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(screen.getByText("Enter a token")).toBeInTheDocument();
+
+    await userEvent.type(input, "bad");
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(await screen.findByText("That token wasn't accepted.")).toBeInTheDocument();
+    expect(screen.queryByText("Enter a token")).not.toBeInTheDocument();
+    expect(screen.queryByText(/rejected or has expired/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the app inert behind the prompt", async () => {
+    fakeServer();
+    renderAt("/agents");
+    const input = await screen.findByLabelText("API token");
+    const nav = screen.getByRole("navigation", { name: "Sections", hidden: true });
+    expect(nav.closest("[inert]")).not.toBeNull();
+
+    await userEvent.type(input, "good");
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await screen.findByText("researcher");
+    expect(nav.closest("[inert]")).toBeNull();
+  });
+
+  it("can be forgotten from the account menu", async () => {
+    sessionStorage.setItem(tokenStorageKey, "good");
+    const seen = fakeServer();
+    renderAt("/agents");
+    await screen.findByText("researcher");
+
+    await userEvent.click(screen.getByRole("button", { name: "Account and theme" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Forget token" }));
+    expect(sessionStorage.getItem(tokenStorageKey)).toBeNull();
+    expect(await screen.findByLabelText("API token")).toBeInTheDocument();
+    // Forgetting isn't a failure: the card shows no error.
+    expect(screen.getByRole("dialog").textContent).not.toMatch(/rejected|accepted|Enter a token/);
+    const before = seen.length;
+    await waitFor(() => expect(seen).toHaveLength(before)); // and makes no request without one
+  });
+
+  it("is not offered to forget when there is none", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json(agents)),
+    );
+    renderAt("/agents");
+    await screen.findByText("researcher");
+    await userEvent.click(screen.getByRole("button", { name: "Account and theme" }));
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Forget token" })).not.toBeInTheDocument();
+  });
+
   it("is not asked for when the server needs none", async () => {
     vi.stubGlobal(
       "fetch",
@@ -118,6 +173,53 @@ describe("the token", () => {
     renderAt("/");
     expect(await screen.findByText("Finds things")).toBeInTheDocument();
     expect(screen.queryByLabelText("API token")).not.toBeInTheDocument();
+  });
+});
+
+describe("a page", () => {
+  it("that failed to load says why, and Retry loads it again", async () => {
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        calls++;
+        if (calls === 1) {
+          const body = { v: 1, error: { code: "internal", message: "the store is down", retryable: true } };
+          return Response.json(body, { status: 503, headers: { "Retry-After": "5" } });
+        }
+        return Response.json(agents);
+      }),
+    );
+    renderAt("/agents");
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Couldn't load agents.");
+    expect(alert).toHaveTextContent("the store is down (503 internal). Try again in 5 s.");
+
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("researcher")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(calls).toBe(2);
+  });
+
+  it("that can't reach the server says so", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("Failed to fetch");
+      }),
+    );
+    renderAt("/agents");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't reach the server.");
+  });
+
+  it("that doesn't exist is Not found, with a way back", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json(agents)),
+    );
+    renderAt("/nowhere");
+    expect(await screen.findByRole("heading", { level: 1, name: "Not found" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to chats" })).toHaveAttribute("href", "/");
   });
 });
 

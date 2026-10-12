@@ -23,6 +23,18 @@ export default tseslint.config(
           message: "Render untrusted content as text; Markdown goes through the allowlist renderer (docs/UI.md).",
         },
         { selector: "MemberExpression[property.name=/^(innerHTML|outerHTML)$/]", message: "No raw HTML (docs/UI.md)." },
+        {
+          selector: "MemberExpression[property.value=/^(innerHTML|outerHTML)$/]",
+          message: "No raw HTML (docs/UI.md).",
+        },
+        {
+          selector: "CallExpression[callee.property.name=/^(insertAdjacentHTML|createContextualFragment)$/]",
+          message: "No raw HTML (docs/UI.md).",
+        },
+        {
+          selector: "MemberExpression[object.name='document'][property.name=/^write(ln)?$/]",
+          message: "No raw HTML (docs/UI.md).",
+        },
       ],
     },
   },

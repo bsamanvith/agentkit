@@ -14,7 +14,7 @@ import (
 type Kind string
 
 // The kinds. A tool that declares none is classified as [KindWrite] by
-// [Classify].
+// [Metadata.Class].
 const (
 	KindRead    Kind = "read"    // reads only; changes nothing
 	KindWrite   Kind = "write"   // creates or changes something
@@ -23,11 +23,14 @@ const (
 	KindExecute Kind = "execute" // runs code or commands
 )
 
-// Kinds lists every kind, in order of increasing reach.
-var Kinds = []Kind{KindRead, KindWrite, KindDelete, KindSend, KindExecute}
+var kinds = []Kind{KindRead, KindWrite, KindDelete, KindSend, KindExecute}
+
+// Kinds returns every kind. They are not ordered: a send does not reach
+// further than a delete, it reaches somewhere else.
+func Kinds() []Kind { return slices.Clone(kinds) }
 
 // Risk is how much harm a wrong call could do. A tool that declares none is
-// classified as [RiskMedium] by [Classify].
+// classified as [RiskMedium] by [Metadata.Class].
 type Risk string
 
 // The risks.
@@ -37,8 +40,10 @@ const (
 	RiskHigh   Risk = "high"
 )
 
-// Risks lists every risk, lowest first.
-var Risks = []Risk{RiskLow, RiskMedium, RiskHigh}
+var risks = []Risk{RiskLow, RiskMedium, RiskHigh}
+
+// Risks returns every risk, lowest first.
+func Risks() []Risk { return slices.Clone(risks) }
 
 // Tags with a meaning shared with MCP's tool annotations (see [Annotations]).
 const (
@@ -54,15 +59,17 @@ const (
 // field is optional; set it on a [Func] tool with [WithMetadata]. It is
 // embedded in [Definition], so its fields read as the definition's own.
 type Metadata struct {
-	// Kind is what the tool does. Empty means unclassified: see [Classify].
+	// Kind is what the tool does. Empty means unclassified: see [Metadata.Class].
 	Kind Kind `json:"kind,omitempty"`
 	// Risk is how much harm a wrong call could do. Empty means unclassified.
 	Risk Risk `json:"risk,omitempty"`
 	// Interrupts marks a tool that needs a person to answer, such as
-	// ask_user. It is not offered to runs that must never wait.
+	// ask_user, so that runs that must never wait can leave it out. Nothing
+	// acts on it yet: the interaction modes (T084) will.
 	Interrupts bool `json:"interrupts,omitempty"`
 	// RequiresApproval asks that a person approve each call before it runs,
-	// unless a policy says otherwise.
+	// unless a policy says otherwise. Nothing enforces it yet: the policy
+	// engine (T083) and approval holds (T084) will.
 	RequiresApproval bool `json:"requiresApproval,omitempty"`
 	// Tags are free-form labels policies can match, such as "external",
 	// "billing" or "pii". Each matches ^[a-z0-9][a-z0-9_.-]{0,63}$; no
@@ -89,19 +96,27 @@ type Display struct {
 	Past string `json:"past,omitempty"`
 }
 
-// Classify reports d's kind and risk, applying the default for an
-// unclassified tool to each one it leaves empty: [KindWrite] and
-// [RiskMedium]. So a read-only policy blocks a tool until someone classifies
-// it. Policies read a tool's class through Classify, never from the fields.
-func Classify(d Definition) (Kind, Risk) {
-	k, r := d.Kind, d.Risk
-	if k == "" {
+// Class reports the tool's kind and risk as policies see them. Each one that
+// is empty, or not one of [Kinds] or [Risks], is replaced by the default for
+// an unclassified tool: [KindWrite] and [RiskMedium]. So a read-only policy
+// blocks a tool until someone classifies it, and a definition that skipped
+// validation cannot slip past a rule with a kind no rule names. Policies read
+// a tool's class through Class, never from the fields.
+func (m Metadata) Class() (Kind, Risk) {
+	k, r := m.Kind, m.Risk
+	if !slices.Contains(kinds, k) {
 		k = KindWrite
 	}
-	if r == "" {
+	if !slices.Contains(risks, r) {
 		r = RiskMedium
 	}
 	return k, r
+}
+
+// Classified reports whether [Metadata.Class] used no default: the tool
+// declares both a valid kind and a valid risk.
+func (m Metadata) Classified() bool {
+	return slices.Contains(kinds, m.Kind) && slices.Contains(risks, m.Risk)
 }
 
 // HasTag reports whether m carries tag.
@@ -116,11 +131,11 @@ var (
 
 // checkMetadata checks m's fields against their documented rules.
 func checkMetadata(m Metadata) error {
-	if m.Kind != "" && !slices.Contains(Kinds, m.Kind) {
-		return fmt.Errorf("kind %q must be one of %v", m.Kind, Kinds)
+	if m.Kind != "" && !slices.Contains(kinds, m.Kind) {
+		return fmt.Errorf("kind %q must be one of %v", m.Kind, kinds)
 	}
-	if m.Risk != "" && !slices.Contains(Risks, m.Risk) {
-		return fmt.Errorf("risk %q must be one of %v", m.Risk, Risks)
+	if m.Risk != "" && !slices.Contains(risks, m.Risk) {
+		return fmt.Errorf("risk %q must be one of %v", m.Risk, risks)
 	}
 	for i, tag := range m.Tags {
 		if !tagPattern.MatchString(tag) {
@@ -146,12 +161,14 @@ func checkMetadata(m Metadata) error {
 }
 
 // displayText checks one line of display text: valid UTF-8, no control
-// characters, no surrounding space, at most maxDisplayRunes runes.
+// characters, line or paragraph separators or bidirectional controls (which
+// can make a line read as something else), no surrounding space, at most
+// maxDisplayRunes runes.
 func displayText(s string) error {
 	switch {
 	case !utf8.ValidString(s):
 		return fmt.Errorf("%q is not valid UTF-8", s)
-	case strings.IndexFunc(s, unicode.IsControl) >= 0:
+	case strings.IndexFunc(s, notOnALine) >= 0:
 		return fmt.Errorf("%q has a control character", s)
 	case strings.TrimSpace(s) != s:
 		return fmt.Errorf("%q has leading or trailing space", s)
@@ -159,6 +176,10 @@ func displayText(s string) error {
 		return fmt.Errorf("%q is longer than %d characters", s, maxDisplayRunes)
 	}
 	return nil
+}
+
+func notOnALine(r rune) bool {
+	return unicode.IsControl(r) || unicode.In(r, unicode.Zl, unicode.Zp, unicode.Bidi_Control)
 }
 
 // Annotations are MCP's tool annotations
@@ -175,30 +196,35 @@ type Annotations struct {
 }
 
 // Annotations maps m to MCP's tool annotations, or nil when m says nothing
-// MCP can express. The mapping:
+// MCP can express. A hint is stated only when m says enough to make it true;
+// otherwise it is left unstated, and MCP's defaults (destructive, open world)
+// apply, which are the cautious reading. The mapping:
 //
 //   - readOnlyHint: the kind is read.
-//   - destructiveHint: the kind is delete or the risk is high; unstated for
-//     a read tool (MCP ignores it there) and for an unclassified one.
-//   - openWorldHint: tagged external; false for a classified tool that is
-//     not, unstated for an unclassified one.
+//   - destructiveHint: true when the kind is delete or the risk is high.
+//     Never false: MCP's false means "only additive updates", and no kind
+//     says that (a write may overwrite, an execute may do anything). Unstated
+//     for a read tool, where MCP ignores it.
+//   - openWorldHint: true when tagged external or the kind is send (which
+//     reaches outside by definition); false for any other tool that declares
+//     its kind; unstated for one that does not, since then we do not know.
 //   - idempotentHint: tagged idempotent.
 //   - title: the display title.
 //
-// Interrupts, RequiresApproval, other tags, low risk, and the send and
-// execute kinds have no MCP counterpart and are not published.
+// Interrupts, RequiresApproval, other tags, low and medium risk, and the
+// write, send and execute kinds have no MCP counterpart and are not
+// published.
 func (m Metadata) Annotations() *Annotations {
-	classified := m.Kind != "" || m.Risk != ""
 	a := Annotations{
 		Title:          m.Display.Title,
 		ReadOnlyHint:   m.Kind == KindRead,
 		IdempotentHint: m.HasTag(TagIdempotent),
 	}
-	if classified && m.Kind != KindRead {
-		a.DestructiveHint = ptr(m.Kind == KindDelete || m.Risk == RiskHigh)
+	if m.Kind == KindDelete || (m.Risk == RiskHigh && m.Kind != KindRead) {
+		a.DestructiveHint = ptr(true)
 	}
-	if m.HasTag(TagExternal) || classified {
-		a.OpenWorldHint = ptr(m.HasTag(TagExternal))
+	if open := m.HasTag(TagExternal) || m.Kind == KindSend; open || m.Kind != "" {
+		a.OpenWorldHint = ptr(open)
 	}
 	if a == (Annotations{}) {
 		return nil
@@ -213,17 +239,22 @@ func (m Metadata) Annotations() *Annotations {
 //   - otherwise destructiveHint true: kind write, risk high (MCP's
 //     "destructive" covers deletes and overwrites alike, so the kind stays
 //     the general one and the risk carries the warning); false: kind write.
-//     Unstated: unclassified, which [Classify] reports as write/medium.
-//   - openWorldHint true: tag external; idempotentHint true: tag idempotent.
-//   - title: the display title.
+//     Unstated: unclassified, which [Metadata.Class] reports as write/medium.
+//   - openWorldHint true or unstated (MCP's default is an open world): tag
+//     external; false: no tag.
+//   - idempotentHint true: tag idempotent.
+//   - title: the display title, trimmed, and dropped if it is still not one
+//     line of at most 80 characters.
 //
-// A nil a gives the zero Metadata: an unclassified tool. Hints from a server
-// you do not trust are only claims; policies can still narrow what they allow.
+// The result always passes [Func]'s and [NewRegistry]'s checks. A nil a is
+// a tool with no annotations: unclassified, and tagged external. Hints from
+// a server you do not trust are only claims; policies can still narrow what
+// they allow.
 func FromAnnotations(a *Annotations) Metadata {
-	var m Metadata
 	if a == nil {
-		return m
+		a = &Annotations{}
 	}
+	var m Metadata
 	switch {
 	case a.ReadOnlyHint:
 		m.Kind = KindRead
@@ -232,13 +263,15 @@ func FromAnnotations(a *Annotations) Metadata {
 	case a.DestructiveHint != nil:
 		m.Kind = KindWrite
 	}
-	if a.OpenWorldHint != nil && *a.OpenWorldHint {
+	if a.OpenWorldHint == nil || *a.OpenWorldHint {
 		m.Tags = append(m.Tags, TagExternal)
 	}
 	if a.IdempotentHint {
 		m.Tags = append(m.Tags, TagIdempotent)
 	}
-	m.Display.Title = a.Title
+	if title := strings.TrimSpace(a.Title); displayText(title) == nil {
+		m.Display.Title = title
+	}
 	return m
 }
 

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -551,33 +552,62 @@ func TestToolListMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	risky, err := tool.Func("risky", "Classified by risk only.",
+		func(context.Context, struct{}) (struct{}, error) { return struct{}{}, nil },
+		tool.WithMetadata(tool.Metadata{Risk: tool.RiskHigh}))
+	if err != nil {
+		t.Fatal(err)
+	}
 	plain, err := tool.Func("plain", "Unclassified.", func(context.Context, struct{}) (struct{}, error) { return struct{}{}, nil })
 	if err != nil {
 		t.Fatal(err)
 	}
-	reg := registry(t, ask, half, plain)
+	reg := registry(t, ask, half, risky, plain)
 	r := newRig(t, echo(t), rigConfig{api: []agentapi.Option{agentapi.WithToolsets(
 		agentapi.Toolset{Name: "m", Type: "test", Tools: reg, Credential: agentapi.Credential{Status: wire.CredentialNotNeeded}},
 	)}})
 
-	var got struct {
+	var list wire.ToolList
+	if code := r.get("/v1/toolsets/m/tools", &list); code != http.StatusOK {
+		t.Fatalf("GET /v1/toolsets/m/tools = %d", code)
+	}
+	want := map[string]wire.Tool{
+		"ask": {
+			Kind: "send", Risk: "high", Classified: true, Interrupts: true, RequiresApproval: true,
+			Tags:    []string{"pii", "external"},
+			Display: &wire.ToolDisplay{Title: "Ask", Icon: "chat", Present: "Asking", Past: "Asked"},
+		},
+		"half":  {Kind: "read", Risk: "medium", Display: &wire.ToolDisplay{Icon: "tool"}},
+		"risky": {Kind: "write", Risk: "high"},
+		"plain": {Kind: "write", Risk: "medium"},
+	}
+	if len(list.Tools) != len(want) {
+		t.Fatalf("listed %d tools, want %d", len(list.Tools), len(want))
+	}
+	for _, got := range list.Tools {
+		w, ok := want[got.Name]
+		if !ok {
+			t.Errorf("unexpected tool %q", got.Name)
+			continue
+		}
+		w.Name, w.Description, w.InputSchema, w.OutputSchema = got.Name, got.Description, got.InputSchema, got.OutputSchema
+		if !reflect.DeepEqual(got, w) {
+			t.Errorf("tool %s = %+v, want %+v", got.Name, got, w)
+		}
+	}
+
+	// What a tool leaves unset is omitted, not sent empty.
+	var raw struct {
 		Tools []map[string]json.RawMessage `json:"tools"`
 	}
-	if code := r.get("/v1/toolsets/m/tools", &got); code != http.StatusOK || len(got.Tools) != 3 {
-		t.Fatalf("GET /v1/toolsets/m/tools = %d %+v", code, got)
-	}
-	want := []map[string]string{
-		{
-			"name": `"ask"`, "kind": `"send"`, "risk": `"high"`, "classified": `true`, "interrupts": `true`, "requires_approval": `true`,
-			"tags": `["pii","external"]`, "display": `{"title":"Ask","icon":"chat","present":"Asking","past":"Asked"}`,
-		},
-		{"name": `"half"`, "kind": `"read"`, "risk": `"medium"`, "classified": `false`, "display": `{"icon":"tool"}`},
-		{"name": `"plain"`, "kind": `"write"`, "risk": `"medium"`, "classified": `false`},
-	}
-	for i, w := range want {
-		for _, k := range []string{"kind", "risk", "classified", "interrupts", "requires_approval", "tags", "display"} {
-			if g, ok := got.Tools[i][k]; string(g) != w[k] && (ok || w[k] != "") {
-				t.Errorf("tool %s: %s = %s, want %s", w["name"], k, g, w[k])
+	r.get("/v1/toolsets/m/tools", &raw)
+	for _, tl := range raw.Tools {
+		if string(tl["name"]) != `"plain"` {
+			continue
+		}
+		for _, k := range []string{"interrupts", "requires_approval", "tags", "display"} {
+			if v, ok := tl[k]; ok {
+				t.Errorf("unclassified tool: %s = %s, want it omitted", k, v)
 			}
 		}
 	}

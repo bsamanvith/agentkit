@@ -148,16 +148,18 @@ type Tool struct {
 	InputSchema  json.RawMessage `json:"input_schema"`
 	OutputSchema json.RawMessage `json:"output_schema,omitempty"`
 	// Kind (read, write, delete, send or execute) and Risk (low, medium or
-	// high) are the tool's class as policies see it (tool.Classify): what the
+	// high) are the tool's class as policies see it (tool.Metadata.Class): what the
 	// tool declares, with write and medium for what it leaves unset.
 	Kind string `json:"kind"`
 	Risk string `json:"risk"`
 	// Classified is false when the tool left its kind or risk unset, so Kind
 	// and Risk are partly or wholly the defaults.
 	Classified bool `json:"classified"`
-	// Interrupts marks a tool that needs a person to answer (ask_user).
+	// Interrupts marks a tool that needs a person to answer (ask_user). It is
+	// what the tool declares; nothing acts on it yet (T084).
 	Interrupts bool `json:"interrupts,omitempty"`
-	// RequiresApproval asks that a person approve each call.
+	// RequiresApproval says the tool asks that a person approve each call.
+	// It is what the tool declares; nothing enforces it yet (T083, T084).
 	RequiresApproval bool `json:"requires_approval,omitempty"`
 	// Tags are labels policies match, such as "external".
 	Tags    []string     `json:"tags,omitempty"`

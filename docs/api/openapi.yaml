@@ -1579,11 +1579,11 @@
           },
           "interrupts": {
             "type": "boolean",
-            "description": "The tool needs a person to answer (like ask_user). Omitted when false."
+            "description": "The tool declares that it needs a person to answer (like ask_user). Nothing acts on it yet. Omitted when false."
           },
           "requires_approval": {
             "type": "boolean",
-            "description": "A person approves each call before it runs, unless a policy says otherwise. Omitted when false."
+            "description": "The tool declares that a person should approve each call before it runs, unless a policy says otherwise. Not enforced yet. Omitted when false."
           },
           "tags": {
             "type": "array",

@@ -19,6 +19,8 @@
 | Skills and memory (context store; search by keyword or embeddings, opt-in) | [E12](E12-skills-memory.md) | **Planned** (T057–T060); T057 and T058 can start now |
 | Agent protocols: A2UI (agent-driven UI), A2A (agent to agent), AG-UI, MCP Apps | [E13](E13-agent-protocols.md) | **Planned** (T065–T069); after the console basics and the agents API |
 | Background agents and agent-to-agent messaging | [E14](E14-background-agents-messaging.md) | **Planned** (T071–T074); needs the runner (T030) and SQLite store (T029), which move up to **start now** |
+| Agent definitions as versioned data (agents, skills, toolsets) | [E15](E15-agent-definitions.md) | **Planned** (T075; T076, T077 to plan); after T029 and T062 |
+| Runtimes and jobs: temporary environments, exported harness images, results outside chat | [E16](E16-runtimes-jobs.md) | **Shaped**, tasks to plan after the console's first version |
 | More model providers | [E08](E08-model-providers.md) | Later |
 | Agent skills | [E02](E02-agent-skills.md) | In progress: `write-tests` exists and was dry-run on `pkg/flow` |
 
@@ -64,6 +66,7 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 | [T042](T042-credentials-core.md) | `pkg/credentials`: secrets, sealer, vault, memory backend | Starts E07's credentials track; new package only, parallel with everything |
 | [T029](T029-store-sqlite.md) | SQLite store | **Start now**: on the critical path for background agents (E14) and persistence (T037) |
 | [T030](T030-runner.md) | Runner: entries, cache, leases, recovery, retry, approvals, cancel | **Start now**: background agents (E14) are built on it |
+| [T078](T078-web-workspace.md) | Web workspace: React + TS + shadcn/ui, `ui` / `agent-ui` / `apps/console`, embedding, its own CI job | **Start now** (owner: console first); T055 needs it |
 | [T070](T070-console-ux-design.md) | Console UX design session: layout, navigation, states, components; mockup v3 for owner approval | **Start now**; T055 waits for it. Fixes the doubled conversation list |
 | [T006](T006-compose-and-dev-script.md) | Compose topologies and `scripts/dev.sh` | Image exists; repeatable local runs |
 | [T033](T033-harness-clock.md) | Harness on `pkg/clock` | Small, independent |
@@ -93,6 +96,7 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 - 2026-10-12: no Anthropic key in GitHub. Live tests run in Claude sessions (`ANTHROPIC_KEY`, mapped by `make test-live`); T034 is a perf report only.
 - 2026-10-12: first connectors are Tavily, Exa and Parallel, for search and extraction ([E10](E10-search-connectors.md)); they run in parallel with E07, keys from the environment for now.
 - 2026-10-12: the owner will say how to deploy; no deploy task until then. First target: the Docker image locally, used through the clients.
+- 2026-10-12 (interview, [docs/PRODUCT.md](../docs/PRODUCT.md)): UI in **React + TS with shadcn/ui and Radix** (replaces "no framework"); shared `agent-ui` components for the desktop-first admin console and future mobile-first consumer apps; **admin console first**; agent definitions **stored and versioned** (E15); ephemeral harness **pluggable** (Go binary first, pi second; E16); farmer's assistant and finance tools are later products on the same core.
 - 2026-10-12 (T053, PR #4): the agent API's wire types live in `pkg/agentapi/wire` (imports only `pkg/llm`). Archtest's `SharedChildren` exemption, approved by the owner, lets `pkg/agentapi` import it. Messages on the wire decode **leniently** (unknown fields ignored, unknown block types kept as `llm.Unknown` and stored nowhere), so the API's additive rule holds for messages too; roles stay strict, and a new role means `"v": 2`.
 - 2026-10-12: background agents and agent messaging (E14): detached runs with a stored, resumable event stream; schedules and webhooks; mailboxes with sync or async messages, wake on reply, allowlists and loop limits. The runner and SQLite store move to the front.
 - 2026-10-12: a dedicated UX design session (T070) lays out the console before T055 builds it; each task now lists the references to study.

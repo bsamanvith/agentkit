@@ -26,7 +26,7 @@ The admin half of the console (owner, 2026-10-12): see the agents, the MCP tools
   - v1: per toolset, status (configured, missing, keyless), the env var or slot name, never values; how to set it;
   - v2 (after T045): set, rotate and delete keys, and connect OAuth accounts.
 - **Navigation:** admin pages are hidden for `user` roles; the API returns 403 anyway (tested).
-- Browser tests (chromedp) for each page against `agentkit serve` with fakes.
+- Browser tests (Playwright) for each page against `agentkit serve` with fakes.
 
 ## References
 

@@ -23,6 +23,8 @@ This is a design task: the output is a spec and a clickable mockup the owner app
 - **Background agents and agent threads** ([E14](E14-background-agents-messaging.md)): where running background runs, agent-to-agent threads, triggers and completion notifications live (T074 builds them). Approvals and memories come later; leave room for them.
 - Every screen uses only `/v1` ([E11](E11-clients.md), T062's endpoints).
 
+**Framework (owner, 2026-10-12): React + TypeScript with shadcn/ui and Radix.** Map the component inventory to shadcn/Radix components where they exist (Dialog, DropdownMenu, Command, Tabs, Table, Tooltip, Toast…) and say which are ours (tool step, step group, source chip, agent picker, run viewer). Split components into `ui` (generic) and `agent-ui` (agent-specific, shared with future mobile-first consumer apps): the console is desktop-first; agent-ui components must also work at phone width. [docs/PRODUCT.md](../docs/PRODUCT.md) has the bigger picture.
+
 ## Scope
 
 1. **Information architecture:**
@@ -56,6 +58,7 @@ This is a design task: the output is a spec and a clickable mockup the owner app
   - [LobeChat](https://github.com/lobehub/lobe-chat) (agent marketplace and picker);
   - [Vercel AI Chatbot template](https://github.com/vercel/ai-chatbot) (minimal neutral chat, streaming, tool-call rendering).
 - **Tool calls and steps:** Claude Code's terminal rendering of tool calls ("Read 2 files", collapsed groups); ChatGPT's and Perplexity's "searched N sites" rows and source chips; Cursor's agent steps.
+- **Our framework:** [shadcn/ui](https://ui.shadcn.com/) (blocks such as sidebar, data table, chat-like layouts), [Radix Primitives](https://www.radix-ui.com/primitives).
 - **Neutral design systems:** [Geist](https://vercel.com/geist/introduction) (Vercel; the type and grey scale we use); [shadcn/ui](https://ui.shadcn.com/) themes (the zinc and neutral palettes, light and dark); [Radix Colors](https://www.radix-ui.com/colors) (accessible grey scales, how dark-mode steps differ).
 - **Admin pages:** Linear and Vercel dashboard settings (dense, quiet tables and detail panes).
 - **Agent-made UI:** [A2UI component gallery and basic catalog](https://a2ui.org/) (what surfaces can contain); [CopilotKit A2UI renderer](https://www.copilotkit.ai/blog/a2ui-whats-new-in-google-generative-ui-spec).

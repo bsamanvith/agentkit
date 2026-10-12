@@ -14,7 +14,7 @@ The console renders `ui` events (T065) inline in the chat with its own component
 
 ## Scope
 
-- A renderer for the basic-catalog subset, data binding and updates to an existing surface (streamed, progressive), and surface deletion.
+- A renderer in `web/packages/agent-ui` (shared with consumer apps) for the basic-catalog subset, data binding and updates to an existing surface (streamed, progressive), and surface deletion.
 - Actions: buttons and submits send `ui_action` (T065) with the bound values; the surface shows "Sent" and is disabled until the agent replies.
 - Safety: no HTML or style from the agent; image and link URLs through the allowlist; unknown components shown as a small "unsupported component" note, never as raw data.
 

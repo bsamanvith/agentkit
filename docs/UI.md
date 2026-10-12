@@ -30,7 +30,7 @@ Later, as the backend gains them: **approvals** (a run waiting for a decision, w
   - **details** open in place: the request as a key/value list, results as a compact list (site initial, title, host, one-line snippet), and "Show raw JSON" for the exact input and output;
   - the answer ends with **source chips** (host and path) for the URLs it cites, then a muted line with turns, tokens (cached) and time;
   - display text comes from tool metadata: each tool may declare a title, an icon kind and present/past verbs (MCP's `annotations.title` plus our own optional display fields on `tool.Definition`); tools without them fall back to "Ran `tool_name`" with the first argument.
-- **Stack**: TypeScript without a UI framework, bundled by esbuild through its Go API, embedded in the binary; browser tests with `chromedp` against a replayed model and faked connectors (E11 decisions).
+- **Stack** (owner, 2026-10-12): React + TypeScript with shadcn/ui and Radix, in a `web/` workspace (`ui`, `agent-ui`, `apps/console`); the console build is embedded in the binary; Vitest and Playwright tests against a replayed model and faked connectors (E11, T078). The console is desktop-first; `agent-ui` components also serve mobile-first consumer apps ([PRODUCT.md](PRODUCT.md)).
 
 ## Open for the owner
 

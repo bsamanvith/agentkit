@@ -1,0 +1,15 @@
+{
+  "synthetic": true,
+  "method": "POST",
+  "path": "/v1/extract",
+  "body": {
+    "urls": [
+      "https://go.dev/doc/go1.27",
+      "https://example.com/missing-page"
+    ],
+    "objective": "What changed in the go command?",
+    "advanced_settings": {
+      "full_content": false
+    }
+  }
+}

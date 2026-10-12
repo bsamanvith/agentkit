@@ -23,6 +23,9 @@ func ModuleRules() Rules {
 			// Its tests validate every output against the declared output
 			// schema; the connector itself uses net/http only.
 			"connectors/tavily": {"github.com/google/jsonschema-go/jsonschema"},
+			// Its spec test checks every request and cassette against
+			// Parallel's OpenAPI schemas.
+			"connectors/parallel": {"github.com/google/jsonschema-go/jsonschema"},
 		},
 		TestOnly: []string{
 			"github.com/google/go-cmp/cmp",

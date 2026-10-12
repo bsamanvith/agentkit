@@ -1,0 +1,15 @@
+{
+  "results": [
+    {
+      "url": "https://go.dev/doc/go1.27",
+      "title": "Go 1.27 Release Notes - The Go Programming Language",
+      "content": "## Go command\nThe go command now caches test fuzzing corpora per module.\n…\n`go mod tidy` reports retracted versions it removes."
+    }
+  ],
+  "failed": [
+    {
+      "url": "https://example.com/missing-page",
+      "error": "fetch_error (HTTP 404): Error fetching content from https://example.com/missing-page"
+    }
+  ]
+}

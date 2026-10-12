@@ -55,7 +55,8 @@ func tavilyCassette(t *testing.T, name string) []byte {
 
 // TestSearchConfigBuilds: deploy/local/agent/search.json is a valid serve
 // config, and its toolsets build from this binary's catalog (tavily
-// compiled in, no key needed; exa skipped as optional without EXA_API_KEY).
+// compiled in, no key needed; exa and parallel skipped as optional without
+// EXA_API_KEY and PARALLEL_API_KEY).
 func TestSearchConfigBuilds(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join("..", "..", "deploy", "local", "agent", "search.json")
@@ -68,20 +69,39 @@ func TestSearchConfigBuilds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
-	// The real catalog reads EXA_API_KEY through os.LookupEnv.
-	if _, ok := os.LookupEnv("EXA_API_KEY"); ok {
-		if len(problems) != 0 || built["exa"] == nil {
-			t.Errorf("problems %v, want exa built with EXA_API_KEY set", problems)
+	// The real catalog reads the keys through os.LookupEnv: a keyed toolset
+	// is built when its variable is set and skipped for the missing key when
+	// it is not.
+	skipped := map[string]toolset.Problem{}
+	for _, p := range problems {
+		skipped[p.Toolset] = p
+	}
+	for name, variable := range map[string]string{"exa": "EXA_API_KEY", "parallel": "PARALLEL_API_KEY"} {
+		p, isSkipped := skipped[name]
+		delete(skipped, name)
+		if _, set := os.LookupEnv(variable); set {
+			if isSkipped || built[name] == nil {
+				t.Errorf("%s: problem %v, want it built with %s set", name, p.Err, variable)
+			}
+			continue
 		}
-	} else if len(problems) != 1 || problems[0].Toolset != "exa" || !errors.Is(problems[0].Err, exa.ErrMissingKey) {
-		t.Errorf("problems %v, want only exa skipped for its missing key", problems)
+		missingKey := strings.Contains(p.Error(), variable)
+		if name == "exa" {
+			missingKey = errors.Is(p.Err, exa.ErrMissingKey)
+		}
+		if !isSkipped || !missingKey {
+			t.Errorf("%s: problem %v, want it skipped for its missing %s", name, p.Err, variable)
+		}
+	}
+	if len(skipped) != 0 {
+		t.Errorf("other toolsets skipped: %v", skipped)
 	}
 	defs, err := built["tavily"].List(t.Context())
 	if err != nil || len(defs) != 2 || defs[0].Name != "tavily_extract" || defs[1].Name != "tavily_search" {
 		t.Errorf("tavily toolset: %v %v, want tavily_extract and tavily_search", defs, err)
 	}
-	if !slices.Equal(cfg.Agent.Toolsets, []string{"demo", "tavily", "exa"}) {
-		t.Errorf("agent toolsets %v, want demo, tavily and exa", cfg.Agent.Toolsets)
+	if !slices.Equal(cfg.Agent.Toolsets, []string{"demo", "tavily", "exa", "parallel"}) {
+		t.Errorf("agent toolsets %v, want demo, tavily, exa and parallel", cfg.Agent.Toolsets)
 	}
 }
 

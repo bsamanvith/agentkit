@@ -1,0 +1,15 @@
+{
+  "results": [
+    {
+      "title": "Go 1.27 Release Notes - The Go Programming Language",
+      "url": "https://go.dev/doc/go1.27",
+      "published_date": "2026-08-12",
+      "content": "## Introduction to Go 1.27\nThe latest Go release, version 1.27, arrives six months after Go 1.26.\n…\n## Tools\nThe go command now caches test fuzzing corpora per module."
+    },
+    {
+      "title": "",
+      "url": "https://github.com/golang/go/issues?q=milestone%3AGo1.27",
+      "content": "Issues closed in the Go1.27 milestone."
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "synthetic": true,
+  "method": "POST",
+  "path": "/v1/extract",
+  "body": {
+    "urls": [
+      "https://go.dev/doc/go1.27",
+      "https://example.com/timeout"
+    ],
+    "advanced_settings": {
+      "fetch_policy": {
+        "max_age_seconds": 600,
+        "timeout_seconds": 30,
+        "disable_cache_fallback": true
+      },
+      "full_content": true
+    }
+  }
+}

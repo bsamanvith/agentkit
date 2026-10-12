@@ -1,0 +1,4 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"search_id":"search_0f3c2a7d9b1e4c56a8d0e2f4b6c8a1d3","results":[{"url":"https://go.dev/doc/devel/release","title":"Release History - The Go Programming Language","publish_date":"2026-08-12","excerpts":["## Release History\nThis page summarizes the changes between official stable releases of Go.","go1.27 (released 2026-08-12)\nGo 1.27 is a major release of Go."]},{"url":"https://go.dev/blog/go1.27","title":"Go 1.27 is released - The Go Programming Language","publish_date":null,"excerpts":["Today the Go team is thrilled to release Go 1.27, which you can get by visiting the download page."]}],"warnings":null,"usage":[{"name":"sku_search","count":1}],"session_id":"session_5e7a9c1b3d5f4a6b8c0d2e4f6a8b0c2d"}

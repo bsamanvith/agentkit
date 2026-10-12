@@ -1,0 +1,4 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"extract_id":"extract_2a4c6e8f0b1d4a3c5e7f9b1d3f5a7c9e","results":[{"url":"https://go.dev/doc/go1.27","title":"Go 1.27 Release Notes - The Go Programming Language","publish_date":"2026-08-12","excerpts":["## Go command\nThe go command now caches test fuzzing corpora per module.","`go mod tidy` reports retracted versions it removes."],"full_content":null}],"errors":[{"url":"https://example.com/missing-page","error_type":"fetch_error","http_status_code":404,"content":"Error fetching content from https://example.com/missing-page"}],"warnings":null,"usage":[{"name":"sku_extract_excerpts","count":1}],"session_id":"session_9d7b5f3a1c0e4d2b8a6c4e2f0d8b6a4c"}

@@ -1,0 +1,15 @@
+{
+  "results": [
+    {
+      "url": "https://go.dev/doc/go1.27",
+      "title": "Go 1.27 Release Notes - The Go Programming Language",
+      "content": "# Go 1.27 Release Notes\n\n## Introduction to Go 1.27\n\nThe latest Go release, version 1.27, arrives six months after Go 1.26.\n\n## Tools\n\n### Go command\n\nThe go command now caches test fuzzing corpora per module."
+    }
+  ],
+  "failed": [
+    {
+      "url": "https://example.com/timeout",
+      "error": "fetch_error"
+    }
+  ]
+}

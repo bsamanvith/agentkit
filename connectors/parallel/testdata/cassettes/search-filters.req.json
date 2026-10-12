@@ -1,0 +1,31 @@
+{
+  "synthetic": true,
+  "method": "POST",
+  "path": "/v1/search",
+  "body": {
+    "objective": "Find what changed in the Go 1.27 release, from official sources.",
+    "search_queries": [
+      "Go 1.27 release notes",
+      "Go 1.27 new features",
+      "golang 1.27 changelog"
+    ],
+    "mode": "advanced",
+    "advanced_settings": {
+      "source_policy": {
+        "include_domains": [
+          "go.dev",
+          "github.com/golang"
+        ],
+        "after_date": "2026-01-01"
+      },
+      "fetch_policy": {
+        "max_age_seconds": 3600
+      },
+      "excerpt_settings": {
+        "max_chars_per_result": 1500
+      },
+      "location": "gb",
+      "max_results": 2
+    }
+  }
+}

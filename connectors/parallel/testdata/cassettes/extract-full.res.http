@@ -1,0 +1,4 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"extract_id":"extract_6f8a0c2e4b1d4f3a5c7e9a1c3e5b7d9f","results":[{"url":"https://go.dev/doc/go1.27","title":"Go 1.27 Release Notes - The Go Programming Language","publish_date":"2026-08-12","excerpts":["## Introduction to Go 1.27\nThe latest Go release, version 1.27, arrives six months after Go 1.26."],"full_content":"# Go 1.27 Release Notes\n\n## Introduction to Go 1.27\n\nThe latest Go release, version 1.27, arrives six months after Go 1.26.\n\n## Tools\n\n### Go command\n\nThe go command now caches test fuzzing corpora per module."}],"errors":[{"url":"https://example.com/timeout","error_type":"fetch_error","http_status_code":null,"content":null}],"warnings":[{"type":"warning","message":"live fetch timed out; no cached content","detail":null}],"usage":[{"name":"sku_extract_full_content","count":1}],"session_id":"session_3b5d7f9a1c0e4b2d8f6a4c2e0b8d6f4a"}

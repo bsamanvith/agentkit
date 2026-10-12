@@ -98,13 +98,15 @@ Environment: `AGENTKIT_COMPONENTS` (`agent`, `mcp-server`, or both), `AGENTKIT_A
 
 ## 6. Web search
 
-`deploy/local/agent/search.json` adds two web search toolsets to the demo tools, each served over MCP at its own route and given to the agent:
+`deploy/local/agent/search.json` adds three web search toolsets to the demo tools, each served over MCP at its own route and given to the agent:
 
 - `tavily`: `tavily_search` (web search) and `tavily_extract` (a page's content), at `/mcp/tavily`. No key needed.
 - `exa`: `exa_search` and `exa_extract` through [Exa](https://exa.ai), at `/mcp/exa`. Needs `EXA_API_KEY`.
+- `parallel`: `parallel_search` and `parallel_extract` through [Parallel](https://parallel.ai), at `/mcp/parallel`. Needs `PARALLEL_API_KEY`.
 
 ```sh
-export EXA_API_KEY=...   # optional: without it only Tavily is used
+export EXA_API_KEY=...        # optional: without it Exa is skipped
+export PARALLEL_API_KEY=...   # optional: without it Parallel is skipped
 AGENTKIT_CONFIG=deploy/local/agent/search.json scripts/try-agent.sh
 ```
 
@@ -135,6 +137,26 @@ Settings of an `exa` toolset (all optional; unknown fields, including a literal 
 | `search_defaults.category` | none | `company`, `publication`, `news`, `personal site`, `financial report`, `people` |
 | `extract_defaults.max_characters` | the extract cap | page text fetched per URL |
 | `extract_defaults.max_age_hours` | Exa's default | freshness: `0` always fetches, `-1` always uses the cache |
+
+### Parallel
+
+Parallel needs an API key (platform.parallel.ai). The config names the environment variable it is read from, never the key itself. Without `PARALLEL_API_KEY` the server still starts: the `parallel` toolset is optional, so it is skipped, and `/readyz` reports `degraded` and names the variable. With the container (section 4), pass the key with `-e PARALLEL_API_KEY`; `scripts/try-agent.sh --docker` does not pass it yet.
+
+Settings of a `parallel` toolset (all optional; unknown fields, including a literal `api_key`, fail startup; full reference: [connectors/parallel](../connectors/parallel/doc.go)):
+
+| Field | Default | Meaning |
+|---|---|---|
+| `api_key_env` | `PARALLEL_API_KEY` | environment variable holding the key |
+| `base_url` | `https://api.parallel.ai` | another server, e.g. a local replay (`https`, or `http` to loopback only) |
+| `timeout` | `30s` | per request attempt (one retry on 429) |
+| `max_content_chars` | `{"search": 4000, "extract": 20000}` | cap on each result's content; a cut ends with e.g. `…[truncated 12,400 characters; call parallel_extract on this URL for more of the page]` |
+| `search_defaults.mode` | `fast` | `turbo`, `fast`, `basic`, `advanced` |
+| `search_defaults.allow_model_mode` | `false` | let the model pick `mode` per call |
+| `search_defaults.max_chars_per_result` | Parallel's default | excerpt length per result |
+| `search_defaults.location` | none | two-letter country code, e.g. `us`, passed to Parallel |
+| `search_defaults.fetch_policy` | Parallel's default | `max_age_seconds` (at least 600), `timeout_seconds`, `disable_cache_fallback` |
+| `extract_defaults.full_content` | `false` | return each page's full content instead of the excerpts relevant to the objective |
+| `extract_defaults.fetch_policy` | Parallel's default | as for search |
 
 ## Troubleshooting
 

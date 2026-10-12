@@ -1,0 +1,15 @@
+{
+  "synthetic": true,
+  "method": "POST",
+  "path": "/v1/search",
+  "body": {
+    "objective": "latest Go release",
+    "search_queries": [
+      "latest Go release"
+    ],
+    "mode": "fast",
+    "advanced_settings": {
+      "max_results": 5
+    }
+  }
+}

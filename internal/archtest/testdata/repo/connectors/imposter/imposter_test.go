@@ -9,4 +9,5 @@ import (
 // Calls a RunConnector, but not the kit's.
 func TestConformance(t *testing.T) { toolsettest.RunConnector(t) }
 
-func FuzzResponses(f *testing.F) { toolsettest.FuzzResponses(f) }
+// Not a Fuzz target, so scripts/fuzz.sh does not try to run this fixture.
+func fuzzResponses(f *testing.F) { toolsettest.FuzzResponses(f) }

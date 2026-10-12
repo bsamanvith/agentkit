@@ -270,6 +270,7 @@ Connectors call paid APIs, so their tests follow one recipe, in [CONNECTORS.md](
 
 - **One suite.** Every connector passes `toolsettest.RunConnector` with one call. The suite checks what all connectors share: settings, key handling, error classes, retries, body limits, leaks, MCP and concurrency. Its checks have IDs; a connector may skip an opt-out check only with a written reason.
 - **No network.** Responses are recorded from the real API (`make record-cassettes`), scrubbed and replayed. The suite hands out only a client that refuses every other host.
+- **Checked against the provider's spec.** Where the provider publishes an OpenAPI spec, the connector vendors the part it uses (`make openapi-specs`), and check `cassettes.openapi` validates every cassette, recorded or synthetic, against it. A published spec the real API contradicts is corrected by a reviewed overlay, never by hand.
 - **Honest fakes.** Every other test uses `toolsettest.NewFake` or `FakeFactory`, built from the real definitions and checking inputs and outputs against the real schemas.
 - **Generic bugs become checks.** A bug that any connector could have becomes a suite check, with a planted bug in the toy connector that proves the check catches it.
 

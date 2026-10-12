@@ -42,6 +42,7 @@ A connector (anything under `connectors/`) is tested with the kit in `pkg/toolse
 
 - **The suite.** One `toolsettest.RunConnector` call, with semantic `Invalid` cases.
 - **Cassettes.** Recorded with `make record-cassettes`, with goldens from `make golden`.
+- **The provider's spec.** If it publishes an OpenAPI spec, vendor it with `make openapi-specs` and set `Connector.OpenAPI`; check `cassettes.openapi` validates every cassette against it.
 - **Fuzz.** A `FuzzResponses` target per tool.
 - **Live tests.** `Record` and `Drift` in `live_test.go`.
 - **Your own tests.** Only for what is specific to the provider.

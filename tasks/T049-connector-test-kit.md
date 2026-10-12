@@ -150,7 +150,7 @@ Checks the suite runs on every connector:
 - **Recordings go stale silently** (mock drift).
   - A drift check (`-tags live`, run with `make test-live`) replays each cassette's request against the real API and compares the response's **shape** (JSON paths and types, not values) with the cassette, reporting added, removed and retyped fields.
   - Each cassette records its recording date; the drift run warns past 90 days.
-  - Where the provider publishes an OpenAPI spec (Exa, Parallel), the connector vendors it into `testdata/` and an offline test checks every cassette response against the spec's response schema.
+  - Where the provider publishes an OpenAPI spec (Exa, Parallel), the connector vendors it into `testdata/` and an offline test checks every cassette response against the spec's response schema. (Built in T051: check `cassettes.openapi`, run by Tavily, Exa and Parallel.)
 - **Generated fixtures repeat the code's assumptions** (Nango).
   - A fixture not recorded from the real API is marked `synthetic` in its `.req.json`.
   - The suite prints the synthetic ones.

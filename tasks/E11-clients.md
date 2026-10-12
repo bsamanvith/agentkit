@@ -50,7 +50,8 @@ Both talk to the public agent API (`/v1`, HTTP + SSE; [E09](E09-agent-api.md)). 
 - [ ] [T062](T062-api-agents-catalog.md) API: several agents, conversation listing, toolsets and tools catalog, OpenAPI spec
 - [ ] [T063](T063-agents-over-mcp.md) Agents over MCP (`/mcp/agentkit`), so Claude Code and other harnesses can drive them
 - [ ] [T061](T061-local-users-login.md) Local users and login sessions (E07 track, needs T039)
+- [ ] [T070](T070-console-ux-design.md) Console UX design session: layout, navigation, states, components, mockup v3 (before T055)
 - [ ] [T055](T055-web-client.md) Console shell, login, chat with agent picker, conversation list
 - [ ] [T064](T064-console-admin-pages.md) Console admin pages: agents, toolsets and tools, credentials
 
-Order: T053 and T062 now (independent), and T039 (E07) now for login. Then T054 (CLI), T063 (MCP) and T055 (console) in parallel, then T061 (login) and T064 (admin pages). The UI design (screens and flows) is in [docs/UI.md](../docs/UI.md), with a clickable mockup to review before T055 starts. After that: T006 (Compose) and T050 (evals, on `agentkit ask --json` and `/mcp/agentkit`).
+Order: T053 and T062 now (independent), and T039 (E07) now for login. Then T054 (CLI), T063 (MCP) and T055 (console) in parallel, then T061 (login) and T064 (admin pages). The UI design (screens and flows) is in [docs/UI.md](../docs/UI.md); a dedicated design session (T070) settles the layout and produces mockup v3 for the owner's approval before T055 starts. After that: T006 (Compose) and T050 (evals, on `agentkit ask --json` and `/mcp/agentkit`).

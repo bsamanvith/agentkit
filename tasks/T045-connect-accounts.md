@@ -34,6 +34,13 @@ Credentials have to get into the vault somehow: an admin sets a tenant's API key
 
 - A UI. Dynamic client registration. Device code flow (later, if a CLI needs it).
 
+## References
+
+- [RFC 7636: PKCE](https://www.rfc-editor.org/rfc/rfc7636)
+- [RFC 9700: OAuth 2.0 Security Best Current Practice](https://www.rfc-editor.org/rfc/rfc9700) (state, redirect URI checks, open redirects)
+- `golang.org/x/oauth2` (`GenerateVerifier`, `S256ChallengeOption`, `Exchange`)
+- How Nango and Composio model 'connections' per user and tenant (UI and API shape)
+
 ## Acceptance criteria
 
 - [ ] **Full flow against a fake OAuth server** (`httptest`): connect, follow the authorize URL, then the callback; the vault holds the tokens for the right tenant and user, and a tool call uses them (T044's test connector).

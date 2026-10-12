@@ -19,6 +19,12 @@ Agents should be able to show UI (forms, choices, cards), not only text, streame
 - `ui_action`: `POST /v1/runs` accepts a message with a `ui_action` part (surface ID, action, values); it is appended to the conversation and shown to the model as structured text.
 - The agent API's OpenAPI spec (T062) and `pkg/agentclient` (T053) gain the `ui` event and `ui_action`.
 
+## References
+
+- [A2UI specification](https://a2ui.org/) (current stable version, message reference, basic catalog, actions, data binding)
+- [A2UI A2A extension](https://a2ui.org/) (how surfaces travel over A2A, for T067)
+- [Introducing A2UI](https://developers.googleblog.com/introducing-a2ui-an-open-project-for-agent-driven-interfaces/) (design goals: no code, client catalog, streaming)
+
 ## Acceptance criteria
 
 - [ ] Golden examples from the spec validate; each invalid case (unknown component, unknown property, dangling child ID, cycle, oversize) fails with a specific error.

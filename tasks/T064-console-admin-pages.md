@@ -28,6 +28,12 @@ The admin half of the console (owner, 2026-10-12): see the agents, the MCP tools
 - **Navigation:** admin pages are hidden for `user` roles; the API returns 403 anyway (tested).
 - Browser tests (chromedp) for each page against `agentkit serve` with fakes.
 
+## References
+
+- [docs/UI.md](../docs/UI.md) and T070's approved mockup v3
+- Vercel and Linear dashboards (quiet admin tables, detail panes)
+- JSON Schema rendering in Swagger UI / Redoc for the tool field lists
+
 ## Acceptance criteria
 
 - [ ] **Agents page:** lists the configured agents; the detail shows the system prompt only to `admin`; "Chat with this agent" opens a new conversation with that agent.

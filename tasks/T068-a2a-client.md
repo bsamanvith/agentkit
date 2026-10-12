@@ -19,6 +19,12 @@ Our agents should be able to delegate to other teams' agents. Decisions: [E13](E
 - A `flow` step that runs a remote A2A agent with checkpointing of the task ID (resume polls the same task).
 - Built on T049's kit where it fits (cassettes of a remote agent, hermetic client, canary).
 
+## References
+
+- [A2A specification v1.0](https://a2a-protocol.org/latest/specification/) (client side: discovery, streaming, `SubscribeToTask`)
+- [a2aproject/a2a-go](https://github.com/a2aproject/a2a-go) client
+- T049 kit (`docs/CONNECTORS.md`): a remote agent is an outbound dependency like a connector
+
 ## Acceptance criteria
 
 - [ ] Against our own A2A server (T067) in process: a tool call delegates and returns the answer; the flow step resumes an interrupted remote task by its ID instead of starting a new one.

@@ -42,6 +42,12 @@ Evals here use **real Claude with faked connectors**, built from T049's `NewFake
 
 - Scoring answer quality beyond the checks above (citations present, tool use correct). Evals of non-connector tools.
 
+## References
+
+- [Anthropic: Writing effective tools for agents](https://www.anthropic.com/engineering/writing-tools-for-agents) (eval tasks, held-out sets, what to measure)
+- [Anthropic: Demystifying evals for AI agents](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents)
+- [Braintrust: MCP testing and evals](https://www.braintrust.dev/articles/ultimate-guide-mcp-testing-evals)
+
 ## Acceptance criteria
 
 - [ ] `make eval` runs every scenario against real Claude with faked connectors, making no connector network request (the T049 hermetic client).

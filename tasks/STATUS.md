@@ -15,9 +15,10 @@
 | M6 Remote tools over ConnectRPC | E06 (to plan) | Planned |
 | Credentials, auth, tenancy at the edge | [E07](E07-auth-credentials.md) | **Planned** (T039–T045); T039 and T042 ready. Needed before any public deployment: `/mcp/` has no auth today |
 | First connectors: Tavily, Exa, Parallel (search, extract) | [E10](E10-search-connectors.md) | **Tavily done** (live end to end with real Claude passed); Exa and Parallel on `main`, in review until keys exist; no auth work needed (Tavily keyless or keyed; Exa and Parallel keyed from env) |
-| Clients: admin console, CLI and headless, and the APIs behind them | [E11](E11-clients.md) | **In progress**: T053 running; T062 (agents, conversations, catalog API), T063 (agents over MCP), T061 (login), T055/T064 (console) planned. UI plan: [docs/UI.md](../docs/UI.md) with a clickable mockup |
+| Clients: admin console, CLI and headless, and the APIs behind them | [E11](E11-clients.md) | **In progress**: T053 done; T062 (agents, conversations, catalog API), T063 (agents over MCP), T061 (login), T055/T064 (console) planned. UI plan: [docs/UI.md](../docs/UI.md) with a clickable mockup |
 | Skills and memory (context store; search by keyword or embeddings, opt-in) | [E12](E12-skills-memory.md) | **Planned** (T057–T060); T057 and T058 can start now |
 | Agent protocols: A2UI (agent-driven UI), A2A (agent to agent), AG-UI, MCP Apps | [E13](E13-agent-protocols.md) | **Planned** (T065–T069); after the console basics and the agents API |
+| Background agents and agent-to-agent messaging | [E14](E14-background-agents-messaging.md) | **Planned** (T071–T074); needs the runner (T030) and SQLite store (T029), which move up to **start now** |
 | More model providers | [E08](E08-model-providers.md) | Later |
 | Agent skills | [E02](E02-agent-skills.md) | In progress: `write-tests` exists and was dry-run on `pkg/flow` |
 
@@ -36,7 +37,7 @@ The same checks are one command on a laptop: `scripts/try-agent.sh` ([docs/QUICK
 
 ## Done
 
-T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentkit healthcheck` · T017 `pkg/tool` · T018 MCP server · T019 `pkg/clock` · T020 `pkg/llm` · T021 Anthropic adapter · T022 harness · T023 `flow` · T024 `agentkit run`, `agentstep` · T026 `pkg/toolset` · T027 `pkg/tenancy` · T028 `pkg/store` · T038 `store.Admin` · T046 Tavily connector · T049 connector test kit · T032 flow step-tree check · T036 agent API v0
+T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentkit healthcheck` · T017 `pkg/tool` · T018 MCP server · T019 `pkg/clock` · T020 `pkg/llm` · T021 Anthropic adapter · T022 harness · T023 `flow` · T024 `agentkit run`, `agentstep` · T026 `pkg/toolset` · T027 `pkg/tenancy` · T028 `pkg/store` · T038 `store.Admin` · T046 Tavily connector · T049 connector test kit · T051 cassette OpenAPI validation · T052 kit hardening · T053 `pkg/agentclient` · T032 flow step-tree check · T036 agent API v0
 
 ## Running or waiting
 
@@ -49,13 +50,11 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 | Task | What | Why now |
 |---|---|---|
 | [T049](T049-connector-test-kit.md) | `toolsettest`: cassettes, `RunConnector` suite, honest fakes | **Done** (`a5d47eb`, CI green): Upstream, RunConnector, fakes, check IDs with skip/opt-in, schema honesty, secret scans, `synthetic`, Drift, per-call Settings, archtest rule (every connector runs the kit) |
-| [T052](T052-connector-kit-hardening.md) | Kit hardening: 5 new staged checks, golden first run, fuzz speed | **Now** (owner: before the clients); task card queued |
-| [T051](T051-openapi-cassette-validation.md) | Validate cassettes against vendored OpenAPI specs | **Now** (owner: before the clients); task card queued |
-| [T053](T053-agentclient.md) | `pkg/agentclient`: the Go client for `/v1` | **Now**, in parallel (independent files); unblocks T054, T055. Task card queued |
 | [T062](T062-api-agents-catalog.md) | API: several agents, conversation listing, toolsets and tools catalog, OpenAPI spec | **Ready now**; the console and Claude Code both need it |
 | [T039](T039-auth-principals-middleware.md) | `pkg/auth` (needed for login, T061) | **Ready now** |
-| [T054](T054-cli-client.md), [T063](T063-agents-over-mcp.md) | CLI (`chat`, headless `ask --json`); agents over MCP for Claude Code | After T053 (T063 also T062) |
-| [T055](T055-web-client.md), [T061](T061-local-users-login.md), [T064](T064-console-admin-pages.md) | Console shell and chat; local users and login; admin pages | After T053/T062 (T055 can start on the mockup), T039 (T061) |
+| [T054](T054-cli-client.md) | CLI: `agentkit chat`, headless `agentkit ask --json` | **Ready** (T053 done) |
+| [T063](T063-agents-over-mcp.md) | Agents over MCP for Claude Code | After T062 |
+| [T055](T055-web-client.md), [T061](T061-local-users-login.md), [T064](T064-console-admin-pages.md) | Console shell and chat; local users and login; admin pages | T055 after T070 (design) and T062; T061 after T039; T064 after T055 |
 | [T057](T057-skills.md), [T058](T058-memory-context-store.md) | Skills (Agent Skills format, progressive disclosure); memory context store (Claude memory-tool shape) | Ready; new packages, parallel with everything |
 | [T056](T056-test-speed.md) | `make test` back under 30 s (52 s now) | Ready; small |
 | [T050](T050-connector-tool-evals.md) | Tool-use evals: real Claude with faked connectors | **Later** (owner): after the API is deployed and the clients exist; runs on `agentkit ask --json` |
@@ -63,8 +62,9 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 | [T048](T048-connector-parallel.md) | `connectors/parallel`: search and extract | **Review**: on `main`, on the kit (`baf4248`); waits for `PARALLEL_API_KEY` (live test, re-recording synthetic cassettes) |
 | [T039](T039-auth-principals-middleware.md) | `pkg/auth`: principals, API keys, edge middleware | Starts E07's inbound track; new package only, parallel with E05 |
 | [T042](T042-credentials-core.md) | `pkg/credentials`: secrets, sealer, vault, memory backend | Starts E07's credentials track; new package only, parallel with everything |
-| [T029](T029-store-sqlite.md) | SQLite store | Unblocked (T038 done); persistence for the API (T037) |
-| [T030](T030-runner.md) | Runner: entries, cache, leases, recovery, retry, approvals, cancel | Unblocked (T038 done); the core of M4 |
+| [T029](T029-store-sqlite.md) | SQLite store | **Start now**: on the critical path for background agents (E14) and persistence (T037) |
+| [T030](T030-runner.md) | Runner: entries, cache, leases, recovery, retry, approvals, cancel | **Start now**: background agents (E14) are built on it |
+| [T070](T070-console-ux-design.md) | Console UX design session: layout, navigation, states, components; mockup v3 for owner approval | **Start now**; T055 waits for it. Fixes the doubled conversation list |
 | [T006](T006-compose-and-dev-script.md) | Compose topologies and `scripts/dev.sh` | Image exists; repeatable local runs |
 | [T033](T033-harness-clock.md) | Harness on `pkg/clock` | Small, independent |
 | [T035](T035-rerecord-anthropic-fixtures.md) | Re-record Anthropic fixtures from the real API | A key is available |
@@ -93,6 +93,8 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 - 2026-10-12: no Anthropic key in GitHub. Live tests run in Claude sessions (`ANTHROPIC_KEY`, mapped by `make test-live`); T034 is a perf report only.
 - 2026-10-12: first connectors are Tavily, Exa and Parallel, for search and extraction ([E10](E10-search-connectors.md)); they run in parallel with E07, keys from the environment for now.
 - 2026-10-12: the owner will say how to deploy; no deploy task until then. First target: the Docker image locally, used through the clients.
+- 2026-10-12: background agents and agent messaging (E14): detached runs with a stored, resumable event stream; schedules and webhooks; mailboxes with sync or async messages, wake on reply, allowlists and loop limits. The runner and SQLite store move to the front.
+- 2026-10-12: a dedicated UX design session (T070) lays out the console before T055 builds it; each task now lists the references to study.
 - 2026-10-12: agent protocols (E13): agents stream UI as A2UI surfaces (validated against our catalog, rendered with the console's own components); our agents served over A2A and remote A2A agents usable as tools; AG-UI and MCP Apps later. Console look: neutral (grey, white, minimal black; near-black dark mode); tool calls as quiet one-line steps with details on demand.
 - 2026-10-12: the web client is an admin console (login, chat with agent picker, conversations, agents, MCP toolsets and tools, credentials), API-first so Claude Code and other harnesses can drive everything; agents also over MCP ([docs/UI.md](../docs/UI.md)).
 - 2026-10-12: skills and memory for the harness (E12): Agent Skills format with progressive disclosure; a context store and an opt-in search store (keyword, semantic, hybrid).

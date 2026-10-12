@@ -25,6 +25,11 @@ The agent's own notes: preferences, project facts, progress across conversations
   - if the Anthropic adapter can send the native memory tool type and map its calls onto this store, do it behind an option, and record the decision.
 - **Opt-in config:** `agent.memory.store: {backend, scope}`. With no config, there is no memory tool and nothing is stored.
 
+## References
+
+- The Claude **memory tool** docs (commands, `/memories` paths, security notes; find the current page with the `claude-api` skill)
+- Anthropic's context management docs (memory tool plus context editing) for how Claude is trained to use memory
+
 ## Acceptance criteria
 
 - [ ] **Commands:** each behaves as documented, including the error cases: `str_replace` with zero or two matches, `insert` past the end, `rename` onto an existing file, `view` of a missing path (table test against the reference store).

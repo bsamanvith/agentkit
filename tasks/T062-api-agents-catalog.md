@@ -34,6 +34,12 @@ The console (agent picker, conversation list, toolsets page) and every other cli
   - two agents in `deploy/local/agent/search.json` (a plain demo agent and a search agent);
   - update `docs/QUICKSTART.md`.
 
+## References
+
+- [OpenAPI 3.1](https://spec.openapis.org/oas/v3.1.0)
+- [Google AIP-158: Pagination](https://google.aip.dev/158) (opaque page tokens)
+- How the Claude API and OpenAI Assistants/Responses APIs list conversations and models (shape and pagination), for familiar shapes
+
 ## Acceptance criteria
 
 - [ ] **Two agents:** two configured agents run with their own system prompts and tools (a fake model records what each was given); the old single-`agent` config still works as `default`.

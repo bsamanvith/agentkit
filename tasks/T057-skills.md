@@ -31,6 +31,12 @@ Skills are packaged know-how (instructions plus reference files) that the agent 
   - `/readyz` lists the loaded skills.
 - **Example:** load this repo's own `.agents/skills/` as a test fixture, plus one small demo skill in `deploy/local/agent/skills/` used by `search.json`.
 
+## References
+
+- Anthropic Agent Skills: the overview and the `SKILL.md` format in the Claude docs (find the current page with the `claude-api` skill), and [Equipping agents for the real world with Agent Skills](https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills) (progressive disclosure)
+- This repo's `.agents/skills/` (real skills to load as fixtures)
+- [Go `io/fs`](https://pkg.go.dev/io/fs) and `os.Root` (Go 1.24+) for confined file access
+
 ## Acceptance criteria
 
 - [ ] **Valid skills:** each loads with its name, description, body and file index. The real `.agents/skills/` folder loads without errors.

@@ -3,7 +3,7 @@ id: T055
 title: "Console shell, login page, chat with agent picker, conversation list"
 epic: E11
 status: todo
-depends_on: [T036, T053]
+depends_on: [T036, T053, T070]
 ---
 
 # T055: console shell and chat
@@ -28,6 +28,15 @@ People need to use the agent without a terminal: a chat like a terminal agent's,
   - answers rendered as safe Markdown (E11 decision); tool results and errors as text only;
   - works at phone width; light and dark themes from the OS setting.
 - **Browser tests** with `chromedp` (test-only dependency) against `agentkit serve` with the replayed model and faked connectors.
+
+## References
+
+- [docs/UI.md](../docs/UI.md) and T070's approved mockup v3 (the design to build)
+- [Vercel AI Chatbot](https://github.com/vercel/ai-chatbot) (streaming chat structure, message parts); [Open WebUI](https://github.com/open-webui/open-webui) (agent picker, sidebar list)
+- [esbuild Go API](https://esbuild.github.io/api/) (`api.Build` from `internal/webbuild`)
+- [chromedp](https://github.com/chromedp/chromedp) (browser tests)
+- [OWASP XSS Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html) and [CSP](https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP) (rendering untrusted text)
+- [WAI-ARIA live regions](https://www.w3.org/WAI/ARIA/apg/) (announcing streamed text politely)
 
 ## Acceptance criteria
 

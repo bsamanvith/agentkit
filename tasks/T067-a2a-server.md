@@ -19,6 +19,12 @@ Other agent systems (and orchestrators) talk A2A. Serving each of our agents as 
 - Methods (JSON-RPC binding first, HTTP+JSON if cheap): `SendMessage`, `SendStreamingMessage` (SSE from our run events), `GetTask`, `ListTasks`, `CancelTask`, `SubscribeToTask`. Task states from run statuses; `input-required` only once the runner (T030) can suspend runs, until then not advertised.
 - Text, data and file parts mapped to our messages (files: refused with the spec's error until supported).
 
+## References
+
+- [A2A specification v1.0](https://a2a-protocol.org/latest/specification/) (Agent Card, methods, task states, bindings, errors)
+- [a2aproject/a2a-go](https://github.com/a2aproject/a2a-go) (official Go SDK; evaluate first)
+- [A2UI A2A extension](https://a2ui.org/) (surfaces in A2A messages)
+
 ## Acceptance criteria
 
 - [ ] The spec's examples (requests and responses) pass as golden tests; an A2A client (the SDK's, or our T068 client) completes a streamed task against our agent with a fake model.

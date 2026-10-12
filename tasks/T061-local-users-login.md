@@ -27,6 +27,13 @@ The console needs a simple user login (owner, 2026-10-12). API clients keep bear
 - **Login throttling:** per username and per IP, with exponential backoff. Messages never say whether the username exists, and timing is equal for known and unknown users (a dummy hash).
 - **Roles to scopes:** `user` gets `agent:run` and `agent:read`; `admin` also gets `admin:*` (agents' system prompts, the credentials page).
 
+## References
+
+- [OWASP Session Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html)
+- [OWASP CSRF Prevention Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html)
+- [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html) and [RFC 9106: Argon2](https://www.rfc-editor.org/rfc/rfc9106) (parameters); `golang.org/x/crypto/argon2`
+- [MDN: Set-Cookie](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie) (`SameSite`, `Secure`, `HttpOnly`, `__Host-` prefix)
+
 ## Acceptance criteria
 
 - [ ] **Login and logout:** a right password sets the cookie and `/v1/auth/me` returns the user; a wrong password or an unknown user gives the same 401 body, with timing within a small bound (statistical test with a fake hasher clock, not wall-clock flakes); logout invalidates the session server-side.

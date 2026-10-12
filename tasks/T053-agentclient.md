@@ -22,6 +22,11 @@ Everything that talks to the agent API (the CLI, headless runs, e2e tests, evals
 - Wire types: shared with the server (see E11 "Wire types"; move to `pkg/agentapi/wire` if needed, T036's golden tests unchanged).
 - Use it in `cmd/agentkit`'s e2e tests where they parse SSE by hand today.
 
+## References
+
+- [WHATWG HTML: Server-sent events](https://html.spec.whatwg.org/multipage/server-sent-events.html) (the parsing rules the client follows)
+- T036's Notes and `pkg/agentapi/testdata/*.sse` (the wire contract)
+
 ## Acceptance criteria
 
 Tests are in `pkg/agentclient` unless named otherwise. Tests against the real server go through one rig (`helpers_test.go`: `agentapi.Server` on `httptest`, a scripted model that can hold replies, the demo toolset, a token, and a copy of every byte the server wrote per run). Byte-level tests feed bodies through a fake transport (no network) and are judged against `referenceSSE`, an independent reading of the SSE standard.

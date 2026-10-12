@@ -26,6 +26,13 @@ Search by meaning, not only by words: "my flight preferences" should find "I alw
 - **Hybrid mode:** reciprocal rank fusion of keyword and semantic results, k = 60; results say which modes found them.
 - **Config:** `agent.memory.index: {backend, embedder: {type, model, ...}, modes}`.
 
+## References
+
+- [Voyage AI embeddings](https://docs.voyageai.com/docs/embeddings) (input_type query vs document)
+- [OpenAI embeddings API](https://platform.openai.com/docs/api-reference/embeddings) (the OpenAI-compatible shape local servers copy)
+- Cormack, Clarke and Büttcher, *Reciprocal Rank Fusion outperforms Condorcet and individual rank learning methods* (SIGIR 2009), k = 60
+- [pgvector](https://github.com/pgvector/pgvector) and [sqlite-vec](https://github.com/asg017/sqlite-vec) for the later backends
+
 ## Acceptance criteria
 
 - [ ] **Suites:** the semantic and hybrid backends pass `memorytest.RunIndex`. On the relevance set, semantic finds the paraphrase cases (with `FakeEmbedder`), keyword still wins exact phrases, and hybrid passes both.

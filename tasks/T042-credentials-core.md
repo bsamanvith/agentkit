@@ -43,6 +43,12 @@ Connectors need per-tenant (and per-user) credentials, stored encrypted and neve
 
 - File and SQLite backends (T043). Using credentials in tools, refresh (T044). HTTP endpoints (T045).
 
+## References
+
+- [NIST SP 800-38D: GCM](https://csrc.nist.gov/pubs/sp/800/38/d/final) (nonce uniqueness, associated data)
+- [OWASP Secrets Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html)
+- Envelope encryption and key rotation in Google Tink (key sets with key IDs) for the key-ring shape
+
 ## Acceptance criteria
 
 - [ ] `Secret` never prints its value through `fmt` (every verb including `%#v` and `%x`), `slog` (text and JSON handlers, nested in structs and groups), `encoding/json` (an error, also when nested), or `errors` wrapping. Table test over all of these.

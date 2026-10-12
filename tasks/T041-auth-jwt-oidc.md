@@ -35,6 +35,14 @@ API keys suit services. People and MCP clients that support OAuth (Claude Code) 
 
 - Issuing tokens, an authorization server, dynamic client registration. Token introspection for opaque tokens (later, if an identity provider needs it).
 
+## References
+
+- [MCP authorization spec](https://modelcontextprotocol.io/specification/latest/basic/authorization) (resource server role, audience binding, no token passthrough)
+- [RFC 9728: OAuth 2.0 Protected Resource Metadata](https://www.rfc-editor.org/rfc/rfc9728)
+- [RFC 8725: JWT Best Current Practices](https://www.rfc-editor.org/rfc/rfc8725) (algorithm allowlists, `none`, key confusion)
+- [RFC 7517: JWK](https://www.rfc-editor.org/rfc/rfc7517); [go-jose v4](https://github.com/go-jose/go-jose)
+- MCP Go SDK `auth` and `oauthex` packages (`ProtectedResourceMetadataHandler`)
+
 ## Acceptance criteria
 
 - [ ] **Valid token:** a token signed by a key in the JWKS (test server via `httptest`, keys generated in the test) gives the mapped principal.

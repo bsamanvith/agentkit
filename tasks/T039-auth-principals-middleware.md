@@ -39,6 +39,12 @@ Every request should carry a tenant (E05 scopes all data by it), but today nothi
 
 - Wiring into `cmd/agentkit` and the agent API (T040). JWT (T041). Rate limiting per principal (later).
 
+## References
+
+- [RFC 6750: Bearer Token Usage](https://www.rfc-editor.org/rfc/rfc6750) (header syntax, `WWW-Authenticate` errors)
+- [OWASP Authentication Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html)
+- Go `crypto/subtle.ConstantTimeCompare`; how `golang.org/x/oauth2` and the MCP Go SDK `auth` package shape their middleware (we reuse the SDK's metadata types later, E07)
+
 ## Acceptance criteria
 
 - [ ] A valid key gives a principal whose tenant, user, scopes and toolsets are exactly those configured, and the handler sees them through `auth.From`, `tenancy.From` and `tenancy.User`.

@@ -24,6 +24,12 @@ The owner wants to drive and test our agents from Claude Code and other CLI harn
 - **Docs:** add `claude mcp add --transport http agentkit http://localhost:8080/mcp/agentkit --header "Authorization: Bearer ..."` to `docs/QUICKSTART.md`, with an example session.
 - Passes T049's applicable checks through the kit's fakes where it fits (it is not an outbound connector, so use `RunConnector` only if it applies; otherwise its own suite).
 
+## References
+
+- [MCP specification: tools](https://modelcontextprotocol.io/specification/latest/server/tools) (results, `isError`, structured content)
+- `claude mcp add` docs for Claude Code (HTTP transport and headers)
+- How the A2A spec shapes tasks (T067) so `agent_run`'s result can map to it later
+
 ## Acceptance criteria
 
 - [ ] **Through the MCP SDK client:** `agents_list` lists the configured agents; `agent_run` runs one (fake model) and returns its answer and IDs; a second `agent_run` with the `conversation_id` continues the conversation.

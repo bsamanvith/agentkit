@@ -51,8 +51,11 @@
 // # The additive rule
 //
 // The wire format only grows within a version. The client ignores fields it
-// does not know, and passes events of a type it does not know through
-// [Stream.Next] like any other (they never end the stream).
+// does not know, messages and their blocks included; keeps a content block of
+// a type it does not know as an
+// [github.com/bsamanvith/agentkit/pkg/llm.Unknown] block; and passes events of
+// a type it does not know through [Stream.Next] like any other (they never end
+// the stream).
 // [Stream.RawData] is each event's JSON as the server sent it, unknown fields
 // included, for callers that print or forward events.
 package agentclient

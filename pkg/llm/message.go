@@ -12,8 +12,9 @@ import (
 )
 
 // ErrInvalidMessage reports a message that cannot be encoded to or decoded
-// from JSON: an unknown role or block type, a missing field, a nil block, or
-// an [Opaque] block whose data is not valid JSON.
+// from JSON: an unknown role or block type, a missing field, a nil block, an
+// [Opaque] block whose data is not valid JSON, or an [Unknown] block that is
+// not a JSON object of its type.
 var ErrInvalidMessage = errors.New("invalid message")
 
 // Role says who wrote a [Message].
@@ -51,6 +52,19 @@ func (m Message) Text() string {
 	return string(b)
 }
 
+// HasUnknown reports whether m has an [Unknown] block: the one block that
+// marshals but that strict decoding ([Message.UnmarshalJSON]) does not read
+// back. Code that writes messages to read them back strictly, such as a
+// store, refuses such a message rather than write what it cannot read.
+func (m Message) HasUnknown() bool {
+	for _, b := range m.Content {
+		if _, ok := b.(Unknown); ok {
+			return true
+		}
+	}
+	return false
+}
+
 // Clone returns a deep copy of m.
 func (m Message) Clone() Message {
 	if m.Content != nil {
@@ -66,7 +80,8 @@ func (m Message) Clone() Message {
 }
 
 // Block is one piece of a message's content. The set of blocks is closed:
-// [Text], [ToolUse], [ToolResult] and [Opaque]. Blocks are values, never
+// [Text], [ToolUse], [ToolResult] and [Opaque], and [Unknown] for a block of a
+// newer version read by [UnmarshalMessageLenient]. Blocks are values, never
 // pointers: marshaling a pointer block is an error.
 //
 // Strings in blocks are JSON strings, so invalid UTF-8 in them is replaced by
@@ -124,12 +139,36 @@ type Opaque struct {
 	Data json.RawMessage
 }
 
+// Unknown is a block of a type this version of agentkit does not know, kept
+// as its JSON. Only [UnmarshalMessageLenient] makes one, when it reads a
+// message written by a newer version (for example a client of the agent API
+// reading a newer server's events). Marshaling writes Data back, so the block
+// survives a round trip.
+//
+// An Unknown block is never sent to a model: adapters reject it as an
+// unsupported block, and so does the harness. Strict decoding
+// ([Message.UnmarshalJSON]) never produces one.
+type Unknown struct {
+	// Type is the block's "type", one this version does not know.
+	Type string
+	// Data is the block's JSON: an object whose "type" is Type.
+	Data json.RawMessage
+}
+
 const (
 	typeText       = "text"
 	typeToolUse    = "tool_use"
 	typeToolResult = "tool_result"
 	typeOpaque     = "opaque"
 )
+
+func knownType(typ string) bool {
+	switch typ {
+	case typeText, typeToolUse, typeToolResult, typeOpaque:
+		return true
+	}
+	return false
+}
 
 type textWire struct {
 	Type string `json:"type"`
@@ -208,6 +247,29 @@ func (o Opaque) wire() (any, error) {
 	return opaqueWire{Type: typeOpaque, Provider: o.Provider, Data: string(o.Data)}, nil
 }
 
+func (u Unknown) clone() Block {
+	u.Data = bytes.Clone(u.Data)
+	return u
+}
+
+func (u Unknown) wire() (any, error) {
+	switch {
+	case u.Type == "":
+		return nil, fmt.Errorf("%w: block has no type", ErrInvalidMessage)
+	case knownType(u.Type):
+		return nil, fmt.Errorf("%w: unknown block of known type %q", ErrInvalidMessage, u.Type)
+	case !utf8.Valid(u.Data):
+		return nil, fmt.Errorf("%w: block of type %q is not valid UTF-8", ErrInvalidMessage, u.Type)
+	}
+	var head struct {
+		Type *string `json:"type"`
+	}
+	if json.Unmarshal(u.Data, &head) != nil || head.Type == nil || *head.Type != u.Type {
+		return nil, fmt.Errorf("%w: unknown block of type %q: data is not a JSON object of that type", ErrInvalidMessage, u.Type)
+	}
+	return u.Data, nil
+}
+
 func checkOpaque(provider string, data []byte) error {
 	switch {
 	case provider == "":
@@ -231,6 +293,9 @@ func (r ToolResult) MarshalJSON() ([]byte, error) { return marshalBlock(r) }
 // as a JSON string holding its exact bytes, so that decoding gives back
 // identical bytes whatever the encoder does to whitespace or HTML characters.
 func (o Opaque) MarshalJSON() ([]byte, error) { return marshalBlock(o) }
+
+// MarshalJSON writes Data, the block as it was read.
+func (u Unknown) MarshalJSON() ([]byte, error) { return marshalBlock(u) }
 
 func marshalBlock(b Block) ([]byte, error) {
 	w, err := b.wire()
@@ -268,32 +333,58 @@ func (m Message) MarshalJSON() ([]byte, error) {
 // types and fields are errors ([ErrInvalidMessage]): content is never dropped
 // silently.
 func (m *Message) UnmarshalJSON(data []byte) error {
+	msg, err := unmarshalMessage(data, false)
+	if err != nil {
+		return err
+	}
+	*m = msg
+	return nil
+}
+
+// UnmarshalMessageLenient decodes a message that a newer version may have
+// written, as a reader of a format that only grows must: fields it does not
+// know, on the message or on a block, are ignored, and a block of a type it
+// does not know is kept as an [Unknown] block. What is malformed rather than
+// newer is still an error ([ErrInvalidMessage]): invalid JSON, an unknown role,
+// a block without a "type", a known block without its required fields.
+//
+// Use it for messages read from another process that may run a newer
+// version, such as the agent API's events; keep [Message.UnmarshalJSON] for
+// what this process wrote and will send to a model.
+func UnmarshalMessageLenient(data []byte) (Message, error) {
+	return unmarshalMessage(data, true)
+}
+
+func unmarshalMessage(data []byte, lenient bool) (Message, error) {
 	var w struct {
 		Role    Role              `json:"role"`
 		Content []json.RawMessage `json:"content"`
 	}
-	if err := strictDecode(data, &w); err != nil {
-		return err
+	if err := decodeJSON(data, &w, lenient); err != nil {
+		return Message{}, err
 	}
 	if !w.Role.valid() {
-		return fmt.Errorf("%w: unknown role %q", ErrInvalidMessage, w.Role)
+		return Message{}, fmt.Errorf("%w: unknown role %q", ErrInvalidMessage, w.Role)
 	}
 	var content []Block
 	for _, raw := range w.Content {
-		b, err := UnmarshalBlock(raw)
+		b, err := unmarshalBlock(raw, lenient)
 		if err != nil {
-			return err
+			return Message{}, err
 		}
 		content = append(content, b)
 	}
-	*m = Message{Role: w.Role, Content: content}
-	return nil
+	return Message{Role: w.Role, Content: content}, nil
 }
 
 // UnmarshalBlock decodes one block written by the block's MarshalJSON. It
 // returns the block as a value ([Text], [ToolUse], [ToolResult] or [Opaque]),
 // and [ErrInvalidMessage] for an unknown or missing "type".
-func UnmarshalBlock(data []byte) (Block, error) {
+func UnmarshalBlock(data []byte) (Block, error) { return unmarshalBlock(data, false) }
+
+// unmarshalBlock decodes a block; lenient, it ignores unknown fields and
+// returns a block of an unknown type as [Unknown].
+func unmarshalBlock(data []byte, lenient bool) (Block, error) {
 	var head struct {
 		Type string `json:"type"`
 	}
@@ -303,19 +394,19 @@ func UnmarshalBlock(data []byte) (Block, error) {
 	switch head.Type {
 	case typeText:
 		var w textWire
-		if err := strictDecode(data, &w); err != nil {
+		if err := decodeJSON(data, &w, lenient); err != nil {
 			return nil, err
 		}
 		return Text{Text: w.Text}, nil
 	case typeToolUse:
 		var w toolUseWire
-		if err := strictDecode(data, &w); err != nil {
+		if err := decodeJSON(data, &w, lenient); err != nil {
 			return nil, err
 		}
 		return decodeToolUse(w)
 	case typeToolResult:
 		var w toolResultWire
-		if err := strictDecode(data, &w); err != nil {
+		if err := decodeJSON(data, &w, lenient); err != nil {
 			return nil, err
 		}
 		if w.ToolUseID == "" {
@@ -324,16 +415,22 @@ func UnmarshalBlock(data []byte) (Block, error) {
 		return ToolResult{ToolUseID: w.ToolUseID, Content: w.Content, IsError: w.IsError}, nil
 	case typeOpaque:
 		var w opaqueWire
-		if err := strictDecode(data, &w); err != nil {
+		if err := decodeJSON(data, &w, lenient); err != nil {
 			return nil, err
 		}
 		if err := checkOpaque(w.Provider, []byte(w.Data)); err != nil {
 			return nil, err
 		}
 		return Opaque{Provider: w.Provider, Data: json.RawMessage(w.Data)}, nil
-	default:
+	}
+	if !lenient {
 		return nil, fmt.Errorf("%w: unknown block type %q", ErrInvalidMessage, head.Type)
 	}
+	u := Unknown{Type: head.Type, Data: slices.Clone(data)}
+	if _, err := u.wire(); err != nil { // a missing type, or not UTF-8
+		return nil, err
+	}
+	return u, nil
 }
 
 // decodeToolUse puts Input in the form Marshal writes (compact, HTML
@@ -355,11 +452,13 @@ func decodeToolUse(w toolUseWire) (Block, error) {
 	return ToolUse{ID: w.ID, Name: w.Name, Input: slices.Clone(escaped.Bytes())}, nil
 }
 
-// strictDecode decodes exactly one JSON value into v and rejects unknown
-// fields and trailing data.
-func strictDecode(data []byte, v any) error {
+// decodeJSON decodes exactly one JSON value into v and rejects trailing data
+// and, unless lenient, unknown fields.
+func decodeJSON(data []byte, v any, lenient bool) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
+	if !lenient {
+		dec.DisallowUnknownFields()
+	}
 	if err := dec.Decode(v); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalidMessage, err)
 	}

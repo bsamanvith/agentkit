@@ -234,7 +234,7 @@ func referenceValid(msgs []llm.Message) bool {
 					if b.ToolUseID == "" || len(awaiting) == 0 || b.ToolUseID != awaiting[j].ID {
 						return false
 					}
-				default: // a tool call, or no block at all
+				default: // a tool call, a block of a newer version, or no block at all
 					return false
 				}
 			}
@@ -255,7 +255,7 @@ func referenceValid(msgs []llm.Message) bool {
 				if b.Provider == "" || !json.Valid(b.Data) {
 					return false
 				}
-			default: // a tool result, or no block at all
+			default: // a tool result, a block of a newer version, or no block at all
 				return false
 			}
 		}
@@ -278,6 +278,7 @@ func TestValidateAgreesWithTheRules(t *testing.T) {
 		llm.Opaque{Provider: "p", Data: json.RawMessage(`{"a":1}`)},
 		llm.Opaque{Data: json.RawMessage(`{}`)},
 		llm.Opaque{Provider: "p", Data: json.RawMessage(`{`)},
+		llm.Unknown{Type: "image", Data: json.RawMessage(`{"type":"image"}`)},
 		nil,
 	}
 	agree, valid := 0, 0

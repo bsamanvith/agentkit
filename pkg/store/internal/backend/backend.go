@@ -75,6 +75,11 @@ func CheckEntry(e store.Entry) (Stored, error) {
 	if len(e.Messages) == 0 {
 		return Stored{}, fmt.Errorf("%w: entry %d has no messages", store.ErrInvalid, e.Seq)
 	}
+	for i, m := range e.Messages {
+		if m.HasUnknown() { // it would marshal, but no read could decode it
+			return Stored{}, fmt.Errorf("%w: entry %d: message %d has a block of a newer version", store.ErrInvalid, e.Seq, i)
+		}
+	}
 	msgs, err := json.Marshal(e.Messages)
 	if err != nil {
 		return Stored{}, fmt.Errorf("%w: entry %d: %w", store.ErrInvalid, e.Seq, err)

@@ -144,6 +144,7 @@ func RunConversationStore(t *testing.T, newStore func(t *testing.T, clk clock.Cl
 			"no messages":                 {Seq: 3, Kind: store.KindTurn},
 			"a nil block":                 {Seq: 3, Kind: store.KindTurn, Messages: []llm.Message{{Role: llm.RoleUser, Content: []llm.Block{nil}}}},
 			"unknown role":                {Seq: 3, Kind: store.KindTurn, Messages: []llm.Message{{Role: "system", Content: []llm.Block{llm.Text{Text: "x"}}}}},
+			"a block of a newer version":  {Seq: 3, Kind: store.KindTurn, Messages: []llm.Message{llm.Assistant(llm.Text{Text: "x"}, llm.Unknown{Type: "image", Data: json.RawMessage(`{"type":"image"}`)})}},
 			"record not JSON":             withRecord(turnAt(3, 3), `{"a":`),
 			"turn that covers":            withCovers(turnAt(3, 3), 2),
 			"prompt that covers":          withCovers(promptAt(3, 3), 2),

@@ -87,7 +87,8 @@ func TestEventJSONGolden(t *testing.T) {
 
 // TestEventJSONIsAdditive: a client built for these events still parses them,
 // unchanged, when fields it does not know are added at any level of an
-// event's own objects.
+// event's own objects and of its messages and blocks; a block of a type it
+// does not know is kept, as an llm.Unknown block.
 func TestEventJSONIsAdditive(t *testing.T) {
 	t.Parallel()
 	for _, name := range []string{"tool_run.sse", "refusal.sse"} {
@@ -113,6 +114,10 @@ func TestEventJSONIsAdditive(t *testing.T) {
 					addUnknown(sub)
 				}
 			}
+			growMessages(obj)
+			for _, m := range eventMessages(&want) {
+				withNewBlock(m)
+			}
 			grown, err := json.Marshal(obj)
 			if err != nil {
 				t.Fatal(err)
@@ -129,6 +134,132 @@ func TestEventJSONIsAdditive(t *testing.T) {
 			t.Errorf("%s has event types %v", name, seen)
 		}
 	}
+}
+
+// TestResourceJSONIsAdditive: the run and the conversation, with unknown
+// fields added at the top, to their messages and blocks, and a block of a new
+// type in every message, parse to the same resources plus that block.
+func TestResourceJSONIsAdditive(t *testing.T) {
+	t.Parallel()
+	check := func(t *testing.T, file string, want any, messages []*llm.Message, got any) {
+		t.Helper()
+		var obj map[string]any
+		if err := json.Unmarshal([]byte(readFile(t, filepath.Join("testdata", file))), &obj); err != nil {
+			t.Fatal(err)
+		}
+		addUnknown(obj)
+		growMessages(obj)
+		if len(messages) == 0 {
+			t.Fatalf("%s has no messages", file)
+		}
+		for _, m := range messages {
+			withNewBlock(m)
+		}
+		grown, err := json.Marshal(obj)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(grown, got); err != nil {
+			t.Fatalf("%s with new fields and blocks does not parse: %v", file, err)
+		}
+		if !jsonEqual(got, want) {
+			t.Errorf("%s with new fields and blocks parses as\n%s\nwant\n%s", file, jsonOf(got), jsonOf(want))
+		}
+	}
+	t.Run("run", func(t *testing.T) {
+		t.Parallel()
+		var want agentapi.Run
+		if err := json.Unmarshal([]byte(readFile(t, filepath.Join("testdata", "tool_run.run.json"))), &want); err != nil {
+			t.Fatal(err)
+		}
+		var messages []*llm.Message
+		if p := want.Record.Prompt; p != nil {
+			messages = append(messages, &p.Message)
+		}
+		for i := range want.Record.Turns {
+			for j := range want.Record.Turns[i].Messages {
+				messages = append(messages, &want.Record.Turns[i].Messages[j].Message)
+			}
+		}
+		check(t, "tool_run.run.json", &want, messages, &agentapi.Run{})
+	})
+	t.Run("conversation", func(t *testing.T) {
+		t.Parallel()
+		var want agentapi.Conversation
+		if err := json.Unmarshal([]byte(readFile(t, filepath.Join("testdata", "tool_run.conversation.json"))), &want); err != nil {
+			t.Fatal(err)
+		}
+		var messages []*llm.Message
+		for i := range want.Messages {
+			messages = append(messages, &want.Messages[i].Message)
+		}
+		check(t, "tool_run.conversation.json", &want, messages, &agentapi.Conversation{})
+	})
+}
+
+// newBlock is a content block of a type a later release may add, and
+// newBlockJSON its JSON as json.Marshal writes it inside a grown document.
+var (
+	newBlock = map[string]any{
+		"type": "citation_card", "url": "https://example.com/<a>",
+		"added_in_a_later_release": map[string]any{"nested": []any{1.0, "two"}},
+	}
+	newBlockJSON, _ = json.Marshal(newBlock)
+)
+
+// growMessages adds to every message under v (an object with "role" and
+// "content") unknown fields, on the message and on each of its blocks, and
+// newBlock as its first block; and unknown fields to every timed message (an
+// object with "at" and "message").
+func growMessages(v any) {
+	switch v := v.(type) {
+	case map[string]any:
+		content, isMessage := v["content"].([]any)
+		if _, ok := v["role"]; ok && isMessage {
+			for _, b := range content {
+				if b, ok := b.(map[string]any); ok {
+					addUnknown(b)
+				}
+			}
+			v["content"] = append([]any{newBlock}, content...)
+			addUnknown(v)
+			return
+		}
+		for _, x := range v {
+			growMessages(x)
+		}
+		_, hasAt := v["at"]
+		if _, ok := v["message"]; ok && hasAt {
+			addUnknown(v)
+		}
+	case []any:
+		for _, x := range v {
+			growMessages(x)
+		}
+	}
+}
+
+// withNewBlock adds to m what reading a grown message gives: newBlock, kept
+// as an llm.Unknown block.
+func withNewBlock(m *llm.Message) {
+	m.Content = append([]llm.Block{llm.Unknown{Type: "citation_card", Data: newBlockJSON}}, m.Content...)
+}
+
+// eventMessages are the messages in e.
+func eventMessages(e *agentapi.Event) []*llm.Message {
+	var ms []*llm.Message
+	if e.Prompt != nil {
+		ms = append(ms, &e.Prompt.Message)
+	}
+	if e.Record != nil {
+		for i := range e.Record.Messages {
+			ms = append(ms, &e.Record.Messages[i].Message)
+		}
+	}
+	if e.Final != nil {
+		ms = append(ms, e.Final)
+	}
+	return ms
 }
 
 func addUnknown(obj map[string]any) {

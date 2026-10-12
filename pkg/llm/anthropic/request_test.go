@@ -163,6 +163,9 @@ func TestInvalidRequests(t *testing.T) {
 			llm.Assistant(llm.ToolUse{ID: "toolu_1", Name: "x", Input: json.RawMessage(`{"a":`)}),
 		}}},
 		{"pointer block", llm.Request{Messages: []llm.Message{llm.User(&llm.Text{Text: "Hi."})}}},
+		{"a block of a newer version", llm.Request{Messages: []llm.Message{
+			llm.User(llm.Text{Text: "Hi."}, llm.Unknown{Type: "image", Data: json.RawMessage(`{"type":"image"}`)}),
+		}}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()

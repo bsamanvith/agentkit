@@ -35,7 +35,7 @@ Tests are in `pkg/agentclient` unless named otherwise. Tests against the real se
 - [x] T036's golden SSE files (`pkg/agentapi/testdata/*.sse`) parse to the expected events (the client and server agree on the wire, by the same fixtures). — `TestGoldenStreams` (every event equals its `data:` line decoded, `RawData` is the line byte for byte, and each event re-encodes to the same line; 11 events ending `run_done`, and `run_error` `refused`).
 - [x] Every error code in T036's table maps to its sentinel, with `RetryAfter` set for 503s (table test against the real server where it can produce the error, a stub otherwise). — `TestAPIErrors`: all 8 codes produced by the real server (400 empty message, 401 no and wrong token, 404 run / conversation / continuing an unknown conversation, 413, 409 busy, 409 interrupted after a `Close`, 503 `over_capacity` and `shutting_down` with `RetryAfter` 2 s), through `Stream`, `Run`, `GetRun` and `GetConversation`; each matches its sentinel and no other; a last subtest checks every code was produced. `TestErrorsFromElsewhere` (stubs): a proxy's HTML 502 and an unknown code are `*APIError` matching no sentinel; `Retry-After` as an HTTP date (relative to the response's `Date`), in the past, not a number, and huge (no overflow).
 - [x] `Close()` mid-stream cancels the run on the server (the server's run ends `cancelled`); a stream cut without a terminal event gives `ErrStreamTruncated`. — `TestCloseCancelsTheRun` (`Close` after turn 1, `Close` before any event, and the stream's context cancelled: each time the run ends `failed`/`cancelled` and the held model call is the last one; `Next` then says `ErrClosed` or `context.Canceled`, and nothing else); `TestNextAfterClose` (events already received are not returned after `Close`); `TestStreamCutBeforeItsEnd` (a response that ends, and a connection that breaks, after two events: `ErrStreamTruncated`; the IDs come from `run_start` when the headers are missing); `TestSSEFraming` (an event cut off at the end).
-- [x] Unknown event types and fields pass through (the additive rule), checked with T036's `TestEventJSONIsAdditive` fixtures. — `TestUnknownEventsAndFieldsPassThrough` (the golden streams with unknown fields added at the levels T036's test adds them, plus run_start's prompt, unknown SSE fields, and a `thinking_delta` event before every event: the same known events, the unknown ones returned with their raw data, the stream ends only at `run_done`/`run_error`). The additive rule stops at a message; see "Finding" below.
+- [x] Unknown event types and fields pass through (the additive rule), checked with T036's `TestEventJSONIsAdditive` fixtures. — `TestUnknownEventsAndFieldsPassThrough` (the golden streams with unknown fields added at the levels T036's test adds them, to every message and block, and a block of a new type in every message, plus unknown SSE fields and a `thinking_delta` event before every event: the same known events with each new block kept as an `llm.Unknown` block, the unknown events returned with their raw data, the stream ends only at `run_done`/`run_error`). Messages became additive in a follow-up; see "Messages are additive" below.
 - [x] `FuzzSSE`: the parser never panics, never reads past its line limit, and never invents events. — `FuzzSSE` (any body reads exactly as `referenceSSE` plus the API's rules say: no event invented, dropped or reordered, the same end; the same body followed by an endless line, with a 256-byte limit, reads a prefix of those events, stops with `ErrResponseTooLarge` (never waits for the line's end) and reads at most the input, the limit and the read buffer); `TestLineLimit` (an endless line, endless data lines, an endless comment).
 - [x] Mutation list recorded. — below, no survivors.
 
@@ -93,11 +93,37 @@ type APIError struct{ Status int; Code, Message string; Retryable bool; RetryAft
 - **No timeout by default**: a stream lasts as long as its run. Bound requests with the context; a `Timeout` on the HTTP client would also cut streams.
 - **A non-API error body** (a proxy's page) is an `*APIError` with an empty `Code` and the start of the body as `Message`; it matches no sentinel.
 
-### Finding (reported, not fixed here): the additive rule stops at a message
+### Messages are additive (follow-up, 2026-10-12)
 
-`llm.Message.UnmarshalJSON` is strict by design (`pkg/llm/message.go`: "Unknown roles, block types and fields are errors ... content is never dropped silently"). Every event or resource that carries a message (`run_start`'s prompt, `turn_done`'s record, `run_done`'s final, `GET /v1/conversations/{id}`, a run's record) therefore fails to decode in today's client if a later server adds a field to a message or a new block type (images, citations, server tool use). The client then reports `ErrBadResponse` and stops, against the doc's "clients must ignore unknown fields, event types". T036's `TestEventJSONIsAdditive` grows only the event, `record`, `error` and `usage`, so it does not see this; `TestUnknownEventsAndFieldsPassThrough` here does the same, plus the prompt's wrapper, and stops short of messages for the same reason. Adding a field to `final` makes `run_done` fail (seen while writing that test).
+Found while writing this task: `llm.Message.UnmarshalJSON` is strict by design (an unknown role, block type or field is an error), so every event or resource carrying a message (`run_start`'s prompt, `turn_done`'s record, `run_done`'s final, a run's record, a conversation) failed to decode, with `ErrBadResponse`, as soon as a newer server added a field to a message or a new block type. T036's `TestEventJSONIsAdditive` grew only the event, `record`, `error` and `usage`, so it did not see this.
 
-Proposed fix, for the owner of `pkg/llm` and E09: give the wire a lenient decoding of messages, either an `llm.Message` decode mode (or a wire-only message type) that ignores unknown fields and keeps an unknown block as an opaque block with its raw JSON, and grow messages in both additive tests. Until then, T054 and T055 must treat a message-level change as a breaking change (a new `v`).
+Fixed in a follow-up commit:
+
+- **`pkg/llm`**: `UnmarshalMessageLenient` decodes a message a newer version may have written. Unknown fields on the message or its blocks are ignored, and a block of an unknown type is kept as the new `llm.Unknown{Type, Data}` block, which marshals back to its JSON. What is malformed rather than newer is still `ErrInvalidMessage`: invalid JSON, an unknown role, a block without a type, a known block missing its fields. Strict decoding (`Message.UnmarshalJSON`, used by stores and sessions) is unchanged and never produces `Unknown`. The Anthropic adapter rejects an `Unknown` block (`ErrInvalidRequest`), as `harness.Transcript.Validate` does, so one never reaches a model.
+- **`pkg/agentapi/wire`**: `TimedMessage.UnmarshalJSON` and `Event.UnmarshalJSON` (for `final`) decode messages leniently. This covers every message on the wire: events, `Run.Record`, `Conversation.Messages`. The server's output is unchanged (golden files byte-identical).
+- **Stores refuse `Unknown`.** It is the one block that marshals but does not decode strictly. `store.Entry`'s rules (enforced by `backend.CheckEntry`) and the CLI's file store check `Message.HasUnknown` before writing, so nothing is written that a read cannot decode. This is a type check on each block, not a second decode. Found in review: before, a library user saving messages from `agentclient` could make a conversation unreadable, or make the whole file store fail to load. Tests: a case in `storetest`'s `InvalidEntryIsErrInvalid`, and `TestFileStoreRefusesWhatItCannotLoad`.
+- **Roles are not additive.** A new role changes what a conversation is, so it needs a new `v`.
+- **Tests:**
+  - `TestUnmarshalMessageLenient` (`pkg/llm`): newer content is accepted, malformed content is still rejected, lenient agrees with strict on what strict accepts, and strict rejects `Unknown`.
+  - `FuzzMessageUnmarshal` gained two properties: whatever strict decoding accepts, lenient decodes the same; whatever lenient accepts, it writes and reads back stably.
+  - `Unknown` cases in `TestMarshalRejectsInvalidMessages`, `TestRequestCloneIsDeep`, the adapter's `TestInvalidRequests` and the harness's `TestValidateAgreesWithTheRules`.
+  - `TestEventJSONIsAdditive`, the new `TestResourceJSONIsAdditive` (`pkg/agentapi`) and `TestUnknownEventsAndFieldsPassThrough` now grow every message and block, add a block of a new type to every message, and expect it back as `llm.Unknown`.
+- **Mutation check**, 10 mutants, all caught:
+
+  | Mutant | Caught by |
+  |---|---|
+  | a timed message decoded strictly | `TestEventJSONIsAdditive`, `TestResourceJSONIsAdditive`, `TestUnknownEventsAndFieldsPassThrough` |
+  | `run_done`'s final decoded strictly | `TestEventJSONIsAdditive`, `TestUnknownEventsAndFieldsPassThrough` |
+  | lenient decoding still rejects unknown fields | the three above, `TestUnmarshalMessageLenient` |
+  | lenient decoding drops an unknown block | the three above, `TestUnmarshalMessageLenient` |
+  | an unknown block kept with its type only | the three above, `TestUnmarshalMessageLenient` |
+  | strict decoding accepts unknown blocks | `TestUnknownBlockType`, `TestUnmarshalMessageLenient` |
+  | lenient decoding accepts an unknown role | `FuzzMessageUnmarshal`, `TestUnmarshalMessageLenient` |
+  | an `Unknown` block marshaled without checking its type | `TestMarshalRejectsInvalidMessages` |
+  | an `Unknown` block of a known type allowed | `TestMarshalRejectsInvalidMessages` |
+  | an `Unknown` block cloned shallowly | `TestRequestCloneIsDeep` |
+
+  One more was equivalent and was removed from the code: an explicit check that a lenient block has a type duplicated the check `Unknown` itself makes.
 
 ### Invariants (in every test that reads a stream)
 
@@ -150,12 +176,12 @@ Two survived the first run and led to tests: a cancelled context reported as tru
 - Retries: `ErrOverCapacity` and `ErrShuttingDown` carry `APIError.RetryAfter`; `ErrConversationBusy` means another run of the conversation is going on. Do not retry `ErrUnauthorized` or `ErrInvalidRequest`.
 - `New` validates `--server`/`AGENTKIT_SERVER` (absolute http(s), path prefix allowed); `WithToken(os.Getenv("AGENTKIT_API_TOKEN"))`; `WithUserAgent("agentkit-cli/<version>")`.
 - Use the context, not an HTTP client `Timeout`, for an overall limit.
-- Messages are not additive yet (Finding above); a server newer than the CLI that changes message JSON will make `Next` fail with `ErrBadResponse`.
+- A newer server's new content block types arrive as `llm.Unknown` blocks (see "Messages are additive"). `chat` should show them as a neutral placeholder such as `[image]`, never fail on them. `Message.Text()` already skips them.
 
 ### For T055 (console chat)
 
 - The browser cannot use `EventSource` for runs: it only does GET (and cannot set `Authorization`, whatever T061's login uses), while a run is a POST. Use `fetch` with a `ReadableStream` reader and port the framing rules above. `TestSSEFraming`'s cases and `referenceSSE` are the spec to port (CR, CRLF, multi-line data, one space after the colon, comments, BOM, an event cut off at the end is dropped); add a line limit there too.
 - Cancel with an `AbortController`: like `Close`, the server ends the run `cancelled`, and the conversation may be `interrupted` (offer "resume", an empty message).
-- Unknown event types: render nothing (or a neutral line), never stop the stream; only `run_done`/`run_error` end it. Parse messages leniently in TypeScript (ignore unknown fields and block types), which avoids the Go client's limit from the Finding.
+- Unknown event types: render nothing (or a neutral line), never stop the stream; only `run_done`/`run_error` end it. Parse messages leniently in TypeScript, as the Go client does: ignore unknown fields, and show a block of an unknown type as a placeholder rather than dropping or failing on it.
 - Errors: the HTTP error body is `{"v":1,"error":{"code","message","retryable"}}`; branch on `code`, show `message`, honour `Retry-After` on 503.
 - The Go-side browser tests can seed and inspect state with this client (`Run`, `GetConversation`) against the same server the page talks to.

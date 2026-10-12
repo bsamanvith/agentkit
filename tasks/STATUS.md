@@ -45,7 +45,8 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 
 | Task | What | Why now |
 |---|---|---|
-| [T049](T049-connector-test-kit.md) | `toolsettest`: cassettes, `RunConnector` suite, honest fakes | **Running**; first cut on `main` (`686b6ff`: Upstream, RunConnector, fakes, 16 planted bugs caught); docs, archtest rule, cmd seam and the §6 lessons next |
+| [T049](T049-connector-test-kit.md) | `toolsettest`: cassettes, `RunConnector` suite, honest fakes | **Running**: on `main` (`686b6ff`, `b59c7ff`): Upstream, RunConnector, fakes, check IDs with skip/opt-in, schema honesty, secret scans, `synthetic`, Drift, cmd seam. Per-call Settings, archtest rule and gates next |
+| [T051](T051-openapi-cassette-validation.md) | Validate cassettes against vendored OpenAPI specs | After T049, T047, T048 |
 | [T050](T050-connector-tool-evals.md) | Tool-use evals: real Claude with faked connectors | After T049 and one connector; model tokens only |
 | [T046](T046-connector-tavily.md) | `connectors/tavily`: search and extract, keyless or keyed | **Review**: on `main` (`d4a4e86`, `c0af020`, on the T049 suite); waiting for its handoff |
 | [T047](T047-connector-exa.md) | `connectors/exa`: search and extract | **Running**; live tests need `EXA_API_KEY` in sessions |

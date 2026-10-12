@@ -1,5 +1,5 @@
 // Package memory is an in-process store: a [store.ConversationStore],
-// [store.RunStore] and [flow.Checkpointer] in one value, and a [store.Admin]
+// [store.RunStore], [store.EventLog] and [flow.Checkpointer] in one value, and a [store.Admin]
 // view of it as a separate value ([Admin]). Nothing survives the
 // process. It is for tests, single-process use, and as the reference every
 // other backend is compared with: it passes the same conformance suites
@@ -27,6 +27,7 @@ import (
 var (
 	_ store.ConversationStore = (*Store)(nil)
 	_ store.RunStore          = (*Store)(nil)
+	_ store.EventLog          = (*Store)(nil)
 	_ flow.Checkpointer       = (*Store)(nil)
 	_ store.Admin             = admin{}
 )
@@ -34,20 +35,21 @@ var (
 // Option configures a [Store].
 type Option func(*Store)
 
-// WithClock sets the clock that entry and run times and lease expiry are read
-// from. The default is [clock.Real].
+// WithClock sets the clock that entry, event and run times and lease expiry
+// are read from. The default is [clock.Real].
 func WithClock(c clock.Clock) Option {
 	return func(s *Store) { s.clk = c }
 }
 
-// Store keeps conversations, runs and checkpoints in memory, per tenant. It is
-// safe for concurrent use. Make one with [New].
+// Store keeps conversations, runs, event logs and checkpoints in memory, per
+// tenant. It is safe for concurrent use. Make one with [New].
 type Store struct {
 	clk clock.Clock
 
 	mu          sync.Mutex
 	convs       map[key][]entry
 	runs        map[key]store.Run
+	events      map[key][]store.Event // by run id
 	checkpoints map[key]flow.Checkpoint
 }
 
@@ -68,6 +70,7 @@ func New(opts ...Option) *Store {
 		clk:         clock.Real(),
 		convs:       map[key][]entry{},
 		runs:        map[key]store.Run{},
+		events:      map[key][]store.Event{},
 		checkpoints: map[key]flow.Checkpoint{},
 	}
 	for _, o := range opts {
@@ -538,8 +541,8 @@ func (s *Store) Release(ctx context.Context, runID, owner string) error {
 	if err != nil {
 		return err
 	}
-	if owner == "" {
-		return fmt.Errorf("%w: empty lease owner", store.ErrInvalid)
+	if err := backend.CheckOwner(owner); err != nil {
+		return err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

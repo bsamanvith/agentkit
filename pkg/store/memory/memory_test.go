@@ -24,6 +24,10 @@ func newAdmin(_ *testing.T, clk clock.Clock) (store.RunStore, store.Admin) {
 	return s, memory.Admin(s)
 }
 
+func newEvents(_ *testing.T, clk clock.Clock) store.EventLog {
+	return memory.New(memory.WithClock(clk))
+}
+
 func TestConversationStore(t *testing.T) {
 	t.Parallel()
 	storetest.RunConversationStore(t, newConversations)
@@ -37,6 +41,11 @@ func TestRunStore(t *testing.T) {
 func TestAdmin(t *testing.T) {
 	t.Parallel()
 	storetest.RunAdmin(t, newAdmin)
+}
+
+func TestEventLog(t *testing.T) {
+	t.Parallel()
+	storetest.RunEventLog(t, newEvents)
 }
 
 // The cross-tenant read is not reachable from the tenant-scoped store: code
@@ -91,5 +100,14 @@ func FuzzAdminSimulation(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, seed uint64) {
 		storetest.SimulateAdmin(t, newAdmin, seed)
+	})
+}
+
+func FuzzEventSimulation(f *testing.F) {
+	for seed := range uint64(8) {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, seed uint64) {
+		storetest.SimulateEvents(t, newEvents, seed)
 	})
 }

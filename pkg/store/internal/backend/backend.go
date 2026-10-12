@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/store"
@@ -88,16 +89,51 @@ func CheckEntry(e store.Entry) (Stored, error) {
 	if len(e.Record) > 0 && !json.Valid(e.Record) {
 		return Stored{}, fmt.Errorf("%w: entry %d: record is not valid JSON", store.ErrInvalid, e.Seq)
 	}
+	if err := CheckTextBytes(fmt.Sprintf("entry %d's record", e.Seq), e.Record); err != nil {
+		return Stored{}, err
+	}
+	if err := CheckText(fmt.Sprintf("entry %d's run id", e.Seq), e.RunID); err != nil {
+		return Stored{}, err
+	}
 	return Stored{Kind: e.Kind, Messages: msgs, Record: clone(e.Record), RunID: e.RunID, Covers: e.Covers}, nil
 }
 
-// CheckID refuses an empty conversation or run id.
+// CheckID refuses an empty conversation or run id, and one that is not text
+// (see [CheckText]).
 func CheckID(what, id string) error {
 	if id == "" {
 		return fmt.Errorf("%w: empty %s id", store.ErrInvalid, what)
 	}
+	return CheckText(what+" id", id)
+}
+
+// CheckText refuses what a store keeps as text (an id, an owner, an error, a
+// pending path, an event type, the JSON of records and event data) if it is
+// not UTF-8 or holds a NUL byte, which a Postgres text column cannot hold.
+// JSON that [json.Valid] accepts can still be invalid UTF-8. Messages need no
+// check: they marshal to UTF-8 or not at all.
+func CheckText(what, s string) error {
+	return textError(what, utf8.ValidString(s), strings.IndexByte(s, 0) >= 0)
+}
+
+// CheckTextBytes is [CheckText] for bytes.
+func CheckTextBytes(what string, b []byte) error {
+	return textError(what, utf8.Valid(b), bytes.IndexByte(b, 0) >= 0)
+}
+
+func textError(what string, valid, nul bool) error {
+	switch {
+	case !valid:
+		return fmt.Errorf("%w: %s is not UTF-8", store.ErrInvalid, what)
+	case nul:
+		return fmt.Errorf("%w: %s holds a NUL byte", store.ErrInvalid, what)
+	}
 	return nil
 }
+
+// TextOK reports whether s passes [CheckText]. A run looked up by an id that
+// does not is not found: it could never have been created.
+func TextOK(s string) bool { return CheckText("", s) == nil }
 
 // The range of times a store keeps: what int64 Unix nanoseconds hold, less
 // the value at each end, so that a backend can clamp a time a query only
@@ -118,13 +154,21 @@ func CheckTime(what string, t time.Time) error {
 
 // CheckLease refuses an empty owner or a time to live that is not positive.
 func CheckLease(owner string, ttl time.Duration) error {
-	if owner == "" {
-		return fmt.Errorf("%w: empty lease owner", store.ErrInvalid)
+	if err := CheckOwner(owner); err != nil {
+		return err
 	}
 	if ttl <= 0 {
 		return fmt.Errorf("%w: lease ttl %v is not positive", store.ErrInvalid, ttl)
 	}
 	return nil
+}
+
+// CheckOwner refuses an empty lease owner or one that is not text.
+func CheckOwner(owner string) error {
+	if owner == "" {
+		return fmt.Errorf("%w: empty lease owner", store.ErrInvalid)
+	}
+	return CheckText("lease owner", owner)
 }
 
 // CheckTransition refuses a move [store.Status.CanMoveTo] does not allow and
@@ -139,6 +183,9 @@ func CheckTransition(from, to store.Status, d store.Details) ([]string, error) {
 	}
 	if d.Error != "" && to != store.StatusFailed && to != store.StatusRejected && to != store.StatusCanceled {
 		return nil, bad("an error")
+	}
+	if err := CheckText("the error", d.Error); err != nil {
+		return nil, err
 	}
 	if to != store.StatusFailed && (d.Retryable || !d.NextAttemptAt.IsZero()) {
 		return nil, bad("a retry")
@@ -159,6 +206,11 @@ func CheckTransition(from, to store.Status, d store.Details) ([]string, error) {
 	slices.Sort(pending)
 	if pending[0] == "" {
 		return nil, fmt.Errorf("%w: empty pending path", store.ErrInvalid)
+	}
+	for _, p := range pending {
+		if err := CheckText("a pending path", p); err != nil {
+			return nil, err
+		}
 	}
 	return pending, nil
 }

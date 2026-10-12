@@ -353,8 +353,8 @@ func (s *Store) Release(ctx context.Context, runID, owner string) error {
 	if err != nil {
 		return err
 	}
-	if owner == "" {
-		return fmt.Errorf("%w: empty lease owner", store.ErrInvalid)
+	if err := backend.CheckOwner(owner); err != nil {
+		return err
 	}
 	now := s.now()
 	return s.write(ctx, func(tx *sql.Tx) error {

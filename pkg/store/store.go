@@ -16,10 +16,11 @@ import (
 var (
 	// ErrNotFound means a run does not exist (in the caller's tenant).
 	ErrNotFound = errors.New("not found")
-	// ErrInvalid means an argument cannot be stored or used: an entry or run
-	// that breaks the rules on its type, an empty id or owner, a lease time to
-	// live that is not positive, a time to keep outside 1678 to 2262 (see
-	// Times in the package documentation), or a page with a bad cursor or
+	// ErrInvalid means an argument cannot be stored or used: an entry, event
+	// or run that breaks the rules on its type, an empty id or owner, text
+	// that is not UTF-8 or holds a NUL byte (see Text in the package
+	// documentation), a lease time to live that is not positive, a time to
+	// keep outside 1678 to 2262 (see Times), or a page with a bad cursor or
 	// seek.
 	ErrInvalid = errors.New("invalid argument")
 	// ErrConflict means the stored state is not what the caller expected:
@@ -63,10 +64,11 @@ const (
 //
 // Rules, enforced by Append ([ErrInvalid] otherwise): Seq is at least 1; Kind
 // is one of the kinds above; Messages has at least one message and each one
-// marshals to JSON and has no [llm.Unknown] block; Record is empty or valid JSON; Covers is Seq-1 for a
-// compaction and 0 for any other kind. A compaction thus summarizes everything
-// before it: one built from a context that has grown since conflicts at its
-// Seq instead of hiding the newer entries.
+// marshals to JSON and has no [llm.Unknown] block; Record is empty or valid
+// JSON in UTF-8; RunID is text (see Text in the package documentation);
+// Covers is Seq-1 for a compaction and 0 for any other kind. A compaction thus
+// summarizes everything before it: one built from a context that has grown
+// since conflicts at its Seq instead of hiding the newer entries.
 type Entry struct {
 	// Seq is the entry's position, from 1, chosen by the writer: the
 	// [ContextView.Seq] it read plus one.
@@ -378,4 +380,52 @@ type Admin interface {
 	// CreatedAt, then tenant id (compared as bytes), then run ID. It needs
 	// no tenant in ctx, and ignores one that is there.
 	ListResumableAll(ctx context.Context, now time.Time, limit int) ([]TenantRun, error)
+}
+
+// Event is one position of a run's event log.
+//
+// Rules, enforced by AppendEvents ([ErrInvalid] otherwise): Seq is at least 1;
+// Type is not empty and is text (see Text in the package documentation); Data
+// is empty or valid JSON in UTF-8.
+type Event struct {
+	// Seq is the event's position in its run's log, from 1, chosen by the
+	// writer: the [EventLog.LastEventSeq] it read plus one, then counting on.
+	Seq int64
+	// Type names the event. The store does not interpret it.
+	Type string
+	// Data is the event's JSON, opaque to the store and kept byte for byte.
+	// Empty is read back as nil.
+	Data json.RawMessage
+	// CreatedAt is set by the store when the event is first written; the
+	// value passed to AppendEvents is ignored. It never decreases along a
+	// run's log.
+	CreatedAt time.Time
+}
+
+// EventLog keeps the durable events of runs, numbered densely from 1 per run,
+// so a client that watches a run can reconnect and read what it missed. The
+// run id is a label: the store does not check that the run exists.
+//
+// Implementations must be safe for concurrent use, must honor ctx, must scope
+// every call by the tenant in ctx, and must not keep or share memory with
+// values passed in or returned. Run storetest.RunEventLog against every
+// implementation.
+type EventLog interface {
+	// AppendEvents writes events to run runID's log, all or none. Their Seqs
+	// must be consecutive ([ErrInvalid] otherwise). Each position that is
+	// already taken must hold an identical event (same Type and Data bytes;
+	// CreatedAt is not compared), and is left as it is, so a retry of a
+	// whole or partly stored batch is safe; a different event at a taken
+	// position is [ErrConflict]. A first Seq past the next free position is
+	// [ErrGap]. An event that breaks the rules on [Event] is [ErrInvalid].
+	// No events is a no-op, once ctx's tenant and runID have been checked.
+	AppendEvents(ctx context.Context, runID string, events []Event) error
+	// EventsAfter returns up to limit events of the run with a Seq greater
+	// than after, in order. limit is read as [Page.Limit] is; a negative
+	// limit or after is [ErrInvalid]. Fewer than limit events means the end
+	// of the log as it was when read. A run with no events gives none.
+	EventsAfter(ctx context.Context, runID string, after int64, limit int) ([]Event, error)
+	// LastEventSeq returns the Seq of the run's last event, or 0 if it has
+	// none.
+	LastEventSeq(ctx context.Context, runID string) (int64, error)
 }

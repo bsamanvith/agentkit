@@ -45,6 +45,8 @@ func newAdmin(t *testing.T, clk clock.Clock) (store.RunStore, store.Admin) {
 	return s, sqlite.Admin(s)
 }
 
+func newEvents(t *testing.T, clk clock.Clock) store.EventLog { return open(t, clk) }
+
 func TestConversationStore(t *testing.T) {
 	t.Parallel()
 	storetest.RunConversationStore(t, newConversations)
@@ -65,9 +67,15 @@ func TestCheckpointer(t *testing.T) {
 	storetest.RunCheckpointer(t, func(t *testing.T) flow.Checkpointer { return open(t, clock.Real()) })
 }
 
+func TestEventLog(t *testing.T) {
+	t.Parallel()
+	storetest.RunEventLog(t, newEvents)
+}
+
 // The suites again, with every call going to one of two Stores (two
 // connection pools, two writer connections) open on the same file, in turn.
-// The suites' races (sequence races, concurrent claims and transitions) then
+// The suites' races (sequence races, concurrent appends, claims and
+// transitions) then
 // run between connections that only SQLite's file lock serializes: the
 // primary keys, the unique index and the conditional updates must hold the
 // rules, as between two processes.
@@ -91,6 +99,10 @@ func TestTwoHandles(t *testing.T) {
 	t.Run("Checkpointer", func(t *testing.T) {
 		t.Parallel()
 		storetest.RunCheckpointer(t, func(t *testing.T) flow.Checkpointer { return openPair(t, clock.Real()) })
+	})
+	t.Run("EventLog", func(t *testing.T) {
+		t.Parallel()
+		storetest.RunEventLog(t, func(t *testing.T, clk clock.Clock) store.EventLog { return openPair(t, clk) })
 	})
 }
 
@@ -169,6 +181,18 @@ func (p *pair) Load(ctx context.Context, id string) (flow.Checkpoint, error) {
 	return p.next().Load(ctx, id)
 }
 
+func (p *pair) AppendEvents(ctx context.Context, runID string, events []store.Event) error {
+	return p.next().AppendEvents(ctx, runID, events)
+}
+
+func (p *pair) EventsAfter(ctx context.Context, runID string, after int64, limit int) ([]store.Event, error) {
+	return p.next().EventsAfter(ctx, runID, after, limit)
+}
+
+func (p *pair) LastEventSeq(ctx context.Context, runID string) (int64, error) {
+	return p.next().LastEventSeq(ctx, runID)
+}
+
 type pairAdmin struct{ p *pair }
 
 func (a pairAdmin) ListResumableAll(ctx context.Context, now time.Time, limit int) ([]store.TenantRun, error) {
@@ -222,5 +246,14 @@ func FuzzAdminSimulation(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, seed uint64) {
 		storetest.SimulateAdmin(t, newAdmin, seed)
+	})
+}
+
+func FuzzEventSimulation(f *testing.F) {
+	for seed := range uint64(8) {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, seed uint64) {
+		storetest.SimulateEvents(t, newEvents, seed)
 	})
 }

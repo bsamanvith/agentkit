@@ -551,6 +551,57 @@ func RunRunStore(t *testing.T, newStore func(t *testing.T, clk clock.Clock) stor
 		}
 	})
 
+	// Text a store cannot keep as it is (not UTF-8, or holding a NUL) is
+	// ErrInvalid wherever it would be kept or searched for, and a run with
+	// such an id is not found: it could never have been created.
+	t.Run("TextAStoreCannotHold", func(t *testing.T) {
+		t.Parallel()
+		r := newRunRig(t, newStore)
+		ctx := r.ctx(tenantA)
+		r.mustCreate(ctx, "r", "c")
+		const ttl = time.Minute
+		for _, bad := range []string{"a\x00b", "a\xffb"} {
+			for name, f := range map[string]func() error{
+				"Create with that run id":          func() error { _, err := r.create(ctx, bad, "c2"); return err },
+				"Create with that conversation id": func() error { _, err := r.create(ctx, "r2", bad); return err },
+				"List":                             func() error { _, err := r.s.List(ctx, bad, store.Page{}); return err },
+				"Unfinished":                       func() error { _, err := r.s.Unfinished(ctx, bad); return err },
+				"Claim by that owner":              func() error { _, err := r.s.Claim(ctx, "r", bad, ttl); return err },
+				"Renew by that owner":              func() error { _, err := r.s.Renew(ctx, "r", bad, ttl); return err },
+				"Release by that owner":            func() error { return r.s.Release(ctx, "r", bad) },
+				"Transition with that error": func() error {
+					_, err := r.transition(ctx, "r", store.StatusRunning, store.StatusFailed, store.Details{Error: bad})
+					return err
+				},
+				"Transition with that pending path": func() error {
+					_, err := r.transition(ctx, "r", store.StatusRunning, store.StatusSuspended, store.Details{Pending: []string{"ok", bad}})
+					return err
+				},
+			} {
+				if err := f(); !errors.Is(err, store.ErrInvalid) {
+					t.Errorf("%s %q = %v, want ErrInvalid", name, bad, err)
+				}
+			}
+			for name, f := range map[string]func() error{
+				"Get":     func() error { _, err := r.s.Get(ctx, bad); return err },
+				"Claim":   func() error { _, err := r.s.Claim(ctx, bad, "a", ttl); return err },
+				"Renew":   func() error { _, err := r.s.Renew(ctx, bad, "a", ttl); return err },
+				"Release": func() error { return r.s.Release(ctx, bad, "a") },
+				"Transition": func() error {
+					_, err := r.transition(ctx, bad, store.StatusRunning, store.StatusCompleted, store.Details{})
+					return err
+				},
+			} {
+				if err := f(); !errors.Is(err, store.ErrNotFound) {
+					t.Errorf("%s of run %q = %v, want ErrNotFound", name, bad, err)
+				}
+			}
+		}
+		if run := r.mustGet(ctx, "r"); run.Status != store.StatusRunning || run.Lease != (store.Lease{}) {
+			t.Errorf("after the refused calls run r is %+v, want it running and unclaimed", run)
+		}
+	})
+
 	t.Run("ListSuspendedPages", func(t *testing.T) {
 		t.Parallel()
 		r := newRunRig(t, newStore)

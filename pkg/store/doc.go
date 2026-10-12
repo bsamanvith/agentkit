@@ -67,6 +67,14 @@
 // and changes nothing. A time a read only compares with (the now of
 // [RunStore.ListResumable], a [Page.FromTime]) may be anything.
 //
+// # Text
+//
+// What a store keeps as text (conversation and run ids, lease owners, a run's
+// error and pending paths, event types, and the JSON of records and event
+// data) must be UTF-8 with no NUL byte, which is what a Postgres text column
+// holds. Anything else is [ErrInvalid] in every backend, and a run looked up
+// by such an id is [ErrNotFound]: it could never have been created.
+//
 // # Tenants
 //
 // Every method is scoped by the tenant in its context ([tenancy.Require]). A

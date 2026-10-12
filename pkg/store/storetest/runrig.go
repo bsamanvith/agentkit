@@ -100,7 +100,7 @@ func (r *runRig) create(ctx context.Context, id, conv string) (store.Run, error)
 	run, err := r.s.Create(ctx, id, conv)
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if id != "" && conv != "" { // the invariant check reads them back
+	if id != "" && conv != "" && textOK(conv) { // the invariant check reads them back
 		r.ids[id], r.convs[conv] = true, true
 	}
 	tn, ok := tenancy.From(ctx)

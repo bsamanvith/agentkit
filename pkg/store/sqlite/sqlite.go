@@ -1,7 +1,8 @@
 // Package sqlite is the local and single-node store: a
-// [store.ConversationStore], [store.RunStore] and [flow.Checkpointer] in one
-// value over one SQLite file, and a [store.Admin] view of it as a separate
-// value ([Admin]). It passes the same conformance suites as package memory.
+// [store.ConversationStore], [store.RunStore], [store.EventLog] and
+// [flow.Checkpointer] in one value over one SQLite file, and a [store.Admin]
+// view of it as a separate value ([Admin]). It passes the same conformance
+// suites as package memory.
 //
 // The driver is modernc.org/sqlite, pure Go, so binaries stay static. The file
 // is opened in WAL mode with a busy timeout, through two connection pools: one
@@ -53,6 +54,7 @@ import (
 var (
 	_ store.ConversationStore = (*Store)(nil)
 	_ store.RunStore          = (*Store)(nil)
+	_ store.EventLog          = (*Store)(nil)
 	_ flow.Checkpointer       = (*Store)(nil)
 	_ store.Admin             = admin{}
 )
@@ -72,8 +74,8 @@ type options struct {
 	migrations int
 }
 
-// WithClock sets the clock that entry and run times and lease expiry are read
-// from. The default is [clock.Real].
+// WithClock sets the clock that entry, event and run times and lease expiry
+// are read from. The default is [clock.Real].
 func WithClock(c clock.Clock) Option {
 	return func(o *options) { o.clk = c }
 }
@@ -84,8 +86,8 @@ func WithReaders(n int) Option {
 	return func(o *options) { o.readers = n }
 }
 
-// Store keeps conversations, runs and checkpoints in one SQLite file, per
-// tenant. It is safe for concurrent use, and other Stores, in this process or
+// Store keeps conversations, runs, event logs and checkpoints in one SQLite
+// file, per tenant. It is safe for concurrent use, and other Stores, in this process or
 // others, may use the same file at the same time. Make one with [Open] and
 // [Store.Close] it when done.
 type Store struct {

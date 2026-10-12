@@ -520,6 +520,42 @@ func RunConversationStore(t *testing.T, newStore func(t *testing.T, clk clock.Cl
 		}
 	})
 
+	// Text a store cannot keep as it is (not UTF-8, or holding a NUL) is
+	// ErrInvalid. Text in a message is replaced when marshaled (see
+	// MessageJSONRoundTripsByteForByte) and an Opaque block that is not
+	// UTF-8 does not marshal, but a Record keeps its bytes.
+	t.Run("TextAStoreCannotHold", func(t *testing.T) {
+		t.Parallel()
+		r := newConvRig(t, newStore)
+		ctx := r.ctx(tenantA)
+		badOpaque := turnAt(1, 1)
+		badOpaque.Messages = []llm.Message{llm.Assistant(llm.Opaque{Provider: "p", Data: json.RawMessage("{\"s\":\"\xff\"}")})}
+		badRecord := withRecord(turnAt(1, 1), "{\"s\":\"\xfe\"}")
+		badRunID, nulRunID := turnAt(1, 1), turnAt(1, 1)
+		badRunID.RunID, nulRunID.RunID = "run-\xff", "run-\x00"
+		for name, e := range map[string]store.Entry{
+			"an Opaque block": badOpaque,
+			"a record":        badRecord,
+			"a run id":        badRunID,
+			"a run id (NUL)":  nulRunID,
+		} {
+			if err := r.append(ctx, "c", e); !errors.Is(err, store.ErrInvalid) {
+				t.Errorf("Append with invalid UTF-8 in %s = %v, want ErrInvalid", name, err)
+			}
+		}
+		for _, bad := range []string{"c\x00", "c\xff"} {
+			if err := r.s.Append(ctx, bad, promptAt(1, 1)); !errors.Is(err, store.ErrInvalid) {
+				t.Errorf("Append to conversation %q = %v, want ErrInvalid", bad, err)
+			}
+			if _, err := r.s.History(ctx, bad, store.Page{}); !errors.Is(err, store.ErrInvalid) {
+				t.Errorf("History of conversation %q = %v, want ErrInvalid", bad, err)
+			}
+			if _, err := r.s.Context(ctx, bad); !errors.Is(err, store.ErrInvalid) {
+				t.Errorf("Context of conversation %q = %v, want ErrInvalid", bad, err)
+			}
+		}
+	})
+
 	t.Run("Simulation", func(t *testing.T) {
 		t.Parallel()
 		for seed := range uint64(48) {

@@ -593,7 +593,7 @@ const TOOLSETS = [
     { name: "github_search_issues", desc: "Search issues and pull requests.", fields: [["query","string",1,"GitHub search syntax."],["repo","string",0,"owner/name; all your repositories if empty."]] },
     { name: "github_get_file", desc: "Read a file from a repository.", fields: [["repo","string",1,"owner/name."],["path","string",1,""],["ref","string",0,"Branch, tag or commit; default branch if empty."]] } ] },
   { name: "docs", type: "MCP server", status: "skipped", note: "the MCP server at http://docs-mcp:8080/mcp didn't answer", tools: [] },
-  { name: "demo", type: "built in", status: "ready", note: "No credentials needed", tools: [
+  { name: "demo", type: "built in", status: "ready", note: "Nothing to connect", tools: [
     { name: "calculate", desc: "Integer arithmetic.", fields: [["a","integer",1,""],["op","string",1,"add, sub, mul or div."],["b","integer",1,""]] },
     { name: "current_time", desc: "The current time in a time zone.", fields: [["timezone","string",0,"IANA name, default UTC."]] },
     { name: "echo", desc: "Returns its input.", fields: [["text","string",1,""]] } ] }
@@ -633,7 +633,7 @@ const THREADS = [
   { id: "thr_4kd9a2", subject: "Which connectors are degraded?", a: "researcher", b: "ops-helper", hops: "3 of 8", budget: "7,400 of 50,000 tokens", status: "waiting", last: "ops-helper: exa isn't connected for you…",
     msgs: [
       ["researcher", "ops-helper", "Before I run the weekly scan: which search toolsets are usable right now?", "run_0m3tty"],
-      ["ops-helper", "researcher", "exa isn't connected for samanvith, so its calls fail with not_connected. parallel works with samanvith's key, and tavily is keyless, so it is rate-limited.", "run_6t2bnc"],
+      ["ops-helper", "researcher", "exa isn't connected for samanvith, so its calls fail with not_connected. parallel works with samanvith's key, and tavily uses the org's key.", "run_6t2bnc"],
       ["researcher", "ops-helper", "Thanks. I'll run the scan on parallel and tavily, and add exa once it's connected.", "run_0m3tty"] ] },
   { id: "thr_9pm1x0", subject: "Draft the deploy summary", a: "default", b: "ops-helper", hops: "2 of 8", budget: "2,150 of 50,000 tokens", status: "done", last: "ops-helper: Done, 4 bullet points.", msgs: [] }
 ];
@@ -724,8 +724,8 @@ const S = {
   drafts: {}, run: null, threads: {}, deleted: new Set(), retry: null, pending: null, busyChecks: 0,
   // Sign-in overlay: null when signed in; else { card: "password" | "token", reason: null | "401", err: null | "wrong" | "throttled" | "unreachable" | "token" | "empty", both: bool }
   signin: null, authMode: "password", singleKeys: true,
-  // Connections: this user's and (later) the org's; a pending account connection; the last connect error; a devbar flag to reject the next key.
-  mine: MINE0(), org: ORG0(), connWait: null, connErr: null, rejectNext: false
+  // Connections: this user's and (later) the org's; a pending account connection; the last connect error.
+  mine: MINE0(), org: ORG0(), connWait: null, connErr: null
 };
 try { S.singleKeys = localStorage.getItem("ak-mock-single-keys") !== "off"; } catch (e) { /* storage blocked: keep the default */ }
 // Drafts are per conversation, plus one for New chat that survives changing the picker's agent.
@@ -788,7 +788,7 @@ function readiness(a) {
   return { ready, total: n, needs, skipped, text: parts.length ? parts.join(" · ") : n === 1 ? "1 toolset ready" : "All " + n + " toolsets ready" };
 }
 // The rail badge: connectors that need you, used by an agent you can use, with no fallback.
-const connNeeds = () => CONNECTORS.filter(c => connState(c.ts).needs && agents().some(a => a.toolsets.includes(c.ts))).length;
+const connNeeds = () => CONNECTORS.filter(c => { const st = connState(c.ts); return st.needs || st.waiting; }) .filter(c => agents().some(a => a.toolsets.includes(c.ts))).length;
 function announce(t) { const n = $("#sr"); if (n) { n.textContent = ""; setTimeout(() => { const m = $("#sr"); if (m) m.textContent = t; }, 30); } }
 // Toasts stay 8 s and pause while hovered or focused; they are never the only way to reach something.
 function toast(text, action) {
@@ -1099,7 +1099,7 @@ function needsNotice(a, r) {
 }
 function connectBtn(c, size) {
   const s = connState(c.ts);
-  return el("button", { type: "button", class: "btn primary " + (size || ""), "aria-haspopup": c.kind === "key" ? "dialog" : null, disabled: s.waiting ? true : null,
+  return el("button", { type: "button", id: "need-" + c.ts, class: "btn primary " + (size || ""), "aria-haspopup": c.kind === "key" ? "dialog" : null, disabled: s.waiting ? true : null,
     onclick: e => connect(c, "me", e.currentTarget) }, s.waiting ? "Waiting for " + c.prov + "…" : (s.re ? "Reconnect " : "Connect ") + c.prov);
 }
 function pickerButton() {
@@ -1557,7 +1557,7 @@ function toolsetsView() {
     ts.status !== "ready" ? el("div", { class: "notice warn" }, icon("alert"), el("div", { class: "grow" }, el("b", { text: "Skipped: " + ts.note + "." }), el("span", { text: "It's optional, so the server started without it. Check that the MCP server is up, then restart agentkit." }))) : null,
     conn && !cs.usable && !cs.waiting ? el("div", { class: "notice warn" }, icon("key"), el("div", { class: "grow" }, el("b", { text: cs.re ? "Your " + conn.prov + " access expired or was revoked." : "You haven't connected " + conn.prov + "." }), el("span", { text: "Its tools fail for you until you do. Each person connects their own." })), el("div", { class: "acts" }, connectBtn(conn, "sm"))) : null,
     el("dl", { class: "kv" }, el("dt", { text: "Type" }), el("dd", { text: ts.type }),
-      el("dt", { text: "Credentials" }), el("dd", { text: conn ? (conn.kind === "key" ? "API key" : conn.prov + " account") + ", each person connects their own" + (conn.keyless ? "; works keyless without one" : "") + (S.later && S.org[ts.name] ? "; the org's is set" : "") : ts.status === "ready" ? ts.note : "None" }),
+      el("dt", { text: "Connection" }), el("dd", { text: conn ? (conn.kind === "key" ? "API key" : conn.prov + " account") + ", each person connects their own" + (conn.keyless ? "; works keyless without one" : "") + (S.later && S.org[ts.name] ? "; the org's is set" : "") : ts.status === "ready" ? ts.note : "None" }),
       conn ? el("dt", { text: "Yours" }) : null, conn ? el("dd", {}, el("span", { class: "status " + cs.cls, text: cs.word }), " ", el("a", { class: "link-btn", href: "#/connections", onclick: go(() => goSection("connections")) }, "Connections")) : null,
       el("dt", { text: "Used by" }), el("dd", {}, el("div", { class: "chips" }, ...AGENTS_ALL.filter(a => a.toolsets.includes(ts.name)).map(a => el("span", { class: "tag", text: a.name }))))),
     ts.status === "ready" ? el("div", { class: "section" }, el("h2", { text: "Use it from Claude Code" }),
@@ -1611,9 +1611,9 @@ function connActions(c, st) {
   if (st.waiting) return [el("button", { type: "button", class: "btn sm", id, "aria-label": "Cancel connecting " + c.prov, onclick: () => endOAuth(c, "closed") }, "Cancel")];
   if (st.orgOnly) return [];
   const pop = c.kind === "key" ? "dialog" : null, acts = [];
-  if (me.st === "reconnect") acts.push(el("button", { type: "button", class: "btn sm primary", id, "aria-label": lab("Reconnect"), onclick: e => connect(c, "me", e.currentTarget) }, "Reconnect"));
-  else if (me.st === "connected") { if (c.kind === "key") acts.push(el("button", { type: "button", class: "btn sm", id, "aria-haspopup": pop, "aria-label": "Replace your " + c.prov + " key", onclick: e => connect(c, "me", e.currentTarget) }, "Replace key")); }
-  else acts.push(el("button", { type: "button", class: "btn sm" + (st.needs ? " primary" : ""), id, "aria-haspopup": pop, "aria-label": st.needs ? lab("Connect") : "Use your own " + c.prov + " " + what(c), onclick: e => connect(c, "me", e.currentTarget) }, st.needs ? "Connect" : "Use your own " + what(c)));
+  if (me.st === "reconnect") acts.push(el("button", { type: "button", class: "btn sm primary", id, "aria-haspopup": pop, "aria-label": lab("Reconnect"), onclick: e => connect(c, "me", e.currentTarget) }, "Reconnect"));
+  else if (me.st === "connected") { if (c.kind === "key") acts.push(el("button", { type: "button", class: "btn sm", id, "aria-haspopup": pop, "aria-label": "Replace key for " + c.prov, onclick: e => connect(c, "me", e.currentTarget) }, "Replace key")); }
+  else acts.push(el("button", { type: "button", class: "btn sm" + (st.needs ? " primary" : ""), id, "aria-haspopup": pop, "aria-label": st.needs ? lab("Connect") : "Use your own " + what(c) + " for " + c.prov, onclick: e => connect(c, "me", e.currentTarget) }, st.needs ? "Connect" : "Use your own " + what(c)));
   if (me.st !== "none") acts.push(el("button", { type: "button", class: "btn sm ghost", id: acts.length ? null : id, "aria-haspopup": "dialog", "aria-label": lab("Disconnect"), onclick: e => confirmDisconnect(c, "me", e.currentTarget) }, "Disconnect"));
   return acts;
 }
@@ -1625,12 +1625,13 @@ function orgCell(c) {
     el("div", { text: o ? "Org " + what(c) + " set " + o.set : "No org " + what(c) }),
     o ? el("div", { class: "fix", text: o.members + " of 9 members use their own" }) : null,
     el("div", { class: "conn-acts", style: "justify-content:flex-start;margin-top:6px" },
-      el("button", { type: "button", class: "btn sm", id, "aria-haspopup": c.kind === "key" ? "dialog" : null, "aria-label": (o ? "Replace" : "Set") + " the org's " + c.prov + " " + what(c), onclick: e => connect(c, "org", e.currentTarget) }, o ? "Replace" : "Set org " + what(c)),
-      o ? el("button", { type: "button", class: "btn sm ghost", "aria-haspopup": "dialog", "aria-label": "Remove the org's " + c.prov + " " + what(c), onclick: e => confirmDisconnect(c, "org", e.currentTarget) }, "Remove") : null),
+      el("button", { type: "button", class: "btn sm", id, "aria-haspopup": c.kind === "key" ? "dialog" : null, "aria-label": (o ? "Replace org " : "Set org ") + what(c) + " for " + c.prov, onclick: e => connect(c, "org", e.currentTarget) }, (o ? "Replace org " : "Set org ") + what(c)),
+      o ? el("button", { type: "button", class: "btn sm ghost", "aria-haspopup": "dialog", "aria-label": "Remove org " + what(c) + " for " + c.prov, onclick: e => confirmDisconnect(c, "org", e.currentTarget) }, "Remove org " + what(c)) : null),
     o ? el("label", { class: "switch-line" }, el("input", { type: "checkbox", id: "own-" + c.ts, checked: o.own, onchange: e => { o.own = e.target.checked; render(); toast(e.target.checked ? "Members can use their own " + c.prov + " " + what(c) : "Everyone uses the org's " + c.prov + " " + what(c)); } }), "Members can use their own") : null
   ];
 }
 function connect(c, who, trigger) {
+  if (S.connWait) { S.connWait = null; render(); } // one provider window at a time: a new connect closes the old one
   S.connErr = null;
   if (c.kind === "key") keyDialog(c, who, trigger); else startOAuth(c, who);
 }
@@ -1638,27 +1639,28 @@ function connected(c, org) {
   const msg = org ? "The org's " + c.prov + " " + what(c) + " is set" : c.prov + " connected";
   render(); toast(msg);
   const f = $("#ask-again") || document.getElementById((org ? "org-act-" : "conn-act-") + c.ts);
-  if (f) f.focus(); else focusHeading();
+  if (f) f.focus(); else if (S.section === "chats") focusComposer(); else focusHeading();
 }
 // API key: one password field; the server checks it with the provider where it can. The value is sent once and never shown again.
 function keyDialog(c, who, trigger, rejected) {
   const org = who === "org", replacing = org ? !!S.org[c.ts] : (S.mine[c.ts] || {}).st === "connected";
   const title = org ? (replacing ? "Replace" : "Set") + " the org's " + c.prov + " key" : (replacing ? "Replace your " + c.prov + " key" : "Connect " + c.prov);
-  const input = el("input", { type: "password", id: "conn-key", name: "api-key", autocomplete: "off", spellcheck: "false", autocapitalize: "off", "data-autofocus": "", "aria-describedby": "conn-key-help" });
+  const input = el("input", { type: "password", id: "conn-key", name: "api-key", autocomplete: "off", spellcheck: "false", autocapitalize: "off", "data-autofocus": "", "aria-describedby": "conn-key-help",
+    oninput: () => { if (errBox.hidden) return; errBox.hidden = true; input.removeAttribute("aria-invalid"); input.setAttribute("aria-describedby", "conn-key-help"); } });
+  const live = el("span", { class: "sr-only", role: "status" });
   const errBox = el("p", { class: "conn-err", id: "conn-key-err", role: "alert", hidden: true });
   const show = el("button", { type: "button", class: "btn sm", "aria-pressed": "false", "aria-label": "Show key", onclick: e => { const on = input.type === "password"; input.type = on ? "text" : "password"; e.currentTarget.setAttribute("aria-pressed", String(on)); input.focus(); } }, "Show");
   const save = el("button", { type: "submit", class: "btn primary" }, "Save");
   const fail = t => {
     errBox.hidden = false; errBox.replaceChildren(icon("x"), el("span", { text: t }));
-    input.disabled = false; save.disabled = false; save.textContent = "Save";
+    input.readOnly = false; save.disabled = false; save.textContent = "Save"; live.textContent = "";
     input.setAttribute("aria-invalid", "true"); input.setAttribute("aria-describedby", "conn-key-err conn-key-help"); input.focus();
   };
   const submit = () => {
     if (!input.value.trim()) return fail("Paste a key first.");
-    input.disabled = true; save.disabled = true; save.textContent = "Checking…";
+    input.readOnly = true; save.disabled = true; save.textContent = "Checking…"; live.textContent = "Checking the key with " + c.prov + "…"; // readOnly, not disabled, so focus stays put
     setTimeout(() => {
       if (!input.isConnected) return;
-      if (S.rejectNext) { S.rejectNext = false; return fail(c.prov + " didn't accept this key. Check that you copied all of it, or create a new one."); }
       if (org) S.org[c.ts] = { own: true, members: 0, ...S.org[c.ts], set: "12 Oct" }; else S.mine[c.ts] = { st: "connected", added: "12 Oct" };
       closeLayers(false); connected(c, org);
     }, 700);
@@ -1667,7 +1669,7 @@ function keyDialog(c, who, trigger, rejected) {
     el("h2", { text: title }),
     c.help ? el("p", { class: "muted", style: "margin:0" }, "Get a key at ", el("a", { href: "https://" + c.help, target: "_blank", rel: "noopener noreferrer", text: c.help }), ".") : null,
     el("form", { class: "conn-form", novalidate: true, onsubmit: e => { e.preventDefault(); submit(); } },
-      el("label", { for: "conn-key", text: "API key" }), el("div", { class: "pw" }, input, show), errBox,
+      el("label", { for: "conn-key", text: "API key" }), el("div", { class: "pw" }, input, show), errBox, live,
       el("p", { class: "muted", id: "conn-key-help", style: "font-size:12px;margin:0", text: org ? "Shared with every member who hasn't connected their own. Members never see it." : "Used only for your runs. It's sent once and never shown again, not even in part." }),
       el("div", { class: "acts" }, el("button", { type: "button", class: "btn", onclick: () => closeLayers() }, "Cancel"), save))
   ].filter(Boolean), trigger);
@@ -1698,12 +1700,12 @@ function endOAuth(c, how) {
   if (how === "expired") S.connErr = { ts: c.ts, text: "Connecting took too long or failed. Try again." };
   render();
   if (S.connErr) announce(S.connErr.text);
-  const f = $("#conn-card-" + c.ts) || document.getElementById((org ? "org-act-" : "conn-act-") + c.ts); if (f) f.focus(); else focusHeading();
+  const f = $("#conn-card-" + c.ts) || document.getElementById((org ? "org-act-" : "conn-act-") + c.ts) || document.getElementById("need-" + c.ts); if (f) f.focus(); else focusHeading();
 }
 function confirmDisconnect(c, who, trigger) {
   const org = who === "org", o = S.later && S.org[c.ts];
   const used = agents().filter(a => a.toolsets.includes(c.ts)).map(a => a.name).join(", ");
-  const then = org ? "Members who haven't connected their own lose " + c.prov + " until it's set again."
+  const then = org ? (c.keyless ? "Members who haven't connected their own go back to " + c.prov + " without a key, with lower limits." : "Members who haven't connected their own lose " + c.prov + " until it's set again.")
     : o && o.own ? "You'll use the org's " + what(c) + " again."
     : c.keyless ? c.prov + " goes back to working without a key, with lower limits."
     : c.prov + " stops working for you until you connect again.";
@@ -1740,7 +1742,8 @@ function connectCard(m) {
 // Ask again: your last message goes back in the composer (with anything already typed after it), ready to send.
 function askAgain() {
   const last = [...threadFor(S.conv)].reverse().find(x => x.t === "user");
-  const typed = getDraft(); setDraft(last ? last.text + (typed ? "\n" + typed : "") : typed);
+  const typed = getDraft();
+  if (last && !typed.includes(last.text)) setDraft(last.text + (typed ? "\n" + typed : "")); // twice doesn't paste it twice
   const m = $("#msg"); if (m) { m.value = getDraft(); grow(m); m.focus(); }
 }
 
@@ -1831,7 +1834,7 @@ function closeLayers(restore) {
   if (!layer) return false;
   const { nodes, trigger } = layer; layer = null;
   nodes.forEach(n => n.remove());
-  if (trigger) { trigger.setAttribute("aria-expanded", "false"); if (restore !== false && trigger.isConnected) trigger.focus(); }
+  if (trigger) { if (trigger.hasAttribute("aria-expanded")) trigger.setAttribute("aria-expanded", "false"); if (restore !== false && trigger.isConnected) trigger.focus(); }
   return true;
 }
 function openPop(trigger, content, opts = {}) {
@@ -2110,6 +2113,7 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape") {
     if (S.signin) return; // nothing to close behind the sign-in card
     if (closeLayers()) { e.preventDefault(); return; }
+    if (S.connWait) { e.preventDefault(); endOAuth(connOf(S.connWait.ts), "closed"); return; }
     if (S.drawer) { e.preventDefault(); S.drawer = false; render(); return; }
     if (runHere()) { e.preventDefault(); stopRun(); return; }
     return;
@@ -2148,7 +2152,7 @@ $("#dv-state").addEventListener("change", e => applyState(e.target.value));
 function applyState(st) {
   if (S.run) { clearInterval(S.run.timer); S.run = null; }
   stopRetry();
-  S.mine = MINE0(); S.org = ORG0(); S.connWait = null; S.connErr = null; S.rejectNext = false;
+  S.mine = MINE0(); S.org = ORG0(); S.connWait = null; S.connErr = null;
   S.state = st; S.signin = null; S.drawer = false; S.threads = {}; S.deleted.clear(); S.search = ""; S.filterAgent = ""; S.drafts = {}; S.pending = null; S.busyChecks = 0;
   CONVS_ALL.forEach(c => { delete c.resumed; delete c.unread; });
   const si = (card, err, extra) => { S.state = "normal"; S.signin = { card, reason: null, err, both: false, ...extra }; };

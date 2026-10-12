@@ -16,7 +16,7 @@ Decisions (reasons in T070 Notes):
 
 - **Conversations have one home: the Chats list.** No separate Conversations page and no "Recent" block. The list has **New chat**, **search**, an **agent filter**, date groups (Today, Yesterday, Previous 7 days, Older), a status mark on rows that need attention (running, interrupted, finished while you were elsewhere), and loads more by cursor as you scroll. Each row: the title, then the agent name in mono and the time. A **⋯** menu (Copy ID, Delete) shows on hover or focus, and always on touch.
   - **Search** matches titles. Until `GET /v1/conversations` gains a `q` parameter (asked of T062, see T070 Notes), it filters the loaded rows: its placeholder says "Search loaded chats", and with more pages on the server the results end with **Load older to search more**.
-- **Connections are everyone's** (owner, 2026-10-12): each user connects their own key or account for each connector, so the page sits above the divider for every role. Admins add connectors in the server config; the console doesn't (T087 may add that). Details: "Connections".
+- **Connections are everyone's** (owner, 2026-10-12): each user connects their own key or account for each connector, so the page sits above the divider for every role. Admins add connectors in the server config; the console doesn't. An "Add connector" screen is asked of T087 (T070 Notes). Details: "Connections".
 - **Admin pages live in the rail**, under a divider, with their own list column (list on the left, detail on the right, as in Linear and Vercel settings). A `user` sees Chats and Connections (and Activity later). Hiding them is a convenience; the API answers 403 (a direct link shows the 403 page).
 - **The agent picker** sits in the chat header's left slot, in both cases:
   - **New chat:** a button showing the chosen agent with a chevron. It opens a searchable list (name, description, and readiness for you: "All 3 toolsets ready", or what is missing, such as "Connect Exa"). The default is the agent of your last new chat (kept in `localStorage`) if it still exists, else `default`, else the first. The empty chat shows the chosen agent's description and readiness above the composer.
@@ -36,7 +36,7 @@ Decisions (reasons in T070 Notes):
 |---|---|---|
 | **Desktop** (≥ 1200 px) | Rail · list 288 px · content | Chat column max 720 px, centred. Admin detail max 880 px. `Mod+Shift+S` or the header's toggle hides the list; the choice is remembered. |
 | **Laptop** (768–1199 px, designed at 1024) | Rail · list 248 px · content | The same toggle. Below 900 px the list starts hidden (the content would be under 600 px), unless you showed it. |
-| **Phone** (< 768 px, designed at 400) | Top bar · content | No rail. The top bar has the menu button, the agent chip or page title, and New chat. The menu opens a **drawer** with the sections as a **two-row grid of icon and label** (every section fits at 360 px) and the section's list below; picking an item closes it. Opening the drawer does not focus its search (`Mod+K` does), and opening a conversation does not focus the composer, so the keyboard doesn't cover the thread. Admin pages: the list is the page, an item opens its detail with a Back button; the detail header holds Back and the title, and the status and the page's action sit on a row below. Pickers and menus open as **bottom sheets** with a Close button; a sheet's search is not focused until tapped. 16 px side gutter; the composer sits above the safe area. |
+| **Phone** (< 768 px, designed at 400) | Top bar · content | No rail. The top bar has the menu button, the agent chip or page title, and New chat. The menu opens a **drawer** with the sections as a **two-row grid of icon and label** (every section fits at 360 px) and the section's list below; picking an item closes it. Opening the drawer does not focus its search (`Mod+K` does), and opening a conversation does not focus the composer, so the keyboard doesn't cover the thread. Admin pages: the list is the page, an item opens its detail with a Back button (Connections has no detail: it is one page of cards); the detail header holds Back and the title, and the status and the page's action sit on a row below. Pickers and menus open as **bottom sheets** with a Close button; a sheet's search is not focused until tapped. 16 px side gutter; the composer sits above the safe area. |
 
 Breakpoints are the same numbers in the console's CSS (Tailwind breakpoints at 768 and 1200; the mockup uses container queries on its frame so it can show all three widths in one page). The console is desktop-first; `agent-ui` components are designed to work at phone width on their own, because consumer apps are mobile-first.
 
@@ -52,7 +52,7 @@ Every view has a URL, so links, Back and reloads work. Rail items, list rows and
 | `/agents`, `/agents/{name}` | Agents list, agent detail |
 | `/toolsets`, `/toolsets/{name}` | Toolsets list, toolset detail |
 | `/connections` | Connections |
-| `/connections/done` | Where an account connection returns from the provider: it reports the result to the page that opened it and closes (see "Connections") |
+| `/connections/done` | Where an account connection returns from the provider. In a popup, it reports the result to the page that opened it and closes. In the same tab, it goes back to the saved route with the result. Opened with no connection pending, it goes to `/connections` (see "Connections") |
 | `/activity/…` | Later (T074; T087 defines `/tasks/…`) |
 
 - On a route change the document title becomes "{page} · agentkit" (a conversation's title, "New chat", the agent's name) and focus moves to the page's `h1`, so a screen reader hears where it landed. The exception is **New chat** on desktop (the button or `Mod+Shift+O`): focus goes to the message box, because typing is why you pressed it. Every page has one `h1`; in a chat it is the title in the header.
@@ -114,7 +114,7 @@ A **connector** is a toolset that calls an outside service: Exa, Parallel, GitHu
     - later, **Using the org's**, or "Your key (used instead of the org's)".
   - **Actions:** Connect; Replace key; Reconnect; Disconnect. Disconnect confirms: "Exa stops working for you until you connect again." It names the fallback if there is one ("…falls back to the org's key").
   - **Admins, later:** an **Org** column with Set, Replace or Remove, the "Members can use their own" switch, and "4 of 9 members connected" (counts only, never whose).
-  - **The rail badge** counts connectors that are not connected or need a reconnect, are used by an agent you can use, and have no fallback. Keyless, org and server-key connectors don't count; a connection that needs a reconnect always counts.
+  - **The rail badge** counts, among connectors an agent you can use needs: those you haven't connected that have no org, server-key or keyless fallback, plus any connection of yours that needs a reconnect.
 - **Connecting an API key:** a dialog.
   - Contents: the connector's name; "Get a key at exa.ai" when the connector declares a help link; one password field with show and hide (`autocomplete="off"`, no spellcheck); **Save**.
   - The server checks the key with the provider when the connector can. A rejected key shows "Exa didn't accept this key." under the field, and the field stays for correcting. A connector that can't check saves the key, and a bad one fails at first use.
@@ -129,12 +129,13 @@ A **connector** is a toolset that calls an outside service: Exa, Parallel, GitHu
     - denied at the provider: "You didn't allow access. Nothing was saved.";
     - expired or failed: "Connecting took too long or failed. Try again.";
     - the popup closed early: back to the previous status, with nothing said.
-  - **On phones, or when the popup is blocked,** the same tab goes to the provider and comes back to the page you started from. The route and drafts survive (`sessionStorage`).
+  - **On phones, or when the popup is blocked,** the same tab goes to the provider. Before it leaves, the console saves the route and drafts in `sessionStorage`. The provider returns to `/connections/done`, which restores that route and shows the result there.
 - **In a chat:**
   - **Before sending:** the new-chat agent card and the picker say what is missing ("Connect Exa"), with **Connect** opening the dialog in place. The agent still works with its other tools.
   - **During a run:** a call that needs a connection you don't have fails with `not_connected` (or `needs_reconnect`). The step reads "Exa search needs your connection" in amber, not red. A card under it says "researcher couldn't use Exa because it isn't connected for you." with **Connect Exa**. The run goes on without that tool, because the model gets the error.
+  - *API dependency:* these error codes don't exist yet. T036's `tool_result` has only `content` and `is_error`, and T044 raises one `ErrNotConnected`. The asks for T036/T044 are in T070 Notes. Until then, the console can't tell this failure from any other and shows a plain failed step.
   - **After connecting:** the card reads "Exa connected" and offers **Ask again**, which puts your last message back in the composer to send. With E17's interrupts (T087), the run can instead wait for the connection.
-- **Never on the page:** values, partial values or key hints. A provider's error text is summarized, not copied. Connection details belong to their owner; an admin's view of other users is counts.
+- **Never on the page:** values, partial values or key hints. A provider's error text is summarized, not copied. Connection details belong to their owner. Admins see only counts for other users.
 
 ## Runs and conversations
 
@@ -247,7 +248,7 @@ Built with React, shadcn/ui and Radix (E11, T078). Each component has a home:
 | **Toast** | ui | `Sonner` | text, text + action ("Open") | stays 8 s and pauses on hover and focus; announced politely; never the only way to reach something (badges and dots stay) |
 | **Tooltip** | ui | `Tooltip` | label, label + shortcut | shown on hover and on keyboard focus; never on disabled controls (their reason is visible text) |
 | **Menu** | ui | `DropdownMenu` (with a radio group for the theme); `Drawer` on phones | anchored (desktop), bottom sheet (phone) | Esc, Tab and outside click close it; focus returns to the trigger |
-| **Dialog** | ui | `AlertDialog` (Delete), `Dialog` (shortcuts) | confirm, informational | focus trapped, Esc closes |
+| **Dialog** | ui | `AlertDialog` (Delete, Disconnect), `Dialog` (shortcuts, Connect) | confirm, informational, form | focus trapped, Esc closes |
 | **Sign-in form** | console | `Card` + `Field` + `Input` + `Button` | password, token, password with "Use an API token instead", session ended | default, submitting (inputs disabled), error (wrong, empty field, throttled with a countdown, server unreachable) |
 | **Button** | ui | `Button` | primary (ink), secondary (`outline`), ghost, icon, link | hover, focus, disabled, busy (`Spinner`); at least 24 × 24 px |
 | **Inputs** | ui | `Input`, `InputGroup` (search with `Kbd`), `Select`, `Textarea`, `Checkbox`, `ToggleGroup` (segments) | text, password (with show/hide), search, select, textarea, checkbox, segmented | focus, invalid, disabled |
@@ -416,6 +417,7 @@ Status colours (`--ak-ok`, `--ak-warn`, `--ak-bad`) and `--ak-shadow` have no sh
 - **Targets** are at least 24 × 24 px, including link-style buttons and clickable chips (WCAG 2.2 2.5.8); phone rows are 44 px tall.
 - **Names:** icon-only buttons have an accessible name and a `Tooltip` that also shows on keyboard focus, not a `title` attribute. A disabled control's reason is visible text.
 - **Scrollable regions** (code blocks, raw JSON) are focusable and labelled, so the keyboard can scroll them.
+- **Connections:** after the key dialog, Disconnect or an account connection, focus returns to the row's action (in a chat, to the card's button: Ask again after connecting). The key field's error is linked with `aria-describedby` and `aria-invalid`. Waiting, connected, denied and failed are announced in the status region.
 - **Contrast**: see Tokens.
 
 ## Rules
@@ -423,7 +425,7 @@ Status colours (`--ak-ok`, `--ak-warn`, `--ak-bad`) and `--ak-shadow` have no sh
 - **Roles are enforced by the API**, not by hiding pages: a `user` gets 403 on admin data even with a hand-made request. The console hides admin navigation for users only as a convenience.
 - **Untrusted content stays text.** Tool results are third-party web pages, rendered as React text children (never `dangerouslySetInnerHTML`). Answers are Markdown, rendered to React elements by a renderer with a fixed element allowlist, no raw HTML and only `http(s)` links. A strict Content-Security-Policy (`default-src 'self'`, no inline scripts) is served with the page, and `/v1` responses carry `Cache-Control: no-store`.
 - **Name things by what people recognize**: "Connections", "Toolsets", "Stop", "Resume"; errors say what happened and what to do ("Exa isn't connected for you. Connect Exa").
-- **Look (owner, 2026-10-12): neutral.** No brand colour. **Light**: grey ground, white working surfaces, near-black text and primary buttons, used sparingly. **Dark**: not pure black; a near-black ground with slightly lighter surfaces for depth, off-white text and an off-white primary button, so contrast is high without glare. Status is a small coloured dot plus a word (green ready, amber missing, skipped or interrupted, red error), never a coloured block. Geist for UI, Geist Mono for names, IDs and schemas. Theme follows the OS, with System/Light/Dark in the user menu. Exact values: Tokens.
+- **Look (owner, 2026-10-12): neutral.** No brand colour. **Light**: grey ground, white working surfaces, near-black text and primary buttons, used sparingly. **Dark**: not pure black; a near-black ground with slightly lighter surfaces for depth, off-white text and an off-white primary button, so contrast is high without glare. Status is a small coloured dot plus a word (green ready, amber needs you, skipped or interrupted, red error), never a coloured block. Geist for UI, Geist Mono for names, IDs and schemas. Theme follows the OS, with System/Light/Dark in the user menu. Exact values: Tokens.
 - **Tool calls** (the part of chat people read most):
   - each call is **one quiet line**: an icon for its kind, a verb phrase people understand ("Searched the web", "Read 2 pages", "Calculated"), the key argument in muted text (the query in quotes, the page hosts), and the time it took. No borders, no JSON, no tool IDs at rest;
   - **while running** the verb reads in the present tense ("Searching the web") with a shimmer and a small spinner; **errors** read "… failed" in red with the reason in the details; a call cut short by Stop reads "Stopped: searching the web" in neutral grey, not as a failure;

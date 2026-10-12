@@ -16,7 +16,7 @@ This is a design task: the output is a spec and a clickable mockup the owner app
 
 ## Inputs (decided; keep unless you find a real problem, and say why)
 
-- The screens and roles in [docs/UI.md](../docs/UI.md): sign-in, chat with an agent picker, conversations, agents, MCP toolsets and tools, credentials. Admin-only pages are enforced by the API.
+- The screens and roles in [docs/UI.md](../docs/UI.md): sign-in, chat with an agent picker, conversations, agents, MCP toolsets and tools, credentials (now Connections, Decision 11). Admin-only pages are enforced by the API.
 - **Look:** neutral. Light is grey, white and minimal black; dark is near-black with lighter surfaces. Geist and Geist Mono. Status is a dot plus a word.
 - **Tool calls:** quiet one-line steps; a group for several; details in place; source chips (docs/UI.md "Tool calls").
 - **A2UI surfaces** inline in the chat ([E13](E13-agent-protocols.md)).
@@ -67,7 +67,7 @@ This is a design task: the output is a spec and a clickable mockup the owner app
 ## Acceptance criteria
 
 - [x] **Conversations** have exactly one home, and the doc says why.
-- [x] **Layouts** for chat, the conversation list, the agents, toolsets and credentials pages, and sign-in, at all three widths, in both themes, in mockup v3.
+- [x] **Layouts** for chat, the conversation list, the agents, toolsets and credentials (now Connections) pages, and sign-in, at all three widths, in both themes, in mockup v3.
 - [x] **States:** every one listed in Scope 3 has a design in the mockup or the doc.
 - [x] **Components:** the inventory and tokens are written down. Contrast ratios for text, muted text, borders and status colours meet WCAG 2.2 AA in both themes (the table is in Notes).
 - [x] **Shortcuts:** the keyboard shortcuts are listed and work in the mockup.
@@ -87,7 +87,7 @@ This is a design task: the output is a spec and a clickable mockup the owner app
   - **Theme**: System, Light or Dark.
   - **Width**: Fit, or a 1280, 1024 or 400 px frame. The layout uses container queries on the frame, so the widths are real layouts, not scaled screenshots.
   - **Role**: Admin or User.
-  - **State**: every state in Scope 3 and the review's additions, from 31 options.
+  - **State**: every state in Scope 3, the review's additions and Connections, from 36 options.
   - **Show later features**: shows or hides Activity, the background-run row and the Memories item.
 
   The tokens are copied verbatim from UI.md.
@@ -164,11 +164,11 @@ This is a design task: the output is a spec and a clickable mockup the owner app
 10. **A2UI:** the console renders the basic catalog with its own components: Text h1–h5, caption and body; Image, Icon, Divider, Row, Column, List, Card, Button, TextField, CheckBox, ChoicePicker and DateTimeInput. Slider, Tabs and Modal are deferred: an unsupported component renders as a labelled placeholder showing its type, never as raw JSON. A sent surface is disabled and says it was sent.
 11. **Connections: each user connects their own; the org's comes later** (owner, 2026-10-12). This replaces the admin-only Credentials page. UI.md "Connections" has the design. The owner's three answers:
     - **Precedence:** your own connection wins. Later, an org connection set by an admin is the shared default for everyone. A member's own connection is used instead of it, and removing your own falls back to the org's. Per connector, an admin can turn off "Members can use their own".
-    - **Who adds connectors:** admins, in the server config, for now. The console manages connections only. An "Add connector" screen (from a catalog or an MCP URL) belongs to T087.
+    - **Who adds connectors:** admins, in the server config, for now. The console manages connections only. An "Add connector" screen (from a catalog or an MCP URL) is asked of T087; T087 doesn't list it yet.
     - **Where it goes:** this task, amended (not a new one).
 
     The design that follows from them:
-    - **One page for everyone**, `/connections`, above the rail's divider. Each row is a connector an agent you can use needs: kind, your status, used by, action. The badge counts the ones that need you and have no fallback.
+    - **One page for everyone**, `/connections`, above the rail's divider. Each row is a connector an agent you can use needs: kind, your status, used by, action. The badge counts the ones that need you: not connected with no fallback, or needing a reconnect.
     - **Order at call time:** yours, then the org's (later), then the server's env key, then keyless or not connected. Server keys stay as the deployment's fallback, shown and not managed.
     - **API key:** one password field, checked by the server where the provider allows, never shown again (no hints, no last 4).
     - **Account (OAuth):** a popup to the provider, returning to `/connections/done`, which posts the result to its opener (same origin) and closes. Phones and blocked popups use a same-tab redirect.
@@ -209,7 +209,7 @@ This is a design task: the output is a spec and a clickable mockup the owner app
   - the API key dialog, the account popup with `/connections/done`, Disconnect with its confirm;
   - the in-chat Connect card is `agent-ui`'s (T055), but it uses the same connect flow.
 
-  It needs E07's T044 and T045, with the changes under "Found out of scope". Until T045 lands, the page can show statuses only.
+  It needs E07's T044 and T045, with the changes under "Found out of scope". Until T044 and T045 land, the page can show only what the toolsets catalog knows: server-key and keyless state.
 
 ### For T066 (A2UI renderer)
 
@@ -303,7 +303,7 @@ v2's failures, for the record:
 - **One home for conversations:** the list column. The Conversations page and the "Recent" list are gone.
 - **A 56 px icon rail** replaces v2's 240 px nav sidebar. Admin pages are rail items, not an "Admin" group, and Activity has a slot.
 - **The agent picker rule:** a picker for a new chat, a read-only chip with "New chat with…" for an existing one, and no picker with one agent.
-- **Agents is list + detail** instead of cards. Credentials is one table instead of cards. Toolsets gained the copyable MCP URL and command, field tables and raw schema.
+- **Agents is list + detail** instead of cards. Credentials (now Connections) is one table instead of cards. Toolsets gained the copyable MCP URL and command, field tables and raw schema.
 - **States:** v2 had none besides sign-in. v3 has all 21, from a menu.
 - **Layouts:** three widths. On a phone there is a top bar, a drawer with section tabs, and bottom sheets for menus and the picker. The laptop width has a collapsible list.
 - **Tokens:** contrast fixes (decision 7) and `--control`. The dark theme's text tokens were re-checked.
@@ -420,17 +420,17 @@ T087 also renames Activity to Tasks. UI.md points to T087 and doesn't draw these
 - **T055 wording:** T055 says a "tool call appears as a card", which predates the quiet-steps style. It should say "a step row (docs/UI.md, Components)".
 - **T066 references:** T066 should point at UI.md's "A2UI → console" table as its mapping.
 - **E07, for Connections (Decision 11), owner 2026-10-12:**
-  - **T044:** its `Credential.scope` defaults to `tenant`. The owner wants per-user first, so the default becomes `user`. The resolution chain is user, then tenant (later, when allowed), then the env key, then keyless. It also needs a per-connector "members can use their own" switch. Open question for E07: when your own connection needs a reconnect and the org has one, does a call fall back to the org's meanwhile? The design assumes it doesn't, and counts it as needing you.
+  - **T044:** its `Credential.scope` is either `tenant` or `user`, defaulting to `tenant`. The owner wants per-user first, so the default becomes `user`. Later, an org connection is a fallback for a user-scoped slot, which is a change of model, not just of the default: a resolution chain of user, then tenant (when allowed), then the env key, then keyless. Today the env key and keyless mode live in E10's connectors, outside the vault, so the chain needs one owner. It also needs a per-connector "members can use their own" switch. Open question for E07: when your own connection needs a reconnect and the org has one, does a call fall back to the org's meanwhile? The design assumes it doesn't, and counts it as needing you.
   - **T045, `GET /v1/credentials`:**
     - It should list every slot the caller's agents use, connected or not, so the page can show "Not connected".
     - Each entry carries the kind (key or OAuth), the status for the caller (`connected`, `not_connected`, `needs_reconnect`), the source a call would use (`user`, `tenant`, `env`, `keyless`), the account label (OAuth), the date added, and the agents that use it.
     - For admins, later: the org status and member counts, never whose.
   - **T045, saving:** check a key with the provider on `PUT` where the connector can, and reject it as `credential_rejected`. Add an optional `help_url` per connector ("Get a key at exa.ai").
-  - **T045, OAuth:** `connect` takes a `return_url` on the allowlist (the console's `/connections/done`), and the callback redirects there with the result (`connected`, `denied`, `expired` or `failed`).
+  - **T045, OAuth:** T045 already keeps a `return_url` in the `state` record and checks it against an allowlist. The asks: say that `connect`'s request carries it (the console sends its `/connections/done`), and have the callback redirect there with the result: `connected`, `denied`, `expired` or `failed`. Today it has only success.
   - **T036/T044, events:** a `tool_result` for a call without a credential carries `error.code` `not_connected` or `needs_reconnect` and the slot, so the console can draw the amber step and the Connect card.
 - **T064:** its Credentials page becomes Connections, open to every user (see "For T064").
 - **E11 decisions:** the "Roles" row lists credentials among admin pages, and the "Credentials page" row plans an admin-only v1 and v2. Both predate Decision 11.
-- **T087:** "Add connector" (from a catalog or an MCP URL), for admins, belongs there.
+- **T087:** "Add connector" (from a catalog or an MCP URL), for admins, should be added to its scope; T087 doesn't mention it yet.
 - **T078's token wording:** T078 says `packages/ui` takes "the token set from docs/UI.md and T070 as CSS variables". It should also name the `--ak-` prefix and the shadcn mapping, or a straight copy will clash on `--muted`.
 
 ### Checks run
@@ -480,4 +480,23 @@ T087 also renames Activity to Tasks. UI.md points to T087 and doesn't draw these
     - readiness text in the picker, the new-chat card, the agent and toolset pages, and the rail badge going from 2 to 1.
   - Looked at in the browser: Connections at phone width, the chat card, and the rejected-key dialog in dark.
   - Not drawn: "Using the server key" (no sample connector has an env key set). It is in UI.md.
-  - `make check` exited 0 on the final commit, rebased onto `4282343`, before the push.
+  - `make check` exited 0 on `51a9bc5`, rebased onto `4282343`, before the push.
+- **Review of the Connections change (2026-10-12):** two reviewers, one for the mockup's code and one for the docs against the E07 task files. Fixed:
+  - **Mockup:**
+    - Ask again pasted the question twice when clicked twice.
+    - A second connect while the account window was open could destroy the key dialog; Esc now closes the window.
+    - Removing an org key from a keyless connector gave the wrong outcome.
+    - The badge dropped while an account connect was pending.
+    - Accessible names didn't contain the visible text.
+    - Closing a dialog added `aria-expanded` to its trigger.
+    - The key check wasn't announced, its error stayed after retyping, and focus was lost while checking.
+    - Focus went to the heading after cancelling from a new-chat or agent-page Connect.
+    - Stale wording and a dead flag.
+  - **Docs:**
+    - The badge rule contradicted itself.
+    - The same-tab OAuth return was undefined.
+    - The T044 and T045 asks misstated what those tasks already have.
+    - The `not_connected` codes were written as if they existed; they are now an API dependency.
+    - Missing Connections notes in Accessibility, Components and the phone layout.
+  - Re-run: all 36 State options at 1280, 1024 and 400, light as admin and user, dark as admin (324 runs). No script errors, no "null" or "undefined", no sideways overflow, no duplicate ids, and the content column is in place. The review's repros were driven again and pass.
+  - `make check` exited 0 on the final commit before the push.

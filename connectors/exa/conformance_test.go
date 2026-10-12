@@ -27,10 +27,7 @@ func connector() toolsettest.Connector {
 			"extract_defaults": {"max_characters": 5000, "max_age_hours": 24}}`),
 		KeyEnv:  "EXA_API_KEY",
 		OpenAPI: "testdata/openapi.json",
-		Enable: []toolsettest.CheckID{
-			"schema_honesty.dead_fields", "cassettes.openapi", "settings.honored", "errors.no_retry_5xx", "errors.retry_wait_ctx",
-			"errors.attempt_timeout", "limits.rune_boundary",
-		},
+		Enable:  []toolsettest.CheckID{"schema_honesty.dead_fields", "cassettes.openapi"},
 		Calls: []toolsettest.Call{
 			{
 				Name: "search_defaults", Tool: "exa_search",

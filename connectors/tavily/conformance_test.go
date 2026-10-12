@@ -26,10 +26,6 @@ func connector() toolsettest.Connector {
 		// answer, results[].raw_content and results[].published_date as
 		// plain strings, and the real API sends null for them (T051 Notes).
 		OpenAPI: "testdata/openapi.json",
-		Enable: []toolsettest.CheckID{
-			"settings.honored", "errors.no_retry_5xx", "errors.retry_wait_ctx",
-			"errors.attempt_timeout", "limits.rune_boundary",
-		},
 		Calls: []toolsettest.Call{
 			{
 				Name: "search_go_release", Tool: "tavily_search",

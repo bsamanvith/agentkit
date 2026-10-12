@@ -16,76 +16,6 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
-// TestSearch: the request body matches the documented /v1/search JSON (the
-// cassette's request: objective, search_queries and mode at the top,
-// max_results, source_policy, location, fetch_policy and excerpt_settings in
-// advanced_settings), and the response maps to E10's search shape (golden).
-func TestSearch(t *testing.T) {
-	t.Parallel()
-	for _, tc := range []struct {
-		name, settings, input string
-	}{
-		{
-			// The defaults: objective is the query, mode fast, 5 results.
-			name:  "search-defaults",
-			input: `{"query": "latest Go release"}`,
-		},
-		{
-			// Every input and setting placed; the model picks the mode. The
-			// response has a result without a URL (dropped) and more results
-			// than asked for (cut to max_results).
-			name: "search-filters",
-			settings: `{"search_defaults": {"mode": "basic", "allow_model_mode": true, "max_chars_per_result": 1500,
-				"location": "GB", "fetch_policy": {"max_age_seconds": 3600}}}`,
-			input: `{"query": "Go 1.27 release notes",
-				"objective": "Find what changed in the Go 1.27 release, from official sources.",
-				"extra_queries": ["Go 1.27 new features", "golang 1.27 changelog"], "max_results": 2,
-				"include_domains": ["go.dev", "github.com/golang"], "after_date": "2026-01-01", "mode": "advanced"}`,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			r := newRig(t, tc.settings)
-			r.up.script(reply{cassette: tc.name})
-			out, err := r.call(t.Context(), "parallel_search", tc.input)
-			must(t, err)
-			golden(t, tc.name, out)
-			if n := len(r.up.requests()); n != 1 {
-				t.Errorf("%d requests, want 1", n)
-			}
-		})
-	}
-}
-
-// TestExtract: /v1/extract gets the options inside advanced_settings, and
-// results and errors map to results and failed, in excerpts mode and in
-// full-content mode (golden).
-func TestExtract(t *testing.T) {
-	t.Parallel()
-	for _, tc := range []struct {
-		name, settings, input string
-	}{
-		{
-			name:  "extract-excerpts",
-			input: `{"urls": ["https://go.dev/doc/go1.27", "https://example.com/missing-page"], "objective": "What changed in the go command?"}`,
-		},
-		{
-			name:     "extract-full",
-			settings: `{"extract_defaults": {"full_content": true, "fetch_policy": {"max_age_seconds": 600, "timeout_seconds": 30, "disable_cache_fallback": true}}}`,
-			input:    `{"urls": ["https://go.dev/doc/go1.27", "https://example.com/timeout"]}`,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			r := newRig(t, tc.settings)
-			r.up.script(reply{cassette: tc.name})
-			out, err := r.call(t.Context(), "parallel_extract", tc.input)
-			must(t, err)
-			golden(t, tc.name, out)
-		})
-	}
-}
-
 // TestExtractOptionsInsideAdvancedSettings pins what /v1 moved: full_content,
 // fetch_policy and excerpt_settings are never top-level (a 422 from
 // Parallel), and the configured ones are under advanced_settings.
@@ -434,17 +364,16 @@ func TestRateLimit(t *testing.T) {
 	})
 }
 
-// TestHangingUpstream: a request that never answers ends with the context's
-// error when ctx expires.
-func TestHangingUpstream(t *testing.T) {
+// TestAttemptTimeout: the timeout setting bounds a request that never
+// answers, though the caller's ctx has no deadline (the shared suite's hang
+// check ends through ctx).
+func TestAttemptTimeout(t *testing.T) {
 	t.Parallel()
-	r := newRig(t, "")
+	r := newRig(t, `{"timeout": "50ms"}`)
 	r.up.script(reply{hang: true})
-	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
-	defer cancel()
-	_, err := r.call(ctx, "parallel_search", `{"query": "q"}`)
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Errorf("err = %v, want context.DeadlineExceeded", err)
+	_, err := r.call(t.Context(), "parallel_search", `{"query": "q"}`)
+	if !isClass(err, tool.ErrToolFailed) || !strings.Contains(err.Error(), "no response within 50ms") {
+		t.Errorf("err = %v, want ErrToolFailed: no response within 50ms", err)
 	}
 }
 

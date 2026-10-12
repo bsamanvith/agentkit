@@ -61,25 +61,29 @@ API sources (fetch with `curl`; WebFetch may fail on DNS in sessions):
 - Make no request in `Build`.
 - Add the three-line `FuzzResponses` target.
 - If T049 is not on `main` yet, build the connector and its specific tests first, then adopt the suite when it lands.
+- **Done:**
+  - `TestConformance` passes `RunConnector` on all four cassettes (per-call settings for `search_filters` and `extract_full`), with `schema_honesty.dead_fields` enabled and no skips;
+  - `FuzzResponsesSearch` and `FuzzResponsesExtract` are added;
+  - Parallel's `PendingConnectors` entry is removed.
 
 
-- [x] **Search request:** sends the documented `/v1/search` JSON (golden request body: `objective`, `search_queries`, `mode`, result count and `source_policy` placed exactly where the spec puts them) with the `x-api-key` header; a recorded response maps to E10's search shape (golden output). `TestSearch` (cassettes `search-defaults`, `search-filters`; goldens in `testdata/golden/`), and `rig.check` after every test.
-- [x] **Extract:** sends `/v1/extract` with the extract options inside `advanced_settings` (golden; a test pins that nothing the docs moved is sent top-level); it maps `results` and `errors`, with excerpts mode and full-content mode both covered. `TestExtract` (`extract-excerpts`, `extract-full`), `TestExtractOptionsInsideAdvancedSettings`; `TestSpecCheckRejects` shows the spec check refuses a top-level option.
-- [x] **Settings validation:** `TestSettingsValidation`, `TestOptionalToolsetSkipped`, and `TestE2EServeParallelWithoutKey` (cmd/agentkit, the real binary's `/readyz`).
+- [x] **Search request:** sends the documented `/v1/search` JSON (golden request body: `objective`, `search_queries`, `mode`, result count and `source_policy` placed exactly where the spec puts them) with the `x-api-key` header; a recorded response maps to E10's search shape (golden output). Passes `RunConnector`: `TestConformance/calls/search_defaults` and `/search_filters`, which match the cassettes' request bodies exactly; goldens `testdata/golden/search_*.json`. `TestCassettesMatchSpec` checks those bodies against the spec, and `rig.check` checks every other request.
+- [x] **Extract:** sends `/v1/extract` with the extract options inside `advanced_settings` (golden; a test pins that nothing the docs moved is sent top-level); it maps `results` and `errors`, with excerpts mode and full-content mode both covered. Passes `RunConnector`: `TestConformance/calls/extract_excerpts` and `/extract_full`. Also `TestExtractOptionsInsideAdvancedSettings`; `TestSpecCheckRejects` shows the spec check refuses a top-level option.
+- [x] **Settings validation:** Passes `RunConnector` (`settings.*`). Also `TestSettingsValidation`, `TestOptionalToolsetSkipped`, and `TestE2EServeParallelWithoutKey` (cmd/agentkit, the real binary's `/readyz`).
   - a missing `PARALLEL_API_KEY` fails `Build` naming the variable;
   - an `optional` toolset is skipped and shown degraded in `/readyz`;
   - a literal `api_key`, unknown fields and bad enums fail with clear messages.
 - [x] **Input validation:** An empty query, more than 4 extra queries, `max_results` out of range, a bad date, a non-http(s) URL, or more than 10 URLs is `ErrInvalidInput`, and no request is sent. `TestInputValidation` (24 cases, plus the accepted boundaries).
-- [x] **Errors:** `TestUpstreamErrors` (one request each), `TestRateLimit` (4 subtests), `TestHangingUpstream`.
+- [x] **Errors:** Passes `RunConnector` (`errors.*`). Also `TestUpstreamErrors` (Parallel's messages; one request each), `TestRateLimit` (Retry-After timing, cancel), `TestAttemptTimeout`.
   - 400/422 give `ErrInvalidInput` with Parallel's message (capped);
   - 401/403 give "rejected the API key";
   - 429 retries once after `Retry-After` (fake clock), then fails;
   - 5xx gives the status only, with no retry;
   - a cancelled `ctx` stops the wait.
 - [x] **Limits:** Truncation at a rune boundary with the marker; the body limit is enforced. `TestTruncation` (exact markers, multi-byte text), `TestBodyLimit` (200 and 422; reads at most the limit + 1 byte).
-- [x] **Canary:** The key appears in no tool output, error, log line or MCP response, including when the upstream echoes it. `TestCanaryEchoed`, the fuzz targets, `TestParallelOverMCP` (MCP response), and `rig.check` (every log line and request).
-- [x] **Fuzzing:** `FuzzDecodeSearch` and `FuzzDecodeExtract` never panic. `make fuzz FUZZTIME=60s` clean; they also check the output shape, error classes and the key.
-- [x] **Over MCP:** `/mcp/parallel` lists exactly `parallel_search` and `parallel_extract` with schemas, and a call through the MCP client against the fake upstream returns the mapped result. `TestParallelOverMCP` (cmd/agentkit).
+- [x] **Canary:** The key appears in no tool output, error, log line or MCP response, including when the upstream echoes it. Passes `RunConnector` (`canary`). Also `TestCanaryEchoed`, the fuzz targets, `TestParallelOverMCP` (MCP response), and `rig.check` (every log line and request).
+- [x] **Fuzzing:** `FuzzDecodeSearch` and `FuzzDecodeExtract` never panic, nor do the kit's `FuzzResponsesSearch` and `FuzzResponsesExtract`. `make fuzz FUZZTIME=60s` clean; they also check the output shape, error classes and the key.
+- [x] **Over MCP:** `/mcp/parallel` lists exactly `parallel_search` and `parallel_extract` with schemas, and a call through the MCP client against the fake upstream returns the mapped result. Passes `RunConnector` (`mcp`). Also `TestParallelOverMCP` (cmd/agentkit).
 - [ ] **Live (`-tags live`, needs `PARALLEL_API_KEY`):** a search returns results with URLs and excerpts, and extracting a known page returns content. If the key is not set, leave this unticked with `status: review`. **Not run: no `PARALLEL_API_KEY` in the session.** `TestLive` (`connectors/parallel/live_test.go`) is written and skips without the key.
 - [x] **Mutation list** recorded (at least: `objective` dropped, extra queries not sent, extract options sent top-level, `errors` dropped, key header missing, key not redacted from an echoed error, retry on 5xx). 21 mutants, all killed: table in Notes.
 
@@ -103,7 +107,7 @@ To re-record by hand until T049's `make record-cassettes` lands:
   - `parallel.go`: factory, options and settings;
   - `client.go`: HTTP, retry, errors and redaction;
   - `search.go`, `extract.go`, `text.go`: truncation and markers;
-  - tests and `testdata/`: `cassettes/`, `golden/` (outputs and `definitions.json`), and `openapi.json`, the `/v1/search` and `/v1/extract` operations with their 17 schemas, verbatim.
+  - tests (`conformance_test.go` describes Parallel to the T049 kit) and `testdata/`: `cassettes/`, `golden/` (the suite's call outputs and `definitions.json`), and `openapi.json`, the `/v1/search` and `/v1/extract` operations with their 17 schemas, verbatim.
 - **`cmd/agentkit`**: `catalog.go` adds the factory next to Tavily's and Exa's, with `os.LookupEnv` and the stderr JSON logger it shares with Tavily; `parallel_test.go` holds the MCP and e2e tests.
 - **`internal/archtest/rules.go`**: the `connectors` tree rule is T046's, which landed first with the same list. This task adds only `connectors/parallel` → `jsonschema-go`, for its spec test.
 - **`cmd/agentkit/tavily_test.go`** (T046's, extended by T047): `TestSearchConfigBuilds` now expects both keyed toolsets in `search.json`. Each of `exa` and `parallel` is built when its variable is set, and otherwise skipped for the missing key. This came from the rebase merge of the shared `search.json`.
@@ -115,7 +119,7 @@ Exact schemas: `testdata/golden/definitions.json`. Both tool descriptions end "t
 
 - **`parallel_search`**
   - Input: `query` (required), `objective`, `extra_queries` (≤ 4), `max_results` (1–20, default 5), `include_domains` or `exclude_domains`, `after_date` (YYYY-MM-DD), and `mode` only with `search_defaults.allow_model_mode`.
-  - Output: `{"results": [{"title", "url", "published_date"?, "author"?, "score"?, "content"}], "answer"?}`.
+  - Output: `{"results": [{"title", "url", "published_date"?, "content"}]}`.
 - **`parallel_extract`**
   - Input: `urls` (1–10, http/https), `objective`.
   - Output: `{"results": [{"url", "title"?, "content"}], "failed": [{"url", "error"}]}`. Both arrays are always present, empty rather than null.
@@ -156,7 +160,7 @@ Exact schemas: `testdata/golden/definitions.json`. Both tool descriptions end "t
 
 - **`max_content_chars` is an object** `{"search": 4000, "extract": 20000}`. E10 names one setting with two defaults; T046/T047 may have chosen another form.
 - **Extract input is `objective`, not E10's `query`:** T048's scope says so, and the same word is used on both Parallel tools. E10 lists `query` for extract. Choose one for all three providers.
-- **Search output declares `answer`, `author` and `score`** (from E10's shared shape) but never sets them: Parallel has no answer, author or score. They are kept for schema parity across providers. Drop them if parity is not wanted.
+- **Search output omits `answer`, `author` and `score`**, which are optional in E10's shared shape. Parallel has none of them, and declaring them failed the kit's `schema_honesty.dead_fields` check, which Exa also enables. An agent switching providers sees a subset, never a different field.
 - **Settings-gated `mode` input:** with `allow_model_mode`, the search tool gets a different input struct that adds `mode`. Without it, the model cannot see or send `mode`, so `additionalProperties: false` refuses it.
 - **Validation choices:**
   - `include_domains` together with `exclude_domains` is `ErrInvalidInput` (Parallel's docs say to use one);
@@ -209,50 +213,63 @@ Exact schemas: `testdata/golden/definitions.json`. Both tool descriptions end "t
 
 ### For T049 (fit notes)
 
-- **Cassette format:** written in T049's format, `<name>.req.json` `{"method","path","body"}` plus `<name>.res.http`. The one extra field is `"synthetic": true`, which T049 says to use. The replay server here matches by JSON equality of the body and fails the test with a diff on any mismatch.
-- **Generic checks hand-written here** until `RunConnector` exists. When it lands, drop what it covers:
-  - settings, missing key, the error matrix, the retry rule, the canary, no network and MCP;
-  - `TestSettingsValidation` (generic part), `TestUpstreamErrors`, `TestRateLimit`, `TestHangingUpstream`, `TestBodyLimit`, `TestCanaryEchoed`;
-  - parts of `rig.check`.
-  Keep the mapping, goldens, the spec test, `TestModeChoice`, `TestInputValidation` and `TestExtractOptionsInsideAdvancedSettings`.
-- **T051** (planned) replaces `spec_test.go` with a shared OpenAPI helper (`Connector.OpenAPI`). What it needs from Parallel's side: `$ref`s rewritten from `#/components/schemas/` to `#/$defs/`, one fresh resolve per root (a resolved schema must not be shared), and request bodies checked as well as responses (`rig.check` does this for every request).
-- **The fuzz targets** should become the three-line `toolsettest.FuzzResponses` once it exists. They are named `FuzzDecodeSearch` and `FuzzDecodeExtract`, per this task.
+- **Adopted** (see the test-kit criteria). Cassettes are in T049's format with `"synthetic": true`; the suite logs them as synthetic. `TestSearch`, `TestExtract` and `TestHangingUpstream` were removed: the suite's `calls` and `errors.hang` checks cover them, and their goldens matched the suite's byte for byte (as JSON).
+- **Kept,** because they are Parallel's own:
+  - `TestUpstreamErrors`: exact messages, FastAPI `detail`, the 300-character cap, one request per status;
+  - `TestRateLimit`: the timer is for the full Retry-After; a long Retry-After fails at once; cancel stops the wait;
+  - `TestAttemptTimeout`, `TestBodyLimit` (both statuses, reads at most limit + 1 bytes), `TestTruncation` (the steering markers), `TestCanaryEchoed` (the key echoed in excerpts, full content and errors), `TestModeChoice`, `TestInputValidation`, `TestExtractOptionsInsideAdvancedSettings`, the spec tests, and `rig.check` on every request.
+- **Planted bugs the suite alone misses** (from the mutation run; the kept tests catch them). Worth adding to the kit:
+  - retrying a 5xx: `errors.500`/`502`/`503` don't count requests;
+  - 401/403 not reported as a key rejection: `errors.401`/`403` don't check the message;
+  - the wait on Retry-After ignoring `ctx`;
+  - truncation splitting a rune;
+  - a missing body limit: `errors.oversized_body` passes with the limit check removed, because the connector then fails to decode the cut body;
+  - the per-attempt `timeout` setting ignored: `errors.hang` ends through ctx;
+  - a `mode` setting ignored.
+- **Smaller kit notes:**
+  - A new connector's first `make golden` fails: other checks read `testdata/golden/<call>.json` before `calls` writes it. The second run passes.
+  - `FuzzResponses` builds the connector on every run: about 600 execs/s here, measured before the kit's 8fe1fd1 (in-process upstream), against roughly 10× that for my targets, which build once and pass the response through the request context.
+  - It fuzzes 200 bodies only. `FuzzDecodeSearch`/`FuzzDecodeExtract` also vary the status (400/401/422/500), turn on full-content mode, and check the logs for the key, so they stay.
+- **T051** (planned) replaces `spec_test.go` with a shared OpenAPI helper (`Connector.OpenAPI`). What it needs from Parallel's side:
+  - `$ref`s rewritten from `#/components/schemas/` to `#/$defs/`;
+  - one fresh resolve per root (a resolved schema must not be shared);
+  - request bodies checked as well as responses (`rig.check` does this for every request).
 - **Things in Parallel the kit should allow for:**
-  - **Request bodies are the whole interface.** Both endpoints are `POST` with JSON bodies and no query string. Matching on method, path and body is enough.
-  - **Spec validation.** Parallel publishes an OpenAPI 3.1 spec. Validating every outgoing request against it (as `rig.check` does, with `jsonschema-go` after rewriting `#/components/schemas/` to `#/$defs/`) caught more than goldens alone. The kit could take an optional spec path.
-  - **Key header.** The key goes in `x-api-key`, not `Authorization`, so the kit's key-header check needs the header name as a parameter.
-  - **Extract failures.** Extract returns per-URL `errors` inside a 200 response, so "a 200 can still carry failures" is connector-specific and stays out of the generic error matrix.
-  - **Nullable slices.** `tool.Func` makes slice inputs nullable (`"type": ["null", "array"]`), including the required `urls`. A conformance check on schemas would flag it. It is a `pkg/tool` matter, not this connector's.
+  - **Request bodies are the whole interface.** Both endpoints are `POST` with JSON bodies and no query string, so matching on method, path and body is enough.
+  - **Key header.** The key goes in `x-api-key`, not `Authorization`.
+  - **Extract failures.** Extract returns per-URL `errors` inside a 200 response.
+  - **Nullable slices.** `tool.Func` makes slice inputs nullable (`"type": ["null", "array"]`), including the required `urls`. That is a `pkg/tool` matter.
 
 ### Mutation check
 
-Each bug was planted alone (script in the session's scratchpad, not committed). The run was `go test ./connectors/parallel/` plus the two cmd/agentkit Parallel tests, then the change was reverted. All 21 make a named test fail: none survive and none fail to compile.
+Each bug was planted alone (script in the session's scratchpad, not committed). The run was `go test ./connectors/parallel/` plus the two cmd/agentkit Parallel tests, then the change was reverted. The run was repeated after adopting the kit and removing the duplicate tests. All 22 make a named test fail: none survive and none fail to compile.
 
-Three mutants (retry on 5xx, retry twice on 429, wait ignores cancel) first failed only by the package timeout. `rig.call` now bounds each call to 10 s of real time and reports what it was doing, so they fail by name.
+The per-attempt timeout bug survived the first adopted run (the suite's hang check and the removed `TestHangingUpstream` both end through ctx), so `TestAttemptTimeout` was added. Three mutants (retry on 5xx, retry twice on 429, wait ignores cancel) once failed only by the package timeout. `rig.call` now bounds each call to 10 s of real time and reports what it was doing, so they fail by name.
 
 | Planted bug | Caught by |
 |---|---|
-| `objective` dropped from the search request | `TestSearch` (both cassettes) |
-| Extra queries not sent (`search_queries[:1]`) | `TestSearch/search-filters` |
-| Extract options sent top-level (request flattened) | `TestExtract`, `TestExtractOptionsInsideAdvancedSettings`, `TestCanaryEchoed`, `TestTruncation`, `TestInputValidation` (spec check in `rig.check`) |
-| Extract `errors` dropped | `TestExtract` (both), `TestCanaryEchoed` |
-| `x-api-key` header not set | almost every test (`rig.check`), `TestParallelOverMCP` |
-| Key not redacted from response text | `TestCanaryEchoed`, `TestParallelOverMCP`, both fuzz targets (seeds) |
+| `objective` dropped from the search request | `TestConformance/calls/search_*` (cassette mismatch), and its `canary`, `errors`, `concurrency` checks |
+| Extra queries not sent (`search_queries[:1]`) | `TestConformance/calls/search_filters` |
+| Extract options sent top-level (request flattened) | `TestConformance/calls/extract_*`, `TestExtractOptionsInsideAdvancedSettings`, `TestCanaryEchoed`, `TestTruncation`, `TestInputValidation` (spec check in `rig.check`) |
+| Extract `errors` dropped | `TestConformance/calls/extract_*`, `TestCanaryEchoed` |
+| `x-api-key` header not set | almost every test (`rig.check`), `TestConformance`, `FuzzResponses*` seeds, `TestParallelOverMCP` |
+| Key not redacted from response text | `TestConformance/canary`, `/errors/400`, `/errors/422`, `TestCanaryEchoed`, `TestParallelOverMCP`, `FuzzDecode*` seeds |
 | Retry on 5xx | `TestUpstreamErrors/500`, `/502`, `/503` |
-| 429 retried twice | `TestRateLimit/second_429_fails` |
+| 429 retried twice | `TestConformance/errors/429_retry_after`, `TestRateLimit/second_429_fails` |
 | Wait on Retry-After ignores `ctx` | `TestRateLimit/cancel_stops_the_wait` |
 | Truncation cuts bytes, splitting a rune | `TestTruncation`, `TestUpstreamErrors/422_message_capped` |
-| `max_results` default 5 ignored (10 sent) | `TestSearch/search-defaults` |
-| Results not cut to `max_results` | `TestSearch/search-filters` |
+| `max_results` default 5 ignored (10 sent) | `TestConformance/calls/search_defaults` |
+| Results not cut to `max_results` | `TestConformance/calls/search_filters` |
 | Body limit check removed | `TestBodyLimit` |
-| `include_domains` dropped from `source_policy` | `TestSearch/search-filters` |
-| `full_content` setting ignored in the mapping | `TestExtract/extract-full`, `TestCanaryEchoed`, `TestTruncation` |
+| `include_domains` dropped from `source_policy` | `TestConformance/calls/search_filters` |
+| `full_content` setting ignored in the mapping | `TestConformance/calls/extract_full`, `TestCanaryEchoed`, `TestTruncation` |
 | `mode` setting ignored (always `fast`) | `TestModeChoice` |
-| `location` dropped | `TestSearch/search-filters` |
+| `location` dropped | `TestConformance/calls/search_filters` |
 | 401/403 not reported as key rejection | `TestUpstreamErrors/401`, `/403` |
-| `extra_queries` limit off by one | `TestInputValidation` |
-| `urls` limit off by one | `TestInputValidation` |
-| Provider message not capped at 300 | `TestUpstreamErrors/422_message_capped` |
+| `extra_queries` limit off by one | `TestConformance/invalid/five_extra_queries`, `TestInputValidation` |
+| `urls` limit off by one | `TestConformance/invalid/eleven_urls`, `TestInputValidation` |
+| Per-attempt `timeout` setting ignored | `TestAttemptTimeout` |
+| Provider message not capped at 300 | `TestConformance/errors/400`, `/422`, `TestUpstreamErrors/422_message_capped` |
 
 ### Gates
 

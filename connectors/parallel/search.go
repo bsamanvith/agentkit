@@ -45,20 +45,18 @@ type searchInputWithMode struct {
 	Mode string `json:"mode,omitempty" jsonschema:"Search mode: turbo (fastest), fast (default), basic, or advanced (highest quality, slower)."`
 }
 
-// searchOutput is E10's shared search shape. Parallel gives no answer, author
-// or score; the fields are kept so every search connector declares one shape.
+// searchOutput is E10's shared search shape, without the optional fields
+// Parallel never fills (answer, author, score): the schema declares only what
+// a result can carry.
 type searchOutput struct {
 	Results []searchResult `json:"results"`
-	Answer  string         `json:"answer,omitempty"`
 }
 
 type searchResult struct {
-	Title         string  `json:"title"`
-	URL           string  `json:"url"`
-	PublishedDate string  `json:"published_date,omitempty"`
-	Author        string  `json:"author,omitempty"`
-	Score         float64 `json:"score,omitempty"`
-	Content       string  `json:"content"`
+	Title         string `json:"title"`
+	URL           string `json:"url"`
+	PublishedDate string `json:"published_date,omitempty"`
+	Content       string `json:"content"`
 }
 
 // Wire types for POST /v1/search (public-openapi.json, V1SearchRequest).

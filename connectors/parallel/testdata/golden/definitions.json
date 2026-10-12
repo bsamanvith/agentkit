@@ -77,12 +77,6 @@
               "published_date": {
                 "type": "string"
               },
-              "author": {
-                "type": "string"
-              },
-              "score": {
-                "type": "number"
-              },
               "content": {
                 "type": "string"
               }
@@ -94,9 +88,6 @@
             ],
             "additionalProperties": false
           }
-        },
-        "answer": {
-          "type": "string"
         }
       },
       "required": [

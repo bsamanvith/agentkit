@@ -57,9 +57,7 @@ func ModuleRules() Rules {
 		},
 		// Connectors that do not yet run the connector test kit
 		// (docs/CONNECTORS.md). Each entry goes when its connector adopts it.
-		PendingConnectors: map[string]string{
-			"connectors/parallel": "T048: no RunConnector or FuzzResponses yet",
-		},
+		PendingConnectors: map[string]string{},
 		Banned: []string{
 			"github.com/golang/mock",
 			"go.uber.org/mock",

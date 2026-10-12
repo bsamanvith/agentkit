@@ -62,6 +62,7 @@ const (
 	BugAcceptPlainHTTP       Bug = "accept_plain_http"         // settings/plain_http_base_url
 	BugDeadOutputField       Bug = "dead_output_field"         // schema_honesty
 	BugUndeclaredOutputField Bug = "undeclared_output_field"   // schema_honesty
+	BugLogKeyOnRetry         Bug = "log_key_on_retry"          // the after-every-subtest log check
 )
 
 // Bugs lists every planted bug.
@@ -70,6 +71,7 @@ var Bugs = []Bug{
 	BugNoOutputSchema, BugRequestOnInvalid, BugUnboundedBody, BugIgnoreCtx, BugKeyInQuery,
 	BugRequestInBuild, BugRetryIgnoresAfter, Bug400AsFailure, BugIgnoreBaseURLSetting,
 	BugKeylessNoMarker, BugAcceptPlainHTTP, BugDeadOutputField, BugUndeclaredOutputField,
+	BugLogKeyOnRetry,
 }
 
 // Option configures [New].
@@ -377,6 +379,9 @@ func (c *client) call(ctx context.Context, method, path string, query url.Values
 			}
 			if c.f.bug == BugRetryIgnoresAfter {
 				continue
+			}
+			if c.f.bug == BugLogKeyOnRetry {
+				c.f.log.Debug("toy: rate limited, retrying", "key", c.key)
 			}
 			select {
 			case <-c.f.clock.After(wait):

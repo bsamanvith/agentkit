@@ -163,6 +163,8 @@ var plantedBugs = map[toy.Bug]string{
 	toy.BugAcceptPlainHTTP:       "TestToyConnector/settings/plain_http_base_url",
 	toy.BugDeadOutputField:       "TestToyConnector/schema_honesty/dead_fields",
 	toy.BugUndeclaredOutputField: "TestToyConnector/schema_honesty/undeclared",
+	// Only on a retry, so only the log check run after every subtest sees it.
+	toy.BugLogKeyOnRetry: "TestToyConnector/errors/429_then_200",
 }
 
 // TestPlantedBugs: each planted bug makes the suite fail, on the check meant

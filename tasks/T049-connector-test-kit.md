@@ -2,7 +2,7 @@
 id: T049
 title: "toolsettest: the connector test kit (recorded upstreams, conformance suite, honest fakes)"
 epic: E10
-status: in-progress
+status: done
 depends_on: [T026, T018]
 ---
 
@@ -168,26 +168,28 @@ Checks the suite runs on every connector:
 
 ## Acceptance criteria
 
-- [ ] **Toy connector:** passes `RunConnector`; `toolsettest.Replay` and `NewFake` work for it in an agent-level test (a `llmtest.Fake` model calls the toy tools and gets cassette or scripted results).
-- [ ] **Planted bugs:** every variant listed under "Self-test" makes the suite fail, each on the check meant to catch it.
-- [ ] **Upstream matching:** JSON-equal bodies match regardless of key order; a mismatch fails with a readable diff; every request is recorded.
-- [ ] **Recording** (`-tags live`, against a local stand-in server in the test, so no key is needed):
-  - writes cassettes that replay to the same output;
-  - drops all request headers and all but the allowed response headers;
-  - refuses to write when the key appears in a body.
-- [ ] **Fake input check:** a fake rejects input invalid against the real schema with `ErrInvalidInput`.
-- [ ] **Fake output check:** a fake fails the test when a script returns output invalid against the real output schema.
-- [ ] **Unscripted call:** a call with no script fails the test.
-- [ ] **`FakeFactory` in a catalog:** substituted for a type in a `toolset.Catalog` and built from a config, it serves over MCP and to the agent, with no network.
-- [ ] **Fake runs the suite:** a fake passes the applicable parts of the suite.
-- [ ] **Archtest rule:** fails for a `connectors/x` package with no `RunConnector` test (fixture tree, like the existing archtest rule tests).
-- [ ] **Docs:** `docs/CONNECTORS.md` and the `write-tests` skill section exist; their example code compiles (an `Example` test).
-- [ ] Check IDs and skips: a skipped check is reported with its reason; an unknown check ID in `Skip` fails.
-- [ ] Schema honesty: a toy variant with a declared output field that never appears in cassette outputs, or with an undeclared output field, fails the suite.
-- [ ] Secret scan: a cassette containing a key-shaped string or `Set-Cookie` fails the repo-wide scan, and recording refuses a key in the path or query.
-- [ ] Drift check (`-tags live`, against a local stand-in that changed one field's type and removed one field): reports both; an unchanged stand-in reports no drift.
-- [ ] Synthetic cassettes are listed by the suite; recording drops an exchange whose mapped output fails the output schema.
-- [ ] **Mutation list** recorded (the planted-bug variants plus at least: matcher ignoring the body, canary check skipping logs, hermetic client allowing other hosts, fake skipping output validation).
+Tests are in `pkg/toolset/toolsettest` unless named otherwise.
+
+- [x] **Toy connector:** passes `RunConnector` (`TestToyConnector`, `TestToyConnectorAuto`); `Replay` and `NewFake` serve a `llmtest.Fake` model in the harness (`TestAgentWithReplayedConnector`, `TestAgentWithFake`).
+- [x] **Planted bugs:** each of the 19 toy bugs fails the suite on the check meant to catch it, in a subprocess (`TestPlantedBugs`), and every bug has a check (`TestEveryPlantedBugIsChecked`).
+- [x] **Upstream matching:** `TestUpstreamMatchesJSONBodies` (key order, recorded requests), `TestUpstreamMismatchDiff`, `TestUpstreamRequiresTheHermeticClient`, `TestHermeticClientRefusesOtherHosts`.
+- [x] **Recording**, against a local stand-in, with no key and no tag (the tests run in `make check`, not only under `-tags live`):
+  - replays to the same output and writes the committed cassettes byte for byte: `TestRecordWritesReplayableCassettes`;
+  - drops request headers and all but the allowed response headers (`Set-Cookie`, `X-Account-Id`, `X-Request-Id`, `Date`): the same test;
+  - refuses the key in a body, the path or the query: `TestRecordRefusesTheKey`.
+- [x] **Fake input check:** `TestFakeChecksInput`.
+- [x] **Fake output check:** `TestFakeChecksOutput`.
+- [x] **Unscripted call:** `TestFakeUnscriptedCall` (plus `TestFakeSequenceAndCalls` for `Sequence` and `Calls()`).
+- [x] **`FakeFactory` in a catalog:** `TestFakeFactoryInACatalog` (built from config, served over MCP, called by the agent); `cmd/agentkit` `TestRunWithAFakeCatalog` and `TestServeMCPWithAFakeCatalog` through the new `cli.catalog` seam.
+- [x] **Fake runs the suite:** `TestFakeRunsTheSuite` (`RunFake`).
+- [x] **Archtest rule:** `internal/archtest` `TestConnectorRules` (fixture tree: no suite, no fuzz target, no cassettes, a lookalike kit, a stale pending entry); `TestRepository` runs it on the repository.
+- [x] **Docs:** `docs/CONNECTORS.md`, ENGINEERING §2.8 and the `write-tests` "Connectors" section; the example code compiles as `Example*` tests in `example_test.go`; `TestChecksTable` keeps the doc's check table in step with the code.
+- [x] Check IDs and skips: `TestSkipsAreReported` (every skipped and every opt-in check is reported, with the reason), `TestSkips` (unknown ID, mandatory ID, no reason), `TestEnable`.
+- [x] Schema honesty: `TestPlantedBugs/dead_output_field` and `/undeclared_output_field`; `TestCallSettings` (a field only a call's own settings reach).
+- [x] Secret scan: `TestSecretScanFindsSecrets` (key shapes, high-entropy credential, `Set-Cookie`), `TestNoSecretsInCassettes` (the repository), `TestRecordRefusesSecretShapes`, `TestRecordRefusesTheKey/{path,query}`, `TestRecordScrub`.
+- [x] Drift: `TestDriftReportsChangedFields` (a retyped and a removed field), `TestDriftUnchanged`, `TestDriftWarnsOldCassettes` (synthetic, undated, over 90 days), `TestShapeDiff`.
+- [x] Synthetic and validation on record: `TestSyntheticCassettesAreListed`, `TestRecordDropsOutputFailingSchema`.
+- [x] **Mutation list** recorded in Notes, no survivors.
 
 ## Notes
 
@@ -195,3 +197,110 @@ Checks the suite runs on every connector:
   - error classes through `errors.Is`, never message text;
   - the single exception is "the missing-key error names the variable", which is the behavior asked for.
 - `KeyOptional` covers Tavily's `auto` mode: without the key the suite expects the keyless marker header and no key header.
+
+### As built
+
+```go
+type Connector struct {
+    New           func(env Env) toolset.Factory
+    Settings      json.RawMessage
+    KeyEnv        string
+    KeyOptional   bool
+    KeylessMarker http.Header
+    Cassettes     string             // default testdata/cassettes
+    Calls         []Call
+    Invalid       []Call
+    ErrorBody     func(message string) []byte
+    MaxBodyBytes  int64              // default DefaultMaxBodyBytes (8 MiB)
+    Skip          map[CheckID]string // opt-out checks, each with a reason
+    Enable        []CheckID          // opt-in checks
+}
+type Call struct {
+    Name, Tool string
+    Input      json.RawMessage
+    Cassettes  []string
+    Settings   json.RawMessage // merged over Connector.Settings for this call
+}
+type Recording struct {
+    BaseURL   string
+    LookupEnv func(string) (string, bool)
+    Client    *http.Client
+    Dir       string
+    Scrub     func(body []byte) []byte
+}
+
+func RunConnector(t *testing.T, c Connector)
+func RunFake(t *testing.T, c Connector)
+func FuzzResponses(f *testing.F, c Connector, toolName string)
+func Record(tb testing.TB, c Connector, rec Recording)
+func Drift(tb testing.TB, c Connector, rec Recording)
+func SkipUnlessRecording(tb testing.TB)
+func Replay(tb testing.TB, c Connector) tool.Registry
+func Definitions(tb testing.TB, newFactory func(Env) toolset.Factory, settings json.RawMessage) []tool.Definition
+func NewFake(tb testing.TB, defs []tool.Definition, scripts ...Script) *Fake
+func FakeFactory(tb testing.TB, typ string, defs []tool.Definition, scripts ...Script) *FakeToolset
+// Scripts: Output, OutputFunc, Error, Golden, Sequence. Upstream: NewUpstream, Script, Requests, Client, URL.
+```
+
+Check IDs and stages are in `checkid.go` and the table in `docs/CONNECTORS.md`:
+- **Mandatory:** `definitions`, `settings.literal_api_key`, `settings.plain_http_base_url`, `calls`, `keyless`, `invalid`, `canary`, `hermetic`.
+- **Opt-out:** `settings.unknown_field`, `settings.missing_key`, `settings.base_url`, the `errors.*` matrix, `schema_honesty.undeclared`, `mcp`, `concurrency`.
+- **Opt-in:** `schema_honesty.dead_fields`. It failed Tavily on `answer` (filled only under `include_answer`) and `results[].author`, so it rolls in. Exa enables it already.
+
+Archtest:
+- `CheckConnectors` and `Rules.PendingConnectors` (exemptions, each with a reason, that fail once the connector passes).
+- `connectors/parallel` is pending. Exa removed its entry when it adopted the kit.
+
+### Changes during the task
+
+- **Per-call settings** (planner's decision): `Call.Settings` was added. It is merged over the connector's settings rather than replacing them, so a call adding one field keeps `auth: auto` and stays keyless under `KeyOptional`.
+- **OpenAPI validation** of cassettes is T051, not here.
+- **The upstream is served in process.**
+  - Every rig used to dial its `httptest` server, and every fuzz iteration left loopback ports in TIME_WAIT.
+  - Measured on 5 s of `FuzzToySearchResponses`: before, +14,860 TIME_WAIT; after, +0.
+  - Parallel fuzz runs from several sessions had exhausted the machine's ephemeral ports ("can't assign requested address" in every networked test).
+  - The hermetic client now runs the upstream's handler in process. The listener stays, both for the URL and to catch a connector that bypasses the client. The context, hang and body-limit semantics are unchanged (`TestPlantedBugs`).
+
+### Mutation list
+
+Each mutation was planted, the tests run, and the code restored. All are caught:
+
+| Mutation | Caught by |
+|---|---|
+| the 19 planted toy bugs | `TestPlantedBugs/<bug>`, each on its check |
+| the matcher ignores the request body | `TestToyConnector/calls`, `TestRecordWritesReplayableCassettes` |
+| the after-every-subtest canary check skips logs | `TestPlantedBugs/log_key_on_retry` (a bug planted for this: the key is logged only on a 429 retry, which the `canary` subtest never sees) |
+| the hermetic client allows other hosts | `TestHermeticClientRefusesOtherHosts`, `TestToyConnector/hermetic` |
+| the fake skips output validation | `TestFakeChecksOutput` |
+| the fake skips input validation | `TestFakeChecksInput`, `TestFakeRunsTheSuite/invalid`, `TestAgentWithFake` |
+| Record misses the key in the query | `TestRecordRefusesTheKey/query` |
+| the secret scan misses `Set-Cookie` | `TestSecretScanFindsSecrets` |
+| drift misses a retyped field | `TestDriftReportsChangedFields`, `TestShapeDiff` |
+| `Skip` accepts a mandatory check | `TestSkips` |
+| an opt-in check runs without `Enable` | `TestSkipsAreReported` |
+| honesty ignores undeclared fields | `TestPlantedBugs/undeclared_output_field` |
+| `Call.Settings` is ignored | `TestToyConnector/calls`, `TestRecordWritesReplayableCassettes` |
+| synthetic cassettes are not reported | `TestSyntheticCassettesAreListed` |
+| archtest matches the kit by path suffix (a lookalike passes) | `TestConnectorRules` |
+| archtest skips the cassette check | `TestConnectorRules` |
+
+### For connector authors
+
+1. **Write `conformance_test.go`.** It holds `connector()`, `TestConformance` calling `toolsettest.RunConnector`, and one `FuzzResponses` target per tool. Wire `Env` into your options. `docs/CONNECTORS.md` has the template.
+2. **Record cassettes** with `make record-cassettes`, from a live-tagged `TestRecordCassettes` calling `toolsettest.Record(t, connector(), toolsettest.Recording{...})`.
+   - Add `Scrub` for account IDs and emails in responses.
+   - Mark cassettes you didn't record `"synthetic": true`. The suite lists them, and the connector stays `review` until they are re-recorded.
+3. **Add a `TestDrift`** calling `toolsettest.Drift` in `live_test.go`.
+4. **Skip only with a reason** in `Connector.Skip`, and add the skip to the table in `docs/CONNECTORS.md`.
+5. **Enable `schema_honesty.dead_fields`.** If a field only appears under a setting, add a `Call` with its own `Settings` and record its cassette.
+6. **Drop your `PendingConnectors` entry** in `internal/archtest/rules.go` in the same commit.
+7. **A bug review finds that could hit any connector** becomes a suite check plus a planted toy bug, not a test in your connector.
+
+### For T044 (credential slots)
+
+- The suite owns key handling: `settings.literal_api_key`, `settings.missing_key`, `canary`, and the per-request rule "the key in exactly one header, nowhere else" in `rig.checkRequest`.
+  - When keys come from a credential source instead of `api_key_env`, extend `Env` with the source (as `LookupEnv` is now).
+  - Add a mandatory `credentials.*` check that the connector reads the key only through it, at call time.
+- Keep the canary approach: the suite hands out a unique key per run and fails on it anywhere it shouldn't be.
+- `Record` refuses the key in the path, query, bodies and headers. It reads the key through `Recording.LookupEnv`, which becomes the credential source too.
+

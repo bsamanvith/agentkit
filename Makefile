@@ -124,8 +124,9 @@ DATE ?= $(shell git log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ 2
 IMAGE ?= $(BIN)
 # Budget for an image's size: its files, uncompressed (the flattened
 # filesystem, the same whatever docker's image store). agentkit measured
-# 17.7 MB in T005 (5.9 MB compressed); PLAN.md targets 10-20 MB.
-IMAGE_BUDGET_MB ?= 20
+# 17.7 MB in T005 (5.9 MB compressed). Raised from 20 to 30 when the store
+# drivers joined the one default binary (SQLite: about 21 MB, then pgx; E18).
+IMAGE_BUDGET_MB ?= 30
 # Binaries that get an image; fakellm joins when cmd/fakellm exists (T004).
 IMAGE_BINS := $(notdir $(wildcard $(addprefix cmd/,agentkit fakellm)))
 # An extra CA for the module download, behind a TLS-intercepting proxy.

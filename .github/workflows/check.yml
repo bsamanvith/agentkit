@@ -32,6 +32,17 @@ jobs:
       - name: make fuzz
         run: make fuzz FUZZTIME=10s
 
+  # The image builds and stays within IMAGE_BUDGET_MB. A unit test can't see
+  # a .dockerignore that leaves out a package cmd/ imports; this can.
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: make image
+        run: make image BIN=agentkit
+      - name: make image-size
+        run: make image-size BIN=agentkit
+
   # The web workspace (web/): lint, typecheck, unit tests, audit, and a
   # rebuild that must match the committed pkg/web/dist; then the browser
   # smoke test against agentkit serve, in the runner's Google Chrome (no

@@ -1,6 +1,6 @@
 # Plan status
 
-> Maintained by the planner ([docs/WORKFLOW.md](../docs/WORKFLOW.md)). Updated 2026-10-12 at `main` `33c30da` plus planner commits, CI green. Task files are the source of truth for each task; this page is the overview.
+> Maintained by the planner ([docs/WORKFLOW.md](../docs/WORKFLOW.md)). Updated 2026-10-12 at `main` `e80b204` plus planner commits, CI green. Task files are the source of truth for each task; this page is the overview.
 
 ## Milestones
 
@@ -10,19 +10,19 @@
 | M1 `pkg/tool` | [E03](E03-tool-core-and-mcp.md) | Done |
 | M2 Toolsets from config; one MCP server, one path per toolset | [E03](E03-tool-core-and-mcp.md) | Done |
 | M3 `llm`, Anthropic adapter, harness, `flow`, `agentstep`, `agentkit run` | [E04](E04-llm-harness-flow.md) | Done |
-| M4 Store, runner, compaction | [E05](E05-store-runner.md) | In progress: `pkg/store` (interfaces, memory store, suites, run lifecycle) and the SQLite store (T029) done; next the runner (T030). Postgres for servers is T088 (E18) |
+| M4 Store, runner, compaction | [E05](E05-store-runner.md) | In progress: `pkg/store` (interfaces, memory store, suites, run lifecycle), the SQLite store (T029) and the runner (T030) done; next T037 (the API on the runner, store chosen by `AGENTKIT_STORE`) and compaction (T031). Postgres for servers is T088 (E18) |
 | M5 Agent API, `agentkit serve`, image, Compose, smoke tests | [E09](E09-agent-api.md), [E01](E01-foundations.md) | In progress: `agentkit serve`, agent API v0 and the image done; **deployable** |
 | M6 Remote tools over ConnectRPC | E06 (to plan) | Planned |
 | Credentials, auth, tenancy at the edge | [E07](E07-auth-credentials.md) | **In progress**: T039 done (`pkg/auth`, `f08e82e`); T040, T041 and T042 ready. Needed before any public deployment: `/mcp/` has no auth until T040 |
 | First connectors: Tavily, Exa, Parallel (search, extract) | [E10](E10-search-connectors.md) | **Tavily done** (live end to end with real Claude passed); Exa and Parallel on `main`, in review until keys exist; no auth work needed (Tavily keyless or keyed; Exa and Parallel keyed from env) |
-| Clients: admin console, CLI and headless, and the APIs behind them | [E11](E11-clients.md) | **In progress**: T053 (`pkg/agentclient`), T054 (`agentkit chat`, `agentkit ask --json`), T062 (agents, conversations, catalog API) and T070 (console design, owner-approved) done; T078 (web workspace), T063 (agents over MCP), T061 (login), T055/T064 (console) next. UI plan: [docs/UI.md](../docs/UI.md) with a clickable mockup |
+| Clients: admin console, CLI and headless, and the APIs behind them | [E11](E11-clients.md) | **In progress**: T053 (`pkg/agentclient`), T054 (`agentkit chat`, `agentkit ask --json`), T062 (agents, conversations, catalog API) T070 (console design, owner-approved), T078 (web workspace, embedded console shell) and T092 (`POST /v1/conversations`) done; T055 (console chat), T063 (agents over MCP), T061 (login), T055/T064 (console) next. UI plan: [docs/UI.md](../docs/UI.md) with a clickable mockup |
 | Skills and memory (context store; search by keyword or embeddings, opt-in) | [E12](E12-skills-memory.md) | **Planned** (T057–T060); T057 and T058 can start now |
 | Agent protocols: A2UI (agent-driven UI), A2A (agent to agent), AG-UI, MCP Apps | [E13](E13-agent-protocols.md) | **Planned** (T065–T069); after the console basics and the agents API |
-| Tasks (background agents) and agent-to-agent messaging | [E14](E14-background-agents-messaging.md) | **Planned** (T071–T074); needs the runner (T030, start now) and the stream API (T090, E18); the SQLite store (T029) is done |
+| Tasks (background agents) and agent-to-agent messaging | [E14](E14-background-agents-messaging.md) | **Planned** (T071–T074); needs the stream API (T090, E18); the runner (T030) and SQLite store (T029) are done |
 | Agent definitions as versioned data (agents, skills, toolsets) | [E15](E15-agent-definitions.md) | **Planned** (T075; T076, T077 to plan); T029 and T062 are done, so T075 can start |
 | Runtimes and jobs: temporary environments, exported harness images, results outside chat | [E16](E16-runtimes-jobs.md) | **Shaped**, tasks to plan after the console's first version |
 | Tool safety and control: tool kinds and risk, policies, interrupts and approvals, deferred loading, steering | [E17](E17-tool-safety-control.md) | **Planned** (T082–T086); T082 can start now |
-| Streaming and the server backend: SSE + HTTP commands (WebSocket later), Postgres + Redis | [E18](E18-streaming-backend.md) | **Planned** (T088–T091); T088 and T089 can start now |
+| Streaming and the server backend: SSE + HTTP commands (WebSocket later), Postgres + Redis | [E18](E18-streaming-backend.md) | **Planned** (T088–T091, T093); T088 and T089 can start now |
 | More model providers | [E08](E08-model-providers.md) | Later |
 | Agent skills | [E02](E02-agent-skills.md) | In progress: `write-tests` exists and was dry-run on `pkg/flow` |
 
@@ -41,7 +41,7 @@ The same checks are one command on a laptop: `scripts/try-agent.sh` ([docs/QUICK
 
 ## Done
 
-T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentkit healthcheck` · T017 `pkg/tool` · T018 MCP server · T019 `pkg/clock` · T020 `pkg/llm` · T021 Anthropic adapter · T022 harness · T023 `flow` · T024 `agentkit run`, `agentstep` · T026 `pkg/toolset` · T027 `pkg/tenancy` · T028 `pkg/store` · T038 `store.Admin` · T046 Tavily connector · T049 connector test kit · T051 cassette OpenAPI validation · T052 kit hardening · T053 `pkg/agentclient` · T032 flow step-tree check · T036 agent API v0 · T029 SQLite store · T054 `agentkit chat` and `ask` · T062 agents, conversations and catalog API · T070 console UX design (owner-approved)
+T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentkit healthcheck` · T017 `pkg/tool` · T018 MCP server · T019 `pkg/clock` · T020 `pkg/llm` · T021 Anthropic adapter · T022 harness · T023 `flow` · T024 `agentkit run`, `agentstep` · T026 `pkg/toolset` · T027 `pkg/tenancy` · T028 `pkg/store` · T038 `store.Admin` · T046 Tavily connector · T049 connector test kit · T051 cassette OpenAPI validation · T052 kit hardening · T053 `pkg/agentclient` · T032 flow step-tree check · T036 agent API v0 · T029 SQLite store · T054 `agentkit chat` and `ask` · T062 agents, conversations and catalog API · T070 console UX design (owner-approved) · T030 `pkg/runner` · T078 web workspace · T092 `POST /v1/conversations`
 
 ## Running or waiting
 
@@ -56,17 +56,17 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 | [T039](T039-auth-principals-middleware.md) | `pkg/auth`: principals, API keys, edge middleware | **Done** (`f08e82e`, CI green): T040, T041 and T061 can start; read its "For T040", "For T041" and "For T061" Notes first |
 | [T040](T040-serve-auth-wiring.md), [T041](T041-auth-jwt-oidc.md) | `serve` behind auth; JWT/OIDC | **Ready** (T039 done) |
 | [T063](T063-agents-over-mcp.md) | Agents over MCP for Claude Code | **Ready** (T062 done) |
-| [T055](T055-web-client.md), [T061](T061-local-users-login.md), [T064](T064-console-admin-pages.md) | Console shell and chat; local users and login; admin pages | T055 after T078 (T062 and T070 done); T061 ready; T064 after T055 |
+| [T055](T055-web-client.md), [T061](T061-local-users-login.md), [T064](T064-console-admin-pages.md) | Console shell and chat; local users and login; admin pages | **T055 ready** (T078, T062, T070 done); T061 ready; T064 after T055 |
 | [T057](T057-skills.md), [T058](T058-memory-context-store.md) | Skills (Agent Skills format, progressive disclosure); memory context store (Claude memory-tool shape) | Ready; new packages, parallel with everything |
 | [T056](T056-test-speed.md) | `make test` back under 30 s (52 s now) | Ready; small |
 | [T050](T050-connector-tool-evals.md) | Tool-use evals: real Claude with faked connectors | **Later** (owner): after the API is deployed and the clients exist; runs on `agentkit ask --json` |
 | [T047](T047-connector-exa.md) | `connectors/exa`: search and extract | **Review**: on `main`, on the kit (`2f7b951`, `049a7cc`); waits for `EXA_API_KEY` (live test, re-recording synthetic cassettes) |
 | [T048](T048-connector-parallel.md) | `connectors/parallel`: search and extract | **Review**: on `main`, on the kit (`baf4248`); waits for `PARALLEL_API_KEY` (live test, re-recording synthetic cassettes) |
 | [T042](T042-credentials-core.md) | `pkg/credentials`: secrets, sealer, vault, memory backend | Starts E07's credentials track; new package only, parallel with everything |
-| [T030](T030-runner.md) | Runner: entries, cache, leases, recovery, retry, approvals, cancel | **Start now**: background agents (E14) are built on it |
-| [T088](T088-store-postgres.md) | Postgres store (pgx v5, migrations) and the `EventLog` interface, suite on memory, SQLite and Postgres | **Start now** (E18): the server backend; T090 and background tasks need the event log |
+| [T037](T037-agent-api-v1.md) | Agent API v1 on the runner; store by `AGENTKIT_STORE` (memory, SQLite, then Postgres) | **Start now** (T030 done): makes `serve` persistent |
+| [T031](T031-compaction.md) | Compaction | **Ready** (T030 done) |
+| [T088](T088-store-postgres.md) | Postgres store (pgx v5, migrations) and the `EventLog` interface, suite on memory, SQLite and Postgres | **Start now** (E18): first closes two `storetest` gaps T029 found; the server backend; T090 and background tasks need the event log |
 | [T089](T089-event-bus.md) | `pkg/bus`: memory and Redis Streams backends, resumable subscribe, conformance suite | **Start now** (E18): new package, parallel with everything |
-| [T078](T078-web-workspace.md) | Web workspace: React + TS + shadcn/ui, `ui` / `agent-ui` / `apps/console`, embedding, its own CI job | **Start now** (owner: console first); T055 needs it |
 | [T087](T087-console-ux-design-2.md) | Console UX design part 2: skills, agent builder, tool policies, interrupts and approvals, tasks with steering; mockup v4 | **Ready** (owner approved v3) |
 | [T082](T082-tool-metadata.md) | Tool metadata: kind, risk, interrupts, approval, tags, display; MCP annotations | **Ready**; small, unblocks E17 |
 | [T006](T006-compose-and-dev-script.md) | Compose topologies and `scripts/dev.sh` | Image exists; repeatable local runs |
@@ -79,16 +79,16 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 
 | Task | Waits for |
 |---|---|
-| [T031](T031-compaction.md) Compaction | T030 |
-| [T037](T037-agent-api-v1.md) Agent API v1 on the runner | T030 |
 | [T043](T043-credentials-backends.md) credential backends, [T044](T044-credentials-in-tools.md) credentials in tools | T042 |
 | [T090](T090-stream-api.md) Stream API across replicas, commands to the lease holder | T088, T089, T030 |
 | [T091](T091-websocket-binding.md) WebSocket binding | T090 |
+| [T093](T093-postgres-rls.md) Postgres row-level security by tenant | T088 |
 | [T045](T045-connect-accounts.md) Connecting accounts (OAuth2 + PKCE) | T040, T043, T044 |
 | [T004](T004-fakellm.md) `fakellm`, [T007](T007-e2e-smoke-suite.md) smoke suite, [T008](T008-ci-pipeline.md) full CI | T006 |
 
 ## Waiting on the owner
 
+1. **Managed Postgres** for deployments (RDS, Cloud SQL, Neon, ...): needed before the first deploy with more than one replica (E18).
 1. **First embedding provider** for semantic memory (T060): Voyage AI, OpenAI, or a local model through the OpenAI-compatible endpoint.
 2. **`EXA_API_KEY` and `PARALLEL_API_KEY` in Claude sessions** (like `ANTHROPIC_KEY`) for T047's and T048's live tests; optional `TAVILY_API_KEY` (Tavily's live tests run keyless without it).
 3. **Delete the `review/t022-base` branch**, and the merged `claude/*` session branches including `claude/t013-flow-tests` and `claude/festive-napier-f0b111` (all their work is on `main`).
@@ -130,3 +130,4 @@ Each is recorded in the linked file; this list is for orientation.
 - Connector testing (2026-10-12): one kit (T049) with cassettes, a conformance suite with check IDs and staged rollout, honest fakes, drift checks, secret scans, `synthetic` fixtures kept in review; a separate eval tier (T050) for model behavior. Informed by Airbyte, LangChain, Meltano and Nango practice ([E10](E10-search-connectors.md)).
 - E07 (2026-10-12): one auth middleware for `/v1` and `/mcp/`; API keys (hashed) then OIDC/JWT, we are a resource server only; hidden toolsets answer 404; no open MCP off loopback; credentials sealed with AES-GCM bound to tenant/user/slot, tools get a source for one slot, no token passthrough ([E07](E07-auth-credentials.md)).
 - E04 closed; T025 moved to E08. `fakellm` kept, extracted from the replay server ([T004](T004-fakellm.md)).
+- 2026-10-12 (planner, T029 handoff): `IMAGE_BUDGET_MB` 20 → 30 with every store driver in the one default binary (no build tags); CI builds the image and checks its size on every push (`image` job), which would have caught the `.dockerignore` break fixed in `0f22246`. The store contract rejects times outside 1678–2262 in every backend; T088 adds T029's two `storetest` gaps before the Postgres backend. Migrations run at startup by default, `agentkit migrate` for job-style deploys. Postgres row-level security is T093.

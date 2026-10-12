@@ -25,12 +25,17 @@ Owner request (2026-10-12): plan how clients and agents talk **both ways** in re
 | Other Redis uses | Rate limits (per tenant, agent, tool), short-lived caches (published agent definitions, tool catalogs), the user notification stream's live tail. Never the only copy of anything. |
 | Without Redis | `agentkit serve` alone (local, tests, the exported image) uses an **in-process bus** with the same interface. A single replica needs no Redis; several replicas do. Config: `bus: memory|redis`. |
 | Alternatives considered | Postgres `LISTEN/NOTIFY`: no replay, an 8 KB payload limit, one connection per listener; kept as a possible signal-only option. NATS JetStream: excellent, but the owner chose Redis. Kafka: too heavy for this. |
+| Tables before and after Postgres (T029 handoff) | Until T088 lands, a new table ships on SQLite and T088 ports it. Once T088 is on `main`, **every new table ships on every SQL backend in the same task**, under the shared `storetest` suite. |
+| Migrations | At startup under an advisory lock by default; `agentkit migrate` runs them as a job; `AGENTKIT_STORE_MIGRATE=off` refuses an old schema instead of migrating (T088). |
+| When Postgres is required | Before the first deploy with more than one replica: SQLite is single-node. The managed Postgres (RDS, Cloud SQL, Neon, ...) is the owner's deploy decision. |
+| Image size | All store drivers (SQLite, pgx) are in the one default binary; no build tags. `IMAGE_BUDGET_MB` went from 20 to 30. CI builds the image and checks the budget on every push. |
 
 ## Tasks
 
 - [ ] [T088](T088-store-postgres.md) `pkg/store/postgres`: the server store, the same suites as SQLite, plus the durable event log table
 - [ ] [T089](T089-event-bus.md) `pkg/bus`: event bus interface, in-process and Redis Streams backends, conformance suite
 - [ ] [T090](T090-stream-api.md) Streaming API across replicas: resumable run streams (Postgres replay + Redis tail), the user notification stream, commands routed to the lease holder
+- [ ] [T093](T093-postgres-rls.md) Postgres row-level security by tenant (after T088)
 - [ ] [T091](T091-websocket-binding.md) WebSocket binding of the same messages (later)
 - T006 (Compose) gains Postgres and Redis services and an integration tier against them
 

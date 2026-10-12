@@ -14,7 +14,14 @@ Swap T036's in-memory runs for `pkg/runner` (T030), keeping the API, so runs sur
 
 ## Scope
 
-- Runs and conversations through the runner and the SQLite store (T029); tenant from the auth middleware (static token maps to one tenant until E07).
+- Runs and conversations go through the runner and a store chosen by config. The tenant comes from the auth middleware (the static token maps to one tenant until E07).
+- **Store by config:** `AGENTKIT_STORE` selects the backend:
+  - `memory` is the default, so the quickstart is unchanged;
+  - `sqlite:/path/agentkit.db` selects SQLite (T029);
+  - `postgres://…` selects Postgres (T088). Whichever of T037 and T088 lands second wires it.
+  - An unknown scheme fails at startup.
+  - Read T029's "For T037" and T030's notes first.
+- **Image size:** linking the SQLite driver takes the image from about 17.4 to 21 MB. The budget is now 30 MB (`IMAGE_BUDGET_MB`, planner 2026-10-12), with every driver in the one default binary and no build tags. Record the new size in the Notes.
 - New endpoints: `GET /v1/runs?conversation_id=&status=` (paged), `POST /v1/runs/{id}/resume`, `POST /v1/runs/{id}/decisions` (approve or reject a pending step), `POST /v1/runs/{id}/cancel`, `GET /v1/runs/{id}/events` (replay a run's stored events, then follow it live if still running).
 - `POST /v1/runs` on a conversation with an unfinished run → 409 with the run ID (`ErrRunUnfinished`).
 - The runner's recovery loop runs inside `agentkit serve`.
@@ -25,4 +32,5 @@ Swap T036's in-memory runs for `pkg/runner` (T030), keeping the API, so runs sur
 - [ ] The T036 acceptance tests pass unchanged against v1 (same API).
 - [ ] Kill the server mid-run (replay e2e, separate process): after restart the run is recovered and finishes; `GET /v1/runs/{id}/events` shows the whole run.
 - [ ] Approve and reject through the API on a flow with `Approve`; cancel; 409 on an unfinished conversation.
+- [ ] `AGENTKIT_STORE` selects memory or SQLite (and Postgres once T088 is on `main`); an unknown scheme fails startup; the T036 acceptance tests pass on each.
 - [ ] Mutation list recorded.

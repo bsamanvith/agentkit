@@ -3,7 +3,7 @@ id: T050
 title: "Tool-use evals: real Claude with faked connectors"
 epic: E10
 status: todo
-depends_on: [T049, T046]
+depends_on: [T049, T046, T054]
 ---
 
 # T050: tool-use evals
@@ -15,6 +15,8 @@ The kit (T049) proves a connector is correct. It cannot show whether a **model u
 Evals here use **real Claude with faked connectors**, built from T049's `NewFake` and cassette outputs. So they cost model tokens only, never connector credits, and they are deterministic on the tool side.
 
 ## Scope
+
+- **Later** (owner, 2026-10-12): after the API is deployed and the clients exist. Evals run through the headless client, `agentkit ask --json` (T054), against a running `agentkit serve` with faked connectors.
 
 - **Where:** `evals/` (a `//go:build eval` package), run by `make eval` (needs `ANTHROPIC_API_KEY` or `ANTHROPIC_KEY`). Never in CI, like live tests.
 - **Scenarios** (`evals/connectors/*.json`): each has a prompt, the toolsets offered (for example `tavily` + `exa` + `parallel`, with or without prefixes), scripted connector responses (from cassettes or golden files), and checks on the run:

@@ -47,3 +47,4 @@ T001 ─ T002 ─ (E03: T017 ─ T018) ─ T003 ─ T005 ─ T006 ─ T007 ─ T
 - E06 Tool protocol over ConnectRPC, remote registry, `split` topology (M6). *(to be planned)*
 - [E07](E07-auth-credentials.md) Credentials, auth and tenancy at the edge (planned 2026-10-12).
 - Later: MCP client and bridge, Postgres and tenancy, observability.
+- [ ] [T056](T056-test-speed.md) Test speed: `make test` back under 30 s (52 s on 2026-10-12)

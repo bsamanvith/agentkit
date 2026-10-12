@@ -15,6 +15,7 @@
 | M6 Remote tools over ConnectRPC | E06 (to plan) | Planned |
 | Credentials, auth, tenancy at the edge | [E07](E07-auth-credentials.md) | **Planned** (T039–T045); T039 and T042 ready. Needed before any public deployment: `/mcp/` has no auth today |
 | First connectors: Tavily, Exa, Parallel (search, extract) | [E10](E10-search-connectors.md) | **In review**: T046–T048 on `main` on the T049 kit (done); Exa and Parallel wait for keys; no auth work needed (Tavily keyless or keyed; Exa and Parallel keyed from env) |
+| Clients: web client, CLI and headless | [E11](E11-clients.md) | **Planned** (T053–T055); next after T052/T051. Web client served by `agentkit` itself (one image) |
 | More model providers | [E08](E08-model-providers.md) | Later |
 | Agent skills | [E02](E02-agent-skills.md) | In progress: `write-tests` exists and was dry-run on `pkg/flow` |
 
@@ -46,9 +47,12 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 | Task | What | Why now |
 |---|---|---|
 | [T049](T049-connector-test-kit.md) | `toolsettest`: cassettes, `RunConnector` suite, honest fakes | **Done** (`a5d47eb`, CI green): Upstream, RunConnector, fakes, check IDs with skip/opt-in, schema honesty, secret scans, `synthetic`, Drift, per-call Settings, archtest rule (every connector runs the kit) |
-| [T052](T052-connector-kit-hardening.md) | Kit hardening: 5 new staged checks, golden first run, fuzz speed | **Ready**; small |
-| [T051](T051-openapi-cassette-validation.md) | Validate cassettes against vendored OpenAPI specs | **Ready** (T049, T047, T048 on `main`) |
-| [T050](T050-connector-tool-evals.md) | Tool-use evals: real Claude with faked connectors | **Ready** (T049 done, Tavily on `main`); model tokens only |
+| [T052](T052-connector-kit-hardening.md) | Kit hardening: 5 new staged checks, golden first run, fuzz speed | **Now** (owner: before the clients); task card queued |
+| [T051](T051-openapi-cassette-validation.md) | Validate cassettes against vendored OpenAPI specs | **Now** (owner: before the clients); task card queued |
+| [T053](T053-agentclient.md) | `pkg/agentclient`: the Go client for `/v1` | **Now**, in parallel (independent files); unblocks T054, T055. Task card queued |
+| [T054](T054-cli-client.md), [T055](T055-web-client.md) | CLI (`chat`, headless `ask --json`) and web client | After T053 (T055's UI can start beside it) |
+| [T056](T056-test-speed.md) | `make test` back under 30 s (52 s now) | Ready; small |
+| [T050](T050-connector-tool-evals.md) | Tool-use evals: real Claude with faked connectors | **Later** (owner): after the API is deployed and the clients exist; runs on `agentkit ask --json` |
 | [T046](T046-connector-tavily.md) | `connectors/tavily`: search and extract, keyless or keyed | **Review**: on `main` (`d4a4e86`, `c0af020`, on the T049 suite); waiting for its handoff |
 | [T047](T047-connector-exa.md) | `connectors/exa`: search and extract | **Review**: on `main`, on the kit (`2f7b951`, `049a7cc`); waits for `EXA_API_KEY` (live test, re-recording synthetic cassettes) |
 | [T048](T048-connector-parallel.md) | `connectors/parallel`: search and extract | **Review**: on `main`, on the kit (`baf4248`); waits for `PARALLEL_API_KEY` (live test, re-recording synthetic cassettes) |
@@ -82,7 +86,9 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 
 - 2026-10-12: no Anthropic key in GitHub. Live tests run in Claude sessions (`ANTHROPIC_KEY`, mapped by `make test-live`); T034 is a perf report only.
 - 2026-10-12: first connectors are Tavily, Exa and Parallel, for search and extraction ([E10](E10-search-connectors.md)); they run in parallel with E07, keys from the environment for now.
-- 2026-10-12: the owner will say how to deploy; no deploy task until then.
+- 2026-10-12: the owner will say how to deploy; no deploy task until then. First target: the Docker image locally, used through the clients.
+- 2026-10-12: two clients, a web client for people and a CLI with a headless mode for our tests and evals (E11). Evals (T050) later, after deploy and clients. Order: T052, T051, then clients.
+- 2026-10-12: coverage-guided fuzzing runs in its own CI job, in parallel with `make check`; seed corpora stay in the unit tests.
 - 2026-10-12: the planner approves and lands the `pkg/flow` rejected-resume fix from the T013 dry run.
 
 ## Watch items

@@ -91,6 +91,11 @@ type Connector struct {
 	// MaxBodyBytes is the connector's response body limit (default
 	// [DefaultMaxBodyBytes]).
 	MaxBodyBytes int64
+	// Skip skips checks by ID, each with the reason, which every run reports
+	// (go test -v shows it). Some checks cannot be skipped; naming one, or
+	// an ID that is not a check, fails the suite. docs/CONNECTORS.md lists
+	// the checks and lists every skip in the repository.
+	Skip map[CheckID]string
 }
 
 var callName = regexp.MustCompile(`^[a-z0-9_]{1,64}$`)
@@ -125,6 +130,7 @@ func normalize(tb testing.TB, c Connector) Connector {
 			return b
 		}
 	}
+	checkSkips(tb, c.Skip)
 	if c.MaxBodyBytes == 0 {
 		c.MaxBodyBytes = DefaultMaxBodyBytes
 	}
@@ -187,12 +193,13 @@ func checkCalls(tb testing.TB, c Connector, files bool) {
 //
 //	func TestConformance(t *testing.T) { toolsettest.RunConnector(t, connector()) }
 //
-// Its subtests are a contract (docs/CONNECTORS.md lists what each checks):
-// definitions; settings/{unknown_field,literal_api_key,missing_key,
-// plain_http_base_url,base_url}; calls/<call>; keyless/<call> (KeyOptional
-// only); invalid/<call>; errors/{400,422,401,403,429_retry_after,
-// 429_then_200,500,502,503,malformed_json,oversized_body,hang,
-// connection_refused}; canary; hermetic; mcp; concurrency.
+// Its subtests are a contract, each a check with a [CheckID]
+// (docs/CONNECTORS.md lists what each checks): definitions;
+// settings/{unknown_field,literal_api_key,missing_key,plain_http_base_url,
+// base_url}; calls/<call>; keyless/<call> (KeyOptional only);
+// invalid/<call>; errors/{400,422,401,403,500,502,503,429_retry_after,
+// 429_then_200,malformed_json,oversized_body,hang,connection_refused};
+// schema_honesty; canary; hermetic; mcp; concurrency.
 //
 // After every subtest, whatever it checked, the suite also checks that the key
 // appeared in no output, error or log line (debug level included), that every
@@ -201,18 +208,20 @@ func checkCalls(tb testing.TB, c Connector, files bool) {
 func RunConnector(t *testing.T, c Connector) {
 	t.Helper()
 	s := newSuite(t, c, false)
-	t.Run("definitions", s.definitions)
+	s.reportSynthetic(t)
+	s.run(t, "definitions", s.definitions)
 	t.Run("settings", s.settings)
-	t.Run("calls", func(t *testing.T) { s.calls(t, modeKeyed) })
+	s.run(t, "calls", func(t *testing.T) { s.calls(t, modeKeyed) })
 	if s.c.KeyOptional {
-		t.Run("keyless", func(t *testing.T) { s.calls(t, modeKeyless) })
+		s.run(t, "keyless", func(t *testing.T) { s.calls(t, modeKeyless) })
 	}
-	t.Run("invalid", s.invalid)
+	s.run(t, "invalid", s.invalid)
 	t.Run("errors", s.errorMatrix)
-	t.Run("canary", s.canaryCheck)
-	t.Run("hermetic", s.hermeticCheck)
-	t.Run("mcp", s.mcpCheck)
-	t.Run("concurrency", s.concurrency)
+	s.run(t, "schema_honesty", s.schemaHonesty)
+	s.run(t, "canary", s.canaryCheck)
+	s.run(t, "hermetic", s.hermeticCheck)
+	s.run(t, "mcp", s.mcpCheck)
+	s.run(t, "concurrency", s.concurrency)
 }
 
 // RunFake runs the parts of the suite that apply to a fake ([FakeFactory]):
@@ -224,9 +233,9 @@ func RunConnector(t *testing.T, c Connector) {
 func RunFake(t *testing.T, c Connector) {
 	t.Helper()
 	s := newSuite(t, c, true)
-	t.Run("definitions", s.definitions)
-	t.Run("calls", func(t *testing.T) { s.calls(t, modeKeyed) })
-	t.Run("invalid", s.invalid)
-	t.Run("mcp", s.mcpCheck)
-	t.Run("concurrency", s.concurrency)
+	s.run(t, "definitions", s.definitions)
+	s.run(t, "calls", func(t *testing.T) { s.calls(t, modeKeyed) })
+	s.run(t, "invalid", s.invalid)
+	s.run(t, "mcp", s.mcpCheck)
+	s.run(t, "concurrency", s.concurrency)
 }

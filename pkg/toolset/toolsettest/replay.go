@@ -82,14 +82,21 @@ func FuzzResponses(f *testing.F, c Connector, toolName string) {
 
 // cassetteBody returns the body of a .res.http file.
 func cassetteBody(path string) ([]byte, error) {
+	_, body, err := cassetteResponse(path)
+	return body, err
+}
+
+// cassetteResponse returns the status and body of a .res.http file.
+func cassetteResponse(path string) (int, []byte, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return 0, nil, err
 	}
 	resp, err := http.ReadResponse(bufio.NewReader(bytes.NewReader(raw)), nil)
 	if err != nil {
-		return nil, err
+		return 0, nil, err
 	}
 	defer resp.Body.Close()
-	return io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	return resp.StatusCode, body, err
 }

@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -31,7 +33,7 @@ func SkipUnlessRecording(tb testing.TB) {
 	}
 }
 
-// Recording says where [Record] finds the real API and its key.
+// Recording says where [Record] and [Drift] find the real API and its key.
 type Recording struct {
 	// BaseURL is the real API's base URL.
 	BaseURL string
@@ -41,6 +43,11 @@ type Recording struct {
 	Client *http.Client
 	// Dir is where cassettes are written (default: Connector.Cassettes).
 	Dir string
+	// Scrub, if set, rewrites every response body before the connector or a
+	// cassette sees it: replace account IDs, emails and the like with
+	// stand-ins. The key itself needs no scrubbing: a recording that would
+	// store it is refused.
+	Scrub func(body []byte) []byte
 }
 
 // keptHeaders are the only response headers a cassette keeps.
@@ -54,14 +61,98 @@ type exchange struct {
 	body   []byte
 }
 
+// liveCall is one happy call made against the real API.
+type liveCall struct {
+	call      Call
+	out       json.RawMessage
+	schemaErr error      // the output fails the tool's output schema
+	exchanges []exchange // the requests it sent, Cassettes[i] for the i-th
+}
+
+// live is a run of a connector's happy calls against the real API through a
+// recording proxy.
+type live struct {
+	key   string // "" when keyless
+	calls []liveCall
+	logs  *logSink
+}
+
+// runLive makes c's happy calls against rec.BaseURL through a recording
+// proxy. It skips the test when the key is not set (and not optional).
+func runLive(tb testing.TB, c Connector, rec Recording, what string) *live {
+	tb.Helper()
+	if rec.Client == nil {
+		rec.Client = &http.Client{Timeout: 2 * time.Minute}
+	}
+	if rec.LookupEnv == nil {
+		tb.Fatalf("toolsettest: %s: Recording.LookupEnv is nil", what)
+	}
+	l := &live{logs: &logSink{}}
+	if c.KeyEnv != "" {
+		k, ok := rec.LookupEnv(c.KeyEnv)
+		switch {
+		case ok && k != "":
+			l.key = k
+		case !c.KeyOptional:
+			tb.Skipf("toolsettest: %s: %s is not set", what, c.KeyEnv)
+		}
+	}
+
+	p := &proxy{tb: tb, base: strings.TrimSuffix(rec.BaseURL, "/"), client: rec.Client, scrub: rec.Scrub}
+	srv := httptest.NewServer(p)
+	tb.Cleanup(srv.Close)
+	h := newHermetic(tb, newToken(), srv.Listener.Addr().String())
+	tb.Cleanup(h.close)
+	env := Env{
+		BaseURL:    srv.URL,
+		HTTPClient: &http.Client{Transport: h},
+		LookupEnv:  rec.LookupEnv,
+		Clock:      clock.Real(),
+		Logger:     slog.New(slog.NewTextHandler(l.logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
+	}
+	ctx, cancel := context.WithTimeout(tb.Context(), 5*time.Minute)
+	defer cancel()
+	tools, err := c.New(env).Build(ctx, c.Settings)
+	if err != nil {
+		tb.Fatalf("toolsettest: %s: Build: %v", what, err)
+	}
+	for _, call := range c.Calls {
+		before := len(p.recorded())
+		tl := find(tools, call.Tool)
+		if tl == nil {
+			tb.Fatalf("toolsettest: %s: no tool %q", what, call.Tool)
+		}
+		out, err := tl.Invoke(ctx, call.Input)
+		if err != nil {
+			tb.Fatalf("toolsettest: %s: %s: %v", what, call.Name, err)
+		}
+		got := p.recorded()[before:]
+		if len(got) != len(call.Cassettes) {
+			tb.Fatalf("toolsettest: %s: %s sent %d request(s), but its Cassettes lists %d", what, call.Name, len(got), len(call.Cassettes))
+		}
+		l.calls = append(l.calls, liveCall{
+			call: call, out: out, exchanges: got,
+			schemaErr: validate(tl.Definition().OutputSchema, out),
+		})
+	}
+	return l
+}
+
 // Record runs each of c's happy calls against the real API through a
 // recording proxy and writes their cassettes: the i-th request a call sends
 // becomes Cassettes[i]. Then it replays the calls from the files it wrote and
 // checks that they give the same output.
 //
 // It scrubs as it writes: no request header is stored, and only Content-Type
-// and Retry-After of the response. If the key appears in a request's URL or
-// body, or in a response, nothing is written and the test fails.
+// and Retry-After of the response; [Recording.Scrub] rewrites response
+// bodies. Nothing is written, and the test fails, if the key appears in a
+// request's path, query or body, in a response or in a log line, or if a
+// cassette would hold anything shaped like a secret (a known key format, a
+// credential-named field with a random value, a cookie).
+//
+// A call whose output fails its tool's output schema fails the test and its
+// cassettes are not written: a cassette must show the connector working.
+// Each request file records the day it was recorded, for [Drift].
 //
 // A connector's live test calls it, gated by [SkipUnlessRecording]:
 //
@@ -73,117 +164,90 @@ type exchange struct {
 //
 // Golden files are not touched: run `make golden` after recording and review
 // both diffs.
-func Record(t *testing.T, c Connector, rec Recording) {
-	t.Helper()
-	c = normalize(t, c)
+func Record(tb testing.TB, c Connector, rec Recording) {
+	tb.Helper()
+	c = normalize(tb, c)
 	if rec.Dir == "" {
 		rec.Dir = c.Cassettes
 	}
-	if rec.Client == nil {
-		rec.Client = &http.Client{Timeout: 2 * time.Minute}
-	}
-	if rec.LookupEnv == nil {
-		t.Fatal("toolsettest: Record: Recording.LookupEnv is nil")
-	}
-	key := ""
-	if c.KeyEnv != "" {
-		k, ok := rec.LookupEnv(c.KeyEnv)
-		switch {
-		case ok && k != "":
-			key = k
-		case !c.KeyOptional:
-			t.Skipf("toolsettest: Record: %s is not set", c.KeyEnv)
-		}
-	}
-
-	p := &proxy{t: t, base: strings.TrimSuffix(rec.BaseURL, "/"), client: rec.Client}
-	srv := httptest.NewServer(p)
-	t.Cleanup(srv.Close)
-	h := newHermetic(t, newToken(), srv.Listener.Addr().String())
-	t.Cleanup(h.close)
-	logs := &logSink{}
-	env := Env{
-		BaseURL:    srv.URL,
-		HTTPClient: &http.Client{Transport: h},
-		LookupEnv:  rec.LookupEnv,
-		Clock:      clock.Real(),
-		Logger:     slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
-	}
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
-	defer cancel()
-	tools, err := c.New(env).Build(ctx, c.Settings)
-	if err != nil {
-		t.Fatalf("toolsettest: Record: Build: %v", err)
-	}
+	l := runLive(tb, c, rec, "Record")
 
 	files := map[string]exchange{}
-	live := map[string]json.RawMessage{}
-	for _, call := range c.Calls {
-		before := len(p.recorded())
-		tl := find(tools, call.Tool)
-		if tl == nil {
-			t.Fatalf("toolsettest: Record: no tool %q", call.Tool)
+	var kept []liveCall
+	for _, lc := range l.calls {
+		if lc.schemaErr != nil {
+			tb.Errorf("toolsettest: Record: %s: the output from the real API fails the output schema, so its cassettes are not written: %v\n%s", lc.call.Name, lc.schemaErr, lc.out)
+			continue
 		}
-		out, err := tl.Invoke(ctx, call.Input)
-		if err != nil {
-			t.Fatalf("toolsettest: Record: %s: %v", call.Name, err)
-		}
-		live[call.Name] = out
-		got := p.recorded()[before:]
-		if len(got) != len(call.Cassettes) {
-			t.Fatalf("toolsettest: Record: %s sent %d request(s), but its Cassettes lists %d", call.Name, len(got), len(call.Cassettes))
-		}
-		for i, ex := range got {
-			name := call.Cassettes[i]
+		kept = append(kept, lc)
+		for i, ex := range lc.exchanges {
+			name := lc.call.Cassettes[i]
 			if prev, ok := files[name]; ok && !sameExchange(prev, ex) {
-				t.Fatalf("toolsettest: Record: two different exchanges are both named %s", name)
+				tb.Fatalf("toolsettest: Record: two different exchanges are both named %s", name)
 			}
 			files[name] = ex
 		}
 	}
-	if key != "" {
-		for name, ex := range files {
-			if err := ex.leaks(key); err != nil {
-				t.Fatalf("toolsettest: Record: refusing to write cassette %s: %v", name, err)
+	names := slices.Sorted(maps.Keys(files))
+	for _, name := range names {
+		ex := files[name]
+		if l.key != "" {
+			if err := ex.leaks(l.key); err != nil {
+				tb.Fatalf("toolsettest: Record: refusing to write cassette %s: %v", name, err)
 			}
 		}
-		if strings.Contains(logs.String(), key) {
-			t.Fatalf("toolsettest: Record: the API key appears in a log line; nothing written")
+		req, res, err := ex.render()
+		if err != nil {
+			tb.Fatalf("toolsettest: Record: %s: %v", name, err)
 		}
+		if found := findSecrets(append(req, res...)); len(found) > 0 {
+			tb.Fatalf("toolsettest: Record: refusing to write cassette %s: it holds %s (scrub it with Recording.Scrub)", name, strings.Join(found, "; "))
+		}
+	}
+	if l.key != "" && strings.Contains(l.logs.String(), l.key) {
+		tb.Fatalf("toolsettest: Record: the API key appears in a log line; nothing written")
 	}
 
 	if err := os.MkdirAll(rec.Dir, 0o755); err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
-	for name, ex := range files {
-		if err := ex.write(rec.Dir, name); err != nil {
-			t.Fatalf("toolsettest: Record: %v", err)
+	for _, name := range names {
+		if err := files[name].write(rec.Dir, name); err != nil {
+			tb.Fatalf("toolsettest: Record: %v", err)
 		}
 	}
 
 	// The cassettes must replay to what the real API gave.
+	if len(kept) == 0 {
+		return
+	}
 	replayed := c
 	replayed.Cassettes = rec.Dir
-	s := newSuite(t, replayed, false)
-	r := s.newRig(t, modeKeyed)
+	replayed.Calls = nil
+	for _, lc := range kept {
+		replayed.Calls = append(replayed.Calls, lc.call)
+	}
+	s := newSuite(tb, replayed, false)
+	r := s.newRig(tb, modeKeyed)
 	rtools := r.mustBuild()
-	for _, call := range c.Calls {
-		out, err := r.invoke(t.Context(), rtools, call.Tool, call.Input)
+	for _, lc := range kept {
+		out, err := r.invoke(tb.Context(), rtools, lc.call.Tool, lc.call.Input)
 		if err != nil {
-			t.Errorf("toolsettest: Record: %s replayed from the cassettes: %v", call.Name, err)
+			tb.Errorf("toolsettest: Record: %s replayed from the cassettes: %v", lc.call.Name, err)
 			continue
 		}
-		if !jsonEqual(out, live[call.Name]) {
-			t.Errorf("toolsettest: Record: %s replayed from the cassettes gives\n%s\nbut the real API gave\n%s", call.Name, out, live[call.Name])
+		if !jsonEqual(out, lc.out) {
+			tb.Errorf("toolsettest: Record: %s replayed from the cassettes gives\n%s\nbut the real API gave\n%s", lc.call.Name, out, lc.out)
 		}
 	}
 }
 
 // proxy forwards requests to the real API and records the exchanges.
 type proxy struct {
-	t      testing.TB
+	tb     testing.TB
 	base   string
 	client *http.Client
+	scrub  func([]byte) []byte
 
 	mu        sync.Mutex
 	exchanges []exchange
@@ -198,11 +262,11 @@ func (p *proxy) recorded() []exchange {
 func (p *proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		p.t.Errorf("toolsettest: Record: reading request: %v", err)
+		p.tb.Errorf("toolsettest: Record: reading request: %v", err)
 		return
 	}
 	if len(bytes.TrimSpace(body)) > 0 && !json.Valid(body) {
-		p.t.Errorf("toolsettest: Record: %s %s has a body that is not JSON; cassettes store JSON bodies", r.Method, r.URL.Path)
+		p.tb.Errorf("toolsettest: Record: %s %s has a body that is not JSON; cassettes store JSON bodies", r.Method, r.URL.Path)
 		http.Error(w, "toolsettest: not JSON", http.StatusBadGateway)
 		return
 	}
@@ -212,7 +276,7 @@ func (p *proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	out, err := http.NewRequestWithContext(r.Context(), r.Method, target, bytes.NewReader(body))
 	if err != nil {
-		p.t.Errorf("toolsettest: Record: %v", err)
+		p.tb.Errorf("toolsettest: Record: %v", err)
 		return
 	}
 	out.Header = r.Header.Clone()
@@ -221,17 +285,22 @@ func (p *proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	resp, err := p.client.Do(out)
 	if err != nil {
-		p.t.Errorf("toolsettest: Record: %s %s: %v", r.Method, r.URL.Path, err)
+		p.tb.Errorf("toolsettest: Record: %s %s: %v", r.Method, r.URL.Path, err)
 		http.Error(w, "toolsettest: upstream unreachable", http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		p.t.Errorf("toolsettest: Record: reading response: %v", err)
+		p.tb.Errorf("toolsettest: Record: reading response: %v", err)
 		return
 	}
-	ex := exchange{req: stored(Request{Method: r.Method, Path: r.URL.Path, Query: r.URL.Query(), Body: body}), status: resp.StatusCode, header: http.Header{}, body: respBody}
+	if p.scrub != nil {
+		respBody = p.scrub(respBody)
+	}
+	req := stored(Request{Method: r.Method, Path: r.URL.Path, Query: r.URL.Query(), Body: body})
+	req.RecordedAt = time.Now().UTC().Format(time.DateOnly)
+	ex := exchange{req: req, status: resp.StatusCode, header: http.Header{}, body: respBody}
 	for _, h := range keptHeaders {
 		if vs := resp.Header.Values(h); len(vs) > 0 {
 			ex.header[h] = vs
@@ -240,7 +309,8 @@ func (p *proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p.mu.Lock()
 	p.exchanges = append(p.exchanges, ex)
 	p.mu.Unlock()
-	// The connector sees what a replay will serve: the kept headers only.
+	// The connector sees what a replay will serve: the kept headers and the
+	// scrubbed body.
 	for k, vs := range ex.header {
 		w.Header()[k] = vs
 	}
@@ -251,8 +321,10 @@ func (p *proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // leaks reports where an exchange carries the key, if anywhere.
 func (ex exchange) leaks(key string) error {
 	switch {
-	case strings.Contains(ex.req.Path, key) || strings.Contains(fmt.Sprint(ex.req.Query), key):
-		return fmt.Errorf("the key is in the request URL")
+	case strings.Contains(ex.req.Path, key):
+		return fmt.Errorf("the key is in the request path")
+	case strings.Contains(fmt.Sprint(ex.req.Query), key):
+		return fmt.Errorf("the key is in the request query")
 	case bytes.Contains(ex.req.Body, []byte(key)):
 		return fmt.Errorf("the key is in the request body")
 	case bytes.Contains(ex.body, []byte(key)):
@@ -269,23 +341,32 @@ func sameExchange(a, b exchange) bool {
 	return bytes.Equal(ja, jb) && a.status == b.status && bytes.Equal(a.body, b.body)
 }
 
+// render returns the exchange's two files: <name>.req.json and <name>.res.http.
+func (ex exchange) render() (req, res []byte, err error) {
+	req, err = json.MarshalIndent(ex.req, "", "  ")
+	if err != nil {
+		return nil, nil, err
+	}
+	var b bytes.Buffer
+	fmt.Fprintf(&b, "HTTP/1.1 %d %s\n", ex.status, http.StatusText(ex.status))
+	for _, h := range keptHeaders {
+		for _, v := range ex.header.Values(h) {
+			fmt.Fprintf(&b, "%s: %s\n", h, v)
+		}
+	}
+	b.WriteString("\n")
+	b.Write(ex.body)
+	return append(req, '\n'), b.Bytes(), nil
+}
+
 // write stores the exchange as <name>.req.json and <name>.res.http.
 func (ex exchange) write(dir, name string) error {
-	req, err := json.MarshalIndent(ex.req, "", "  ")
+	req, res, err := ex.render()
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(dir, name+reqSuffix), append(req, '\n'), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, name+reqSuffix), req, 0o644); err != nil {
 		return err
 	}
-	var res bytes.Buffer
-	fmt.Fprintf(&res, "HTTP/1.1 %d %s\n", ex.status, http.StatusText(ex.status))
-	for _, h := range keptHeaders {
-		for _, v := range ex.header.Values(h) {
-			fmt.Fprintf(&res, "%s: %s\n", h, v)
-		}
-	}
-	res.WriteString("\n")
-	res.Write(ex.body)
-	return os.WriteFile(filepath.Join(dir, name+resSuffix), res.Bytes(), 0o644)
+	return os.WriteFile(filepath.Join(dir, name+resSuffix), res, 0o644)
 }

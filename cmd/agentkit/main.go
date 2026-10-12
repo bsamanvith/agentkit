@@ -51,6 +51,16 @@ type cli struct {
 	stdout, stderr io.Writer
 	getenv         func(string) string // nil: os.Getenv
 	newModel       func(modelFlags) (llm.Model, error)
+	catalog        func() (*toolset.Catalog, error) // nil: newCatalog
+}
+
+// toolsets returns the catalog of connectors: the compiled-in one, or the
+// one a test put in its place (fakes, so no test reaches a paid API).
+func (c cli) toolsets() (*toolset.Catalog, error) {
+	if c.catalog == nil {
+		return newCatalog()
+	}
+	return c.catalog()
 }
 
 func (c cli) env(key string) string {
@@ -119,8 +129,8 @@ func newClaude(f modelFlags) (llm.Model, error) {
 }
 
 // demoTools builds the built-in demo toolset (echo, current_time, calculate).
-func demoTools(ctx context.Context) (tool.Registry, error) {
-	catalog, err := newCatalog()
+func (c cli) demoTools(ctx context.Context) (tool.Registry, error) {
+	catalog, err := c.toolsets()
 	if err != nil {
 		return nil, err
 	}

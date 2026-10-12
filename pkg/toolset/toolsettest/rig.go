@@ -280,7 +280,7 @@ func jsonEqual(a, b []byte) bool {
 func indent(tb testing.TB, b []byte) []byte {
 	tb.Helper()
 	var out bytes.Buffer
-	if err := json.Indent(&out, b, "", "  "); err != nil {
+	if err := json.Indent(&out, bytes.TrimSpace(b), "", "  "); err != nil {
 		tb.Fatalf("output is not JSON: %v\n%s", err, b)
 	}
 	out.WriteByte('\n')

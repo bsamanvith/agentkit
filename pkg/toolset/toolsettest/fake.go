@@ -113,10 +113,13 @@ func Error(toolName string, kind error) Script {
 // fake replays what the real connector returned.
 func Golden(toolName, path string) Script {
 	b, err := os.ReadFile(path)
-	if err == nil && !json.Valid(b) {
-		err = fmt.Errorf("%s is not JSON", path)
+	var compact bytes.Buffer
+	if err == nil {
+		if cerr := json.Compact(&compact, b); cerr != nil {
+			err = fmt.Errorf("%s is not JSON: %w", path, cerr)
+		}
 	}
-	s := Output(toolName, json.RawMessage(b))
+	s := Output(toolName, json.RawMessage(compact.Bytes()))
 	s.err = err
 	return s
 }

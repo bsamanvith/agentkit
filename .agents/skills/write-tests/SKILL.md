@@ -36,6 +36,24 @@ description: Write or review tests for agentkit Go code. Use when adding tests f
 
 10. **Run** `go test -race -shuffle=on -count=20` on the package (`-count=300` for anything that depends on goroutine order), then `make check`. Every test calls `t.Parallel()` unless it documents why not.
 
+## Connectors
+
+A connector (anything under `connectors/`) is tested with the kit in `pkg/toolset/toolsettest`; follow [docs/CONNECTORS.md](../../../docs/CONNECTORS.md):
+
+- **The suite.** One `toolsettest.RunConnector` call, with semantic `Invalid` cases.
+- **Cassettes.** Recorded with `make record-cassettes`, with goldens from `make golden`.
+- **Fuzz.** A `FuzzResponses` target per tool.
+- **Live tests.** `Record` and `Drift` in `live_test.go`.
+- **Your own tests.** Only for what is specific to the provider.
+- **Skips.** A skipped check needs a reason in `Connector.Skip` and a line in CONNECTORS.md.
+- **A generic bug.** When review finds one, add a suite check and a planted bug in the toy instead of a test in one connector.
+
+Code that *uses* a connector never calls the real one. Use these instead:
+
+- `toolsettest.NewFake`, built from `toolsettest.Definitions`;
+- `toolsettest.FakeFactory` in a catalog;
+- `toolsettest.Replay`, for the real connector answered from its cassettes.
+
 ## Done when
 
 - Every criterion maps to a named test, listed in the task file.

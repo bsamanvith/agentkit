@@ -60,6 +60,8 @@ const (
 	BugIgnoreBaseURLSetting  Bug = "ignore_base_url_setting"   // settings/base_url
 	BugKeylessNoMarker       Bug = "keyless_no_marker"         // keyless/search_go
 	BugAcceptPlainHTTP       Bug = "accept_plain_http"         // settings/plain_http_base_url
+	BugDeadOutputField       Bug = "dead_output_field"         // schema_honesty
+	BugUndeclaredOutputField Bug = "undeclared_output_field"   // schema_honesty
 )
 
 // Bugs lists every planted bug.
@@ -67,7 +69,7 @@ var Bugs = []Bug{
 	BugLeakKeyInError, BugLogKey, BugRetry500, BugIgnoreHTTPClient, BugAcceptUnknownSettings,
 	BugNoOutputSchema, BugRequestOnInvalid, BugUnboundedBody, BugIgnoreCtx, BugKeyInQuery,
 	BugRequestInBuild, BugRetryIgnoresAfter, Bug400AsFailure, BugIgnoreBaseURLSetting,
-	BugKeylessNoMarker, BugAcceptPlainHTTP,
+	BugKeylessNoMarker, BugAcceptPlainHTTP, BugDeadOutputField, BugUndeclaredOutputField,
 }
 
 // Option configures [New].
@@ -174,8 +176,11 @@ func (f *factory) Build(ctx context.Context, raw json.RawMessage) ([]tool.Tool, 
 		return nil, err
 	}
 	tools := []tool.Tool{search, get}
-	if f.bug == BugNoOutputSchema {
+	switch f.bug {
+	case BugNoOutputSchema:
 		tools[0] = noOutputSchema{search}
+	case BugDeadOutputField, BugUndeclaredOutputField:
+		tools[0] = dishonest{Tool: search, bug: f.bug}
 	}
 	return tools, nil
 }
@@ -208,6 +213,46 @@ func (n noOutputSchema) Definition() tool.Definition {
 	d := n.Tool.Definition()
 	d.OutputSchema = nil
 	return d
+}
+
+// dishonest is toy_search with an output schema that does not match its
+// output: it declares a field no output fills (dead_output_field), or its
+// results carry a field it does not declare, under an open schema
+// (undeclared_output_field). Both pass a plain schema check.
+type dishonest struct {
+	tool.Tool
+	bug Bug
+}
+
+func (d dishonest) Definition() tool.Definition {
+	def := d.Tool.Definition()
+	var sc map[string]any
+	_ = json.Unmarshal(def.OutputSchema, &sc)
+	item := sc["properties"].(map[string]any)["results"].(map[string]any)["items"].(map[string]any)
+	if d.bug == BugDeadOutputField {
+		item["properties"].(map[string]any)["score"] = map[string]any{"type": "number"}
+	} else {
+		delete(item, "additionalProperties")
+	}
+	def.OutputSchema, _ = json.Marshal(sc)
+	return def
+}
+
+func (d dishonest) Invoke(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
+	out, err := d.Tool.Invoke(ctx, input)
+	if err != nil || d.bug != BugUndeclaredOutputField {
+		return out, err
+	}
+	var v struct {
+		Results []map[string]any `json:"results"`
+	}
+	if err := json.Unmarshal(out, &v); err != nil {
+		return nil, err
+	}
+	for i, r := range v.Results {
+		r["rank"] = i + 1
+	}
+	return json.Marshal(v)
 }
 
 type client struct {

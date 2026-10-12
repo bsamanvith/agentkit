@@ -43,7 +43,7 @@ func (c cli) harness(ctx context.Context, mf modelFlags, system string) (*harnes
 	if err != nil {
 		return nil, err
 	}
-	tools, err := demoTools(ctx)
+	tools, err := c.demoTools(ctx)
 	if err != nil {
 		return nil, err
 	}

@@ -36,6 +36,13 @@ type CassetteRequest struct {
 	Path   string              `json:"path"`
 	Query  map[string][]string `json:"query,omitempty"`
 	Body   json.RawMessage     `json:"body,omitempty"`
+	// RecordedAt is the day [Record] wrote the cassette (2006-01-02); [Drift]
+	// warns when it is over 90 days old.
+	RecordedAt string `json:"recorded_at,omitempty"`
+	// Synthetic marks a cassette written by hand or generated, not recorded
+	// from the real API. The suite lists synthetic cassettes; a connector
+	// with any stays in review until they are recorded.
+	Synthetic bool `json:"synthetic,omitempty"`
 }
 
 type cassette struct {

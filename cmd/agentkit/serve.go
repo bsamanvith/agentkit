@@ -66,7 +66,7 @@ func (c cli) serve(ctx context.Context, args []string) error {
 		return err
 	}
 	log := slog.New(slog.NewJSONHandler(c.stderr, &slog.HandlerOptions{Level: env.logLevel}))
-	built, problems, err := buildToolsets(ctx, env, cfg, *configPath, log)
+	built, problems, err := c.buildToolsets(ctx, env, cfg, *configPath, log)
 	if err != nil {
 		return err
 	}
@@ -107,7 +107,7 @@ func (c cli) serve(ctx context.Context, args []string) error {
 // mcp.toolsets when mcp-server runs, else those the agent names. Both
 // components then share the same instances. Optional toolsets that fail are
 // logged and returned as problems.
-func buildToolsets(ctx context.Context, env serveEnv, cfg serveConfig, configPath string, log *slog.Logger) (map[string]tool.Registry, []toolset.Problem, error) {
+func (c cli) buildToolsets(ctx context.Context, env serveEnv, cfg serveConfig, configPath string, log *slog.Logger) (map[string]tool.Registry, []toolset.Problem, error) {
 	var specs []toolset.Spec
 	if slices.Contains(env.components, agentapi.Name) {
 		s, err := agentToolsetSpecs(cfg)
@@ -128,7 +128,7 @@ func buildToolsets(ctx context.Context, env serveEnv, cfg serveConfig, configPat
 	if len(specs) == 0 {
 		return map[string]tool.Registry{}, nil, nil
 	}
-	catalog, err := newCatalog()
+	catalog, err := c.toolsets()
 	if err != nil {
 		return nil, nil, err
 	}

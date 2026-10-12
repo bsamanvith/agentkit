@@ -113,6 +113,8 @@ var plantedBugs = map[toy.Bug]string{
 	toy.BugIgnoreBaseURLSetting:  "TestToyConnector/settings/base_url",
 	toy.BugKeylessNoMarker:       "TestToyConnectorAuto/keyless/search_go",
 	toy.BugAcceptPlainHTTP:       "TestToyConnector/settings/plain_http_base_url",
+	toy.BugDeadOutputField:       "TestToyConnector/schema_honesty",
+	toy.BugUndeclaredOutputField: "TestToyConnector/schema_honesty",
 }
 
 // TestPlantedBugs: each planted bug makes the suite fail, on the check meant
@@ -154,16 +156,57 @@ func runSuite(t *testing.T, bug toy.Bug, check string) (string, error) {
 	for i, p := range parts {
 		parts[i] = "^" + p + "$"
 	}
-	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run="+strings.Join(parts, "/"), "-test.count=1", "-test.timeout=2m")
+	return runTest(t, []string{bugEnv + "=" + string(bug)}, "-test.run="+strings.Join(parts, "/"))
+}
+
+// runTest runs this test binary in a subprocess with env added and args.
+func runTest(t *testing.T, env []string, args ...string) (string, error) {
+	t.Helper()
+	cmd := exec.CommandContext(t.Context(), os.Args[0], append([]string{"-test.count=1", "-test.timeout=2m"}, args...)...)
 	// The subprocess must never rewrite golden files or cassettes.
-	var env []string
 	for _, kv := range os.Environ() {
 		if !strings.HasPrefix(kv, testkit.UpdateGoldenEnv+"=") && !strings.HasPrefix(kv, toolsettest.RecordEnv+"=") {
 			env = append(env, kv)
 		}
 	}
-	env = append(env, bugEnv+"="+string(bug))
 	cmd.Env = env
 	out, err := cmd.CombinedOutput()
 	return string(out), err
+}
+
+// skipEnv makes TestToyConnectorSkips run; TestSkipsAreReported sets it in a
+// subprocess.
+const skipEnv = "TOOLSETTEST_TOY_SKIP"
+
+// TestToyConnectorSkips runs the suite with every check that may be skipped
+// skipped.
+func TestToyConnectorSkips(t *testing.T) {
+	if os.Getenv(skipEnv) == "" {
+		t.Skip("run by TestSkipsAreReported")
+	}
+	c := toyConnector(toy.BugNone)
+	c.Skip = map[toolsettest.CheckID]string{}
+	for _, id := range toolsettest.OptOutChecks() {
+		c.Skip[id] = "toy: the reason for " + string(id)
+	}
+	toolsettest.RunConnector(t, c)
+}
+
+// TestSkipsAreReported: each skipped check is reported, as its subtest, with
+// the connector's reason.
+func TestSkipsAreReported(t *testing.T) {
+	t.Parallel()
+	out, err := runTest(t, []string{skipEnv + "=1"}, "-test.run=^TestToyConnectorSkips$", "-test.v")
+	if err != nil {
+		t.Fatalf("the suite with skips failed: %v\n%s", err, out)
+	}
+	for _, id := range toolsettest.OptOutChecks() {
+		path := "TestToyConnectorSkips/" + strings.ReplaceAll(string(id), ".", "/")
+		if !strings.Contains(out, "--- SKIP: "+path+" ") || !strings.Contains(out, "skipped by Connector.Skip: toy: the reason for "+string(id)) {
+			t.Errorf("check %s is not reported skipped with its reason (as %s)", id, path)
+		}
+	}
+	if t.Failed() {
+		t.Log(out)
+	}
 }

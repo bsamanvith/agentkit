@@ -77,7 +77,7 @@ func (s *suite) definitions(t *testing.T) {
 // settings: strict settings, no literal key, the missing key named, and a
 // base_url that is https unless loopback and that routes requests.
 func (s *suite) settings(t *testing.T) {
-	t.Run("unknown_field", func(t *testing.T) {
+	s.run(t, "settings.unknown_field", func(t *testing.T) {
 		t.Parallel()
 		r := s.newRig(t, modeKeyed)
 		_, err := r.build(withSetting(s.c.Settings, "toolsettest_unknown_field", true))
@@ -85,7 +85,7 @@ func (s *suite) settings(t *testing.T) {
 			t.Errorf("Build with an unknown settings field = %v, want an error matching toolset.ErrInvalidSettings", err)
 		}
 	})
-	t.Run("literal_api_key", func(t *testing.T) {
+	s.run(t, "settings.literal_api_key", func(t *testing.T) {
 		t.Parallel()
 		r := s.newRig(t, modeKeyed)
 		_, err := r.build(withSetting(s.c.Settings, "api_key", s.canary))
@@ -94,7 +94,7 @@ func (s *suite) settings(t *testing.T) {
 		}
 	})
 	if s.c.KeyEnv != "" && !s.c.KeyOptional {
-		t.Run("missing_key", func(t *testing.T) {
+		s.run(t, "settings.missing_key", func(t *testing.T) {
 			t.Parallel()
 			r := s.newRig(t, modeNoKey)
 			_, err := r.build(s.c.Settings)
@@ -105,7 +105,7 @@ func (s *suite) settings(t *testing.T) {
 			}
 		})
 	}
-	t.Run("plain_http_base_url", func(t *testing.T) {
+	s.run(t, "settings.plain_http_base_url", func(t *testing.T) {
 		t.Parallel()
 		r := s.newRig(t, modeKeyed)
 		_, err := r.build(withSetting(s.c.Settings, "base_url", "http://api.toolsettest.invalid"))
@@ -121,7 +121,7 @@ func (s *suite) settings(t *testing.T) {
 			t.Errorf("Build sent %d request(s); Build must make no request", n)
 		}
 	})
-	t.Run("base_url", func(t *testing.T) {
+	s.run(t, "settings.base_url", func(t *testing.T) {
 		t.Parallel()
 		r := s.newRig(t, modeKeyed)
 		r.env.BaseURL = "" // the setting alone must route requests
@@ -234,7 +234,7 @@ func (s *suite) errorMatrix(t *testing.T) {
 	}
 
 	for _, status := range []int{http.StatusBadRequest, http.StatusUnprocessableEntity} {
-		t.Run(fmt.Sprint(status), func(t *testing.T) {
+		s.run(t, CheckID(fmt.Sprint("errors.", status)), func(t *testing.T) {
 			t.Parallel()
 			r, err := scripted(t, s.errorResponse(status, s.providerMessage()))
 			if !errors.Is(err, tool.ErrInvalidInput) {
@@ -250,7 +250,7 @@ func (s *suite) errorMatrix(t *testing.T) {
 		})
 	}
 	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
-		t.Run(fmt.Sprint(status), func(t *testing.T) {
+		s.run(t, CheckID(fmt.Sprint("errors.", status)), func(t *testing.T) {
 			t.Parallel()
 			r, err := scripted(t, s.errorResponse(status, "invalid API key "+s.canary))
 			failed(t, err)
@@ -258,14 +258,14 @@ func (s *suite) errorMatrix(t *testing.T) {
 		})
 	}
 	for _, status := range []int{http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable} {
-		t.Run(fmt.Sprint(status), func(t *testing.T) {
+		s.run(t, CheckID(fmt.Sprint("errors.", status)), func(t *testing.T) {
 			t.Parallel()
 			r, err := scripted(t, s.errorResponse(status, "internal error serving key "+s.canary))
 			failed(t, err)
 			requests(t, r, 1) // no retry on 5xx: a paid call may have run
 		})
 	}
-	t.Run("429_retry_after", func(t *testing.T) {
+	s.run(t, "errors.429_retry_after", func(t *testing.T) {
 		t.Parallel()
 		r := s.newRig(t, modeKeyed)
 		tools := r.mustBuild()
@@ -286,7 +286,7 @@ func (s *suite) errorMatrix(t *testing.T) {
 		failed(t, res.err)
 		requests(t, r, 2)
 	})
-	t.Run("429_then_200", func(t *testing.T) {
+	s.run(t, "errors.429_then_200", func(t *testing.T) {
 		t.Parallel()
 		r := s.newRig(t, modeKeyed)
 		tools := r.mustBuild()
@@ -305,13 +305,13 @@ func (s *suite) errorMatrix(t *testing.T) {
 		}
 		requests(t, r, 1+len(call.Cassettes))
 	})
-	t.Run("malformed_json", func(t *testing.T) {
+	s.run(t, "errors.malformed_json", func(t *testing.T) {
 		t.Parallel()
 		r, err := scripted(t, Response{Header: jsonHeader(), Body: []byte(`{"results": [{"title": "cut sh`)})
 		failed(t, err)
 		requests(t, r, 1)
 	})
-	t.Run("oversized_body", func(t *testing.T) {
+	s.run(t, "errors.oversized_body", func(t *testing.T) {
 		t.Parallel()
 		limit := s.c.MaxBodyBytes
 		body := make([]byte, limit+4096)
@@ -329,7 +329,7 @@ func (s *suite) errorMatrix(t *testing.T) {
 			t.Errorf("%s read %d bytes of the body, want at most limit+1 = %d: read through io.LimitReader", call.Name, read, limit+1)
 		}
 	})
-	t.Run("hang", func(t *testing.T) {
+	s.run(t, "errors.hang", func(t *testing.T) {
 		t.Parallel()
 		r := s.newRig(t, modeKeyed)
 		tools := r.mustBuild()
@@ -354,7 +354,7 @@ func (s *suite) errorMatrix(t *testing.T) {
 			t.Errorf("%s with an expired context = %v, want context.DeadlineExceeded", call.Name, res.err)
 		}
 	})
-	t.Run("connection_refused", func(t *testing.T) {
+	s.run(t, "errors.connection_refused", func(t *testing.T) {
 		t.Parallel()
 		r := s.newRig(t, modeKeyed)
 		ln, err := net.Listen("tcp", "127.0.0.1:0")

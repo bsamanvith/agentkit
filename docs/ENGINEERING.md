@@ -264,6 +264,15 @@ One test per criterion proves each criterion once, in the one scenario it uses. 
 - **No timing assertions in unit tests.** A test asserts behavior under load (no errors, limits enforced, nothing leaks, the 503 when over capacity), never "faster than X ms". A CI perf budget comes only after numbers exist, with headroom, and lives outside `make test`.
 - Findings become features when they protect the service (T018 added a call timeout, an in-flight cap and a session timeout); each gets a behavior test and a mutation check like any other.
 
+### 2.8 Connectors
+
+Connectors call paid APIs, so their tests follow one recipe, in [CONNECTORS.md](CONNECTORS.md):
+
+- **One suite.** Every connector passes `toolsettest.RunConnector` with one call. The suite checks what all connectors share: settings, key handling, error classes, retries, body limits, leaks, MCP and concurrency. Its checks have IDs; a connector may skip an opt-out check only with a written reason.
+- **No network.** Responses are recorded from the real API (`make record-cassettes`), scrubbed and replayed. The suite hands out only a client that refuses every other host.
+- **Honest fakes.** Every other test uses `toolsettest.NewFake` or `FakeFactory`, built from the real definitions and checking inputs and outputs against the real schemas.
+- **Generic bugs become checks.** A bug that any connector could have becomes a suite check, with a planted bug in the toy connector that proves the check catches it.
+
 ---
 
 ## 3. Local environments ("pods")

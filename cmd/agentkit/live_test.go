@@ -61,7 +61,7 @@ func TestLiveMixedToolResultsAndText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tools, err := demoTools(t.Context())
+	tools, err := cli{}.demoTools(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,6 +1,7 @@
 // Package archtest enforces the dependency rules from docs/ENGINEERING.md §1.4
 // on the module's import graph. The test in this package runs `go list` over
-// the whole module and fails on any violation.
+// the whole module and fails on any violation. [CheckConnectors] checks that
+// every connector is tested with the connector test kit.
 //
 // To give a package a new third-party dependency, add it to [Allowlist].
 package archtest
@@ -43,9 +44,13 @@ type Violation struct {
 	Rule    string // short rule id, e.g. "no-cmd-imports"
 	Package string // relative package path
 	Import  string
+	Detail  string // what is wrong, for a rule that is not about an import
 }
 
 func (v Violation) String() string {
+	if v.Detail != "" {
+		return fmt.Sprintf("%s: %s %s", v.Rule, v.Package, v.Detail)
+	}
 	return fmt.Sprintf("%s: %s imports %s", v.Rule, v.Package, v.Import)
 }
 

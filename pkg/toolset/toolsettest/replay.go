@@ -16,7 +16,8 @@ import (
 // Replay returns the real connector served from its cassettes: real request
 // and response code, no network. Tests that want the connector's real
 // behavior without a script use it (a fake model calling the real tools).
-// The suite's after-every-test checks apply.
+// The suite's after-every-test checks apply. The tools are built with
+// Connector.Settings; a call's own Settings do not apply.
 func Replay(tb testing.TB, c Connector) tool.Registry {
 	tb.Helper()
 	s := newSuite(tb, c, false)
@@ -60,7 +61,7 @@ func FuzzResponses(f *testing.F, c Connector, toolName string) {
 	}
 	f.Fuzz(func(t *testing.T, body []byte) {
 		r := s.newRig(t, modeKeyed)
-		tools := r.mustBuild()
+		tools := r.toolsFor(*call)
 		for range 8 {
 			r.up.Script(Response{Header: jsonHeader(), Body: body})
 		}

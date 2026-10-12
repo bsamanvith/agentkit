@@ -35,9 +35,6 @@ func (s *suite) definitions(t *testing.T) {
 		t.Errorf("[definitions] type %q must match %s", typ, typePattern)
 	}
 	tools := r.mustBuild()
-	if n := len(r.up.Requests()); n != 0 {
-		t.Errorf("[definitions] Build sent %d request(s); Build must make no request", n)
-	}
 	if len(tools) == 0 {
 		t.Fatal("[definitions] Build returned no tools")
 	}
@@ -68,9 +65,12 @@ func (s *suite) definitions(t *testing.T) {
 		}
 	}
 	for _, c := range slices.Concat(s.c.Calls, s.c.Invalid) {
-		if find(tools, c.Tool) == nil {
-			t.Errorf("[definitions] call %s names tool %q, which Build did not return (have %v)", c.Name, c.Tool, toolNames(tools))
+		if ct := r.toolsFor(c); find(ct, c.Tool) == nil {
+			t.Errorf("[definitions] call %s names tool %q, which Build did not return (have %v)", c.Name, c.Tool, toolNames(ct))
 		}
+	}
+	if n := len(r.up.Requests()); n != 0 {
+		t.Errorf("[definitions] Build sent %d request(s); Build must make no request", n)
 	}
 }
 
@@ -126,7 +126,7 @@ func (s *suite) settings(t *testing.T) {
 		r := s.newRig(t, modeKeyed)
 		r.env.BaseURL = "" // the setting alone must route requests
 		call := s.c.Calls[0]
-		tools, err := r.build(withSetting(s.c.Settings, "base_url", r.up.URL()))
+		tools, err := r.build(withSetting(s.settingsFor(call), "base_url", r.up.URL()))
 		if err != nil {
 			t.Fatalf("Build with base_url %s: %v", r.up.URL(), err)
 		}
@@ -147,7 +147,7 @@ func (s *suite) calls(t *testing.T, mode keyMode) {
 		t.Run(call.Name, func(t *testing.T) {
 			t.Parallel()
 			r := s.newRig(t, mode)
-			tools := r.mustBuild()
+			tools := r.toolsFor(call)
 			out, err := r.invoke(t.Context(), tools, call.Tool, call.Input)
 			if err != nil {
 				t.Fatalf("%s(%s): %v", call.Tool, call.Input, err)
@@ -174,7 +174,7 @@ func (s *suite) invalid(t *testing.T) {
 		t.Run(call.Name, func(t *testing.T) {
 			t.Parallel()
 			r := s.newRig(t, modeKeyed)
-			tools := r.mustBuild()
+			tools := r.toolsFor(call)
 			_, err := r.invoke(t.Context(), tools, call.Tool, call.Input)
 			if !errors.Is(err, tool.ErrInvalidInput) {
 				t.Errorf("%s(%s) = %v, want tool.ErrInvalidInput", call.Tool, call.Input, err)
@@ -227,7 +227,7 @@ func (s *suite) errorMatrix(t *testing.T) {
 	scripted := func(t *testing.T, rs ...Response) (*rig, error) {
 		t.Helper()
 		r := s.newRig(t, modeKeyed)
-		tools := r.mustBuild()
+		tools := r.toolsFor(call)
 		r.up.Script(rs...)
 		_, err := r.invoke(t.Context(), tools, call.Tool, call.Input)
 		return r, err
@@ -268,7 +268,7 @@ func (s *suite) errorMatrix(t *testing.T) {
 	s.run(t, "errors.429_retry_after", func(t *testing.T) {
 		t.Parallel()
 		r := s.newRig(t, modeKeyed)
-		tools := r.mustBuild()
+		tools := r.toolsFor(call)
 		r.up.Script(s.rateLimited(2), s.rateLimited(2))
 		done := r.start(tools, call)
 		if !r.awaitTimer(done) {
@@ -289,7 +289,7 @@ func (s *suite) errorMatrix(t *testing.T) {
 	s.run(t, "errors.429_then_200", func(t *testing.T) {
 		t.Parallel()
 		r := s.newRig(t, modeKeyed)
-		tools := r.mustBuild()
+		tools := r.toolsFor(call)
 		r.up.Script(s.rateLimited(1))
 		done := r.start(tools, call)
 		if !r.awaitTimer(done) {
@@ -332,7 +332,7 @@ func (s *suite) errorMatrix(t *testing.T) {
 	s.run(t, "errors.hang", func(t *testing.T) {
 		t.Parallel()
 		r := s.newRig(t, modeKeyed)
-		tools := r.mustBuild()
+		tools := r.toolsFor(call)
 		r.up.Script(Response{Hang: true})
 		const deadline = 100 * time.Millisecond
 		ctx, cancel := context.WithTimeout(t.Context(), deadline)
@@ -366,7 +366,7 @@ func (s *suite) errorMatrix(t *testing.T) {
 		h := newHermetic(t, r.up.via, addr)
 		t.Cleanup(h.close)
 		r.env.BaseURL, r.env.HTTPClient = "http://"+addr, &http.Client{Transport: h}
-		tools := r.mustBuild()
+		tools := r.toolsFor(call)
 		_, err = r.invoke(t.Context(), tools, call.Tool, call.Input)
 		failed(t, err)
 	})
@@ -422,8 +422,8 @@ func (r *rig) await(done <-chan result) result {
 func (s *suite) canaryCheck(t *testing.T) {
 	t.Parallel()
 	r := s.newRig(t, modeKeyed)
-	tools := r.mustBuild()
 	call := s.c.Calls[0]
+	tools := r.toolsFor(call)
 	cs := serveMCP(t, tools, r.env.Logger)
 	echoes := []Response{
 		s.errorResponse(http.StatusBadRequest, s.providerMessage()),
@@ -458,8 +458,8 @@ func (s *suite) hermeticCheck(t *testing.T) {
 	if err := probe(t.Context(), r.env.HTTPClient); err != nil {
 		t.Error(err)
 	}
-	tools := r.mustBuild()
 	call := s.c.Calls[0]
+	tools := r.toolsFor(call)
 	if _, err := r.invoke(t.Context(), tools, call.Tool, call.Input); err != nil {
 		t.Errorf("%s: %v", call.Name, err)
 	}
@@ -492,7 +492,7 @@ func (s *suite) mcpCheck(t *testing.T) {
 		t.Errorf("[mcp] %d tools listed over MCP, want %d", len(listed), len(tools))
 	}
 	call := s.c.Calls[0]
-	res := callMCP(t, cs, call.Tool, call.Input)
+	res := callMCP(t, r.mcpFor(call, cs), call.Tool, call.Input)
 	if res.IsError {
 		t.Fatalf("[mcp] %s over MCP failed: %+v", call.Name, res)
 	}
@@ -503,22 +503,22 @@ func (s *suite) mcpCheck(t *testing.T) {
 		t.Errorf("[mcp] text content: %v", err)
 	}
 	inv := s.c.Invalid[0]
-	if res := callMCP(t, cs, inv.Tool, inv.Input); !res.IsError {
+	if res := callMCP(t, r.mcpFor(inv, cs), inv.Tool, inv.Input); !res.IsError {
 		t.Errorf("[mcp] invalid call %s over MCP succeeded, want an error result", inv.Name)
 	}
 }
 
-// concurrency: 16 parallel happy calls on one set of tools all return the
-// right output.
+// concurrency: 16 parallel happy calls, sharing one set of tools per
+// settings, all return the right output.
 func (s *suite) concurrency(t *testing.T) {
 	t.Parallel()
 	r := s.newRig(t, modeKeyed)
-	tools := r.mustBuild()
 	const n = 16
 	var wg sync.WaitGroup
 	errs := make([]error, n)
 	for i := range n {
 		call := s.c.Calls[i%len(s.c.Calls)]
+		tools := r.toolsFor(call) // shared by the calls with the same settings
 		wg.Go(func() {
 			out, err := r.invoke(t.Context(), tools, call.Tool, call.Input)
 			if err != nil {

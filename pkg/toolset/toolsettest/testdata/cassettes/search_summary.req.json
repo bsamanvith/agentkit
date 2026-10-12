@@ -1,0 +1,10 @@
+{
+  "method": "POST",
+  "path": "/v1/search",
+  "body": {
+    "limit": 2,
+    "q": "go",
+    "summary": true
+  },
+  "recorded_at": "2026-10-12"
+}

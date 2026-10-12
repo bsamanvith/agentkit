@@ -1,0 +1,15 @@
+{
+  "results": [
+    {
+      "title": "The Go gopher",
+      "url": "https://toy.example/items/go1",
+      "content": "Go is an open source programming language."
+    },
+    {
+      "title": "Go generics",
+      "url": "https://toy.example/items/go2",
+      "content": "Go 1.18 added type parameters."
+    }
+  ],
+  "summary": "2 item(s) match \"go\"."
+}

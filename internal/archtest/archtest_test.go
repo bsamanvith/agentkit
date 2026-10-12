@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -38,6 +39,36 @@ func TestRepository(t *testing.T) {
 	}
 	for _, v := range archtest.Check(archtest.ModuleRules(), pkgs) {
 		t.Error(v)
+	}
+	vs, err := archtest.CheckConnectors(moduleRoot(t), archtest.ModuleRules().Module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range vs {
+		t.Error(v)
+	}
+}
+
+// TestConnectorRules: a connector's tests must run the kit's suite and fuzz
+// target, through the kit and not a lookalike, and it must have cassettes.
+func TestConnectorRules(t *testing.T) {
+	t.Parallel()
+	got, err := archtest.CheckConnectors(filepath.Join("testdata", "repo"), mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want []archtest.Violation
+	for _, pkg := range []string{"connectors/bare", "connectors/imposter"} {
+		want = append(want,
+			archtest.Violation{Rule: archtest.RuleConnectorSuite, Package: pkg, Detail: "has no test that calls toolsettest.RunConnector"},
+			archtest.Violation{Rule: archtest.RuleConnectorFuzz, Package: pkg, Detail: "has no fuzz target that calls toolsettest.FuzzResponses"},
+		)
+		if pkg == "connectors/bare" {
+			want = append(want, archtest.Violation{Rule: archtest.RuleConnectorCassettes, Package: pkg, Detail: "has no cassette in testdata/cassettes (make record-cassettes)"})
+		}
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("violations (-want +got):\n%s", diff)
 	}
 }
 
@@ -147,14 +178,19 @@ func TestRules(t *testing.T) {
 	}
 }
 
-func goList(t *testing.T) []archtest.Package {
+func moduleRoot(t *testing.T) string {
 	t.Helper()
 	root, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}").Output()
 	if err != nil {
 		t.Fatalf("go list -m: %v", err)
 	}
+	return strings.TrimSpace(string(root))
+}
+
+func goList(t *testing.T) []archtest.Package {
+	t.Helper()
 	cmd := exec.Command("go", "list", "-json=ImportPath,Imports,TestImports,XTestImports", "./...")
-	cmd.Dir = strings.TrimSpace(string(root))
+	cmd.Dir = moduleRoot(t)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()

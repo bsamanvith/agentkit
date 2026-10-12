@@ -1,0 +1,4 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"hits":[{"title":"The Go gopher","link":"https://toy.example/items/go1","snippet":"Go is an open source programming language."},{"title":"Go generics","link":"https://toy.example/items/go2","snippet":"Go 1.18 added type parameters."}],"summary":"2 item(s) match \"go\".","took_ms":3}

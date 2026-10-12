@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/clock"
+	"github.com/bsamanvith/agentkit/pkg/tool"
 )
 
 // RecordEnv is the environment variable that, set to 1, makes connectors'
@@ -112,11 +113,17 @@ func runLive(tb testing.TB, c Connector, rec Recording, what string) *live {
 	}
 	ctx, cancel := context.WithTimeout(tb.Context(), 5*time.Minute)
 	defer cancel()
-	tools, err := c.New(env).Build(ctx, c.Settings)
-	if err != nil {
-		tb.Fatalf("toolsettest: %s: Build: %v", what, err)
-	}
+	built := map[string][]tool.Tool{}
 	for _, call := range c.Calls {
+		settings := mergeSettings(c.Settings, call.Settings)
+		tools, ok := built[string(settings)]
+		if !ok {
+			var err error
+			if tools, err = c.New(env).Build(ctx, settings); err != nil {
+				tb.Fatalf("toolsettest: %s: Build(%s): %v", what, settings, err)
+			}
+			built[string(settings)] = tools
+		}
 		before := len(p.recorded())
 		tl := find(tools, call.Tool)
 		if tl == nil {
@@ -229,9 +236,8 @@ func Record(tb testing.TB, c Connector, rec Recording) {
 	}
 	s := newSuite(tb, replayed, false)
 	r := s.newRig(tb, modeKeyed)
-	rtools := r.mustBuild()
 	for _, lc := range kept {
-		out, err := r.invoke(tb.Context(), rtools, lc.call.Tool, lc.call.Input)
+		out, err := r.invoke(tb.Context(), r.toolsFor(lc.call), lc.call.Tool, lc.call.Input)
 		if err != nil {
 			tb.Errorf("toolsettest: Record: %s replayed from the cassettes: %v", lc.call.Name, err)
 			continue

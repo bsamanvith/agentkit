@@ -12,6 +12,16 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/tool"
 )
 
+// mcpFor returns a session serving the tools a call is built with: cs, which
+// serves the connector's, unless the call has settings of its own.
+func (r *rig) mcpFor(call Call, cs *mcp.ClientSession) *mcp.ClientSession {
+	r.t.Helper()
+	if len(call.Settings) == 0 {
+		return cs
+	}
+	return serveMCP(r.t, r.toolsFor(call), r.env.Logger)
+}
+
 // serveMCP serves tools with pkg/mcp/server and connects the SDK's client.
 func serveMCP(t testing.TB, tools []tool.Tool, log *slog.Logger) *mcp.ClientSession {
 	t.Helper()

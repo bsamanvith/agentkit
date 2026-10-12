@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"testing"
 
 	"github.com/bsamanvith/agentkit/pkg/clock"
@@ -55,6 +56,11 @@ type Call struct {
 	// cassette files are <name>.req.json and <name>.res.http). Empty for an
 	// invalid call, which must make no request.
 	Cassettes []string
+	// Settings, when set, is merged over Connector.Settings for this call:
+	// each of its fields replaces the connector's, and the suite builds the
+	// tools with the result. Use it for output a setting turns on (an answer,
+	// extra fields), so schema_honesty.dead_fields sees it.
+	Settings json.RawMessage
 }
 
 // Connector describes a connector to [RunConnector].
@@ -145,6 +151,15 @@ func normalize(tb testing.TB, c Connector) Connector {
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(c.Settings, &obj); err != nil || obj == nil {
 		tb.Fatalf("toolsettest: Connector.Settings must be a JSON object: %s", c.Settings)
+	}
+	for _, call := range slices.Concat(c.Calls, c.Invalid) {
+		if len(call.Settings) == 0 {
+			continue
+		}
+		var obj map[string]any
+		if err := json.Unmarshal(call.Settings, &obj); err != nil || obj == nil {
+			tb.Fatalf("toolsettest: Call %s: Settings must be a JSON object: %s", call.Name, call.Settings)
+		}
 	}
 	if c.KeyOptional && (c.KeyEnv == "" || len(c.KeylessMarker) == 0) {
 		tb.Fatal("toolsettest: KeyOptional needs KeyEnv and KeylessMarker")

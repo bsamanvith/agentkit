@@ -2,6 +2,7 @@ package toy
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 )
@@ -23,8 +24,9 @@ func NewServer(key string) http.Handler {
 	}
 	mux.HandleFunc("POST /v1/search", auth(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			Q     string `json:"q"`
-			Limit int    `json:"limit"`
+			Q       string `json:"q"`
+			Limit   int    `json:"limit"`
+			Summary bool   `json:"summary"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Q == "" {
 			writeError(w, http.StatusBadRequest, "q is required")
@@ -41,7 +43,11 @@ func NewServer(key string) http.Handler {
 				hits = append(hits, hit{Title: it.name, Link: "https://toy.example/items/" + it.id, Snippet: it.text})
 			}
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"hits": hits, "took_ms": 3})
+		resp := map[string]any{"hits": hits, "took_ms": 3}
+		if req.Summary {
+			resp["summary"] = fmt.Sprintf("%d item(s) match %q.", len(hits), req.Q)
+		}
+		writeJSON(w, http.StatusOK, resp)
 	}))
 	mux.HandleFunc("GET /v1/items/{id}", auth(func(w http.ResponseWriter, r *http.Request) {
 		for _, it := range items {

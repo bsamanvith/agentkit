@@ -87,10 +87,12 @@ func FuzzSearchResponses(f *testing.F) { toolsettest.FuzzResponses(f, connector(
 `Connector` fields:
 
 - **`Calls`** are the happy paths, at least one per tool. Each lists the cassettes it requests, in order. The suite compares its output with `testdata/golden/<Name>.json` (`make golden` rewrites it) and runs the error matrix on the first call.
+- **`Call.Settings`** is merged over `Connector.Settings` for one call: each of its fields replaces the connector's. Use it for output that a setting turns on, such as an answer the provider only sends when asked. Record that call's cassettes with the same settings.
 - **`Invalid`** must include semantic cases. `tool.Func` already rejects input the schema does not accept before connector code runs, so a schema-invalid input tests nothing of yours.
 - **`ErrorBody`** formats the provider's error body (default `{"error": message}`), so the suite can check that a 400's message reaches the model.
 - **`MaxBodyBytes`** is your body limit, if not 8 MiB.
 - **`KeyOptional` and `KeylessMarker`** are for a connector that also runs without a key.
+- **`Skip` and `Enable`** skip an opt-out check, with a reason, or run an opt-in one (see "The checks").
 
 Add a fuzz target per tool. `FuzzResponses` fuzzes the 200 bodies, seeded from your cassettes. Any body must give schema-valid output or a classed error, and never a panic. `make fuzz` runs it.
 

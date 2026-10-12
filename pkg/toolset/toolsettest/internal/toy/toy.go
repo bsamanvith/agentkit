@@ -125,6 +125,9 @@ type settings struct {
 	APIKeyEnv string `json:"api_key_env,omitempty"`
 	Auth      string `json:"auth,omitempty"` // key (default), auto or keyless
 	BaseURL   string `json:"base_url,omitempty"`
+	// WithSummary asks the API for a summary of the results: the output's
+	// summary field, filled only under this setting.
+	WithSummary bool `json:"with_summary,omitempty"`
 }
 
 func (f *factory) Build(ctx context.Context, raw json.RawMessage) ([]tool.Tool, error) {
@@ -138,7 +141,7 @@ func (f *factory) Build(ctx context.Context, raw json.RawMessage) ([]tool.Tool, 
 	} else if err := toolset.DecodeSettings(raw, &s); err != nil {
 		return nil, err
 	}
-	c := &client{f: f, base: f.baseURL}
+	c := &client{f: f, base: f.baseURL, summary: s.WithSummary}
 	if c.base == "" {
 		c.base = DefaultBaseURL
 	}
@@ -256,9 +259,10 @@ func (d dishonest) Invoke(ctx context.Context, input json.RawMessage) (json.RawM
 }
 
 type client struct {
-	f    *factory
-	base string
-	key  string
+	f       *factory
+	base    string
+	key     string
+	summary bool
 }
 
 type (
@@ -276,6 +280,7 @@ type (
 	// SearchOutput is the output of toy_search.
 	SearchOutput struct {
 		Results []Result `json:"results"`
+		Summary string   `json:"summary,omitempty"`
 	}
 	// GetInput is the input of toy_get.
 	GetInput struct {
@@ -298,18 +303,23 @@ func (c *client) search(ctx context.Context, in SearchInput) (SearchOutput, erro
 	if (in.MaxResults < 1 || in.MaxResults > 20) && c.f.bug != BugRequestOnInvalid {
 		return SearchOutput{}, fmt.Errorf("%w: max_results %d: want 1 to 20", tool.ErrInvalidInput, in.MaxResults)
 	}
-	body, _ := json.Marshal(map[string]any{"q": in.Query, "limit": in.MaxResults})
+	req := map[string]any{"q": in.Query, "limit": in.MaxResults}
+	if c.summary {
+		req["summary"] = true
+	}
+	body, _ := json.Marshal(req)
 	var resp struct {
 		Hits []struct {
 			Title   string `json:"title"`
 			Link    string `json:"link"`
 			Snippet string `json:"snippet"`
 		} `json:"hits"`
+		Summary string `json:"summary"`
 	}
 	if err := c.call(ctx, http.MethodPost, "/v1/search", nil, body, &resp); err != nil {
 		return SearchOutput{}, err
 	}
-	out := SearchOutput{Results: []Result{}}
+	out := SearchOutput{Results: []Result{}, Summary: resp.Summary}
 	for _, h := range resp.Hits {
 		out.Results = append(out.Results, Result{Title: h.Title, URL: h.Link, Content: h.Snippet})
 	}

@@ -46,9 +46,15 @@ func (s *suite) schemaHonesty(t *testing.T) {
 // against its output schema, in tool name order.
 func (s *suite) honesty(t *testing.T) []*honesty {
 	r := s.newRig(t, modeKeyed)
-	tools := r.mustBuild()
 	byTool := map[string][]any{}
+	schemas := map[string]json.RawMessage{}
 	for _, call := range s.c.Calls {
+		tools := r.toolsFor(call)
+		if _, ok := schemas[call.Tool]; !ok {
+			if tl := find(tools, call.Tool); tl != nil {
+				schemas[call.Tool] = tl.Definition().OutputSchema
+			}
+		}
 		out, err := r.invoke(t.Context(), tools, call.Tool, call.Input)
 		if err != nil {
 			t.Fatalf("%s: %v", call.Name, err)
@@ -62,7 +68,7 @@ func (s *suite) honesty(t *testing.T) []*honesty {
 	var all []*honesty
 	for _, name := range slices.Sorted(maps.Keys(byTool)) {
 		var sc jsonschema.Schema
-		if err := json.Unmarshal(find(tools, name).Definition().OutputSchema, &sc); err != nil {
+		if err := json.Unmarshal(schemas[name], &sc); err != nil {
 			t.Errorf("[honesty] %s: output schema: %v", name, err)
 			continue
 		}

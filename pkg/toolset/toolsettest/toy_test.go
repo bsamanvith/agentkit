@@ -40,6 +40,8 @@ func toyConnector(bug toy.Bug) toolsettest.Connector {
 			{Name: "search_go", Tool: "toy_search", Input: json.RawMessage(`{"query": "go", "max_results": 2}`), Cassettes: []string{"search_go"}},
 			{Name: "search_nothing", Tool: "toy_search", Input: json.RawMessage(`{"query": "cobol"}`), Cassettes: []string{"search_nothing"}},
 			{Name: "get_go1", Tool: "toy_get", Input: json.RawMessage(`{"id": "go1"}`), Cassettes: []string{"get_go1"}},
+			// summary is filled only under with_summary.
+			{Name: "search_summary", Tool: "toy_search", Input: json.RawMessage(`{"query": "go", "max_results": 2}`), Cassettes: []string{"search_summary"}, Settings: json.RawMessage(`{"with_summary": true}`)},
 		},
 		Invalid: []toolsettest.Call{
 			{Name: "max_results_too_big", Tool: "toy_search", Input: json.RawMessage(`{"query": "go", "max_results": 99}`)},
@@ -63,7 +65,52 @@ func toyAuto(bug toy.Bug) toolsettest.Connector {
 // TestToyConnector: the toy, a correct connector, passes the suite.
 func TestToyConnector(t *testing.T) {
 	t.Parallel()
-	toolsettest.RunConnector(t, toyConnector(toy.Bug(os.Getenv(bugEnv))))
+	toolsettest.RunConnector(t, withVariant(toyConnector(toy.Bug(os.Getenv(bugEnv)))))
+}
+
+// variantEnv changes the toy's test, for TestCallSettings.
+const variantEnv = "TOOLSETTEST_TOY_VARIANT"
+
+// withVariant drops the search_summary call ("no_summary_call") or its own
+// settings ("no_call_settings").
+func withVariant(c toolsettest.Connector) toolsettest.Connector {
+	v := os.Getenv(variantEnv)
+	var calls []toolsettest.Call
+	for _, call := range c.Calls {
+		switch {
+		case call.Name != "search_summary":
+		case v == "no_summary_call":
+			continue
+		case v == "no_call_settings":
+			call.Settings = nil
+		}
+		calls = append(calls, call)
+	}
+	c.Calls = calls
+	return c
+}
+
+// TestCallSettings: summary, filled only under with_summary, is covered by
+// the call with its own settings: without that call dead_fields names it, and
+// without the call's settings the call no longer matches its cassette.
+func TestCallSettings(t *testing.T) {
+	t.Parallel()
+	if os.Getenv(variantEnv) != "" {
+		t.Skip("running as a variant subprocess")
+	}
+	for _, tc := range []struct{ variant, check, want string }{
+		{"no_summary_call", "TestToyConnector/schema_honesty/dead_fields", "no cassette output has a non-null summary"},
+		{"no_call_settings", "TestToyConnector/calls/search_summary", "search_summary"},
+	} {
+		t.Run(tc.variant, func(t *testing.T) {
+			t.Parallel()
+			run := "-test.run=^" + strings.ReplaceAll(tc.check, "/", "$/^") + "$"
+			out, err := runTest(t, []string{variantEnv + "=" + tc.variant}, run)
+			if err == nil || !strings.Contains(out, "--- FAIL: "+tc.check+" ") || !strings.Contains(out, tc.want) {
+				t.Errorf("with %s, %s must fail mentioning %q (err %v):\n%s", tc.variant, tc.check, tc.want, err, out)
+			}
+		})
+	}
 }
 
 // TestToyConnectorAuto: in auto mode it passes too, keyless calls included.

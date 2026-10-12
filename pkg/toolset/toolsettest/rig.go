@@ -47,6 +47,9 @@ type rig struct {
 	logs *logSink
 	mode keyMode
 	env  Env
+
+	mu    sync.Mutex
+	built map[string][]tool.Tool // by settings, for toolsFor
 }
 
 func (s *suite) newRig(t testing.TB, mode keyMode) *rig {
@@ -145,6 +148,48 @@ func (r *rig) mustBuild() []tool.Tool {
 	if err != nil {
 		r.t.Fatalf("Build(%s): %v", r.s.c.Settings, err)
 	}
+	return tools
+}
+
+// settingsFor returns the settings a call is built with.
+func (s *suite) settingsFor(call Call) json.RawMessage {
+	return mergeSettings(s.c.Settings, call.Settings)
+}
+
+// mergeSettings returns base with each field of over replacing base's. Both
+// are JSON objects (normalize checked them) or empty.
+func mergeSettings(base, over json.RawMessage) json.RawMessage {
+	if len(bytes.TrimSpace(over)) == 0 {
+		return base
+	}
+	m := map[string]json.RawMessage{}
+	_ = json.Unmarshal(base, &m)
+	var o map[string]json.RawMessage
+	_ = json.Unmarshal(over, &o)
+	maps.Copy(m, o)
+	b, _ := json.Marshal(m)
+	return b
+}
+
+// toolsFor returns the tools built with the call's settings, building them
+// once per distinct settings on this rig, failing the test on error. Call it
+// from the test's goroutine.
+func (r *rig) toolsFor(call Call) []tool.Tool {
+	r.t.Helper()
+	settings := r.s.settingsFor(call)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if tools, ok := r.built[string(settings)]; ok {
+		return tools
+	}
+	tools, err := r.build(settings)
+	if err != nil {
+		r.t.Fatalf("Build(%s) for %s: %v", settings, call.Name, err)
+	}
+	if r.built == nil {
+		r.built = map[string][]tool.Tool{}
+	}
+	r.built[string(settings)] = tools
 	return tools
 }
 

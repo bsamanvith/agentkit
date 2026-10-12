@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -241,6 +242,8 @@ func TestFakeRunsTheSuite(t *testing.T) {
 	ff := fakeToy(t)
 	c := toyConnector(toy.BugNone)
 	c.New = func(toolsettest.Env) toolset.Factory { return ff }
+	// A fake ignores settings, so a call with its own cannot pass.
+	c.Calls = slices.DeleteFunc(c.Calls, func(call toolsettest.Call) bool { return call.Settings != nil })
 	c.Invalid = c.Invalid[:1] // max_results_too_big; bad_id needs the real connector's check
 	c.Invalid = append(c.Invalid, toolsettest.Call{Name: "no_query", Tool: "toy_search", Input: json.RawMessage(`{}`)})
 	toolsettest.RunFake(t, c)

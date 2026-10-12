@@ -66,14 +66,18 @@ func Func[In, Out any](name, description string, fn func(ctx context.Context, in
 		}
 	}
 
+	var o funcOptions
+	for _, opt := range opts {
+		if opt.apply != nil {
+			opt.apply(&o)
+		}
+	}
 	def := Definition{
 		Name:         name,
 		Description:  description,
 		InputSchema:  inJSON,
 		OutputSchema: outJSON,
-	}
-	for _, opt := range opts {
-		opt(&def)
+		Metadata:     o.meta,
 	}
 	if err := checkDefinition(def); err != nil {
 		return nil, err
@@ -81,14 +85,17 @@ func Func[In, Out any](name, description string, fn func(ctx context.Context, in
 	return &FuncTool[In, Out]{def: def, input: resolved, fn: fn}, nil
 }
 
-// FuncOption configures a tool built by [Func].
-type FuncOption func(*Definition)
+// FuncOption configures a tool built by [Func]. It can only add to the
+// definition: the name, description and schemas are Func's own.
+type FuncOption struct{ apply func(*funcOptions) }
+
+type funcOptions struct{ meta Metadata }
 
 // WithMetadata sets the tool's [Metadata]: its kind, risk, tags and display.
 // [Func] fails with [ErrInvalidDefinition] if m breaks its rules.
 func WithMetadata(m Metadata) FuncOption {
 	m.Tags = slices.Clone(m.Tags) // the tool never writes to it; Definition returns copies
-	return func(d *Definition) { d.Metadata = m }
+	return FuncOption{func(o *funcOptions) { o.meta = m }}
 }
 
 // Definition implements [Tool].

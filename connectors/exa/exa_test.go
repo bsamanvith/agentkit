@@ -55,6 +55,30 @@ var (
 	}
 )
 
+// TestDefinitions pins what the model and the policies see of each tool, its
+// schemas and its metadata, under each settings that changes them.
+func TestDefinitions(t *testing.T) {
+	t.Parallel()
+	for name, settings := range map[string]string{
+		"definitions":                    `{}`,
+		"definitions-model-chooses-type": `{"search_defaults": {"model_chooses_type": true}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			r := newRig(t, settings)
+			var defs []tool.Definition
+			for _, name := range []string{"exa_search", "exa_extract"} {
+				defs = append(defs, r.tools[name].Definition())
+			}
+			b, err := json.Marshal(defs)
+			if err != nil {
+				t.Fatal(err)
+			}
+			golden(t, name, b)
+		})
+	}
+}
+
 // Criterion: search request. The request body (the cassette's, matched as
 // JSON) carries the query, numResults, type, contents from settings and the
 // filters; the response maps to the shared search shape (golden), in

@@ -270,10 +270,10 @@ func (s *Server) listTools(w http.ResponseWriter, r *http.Request) {
 
 // wireTool is a tool's definition as the API shows it.
 func wireTool(d tool.Definition) wire.Tool {
-	kind, risk := tool.Classify(d)
+	kind, risk := d.Class()
 	t := wire.Tool{
 		Name: d.Name, Description: d.Description, InputSchema: d.InputSchema, OutputSchema: d.OutputSchema,
-		Kind: string(kind), Risk: string(risk), Classified: d.Kind != "" && d.Risk != "",
+		Kind: string(kind), Risk: string(risk), Classified: d.Classified(),
 		Interrupts: d.Interrupts, RequiresApproval: d.RequiresApproval, Tags: d.Tags,
 	}
 	if d.Display != (tool.Display{}) {

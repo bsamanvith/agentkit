@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -197,6 +198,26 @@ func TestToolsFromTwoToolsets(t *testing.T) {
 	want := []string{"a__calculate", "a__current_time", "a__echo", "b__calculate", "b__current_time", "b__echo"}
 	if !slices.Equal(names, want) {
 		t.Fatalf("merged tools %v, want %v", names, want)
+	}
+	// Apart from the name, each merged definition is its toolset's own: the
+	// schemas and the metadata policies read (kind, risk, tags) survive.
+	for _, d := range defs {
+		set, own, _ := strings.Cut(d.Name, agentapi.ToolPrefixSeparator)
+		src, err := sets[set].List(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		i := slices.IndexFunc(src, func(s tool.Definition) bool { return s.Name == own })
+		if i < 0 {
+			t.Fatalf("%s: no tool %q in toolset %q", d.Name, own, set)
+		}
+		if src[i].Kind == "" {
+			t.Fatalf("toolset %q's %s is unclassified; the check needs metadata to compare", set, own)
+		}
+		d.Name = own
+		if !reflect.DeepEqual(d, src[i]) {
+			t.Errorf("merged %s%s%s = %+v, want the toolset's %+v", set, agentapi.ToolPrefixSeparator, own, d, src[i])
+		}
 	}
 	m := script(t,
 		llmtest.ToolCalls(call("c1", "a__echo", `{"text":"hi"}`), call("c2", "b__echo", `{"text":"hi"}`)),

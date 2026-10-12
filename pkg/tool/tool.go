@@ -35,7 +35,7 @@ type Definition struct {
 	// OutputSchema is a JSON Schema for the output, if the output is an object.
 	OutputSchema json.RawMessage `json:"outputSchema,omitempty"`
 	// Metadata says what the tool does (kind, risk, tags, display). It is
-	// optional; [Classify] gives an unclassified tool its default class.
+	// optional; [Metadata.Class] gives an unclassified tool its default class.
 	Metadata
 }
 

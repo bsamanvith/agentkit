@@ -17,6 +17,7 @@ connectors/<name>/
   testdata/cassettes/  <exchange>.req.json + <exchange>.res.http, recorded
   testdata/golden/     <call>.json, the output of each happy call
   testdata/openapi.json the provider's OpenAPI spec, cut to the operations used (make openapi-specs)
+  testdata/openapi-overlay.json  corrections to that spec, where the real API contradicts it (rare)
 ```
 
 ## 2. The contract (the suite checks every point)
@@ -130,7 +131,7 @@ Connector-specific behavior goes in ordinary tests next to the suite, for exampl
   - an operation or status the spec lacks fails, it is never skipped;
   - the spec is JSON, OpenAPI 3.0 (`nullable`, boolean `exclusiveMinimum`) or 3.1. A schema keyword the check does not know fails the spec, so a re-vendored spec cannot pass by being misread. `format` is not checked.
 
-  This matters most for `synthetic` cassettes, which otherwise only repeat the code's own assumptions. To refresh the specs, run `make openapi-specs` (it fetches each provider's published spec, cuts it with `pkg/toolset/toolsettest/testdata/openapi/cut.go`, and writes `testdata/openapi.json`), then review the diff. A new connector adds its line to that target. Never edit a vendored spec by hand: where the published spec is wrong, leave the check off and say why next to `OpenAPI`. For a rig that checks every request it sends, `toolsettest.LoadOpenAPI(path)` and `(*OpenAPI).CheckRequest` apply the same schemas.
+  This matters most for `synthetic` cassettes, which otherwise only repeat the code's own assumptions. To refresh the specs, run `make openapi-specs` (it fetches each provider's published spec, cuts it with `pkg/toolset/toolsettest/testdata/openapi/cut.go`, and writes `testdata/openapi.json`), then review the diff. A new connector adds its line to that target. Never edit a vendored spec by hand. Where the published spec contradicts the real API, put the correction in `testdata/openapi-overlay.json` and pass it to the cut with `-overlay` (Tavily's is the example). Each correction gives a JSON Pointer into the cut, the keywords to `set`, and a recorded (not synthetic) `cassette` whose response `shows` the behaviour. The cut fails if the cassette does not show it, or if the correction changes nothing (the provider fixed its spec: delete the correction). Each corrected schema carries `x-agentkit-overlay` in the vendored spec, so the diff shows what was changed and why. A connector whose provider publishes no spec skips the check with that reason. For a rig that checks every request it sends, `toolsettest.LoadOpenAPI(path)` and `(*OpenAPI).CheckRequest` apply the same schemas.
 
 ```go
 //go:build live
@@ -168,7 +169,7 @@ Each check has an ID: its subtest path with dots. The subtest names are a contra
 | `calls` | mandatory | each happy call: golden output, schema-valid, exactly its cassettes requested | wrong mapping, extra or missing requests, the key in a query string |
 | `keyless` | mandatory | (`KeyOptional`) each happy call without a key sends the marker and no key | keyless mode sending nothing, or a stale key |
 | `invalid` | mandatory | each invalid input gives `ErrInvalidInput` and sends nothing | a paid request for input that was always going to fail |
-| `cassettes.openapi` | opt-in | every cassette's request and response bodies fit the provider's vendored OpenAPI spec (`Connector.OpenAPI`) for their operation and status | a hand-written (synthetic) cassette in a shape the real API never sends, so the tests pass against a fiction |
+| `cassettes.openapi` | opt-out | every cassette's request and response bodies fit the provider's vendored OpenAPI spec (`Connector.OpenAPI`) for their operation and status | a hand-written (synthetic) cassette in a shape the real API never sends, so the tests pass against a fiction |
 | `errors.400` | opt-out | `ErrInvalidInput` with the provider's message, capped | the model never learns why its input was refused |
 | `errors.422` | opt-out | as 400 | as 400 |
 | `errors.401` | opt-out | `ErrToolFailed`, one request | auth errors reported as bad input |
@@ -202,8 +203,6 @@ A connector may skip an opt-out check, with a reason, in its test: `Skip: map[to
 - The skip shows as `--- SKIP` with the reason under `go test -v`.
 - Naming a mandatory check, an unknown ID or no reason fails the suite.
 - Every skip in the repository is listed below; add yours in the same change.
-
-`cassettes.openapi` is enabled by Exa, Parallel and the toy. Tavily's spec is vendored but the check is off: its docs type `answer`, `results[].raw_content` and `results[].published_date` as plain strings, and the real API sends `null` for them ([T051](../tasks/T051-openapi-cassette-validation.md) Notes).
 
 A new check rolls in, not crashes in. When a check would fail connectors that exist, it lands opt-in: a connector runs it by naming it in `Connector.Enable`, and the suite reports it skipped otherwise. Once every connector passes it, it becomes opt-out, and later mandatory. Enabling an unknown ID, or one that is not opt-in, fails the suite.
 

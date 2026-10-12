@@ -5,7 +5,11 @@
 // responses, JSON content only, $refs to request bodies and responses inlined)
 // and every component schema they reference. Schemas are copied as they are.
 // It reads the spec from files: YAML, JSON, or Markdown pages holding
-// ```yaml blocks (Tavily's docs), merged. make openapi-specs runs it:
+// ```yaml blocks (Tavily's docs), merged.
+//
+// -overlay names corrections for a spec the real API contradicts (see
+// [overlay]); each is applied to the cut and marked x-agentkit-overlay.
+// make openapi-specs runs it:
 //
 //	go run ./pkg/toolset/toolsettest/testdata/openapi/cut.go -o connectors/exa/testdata/openapi.json \
 //		-source https://exa.ai/docs/exa-spec.yaml -op 'POST /search' -op 'POST /contents' exa-spec.yaml
@@ -17,6 +21,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"slices"
@@ -34,6 +39,7 @@ func (l *list) Set(v string) error { *l = append(*l, v); return nil }
 func main() {
 	var ops, sources list
 	out := flag.String("o", "", "output file")
+	overlay := flag.String("overlay", "", "corrections to apply to the cut (JSON)")
 	flag.Var(&ops, "op", "an operation to keep, as 'METHOD /path' (repeat)")
 	flag.Var(&sources, "source", "where the spec was fetched from, for the comment (repeat)")
 	flag.Parse()
@@ -41,13 +47,13 @@ func main() {
 		fmt.Fprintln(os.Stderr, "usage: cut -o out.json -source URL -op 'POST /path' spec-file...")
 		os.Exit(2)
 	}
-	if err := run(*out, ops, sources, flag.Args()); err != nil {
+	if err := run(*out, *overlay, ops, sources, flag.Args()); err != nil {
 		fmt.Fprintln(os.Stderr, "cut:", err)
 		os.Exit(1)
 	}
 }
 
-func run(out string, ops, sources, files []string) error {
+func run(out, overlayFile string, ops, sources, files []string) error {
 	spec := map[string]any{}
 	for _, f := range files {
 		docs, err := read(f)
@@ -121,13 +127,22 @@ func run(out string, ops, sources, files []string) error {
 		cutSchemas[name] = schemas[name]
 	}
 	info, _ := spec["info"].(map[string]any)
+	asPublished := "as published"
+	if overlayFile != "" {
+		asPublished = "as published, with the corrections in " + overlayFile + " (each marked x-agentkit-overlay)"
+	}
 	doc := map[string]any{
-		"_comment": fmt.Sprintf("Cut by make openapi-specs on %s from %s: the operations this connector uses and the schemas they reference, as published. Do not edit by hand: re-run it and review the diff.",
-			time.Now().Format(time.DateOnly), strings.Join(sources, " and ")),
+		"_comment": fmt.Sprintf("Cut by make openapi-specs on %s from %s: the operations this connector uses and the schemas they reference, %s. Do not edit by hand: re-run it and review the diff.",
+			time.Now().Format(time.DateOnly), strings.Join(sources, " and "), asPublished),
 		"openapi":    spec["openapi"],
 		"info":       map[string]any{"title": info["title"], "version": info["version"]},
 		"paths":      cutPaths,
 		"components": map[string]any{"schemas": cutSchemas},
+	}
+	if overlayFile != "" {
+		if err := applyOverlay(doc, overlayFile); err != nil {
+			return fmt.Errorf("%s: %w", overlayFile, err)
+		}
 	}
 	b, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
@@ -285,4 +300,107 @@ func merge(spec, d map[string]any, at string) error {
 		}
 	}
 	return nil
+}
+
+// overlay is a file of corrections to a provider's spec, for where the real
+// API contradicts it (Tavily's docs type fields as strings that the API sends
+// as null). Each correction is backed by a recorded cassette, and fails the
+// cut once it is no longer needed.
+type overlay struct {
+	Comment     string `json:"_comment"`
+	Corrections []struct {
+		// Pointer is a JSON Pointer to a schema in the cut.
+		Pointer string `json:"pointer"`
+		// Set holds the keywords to set on it; each must change it.
+		Set map[string]any `json:"set"`
+		// Cassette is a recorded (not synthetic) cassette, relative to the
+		// overlay file, whose response contains Shows.
+		Cassette string `json:"cassette"`
+		Shows    string `json:"shows"`
+	} `json:"corrections"`
+}
+
+func applyOverlay(doc map[string]any, file string) error {
+	raw, err := os.ReadFile(file)
+	if err != nil {
+		return err
+	}
+	var ov overlay
+	dec := json.NewDecoder(strings.NewReader(string(raw)))
+	dec.DisallowUnknownFields() // a misspelt key would drop a check
+	if err := dec.Decode(&ov); err != nil {
+		return err
+	}
+	if len(ov.Corrections) == 0 {
+		return fmt.Errorf("no corrections")
+	}
+	for _, c := range ov.Corrections {
+		if len(c.Set) == 0 || c.Cassette == "" || c.Shows == "" {
+			return fmt.Errorf("correction at %s: needs set, cassette and shows", c.Pointer)
+		}
+		if err := evidence(filepath.Join(filepath.Dir(file), c.Cassette), c.Shows); err != nil {
+			return fmt.Errorf("correction at %s: %w", c.Pointer, err)
+		}
+		target, err := resolve(doc, c.Pointer)
+		if err != nil {
+			return err
+		}
+		for _, k := range slices.Sorted(maps.Keys(c.Set)) {
+			if reflect.DeepEqual(target[k], c.Set[k]) {
+				return fmt.Errorf("correction at %s: %s is already %v in the spec: remove the correction", c.Pointer, k, c.Set[k])
+			}
+			target[k] = c.Set[k]
+		}
+		target["x-agentkit-overlay"] = fmt.Sprintf("%s has %s", c.Cassette, c.Shows)
+	}
+	return nil
+}
+
+// evidence checks that cassette is recorded from the real API and that its
+// response contains shows.
+func evidence(cassette, shows string) error {
+	req, err := os.ReadFile(cassette + ".req.json")
+	if err != nil {
+		return err
+	}
+	var r struct {
+		Synthetic bool `json:"synthetic"`
+	}
+	if err := json.Unmarshal(req, &r); err != nil {
+		return fmt.Errorf("%s.req.json: %w", cassette, err)
+	}
+	if r.Synthetic {
+		return fmt.Errorf("%s is synthetic: a correction needs a recording from the real API", cassette)
+	}
+	res, err := os.ReadFile(cassette + ".res.http")
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(string(res), shows) {
+		return fmt.Errorf("%s.res.http does not contain %s", cassette, shows)
+	}
+	return nil
+}
+
+// resolve returns the object at JSON Pointer p in doc.
+func resolve(doc map[string]any, p string) (map[string]any, error) {
+	if !strings.HasPrefix(p, "/") {
+		return nil, fmt.Errorf("pointer %q: not a JSON Pointer", p)
+	}
+	var v any = doc
+	for _, tok := range strings.Split(p[1:], "/") {
+		tok = strings.ReplaceAll(strings.ReplaceAll(tok, "~1", "/"), "~0", "~")
+		m, ok := v.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("pointer %s: %q is not in an object", p, tok)
+		}
+		if v, ok = m[tok]; !ok {
+			return nil, fmt.Errorf("pointer %s: no %q in the cut spec", p, tok)
+		}
+	}
+	m, ok := v.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("pointer %s: not a schema object", p)
+	}
+	return m, nil
 }

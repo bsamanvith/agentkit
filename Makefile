@@ -49,7 +49,7 @@ openapi-specs: ## Re-vendor the providers' OpenAPI specs (connectors/*/testdata/
 		-op 'POST /search' -op 'POST /contents' $$d/exa.yaml && \
 	$(OPENAPI_CUT) -o connectors/parallel/testdata/openapi.json -source $(PARALLEL_SPEC) \
 		-op 'POST /v1/search' -op 'POST /v1/extract' $$d/parallel.json && \
-	$(OPENAPI_CUT) -o connectors/tavily/testdata/openapi.json -source $(TAVILY_DOCS)/search.md -source $(TAVILY_DOCS)/extract.md \
+	$(OPENAPI_CUT) -o connectors/tavily/testdata/openapi.json -overlay connectors/tavily/testdata/openapi-overlay.json -source $(TAVILY_DOCS)/search.md -source $(TAVILY_DOCS)/extract.md \
 		-op 'POST /search' -op 'POST /extract' $$d/search.md $$d/extract.md
 
 .PHONY: golden

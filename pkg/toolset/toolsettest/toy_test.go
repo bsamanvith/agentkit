@@ -53,7 +53,7 @@ func toyConnector(bug toy.Bug) toolsettest.Connector {
 		},
 		ErrorBody: toy.ErrorBody,
 		OpenAPI:   "testdata/openapi.json",
-		Enable:    []toolsettest.CheckID{"schema_honesty.dead_fields", "cassettes.openapi"},
+		Enable:    []toolsettest.CheckID{"schema_honesty.dead_fields"},
 		SettingCalls: []toolsettest.Call{
 			{Name: "with_summary", Tool: "toy_search", Input: json.RawMessage(`{"query": "go", "max_results": 2}`), Settings: json.RawMessage(`{"with_summary": true}`)},
 		},

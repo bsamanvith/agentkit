@@ -22,9 +22,10 @@ func connector() toolsettest.Connector {
 		KeyEnv:        "TAVILY_API_KEY",
 		KeyOptional:   true, // auth auto: keyless without the key
 		KeylessMarker: http.Header{"X-Tavily-Access-Mode": {"keyless"}},
-		// cassettes.openapi stays off: the spec in Tavily's docs types
-		// answer, results[].raw_content and results[].published_date as
-		// plain strings, and the real API sends null for them (T051 Notes).
+		// Tavily's docs type answer, results[].raw_content and
+		// results[].published_date as plain strings, and the real API sends
+		// null for them: make openapi-specs corrects the cut with
+		// testdata/openapi-overlay.json.
 		OpenAPI: "testdata/openapi.json",
 		Calls: []toolsettest.Call{
 			{

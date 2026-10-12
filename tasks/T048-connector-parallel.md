@@ -67,8 +67,8 @@ API sources (fetch with `curl`; WebFetch may fail on DNS in sessions):
   - Parallel's `PendingConnectors` entry is removed.
 
 
-- [x] **Search request:** sends the documented `/v1/search` JSON (golden request body: `objective`, `search_queries`, `mode`, result count and `source_policy` placed exactly where the spec puts them) with the `x-api-key` header; a recorded response maps to E10's search shape (golden output). Passes `RunConnector`: `TestConformance/calls/search_defaults` and `/search_filters`, which match the cassettes' request bodies exactly; goldens `testdata/golden/search_*.json`. `TestCassettesMatchSpec` checks those bodies against the spec, and `rig.check` checks every other request.
-- [x] **Extract:** sends `/v1/extract` with the extract options inside `advanced_settings` (golden; a test pins that nothing the docs moved is sent top-level); it maps `results` and `errors`, with excerpts mode and full-content mode both covered. Passes `RunConnector`: `TestConformance/calls/extract_excerpts` and `/extract_full`. Also `TestExtractOptionsInsideAdvancedSettings`; `TestSpecCheckRejects` shows the spec check refuses a top-level option.
+- [x] **Search request:** sends the documented `/v1/search` JSON (golden request body: `objective`, `search_queries`, `mode`, result count and `source_policy` placed exactly where the spec puts them) with the `x-api-key` header; a recorded response maps to E10's search shape (golden output). Passes `RunConnector`: `TestConformance/calls/search_defaults` and `/search_filters`, which match the cassettes' request bodies exactly; goldens `testdata/golden/search_*.json`. `TestConformance/cassettes/openapi` checks those bodies against the spec (`TestCassettesMatchSpec` until T051), and `rig.check` checks every other request.
+- [x] **Extract:** sends `/v1/extract` with the extract options inside `advanced_settings` (golden; a test pins that nothing the docs moved is sent top-level); it maps `results` and `errors`, with excerpts mode and full-content mode both covered. Passes `RunConnector`: `TestConformance/calls/extract_excerpts` and `/extract_full`. Also `TestExtractOptionsInsideAdvancedSettings`; The spec check refuses a top-level option, since `V1ExtractRequest` is closed (`additionalProperties: false`): `TestSpecCheckRejects` showed it until T051, and the kit's `TestCheckRequest` covers undeclared fields since.
 - [x] **Settings validation:** Passes `RunConnector` (`settings.*`). Also `TestSettingsValidation`, `TestOptionalToolsetSkipped`, and `TestE2EServeParallelWithoutKey` (cmd/agentkit, the real binary's `/readyz`).
   - a missing `PARALLEL_API_KEY` fails `Build` naming the variable;
   - an `optional` toolset is skipped and shown degraded in `/readyz`;
@@ -91,7 +91,7 @@ API sources (fetch with `curl`; WebFetch may fail on DNS in sessions):
 
 **Status `review`, for two reasons**, to clear together once someone has a key:
 1. `TestLive` has not run: there was no `PARALLEL_API_KEY` in the session.
-2. **The four cassettes are synthetic.** They were hand-built from `public-openapi.json` (fetched 2026-10-12), and each `.req.json` says `"synthetic": true`. `TestCassettesMatchSpec` checks them against the vendored spec and logs their names.
+2. **The four cassettes are synthetic.** They were hand-built from `public-openapi.json` (fetched 2026-10-12), and each `.req.json` says `"synthetic": true`. `TestConformance/cassettes/openapi` checks them against the vendored spec (`TestCassettesMatchSpec` until T051), and the suite logs their names.
 
 To re-record by hand until T049's `make record-cassettes` lands:
 - send each `.req.json` body with `curl -i -H "x-api-key: $PARALLEL_API_KEY" -H 'Content-Type: application/json' -d @body https://api.parallel.ai<path>`;
@@ -230,7 +230,7 @@ Exact schemas: `testdata/golden/definitions.json`. Both tool descriptions end "t
   - A new connector's first `make golden` fails: other checks read `testdata/golden/<call>.json` before `calls` writes it. The second run passes.
   - `FuzzResponses` builds the connector on every run: about 600 execs/s here, measured before the kit's 8fe1fd1 (in-process upstream), against roughly 10× that for my targets, which build once and pass the response through the request context.
   - It fuzzes 200 bodies only. `FuzzDecodeSearch`/`FuzzDecodeExtract` also vary the status (400/401/422/500), turn on full-content mode, and check the logs for the key, so they stay.
-- **T051** (planned) replaces `spec_test.go` with a shared OpenAPI helper (`Connector.OpenAPI`). What it needs from Parallel's side:
+- **T051** (done) replaces `spec_test.go` with a shared OpenAPI helper (`Connector.OpenAPI`). What it needs from Parallel's side:
   - `$ref`s rewritten from `#/components/schemas/` to `#/$defs/`;
   - one fresh resolve per root (a resolved schema must not be shared);
   - request bodies checked as well as responses (`rig.check` does this for every request).

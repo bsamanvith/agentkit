@@ -1,0 +1,23 @@
+{
+  "_comment": "Corrections make openapi-specs applies to the cut of Tavily's published spec (T051): the docs type these fields as plain strings, and the real API sends null for them. Each names a recorded cassette whose response shows it. The cut fails once a correction changes nothing (Tavily fixed its docs): then delete it.",
+  "corrections": [
+    {
+      "pointer": "/paths/~1search/post/responses/200/content/application~1json/schema/properties/answer",
+      "set": {"nullable": true},
+      "cassette": "cassettes/search-go-release",
+      "shows": "\"answer\": null"
+    },
+    {
+      "pointer": "/paths/~1search/post/responses/200/content/application~1json/schema/properties/results/items/properties/raw_content",
+      "set": {"nullable": true},
+      "cassette": "cassettes/search-go-release",
+      "shows": "\"raw_content\": null"
+    },
+    {
+      "pointer": "/paths/~1search/post/responses/200/content/application~1json/schema/properties/results/items/properties/published_date",
+      "set": {"nullable": true},
+      "cassette": "cassettes/search-news-answer",
+      "shows": "\"published_date\": null"
+    }
+  ]
+}

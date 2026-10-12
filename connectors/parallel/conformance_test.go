@@ -20,7 +20,7 @@ func connector() toolsettest.Connector {
 		},
 		KeyEnv:  "PARALLEL_API_KEY",
 		OpenAPI: "testdata/openapi.json",
-		Enable:  []toolsettest.CheckID{"schema_honesty.dead_fields", "cassettes.openapi"},
+		Enable:  []toolsettest.CheckID{"schema_honesty.dead_fields"},
 		Calls: []toolsettest.Call{
 			{
 				Name: "search_defaults", Tool: "parallel_search",

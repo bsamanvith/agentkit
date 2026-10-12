@@ -75,7 +75,7 @@ API source of truth: the OpenAPI spec `https://exa.ai/docs/exa-spec.yaml` (`/sea
 Two things keep this in `review`; nothing else is open.
 
 - **No `EXA_API_KEY` in this session.** `TestLive` (`go test -tags live ./connectors/exa/`) skipped, so the live criterion is unticked. It was not run in any form.
-- **All seven cassettes are synthetic** (`"synthetic": true` in each `.req.json`). They were built by hand from the response schema of Exa's OpenAPI spec and the examples in its docs, because nothing could be recorded. `TestCassettesMatchSpec` checks each one against the vendored spec, and lists them.
+- **All seven cassettes are synthetic** (`"synthetic": true` in each `.req.json`). They were built by hand from the response schema of Exa's OpenAPI spec and the examples in its docs, because nothing could be recorded. `TestCassettesMatchSpec` checked each one against the vendored spec, and listed them; since T051 the kit's check `TestConformance/cassettes/openapi` does, and the suite lists synthetic cassettes.
   - The per-URL error tags in `contents-partial` (`CRAWL_NOT_FOUND`, `CRAWL_TIMEOUT`) are illustrative: the spec types `statuses[].error.tag` as a free string.
 
 To finish, in a session with the key:
@@ -98,10 +98,10 @@ make golden   # review the output goldens, then make check
   - tests:
     - `rig_test.go`: the fake upstream and the rig, with its invariants after every call and every test;
     - `cassette_test.go`: cassette replay, a stand-in for T049's `toolsettest.Upstream`;
-    - `spec_test.go`: the OpenAPI check;
+    - `spec_test.go`: the OpenAPI check (T051 moved it into the kit; `TestEnumsMatchSpec` is what remains);
     - `conformance_test.go`: Exa described to T049's kit, `TestConformance` (`RunConnector`) and the two `FuzzResponses` targets;
     - `exa_test.go`, `fuzz_test.go`, `example_test.go`, `export_test.go`, `live_test.go` (`-tags live`);
-  - `testdata/`: `cassettes/`, `golden/` (mapping outputs `*.output.json`, suite outputs `<call>.json`), and `openapi/`:
+  - `testdata/`: `cassettes/`, `golden/` (mapping outputs `*.output.json`, suite outputs `<call>.json`), and `openapi/` (since T051: `openapi.json`, cut by `make openapi-specs`):
     - `exa.json`, the spec slice;
     - `cut.go`, which reproduces that slice byte for byte from the published YAML;
     - a `README.md`.
@@ -112,7 +112,7 @@ make golden   # review the output goldens, then make check
 - **`internal/archtest/rules.go`:** removes Exa's `PendingConnectors` entry (T049's exemption until adoption). Otherwise unchanged: T046's `connectors` tree rule (`pkg/tool`, `pkg/toolset`, `pkg/clock`, and in tests `clocktest`, `internal/testkit` and `toolsettest`) is a superset of the one this task first added, so the rebase kept T046's alone.
 - **`deploy/local/agent/search.json`:** shared with T046. It now holds the `demo`, `tavily` and `exa` toolsets in both `mcp.toolsets` and `agent.toolsets`, with `exa` `optional: true`, and the system prompt names both search tools.
 - **`docs/QUICKSTART.md`:** §6 "Web search", one section shared with T046, with a subsection each for Tavily and Exa.
-- No new dependency. `go.yaml.in/yaml/v4`, already in `go.mod`, is used only by `testdata/openapi/cut.go`, a `go:build ignore` tool.
+- No new dependency. `go.yaml.in/yaml/v4`, already in `go.mod`, is used only by `testdata/openapi/cut.go`, a `go:build ignore` tool (since T051, `pkg/toolset/toolsettest/testdata/openapi/cut.go`).
 
 ### Tools
 
@@ -180,7 +180,7 @@ Both schemas are derived by `tool.Func` from the Go types, and both tools declar
 - **Where T049's API does not fit Exa:**
   - **Content mode is a setting.** One `Connector` cannot cover both highlights and text, even with the settings union above. `Call` needs a per-call `Settings` (as `searchCases` has), or the connector is registered twice.
   - **Schema honesty.** `answer` appears only for deep types, so a paid deep search must be among the recordings, and `author` must appear at least once. Both are true of the synthetic set.
-  - **The OpenAPI checker** in `spec_test.go` belongs in the kit, because Parallel's spec needs it too.
+  - **The OpenAPI checker** in `spec_test.go` belongs in the kit, because Parallel's spec needs it too. (Done in T051: `toolsettest.ValidateCassettes`, check `cassettes.openapi`.)
     - It covers the keywords Exa's slice uses: `$ref`, `type`, `enum`, `const`, `anyOf`, `oneOf`, `properties`, `required`, `additionalProperties`, `propertyNames`, `items`, `min`/`maxItems`, `min`/`maxLength`, `pattern`, `format`, `minimum`, `maximum`, `exclusiveMinimum`.
     - It fails on any other keyword.
     - It needs no dependency, so the archtest allow-list stands.

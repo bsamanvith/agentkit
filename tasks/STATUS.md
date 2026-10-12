@@ -47,7 +47,7 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 |---|---|---|
 | [T049](T049-connector-test-kit.md) | `toolsettest`: cassettes, `RunConnector` suite, honest fakes | **Running**; first cut on `main` (`686b6ff`: Upstream, RunConnector, fakes, 16 planted bugs caught); docs, archtest rule, cmd seam and the §6 lessons next |
 | [T050](T050-connector-tool-evals.md) | Tool-use evals: real Claude with faked connectors | After T049 and one connector; model tokens only |
-| [T046](T046-connector-tavily.md) | `connectors/tavily`: search and extract, keyless or keyed | **Running** (session started 2026-10-12) |
+| [T046](T046-connector-tavily.md) | `connectors/tavily`: search and extract, keyless or keyed | **Review**: on `main` (`d4a4e86`, `c0af020`, on the T049 suite); waiting for its handoff |
 | [T047](T047-connector-exa.md) | `connectors/exa`: search and extract | **Running**; live tests need `EXA_API_KEY` in sessions |
 | [T048](T048-connector-parallel.md) | `connectors/parallel`: search and extract | **Running**; live tests need `PARALLEL_API_KEY` in sessions |
 | [T039](T039-auth-principals-middleware.md) | `pkg/auth`: principals, API keys, edge middleware | Starts E07's inbound track; new package only, parallel with E05 |
@@ -95,7 +95,7 @@ Each is recorded in the linked file; this list is for orientation.
 - One MCP server process, one URL path per toolset; toolsets compiled in, chosen by config (E03).
 - Store: `ConversationStore`, `RunStore` with leases and a run lifecycle, `flow.Checkpointer`; `pkg/runner` turns events into entries; SQLite with a pure-Go driver ([E05](E05-store-runner.md)).
 - When stopped runs continue: approval, recovery after a crash, retry with backoff, compaction; final runs never resume; one unfinished run per conversation ([E05](E05-store-runner.md)).
-- Recovery across tenants through a separate `store.Admin` (T038), never reachable from request handling.
+- Recovery across tenants through a separate `store.Admin` (T038), never reachable from request handling: handed out by a package function (`memory.Admin(s)`), not a method, so no type assertion on a `RunStore` reaches it (T038 review fix, `db65096`).
 - Saved transcripts are not deleted at run end; agent step output holds a reference ([T030](T030-runner.md)).
 - Public agent API is HTTP + JSON with SSE; ConnectRPC stays internal ([E09](E09-agent-api.md)).
 - Connector testing (2026-10-12): one kit (T049) with cassettes, a conformance suite with check IDs and staged rollout, honest fakes, drift checks, secret scans, `synthetic` fixtures kept in review; a separate eval tier (T050) for model behavior. Informed by Airbyte, LangChain, Meltano and Nango practice ([E10](E10-search-connectors.md)).

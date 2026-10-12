@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
+	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/component"
 	"github.com/bsamanvith/agentkit/pkg/harness"
@@ -23,9 +25,21 @@ import (
 // an address that is not loopback.
 const envAPIToken = "AGENTKIT_API_TOKEN"
 
-// agentConfig is the "agent" section of the serve config file.
+// agentConfig is the legacy "agent" section of the serve config file: one
+// agent, named "default", and the API's limits in the same section.
 type agentConfig struct {
-	Model agentModelConfig `json:"model"`
+	agentDef
+	apiConfig
+}
+
+// agentDef is one agent: an entry of "agents" in the serve config file.
+type agentDef struct {
+	// Name names the agent in runs ("agent") and in /v1/agents. It must
+	// match ^[a-zA-Z0-9_-]{1,64}$ and be unique.
+	Name string `json:"name"`
+	// Description says what the agent is for, in GET /v1/agents.
+	Description string           `json:"description"`
+	Model       agentModelConfig `json:"model"`
 	// System is the system prompt.
 	System string `json:"system"`
 	// Toolsets names entries of mcp.toolsets the agent may use, merged into
@@ -38,6 +52,11 @@ type agentConfig struct {
 	// no limit).
 	MaxTurns       int `json:"max_turns"`
 	MaxTotalTokens int `json:"max_total_tokens"`
+}
+
+// apiConfig is the "agent_api" section of the serve config file: limits of
+// the agent API, shared by its agents.
+type apiConfig struct {
 	// MaxConcurrentRuns caps runs at once (503 with Retry-After past it).
 	MaxConcurrentRuns int `json:"max_concurrent_runs"`
 	// RunTimeout ends a longer run; "0s" means no limit.
@@ -63,11 +82,16 @@ type agentModelConfig struct {
 	MaxTokens int `json:"max_tokens"`
 }
 
-func defaultAgentConfig() agentConfig {
-	return agentConfig{
-		Model:             agentModelConfig{Provider: "anthropic", ID: anthropic.DefaultModel},
-		System:            "You are a helpful assistant. Use the tools when they help.",
-		MaxTurns:          25,
+func defaultAgentDef() agentDef {
+	return agentDef{
+		Model:    agentModelConfig{Provider: "anthropic", ID: anthropic.DefaultModel},
+		System:   "You are a helpful assistant. Use the tools when they help.",
+		MaxTurns: 25,
+	}
+}
+
+func defaultAPIConfig() apiConfig {
+	return apiConfig{
 		MaxConcurrentRuns: agentapi.DefaultMaxConcurrentRuns,
 		RunTimeout:        duration(agentapi.DefaultRunTimeout),
 		MaxRuns:           agentapi.DefaultMaxRuns,
@@ -77,16 +101,34 @@ func defaultAgentConfig() agentConfig {
 	}
 }
 
-// agentToolsetSpecs returns the specs of the toolsets the agent uses, from
-// the mcp.toolsets entries, failing on a name that has none.
+func defaultAgentConfig() agentConfig {
+	return agentConfig{agentDef: defaultAgentDef(), apiConfig: defaultAPIConfig()}
+}
+
+// label names an agent's config section in errors: "agent" for the default
+// agent of the legacy section or of no section, "agents.<name>" otherwise.
+func (d agentDef) label(legacy bool) string {
+	if legacy {
+		return "agent"
+	}
+	return "agents." + d.Name
+}
+
+// agentToolsetSpecs returns the specs of the toolsets the agents use, each
+// once, in the order the agents name them, from the mcp.toolsets entries,
+// failing on a name that has none.
 func agentToolsetSpecs(cfg serveConfig) ([]toolset.Spec, error) {
 	var specs []toolset.Spec
-	for _, name := range cfg.Agent.Toolsets {
-		i := slices.IndexFunc(cfg.MCP.Toolsets, func(s toolset.Spec) bool { return s.Name == name })
-		if i < 0 {
-			return nil, fmt.Errorf("agent.toolsets names %q, which is not in mcp.toolsets", name)
+	for _, a := range cfg.Agents {
+		for _, name := range a.Toolsets {
+			i := slices.IndexFunc(cfg.MCP.Toolsets, func(s toolset.Spec) bool { return s.Name == name })
+			if i < 0 {
+				return nil, fmt.Errorf("%s.toolsets names %q, which is not in mcp.toolsets", a.label(cfg.legacy), name)
+			}
+			if !slices.ContainsFunc(specs, func(s toolset.Spec) bool { return s.Name == name }) {
+				specs = append(specs, cfg.MCP.Toolsets[i])
+			}
 		}
-		specs = append(specs, cfg.MCP.Toolsets[i])
 	}
 	return specs, nil
 }
@@ -97,7 +139,7 @@ type agentComponent struct {
 	skipped []string
 }
 
-// Ready is degraded when optional toolsets the agent names were skipped.
+// Ready is degraded when optional toolsets the agents name were skipped.
 func (a *agentComponent) Ready(ctx context.Context) error {
 	if err := a.Server.Ready(ctx); err != nil {
 		return err
@@ -108,58 +150,76 @@ func (a *agentComponent) Ready(ctx context.Context) error {
 	return nil
 }
 
-// newAgent builds the agent component: the model, the agent's toolsets merged
-// into one registry, the harness, and the API on top, mounted at /v1/.
+// newAgents builds the agent component: per agent the model, its toolsets
+// merged into one registry and the harness; the catalog of the toolsets
+// served (specs, as built and skipped); and the API on top, mounted at /v1/.
 // ctx is the signal context: when it is done, the drain begins.
-func (c cli) newAgent(ctx context.Context, cfg agentConfig, built map[string]tool.Registry, env serveEnv, log *slog.Logger) (component.Mount, error) {
+func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]tool.Registry, problems []toolset.Problem, env serveEnv, log *slog.Logger) (component.Mount, error) {
+	specs, err := servedSpecs(env, cfg)
+	if err != nil {
+		return component.Mount{}, err
+	}
 	token := c.env(envAPIToken)
 	if token == "" && !isLoopback(env.addr) {
 		return component.Mount{}, fmt.Errorf("serving on %s, which is not a loopback address, needs a bearer token in $%s", env.addr, envAPIToken)
-	}
-	if cfg.Model.Provider != "anthropic" {
-		return component.Mount{}, fmt.Errorf("agent.model.provider %q: the only provider is \"anthropic\"", cfg.Model.Provider)
-	}
-	if cfg.MaxTotalTokens < 0 || cfg.Model.MaxTokens < 0 || cfg.RunTimeout < 0 {
-		return component.Mount{}, errors.New("agent: negative limit")
 	}
 	newModel := c.newModel
 	if newModel == nil {
 		newModel = newClaude
 	}
-	model, err := newModel(modelFlags{model: cfg.Model.ID, effort: cfg.Model.Effort})
-	if err != nil {
-		return component.Mount{}, fmt.Errorf("agent.model: %w", err)
-	}
-	sets := map[string]tool.Registry{}
-	var skipped []string
-	for _, name := range cfg.Toolsets {
-		if reg, ok := built[name]; ok {
-			sets[name] = reg
-		} else {
-			skipped = append(skipped, name) // an optional toolset that failed to build
-		}
-	}
-	tools, err := agentapi.MergeTools(ctx, sets, cfg.PrefixToolNames)
-	if err != nil {
-		return component.Mount{}, fmt.Errorf("agent.toolsets: %w", err)
-	}
 	clk := clock.Real()
-	h, err := harness.New(model, tools,
-		harness.WithSystem(cfg.System),
-		harness.WithRequest(harness.RequestOptions{MaxTokens: cfg.Model.MaxTokens}),
-		harness.WithMaxTurns(cfg.MaxTurns),
-		harness.WithMaxTotalTokens(cfg.MaxTotalTokens),
-		harness.WithNow(clk.Now),
-	)
-	if err != nil {
-		return component.Mount{}, err
+	var agents []agentapi.Agent
+	var skipped []string
+	for _, a := range cfg.Agents {
+		label := a.label(cfg.legacy)
+		if a.Model.Provider != "anthropic" {
+			return component.Mount{}, fmt.Errorf("%s.model.provider %q: the only provider is \"anthropic\"", label, a.Model.Provider)
+		}
+		if a.MaxTotalTokens < 0 || a.Model.MaxTokens < 0 {
+			return component.Mount{}, fmt.Errorf("%s: negative limit", label)
+		}
+		model, err := newModel(modelFlags{model: a.Model.ID, effort: a.Model.Effort})
+		if err != nil {
+			return component.Mount{}, fmt.Errorf("%s.model: %w", label, err)
+		}
+		sets := map[string]tool.Registry{}
+		for _, name := range a.Toolsets {
+			if reg, ok := built[name]; ok {
+				sets[name] = reg
+			} else if !slices.Contains(skipped, name) {
+				skipped = append(skipped, name) // an optional toolset that failed to build
+			}
+		}
+		tools, err := agentapi.MergeTools(ctx, sets, a.PrefixToolNames)
+		if err != nil {
+			return component.Mount{}, fmt.Errorf("%s.toolsets: %w", label, err)
+		}
+		h, err := harness.New(model, tools,
+			harness.WithSystem(a.System),
+			harness.WithRequest(harness.RequestOptions{MaxTokens: a.Model.MaxTokens}),
+			harness.WithMaxTurns(a.MaxTurns),
+			harness.WithMaxTotalTokens(a.MaxTotalTokens),
+			harness.WithNow(clk.Now),
+		)
+		if err != nil {
+			return component.Mount{}, fmt.Errorf("%s: %w", label, err)
+		}
+		agents = append(agents, agentapi.Agent{
+			Name: a.Name, Description: a.Description, Harness: h, System: a.System,
+			Model:    wire.Model{Provider: a.Model.Provider, ID: a.Model.ID, Effort: a.Model.Effort},
+			Toolsets: a.Toolsets, PrefixToolNames: a.PrefixToolNames,
+		})
 	}
-	srv, err := agentapi.New(h,
+	if cfg.API.RunTimeout < 0 {
+		return component.Mount{}, errors.New("agent_api: negative limit")
+	}
+	srv, err := agentapi.NewAgents(agents,
+		agentapi.WithToolsets(c.toolsetCatalog(cfg, specs, built, problems, env)...),
 		agentapi.WithToken(token),
-		agentapi.WithMaxConcurrentRuns(cfg.MaxConcurrentRuns),
-		agentapi.WithRunTimeout(time.Duration(cfg.RunTimeout)),
-		agentapi.WithRetention(cfg.MaxRuns, cfg.MaxConversations, time.Duration(cfg.Retention)),
-		agentapi.WithMaxBodyBytes(cfg.MaxBodyBytes),
+		agentapi.WithMaxConcurrentRuns(cfg.API.MaxConcurrentRuns),
+		agentapi.WithRunTimeout(time.Duration(cfg.API.RunTimeout)),
+		agentapi.WithRetention(cfg.API.MaxRuns, cfg.API.MaxConversations, time.Duration(cfg.API.Retention)),
+		agentapi.WithMaxBodyBytes(cfg.API.MaxBodyBytes),
 		agentapi.WithClock(clk),
 		agentapi.WithLogger(log.With("component", agentapi.Name)),
 		// Runs still going near the end of the shutdown get a run_error
@@ -170,6 +230,76 @@ func (c cli) newAgent(ctx context.Context, cfg agentConfig, built map[string]too
 		return component.Mount{}, err
 	}
 	return component.Mount{Pattern: "/v1/", Component: &agentComponent{Server: srv, skipped: skipped}}, nil
+}
+
+// toolsetCatalog describes the toolsets served, for GET /v1/toolsets: each
+// built one with its tools, each skipped one with the reason, where the MCP
+// server serves it (when it runs), and its credential's status. A reason
+// never holds a credential's value: any is cut out.
+func (c cli) toolsetCatalog(cfg serveConfig, specs []toolset.Spec, built map[string]tool.Registry, problems []toolset.Problem, env serveEnv) []agentapi.Toolset {
+	var secrets []string
+	out := make([]agentapi.Toolset, 0, len(specs))
+	for _, s := range specs {
+		cred := credentialOf(s, c.env)
+		if v := c.env(cred.Env); cred.Env != "" && v != "" {
+			secrets = append(secrets, v)
+		}
+		ts := agentapi.Toolset{Name: s.Name, Type: s.Type, Tools: built[s.Name], Credential: cred}
+		if ts.Tools == nil {
+			ts.Skipped = "toolset " + s.Name + " was not built"
+			if i := slices.IndexFunc(problems, func(p toolset.Problem) bool { return p.Toolset == s.Name }); i >= 0 {
+				ts.Skipped = problems[i].Err.Error()
+			}
+		}
+		if slices.Contains(env.components, mcpServerName) {
+			ts.MCPPath = strings.TrimSuffix(cfg.MCP.BasePath, "/") + "/" + s.Name
+		}
+		out = append(out, ts)
+	}
+	for i := range out {
+		for _, v := range secrets {
+			out[i].Skipped = strings.ReplaceAll(out[i].Skipped, v, "[redacted]")
+		}
+	}
+	return out
+}
+
+// credentialEnv is the environment variable each connector reads its key
+// from by default; "api_key_env" in a toolset's settings names another. A
+// connector not listed needs no credential.
+// TODO: connectors should report their credential themselves (a factory
+// method), so this table cannot fall behind them.
+var credentialEnv = map[string]string{
+	"tavily":   "TAVILY_API_KEY",
+	"exa":      "EXA_API_KEY",
+	"parallel": "PARALLEL_API_KEY",
+}
+
+// credentialOf says where a toolset's key comes from and whether it is set:
+// the variable's name, never its value.
+func credentialOf(s toolset.Spec, getenv func(string) string) agentapi.Credential {
+	var settings struct {
+		APIKeyEnv string `json:"api_key_env"`
+		Auth      string `json:"auth"` // tavily: auto, key or keyless
+	}
+	_ = json.Unmarshal(s.Settings, &settings) // the factory validated them
+	env := credentialEnv[s.Type]
+	if settings.APIKeyEnv != "" {
+		env = settings.APIKeyEnv
+	}
+	set := env != "" && getenv(env) != ""
+	switch {
+	case env == "":
+		return agentapi.Credential{Status: wire.CredentialNotNeeded}
+	case s.Type == "tavily" && settings.Auth == "keyless":
+		return agentapi.Credential{Status: wire.CredentialKeyless}
+	case set:
+		return agentapi.Credential{Status: wire.CredentialConfigured, Env: env}
+	case s.Type == "tavily" && settings.Auth != "key":
+		return agentapi.Credential{Status: wire.CredentialKeyless, Env: env}
+	default:
+		return agentapi.Credential{Status: wire.CredentialMissing, Env: env}
+	}
 }
 
 // isLoopback reports whether a listen address only takes connections from

@@ -538,6 +538,7 @@ var sentinels = map[string]error{
 	wire.CodeTooLarge:       agentclient.ErrRequestTooLarge,
 	wire.CodeBusy:           agentclient.ErrConversationBusy,
 	wire.CodeInterrupted:    agentclient.ErrConversationInterrupted,
+	wire.CodeAgentMismatch:  agentclient.ErrAgentMismatch,
 	wire.CodeOverCapacity:   agentclient.ErrOverCapacity,
 	wire.CodeShuttingDown:   agentclient.ErrShuttingDown,
 }
@@ -632,6 +633,15 @@ func TestAPIErrors(t *testing.T) {
 		_, err := r.client.Run(ctx, agentclient.RunRequest{Message: "and", ConversationID: s.ConversationID()})
 		check(t, err, http.StatusConflict, wire.CodeInterrupted, 0)
 	})
+	t.Run("agent_mismatch", func(t *testing.T) {
+		r := newRig(t, &model{replies: []llmtest.Reply{llmtest.Text("a")}})
+		run, err := r.client.Run(ctx, agentclient.RunRequest{Message: "hi"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = r.client.Run(ctx, agentclient.RunRequest{Message: "and", ConversationID: run.ConversationID, Agent: "other"})
+		check(t, err, http.StatusConflict, wire.CodeAgentMismatch, 0)
+	})
 	t.Run("over_capacity", func(t *testing.T) {
 		r := gated(t, agentapi.WithMaxConcurrentRuns(1))
 		running(t, r)
@@ -695,7 +705,7 @@ func TestErrorsFromElsewhere(t *testing.T) {
 // Accept that picks a stream or JSON, the body, under the base URL's path.
 func TestRequests(t *testing.T) {
 	t.Parallel()
-	got := make(chan *http.Request, 4)
+	got := make(chan *http.Request, 16)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		r.Body = io.NopCloser(strings.NewReader(string(body)))
@@ -714,17 +724,31 @@ func TestRequests(t *testing.T) {
 	_, _ = c.Run(ctx, agentclient.RunRequest{Message: "hi"})
 	_, _ = c.GetRun(ctx, "run/1")
 	_, _ = c.GetConversation(ctx, "conv 1")
+	_, _ = c.Agents(ctx)
+	_, _ = c.Agent(ctx, "a/b")
+	_, _ = c.Conversations(ctx, agentclient.ConversationsQuery{})
+	_, _ = c.Conversations(ctx, agentclient.ConversationsQuery{Agent: "a&b", Limit: 5, Cursor: "c+/="})
+	_ = c.DeleteConversation(ctx, "conv/1")
+	_, _ = c.Toolsets(ctx)
+	_, _ = c.Tools(ctx, "web search")
 	for _, want := range []struct{ method, path, accept, body string }{
 		{"POST", "/agent/v1/runs", "text/event-stream", `{"message":"hi","conversation_id":"conv_1"}`},
 		{"POST", "/agent/v1/runs", "application/json", `{"message":"hi"}`},
 		{"GET", "/agent/v1/runs/run%2F1", "application/json", ""},
 		{"GET", "/agent/v1/conversations/conv%201", "application/json", ""},
+		{"GET", "/agent/v1/agents", "application/json", ""},
+		{"GET", "/agent/v1/agents/a%2Fb", "application/json", ""},
+		{"GET", "/agent/v1/conversations", "application/json", ""},
+		{"GET", "/agent/v1/conversations?agent=a%26b&cursor=c%2B%2F%3D&limit=5", "application/json", ""},
+		{"DELETE", "/agent/v1/conversations/conv%2F1", "application/json", ""},
+		{"GET", "/agent/v1/toolsets", "application/json", ""},
+		{"GET", "/agent/v1/toolsets/web%20search/tools", "application/json", ""},
 	} {
 		r := <-got
 		body, _ := io.ReadAll(r.Body)
-		if r.Method != want.method || r.URL.EscapedPath() != want.path || r.Header.Get("Accept") != want.accept || string(body) != want.body ||
+		if r.Method != want.method || r.URL.RequestURI() != want.path || r.Header.Get("Accept") != want.accept || string(body) != want.body ||
 			r.Header.Get("Authorization") != "Bearer tok" || r.Header.Get("User-Agent") != "test-ua" {
-			t.Errorf("%s %s Accept %q body %q, headers %v; want %+v", r.Method, r.URL.EscapedPath(), r.Header.Get("Accept"), body, r.Header, want)
+			t.Errorf("%s %s Accept %q body %q, headers %v; want %+v", r.Method, r.URL.RequestURI(), r.Header.Get("Accept"), body, r.Header, want)
 		}
 	}
 }

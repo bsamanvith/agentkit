@@ -30,6 +30,9 @@ var (
 	// ErrConversationBusy: 409 conversation_busy, a run of the conversation
 	// is going on; retry when it has ended.
 	ErrConversationBusy = errors.New("conversation busy")
+	// ErrAgentMismatch: 409 agent_mismatch, the run names another agent than
+	// the conversation's; leave Agent empty to continue it.
+	ErrAgentMismatch = errors.New("agent mismatch")
 	// ErrConversationInterrupted: 409 conversation_interrupted, the
 	// conversation's last run stopped before answering; resume it with an
 	// empty message first.
@@ -66,6 +69,7 @@ var codeSentinels = map[string]error{
 	wire.CodeTooLarge:       ErrRequestTooLarge,
 	wire.CodeBusy:           ErrConversationBusy,
 	wire.CodeInterrupted:    ErrConversationInterrupted,
+	wire.CodeAgentMismatch:  ErrAgentMismatch,
 	wire.CodeOverCapacity:   ErrOverCapacity,
 	wire.CodeShuttingDown:   ErrShuttingDown,
 }

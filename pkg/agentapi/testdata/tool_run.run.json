@@ -2,6 +2,7 @@
   "v": 1,
   "id": "run_2",
   "conversation_id": "conv_1",
+  "agent": "default",
   "status": "done",
   "created_at": "2026-10-11T12:00:00Z",
   "finished_at": "2026-10-11T12:00:00.02Z",

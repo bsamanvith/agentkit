@@ -5,6 +5,7 @@ import (
 	"encoding/base32"
 	"io"
 	"log/slog"
+	"net/http"
 	"strings"
 	"time"
 
@@ -49,6 +50,8 @@ type config struct {
 	drainStop      <-chan struct{}
 	drainAfter     time.Duration
 	drainRequested bool
+	toolsets       []Toolset
+	tenant         func(*http.Request) string
 }
 
 func newConfig(opts []Option) config {

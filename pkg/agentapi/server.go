@@ -39,14 +39,20 @@ var (
 // errClientGone is the cause of a run whose client could not be written to.
 var errClientGone = errors.New("client went away")
 
-// Server is the agent API: a [component.Component] serving /v1/ on top of one
-// [harness.Harness]. Build it with [New]; it is safe for concurrent use.
+// Server is the agent API: a [component.Component] serving /v1/ on top of
+// one [harness.Harness] per agent. Build it with [New] or [NewAgents]; it is
+// safe for concurrent use.
 type Server struct {
-	h       *harness.Harness
 	cfg     config
 	log     *slog.Logger
 	handler http.Handler
 	slots   chan struct{}
+	routes  []string
+
+	agents       map[string]*agent
+	agentOrder   []*agent
+	defaultAgent *agent // nil when a run must name its agent
+	toolsets     map[string]*Toolset
 
 	stopCtx context.Context // done when runs must end (the drain deadline, Shutdown)
 	stop    context.CancelCauseFunc
@@ -61,6 +67,7 @@ type Server struct {
 	runs     map[string]*run
 	runOrder []*run // creation order
 	convs    map[string]*conversation
+	convSeq  uint64   // counts conversations created, for conversation.seq
 	touches  uint64   // counts conversation starts and ends, for conversation.touched
 	cut      []string // runs ended by the shutdown
 }
@@ -70,6 +77,8 @@ var _ component.Component = (*Server)(nil)
 // run is a run's state. Guarded by Server.mu.
 type run struct {
 	id, convID string
+	agent      string
+	tenant     string
 	created    time.Time
 	finished   time.Time
 	status     string
@@ -83,6 +92,10 @@ type run struct {
 // conversation is a conversation's state. Guarded by Server.mu.
 type conversation struct {
 	id               string
+	agent            *agent
+	tenant           string
+	seq              uint64 // order of creation, from 1: the listing order
+	title            string
 	created, updated time.Time
 	touched          uint64 // Server.touches when a run of it last started or ended: the eviction order
 	messages         []harness.TimedMessage
@@ -100,13 +113,18 @@ func (c *conversation) status() string {
 	}
 }
 
-// New returns the agent API for h. It fails with [ErrInvalidConfig] for a
-// nil harness or an option with an unusable value.
+// New returns the agent API for h, the one agent, named [DefaultAgent]. It
+// fails with [ErrInvalidConfig] for a nil harness or an option with an
+// unusable value.
 func New(h *harness.Harness, opts ...Option) (*Server, error) {
-	cfg := newConfig(opts)
-	switch {
-	case h == nil:
+	if h == nil {
 		return nil, fmt.Errorf("%w: nil harness", ErrInvalidConfig)
+	}
+	return NewAgents([]Agent{{Name: DefaultAgent, Harness: h}}, opts...)
+}
+
+func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent, toolsets map[string]*Toolset) (*Server, error) {
+	switch {
 	case cfg.token != "" && len(cfg.token) < MinTokenLength:
 		return nil, fmt.Errorf("%w: the token must be at least %d bytes", ErrInvalidConfig, MinTokenLength)
 	case cfg.maxConcurrent < 1:
@@ -121,7 +139,8 @@ func New(h *harness.Harness, opts ...Option) (*Server, error) {
 		return nil, fmt.Errorf("%w: drain needs a stop channel and a time that is not negative", ErrInvalidConfig)
 	}
 	s := &Server{
-		h: h, cfg: cfg, log: cfg.logger,
+		cfg: cfg, log: cfg.logger,
+		agents: agents, agentOrder: order, defaultAgent: def, toolsets: toolsets,
 		slots:  make(chan struct{}, cfg.maxConcurrent),
 		closed: make(chan struct{}),
 		runs:   map[string]*run{},
@@ -129,9 +148,25 @@ func New(h *harness.Harness, opts ...Option) (*Server, error) {
 	}
 	s.stopCtx, s.stop = context.WithCancelCause(context.Background())
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/runs", s.postRun)
-	mux.HandleFunc("GET /v1/runs/{id}", s.getRun)
-	mux.HandleFunc("GET /v1/conversations/{id}", s.getConversation)
+	// Every endpoint is in this table, which [Server.Routes] lists, so the
+	// OpenAPI test sees each one.
+	for _, rt := range []struct {
+		pattern string
+		handler http.HandlerFunc
+	}{
+		{"POST /v1/runs", s.postRun},
+		{"GET /v1/runs/{id}", s.getRun},
+		{"GET /v1/conversations", s.listConversations},
+		{"GET /v1/conversations/{id}", s.getConversation},
+		{"DELETE /v1/conversations/{id}", s.deleteConversation},
+		{"GET /v1/agents", s.listAgents},
+		{"GET /v1/agents/{name}", s.getAgent},
+		{"GET /v1/toolsets", s.listToolsets},
+		{"GET /v1/toolsets/{name}/tools", s.listTools},
+	} {
+		mux.HandleFunc(rt.pattern, rt.handler)
+		s.routes = append(s.routes, rt.pattern)
+	}
 	mux.HandleFunc("/v1/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, &Error{Code: CodeNotFound, Message: "no such endpoint: " + r.Method + " " + r.URL.Path})
 	})
@@ -142,6 +177,10 @@ func New(h *harness.Harness, opts ...Option) (*Server, error) {
 	}
 	return s, nil
 }
+
+// Routes returns the server's endpoints as "METHOD /path" patterns
+// (net/http's, such as "GET /v1/runs/{id}"), in a fixed order.
+func (s *Server) Routes() []string { return slices.Clone(s.routes) }
 
 // Name implements [component.Component]: "agent".
 func (s *Server) Name() string { return Name }
@@ -231,6 +270,7 @@ func (s *Server) auth(next http.Handler) http.Handler {
 
 // started is a run that passed admission.
 type started struct {
+	agent      *agent
 	run        *run
 	conv       *conversation
 	message    string // empty to resume
@@ -243,7 +283,7 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 		writeError(w, code, apiErr)
 		return
 	}
-	st, apiErr, code := s.admit(req)
+	st, apiErr, code := s.admit(req, s.tenantOf(r))
 	if apiErr != nil {
 		if code == http.StatusServiceUnavailable {
 			w.Header().Set("Retry-After", retryAfter)
@@ -294,7 +334,7 @@ func wantsJSON(accept string) bool {
 // admit checks the request against the conversation and the limits, and
 // registers the run. On success the caller must call s.active.Done when the
 // run has been finished.
-func (s *Server) admit(req RunRequest) (*started, *Error, int) {
+func (s *Server) admit(req RunRequest, tenant string) (*started, *Error, int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.draining {
@@ -304,11 +344,17 @@ func (s *Server) admit(req RunRequest) (*started, *Error, int) {
 	s.evict(now)
 	hasMessage := strings.TrimSpace(req.Message) != ""
 	conv := (*conversation)(nil)
+	var ag *agent
 	if req.ConversationID != "" {
 		conv = s.convs[req.ConversationID]
+		if conv != nil && conv.tenant != tenant {
+			conv = nil // another tenant's conversation does not exist for this one
+		}
 		switch {
 		case conv == nil:
-			return nil, &Error{Code: CodeNotFound, Message: "no conversation " + quote(req.ConversationID) + " (conversations are kept in memory and lost on restart)"}, http.StatusNotFound
+			return nil, notFoundConversation(req.ConversationID), http.StatusNotFound
+		case req.Agent != "" && req.Agent != conv.agent.Name:
+			return nil, &Error{Code: CodeAgentMismatch, Message: "the conversation belongs to agent " + quote(conv.agent.Name) + ", not " + quote(req.Agent) + "; continue it without \"agent\", or start a new conversation"}, http.StatusConflict
 		case conv.running:
 			return nil, &Error{Code: CodeBusy, Message: "a run of this conversation is going on; wait for it to end", Retryable: true}, http.StatusConflict
 		case conv.status() == StatusInterrupted && hasMessage:
@@ -316,8 +362,16 @@ func (s *Server) admit(req RunRequest) (*started, *Error, int) {
 		case conv.status() != StatusInterrupted && !hasMessage:
 			return nil, &Error{Code: CodeInvalidRequest, Message: "message is empty"}, http.StatusBadRequest
 		}
-	} else if !hasMessage {
-		return nil, &Error{Code: CodeInvalidRequest, Message: "message is empty"}, http.StatusBadRequest
+		ag = conv.agent
+	} else {
+		if !hasMessage {
+			return nil, &Error{Code: CodeInvalidRequest, Message: "message is empty"}, http.StatusBadRequest
+		}
+		var apiErr *Error
+		var code int
+		if ag, apiErr, code = s.resolveAgent(req.Agent); apiErr != nil {
+			return nil, apiErr, code
+		}
 	}
 	select {
 	case s.slots <- struct{}{}:
@@ -325,7 +379,8 @@ func (s *Server) admit(req RunRequest) (*started, *Error, int) {
 		return nil, &Error{Code: CodeOverCapacity, Message: fmt.Sprintf("%d runs are going on, the most this server takes; retry later", s.cfg.maxConcurrent), Retryable: true}, http.StatusServiceUnavailable
 	}
 	if conv == nil {
-		conv = &conversation{id: s.cfg.newID("conv_"), created: now}
+		s.convSeq++
+		conv = &conversation{id: s.cfg.newID("conv_"), agent: ag, tenant: tenant, seq: s.convSeq, title: title(req.Message), created: now}
 		s.convs[conv.id] = conv
 	}
 	s.touches++
@@ -334,7 +389,7 @@ func (s *Server) admit(req RunRequest) (*started, *Error, int) {
 	for i, m := range conv.messages {
 		transcript[i] = m.Message
 	}
-	ru := &run{id: s.cfg.newID("run_"), convID: conv.id, created: now, status: StatusRunning}
+	ru := &run{id: s.cfg.newID("run_"), convID: conv.id, agent: ag.Name, tenant: tenant, created: now, status: StatusRunning}
 	s.runs[ru.id] = ru
 	s.runOrder = append(s.runOrder, ru)
 	s.evict(now)
@@ -343,7 +398,7 @@ func (s *Server) admit(req RunRequest) (*started, *Error, int) {
 	if hasMessage {
 		msg = req.Message
 	}
-	return &started{run: ru, conv: conv, message: msg, transcript: transcript}, nil, 0
+	return &started{agent: ag, run: ru, conv: conv, message: msg, transcript: transcript}, nil, 0
 }
 
 // evict drops what retention no longer allows: finished runs and idle
@@ -405,7 +460,7 @@ func (s *Server) execute(w http.ResponseWriter, r *http.Request, st *started, as
 			}
 		}()
 	}
-	s.log.Info("run started", "run_id", st.run.id, "conversation_id", st.conv.id, "resume", st.message == "")
+	s.log.Info("run started", "run_id", st.run.id, "conversation_id", st.conv.id, "agent", st.agent.Name, "resume", st.message == "")
 
 	var out *sseWriter
 	if !asJSON {
@@ -439,7 +494,7 @@ func (s *Server) execute(w http.ResponseWriter, r *http.Request, st *started, as
 		result *harness.Result
 		runErr error
 	)
-	for ev, err := range s.h.Run(ctx, in) {
+	for ev, err := range st.agent.Harness.Run(ctx, in) {
 		if err != nil {
 			runErr = err
 			break
@@ -595,6 +650,9 @@ func (s *Server) getRun(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	s.mu.Lock()
 	ru := s.runs[id]
+	if ru != nil && ru.tenant != s.tenantOf(r) {
+		ru = nil
+	}
 	var v Run
 	if ru != nil {
 		v = s.viewLocked(ru)
@@ -615,7 +673,7 @@ func (s *Server) view(ru *run) Run {
 
 func (s *Server) viewLocked(ru *run) Run {
 	v := Run{
-		V: WireVersion, ID: ru.id, ConversationID: ru.convID, Status: ru.status, CreatedAt: ru.created,
+		V: WireVersion, ID: ru.id, ConversationID: ru.convID, Agent: ru.agent, Status: ru.status, CreatedAt: ru.created,
 		Answer: ru.answer, Usage: ru.usage, Turns: ru.turns, Error: ru.err, Record: ru.record,
 	}
 	if ru.status != StatusRunning {
@@ -629,18 +687,21 @@ func (s *Server) getConversation(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	s.mu.Lock()
 	c := s.convs[id]
+	if c != nil && c.tenant != s.tenantOf(r) {
+		c = nil
+	}
 	var body []byte
 	var err error
 	if c != nil {
 		body, err = json.Marshal(Conversation{
-			V: WireVersion, ID: c.id, Status: c.status(), CreatedAt: c.created, UpdatedAt: c.updated,
+			V: WireVersion, ID: c.id, Agent: c.agent.Name, Status: c.status(), CreatedAt: c.created, UpdatedAt: c.updated,
 			Messages: timedMessages(c.messages),
 		})
 	}
 	s.mu.Unlock()
 	switch {
 	case c == nil:
-		writeError(w, http.StatusNotFound, &Error{Code: CodeNotFound, Message: "no conversation " + quote(id) + " (conversations are kept in memory and lost on restart)"})
+		writeError(w, http.StatusNotFound, notFoundConversation(id))
 	case err != nil:
 		s.log.Error("encoding a conversation", "conversation_id", id, "err", err)
 		writeError(w, http.StatusInternalServerError, &Error{Code: CodeInternal, Message: "the conversation could not be encoded"})

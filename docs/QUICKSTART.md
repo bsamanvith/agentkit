@@ -2,7 +2,7 @@
 
 One process serves two things:
 
-- the **agent API**: `POST /v1/runs` sends a prompt to Claude, which our harness runs with tools from the configured toolsets; the reply streams back as Server-Sent Events, and follow-ups continue the conversation;
+- the **agent API**: `POST /v1/runs` sends a prompt to one of the configured agents (Claude with its own system prompt and tools from the configured toolsets, run by our harness); the reply streams back as Server-Sent Events, and follow-ups continue the conversation. `GET /v1/agents`, `/v1/conversations` and `/v1/toolsets` list what the server has;
 - the same **toolsets over MCP** at `/mcp/<name>`, for Claude Code, Codex or any MCP client.
 
 Runs and conversations are kept in memory for now (lost on restart); persistence comes with the store and runner (M4).
@@ -59,6 +59,17 @@ curl -s localhost:8080/v1/runs -H "Authorization: Bearer $AGENTKIT_API_TOKEN" \
 curl -s localhost:8080/v1/runs/run_...          -H "Authorization: Bearer $AGENTKIT_API_TOKEN"
 curl -s localhost:8080/v1/conversations/conv_... -H "Authorization: Bearer $AGENTKIT_API_TOKEN"
 
+# list the conversations, newest first (next page: ?cursor=<next_cursor>), and delete one
+curl -s 'localhost:8080/v1/conversations?limit=10' -H "Authorization: Bearer $AGENTKIT_API_TOKEN"
+curl -s -X DELETE localhost:8080/v1/conversations/conv_... -H "Authorization: Bearer $AGENTKIT_API_TOKEN"
+
+# the agents (a run picks one with "agent"; GET /v1/agents/<name> adds its system prompt)
+curl -s localhost:8080/v1/agents -H "Authorization: Bearer $AGENTKIT_API_TOKEN"
+
+# the toolsets: ready or skipped (and why), the MCP path, which key variable each reads
+curl -s localhost:8080/v1/toolsets -H "Authorization: Bearer $AGENTKIT_API_TOKEN"
+curl -s localhost:8080/v1/toolsets/demo/tools -H "Authorization: Bearer $AGENTKIT_API_TOKEN"
+
 # health, readiness, version (no token)
 curl -s localhost:8080/healthz; curl -s localhost:8080/readyz; curl -s localhost:8080/version
 ```
@@ -80,25 +91,51 @@ Inside the container the server listens on `:8080` (not loopback), so `AGENTKIT_
 
 ## 5. Configuration
 
-`deploy/local/agent/config.json` is the starting point. The `agent` section (all fields optional; unknown fields fail startup):
+`deploy/local/agent/config.json` is the starting point: one agent. `deploy/local/agent/search.json` has two (section 6). A server runs one or more agents, each with its own model, system prompt and toolsets, listed in `agents`; the API's limits are in `agent_api`. All fields are optional except `name`; unknown fields fail startup.
+
+```json
+{
+  "mcp": {"toolsets": [{"name": "demo", "type": "demo"}]},
+  "agent_api": {"max_concurrent_runs": 16, "run_timeout": "10m"},
+  "agents": [
+    {"name": "default", "description": "A plain assistant.", "system": "Keep answers short.", "toolsets": ["demo"]},
+    {"name": "math", "model": {"effort": "high"}, "system": "You do arithmetic with the calculate tool.", "toolsets": ["demo"]}
+  ]
+}
+```
+
+A run names its agent (`{"message": "...", "agent": "math"}`); without one it gets the agent named `default` (or the only agent). A conversation stays with its agent: continuing it with another is `409 agent_mismatch`.
+
+Each entry of `agents`:
 
 | Field | Default | Meaning |
 |---|---|---|
+| `name` | required | `^[a-zA-Z0-9_-]{1,64}$`, unique |
+| `description` | none | shown in `GET /v1/agents` |
 | `model.id` | `claude-opus-5-5` | Claude model |
 | `model.effort` | adapter default (medium) | `low` … `max` |
 | `model.max_tokens` | adapter default | output limit per model call |
-| `system` | none | system prompt |
+| `system` | a short generic prompt | system prompt |
 | `toolsets` | none | names from `mcp.toolsets` the agent may use |
 | `prefix_tool_names` | false | name tools `<toolset>__<tool>` (needed when two toolsets share a tool name) |
 | `max_turns`, `max_total_tokens` | 25, unlimited | budgets per run |
+
+`agent_api`:
+
+| Field | Default | Meaning |
+|---|---|---|
 | `max_concurrent_runs` | 16 | past it: 503 with `Retry-After` |
 | `run_timeout` | `10m` | per run |
+| `max_runs`, `max_conversations`, `retention` | 1000, 1000, `24h` | what is kept in memory |
+| `max_body_bytes` | 1 MiB | limit on a run's request body |
 
-Environment: `AGENTKIT_COMPONENTS` (`agent`, `mcp-server`, or both), `AGENTKIT_ADDR` (default `127.0.0.1:8080`), `AGENTKIT_API_TOKEN` (required off loopback), `AGENTKIT_CONFIG`, `AGENTKIT_LOG_LEVEL`, `AGENTKIT_SHUTDOWN_TIMEOUT`. The full reference, event format and error codes: [tasks/T036](../tasks/T036-agent-api-v0.md) Notes.
+The one-agent form still works: an `agent` section (instead of `agents` and `agent_api`) with the fields of both tables except `name` is served as the agent `default`.
+
+Environment: `AGENTKIT_COMPONENTS` (`agent`, `mcp-server`, or both), `AGENTKIT_ADDR` (default `127.0.0.1:8080`), `AGENTKIT_API_TOKEN` (required off loopback), `AGENTKIT_CONFIG`, `AGENTKIT_LOG_LEVEL`, `AGENTKIT_SHUTDOWN_TIMEOUT`. The API's reference: [docs/api/openapi.yaml](api/openapi.yaml) (OpenAPI 3.1); the event format and error codes are also in [tasks/T036](../tasks/T036-agent-api-v0.md) Notes.
 
 ## 6. Web search
 
-`deploy/local/agent/search.json` adds three web search toolsets to the demo tools, each served over MCP at its own route and given to the agent:
+`deploy/local/agent/search.json` adds three web search toolsets to the demo tools, each served over MCP at its own route, and has two agents: `default`, a plain assistant with the demo tools, and `search`, a research assistant with the web search toolsets:
 
 - `tavily`: `tavily_search` (web search) and `tavily_extract` (a page's content), at `/mcp/tavily`. No key needed.
 - `exa`: `exa_search` and `exa_extract` through [Exa](https://exa.ai), at `/mcp/exa`. Needs `EXA_API_KEY`.
@@ -107,10 +144,10 @@ Environment: `AGENTKIT_COMPONENTS` (`agent`, `mcp-server`, or both), `AGENTKIT_A
 ```sh
 export EXA_API_KEY=...        # optional: without it Exa is skipped
 export PARALLEL_API_KEY=...   # optional: without it Parallel is skipped
-AGENTKIT_CONFIG=deploy/local/agent/search.json scripts/try-agent.sh
+scripts/try-agent.sh --agent search     # uses search.json; AGENTKIT_CONFIG picks another
 ```
 
-Then ask something current, e.g. `{"message":"What is the latest Go release? Cite the source."}`: the run's events show a `tool_call` to one of the search tools, and the answer cites URLs.
+Then ask the `search` agent something current, e.g. `{"message":"What is the latest Go release? Cite the source.","agent":"search"}`: the run's events show a `tool_call` to one of the search tools, and the answer cites URLs. `GET /v1/toolsets` shows which search toolsets are ready, and for a skipped one the reason and the key variable it reads (never the key).
 
 Do not expose a toolset that holds a key on a public address yet: until per-route auth for `/mcp` lands (T040), anyone who can reach the server can spend the key's quota. Keep `AGENTKIT_ADDR` on loopback (the default).
 
@@ -140,7 +177,7 @@ Settings of an `exa` toolset (all optional; unknown fields, including a literal 
 
 ### Parallel
 
-Parallel needs an API key (platform.parallel.ai). The config names the environment variable it is read from, never the key itself. Without `PARALLEL_API_KEY` the server still starts: the `parallel` toolset is optional, so it is skipped, and `/readyz` reports `degraded` and names the variable. With the container (section 4), pass the key with `-e PARALLEL_API_KEY`; `scripts/try-agent.sh --docker` does not pass it yet.
+Parallel needs an API key (platform.parallel.ai). The config names the environment variable it is read from, never the key itself. Without `PARALLEL_API_KEY` the server still starts: the `parallel` toolset is optional, so it is skipped, and `/readyz` reports `degraded` and names the variable. With the container (section 4), pass the key with `-e PARALLEL_API_KEY` (`scripts/try-agent.sh --docker` passes it when set).
 
 Settings of a `parallel` toolset (all optional; unknown fields, including a literal `api_key`, fail startup; full reference: [connectors/parallel](../connectors/parallel/doc.go)):
 

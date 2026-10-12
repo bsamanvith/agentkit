@@ -304,6 +304,7 @@ const (
 	CodeInterrupted    = "conversation_interrupted" // HTTP 409: resume the interrupted run first
 	CodeOverCapacity   = "over_capacity"            // HTTP 503 with Retry-After: too many runs
 	CodeShuttingDown   = "shutting_down"            // HTTP 503: the server is draining
+	// CodeAgentMismatch ("agent_mismatch", HTTP 409) is in catalog.go.
 )
 
 // Run statuses.
@@ -330,6 +331,7 @@ type Run struct {
 	V              int       `json:"v"`
 	ID             string    `json:"id"`
 	ConversationID string    `json:"conversation_id"`
+	Agent          string    `json:"agent"` // the conversation's agent
 	Status         string    `json:"status"`
 	CreatedAt      time.Time `json:"created_at"`
 	// FinishedAt, Answer, Error and Record are set once the run has ended.
@@ -345,6 +347,7 @@ type Run struct {
 type Conversation struct {
 	V         int            `json:"v"`
 	ID        string         `json:"id"`
+	Agent     string         `json:"agent"` // the agent it belongs to
 	Status    string         `json:"status"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
@@ -358,6 +361,10 @@ type RunRequest struct {
 	Message string `json:"message"`
 	// ConversationID continues a conversation; empty starts a new one.
 	ConversationID string `json:"conversation_id,omitempty"`
+	// Agent names the agent of a new conversation (empty: the default
+	// agent). A conversation stays with its agent: continuing it with another
+	// is CodeAgentMismatch.
+	Agent string `json:"agent,omitempty"`
 }
 
 // ErrorResponse is the body of every HTTP error.

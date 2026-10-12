@@ -1,7 +1,7 @@
 // Package agentclient is the Go client of the agent API (`/v1`, served by
 // [github.com/bsamanvith/agentkit/pkg/agentapi]): start a run and read its
 // events as they come, or wait for it as JSON; continue a conversation; read
-// runs and conversations. The CLI, headless runs, the end-to-end tests and the
+// runs and conversations; list the agents, conversations and toolsets. The CLI, headless runs, the end-to-end tests and the
 // evals all use it, so the API has one tested client.
 //
 // It speaks only the wire format ([wire]) over net/http, and imports neither
@@ -34,14 +34,23 @@
 // completed turns (it is "interrupted" if the run stopped before answering;
 // post an empty message to resume it).
 //
+// # Agents, conversations and toolsets
+//
+// A server runs one or more agents ([Client.Agents], [Client.Agent]); a run
+// names one in [RunRequest].Agent, or gets the default. A conversation stays
+// with its agent. [Client.Conversations] pages through the caller's
+// conversations, newest first, and [Client.DeleteConversation] deletes one.
+// [Client.Toolsets] and [Client.Tools] describe the toolsets the agents use,
+// and [Client.MCPURL] where each is served over MCP.
+//
 // # Errors
 //
 // An HTTP error is an [*APIError] with the status, the API's error code and
 // Retry-After. It matches the sentinel of its code with errors.Is:
 // [ErrInvalidRequest], [ErrUnauthorized], [ErrNotFound], [ErrRequestTooLarge],
-// [ErrConversationBusy], [ErrConversationInterrupted], [ErrOverCapacity] and
-// [ErrShuttingDown]. A code this client does not know matches none of them;
-// its Code is still set.
+// [ErrConversationBusy], [ErrConversationInterrupted], [ErrAgentMismatch],
+// [ErrOverCapacity] and [ErrShuttingDown]. A code this client does not know
+// matches none of them; its Code is still set.
 //
 // A stream that ends without run_done or run_error gives
 // [ErrStreamTruncated]; one that breaks the wire format gives

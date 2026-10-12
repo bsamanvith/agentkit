@@ -53,6 +53,21 @@ func TestServeRejectsBadSetup(t *testing.T) {
 		"agent: unknown field":         {env: map[string]string{envComponents: "agent"}, config: `{"agent":{"max_turn":3}}`, code: 1, says: "max_turn"},
 		"agent: no concurrent runs":    {env: map[string]string{envComponents: "agent"}, config: `{"agent":{"max_concurrent_runs":0}}`, code: 1, says: "concurrent"},
 		"agent: bad effort":            {env: map[string]string{envComponents: "agent"}, config: `{"agent":{"model":{"effort":"extreme"}}}`, code: 1, says: "agent.model"},
+		// Several agents.
+		"agents: and agent":             {env: map[string]string{envComponents: "agent"}, config: `{"agent":{},"agents":[{"name":"a"}]}`, code: 1, says: `"agent" is the one-agent form`},
+		"agents: agent_api and agent":   {env: map[string]string{envComponents: "agent"}, config: `{"agent":{},"agent_api":{}}`, code: 1, says: `"agent" is the one-agent form`},
+		"agents: empty":                 {env: map[string]string{envComponents: "agent"}, config: `{"agents":[]}`, code: 1, says: "agents is empty"},
+		"agents: no name":               {env: map[string]string{envComponents: "agent"}, config: `{"agents":[{}]}`, code: 1, says: "agents[0].name"},
+		"agents: bad name":              {env: map[string]string{envComponents: "agent"}, config: `{"agents":[{"name":"a b"}]}`, code: 1, says: "agents[0].name"},
+		"agents: duplicate name":        {env: map[string]string{envComponents: "agent"}, config: `{"agents":[{"name":"a"},{"name":"a"}]}`, code: 1, says: "agents[1].name"},
+		"agents: unknown field":         {env: map[string]string{envComponents: "agent"}, config: `{"agents":[{"name":"a","max_turn":3}]}`, code: 1, says: "max_turn"},
+		"agents: server limit":          {env: map[string]string{envComponents: "agent"}, config: `{"agents":[{"name":"a","max_runs":3}]}`, code: 1, says: "max_runs"},
+		"agents: unknown toolset":       {env: map[string]string{envComponents: "agent"}, config: `{"mcp":{"toolsets":[{"name":"demo","type":"demo"}]},"agents":[{"name":"a","toolsets":["dmeo"]}]}`, code: 1, says: "agents.a.toolsets"},
+		"agents: unknown provider":      {env: map[string]string{envComponents: "agent"}, config: `{"agents":[{"name":"a"},{"name":"b","model":{"provider":"openai"}}]}`, code: 1, says: "agents.b.model.provider"},
+		"agents: bad effort":            {env: map[string]string{envComponents: "agent"}, config: `{"agents":[{"name":"a","model":{"effort":"extreme"}}]}`, code: 1, says: "agents.a.model"},
+		"agents: tool name clash":       {env: map[string]string{envComponents: "agent"}, config: `{"mcp":{"toolsets":[{"name":"a","type":"demo"},{"name":"b","type":"demo"}]},"agents":[{"name":"x","toolsets":["a","b"]}]}`, code: 1, says: "agents.x.toolsets"},
+		"agent_api: unknown field":      {env: map[string]string{envComponents: "agent"}, config: `{"agents":[{"name":"a"}],"agent_api":{"system":"x"}}`, code: 1, says: "system"},
+		"agent_api: no concurrent runs": {env: map[string]string{envComponents: "agent"}, config: `{"agents":[{"name":"a"}],"agent_api":{"max_concurrent_runs":0}}`, code: 1, says: "concurrent"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

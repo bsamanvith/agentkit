@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -100,8 +101,12 @@ func TestSearchConfigBuilds(t *testing.T) {
 	if err != nil || len(defs) != 2 || defs[0].Name != "tavily_extract" || defs[1].Name != "tavily_search" {
 		t.Errorf("tavily toolset: %v %v, want tavily_extract and tavily_search", defs, err)
 	}
-	if !slices.Equal(cfg.Agent.Toolsets, []string{"demo", "tavily", "exa", "parallel"}) {
-		t.Errorf("agent toolsets %v, want demo, tavily, exa and parallel", cfg.Agent.Toolsets)
+	toolsets := map[string][]string{}
+	for _, a := range cfg.Agents {
+		toolsets[a.Name] = a.Toolsets
+	}
+	if want := map[string][]string{"default": {"demo"}, "search": {"tavily", "exa", "parallel"}}; !maps.EqualFunc(toolsets, want, slices.Equal) {
+		t.Errorf("agents' toolsets %v, want %v", toolsets, want)
 	}
 }
 

@@ -21,6 +21,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/internal/testkit"
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
+	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
@@ -104,6 +105,7 @@ type rig struct {
 	srv    *agentapi.Server
 	ts     *httptest.Server
 	model  *model
+	models []*model // every model the server's agents run on; default model
 	clock  *clocktest.Fake
 	token  string
 	url    string // where runs are posted: the httptest server, unless a test serves elsewhere
@@ -117,6 +119,9 @@ type rig struct {
 }
 
 type rigConfig struct {
+	// agents, if set, are the server's agents (NewAgents) instead of one
+	// agent with the rig's model and tools; their harnesses are the test's.
+	agents  []agentapi.Agent
 	tools   tool.Registry
 	harness []harness.Option
 	api     []agentapi.Option
@@ -151,11 +156,16 @@ func newRig(t *testing.T, m *model, cfg rigConfig) *rig {
 	if cfg.token != "" {
 		opts = append(opts, agentapi.WithToken(cfg.token))
 	}
-	srv, err := agentapi.New(h, append(opts, cfg.api...)...)
+	var srv *agentapi.Server
+	if cfg.agents != nil {
+		srv, err = agentapi.NewAgents(cfg.agents, append(opts, cfg.api...)...)
+	} else {
+		srv, err = agentapi.New(h, append(opts, cfg.api...)...)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := &rig{t: t, srv: srv, model: m, clock: cfg.clock, token: cfg.token}
+	r := &rig{t: t, srv: srv, model: m, models: []*model{m}, clock: cfg.clock, token: cfg.token}
 	mux := http.NewServeMux()
 	mux.Handle("/v1/", srv.Handler())
 	r.ts = httptest.NewServer(mux)
@@ -171,6 +181,43 @@ func newRig(t *testing.T, m *model, cfg rigConfig) *rig {
 	})
 	t.Cleanup(r.check) // runs before the server closes
 	return r
+}
+
+// do sends a request with the rig's token and the given headers ("Name",
+// "value", ...), and returns the response, its body read.
+func (r *rig) do(method, path, body string, header ...string) (*http.Response, []byte) {
+	r.t.Helper()
+	var rd io.Reader
+	if body != "" {
+		rd = strings.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(context.WithoutCancel(r.t.Context()), method, r.ts.URL+path, rd)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	if r.token != "" {
+		req.Header.Set("Authorization", "Bearer "+r.token)
+	}
+	for i := 0; i+1 < len(header); i += 2 {
+		req.Header.Set(header[i], header[i+1])
+	}
+	resp, err := r.client.Do(req)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	return resp, b
+}
+
+// startAgent posts a run naming an agent and returns its open stream.
+func (r *rig) startAgent(ctx context.Context, message, conversationID, agent string) *stream {
+	r.t.Helper()
+	b, _ := json.Marshal(agentapi.RunRequest{Message: message, ConversationID: conversationID, Agent: agent})
+	return r.open(r.post(ctx, string(b), ""))
 }
 
 // post sends POST /v1/runs with the given body and Accept header.
@@ -202,7 +249,12 @@ func runBody(message, conversationID string) string {
 // a stream.
 func (r *rig) start(ctx context.Context, message, conversationID string) *stream {
 	r.t.Helper()
-	resp := r.post(ctx, runBody(message, conversationID), "")
+	return r.open(r.post(ctx, runBody(message, conversationID), ""))
+}
+
+// open checks that resp is an event stream and returns it.
+func (r *rig) open(resp *http.Response) *stream {
+	r.t.Helper()
 	if resp.StatusCode != http.StatusOK || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
 		b, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
@@ -439,9 +491,13 @@ func (r *rig) check() {
 			t.Errorf("JSON run %s = %+v, want an answer and a record", run.ID, run)
 		}
 	}
+	listed := r.listAll()
 	transcripts := map[string][]llm.Message{}
 	for _, id := range convs {
 		c := r.getConversation(id)
+		if sum, ok := listed[id]; !ok || sum.Agent != c.Agent || sum.Status != c.Status || sum.MessageCount != len(c.Messages) {
+			t.Errorf("conversation %s (agent %s, %s, %d messages) is listed as %+v", id, c.Agent, c.Status, len(c.Messages), sum)
+		}
 		var got []llm.Message
 		for _, m := range c.Messages {
 			got = append(got, m.Message)
@@ -457,7 +513,11 @@ func (r *rig) check() {
 	if len(runs) > 0 {
 		return // JSON runs announce nothing; the requests cannot be matched to them
 	}
-	for i, req := range r.model.requests() {
+	var requests []llm.Request
+	for _, m := range r.models {
+		requests = append(requests, m.requests()...)
+	}
+	for i, req := range requests {
 		if n := len(req.Messages); n == 0 || req.Messages[n-1].Role != llm.RoleUser {
 			t.Errorf("model request %d does not end with a user message", i+1)
 		}
@@ -471,6 +531,47 @@ func (r *rig) check() {
 			t.Errorf("model request %d is not a prefix of any conversation: %s", i+1, jsonOf(req.Messages))
 		}
 	}
+}
+
+// listAll pages through GET /v1/conversations (the default tenant's),
+// checking each page is newest first and no conversation is listed twice.
+func (r *rig) listAll() map[string]wire.ConversationSummary {
+	r.t.Helper()
+	all := map[string]wire.ConversationSummary{}
+	var last *wire.ConversationSummary
+	for cursor := ""; ; {
+		var page wire.ConversationList
+		if code := r.get("/v1/conversations?limit=7&cursor="+cursor, &page); code != http.StatusOK {
+			r.t.Fatalf("GET /v1/conversations = %d", code)
+		}
+		for _, c := range page.Conversations {
+			if _, dup := all[c.ID]; dup {
+				r.t.Errorf("conversation %s listed twice", c.ID)
+			}
+			if last != nil && c.CreatedAt.After(last.CreatedAt) {
+				r.t.Errorf("conversation %s (%v) listed after %s (%v), not newest first", c.ID, c.CreatedAt, last.ID, last.CreatedAt)
+			}
+			all[c.ID] = c
+			last = &c
+		}
+		if cursor != "" && len(page.Conversations) == 0 {
+			r.t.Errorf("a next_cursor led to an empty page")
+		}
+		if page.NextCursor != "" && len(page.Conversations) < 7 {
+			r.t.Errorf("a page of %d with limit=7 has a next_cursor", len(page.Conversations))
+		}
+		if cursor = page.NextCursor; cursor == "" {
+			break
+		}
+	}
+	// A page that holds every conversation exactly has no next one.
+	if n := len(all); n > 0 && n <= agentapi.MaxListLimit {
+		var page wire.ConversationList
+		if code := r.get("/v1/conversations?limit="+strconv.Itoa(n), &page); code != http.StatusOK || len(page.Conversations) != n || page.NextCursor != "" {
+			r.t.Errorf("GET /v1/conversations?limit=%d = %d, %d conversations, next_cursor %q; want all %d and none", n, code, len(page.Conversations), page.NextCursor, n)
+		}
+	}
+	return all
 }
 
 // checkStream checks one run's events: framing and header, the order, exactly

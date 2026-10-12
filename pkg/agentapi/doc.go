@@ -1,18 +1,42 @@
-// Package agentapi serves an agent over HTTP: a client posts a prompt, streams
+// Package agentapi serves agents over HTTP: a client posts a prompt, streams
 // back what the harness does as Server-Sent Events, and continues the
-// conversation. [Server] is the "agent" [component.Component] of
-// `agentkit serve`; it wraps one [harness.Harness] and imports no model
-// adapter (cmd/agentkit wires the model and the tools).
+// conversation; it lists the agents, the caller's conversations and the
+// toolsets. [Server] is the "agent" [component.Component] of
+// `agentkit serve`; it runs one [harness.Harness] per agent and imports no
+// model adapter (cmd/agentkit wires the models and the tools).
+//
+// The API's reference, with request and response schemas, is
+// docs/api/openapi.yaml; a test checks it against the server.
 //
 // # Endpoints
 //
 // All under /v1. With [WithToken], every request needs
 // "Authorization: Bearer <token>" (401 otherwise, on every path).
 //
-//	POST /v1/runs                {"message": "...", "conversation_id": "..."?}
-//	GET  /v1/runs/{id}           a recent run: status, answer, usage, record
-//	GET  /v1/conversations/{id}  a conversation's messages
+//	POST   /v1/runs                      {"message", "conversation_id"?, "agent"?}
+//	GET    /v1/runs/{id}                 a recent run: status, answer, usage, record
+//	GET    /v1/conversations             ?agent=&limit=&cursor=: the caller's conversations
+//	GET    /v1/conversations/{id}        a conversation's messages
+//	DELETE /v1/conversations/{id}        204; the conversation and its runs are gone
+//	GET    /v1/agents                    the agents: model, toolsets and tool names
+//	GET    /v1/agents/{name}             one agent, with its system prompt
+//	GET    /v1/toolsets                  status, skip reason, MCP path, credential status
+//	GET    /v1/toolsets/{name}/tools     the toolset's tool definitions
 //
+// A conversation belongs to one agent: the run that starts it names the agent
+// ("agent"), or gets the default one (the only agent, else the one named
+// [DefaultAgent]). A run that continues it may leave "agent" out; naming
+// another agent is 409 agent_mismatch.
+//
+// GET /v1/conversations lists the conversations most recently started first,
+// in pages of ?limit= (default [DefaultListLimit], at most [MaxListLimit]).
+// A page's next_cursor, passed as ?cursor=, fetches the next one. Pages
+// follow the order of creation, so conversations started while a client
+// pages come before its first page: it sees every older one exactly once.
+// With [WithTenant], a caller sees only its tenant's conversations and runs.
+//
+// The toolsets endpoints describe what [WithToolsets] gives: never a
+// credential's value, only its status and the variable it is read from.
 // POST /v1/runs starts a run in a new conversation, or continues the given
 // one. It answers with a text/event-stream of [Event]s by default, or, with
 // "Accept: application/json", waits and answers with the [Run]. Either way the
@@ -23,10 +47,12 @@
 //
 // Errors before a run starts have an [ErrorResponse] body:
 //
-//	400 invalid_request           malformed body, unknown field, empty message
+//	400 invalid_request           malformed body, unknown field, empty message, bad
+//	                              limit or cursor, no agent named when there is no default
 //	401 unauthorized              missing or wrong token
-//	404 not_found                 unknown conversation, run or endpoint
-//	409 conversation_busy         a run of the conversation is going on
+//	404 not_found                 unknown conversation, run, agent, toolset or endpoint
+//	409 agent_mismatch            the conversation belongs to another agent
+//	409 conversation_busy         a run of the conversation is going on (also DELETE)
 //	409 conversation_interrupted  the last run stopped before answering: resume it
 //	413 too_large                 body over the limit (WithMaxBodyBytes)
 //	503 over_capacity             too many runs at once (WithMaxConcurrentRuns); Retry-After

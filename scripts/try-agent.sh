@@ -5,24 +5,36 @@
 #   scripts/try-agent.sh             build, start, run a short demo, keep serving (Ctrl-C stops)
 #   scripts/try-agent.sh --demo      build, start, run the demo, stop
 #   scripts/try-agent.sh --docker    same, but run the container image instead of the binary
+#   scripts/try-agent.sh --agent search
+#                                    talk to that agent (default: the config's default
+#                                    agent); the config then defaults to search.json,
+#                                    which has two agents, "default" and "search"
 #
 # Needs: Go (any recent version; the right toolchain is fetched from go.mod) or
 # Docker for --docker, curl, and an Anthropic key in ANTHROPIC_API_KEY (or
 # ANTHROPIC_KEY). Optional: PORT (default 8080), AGENTKIT_API_TOKEN (default:
-# random), AGENTKIT_CONFIG (default deploy/local/agent/config.json).
+# random), AGENTKIT_CONFIG (default deploy/local/agent/config.json, or
+# deploy/local/agent/search.json with --agent).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 mode=serve
-for arg in "$@"; do
-  case "$arg" in
+agent=""
+while [ $# -gt 0 ]; do
+  case "$1" in
     --demo) mode=demo ;;
     --docker) use_docker=1 ;;
-    -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
-    *) echo "unknown argument: $arg (try --help)" >&2; exit 2 ;;
+    --agent) [ $# -ge 2 ] || { echo "--agent needs a name" >&2; exit 2; }; agent="$2"; shift ;;
+    --agent=*) agent="${1#--agent=}" ;;
+    -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
+    *) echo "unknown argument: $1 (try --help)" >&2; exit 2 ;;
   esac
+  shift
 done
 use_docker=${use_docker:-0}
+case "$agent" in
+  *[!a-zA-Z0-9_-]*) echo "--agent $agent: a name is letters, digits, _ and -" >&2; exit 2 ;;
+esac
 
 die() { echo "try-agent: $*" >&2; exit 1; }
 
@@ -32,7 +44,9 @@ command -v curl >/dev/null || die "curl is required"
 
 port="${PORT:-8080}"
 base="http://127.0.0.1:${port}"
-config="${AGENTKIT_CONFIG:-deploy/local/agent/config.json}"
+default_config=deploy/local/agent/config.json
+[ -z "$agent" ] || default_config=deploy/local/agent/search.json
+config="${AGENTKIT_CONFIG:-$default_config}"
 [ -f "$config" ] || die "config file not found: $config"
 token="${AGENTKIT_API_TOKEN:-}"
 if [ -z "$token" ]; then
@@ -89,9 +103,24 @@ curl -s "$base/readyz"; echo
 auth="Authorization: Bearer $token"
 
 echo
-echo "==> 1. a streamed agent run that needs a tool (SSE event types, then the answer)"
-out="$(curl -sN "$base/v1/runs" -H "$auth" \
-  -d '{"message":"Use the calculate tool to compute 17 * 23. Answer with just the number."}')"
+echo "==> 0. the agents and toolsets this server has"
+curl -s "$base/v1/agents" -H "$auth" | grep -oE '"name":"[^"]*","description"' | cut -d'"' -f4 | sed 's/^/   agent: /'
+curl -s "$base/v1/toolsets" -H "$auth" | grep -oE '"name":"[^"]*","type":"[^"]*","status":"[^"]*"' \
+  | awk -F'"' '{print "   toolset: " $4 " (" $8 ", " $12 ")"}'
+
+if [ -n "$agent" ]; then
+  first="{\"message\":\"Which tools do you have? Answer in one short sentence.\",\"agent\":\"$agent\"}"
+  echo
+  echo "==> 1. a streamed run of agent $agent (SSE event types, then the answer)"
+else
+  first='{"message":"Use the calculate tool to compute 17 * 23. Answer with just the number."}'
+  echo
+  echo "==> 1. a streamed agent run that needs a tool (SSE event types, then the answer)"
+fi
+out="$(curl -sN "$base/v1/runs" -H "$auth" -d "$first")"
+if echo "$out" | grep -q '"error"' && ! echo "$out" | grep -q '^event:'; then
+  die "the run was refused: $out"
+fi
 echo "$out" | grep '^event:' | sed 's/^event: /   /' | uniq -c
 conv="$(echo "$out" | grep -o '"conversation_id":"[^"]*"' | head -1 | cut -d'"' -f4)"
 echo "   answer: $(echo "$out" | grep '"type":"run_done"' | grep -o '"answer":"[^"]*"' | cut -d'"' -f4)"
@@ -104,13 +133,18 @@ curl -s "$base/v1/runs" -H "$auth" -H 'Accept: application/json' \
   | grep -oE '"(status|answer)":"[^"]*"' | sed 's/^/   /'
 
 echo
-echo "==> 3. the same tools over MCP at /mcp/demo"
+echo "==> 3. the conversations, newest first"
+curl -s "$base/v1/conversations?limit=5" -H "$auth" | grep -oE '"id":"[^"]*","agent":"[^"]*","title":"[^"]*"' \
+  | awk -F'"' '{print "   " $4 " (" $8 "): " $12}'
+
+echo
+echo "==> 4. the demo tools over MCP at /mcp/demo"
 curl -s "$base/mcp/demo" -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
   | grep -oE '"name":"[a-z_]+"' | cut -d'"' -f4 | sed 's/^/   tool: /' | sort -u
 
 echo
-echo "==> 4. no token is refused"
+echo "==> 5. no token is refused"
 echo "   status $(curl -s -o /dev/null -w '%{http_code}' "$base/v1/runs" -d '{"message":"hi"}')"
 
 if [ "$mode" = demo ]; then
@@ -126,6 +160,8 @@ The server keeps running at $base. Ctrl-C stops it. Log: $log
   export AGENTKIT_API_TOKEN=$token
   curl -sN $base/v1/runs -H "Authorization: Bearer \$AGENTKIT_API_TOKEN" -d '{"message":"What time is it?"}'
   curl -s  $base/v1/conversations/$conv -H "Authorization: Bearer \$AGENTKIT_API_TOKEN"
+  curl -s  $base/v1/agents -H "Authorization: Bearer \$AGENTKIT_API_TOKEN"        # the agents; a run picks one with "agent"
+  curl -s  $base/v1/toolsets -H "Authorization: Bearer \$AGENTKIT_API_TOKEN"      # the toolsets: ready or skipped, and why
   claude mcp add --transport http agentkit-demo $base/mcp/demo     # use the tools from Claude Code
 
 INFO

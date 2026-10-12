@@ -48,6 +48,7 @@ const (
 	CodeInterrupted    = wire.CodeInterrupted
 	CodeOverCapacity   = wire.CodeOverCapacity
 	CodeShuttingDown   = wire.CodeShuttingDown
+	CodeAgentMismatch  = wire.CodeAgentMismatch
 )
 
 // Run statuses.
@@ -84,6 +85,11 @@ type (
 	RunRequest = wire.RunRequest
 	// ErrorResponse is [wire.ErrorResponse]: the body of every HTTP error.
 	ErrorResponse = wire.ErrorResponse
+	// Credential is [wire.Credential]: where a toolset's credential comes
+	// from. The other catalog types (agents, toolsets, tools, conversation
+	// lists) are used from package wire: [Agent] and [Toolset] here are what
+	// the server is given, not what it writes.
+	Credential = wire.Credential
 )
 
 // The conversions from harness types.

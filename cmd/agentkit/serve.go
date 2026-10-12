@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -32,11 +33,28 @@ const (
 // knownComponents are the names AGENTKIT_COMPONENTS accepts.
 var knownComponents = []string{mcpServerName, agentapi.Name}
 
-// serveConfig is the config file of agentkit serve. It is JSON; YAML (with
-// the same keys) comes with pkg/config.
+// serveConfig is the config file of agentkit serve, as loadServeConfig reads
+// it. The file is JSON; YAML (with the same keys) comes with pkg/config.
+//
+// The file names its agents in "agents", each with its own model, system
+// prompt and toolsets, and the API's limits in "agent_api". A file with one
+// "agent" section instead (the form before several agents) serves that agent
+// as "default", with the limits in the same section.
 type serveConfig struct {
-	MCP   mcpConfig   `json:"mcp"`
-	Agent agentConfig `json:"agent"`
+	MCP mcpConfig
+	// Agents are the agents, in the file's order: one named "default" when
+	// the file has an "agent" section or neither section.
+	Agents []agentDef
+	API    apiConfig
+	legacy bool // Agents come from an "agent" section (or none)
+}
+
+// serveFile is the top level of the config file.
+type serveFile struct {
+	MCP      json.RawMessage   `json:"mcp"`
+	Agent    json.RawMessage   `json:"agent"`
+	Agents   []json.RawMessage `json:"agents"`
+	AgentAPI json.RawMessage   `json:"agent_api"`
 }
 
 // serveEnv is what agentkit serve reads from the environment.
@@ -79,7 +97,7 @@ func (c cli) serve(ctx context.Context, args []string) error {
 		case mcpServerName:
 			m, err = newMCPServer(ctx, cfg.MCP, built, problems, log)
 		case agentapi.Name:
-			m, err = c.newAgent(ctx, cfg.Agent, built, env, log)
+			m, err = c.newAgents(ctx, cfg, built, problems, env, log)
 		default: // in knownComponents but not wired here
 			err = errors.New("component not wired in cmd/agentkit")
 		}
@@ -108,27 +126,36 @@ func buildToolsets(ctx context.Context, env serveEnv, cfg serveConfig, configPat
 	return cli{}.buildToolsets(ctx, env, cfg, configPath, log)
 }
 
-// buildToolsets builds, once, the toolsets the components use: every one in
-// mcp.toolsets when mcp-server runs, else those the agent names. Both
-// components then share the same instances. Optional toolsets that fail are
-// logged and returned as problems.
-func (c cli) buildToolsets(ctx context.Context, env serveEnv, cfg serveConfig, configPath string, log *slog.Logger) (map[string]tool.Registry, []toolset.Problem, error) {
+// servedSpecs returns the toolsets the components use: every one in
+// mcp.toolsets when mcp-server runs, else those the agents name.
+func servedSpecs(env serveEnv, cfg serveConfig) ([]toolset.Spec, error) {
 	var specs []toolset.Spec
 	if slices.Contains(env.components, agentapi.Name) {
 		s, err := agentToolsetSpecs(cfg)
 		if err != nil {
-			return nil, nil, fmt.Errorf("%s: %w", agentapi.Name, err)
+			return nil, fmt.Errorf("%s: %w", agentapi.Name, err)
 		}
 		specs = s
 	}
 	if slices.Contains(env.components, mcpServerName) {
-		if configPath == "" {
-			return nil, nil, fmt.Errorf("%s needs a config file with its toolsets: -config or $%s", mcpServerName, envConfig)
-		}
 		if len(cfg.MCP.Toolsets) == 0 {
-			return nil, nil, fmt.Errorf("%s: no toolsets configured (mcp.toolsets in the config file)", mcpServerName)
+			return nil, fmt.Errorf("%s: no toolsets configured (mcp.toolsets in the config file)", mcpServerName)
 		}
 		specs = cfg.MCP.Toolsets
+	}
+	return specs, nil
+}
+
+// buildToolsets builds, once, the toolsets the components use
+// (servedSpecs): both components then share the same instances. Optional
+// toolsets that fail are logged and returned as problems.
+func (c cli) buildToolsets(ctx context.Context, env serveEnv, cfg serveConfig, configPath string, log *slog.Logger) (map[string]tool.Registry, []toolset.Problem, error) {
+	if configPath == "" && slices.Contains(env.components, mcpServerName) {
+		return nil, nil, fmt.Errorf("%s needs a config file with its toolsets: -config or $%s", mcpServerName, envConfig)
+	}
+	specs, err := servedSpecs(env, cfg)
+	if err != nil {
+		return nil, nil, err
 	}
 	if len(specs) == 0 {
 		return map[string]tool.Registry{}, nil, nil
@@ -186,7 +213,10 @@ func (c cli) serveEnv() (serveEnv, error) {
 // loadServeConfig reads the config file; an empty path gives the defaults.
 // Unknown fields are errors, so a typo cannot silently change what is served.
 func loadServeConfig(path string) (serveConfig, error) {
-	cfg := serveConfig{MCP: defaultMCPConfig(), Agent: defaultAgentConfig()}
+	cfg := serveConfig{MCP: defaultMCPConfig(), API: defaultAPIConfig(), legacy: true}
+	def := defaultAgentDef()
+	def.Name = agentapi.DefaultAgent
+	cfg.Agents = []agentDef{def}
 	if path == "" {
 		return cfg, nil
 	}
@@ -194,15 +224,79 @@ func loadServeConfig(path string) (serveConfig, error) {
 	if err != nil {
 		return cfg, fmt.Errorf("config: %w", err)
 	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&cfg); err != nil {
+	var file serveFile
+	if err := decodeStrict(raw, &file); err != nil {
 		return cfg, fmt.Errorf("config %s: %w", path, err)
 	}
-	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return cfg, fmt.Errorf("config %s: trailing data after the JSON object", path)
+	if err := decodeSection(file.MCP, &cfg.MCP); err != nil {
+		return cfg, fmt.Errorf("config %s: mcp: %w", path, err)
+	}
+	switch {
+	case file.Agent != nil && (file.Agents != nil || file.AgentAPI != nil):
+		return cfg, fmt.Errorf("config %s: \"agent\" is the one-agent form; with \"agents\" (and \"agent_api\"), leave it out", path)
+	case file.Agent != nil:
+		legacy := defaultAgentConfig()
+		if err := decodeSection(file.Agent, &legacy); err != nil {
+			return cfg, fmt.Errorf("config %s: agent: %w", path, err)
+		}
+		if legacy.Name == "" {
+			legacy.Name = agentapi.DefaultAgent
+		}
+		cfg.Agents, cfg.API = []agentDef{legacy.agentDef}, legacy.apiConfig
+	case file.Agents != nil:
+		cfg.legacy = false
+		if err := decodeSection(file.AgentAPI, &cfg.API); err != nil {
+			return cfg, fmt.Errorf("config %s: agent_api: %w", path, err)
+		}
+		if len(file.Agents) == 0 {
+			return cfg, fmt.Errorf("config %s: agents is empty", path)
+		}
+		cfg.Agents = nil
+		for i, raw := range file.Agents {
+			a := defaultAgentDef()
+			if err := decodeSection(raw, &a); err != nil {
+				return cfg, fmt.Errorf("config %s: agents[%d]: %w", path, i, err)
+			}
+			if !validAgentName.MatchString(a.Name) {
+				return cfg, fmt.Errorf("config %s: agents[%d].name %q: want ^[a-zA-Z0-9_-]{1,64}$", path, i, a.Name)
+			}
+			if slices.ContainsFunc(cfg.Agents, func(b agentDef) bool { return b.Name == a.Name }) {
+				return cfg, fmt.Errorf("config %s: agents[%d].name %q: two agents have that name", path, i, a.Name)
+			}
+			cfg.Agents = append(cfg.Agents, a)
+		}
+	case file.AgentAPI != nil:
+		if err := decodeSection(file.AgentAPI, &cfg.API); err != nil {
+			return cfg, fmt.Errorf("config %s: agent_api: %w", path, err)
+		}
 	}
 	return cfg, nil
+}
+
+// validAgentName is what agents[].name must match: it goes in URL paths.
+var validAgentName = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`)
+
+// decodeSection decodes a section of the config file over the defaults in v;
+// an absent section leaves them.
+func decodeSection(raw json.RawMessage, v any) error {
+	if raw == nil {
+		return nil
+	}
+	return decodeStrict(raw, v)
+}
+
+// decodeStrict decodes one JSON value, refusing unknown fields and trailing
+// data.
+func decodeStrict(raw []byte, v any) error {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		return err
+	}
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return errors.New("trailing data after the JSON object")
+	}
+	return nil
 }
 
 // duration is a time.Duration written as a string in config ("30s").

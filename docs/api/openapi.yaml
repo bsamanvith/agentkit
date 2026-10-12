@@ -1,0 +1,1504 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "agentkit agent API",
+    "version": "1",
+    "description": "The HTTP API of `agentkit serve` (package pkg/agentapi). Within version 1 the API only grows: new fields, event types and error codes; clients ignore what they do not know. Any route may also answer 500 internal on a server fault. This file is JSON, which is YAML too (tools that read YAML read it)."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8080"
+    }
+  ],
+  "security": [
+    {
+      "bearer": []
+    },
+    {}
+  ],
+  "paths": {
+    "/v1/runs": {
+      "post": {
+        "operationId": "createRun",
+        "summary": "Run an agent on a message",
+        "description": "Starts a conversation, continues one, or (with an empty message) resumes an interrupted one. The response is the run's event stream (text/event-stream), or with Accept: application/json the run once it ends.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "Server-Sent Events: each event's name is its type and its data the JSON of an Event (components.schemas.Event)."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: the body is not a RunRequest, the message is empty for a new conversation, or no agent is named and the server has no default.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such conversation, or no such agent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "conversation_busy: a run of the conversation is going on; conversation_interrupted: resume it first (empty message); agent_mismatch: the conversation belongs to another agent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "too_large: the body is over the server's limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "over_capacity: too many runs (retryable); shutting_down: the server is draining.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runs/{id}": {
+      "get": {
+        "operationId": "getRun",
+        "summary": "Get a run",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The run's ID.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such run (or it was dropped by retention).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/conversations": {
+      "get": {
+        "operationId": "listConversations",
+        "summary": "List the caller's conversations",
+        "description": "Newest (most recently started) first. Paging with next_cursor sees every conversation that existed when paging started exactly once, however many start meanwhile; those show at the start of a new listing.",
+        "parameters": [
+          {
+            "name": "agent",
+            "in": "query",
+            "description": "Only this agent's conversations.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Conversations per page.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "The previous page's next_cursor.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of conversations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: a bad limit or cursor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such agent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/conversations/{id}": {
+      "get": {
+        "operationId": "getConversation",
+        "summary": "Get a conversation and its messages",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The conversation's ID.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The conversation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such conversation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteConversation",
+        "summary": "Delete a conversation and its runs",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The conversation's ID.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "401": {
+            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such conversation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "conversation_busy: a run of the conversation is going on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents": {
+      "get": {
+        "operationId": "listAgents",
+        "summary": "List the agents",
+        "responses": {
+          "200": {
+            "description": "The agents, without system prompts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "internal: a toolset's tools could not be listed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{name}": {
+      "get": {
+        "operationId": "getAgent",
+        "summary": "Get an agent, with its system prompt",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "The agent's name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The agent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such agent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "internal: a toolset's tools could not be listed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/toolsets": {
+      "get": {
+        "operationId": "listToolsets",
+        "summary": "List the toolsets",
+        "description": "Every configured toolset: ready, or skipped with the reason; its credential's status and variable name, never its value.",
+        "responses": {
+          "200": {
+            "description": "The toolsets.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolsetList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "internal: a toolset's tools could not be listed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/toolsets/{name}/tools": {
+      "get": {
+        "operationId": "listTools",
+        "summary": "List a toolset's tools",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "The toolset's name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The tools under their own names (an agent may prefix them).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such toolset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "internal: a toolset's tools could not be listed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "The server's token (AGENTKIT_API_TOKEN), when it has one."
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "description": "A typed error: an HTTP error's body, a failed run's error, or a run_error event's.",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "What went wrong, for programs: invalid_request (400), unauthorized (401), not_found (404), too_large (413), conversation_busy, conversation_interrupted, agent_mismatch (409), over_capacity, shutting_down (503), internal (500); a failed run's codes are budget_exceeded, max_tokens, refused, unexpected_stop, cancelled, timeout, shutdown, rate_limited, overloaded, model_auth, context_too_long, model_rejected and internal. New codes may be added: treat an unknown one as internal."
+          },
+          "message": {
+            "type": "string",
+            "description": "What went wrong, for people. Do not parse it."
+          },
+          "retryable": {
+            "type": "boolean",
+            "description": "The same request may succeed later."
+          },
+          "category": {
+            "type": "string",
+            "description": "A refusal's category (code refused)."
+          },
+          "explanation": {
+            "type": "string",
+            "description": "A refusal's explanation (code refused)."
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "description": "The body of every HTTP error.",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "error": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "required": [
+          "v",
+          "error"
+        ]
+      },
+      "Usage": {
+        "type": "object",
+        "description": "Tokens a run or turn used.",
+        "properties": {
+          "input_tokens": {
+            "type": "integer"
+          },
+          "output_tokens": {
+            "type": "integer"
+          },
+          "cache_read_tokens": {
+            "type": "integer"
+          },
+          "cache_write_tokens": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "input_tokens",
+          "output_tokens"
+        ]
+      },
+      "TextBlock": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "const": "text"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "text"
+        ]
+      },
+      "ToolUseBlock": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "const": "tool_use"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "input": {
+            "description": "The tool's input: any JSON value."
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "name",
+          "input"
+        ]
+      },
+      "ToolResultBlock": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "const": "tool_result"
+          },
+          "tool_use_id": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "is_error": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "type",
+          "tool_use_id",
+          "content"
+        ]
+      },
+      "OpaqueBlock": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "const": "opaque"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "data": {
+            "type": "string",
+            "description": "The provider's block (Claude's thinking, say), passed back as is."
+          }
+        },
+        "required": [
+          "type",
+          "provider",
+          "data"
+        ]
+      },
+      "Message": {
+        "type": "object",
+        "description": "A message of a conversation.",
+        "properties": {
+          "role": {
+            "enum": [
+              "user",
+              "assistant"
+            ]
+          },
+          "content": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/TextBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolUseBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolResultBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/OpaqueBlock"
+                }
+              ]
+            }
+          }
+        },
+        "required": [
+          "role",
+          "content"
+        ]
+      },
+      "TimedMessage": {
+        "type": "object",
+        "description": "A message and when it was written.",
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "message": {
+            "$ref": "#/components/schemas/Message"
+          }
+        },
+        "required": [
+          "at",
+          "message"
+        ]
+      },
+      "StopReason": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "end_turn, tool_use, max_tokens, refusal or other."
+          },
+          "category": {
+            "type": "string"
+          },
+          "explanation": {
+            "type": "string"
+          },
+          "raw": {
+            "type": "string",
+            "description": "The provider's own stop reason."
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "ToolRecord": {
+        "type": "object",
+        "properties": {
+          "tool_use_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "duration_ms": {
+            "type": "number"
+          },
+          "is_error": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "tool_use_id",
+          "name",
+          "started_at",
+          "duration_ms",
+          "is_error"
+        ]
+      },
+      "TurnRecord": {
+        "type": "object",
+        "description": "One model call and the tools it asked for.",
+        "properties": {
+          "turn": {
+            "type": "integer"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimedMessage"
+            },
+            "description": "The reply and, if it called tools, the user message of their results."
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "first_event_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "done_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          },
+          "stop": {
+            "$ref": "#/components/schemas/StopReason"
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolRecord"
+            }
+          }
+        },
+        "required": [
+          "turn",
+          "messages",
+          "requested_at",
+          "first_event_at",
+          "done_at",
+          "usage",
+          "stop",
+          "tools"
+        ]
+      },
+      "Record": {
+        "type": "object",
+        "description": "What a run did around its messages.",
+        "properties": {
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finished_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "prompt": {
+            "$ref": "#/components/schemas/TimedMessage"
+          },
+          "turns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TurnRecord"
+            }
+          }
+        },
+        "required": [
+          "started_at",
+          "finished_at",
+          "turns"
+        ]
+      },
+      "Run": {
+        "type": "object",
+        "description": "A run: one message to an agent and the turns it took to answer.",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "id": {
+            "type": "string"
+          },
+          "conversation_id": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string",
+            "description": "The conversation's agent."
+          },
+          "status": {
+            "enum": [
+              "running",
+              "done",
+              "failed"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finished_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "answer": {
+            "type": "string",
+            "description": "The final message's text, once done."
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          },
+          "turns": {
+            "type": "integer",
+            "description": "Model calls so far."
+          },
+          "error": {
+            "$ref": "#/components/schemas/Error"
+          },
+          "record": {
+            "$ref": "#/components/schemas/Record"
+          }
+        },
+        "required": [
+          "v",
+          "id",
+          "conversation_id",
+          "agent",
+          "status",
+          "created_at",
+          "usage",
+          "turns"
+        ]
+      },
+      "Conversation": {
+        "type": "object",
+        "description": "A conversation and its messages.",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "id": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string",
+            "description": "The agent it belongs to."
+          },
+          "status": {
+            "enum": [
+              "idle",
+              "running",
+              "interrupted"
+            ],
+            "description": "idle: post a message to go on; running: a run is going on; interrupted: post with no message to resume."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimedMessage"
+            }
+          }
+        },
+        "required": [
+          "v",
+          "id",
+          "agent",
+          "status",
+          "created_at",
+          "updated_at",
+          "messages"
+        ]
+      },
+      "RunRequest": {
+        "type": "object",
+        "description": "The body of POST /v1/runs. Unknown fields are refused.",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "The user's message; empty only to resume an interrupted conversation."
+          },
+          "conversation_id": {
+            "type": "string",
+            "description": "Continues this conversation; absent starts a new one."
+          },
+          "agent": {
+            "type": "string",
+            "description": "The agent of a new conversation (absent: the default agent). A conversation stays with its agent: naming another is 409 agent_mismatch."
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "Event": {
+        "type": "object",
+        "description": "One event of a run's stream: the JSON of an SSE data line, whose event name is its type. A run's events are one run_start; per turn its text_delta events, a tool_call and tool_result per tool call, and one turn_done; and last one run_done or run_error.",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "type": {
+            "type": "string",
+            "description": "run_start, text_delta, tool_call, tool_result, turn_done, run_done or run_error; new types may be added: skip an unknown one."
+          },
+          "seq": {
+            "type": "integer",
+            "description": "Counts the run's events from 0, with no gaps."
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "conversation_id": {
+            "type": "string",
+            "description": "run_start."
+          },
+          "prompt": {
+            "$ref": "#/components/schemas/TimedMessage"
+          },
+          "turn": {
+            "type": "integer",
+            "description": "text_delta, tool_call, tool_result, turn_done: the turn, from 1."
+          },
+          "block": {
+            "type": "integer",
+            "description": "text_delta."
+          },
+          "text": {
+            "type": "string",
+            "description": "text_delta."
+          },
+          "call": {
+            "type": "integer",
+            "description": "tool_call, tool_result: the call's index in its turn."
+          },
+          "tool_use_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "description": "tool_call."
+          },
+          "input": {
+            "description": "tool_call: the tool's input."
+          },
+          "content": {
+            "type": "string",
+            "description": "tool_result."
+          },
+          "is_error": {
+            "type": "boolean",
+            "description": "tool_result."
+          },
+          "duration_ms": {
+            "type": "number",
+            "description": "tool_result."
+          },
+          "record": {
+            "$ref": "#/components/schemas/TurnRecord"
+          },
+          "answer": {
+            "type": "string",
+            "description": "run_done."
+          },
+          "final": {
+            "$ref": "#/components/schemas/Message"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          },
+          "turns": {
+            "type": "integer",
+            "description": "run_done, run_error: model calls."
+          },
+          "error": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "required": [
+          "v",
+          "type",
+          "seq",
+          "run_id",
+          "at"
+        ]
+      },
+      "Model": {
+        "type": "object",
+        "description": "The model an agent runs on.",
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "effort": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "AgentToolset": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "skipped"
+            ]
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The tool names the agent's model sees (prefixed with the toolset's name when the agent prefixes them); empty when skipped."
+          }
+        },
+        "required": [
+          "name",
+          "status",
+          "tools"
+        ]
+      },
+      "Agent": {
+        "type": "object",
+        "description": "An agent: its own model, system prompt and tools.",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "default": {
+            "type": "boolean",
+            "description": "The agent a run gets when it names none."
+          },
+          "model": {
+            "$ref": "#/components/schemas/Model"
+          },
+          "toolsets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentToolset"
+            }
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Empty until skills land (E12)."
+          },
+          "memory": {
+            "type": "boolean",
+            "description": "False until memory lands (E12)."
+          },
+          "system": {
+            "type": "string",
+            "description": "The system prompt: only in GET /v1/agents/{name}. It will be for admins only once the API has roles (T040)."
+          }
+        },
+        "required": [
+          "v",
+          "name",
+          "description",
+          "default",
+          "model",
+          "toolsets",
+          "skills",
+          "memory"
+        ]
+      },
+      "AgentList": {
+        "type": "object",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "agents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Agent"
+            },
+            "description": "In the server's config order; without system prompts."
+          }
+        },
+        "required": [
+          "v",
+          "agents"
+        ]
+      },
+      "ConversationSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "description": "The start of the first message, on one line (80 characters at most)."
+          },
+          "status": {
+            "enum": [
+              "idle",
+              "running",
+              "interrupted"
+            ]
+          },
+          "message_count": {
+            "type": "integer"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "agent",
+          "title",
+          "status",
+          "message_count",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "ConversationList": {
+        "type": "object",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "conversations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConversationSummary"
+            },
+            "description": "Newest (most recently started) first."
+          },
+          "next_cursor": {
+            "type": "string",
+            "description": "Fetches the next page (?cursor=); absent on the last page. Opaque."
+          }
+        },
+        "required": [
+          "v",
+          "conversations"
+        ]
+      },
+      "Credential": {
+        "type": "object",
+        "description": "Where a toolset's credential comes from, and whether it is there.",
+        "properties": {
+          "status": {
+            "enum": [
+              "configured",
+              "missing",
+              "keyless",
+              "not_needed"
+            ]
+          },
+          "env": {
+            "type": "string",
+            "description": "The environment variable the key is read from. The value is never sent."
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "Toolset": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "description": "The connector: demo, tavily, exa, parallel, ..."
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "skipped"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why a skipped toolset was skipped."
+          },
+          "mcp_path": {
+            "type": "string",
+            "description": "Where the server serves the toolset over MCP, relative to its base URL; absent when it does not."
+          },
+          "tool_count": {
+            "type": "integer"
+          },
+          "credential": {
+            "$ref": "#/components/schemas/Credential"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "status",
+          "tool_count",
+          "credential"
+        ]
+      },
+      "ToolsetList": {
+        "type": "object",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "toolsets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Toolset"
+            }
+          }
+        },
+        "required": [
+          "v",
+          "toolsets"
+        ]
+      },
+      "Tool": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "input_schema": {
+            "type": "object",
+            "description": "The JSON Schema of the tool's input."
+          },
+          "output_schema": {
+            "type": "object",
+            "description": "The JSON Schema of the tool's output, when it has one."
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "input_schema"
+        ]
+      },
+      "ToolList": {
+        "type": "object",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "toolset": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "skipped"
+            ]
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            },
+            "description": "Empty when the toolset was skipped."
+          }
+        },
+        "required": [
+          "v",
+          "toolset",
+          "status",
+          "tools"
+        ]
+      }
+    }
+  }
+}

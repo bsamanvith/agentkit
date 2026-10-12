@@ -189,8 +189,29 @@ func TestE2EServeAgent(t *testing.T) {
 	}
 	checkConversation(t, c.all()) // the follow-up carried the first run unchanged
 
+	// The catalog: the config's one agent is "default", with both toolsets'
+	// tools prefixed; its conversation is listed; the toolsets are served
+	// over MCP where the API says.
+	ac := a.client()
+	agents, err := ac.Agents(t.Context())
+	if err != nil || len(agents) != 1 || agents[0].Name != agentapi.DefaultAgent || !agents[0].Default ||
+		len(agents[0].Toolsets) != 2 || !slices.Contains(agents[0].Toolsets[1].Tools, "demo-b__echo") {
+		t.Errorf("Agents = %+v, %v; want default with demo-a and demo-b", agents, err)
+	}
+	if page, err := ac.Conversations(t.Context(), agentclient.ConversationsQuery{}); err != nil || len(page.Conversations) != 1 ||
+		page.Conversations[0].ID != conv || page.Conversations[0].Agent != agentapi.DefaultAgent {
+		t.Errorf("Conversations = %+v, %v; want %s", page, err, conv)
+	}
+	sets, err := ac.Toolsets(t.Context())
+	if err != nil || len(sets) != 2 || sets[0].Name != "demo-a" || sets[0].Status != "ready" {
+		t.Fatalf("Toolsets = %+v, %v", sets, err)
+	}
+	if tools, err := ac.Tools(t.Context(), "demo-b"); err != nil || len(tools.Tools) != 2 || tools.Tools[0].Name != "calculate" {
+		t.Errorf("Tools(demo-b) = %+v, %v; want calculate and echo (current_time excluded)", tools, err)
+	}
+
 	// The same process serves the toolsets over MCP.
-	cs := connectMCP(t, p.url+"/mcp/demo-a", nil)
+	cs := connectMCP(t, ac.MCPURL(sets[0]), nil)
 	if text, err := echo(t, cs, "hi"); err != nil || text != "[a] hi" {
 		t.Errorf("MCP echo = %q %v", text, err)
 	}

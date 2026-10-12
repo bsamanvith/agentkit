@@ -120,9 +120,11 @@ func Run(ctx context.Context, id string, step Step, opts ...Option) (*State, err
 // was made by another version of the encoding, which cannot be compared. In
 // both cases Resume emits an [EventWarning] and the run's next checkpoint
 // carries the current fingerprint.
-// Resuming a completed run returns its final state; resuming a rejected run
-// returns [ErrRejected] again. Resume fails with [ErrNotFound] if the run does
-// not exist.
+// Resuming a completed run returns its final state. Resuming a rejected run
+// returns its recorded [RejectedError] (matching [ErrRejected]) again, without
+// running any step, emitting step events or saving: a rejection is final, even
+// if it cancelled a sibling branch that had not finished. Resume fails with
+// [ErrNotFound] if the run does not exist.
 func Resume(ctx context.Context, id string, step Step, opts ...Option) (*State, error) {
 	o, err := prepare(id, step, opts)
 	if err != nil {
@@ -157,6 +159,12 @@ func Resume(ctx context.Context, id string, step Step, opts ...Option) (*State, 
 		if o.observer != nil {
 			o.observer(Event{Kind: EventWarning, Path: nameOf(step), Err: warning})
 		}
+	}
+	if ckpt.Status == StatusRejected && len(ckpt.Rejected) > 0 {
+		// A rejection is final. Running again would re-run branches the
+		// rejection cancelled, and their errors would replace it.
+		path := slices.Min(slices.Collect(maps.Keys(ckpt.Rejected)))
+		return nil, &RejectedError{Path: path, Reason: ckpt.Rejected[path]}
 	}
 	st := NewState()
 	if err := json.Unmarshal(ckpt.Initial, st); err != nil {

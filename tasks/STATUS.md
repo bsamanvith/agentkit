@@ -36,7 +36,7 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 
 | Task | State |
 |---|---|
-| [T013](T013-skill-write-tests.md) `write-tests` dry runs | The `pkg/flow` dry run found **a real bug** (resuming a rejected run whose cancelled `Parallel` sibling failed returns that error and flips the run to `failed`). Fix and new flow tests are ready in the T024 session, **waiting for the owner's approval there** (its permission check blocks `pkg/flow` edits). The T018 dry run stopped unfinished. |
+| [T013](T013-skill-write-tests.md) `write-tests` dry runs | The `pkg/flow` dry run found a real bug (a rejected run could be resumed into `failed`); **fixed on `main`** by the planner with a deterministic regression test. The dry run's larger flow test set is still only in the T024 session's local branch: it is pushed only if the owner says "yes, go ahead" in that session. The T018 dry run stopped unfinished. |
 
 ## Next (ready to start)
 
@@ -61,7 +61,7 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 
 ## Waiting on the owner
 
-1. **Approve the flow fix in the T024 session** (or say to drop it; the new flow tests are lost when that container ends).
+1. **Optional: say "yes, go ahead" in the T024 session** to save the dry run's extra flow tests (the bug itself is fixed on `main`). Otherwise they are lost when that container ends.
 2. **Where to deploy** the API server (a VM with Docker, Cloud Run, Fly.io, Kubernetes, ...). The binary and image are ready; a deploy task is written once this is known.
 3. **Delete the `review/t022-base` branch**, and the merged `claude/*` session branches (all their work is on `main`).
 

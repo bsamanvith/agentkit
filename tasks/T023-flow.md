@@ -78,3 +78,7 @@ Each guards a design trap: `TestCheckpointIsSavedAfterTheStepHasFinishedChanging
 - `flowtest.Recorder` collects events for tests.
 - A step must be safe to run again from the state it started with: a crash mid-step re-runs it, so side effects need to be idempotent. A harness run should resume from its transcript rather than start over.
 - Not built: a way to resume a single branch of a `Parallel` independently, a checkpoint-size limit, and compare-and-swap on `Save` (the contract is one writer per run id).
+
+### Fixed after T023
+
+- 2026-10-12 (planner, owner-approved): **a rejected run stays rejected on `Resume`.** Found by the T013 dry run. When a rejection inside a `Parallel` cancelled an unfinished sibling, `Resume` ran that sibling again, could return its error instead of `ErrRejected`, and saved the run as `failed`. `Resume` now returns the recorded `RejectedError` (smallest rejected path) for a rejected checkpoint, with no step run, no event and no save. Regression test: `TestResumeOfARejectedRunIsRejectedEvenIfASiblingFails` (its event and save checks fail on every run without the fix; the sibling-error symptom itself depends on scheduling).

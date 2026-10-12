@@ -33,7 +33,7 @@
 // empty by POST /v1/conversations, for a client that needs the ID first (a
 // page addressed by its conversation, before anything is sent). An empty
 // conversation is "idle", has no messages and an empty title until its first
-// run; when retention must drop conversations, empty ones go first.
+// run; for retention it was used when it was created.
 //
 // GET /v1/conversations lists the conversations most recently started first,
 // in pages of ?limit= (default [DefaultListLimit], at most [MaxListLimit]).

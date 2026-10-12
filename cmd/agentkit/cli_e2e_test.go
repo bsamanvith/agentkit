@@ -202,6 +202,7 @@ func TestE2EAsk(t *testing.T) {
 		"unknown agent": {"-agent", "nosuchagent"},
 		"an argument":   {"hi"},
 		"server down":   {"-server", "http://127.0.0.1:1"},
+		"-conversation": {"-conversation", "x"}, // create has no use for it
 	} {
 		cmd, out, errOut := cliCommand(t, c, api, p, e2eToken, "", append([]string{"create"}, args...)...)
 		if err := cmd.Run(); cmd.ProcessState.ExitCode() != exitClient || out.Len() != 0 {
@@ -213,12 +214,10 @@ func TestE2EAsk(t *testing.T) {
 	if err := create.Run(); create.ProcessState.ExitCode() != exitClient || !strings.Contains(cErr.String(), envAPIToken) {
 		t.Errorf("create without a token: %v, stdout %q, stderr %q; want exit 2 and a hint", err, cOut, cErr)
 	}
-	create, cOut, cErr = cliCommand(t, c, api, p, e2eToken, "", "create", "-json", "-agent", "default")
 	var created wire.Conversation
-	if err := create.Run(); err != nil || json.Unmarshal(cOut.Bytes(), &created) != nil || created.Agent != "default" || created.Status != wire.StatusIdle || len(created.Messages) != 0 {
-		t.Errorf("create -json: %v, stdout %q, stderr %q; want an empty conversation of default", err, cOut, cErr)
+	if out := createRun(t, c, api, p, e2eToken, "-json", "-agent", "default"); json.Unmarshal([]byte(out), &created) != nil || created.Agent != "default" || created.Status != wire.StatusIdle || len(created.Messages) != 0 {
+		t.Errorf("create -json printed %q; want an empty conversation of default", out)
 	}
-	checkCLIOutput(t, cOut.String()+cErr.String(), e2eToken)
 
 	if n := len(c.all()); n != 4 {
 		t.Errorf("%d model requests after the refused runs, chat and create, want 4", n)

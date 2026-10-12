@@ -271,9 +271,7 @@ func (s *chatSession) refused(err error, message string) {
 		s.say("a run of this conversation is going on; try again when it has ended")
 	case errors.Is(err, agentclient.ErrOverCapacity), errors.Is(err, agentclient.ErrShuttingDown):
 		s.r.line(s.st.red("the server is busy, try again in a moment: " + err.Error()))
-	case errors.Is(err, agentclient.ErrUnauthorized):
-		s.r.line(s.st.red(fmt.Sprintf("%v: set $%s to the server's API token", err, envAPIToken)))
 	default:
-		s.r.line(s.st.red("error: " + err.Error()))
+		s.r.line(s.st.red("error: " + withTokenHint(err)))
 	}
 }

@@ -268,10 +268,6 @@ func (s *Server) listTools(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// listConversations serves GET /v1/conversations: the caller's
-// conversations, most recently started first. Pages follow the order of
-// creation, so conversations started while a client pages land before its
-// first page: it sees every older one exactly once.
 // createConversation creates an empty conversation of the agent named (or
 // the default agent), for a client that wants the conversation's ID before
 // its first message. A body is optional: none is {}.
@@ -297,10 +293,7 @@ func (s *Server) createConversation(w http.ResponseWriter, r *http.Request) {
 
 	s.mu.Lock()
 	now := s.cfg.clock.Now()
-	s.convSeq++
-	s.touches++
-	c := &conversation{id: s.cfg.newID("conv_"), agent: ag, tenant: tenant, seq: s.convSeq, created: now, updated: now, touched: s.touches}
-	s.convs[c.id] = c
+	c := s.newConversation(ag, tenant, now)
 	s.evict(now, c)
 	view := conversationView(c)
 	s.mu.Unlock()
@@ -309,6 +302,10 @@ func (s *Server) createConversation(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, view)
 }
 
+// listConversations serves GET /v1/conversations: the caller's
+// conversations, most recently started first. Pages follow the order of
+// creation, so conversations started while a client pages land before its
+// first page: it sees every older one exactly once.
 func (s *Server) listConversations(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	limit := DefaultListLimit

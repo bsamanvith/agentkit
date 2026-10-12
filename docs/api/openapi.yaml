@@ -189,7 +189,7 @@
       "post": {
         "operationId": "createConversation",
         "summary": "Create an empty conversation",
-        "description": "Creates a conversation with no messages, of the agent named or the default one, so a client has its ID before the first message: then POST /v1/runs with that conversation_id. A run without conversation_id still creates one itself. The conversation is idle, with an empty title until its first message. When retention must drop conversations, empty ones go first.",
+        "description": "Creates a conversation with no messages, of the agent named or the default one, so a client has its ID before the first message: then POST /v1/runs with that conversation_id. A run without conversation_id still creates one itself. The conversation is idle, with an empty title until its first message. For retention, it was used when it was created.",
         "requestBody": {
           "required": false,
           "content": {

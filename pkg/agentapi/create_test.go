@@ -53,9 +53,11 @@ func TestCreateConversation(t *testing.T) {
 		t.Errorf("the run went to %s, not the created %s", got, c.ID)
 	}
 	reqs := r.search.requests()
-	if len(reqs) != 1 || len(reqs[0].Messages) != 1 || len(r.plain.requests()) != 0 {
-		t.Errorf("search got %d requests (the first with %d messages), plain %d; want the search agent, from an empty transcript",
-			len(reqs), len(reqs[0].Messages), len(r.plain.requests()))
+	if len(reqs) != 1 || len(r.plain.requests()) != 0 {
+		t.Fatalf("search got %d requests, plain %d; want one, to the search agent", len(reqs), len(r.plain.requests()))
+	}
+	if n := len(reqs[0].Messages); n != 1 {
+		t.Errorf("the first run sent %d messages, want 1: an empty transcript", n)
 	}
 	sum := r.listAll()[c.ID]
 	if sum.Title != "What is new in Go?" || sum.MessageCount != 2 || !sum.UpdatedAt.After(sum.CreatedAt) {
@@ -141,27 +143,30 @@ func TestCreatedConversationsAreTheCallersTenant(t *testing.T) {
 	}
 }
 
-// TestRetentionDropsEmptyConversationsFirst: past the conversation count,
-// conversations without messages go first, oldest first; the one just
-// created never goes; past the retention age, empty ones go like any other.
-func TestRetentionDropsEmptyConversationsFirst(t *testing.T) {
+// TestRetentionOfCreatedConversations: a created conversation counts as
+// used when it is created, so past the conversation count the least recently
+// used goes, empty or not, and never the one just created, even when nothing
+// else can go; past the retention age, an empty one goes like any other.
+func TestRetentionOfCreatedConversations(t *testing.T) {
 	t.Parallel()
 	r := newRig(t, echo(t), rigConfig{api: []agentapi.Option{agentapi.WithRetention(10, 3, time.Hour)}})
 	used := r.runJSON("keep me", "").ConversationID
-	used2 := r.runJSON("keep me too", "").ConversationID
-	var empty []string
-	for range 4 {
-		r.clock.Advance(time.Second)
-		empty = append(empty, r.create(`{}`).ID)
+	e1, e2 := r.create(`{}`).ID, r.create(`{}`).ID
+	wantKept := func(step string, want ...string) {
+		t.Helper()
+		if got := slices.Sorted(maps.Keys(r.listAll())); !slices.Equal(got, slices.Sorted(slices.Values(want))) {
+			t.Errorf("%s: kept %v, want %v", step, got, want)
+		}
 	}
-	listed := r.listAll()
-	want := []string{used, used2, empty[3]} // each create dropped the empty one before it
-	if got := slices.Sorted(maps.Keys(listed)); !slices.Equal(got, slices.Sorted(slices.Values(want))) {
-		t.Errorf("kept %v, want %v: the used conversations and the newest", got, want)
-	}
+	wantKept("at the count", used, e1, e2)
+	e3 := r.create(`{}`).ID
+	wantKept("a create past the count", e1, e2, e3) // used is the least recently used
+	r.startAgent(t.Context(), "hi", e1, "").all()
+	e4 := r.create(`{}`).ID
+	wantKept("a create after a run in e1", e1, e3, e4)
 
-	// A create that must drop a conversation with messages drops the least
-	// recently used, never itself.
+	// A create that must drop the only other conversation drops it, never
+	// itself; past the retention age, an empty conversation goes.
 	r2 := newRig(t, echo(t), rigConfig{api: []agentapi.Option{agentapi.WithRetention(10, 1, time.Hour)}})
 	old := r2.runJSON("old", "").ConversationID
 	c := r2.create(`{}`)
@@ -177,6 +182,17 @@ func TestRetentionDropsEmptyConversationsFirst(t *testing.T) {
 		t.Errorf("an empty conversation older than the retention is still there (%d)", code)
 	}
 	r2.getConversation(c2.ID)
+
+	// With the count taken by a conversation whose run is going on, there is
+	// nothing to drop: the new one stays, over the count.
+	m := echo(t)
+	m.gate = make(chan struct{})
+	r3 := newRig(t, m, rigConfig{api: []agentapi.Option{agentapi.WithRetention(10, 1, time.Hour)}})
+	busy := r3.start(t.Context(), "busy", "")
+	busy.until(agentapi.TypeRunStart, 0)
+	r3.getConversation(r3.create(`{}`).ID)
+	m.gate <- struct{}{}
+	busy.all()
 }
 
 // TestCreateConversationsConcurrently: concurrent creates and runs (under

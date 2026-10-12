@@ -34,7 +34,7 @@ Naming: **conversation**, not session. Everything already says conversation (`co
 - [x] Refusals change nothing: no default agent (no body, `{}`), unknown agent, unknown field, not an object, trailing data, wrong type; then in a created conversation, an empty message (400) and another agent (409 `agent_mismatch`). — `TestCreateConversationRefusals`
 - [x] No body, blank body, `{}` and `{"agent":""}` give the default agent. — `TestCreateConversationDefaultAgent`
 - [x] Tenants: another tenant cannot read, run in, delete or list it. — `TestCreatedConversationsAreTheCallersTenant`
-- [x] Retention: past the count, empty conversations go first (oldest first), the one just created never; past the age, empty ones go like any other. — `TestRetentionDropsEmptyConversationsFirst`
+- [x] Retention: a created conversation counts as used at creation; past the count the least recently used goes, empty or not, never the one just created; past the age, empty ones go like any other. — `TestRetentionOfCreatedConversations`
 - [x] Concurrent creates and runs (under `-race`): distinct IDs, each listed once. — `TestCreateConversationsConcurrently`
 - [x] OpenAPI: every documented status of the new operation is produced, and its bodies (and a run in the created conversation) validate against the sealed spec. — `TestOpenAPIResponses`, `TestOpenAPISpec`
 - [x] Client: request shape (`POST /v1/conversations`, JSON body), 201 decoded, a run in it, `ErrNotFound` for an unknown agent. — `TestRequests`, `TestCatalog`
@@ -45,28 +45,30 @@ Naming: **conversation**, not session. Everything already says conversation (`co
 
 ### Decisions
 
-- **Empty conversations are listed** (title `""`, `message_count: 0`), not hidden, and have **no shorter expiry**. When planning this I suggested hiding them and expiring them after an hour; I dropped both. Hiding needs a query parameter and makes the list disagree with `GET`, and a UI can filter on `message_count: 0` itself. An expiry needs a new option. Instead, **retention drops empty conversations first**, so a client that creates many and never uses them loses its own empty ones, not other conversations. The conversation just created is never the one dropped.
+- **Empty conversations are listed** (title `""`, `message_count: 0`), not hidden, and have **no shorter expiry**. When planning this I suggested hiding them and expiring them after an hour; I dropped both. Hiding needs a query parameter and makes the list disagree with `GET`, and a UI can filter on `message_count: 0` itself. An expiry needs a new option.
+- **Retention is least recently used, empty or not.** A conversation counts as used when it is created. The first version dropped empty conversations first. The review found that this put the newest conversation most at risk: at the count, each create dropped whichever empty conversation was oldest, from any client, so another client's conversation could go between its create and its first send. It did not confine the loss to the client that created them either.
 - **The body is optional**: none, or a blank one, is `{}`, so `curl -X POST .../v1/conversations` works. Unknown fields are refused, as on `POST /v1/runs`.
 - **No `503` while draining**: creating a conversation starts no work. A run in it is refused as usual.
-- **`touched`** (the eviction order) is set at creation, so a new empty conversation is the last empty one to go.
+- **`touched`** (the eviction order) is set at creation (`newConversation`), so a new conversation is the most recently used.
 - **The CLI's `create`** registers `-server` and `-agent` only; `-conversation` would be meaningless.
 
 ### Files
 
 - `pkg/agentapi`:
   - `catalog.go`: `createConversation`;
-  - `server.go`: the route, `readBody` (shared with `POST /v1/runs`), the title set on the first message, `evict(now, keep)` with empty conversations first, `conversationView`;
+  - `server.go`: the route, `readBody` (shared with `POST /v1/runs`), `newConversation` (shared with a run's implicit create), the title set on the first message, `evict(now, keep)`, `conversationView`;
   - `doc.go`;
   - tests: `create_test.go` (new) and the probes in `openapi_test.go`.
 - `pkg/agentapi/wire/catalog.go`: `CreateConversationRequest`; the `Title` comment.
 - `pkg/agentclient`:
   - `catalog.go`: `ConversationRequest`, `CreateConversation`;
-  - `client.go`: `decodeStatus`;
+  - `client.go`: `postJSON` (shared with runs), `decodeStatus`;
   - `doc.go`;
   - tests: `catalog_test.go`, `client_test.go`.
 - `cmd/agentkit`:
   - `create.go` (new);
-  - `client.go`: `registerServer`;
+  - `client.go`: `registerServer`, the exit codes, `withTokenHint`;
+  - `ask.go`: `requestFailed`, shared with create;
   - `main.go`: dispatch and usage;
   - `cli_e2e_test.go`.
 - `docs/api/openapi.yaml`, `docs/QUICKSTART.md`, `tasks/E11-clients.md`, `tasks/T037-agent-api-v1.md` (the store note).
@@ -83,15 +85,34 @@ Each mutant was planted, the tests run (`pkg/agentapi` `TestCreate|TestRetention
 | tenant not recorded | TestCreatedConversationsAreTheCallersTenant |
 | unknown fields accepted | TestCreateConversationRefusals, TestOpenAPIResponses |
 | an empty body refused | TestCreateConversationDefaultAgent |
-| no eviction on create | TestRetentionDropsEmptyConversationsFirst |
-| eviction may drop the new conversation | TestRetentionDropsEmptyConversationsFirst |
-| empty conversations not dropped first | TestRetentionDropsEmptyConversationsFirst |
+| no eviction on create | TestRetentionOfCreatedConversations |
+| eviction may drop the new conversation | TestRetentionOfCreatedConversations |
+| not touched at creation | TestRetentionOfCreatedConversations |
+| empty conversations dropped first (the first version's rule) | TestRetentionOfCreatedConversations |
 | title never set by the first message | TestCreateConversation |
 | title reset by every message | TestCreateConversation |
 | client sends no body | TestCatalog, TestRequests, TestE2EAsk |
 | `agentkit create` drops `-agent` | TestE2EAsk |
 | `agentkit create` always prints JSON | TestE2EAsk |
 | `agentkit create` exits 0 on an error | TestE2EAsk |
+| `agentkit create` accepts `-conversation` | TestE2EAsk |
+| no token hint on 401 | TestE2EAsk |
+| a POST without `Content-Type: application/json` | TestRequests |
+
+### Review
+
+Reviewed after it was pushed (PR: the review's fixes):
+
+- **DRY:**
+  - `newConversation` is the one place a conversation is built; the title is set in one place (the first message).
+  - `postJSON` is shared by runs and creates.
+  - `requestFailed` and `withTokenHint` are shared by ask, create and chat.
+  - The exit codes moved to `client.go`.
+- **Fixes:**
+  - `listConversations`' doc comment had been merged into `createConversation`'s.
+  - Eviction is now plain LRU (see Decisions).
+  - `TestCreateConversation` could panic on its failure path.
+- **Kept:** no `503` while draining (see Decisions).
 
 ### For T055
 

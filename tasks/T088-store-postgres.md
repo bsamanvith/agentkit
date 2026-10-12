@@ -2,7 +2,7 @@
 id: T088
 title: "pkg/store/postgres: the server store, same suites as SQLite, plus the durable event log"
 epic: E18
-status: in-progress
+status: done
 depends_on: [T029]
 ---
 
@@ -60,7 +60,7 @@ The owner chose Postgres + Redis for the server (E18). SQLite (T029) stays for l
 - [x] **Event log:** append and read-after pass the new suite for memory, SQLite and Postgres. Concurrent appends to one run get distinct, dense sequence numbers or a conflict, never a gap.
 - [x] **Byte-exact messages:** a message with an Opaque block and odd whitespace reads back byte for byte.
 - [x] **Migrations:** four concurrent opens migrate once; a newer schema is refused.
-- [ ] **CI:** the Postgres job runs the integration tier and is required.
+- [x] **CI:** the Postgres job runs the integration tier and is required.
 - [x] **Retries:** a forced `40001` on a write is retried and succeeds without a duplicate entry.
 - [x] **Mutation list** recorded.
 
@@ -207,6 +207,7 @@ The binary is `cmd/agentkit`, built `CGO_ENABLED=0 GOOS=linux -trimpath -ldflags
 - **golangci-lint does not see integration-tagged files** (T089 reported this too): `.golangci.yml` needs `run.build-tags: [integration]`. I linted with `--build-tags integration` by hand: 0 issues.
 - **`make fuzz` skips the Postgres fuzz targets.** It lists targets without the tag. Their seed corpora run in the CI `integration` job. Coverage-guided fuzzing of Postgres was run by hand (see Gates).
 - **`scripts/dev.sh` does not exist.** `testkit.IntegrationEnv`'s skip message points to it (T006). Locally I used a Postgres 17 from Homebrew.
+- **A flaky Redis bus test (T089's code).** The first CI run of the merged `integration` job (1525201, run 38314136107) failed `pkg/bus/redis` `TestExpiredStreamRestarts`: "Close did not return in 10s", in the test's cleanup, 10 s into the package. Every store package passed in that run. The rerun of the job was green, and locally the test passed 30 times under `-race` and in three runs of the full CI command at `GOMAXPROCS=4`. So `Bus.Close` can hang for more than 10 s, and it seems more likely now that bus and store packages share the 4-core runner. Owner: T089 or T090, which closes buses on shutdown.
 - **Branch protection is off on `main`.** "Required" holds by convention: a red job turns the commit red, as for `fuzz`.
 
 ### For T090 (stream API)

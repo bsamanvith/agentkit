@@ -7,9 +7,11 @@
 // It imports only [llm] (messages and usage), never the harness, so a client
 // can use it without pulling in the agent loop.
 //
-// Within [Version] the format only grows: new fields, event types and error
-// codes. Decoding into these types ignores unknown fields, and a client must
-// pass unknown event types and codes through rather than fail on them.
+// Within [Version] the format only grows: new fields, event types, error codes
+// and message block types. Decoding into these types ignores unknown fields,
+// messages included, and keeps a block of an unknown type as an
+// [llm.Unknown] block (see [llm.UnmarshalMessageLenient]); a client must pass
+// unknown event types and codes through rather than fail on them.
 package wire
 
 import (
@@ -96,6 +98,30 @@ type Event struct {
 	Error *Error `json:"error,omitempty"`
 }
 
+// UnmarshalJSON decodes any event, ignoring unknown fields; its final message
+// is decoded leniently, like every message on the wire (see [TimedMessage]).
+func (e *Event) UnmarshalJSON(data []byte) error {
+	type plain Event // without methods, so decoding it does not recurse
+	var w struct {
+		*plain
+		Final json.RawMessage `json:"final"` // shadows plain.Final
+	}
+	w.plain = (*plain)(e)
+	e.Final = nil
+	if err := json.Unmarshal(data, &w); err != nil {
+		return err
+	}
+	if len(w.Final) == 0 || string(w.Final) == "null" {
+		return nil
+	}
+	m, err := llm.UnmarshalMessageLenient(w.Final)
+	if err != nil {
+		return err
+	}
+	e.Final = &m
+	return nil
+}
+
 // header is the part of every event.
 type header struct {
 	V     int       `json:"v"`
@@ -175,6 +201,29 @@ func (e Event) MarshalJSON() ([]byte, error) {
 type TimedMessage struct {
 	At      time.Time   `json:"at"`
 	Message llm.Message `json:"message"`
+}
+
+// UnmarshalJSON decodes the message leniently ([llm.UnmarshalMessageLenient]):
+// a newer server may add fields to messages and blocks, and new block types,
+// which come back as [llm.Unknown] blocks.
+func (m *TimedMessage) UnmarshalJSON(data []byte) error {
+	var w struct {
+		At      time.Time       `json:"at"`
+		Message json.RawMessage `json:"message"`
+	}
+	if err := json.Unmarshal(data, &w); err != nil {
+		return err
+	}
+	*m = TimedMessage{At: w.At}
+	if len(w.Message) == 0 {
+		return nil
+	}
+	msg, err := llm.UnmarshalMessageLenient(w.Message)
+	if err != nil {
+		return err
+	}
+	m.Message = msg
+	return nil
 }
 
 // TurnRecord is the wire form of harness.TurnRecord: one model call and the

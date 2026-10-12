@@ -19,6 +19,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/agentclient"
+	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
 )
 
@@ -276,11 +277,12 @@ func (r *repeater) Read(p []byte) (int, error) {
 }
 
 // TestUnknownEventsAndFieldsPassThrough: the additive rule, on T036's golden
-// streams. With unknown fields added at every level of every event (as in
-// T036's TestEventJSONIsAdditive), unknown SSE fields, and events of an
-// unknown type in between, the client reads the same known events, passes
-// the unknown ones through with their raw data, and ends only at run_done or
-// run_error.
+// streams. With unknown fields added at every level of every event and of its
+// messages and blocks, a block of a new type in every message (as in T036's
+// TestEventJSONIsAdditive), unknown SSE fields, and events of an unknown type
+// in between, the client reads the same known events (each new block kept as
+// an llm.Unknown block), passes the unknown events through with their raw
+// data, and ends only at run_done or run_error.
 func TestUnknownEventsAndFieldsPassThrough(t *testing.T) {
 	t.Parallel()
 	for _, name := range goldenStreams {
@@ -299,6 +301,9 @@ func TestUnknownEventsAndFieldsPassThrough(t *testing.T) {
 				}
 				unknown := fmt.Sprintf(`{"v":1,"type":"thinking_delta","seq":%d,"run_id":%q,"at":"2026-10-11T12:00:00Z","thinking":"hm","nested":{"a":[1]}}`, known.Seq, known.RunID)
 				grown := grow(t, data)
+				for _, m := range eventMessages(&known) {
+					withNewBlock(m)
+				}
 				fmt.Fprintf(&body, "retry: 1000\nevent: thinking_delta\ndata: %s\n\nid: %d\nevent: %s\nx-new-field: 1\ndata: %s\n\n", unknown, known.Seq, known.Type, grown)
 				var u wire.Event
 				if err := json.Unmarshal([]byte(unknown), &u); err != nil {
@@ -316,10 +321,8 @@ func TestUnknownEventsAndFieldsPassThrough(t *testing.T) {
 	}
 }
 
-// grow adds unknown fields to an event and to its objects, as T036's
-// TestEventJSONIsAdditive does, and to run_start's prompt. Not to messages:
-// llm.Message decodes strictly (an unknown field or block type is an error),
-// so the additive rule stops at a message (see T053's Notes).
+// grow adds unknown fields to an event and to its objects, and grows its
+// messages (growMessages), as T036's TestEventJSONIsAdditive does.
 func grow(t *testing.T, data string) string {
 	t.Helper()
 	var obj map[string]any
@@ -327,16 +330,82 @@ func grow(t *testing.T, data string) string {
 		t.Fatal(err)
 	}
 	addUnknown(obj)
-	for _, key := range []string{"record", "error", "usage", "prompt"} {
+	for _, key := range []string{"record", "error", "usage"} {
 		if sub, ok := obj[key].(map[string]any); ok {
 			addUnknown(sub)
 		}
 	}
+	growMessages(obj)
 	b, err := json.Marshal(obj)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return string(b)
+}
+
+// newBlock is a content block of a type a later release may add, and
+// newBlockJSON its JSON as json.Marshal writes it inside a grown event.
+var (
+	newBlock = map[string]any{
+		"type": "citation_card", "url": "https://example.com/<a>",
+		"added_in_a_later_release": map[string]any{"nested": []any{1.0, "two"}},
+	}
+	newBlockJSON, _ = json.Marshal(newBlock)
+)
+
+// growMessages adds to every message under v (an object with "role" and
+// "content") unknown fields, on the message and on each of its blocks, and
+// newBlock as its first block; and unknown fields to every timed message (an
+// object with "at" and "message").
+func growMessages(v any) {
+	switch v := v.(type) {
+	case map[string]any:
+		content, isMessage := v["content"].([]any)
+		if _, ok := v["role"]; ok && isMessage {
+			for _, b := range content {
+				if b, ok := b.(map[string]any); ok {
+					addUnknown(b)
+				}
+			}
+			v["content"] = append([]any{newBlock}, content...)
+			addUnknown(v)
+			return
+		}
+		for _, x := range v {
+			growMessages(x)
+		}
+		_, hasAt := v["at"]
+		if _, ok := v["message"]; ok && hasAt {
+			addUnknown(v)
+		}
+	case []any:
+		for _, x := range v {
+			growMessages(x)
+		}
+	}
+}
+
+// withNewBlock adds to m what reading a grown message gives: newBlock, kept
+// as an llm.Unknown block.
+func withNewBlock(m *llm.Message) {
+	m.Content = append([]llm.Block{llm.Unknown{Type: "citation_card", Data: newBlockJSON}}, m.Content...)
+}
+
+// eventMessages are the messages in e.
+func eventMessages(e *wire.Event) []*llm.Message {
+	var ms []*llm.Message
+	if e.Prompt != nil {
+		ms = append(ms, &e.Prompt.Message)
+	}
+	if e.Record != nil {
+		for i := range e.Record.Messages {
+			ms = append(ms, &e.Record.Messages[i].Message)
+		}
+	}
+	if e.Final != nil {
+		ms = append(ms, e.Final)
+	}
+	return ms
 }
 
 func addUnknown(obj map[string]any) {

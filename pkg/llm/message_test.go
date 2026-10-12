@@ -175,6 +175,7 @@ func TestRequestCloneIsDeep(t *testing.T) {
 			llm.Assistant(
 				llm.ToolUse{ID: "t", Name: "n", Input: json.RawMessage(`{"a":1}`)},
 				llm.Opaque{Provider: "p", Data: json.RawMessage(`{"b":2}`)},
+				llm.Unknown{Type: "image", Data: json.RawMessage(`{"type":"image"}`)},
 			),
 		},
 		Tools: []tool.Definition{{Name: "n", InputSchema: json.RawMessage(`{"type":"object"}`)}},
@@ -182,6 +183,7 @@ func TestRequestCloneIsDeep(t *testing.T) {
 	clone := req.Clone()
 	clone.Messages[0].Content[0].(llm.ToolUse).Input[2] = 'X'
 	clone.Messages[0].Content[1].(llm.Opaque).Data[2] = 'X'
+	clone.Messages[0].Content[2].(llm.Unknown).Data[2] = 'X'
 	clone.Messages[0].Content[0] = llm.Text{Text: "replaced"}
 	clone.Tools[0].InputSchema[2] = 'X'
 
@@ -190,6 +192,9 @@ func TestRequestCloneIsDeep(t *testing.T) {
 	}
 	if got := string(req.Messages[0].Content[1].(llm.Opaque).Data); got != `{"b":2}` {
 		t.Errorf("opaque data changed to %s", got)
+	}
+	if got := string(req.Messages[0].Content[2].(llm.Unknown).Data); got != `{"type":"image"}` {
+		t.Errorf("unknown block's data changed to %s", got)
 	}
 	if got := string(req.Tools[0].InputSchema); got != `{"type":"object"}` {
 		t.Errorf("tool schema changed to %s", got)
@@ -212,6 +217,13 @@ func TestMarshalRejectsInvalidMessages(t *testing.T) {
 		"tool result no id":    llm.User(llm.ToolResult{Content: "x"}),
 		"pointer block":        llm.Assistant(&llm.Text{Text: "x"}),
 		"typed nil block":      llm.Assistant((*llm.Text)(nil)),
+		"unknown without type": llm.Assistant(llm.Unknown{Data: json.RawMessage(`{}`)}),
+		"unknown, known type":  llm.Assistant(llm.Unknown{Type: "text", Data: json.RawMessage(`{"type":"text","text":"a"}`)}),
+		"unknown, other type":  llm.Assistant(llm.Unknown{Type: "image", Data: json.RawMessage(`{"type":"audio"}`)}),
+		"unknown, no type":     llm.Assistant(llm.Unknown{Type: "image", Data: json.RawMessage(`{"source":"x"}`)}),
+		"unknown not object":   llm.Assistant(llm.Unknown{Type: "image", Data: json.RawMessage(`"image"`)}),
+		"unknown bad data":     llm.Assistant(llm.Unknown{Type: "image", Data: json.RawMessage(`{"type":"image"`)}),
+		"unknown not utf-8":    llm.Assistant(llm.Unknown{Type: "image", Data: json.RawMessage("{\"type\":\"image\",\"x\":\"\xff\"}")}),
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -260,6 +272,123 @@ func TestUnknownBlockType(t *testing.T) {
 	}
 }
 
+// TestUnmarshalMessageLenient: what a newer version may add (fields on a
+// message or a block, block types) is read, unknown fields ignored and an
+// unknown block kept as it was; what is malformed is still an error; and
+// for what strict decoding accepts, both agree.
+func TestUnmarshalMessageLenient(t *testing.T) {
+	t.Parallel()
+	image := `{"type":"image", "source":{"url":"https://x/<a>.png"},"alt":"a \u003c b"}`
+	for _, tt := range []struct {
+		name, doc string
+		want      llm.Message
+	}{
+		{"field on the message", `{"role":"user","content":[{"type":"text","text":"a"}],"name":"x","meta":{"a":[1]}}`, llm.User(llm.Text{Text: "a"})},
+		{"field on text", `{"role":"user","content":[{"type":"text","text":"a","citations":[{"url":"u"}]}]}`, llm.User(llm.Text{Text: "a"})},
+		{"field on tool_use", `{"role":"assistant","content":[{"type":"tool_use","id":"t","name":"n","input":{"q":1},"caller":"x"}]}`, llm.Assistant(llm.ToolUse{ID: "t", Name: "n", Input: json.RawMessage(`{"q":1}`)})},
+		{"field on tool_result", `{"role":"user","content":[{"type":"tool_result","tool_use_id":"t","content":"r","is_error":true,"images":[]}]}`, llm.User(llm.ToolResult{ToolUseID: "t", Content: "r", IsError: true})},
+		{"field on opaque", `{"role":"assistant","content":[{"type":"opaque","provider":"p","data":"{\"a\":1}","kind":"thinking"}]}`, llm.Assistant(llm.Opaque{Provider: "p", Data: json.RawMessage(`{"a":1}`)})},
+		{"block type", `{"role":"assistant","content":[{"type":"text","text":"see"},` + image + `,{"type":"text","text":"done"}]}`, llm.Assistant(
+			llm.Text{Text: "see"}, llm.Unknown{Type: "image", Data: json.RawMessage(image)}, llm.Text{Text: "done"},
+		)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := llm.UnmarshalMessageLenient([]byte(tt.doc))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("decoded %#v, want %#v", got, tt.want)
+			}
+			var strict llm.Message
+			if err := json.Unmarshal([]byte(tt.doc), &strict); !errors.Is(err, llm.ErrInvalidMessage) {
+				t.Errorf("strict decoding: err = %v, want ErrInvalidMessage", err)
+			}
+			out := mustJSON(t, got)
+			again, err := llm.UnmarshalMessageLenient(out)
+			if err != nil {
+				t.Fatalf("own output %s: %v", out, err)
+			}
+			if out2 := mustJSON(t, again); !bytes.Equal(out, out2) {
+				t.Errorf("encoding is not stable:\n first %s\nsecond %s", out, out2)
+			}
+			for _, b := range got.Content {
+				if u, ok := b.(llm.Unknown); ok && !jsonSame(t, mustJSON(t, u), []byte(image)) {
+					t.Errorf("unknown block written as %s, read as %s", mustJSON(t, u), image)
+				}
+			}
+		})
+	}
+	for name, doc := range map[string]string{
+		"invalid JSON":      `{"role":"user","content":[`,
+		"no type":           `{"role":"user","content":[{"text":"a"}]}`,
+		"empty type":        `{"role":"user","content":[{"type":"","text":"a"}]}`,
+		"type not a string": `{"role":"user","content":[{"type":7}]}`,
+		"null block":        `{"role":"user","content":[null]}`,
+		"not an object":     `{"role":"user","content":["a"]}`,
+		"unknown role":      `{"role":"system","content":[]}`,
+		"no role":           `{"content":[]}`,
+		"null":              `null`,
+		"tool use no id":    `{"role":"assistant","content":[{"type":"tool_use","name":"n","input":{}}]}`,
+		"tool result no id": `{"role":"user","content":[{"type":"tool_result","content":"x"}]}`,
+		"opaque as value":   `{"role":"assistant","content":[{"type":"opaque","provider":"p","data":{"a":1}}]}`,
+		"opaque bad data":   `{"role":"assistant","content":[{"type":"opaque","provider":"p","data":"{\"a\":"}]}`,
+		"trailing data":     `{"role":"user","content":[]} {}`,
+	} {
+		t.Run("malformed/"+name, func(t *testing.T) {
+			t.Parallel()
+			if m, err := llm.UnmarshalMessageLenient([]byte(doc)); !errors.Is(err, llm.ErrInvalidMessage) {
+				t.Errorf("decoded %#v, err = %v; want ErrInvalidMessage", m, err)
+			}
+		})
+	}
+	t.Run("agrees with strict decoding", func(t *testing.T) {
+		t.Parallel()
+		for _, m := range sampleMessages() {
+			data := mustJSON(t, m)
+			var strict llm.Message
+			if err := json.Unmarshal(data, &strict); err != nil {
+				t.Fatal(err)
+			}
+			got, err := llm.UnmarshalMessageLenient(data)
+			if err != nil || !reflect.DeepEqual(got, strict) {
+				t.Errorf("%s: lenient %#v (%v), strict %#v", data, got, err, strict)
+			}
+		}
+	})
+	t.Run("strict decoding rejects an unknown block", func(t *testing.T) {
+		t.Parallel()
+		data := mustJSON(t, llm.Assistant(llm.Unknown{Type: "image", Data: json.RawMessage(image)}))
+		var m llm.Message
+		if err := json.Unmarshal(data, &m); !errors.Is(err, llm.ErrInvalidMessage) {
+			t.Errorf("decoded %#v, err = %v; want ErrInvalidMessage", m, err)
+		}
+	})
+}
+
+func mustJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// jsonSame reports whether a and b are the same JSON value.
+func jsonSame(t *testing.T, a, b []byte) bool {
+	t.Helper()
+	var x, y any
+	if err := json.Unmarshal(a, &x); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(b, &y); err != nil {
+		t.Fatal(err)
+	}
+	return reflect.DeepEqual(x, y)
+}
+
 func FuzzMessageUnmarshal(f *testing.F) {
 	golden, err := os.ReadFile("testdata/messages.json")
 	if err != nil {
@@ -280,14 +409,31 @@ func FuzzMessageUnmarshal(f *testing.F) {
 		`{"role":"assistant","content":[{"type":"opaque","provider":"p","data":"[ \"\\u003c\" ]"}]}`,
 		`{"role":"assistant","content":[{"type":"opaque","provider":"p","data":"\"\\ud800\""}]}`,
 		`{"role":"user","content":[{"type":"text","text":"\ud800"}]}`,
+		`{"role":"user","content":[{"type":"text","text":"a","new":1},{"type":"image","src":{"u":"<x>"}}],"name":"x"}`,
+		`{"role":"user","content":[{"type":"image","x":"\ud800"}]}`,
 	} {
 		f.Add([]byte(seed))
 	}
 
 	f.Fuzz(func(t *testing.T, data []byte) {
+		lenient, lerr := llm.UnmarshalMessageLenient(data)
+		if lerr == nil {
+			// Whatever lenient decoding accepts, it can write and read back.
+			out := mustJSON(t, lenient)
+			again, err := llm.UnmarshalMessageLenient(out)
+			if err != nil {
+				t.Fatalf("lenient: cannot decode own output %q: %v", out, err)
+			}
+			if out2 := mustJSON(t, again); !bytes.Equal(out, out2) {
+				t.Fatalf("lenient: encoding is not stable:\n first %q\nsecond %q", out, out2)
+			}
+		}
 		var m *llm.Message
 		if err := json.Unmarshal(data, &m); err != nil || m == nil {
 			return // invalid input must be an error, not a panic
+		}
+		if lerr != nil || !reflect.DeepEqual(lenient, *m) {
+			t.Fatalf("strict decoding gives %#v, lenient %#v (%v)", *m, lenient, lerr)
 		}
 		out, err := json.Marshal(m)
 		if err != nil {

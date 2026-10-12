@@ -49,6 +49,15 @@ Fetch them with `curl` (in Claude sessions, WebFetch may fail on DNS, but `curl`
 
 ## Acceptance criteria
 
+**Test kit (added 2026-10-12, [T049](T049-connector-test-kit.md)).**
+- `toolsettest.RunConnector` runs the generic checks: settings, missing key, the error matrix (400/401/429/5xx/garbage/oversized/hang), the retry rule, the canary, no network, MCP and concurrency. Criteria below that it covers are ticked by "passes `RunConnector`"; don't hand-write those tests.
+- Write cassettes in T049's format.
+- Accept a `base_url` setting (`https` unless loopback).
+- Make no request in `Build`.
+- Add the three-line `FuzzResponses` target.
+- If T049 is not on `main` yet, build the connector and its specific tests first, then adopt the suite when it lands.
+
+
 - [ ] **Search request:** sends the documented JSON (golden request body) with settings defaults applied and model inputs validated; the response (recorded fixture) maps to E10's search shape exactly (golden output).
 - [ ] **Extract** maps `results` and `failed_results`, with partial failures kept (golden).
 - [ ] **Auth modes** (table test):

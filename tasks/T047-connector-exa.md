@@ -42,6 +42,15 @@ API source of truth: the OpenAPI spec `https://exa.ai/docs/exa-spec.yaml` (`/sea
 
 ## Acceptance criteria
 
+**Test kit (added 2026-10-12, [T049](T049-connector-test-kit.md)).**
+- `toolsettest.RunConnector` runs the generic checks: settings, missing key, the error matrix (400/401/429/5xx/garbage/oversized/hang), the retry rule, the canary, no network, MCP and concurrency. Criteria below that it covers are ticked by "passes `RunConnector`"; don't hand-write those tests.
+- Write cassettes in T049's format.
+- Accept a `base_url` setting (`https` unless loopback).
+- Make no request in `Build`.
+- Add the three-line `FuzzResponses` target.
+- If T049 is not on `main` yet, build the connector and its specific tests first, then adopt the suite when it lands.
+
+
 - [ ] **Search request:** sends the documented JSON (golden request body: `query`, `numResults`, `type`, `contents`, filters) with the `x-api-key` header; the recorded response maps to E10's search shape (golden output), for both highlights and text modes.
 - [ ] **Extract** maps successes and per-URL failures (`statuses`) (golden).
 - [ ] **Settings validation:** a missing `EXA_API_KEY` fails `Build` naming the variable; an `optional` toolset is skipped and shown degraded in `/readyz`; a literal `api_key`, unknown fields and bad enums fail with clear messages.

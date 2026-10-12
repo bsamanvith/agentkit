@@ -14,7 +14,7 @@
 | M5 Agent API, `agentkit serve`, image, Compose, smoke tests | [E09](E09-agent-api.md), [E01](E01-foundations.md) | In progress: `agentkit serve`, agent API v0 and the image done; **deployable** |
 | M6 Remote tools over ConnectRPC | E06 (to plan) | Planned |
 | Credentials, auth, tenancy at the edge | [E07](E07-auth-credentials.md) | **Planned** (T039–T045); T039 and T042 ready. Needed before any public deployment: `/mcp/` has no auth today |
-| First connectors: Tavily, Exa, Parallel (search, extract) | [E10](E10-search-connectors.md) | **Planned** (T046–T048), all ready; no auth work needed (Tavily keyless or keyed; Exa and Parallel keyed from env) |
+| First connectors: Tavily, Exa, Parallel (search, extract) | [E10](E10-search-connectors.md) | **In progress**: T046–T048 running; T049 connector test kit (suite + fakes) next; no auth work needed (Tavily keyless or keyed; Exa and Parallel keyed from env) |
 | More model providers | [E08](E08-model-providers.md) | Later |
 | Agent skills | [E02](E02-agent-skills.md) | In progress: `write-tests` exists and was dry-run on `pkg/flow` |
 
@@ -33,7 +33,7 @@ The same checks are one command on a laptop: `scripts/try-agent.sh` ([docs/QUICK
 
 ## Done
 
-T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentkit healthcheck` · T017 `pkg/tool` · T018 MCP server · T019 `pkg/clock` · T020 `pkg/llm` · T021 Anthropic adapter · T022 harness · T023 `flow` · T024 `agentkit run`, `agentstep` · T026 `pkg/toolset` · T027 `pkg/tenancy` · T028 `pkg/store` · T032 flow step-tree check · T036 agent API v0
+T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentkit healthcheck` · T017 `pkg/tool` · T018 MCP server · T019 `pkg/clock` · T020 `pkg/llm` · T021 Anthropic adapter · T022 harness · T023 `flow` · T024 `agentkit run`, `agentstep` · T026 `pkg/toolset` · T027 `pkg/tenancy` · T028 `pkg/store` · T038 `store.Admin` · T032 flow step-tree check · T036 agent API v0
 
 ## Running or waiting
 
@@ -45,14 +45,14 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 
 | Task | What | Why now |
 |---|---|---|
-| [T038](T038-store-admin.md) | `store.Admin`, the cross-tenant read for recovery | Small; unblocks T029 and T030 in parallel. **Task card queued** (2026-10-12) |
-| [T046](T046-connector-tavily.md) | `connectors/tavily`: search and extract, keyless or keyed | Owner's first connector; **task card queued** |
-| [T047](T047-connector-exa.md) | `connectors/exa`: search and extract | Owner's second connector, parallel with T046; **task card queued**; live tests need `EXA_API_KEY` in sessions |
-| [T048](T048-connector-parallel.md) | `connectors/parallel`: search and extract | Owner's third connector, parallel with T046 and T047; **task card queued**; live tests need `PARALLEL_API_KEY` in sessions |
+| [T049](T049-connector-test-kit.md) | `toolsettest`: cassettes, `RunConnector` suite, honest fakes | **First priority**: the three connector sessions adopt it; fakes stop other tests from paying. **Task card queued** |
+| [T046](T046-connector-tavily.md) | `connectors/tavily`: search and extract, keyless or keyed | **Running** (session started 2026-10-12) |
+| [T047](T047-connector-exa.md) | `connectors/exa`: search and extract | **Running**; live tests need `EXA_API_KEY` in sessions |
+| [T048](T048-connector-parallel.md) | `connectors/parallel`: search and extract | **Running**; live tests need `PARALLEL_API_KEY` in sessions |
 | [T039](T039-auth-principals-middleware.md) | `pkg/auth`: principals, API keys, edge middleware | Starts E07's inbound track; new package only, parallel with E05 |
 | [T042](T042-credentials-core.md) | `pkg/credentials`: secrets, sealer, vault, memory backend | Starts E07's credentials track; new package only, parallel with everything |
-| [T029](T029-store-sqlite.md) | SQLite store | After T038; persistence for the API (T037) |
-| [T030](T030-runner.md) | Runner: entries, cache, leases, recovery, retry, approvals, cancel | After T038; the core of M4 |
+| [T029](T029-store-sqlite.md) | SQLite store | Unblocked (T038 done); persistence for the API (T037) |
+| [T030](T030-runner.md) | Runner: entries, cache, leases, recovery, retry, approvals, cancel | Unblocked (T038 done); the core of M4 |
 | [T006](T006-compose-and-dev-script.md) | Compose topologies and `scripts/dev.sh` | Image exists; repeatable local runs |
 | [T033](T033-harness-clock.md) | Harness on `pkg/clock` | Small, independent |
 | [T035](T035-rerecord-anthropic-fixtures.md) | Re-record Anthropic fixtures from the real API | A key is available |

@@ -46,6 +46,7 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 | Task | What | Why now |
 |---|---|---|
 | [T049](T049-connector-test-kit.md) | `toolsettest`: cassettes, `RunConnector` suite, honest fakes | **First priority**: the three connector sessions adopt it; fakes stop other tests from paying. **Task card queued** |
+| [T050](T050-connector-tool-evals.md) | Tool-use evals: real Claude with faked connectors | After T049 and one connector; model tokens only |
 | [T046](T046-connector-tavily.md) | `connectors/tavily`: search and extract, keyless or keyed | **Running** (session started 2026-10-12) |
 | [T047](T047-connector-exa.md) | `connectors/exa`: search and extract | **Running**; live tests need `EXA_API_KEY` in sessions |
 | [T048](T048-connector-parallel.md) | `connectors/parallel`: search and extract | **Running**; live tests need `PARALLEL_API_KEY` in sessions |
@@ -97,5 +98,6 @@ Each is recorded in the linked file; this list is for orientation.
 - Recovery across tenants through a separate `store.Admin` (T038), never reachable from request handling.
 - Saved transcripts are not deleted at run end; agent step output holds a reference ([T030](T030-runner.md)).
 - Public agent API is HTTP + JSON with SSE; ConnectRPC stays internal ([E09](E09-agent-api.md)).
+- Connector testing (2026-10-12): one kit (T049) with cassettes, a conformance suite with check IDs and staged rollout, honest fakes, drift checks, secret scans, `synthetic` fixtures kept in review; a separate eval tier (T050) for model behavior. Informed by Airbyte, LangChain, Meltano and Nango practice ([E10](E10-search-connectors.md)).
 - E07 (2026-10-12): one auth middleware for `/v1` and `/mcp/`; API keys (hashed) then OIDC/JWT, we are a resource server only; hidden toolsets answer 404; no open MCP off loopback; credentials sealed with AES-GCM bound to tenant/user/slot, tools get a source for one slot, no token passthrough ([E07](E07-auth-credentials.md)).
 - E04 closed; T025 moved to E08. `fakellm` kept, extracted from the replay server ([T004](T004-fakellm.md)).

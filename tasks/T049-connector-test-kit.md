@@ -129,6 +129,34 @@ Checks the suite runs on every connector:
   Add a "Connectors" section to the `write-tests` skill pointing at it, and add §2.8 to `docs/ENGINEERING.md` (short; links `CONNECTORS.md`).
 - **Enforcement:** an archtest rule fails when a package under `connectors/` has no test calling `toolsettest.RunConnector`, or no `testdata/cassettes`.
 
+
+### 6. Lessons from other connector ecosystems (research 2026-10-12, built into this task)
+
+- **New checks roll in, not crash in** (Airbyte, LangChain).
+  - Airbyte found that a new suite requirement breaks every connector's build at once; LangChain tells users to pin its test package for the same reason.
+  - So every check has an ID (`settings.unknown_field`, `errors.retry_5xx`, ...), and a connector may skip one by ID with a reason, written in its test (`Skip: map[CheckID]string`).
+  - Skips are printed in every run and listed in `docs/CONNECTORS.md`.
+  - Rollout: a new check starts opt-in, becomes opt-out, then cannot be skipped.
+- **Schema honesty** (Airbyte: "every column contains at least one non-null value").
+  - Across a connector's cassette outputs, every field in each output schema must appear at least once with a non-null value, and no output may carry a field the schema doesn't declare.
+  - This catches dead or misnamed fields, which a pure schema check misses.
+- **Secrets are not only in headers** (VCR tools: query strings and POST bodies leak too).
+  - Recording also fails if the key appears in the path or query.
+  - A repo-wide test scans every `testdata/cassettes` file for known key shapes (`sk-ant-`, `tvly-`, long high-entropy tokens next to `key`/`token`/`secret`) and for `Set-Cookie`.
+  - A connector can add a `Scrub` hook for account IDs and emails in responses, applied before writing.
+- **Recordings go stale silently** (mock drift).
+  - A drift check (`-tags live`, run with `make test-live`) replays each cassette's request against the real API and compares the response's **shape** (JSON paths and types, not values) with the cassette, reporting added, removed and retyped fields.
+  - Each cassette records its recording date; the drift run warns past 90 days.
+  - Where the provider publishes an OpenAPI spec (Exa, Parallel), the connector vendors it into `testdata/` and an offline test checks every cassette response against the spec's response schema.
+- **Generated fixtures repeat the code's assumptions** (Nango).
+  - A fixture not recorded from the real API is marked `synthetic` in its `.req.json`.
+  - The suite prints the synthetic ones.
+  - A connector with synthetic cassettes stays `review` until they are re-recorded.
+  - Recording keeps a cassette only if the connector's output from it validates against the output schema (Nango saves mocks only when validation passes).
+- **Rare failures never show up in recordings.** Auth expiry, rate limits and partial failures stay synthetic in the error matrix (already in §3), not recorded.
+- **Every generic bug becomes a suite check** (Meltano adds a check to its standard suite each time users hit a new error). `docs/CONNECTORS.md` states the rule: when a connector bug is generic, add the check here and roll it in per the first point above, instead of fixing one connector.
+- **Mocks can't show model behavior**, such as picking the wrong tool or sending arguments the schema rejects. That is the eval tier, [T050](T050-connector-tool-evals.md), not this kit. The kit's fakes are what make those evals cheap.
+
 ## Out of scope
 
 - Credential slots (T044); the suite gains a credential-source check then.
@@ -151,6 +179,11 @@ Checks the suite runs on every connector:
 - [ ] **Fake runs the suite:** a fake passes the applicable parts of the suite.
 - [ ] **Archtest rule:** fails for a `connectors/x` package with no `RunConnector` test (fixture tree, like the existing archtest rule tests).
 - [ ] **Docs:** `docs/CONNECTORS.md` and the `write-tests` skill section exist; their example code compiles (an `Example` test).
+- [ ] Check IDs and skips: a skipped check is reported with its reason; an unknown check ID in `Skip` fails.
+- [ ] Schema honesty: a toy variant with a declared output field that never appears in cassette outputs, or with an undeclared output field, fails the suite.
+- [ ] Secret scan: a cassette containing a key-shaped string or `Set-Cookie` fails the repo-wide scan, and recording refuses a key in the path or query.
+- [ ] Drift check (`-tags live`, against a local stand-in that changed one field's type and removed one field): reports both; an unchanged stand-in reports no drift.
+- [ ] Synthetic cassettes are listed by the suite; recording drops an exchange whose mapped output fails the output schema.
 - [ ] **Mutation list** recorded (the planted-bug variants plus at least: matcher ignoring the body, canary check skipping logs, hermetic client allowing other hosts, fake skipping output validation).
 
 ## Notes

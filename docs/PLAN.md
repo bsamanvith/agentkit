@@ -109,7 +109,7 @@ mcp:
     - { name: gmail,      type: gmail, include: [gmail_search, gmail_read*] }
 ```
 
-Auth, tenant resolution and per-tenant credentials plug in as HTTP middleware in front of every toolset path (credentials, E07).
+Auth, tenant resolution and per-tenant credentials plug in as HTTP middleware in front of every toolset path (credentials, [E07](../tasks/E07-auth-credentials.md)).
 
 External-facing MCP stays **spec-compliant** (stdio and Streamable HTTP, JSON-RPC). A gRPC transport for MCP exists only as a proposal and is not part of the spec, so gRPC is used only for our internal protocol.
 
@@ -207,7 +207,7 @@ Build the product from the inside out, and add infrastructure when there is some
 5. **M4 `store` (SQLite), `runner`, compaction** ([E05](../tasks/E05-store-runner.md)): runs, conversations and checkpoints persist; resume works; long conversations compact. **Current focus.**
 6. **M5 Agent API and containers**: `pkg/component` and `agentkit serve` (*done*, T003); the agent API over HTTP + SSE ([E09](../tasks/E09-agent-api.md): v0 in memory now, v1 on the runner after M4); `fakellm`, image, Compose, smoke tests.
 7. **M6 Tool protocol over ConnectRPC**: remote registry; the `split` topology.
-8. Then MCP client and bridge, Postgres and tenancy, credentials, observability.
+8. Then MCP client and bridge, Postgres and tenancy, credentials, observability. Auth and credentials ([E07](../tasks/E07-auth-credentials.md)) are planned and run in parallel with M4: they are needed before any public deployment.
 
 ## Open items / next steps
 

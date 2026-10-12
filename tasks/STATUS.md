@@ -1,6 +1,6 @@
 # Plan status
 
-> Maintained by the planner ([docs/WORKFLOW.md](../docs/WORKFLOW.md)). Updated 2026-10-11 at `main` `b138b44` plus planner commits, CI green. Task files are the source of truth for each task; this page is the overview.
+> Maintained by the planner ([docs/WORKFLOW.md](../docs/WORKFLOW.md)). Updated 2026-10-12 at `main` `448c5d4` plus planner commits, CI green. Task files are the source of truth for each task; this page is the overview.
 
 ## Milestones
 
@@ -13,7 +13,7 @@
 | M4 Store, runner, compaction | [E05](E05-store-runner.md) | In progress: `pkg/store` (interfaces, memory store, suites, run lifecycle) done |
 | M5 Agent API, `agentkit serve`, image, Compose, smoke tests | [E09](E09-agent-api.md), [E01](E01-foundations.md) | In progress: `agentkit serve`, agent API v0 and the image done; **deployable** |
 | M6 Remote tools over ConnectRPC | E06 (to plan) | Planned |
-| Credentials, auth, tenancy at the edge | E07 (to plan) | **Plan next** (needed before any public deployment) |
+| Credentials, auth, tenancy at the edge | [E07](E07-auth-credentials.md) | **Planned** (T039–T045); T039 and T042 ready. Needed before any public deployment: `/mcp/` has no auth today |
 | More model providers | [E08](E08-model-providers.md) | Later |
 | Agent skills | [E02](E02-agent-skills.md) | In progress: `write-tests` exists and was dry-run on `pkg/flow` |
 
@@ -44,7 +44,9 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 
 | Task | What | Why now |
 |---|---|---|
-| [T038](T038-store-admin.md) | `store.Admin`, the cross-tenant read for recovery | Small; unblocks T029 and T030 in parallel |
+| [T038](T038-store-admin.md) | `store.Admin`, the cross-tenant read for recovery | Small; unblocks T029 and T030 in parallel. **Task card queued** (2026-10-12) |
+| [T039](T039-auth-principals-middleware.md) | `pkg/auth`: principals, API keys, edge middleware | Starts E07's inbound track; new package only, parallel with E05 |
+| [T042](T042-credentials-core.md) | `pkg/credentials`: secrets, sealer, vault, memory backend | Starts E07's credentials track; new package only, parallel with everything |
 | [T029](T029-store-sqlite.md) | SQLite store | After T038; persistence for the API (T037) |
 | [T030](T030-runner.md) | Runner: entries, cache, leases, recovery, retry, approvals, cancel | After T038; the core of M4 |
 | [T006](T006-compose-and-dev-script.md) | Compose topologies and `scripts/dev.sh` | Image exists; repeatable local runs |
@@ -59,12 +61,16 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 |---|---|
 | [T031](T031-compaction.md) Compaction | T030 |
 | [T037](T037-agent-api-v1.md) Agent API v1 on the runner | T030, T029 |
+| [T040](T040-serve-auth-wiring.md) `serve` behind auth, [T041](T041-auth-jwt-oidc.md) JWT/OIDC | T039 |
+| [T043](T043-credentials-backends.md) credential backends, [T044](T044-credentials-in-tools.md) credentials in tools | T042 (T043's SQLite part also T029) |
+| [T045](T045-connect-accounts.md) Connecting accounts (OAuth2 + PKCE) | T040, T043, T044 |
 | [T004](T004-fakellm.md) `fakellm`, [T007](T007-e2e-smoke-suite.md) smoke suite, [T008](T008-ci-pipeline.md) full CI | T006 |
 
 ## Waiting on the owner
 
-1. **Where to deploy** the API server (a VM with Docker, Cloud Run, Fly.io, Kubernetes, ...). The binary and image are ready; a deploy task is written once this is known.
-2. **Delete the `review/t022-base` branch**, and the merged `claude/*` session branches (all their work is on `main`).
+1. **First real connector** (Salesforce, HubSpot, Gmail, ...): picked before E07's T044 finishes, so a connector epic can follow it.
+2. **Where to deploy** the API server (a VM with Docker, Cloud Run, Fly.io, Kubernetes, ...). The binary and image are ready; a deploy task is written once this is known.
+3. **Delete the `review/t022-base` branch**, and the merged `claude/*` session branches including `claude/t013-flow-tests` (all their work is on `main`).
 
 ## Owner decisions recorded
 
@@ -86,4 +92,5 @@ Each is recorded in the linked file; this list is for orientation.
 - Recovery across tenants through a separate `store.Admin` (T038), never reachable from request handling.
 - Saved transcripts are not deleted at run end; agent step output holds a reference ([T030](T030-runner.md)).
 - Public agent API is HTTP + JSON with SSE; ConnectRPC stays internal ([E09](E09-agent-api.md)).
+- E07 (2026-10-12): one auth middleware for `/v1` and `/mcp/`; API keys (hashed) then OIDC/JWT, we are a resource server only; hidden toolsets answer 404; no open MCP off loopback; credentials sealed with AES-GCM bound to tenant/user/slot, tools get a source for one slot, no token passthrough ([E07](E07-auth-credentials.md)).
 - E04 closed; T025 moved to E08. `fakellm` kept, extracted from the replay server ([T004](T004-fakellm.md)).

@@ -45,5 +45,5 @@ T001 ─ T002 ─ (E03: T017 ─ T018) ─ T003 ─ T005 ─ T006 ─ T007 ─ T
 - [E04](E04-llm-harness-flow.md) `llm`, Anthropic adapter, harness and `flow` (M3). **Current focus.**
 - E05 `store` SQLite, runs and checkpoints (M4). *(to be planned)*
 - E06 Tool protocol over ConnectRPC, remote registry, `split` topology (M6). *(to be planned)*
-- E07 Credentials, auth and tenancy at the edge: credential backends (`secrets` topology, kind), and auth plus tenant resolution as `server.WithMiddleware` on every MCP toolset path (`pkg/tenancy` is ready). *(to be planned)*
+- [E07](E07-auth-credentials.md) Credentials, auth and tenancy at the edge (planned 2026-10-12).
 - Later: MCP client and bridge, Postgres and tenancy, observability.

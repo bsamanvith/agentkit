@@ -45,7 +45,8 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 
 | Task | What | Why now |
 |---|---|---|
-| [T049](T049-connector-test-kit.md) | `toolsettest`: cassettes, `RunConnector` suite, honest fakes | **Done** (`cfb8cd5`): Upstream, RunConnector, fakes, check IDs with skip/opt-in, schema honesty, secret scans, `synthetic`, Drift, per-call Settings, archtest rule (every connector runs the kit) |
+| [T049](T049-connector-test-kit.md) | `toolsettest`: cassettes, `RunConnector` suite, honest fakes | **Done** (`a5d47eb`, CI green): Upstream, RunConnector, fakes, check IDs with skip/opt-in, schema honesty, secret scans, `synthetic`, Drift, per-call Settings, archtest rule (every connector runs the kit) |
+| [T052](T052-connector-kit-hardening.md) | Kit hardening: 5 new staged checks, golden first run, fuzz speed | **Ready**; small |
 | [T051](T051-openapi-cassette-validation.md) | Validate cassettes against vendored OpenAPI specs | **Ready** (T049, T047, T048 on `main`) |
 | [T050](T050-connector-tool-evals.md) | Tool-use evals: real Claude with faked connectors | **Ready** (T049 done, Tavily on `main`); model tokens only |
 | [T046](T046-connector-tavily.md) | `connectors/tavily`: search and extract, keyless or keyed | **Review**: on `main` (`d4a4e86`, `c0af020`, on the T049 suite); waiting for its handoff |

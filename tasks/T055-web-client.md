@@ -1,16 +1,16 @@
 ---
 id: T055
-title: "Web client: the web component, a chat UI with tool calls, served from the image"
+title: "Console shell, login page, chat with agent picker, conversation list"
 epic: E11
 status: todo
-depends_on: [T036]
+depends_on: [T036, T053]
 ---
 
-# T055: web client
+# T055: console shell and chat
 
 ## Context
 
-People need to use the agent without a terminal: a chat like a terminal agent's, with UI for what the run does ([E11](E11-clients.md)). It is served by `agentkit` itself, so the Docker image is the whole deployment: run it, open `http://localhost:8080`.
+People need to use the agent without a terminal: a chat like a terminal agent's, with UI for what the run does, in an admin console that later grows the agents, toolsets and credentials pages (T064). Design: [docs/UI.md](../docs/UI.md). Decisions: [E11](E11-clients.md). It is served by `agentkit` itself, so the Docker image is the whole deployment: run it, open `http://localhost:8080`.
 
 ## Scope
 
@@ -19,7 +19,10 @@ People need to use the agent without a terminal: a chat like a terminal agent's,
   - chat: message box (Enter sends, Shift+Enter new line), streamed answer, a **Stop** button that cancels the run (closes the stream);
   - **tool calls** as cards: tool name, input (collapsed JSON), status (running, done, error), result (collapsed, plain text, truncated with "show all");
   - per turn: usage (tokens) and time; errors from `run_error` shown inline with a retry button where retryable;
-  - **conversations** in a sidebar: kept in `localStorage` (id, title from the first message, time); click to load (`GET /v1/conversations/{id}`), "New chat";
+  - **agent picker** for a new chat (`GET /v1/agents`, T062); the conversation header shows its agent;
+  - **conversations** in a sidebar from `GET /v1/conversations` (T062; `localStorage` only as a fallback before T062 lands): filter by agent, click to load, "New chat";
+  - **login page** (T061) when the server has users; the token prompt otherwise;
+  - the **app shell** the admin pages (T064) plug into: navigation, user menu, logout;
   - token prompt on first use (kept in `sessionStorage`), and a clear message on 401;
   - answers rendered as safe Markdown (E11 decision); tool results and errors as text only;
   - works at phone width; light and dark themes from the OS setting.

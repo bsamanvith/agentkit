@@ -15,7 +15,7 @@
 | M6 Remote tools over ConnectRPC | E06 (to plan) | Planned |
 | Credentials, auth, tenancy at the edge | [E07](E07-auth-credentials.md) | **Planned** (T039–T045); T039 and T042 ready. Needed before any public deployment: `/mcp/` has no auth today |
 | First connectors: Tavily, Exa, Parallel (search, extract) | [E10](E10-search-connectors.md) | **Tavily done** (live end to end with real Claude passed); Exa and Parallel on `main`, in review until keys exist; no auth work needed (Tavily keyless or keyed; Exa and Parallel keyed from env) |
-| Clients: web client, CLI and headless | [E11](E11-clients.md) | **Planned** (T053–T055); next after T052/T051. Web client served by `agentkit` itself (one image) |
+| Clients: admin console, CLI and headless, and the APIs behind them | [E11](E11-clients.md) | **In progress**: T053 running; T062 (agents, conversations, catalog API), T063 (agents over MCP), T061 (login), T055/T064 (console) planned. UI plan: [docs/UI.md](../docs/UI.md) with a clickable mockup |
 | Skills and memory (context store; search by keyword or embeddings, opt-in) | [E12](E12-skills-memory.md) | **Planned** (T057–T060); T057 and T058 can start now |
 | More model providers | [E08](E08-model-providers.md) | Later |
 | Agent skills | [E02](E02-agent-skills.md) | In progress: `write-tests` exists and was dry-run on `pkg/flow` |
@@ -51,7 +51,10 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 | [T052](T052-connector-kit-hardening.md) | Kit hardening: 5 new staged checks, golden first run, fuzz speed | **Now** (owner: before the clients); task card queued |
 | [T051](T051-openapi-cassette-validation.md) | Validate cassettes against vendored OpenAPI specs | **Now** (owner: before the clients); task card queued |
 | [T053](T053-agentclient.md) | `pkg/agentclient`: the Go client for `/v1` | **Now**, in parallel (independent files); unblocks T054, T055. Task card queued |
-| [T054](T054-cli-client.md), [T055](T055-web-client.md) | CLI (`chat`, headless `ask --json`) and web client | After T053 (T055's UI can start beside it) |
+| [T062](T062-api-agents-catalog.md) | API: several agents, conversation listing, toolsets and tools catalog, OpenAPI spec | **Ready now**; the console and Claude Code both need it |
+| [T039](T039-auth-principals-middleware.md) | `pkg/auth` (needed for login, T061) | **Ready now** |
+| [T054](T054-cli-client.md), [T063](T063-agents-over-mcp.md) | CLI (`chat`, headless `ask --json`); agents over MCP for Claude Code | After T053 (T063 also T062) |
+| [T055](T055-web-client.md), [T061](T061-local-users-login.md), [T064](T064-console-admin-pages.md) | Console shell and chat; local users and login; admin pages | After T053/T062 (T055 can start on the mockup), T039 (T061) |
 | [T057](T057-skills.md), [T058](T058-memory-context-store.md) | Skills (Agent Skills format, progressive disclosure); memory context store (Claude memory-tool shape) | Ready; new packages, parallel with everything |
 | [T056](T056-test-speed.md) | `make test` back under 30 s (52 s now) | Ready; small |
 | [T050](T050-connector-tool-evals.md) | Tool-use evals: real Claude with faked connectors | **Later** (owner): after the API is deployed and the clients exist; runs on `agentkit ask --json` |
@@ -89,6 +92,7 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 - 2026-10-12: no Anthropic key in GitHub. Live tests run in Claude sessions (`ANTHROPIC_KEY`, mapped by `make test-live`); T034 is a perf report only.
 - 2026-10-12: first connectors are Tavily, Exa and Parallel, for search and extraction ([E10](E10-search-connectors.md)); they run in parallel with E07, keys from the environment for now.
 - 2026-10-12: the owner will say how to deploy; no deploy task until then. First target: the Docker image locally, used through the clients.
+- 2026-10-12: the web client is an admin console (login, chat with agent picker, conversations, agents, MCP toolsets and tools, credentials), API-first so Claude Code and other harnesses can drive everything; agents also over MCP ([docs/UI.md](../docs/UI.md)).
 - 2026-10-12: skills and memory for the harness (E12): Agent Skills format with progressive disclosure; a context store and an opt-in search store (keyword, semantic, hybrid).
 - 2026-10-12: two clients, a web client for people and a CLI with a headless mode for our tests and evals (E11). Evals (T050) later, after deploy and clients. Order: T052, T051, then clients.
 - 2026-10-12: coverage-guided fuzzing runs in its own CI job, in parallel with `make check`; seed corpora stay in the unit tests.

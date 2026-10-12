@@ -11,15 +11,6 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/agentclient"
 )
 
-// Exit codes of ask (and chat, where they apply).
-const (
-	exitDone        = 0   // the run answered (run_done)
-	exitRunFailed   = 1   // the run failed (run_error); its code is on stderr
-	exitClient      = 2   // a usage error, an HTTP error, or a broken stream
-	exitRetryable   = 3   // conversation_busy, over_capacity or shutting_down: try again later
-	exitInterrupted = 130 // Ctrl-C (SIGINT) or SIGTERM
-)
-
 // maxAskInput limits a message read from stdin.
 const maxAskInput = 8 << 20
 
@@ -66,7 +57,7 @@ func (c cli) ask(ctx context.Context, args []string) int {
 			break
 		}
 		if !retryable(err) || attempt == *retries || ctx.Err() != nil {
-			return c.requestFailed(ctx, err, f.conversation)
+			return c.requestFailed(ctx, "agentkit ask", err, f.conversation)
 		}
 		wait := defaultRetryWait
 		var ae *agentclient.APIError
@@ -143,22 +134,21 @@ func retryable(err error) bool {
 		errors.Is(err, agentclient.ErrShuttingDown)
 }
 
-// requestFailed reports a run the server refused, or could not be asked, and
-// returns ask's exit code.
-func (c cli) requestFailed(ctx context.Context, err error, conversation string) int {
+// requestFailed reports a request of cmd (agentkit ask, agentkit create)
+// that the server refused, or that could not be made, and returns the exit
+// code. conversation is the one the request was for, if any.
+func (c cli) requestFailed(ctx context.Context, cmd string, err error, conversation string) int {
 	switch {
 	case ctx.Err() != nil:
-		fmt.Fprintln(c.stderr, "agentkit ask: interrupted")
+		fmt.Fprintln(c.stderr, cmd+": interrupted")
 		return exitInterrupted
 	case retryable(err):
-		fmt.Fprintln(c.stderr, "agentkit ask:", err)
+		fmt.Fprintf(c.stderr, "%s: %v\n", cmd, err)
 		return exitRetryable
 	case errors.Is(err, agentclient.ErrConversationInterrupted):
-		fmt.Fprintf(c.stderr, "agentkit ask: %v; resume it with: agentkit ask -conversation %s \"\"\n", err, conversation)
-	case errors.Is(err, agentclient.ErrUnauthorized):
-		fmt.Fprintf(c.stderr, "agentkit ask: %v (set $%s to the server's API token)\n", err, envAPIToken)
+		fmt.Fprintf(c.stderr, "%s: %v; resume it with: agentkit ask -conversation %s \"\"\n", cmd, err, conversation)
 	default:
-		fmt.Fprintln(c.stderr, "agentkit ask:", err)
+		fmt.Fprintf(c.stderr, "%s: %s\n", cmd, withTokenHint(err))
 	}
 	return exitClient
 }

@@ -389,11 +389,9 @@ func (s *Server) admit(req RunRequest, tenant string) (*started, *Error, int) {
 		return nil, &Error{Code: CodeOverCapacity, Message: fmt.Sprintf("%d runs are going on, the most this server takes; retry later", s.cfg.maxConcurrent), Retryable: true}, http.StatusServiceUnavailable
 	}
 	if conv == nil {
-		s.convSeq++
-		conv = &conversation{id: s.cfg.newID("conv_"), agent: ag, tenant: tenant, seq: s.convSeq, title: title(req.Message), created: now}
-		s.convs[conv.id] = conv
+		conv = s.newConversation(ag, tenant, now)
 	}
-	if conv.title == "" && hasMessage { // a conversation created empty (POST /v1/conversations)
+	if conv.title == "" && hasMessage { // its first message
 		conv.title = title(req.Message)
 	}
 	s.touches++
@@ -414,9 +412,19 @@ func (s *Server) admit(req RunRequest, tenant string) (*started, *Error, int) {
 	return &started{agent: ag, run: ru, conv: conv, message: msg, transcript: transcript}, nil, 0
 }
 
+// newConversation creates an empty conversation of ag for tenant and adds it
+// to the server's. Called with Server.mu held.
+func (s *Server) newConversation(ag *agent, tenant string, now time.Time) *conversation {
+	s.convSeq++
+	s.touches++
+	c := &conversation{id: s.cfg.newID("conv_"), agent: ag, tenant: tenant, seq: s.convSeq, created: now, updated: now, touched: s.touches}
+	s.convs[c.id] = c
+	return c
+}
+
 // evict drops what retention no longer allows: finished runs and idle
-// conversations older than the retention, then the oldest past the counts,
-// conversations without messages before the others. It never drops keep.
+// conversations older than the retention, then the least recently used past
+// the counts. It never drops keep.
 func (s *Server) evict(now time.Time, keep *conversation) {
 	cutoff := now.Add(-s.cfg.retention)
 	kept := s.runOrder[:0]
@@ -449,11 +457,7 @@ func (s *Server) evict(now time.Time, keep *conversation) {
 		idle = append(idle, c)
 	}
 	if extra := len(s.convs) - s.cfg.maxConvs; extra > 0 {
-		slices.SortFunc(idle, func(a, b *conversation) int {
-			// An empty conversation goes first: a client that creates many
-			// and never uses them loses its own, not others' conversations.
-			return cmp.Or(cmp.Compare(min(len(a.messages), 1), min(len(b.messages), 1)), cmp.Compare(a.touched, b.touched))
-		})
+		slices.SortFunc(idle, func(a, b *conversation) int { return cmp.Compare(a.touched, b.touched) })
 		for _, c := range idle[:min(extra, len(idle))] {
 			delete(s.convs, c.id)
 		}

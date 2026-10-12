@@ -1,9 +1,7 @@
 package agentclient
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -70,16 +68,7 @@ type ConversationRequest = wire.CreateConversationRequest
 // with that ConversationID. An unknown agent matches [ErrNotFound].
 func (c *Client) CreateConversation(ctx context.Context, req ConversationRequest) (wire.Conversation, error) {
 	var conv wire.Conversation
-	body, err := json.Marshal(req)
-	if err != nil { // cannot happen: a string
-		return conv, err
-	}
-	r, err := c.request(ctx, http.MethodPost, "/v1/conversations", bytes.NewReader(body), "application/json")
-	if err != nil {
-		return conv, err
-	}
-	r.Header.Set("Content-Type", "application/json")
-	resp, err := c.hc.Do(r)
+	resp, err := c.postJSON(ctx, "/v1/conversations", req, "application/json")
 	if err != nil {
 		return conv, err
 	}

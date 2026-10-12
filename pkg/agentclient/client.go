@@ -137,11 +137,16 @@ func (c *Client) GetConversation(ctx context.Context, id string) (wire.Conversat
 }
 
 func (c *Client) postRun(ctx context.Context, req RunRequest, accept string) (*http.Response, error) {
-	body, err := json.Marshal(req)
-	if err != nil { // cannot happen: two strings
+	return c.postJSON(ctx, "/v1/runs", req, accept)
+}
+
+// postJSON posts v as JSON to path.
+func (c *Client) postJSON(ctx context.Context, path string, v any, accept string) (*http.Response, error) {
+	body, err := json.Marshal(v)
+	if err != nil { // cannot happen: the request types are plain strings
 		return nil, err
 	}
-	r, err := c.request(ctx, http.MethodPost, "/v1/runs", bytes.NewReader(body), accept)
+	r, err := c.request(ctx, http.MethodPost, path, bytes.NewReader(body), accept)
 	if err != nil {
 		return nil, err
 	}

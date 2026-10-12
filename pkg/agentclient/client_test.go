@@ -750,8 +750,12 @@ func TestRequests(t *testing.T) {
 	} {
 		r := <-got
 		body, _ := io.ReadAll(r.Body)
+		wantType := "" // a body is JSON
+		if want.body != "" {
+			wantType = "application/json"
+		}
 		if r.Method != want.method || r.URL.RequestURI() != want.path || r.Header.Get("Accept") != want.accept || string(body) != want.body ||
-			r.Header.Get("Authorization") != "Bearer tok" || r.Header.Get("User-Agent") != "test-ua" {
+			r.Header.Get("Content-Type") != wantType || r.Header.Get("Authorization") != "Bearer tok" || r.Header.Get("User-Agent") != "test-ua" {
 			t.Errorf("%s %s Accept %q body %q, headers %v; want %+v", r.Method, r.URL.RequestURI(), r.Header.Get("Accept"), body, r.Header, want)
 		}
 	}

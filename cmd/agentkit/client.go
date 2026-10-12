@@ -1,12 +1,13 @@
 package main
 
-// What agentkit chat and agentkit ask share: the server and token, and how a
-// run's events and messages are shown to a person.
+// What agentkit chat, ask and create share: the server and token, exit codes
+// and errors, and how a run's events and messages are shown to a person.
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -58,6 +59,24 @@ func (c cli) sleep(ctx context.Context, d time.Duration) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+// Exit codes of the client commands (ask, chat and create, where they apply).
+const (
+	exitDone        = 0   // the run answered (run_done), or the command did its work
+	exitRunFailed   = 1   // the run failed (run_error); its code is on stderr
+	exitClient      = 2   // a usage error, an HTTP error, or a broken stream
+	exitRetryable   = 3   // conversation_busy, over_capacity or shutting_down: try again later
+	exitInterrupted = 130 // Ctrl-C (SIGINT) or SIGTERM
+)
+
+// withTokenHint is err's message, with how to set the token when the server
+// refused it.
+func withTokenHint(err error) string {
+	if errors.Is(err, agentclient.ErrUnauthorized) {
+		return fmt.Sprintf("%v (set $%s to the server's API token)", err, envAPIToken)
+	}
+	return err.Error()
 }
 
 // clientFlags are the flags of chat, ask and create.

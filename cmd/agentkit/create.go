@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/bsamanvith/agentkit/pkg/agentclient"
@@ -30,28 +29,15 @@ func (c cli) create(ctx context.Context, args []string) int {
 		return exitClient
 	}
 	conv, err := client.CreateConversation(ctx, agentclient.ConversationRequest{Agent: f.agent})
-	switch {
-	case err == nil:
-	case ctx.Err() != nil:
-		fmt.Fprintln(c.stderr, "agentkit create: interrupted")
-		return exitInterrupted
-	case errors.Is(err, agentclient.ErrUnauthorized):
-		fmt.Fprintf(c.stderr, "agentkit create: %v (set $%s to the server's API token)\n", err, envAPIToken)
-		return exitClient
-	default:
-		fmt.Fprintln(c.stderr, "agentkit create:", err)
-		return exitClient
+	if err != nil {
+		return c.requestFailed(ctx, "agentkit create", err, "")
 	}
-	out := conv.ID
 	if *asJSON {
-		b, err := json.Marshal(conv)
-		if err != nil { // cannot happen: the conversation was just decoded
-			fmt.Fprintln(c.stderr, "agentkit create:", err)
-			return exitClient
-		}
-		out = string(b)
+		err = json.NewEncoder(c.stdout).Encode(conv)
+	} else {
+		_, err = fmt.Fprintln(c.stdout, conv.ID)
 	}
-	if _, err := fmt.Fprintln(c.stdout, out); err != nil {
+	if err != nil {
 		fmt.Fprintln(c.stderr, "agentkit create: writing stdout:", err)
 		return exitClient
 	}

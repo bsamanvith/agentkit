@@ -63,4 +63,6 @@ The component that runs agents ([E05 decisions](E05-store-runner.md)): the only 
 
 ## Notes
 
+- **From the T038 review (2026-10-12):** get the Admin with `memory.Admin(s)` (SQLite: `sqlite.Admin(s)`, T029), a package function, never a method. Call it once in `cmd/` and pass it only to the recovery loop's constructor. Also add an **archtest rule**: request-handling packages (`pkg/agentapi`, `pkg/mcp/server`, connectors) must not import store backends (`pkg/store/memory`, `pkg/store/sqlite`), so they can never reach `Admin`. Only `cmd/` and tests wire backends.
+
 - archtest: `pkg/runner` may import `harness`, `store`, `llm`, `tool`, `tenancy`, `clock`.

@@ -2,7 +2,7 @@
 id: T089
 title: "pkg/bus: event bus interface, in-process and Redis Streams backends, conformance suite"
 epic: E18
-status: review
+status: done
 depends_on: []
 ---
 
@@ -42,7 +42,7 @@ Live events must reach subscribers on any replica, and commands must reach the r
 
 ## Acceptance criteria
 
-- [x] **Suite:** both backends pass `bustest.Run`, with Redis against a real server in the integration tier. (`memory.TestConformance`; `redis.TestConformance` against Redis 7 in the `integration-redis` CI job, and locally against 7.4 and 8.2, `-race -count=20`.)
+- [x] **Suite:** both backends pass `bustest.Run`, with Redis against a real server in the integration tier. (`memory.TestConformance`; `redis.TestConformance` against Redis 7 in the `integration-redis` CI job (run 38300501095; `TestRestart` on redis-server 7.0.15), and locally against 7.4 and 8.2, `-race -count=20`.)
 - [x] **Resume after a restart:** a subscriber resuming after a Redis restart (data kept) continues; after history was trimmed, it gets `ErrGap`. (`TestRestart`, on a `redis-server` it restarts itself; it also covers a restored older snapshot and a failed publish.)
 - [x] **Slow subscribers:** a stalled subscriber doesn't slow the publisher or other subscribers (measured, not timed: the publisher never blocks). (`bustest` SlowSubscriberBlocksNobody: a subscriber that never reads, 600 publishes each checked to return, another subscriber receiving all of them; the stalled one then gets `ErrGap`.)
 - [x] **Leak checks:** no goroutine leaks after cancel (goleak or a counted check). (`goleak.VerifyTestMain` in `pkg/bus/memory` and `pkg/bus/redis`.)

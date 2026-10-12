@@ -27,7 +27,14 @@ export function TokenPrompt() {
     setToken(t);
   }
 
-  const error = empty ? "Enter a token" : prompt === "rejected" ? "Your token was rejected or has expired." : null;
+  // docs/UI.md "Sign in": the token card's errors.
+  const error = empty
+    ? "Enter a token"
+    : prompt === "refused"
+      ? "That token wasn't accepted."
+      : prompt === "rejected"
+        ? "Your token was rejected or has expired."
+        : null;
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-ak-bg p-4">
       <Card role="dialog" aria-modal="true" aria-labelledby="token-title" className="w-full max-w-sm shadow-ak">

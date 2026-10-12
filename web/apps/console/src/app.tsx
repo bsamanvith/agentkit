@@ -1,5 +1,6 @@
 import { ThemeProvider } from "@agentkit/ui";
 import { TooltipProvider } from "@agentkit/ui/components/tooltip";
+import { useState } from "react";
 import { createBrowserRouter, RouterProvider } from "react-router";
 import { useApi } from "./api";
 import { ApiProvider } from "./api-provider";
@@ -7,7 +8,7 @@ import { routes } from "./routes";
 import { TokenPrompt } from "./token-prompt";
 
 /** The app behind the token prompt is inert while it is open. */
-function Body({ router }: { router: ReturnType<typeof createBrowserRouter> }) {
+function Body({ router }: { router: Router }) {
   const { prompt } = useApi();
   return (
     <>
@@ -19,7 +20,11 @@ function Body({ router }: { router: ReturnType<typeof createBrowserRouter> }) {
   );
 }
 
-export function App({ router = createBrowserRouter(routes) }: { router?: ReturnType<typeof createBrowserRouter> }) {
+type Router = ReturnType<typeof createBrowserRouter>;
+
+export function App({ router: given }: { router?: Router }) {
+  // Made once: a router per render would add a history listener each time.
+  const [router] = useState(() => given ?? createBrowserRouter(routes));
   return (
     <ThemeProvider>
       <TooltipProvider delayDuration={300}>

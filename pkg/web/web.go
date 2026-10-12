@@ -38,9 +38,9 @@ import (
 const Name = "web"
 
 // CSP is the Content-Security-Policy of every response. connect-src 'self'
-// covers /v1, the only API the console calls; img-src allows data: for
-// icons that libraries draw inline, never for scripts or styles.
-const CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; " +
+// covers /v1, the only API the console calls. Nothing is allowed inline or
+// as a data: URI (icons are inline SVG elements, not images).
+const CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; " +
 	"font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; " +
 	"form-action 'self'; frame-ancestors 'none'"
 
@@ -176,33 +176,41 @@ func (c *Component) Shutdown(context.Context) error { return nil }
 // Handler serves the build; mount it at "/".
 func (c *Component) Handler() http.Handler { return http.HandlerFunc(c.serve) }
 
-// reserved are path prefixes of other components: a request there that no
-// component took is a 404, never the app.
-var reserved = []string{"/v1/", "/mcp/"}
+// reserved are the paths of other components: a request there that no
+// component took is a 404, never the app, whatever its method. They are
+// matched on the cleaned path, so //v1/x and /a/../v1/x are reserved too.
+var reserved = []string{"/v1", "/mcp"}
+
+func isReserved(clean string) bool {
+	for _, prefix := range reserved {
+		if clean == prefix || strings.HasPrefix(clean, prefix+"/") {
+			return true
+		}
+	}
+	return false
+}
 
 func (c *Component) serve(w http.ResponseWriter, r *http.Request) {
 	h := w.Header()
 	h.Set("Content-Security-Policy", CSP)
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Referrer-Policy", "no-referrer")
+	clean := path.Clean("/" + r.URL.Path)
+	if isReserved(clean) {
+		http.NotFound(w, r)
+		return
+	}
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		h.Set("Allow", "GET, HEAD")
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	p := r.URL.Path
-	for _, prefix := range reserved {
-		if p+"/" == prefix || strings.HasPrefix(p, prefix) {
-			http.NotFound(w, r)
-			return
-		}
-	}
-	name := strings.TrimPrefix(path.Clean("/"+p), "/")
+	name := strings.TrimPrefix(clean, "/")
 	if name == "" {
 		name = "index.html"
 	}
 	f, ok := c.files[name]
-	if !ok && !strings.HasPrefix(name, "assets/") && path.Ext(name) == "" {
+	if !ok && name != "assets" && !strings.HasPrefix(name, "assets/") && path.Ext(name) == "" {
 		f, ok = c.files["index.html"] // an app route
 		name = "index.html"
 	}

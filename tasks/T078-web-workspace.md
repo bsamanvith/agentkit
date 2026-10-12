@@ -42,8 +42,8 @@ Owner decision (2026-10-12): the admin console and future consumer apps use **Re
 ### Results
 
 - **`make web`** builds the console into `pkg/web/dist` (committed; about 630 KB: a 482 KB script, a 64 KB stylesheet and four woff2 fonts). With `AGENTKIT_COMPONENTS=agent,web`, `agentkit serve` serves the shell at `/` with System, Light and Dark themes from docs/UI.md's tokens.
-- **What goes over the wire**: `pkg/web` gzips text files once, at start, and sends them compressed to clients that accept it (with `Vary: Accept-Encoding` and an ETag per encoding). The first load is 162,288 bytes gzipped: the script is 150,665 bytes and the styles 11,204, out of 546 KB raw. Fonts (84 KB, cached for a year) load after first paint (`font-display: swap`), and Latin Extended loads only when it is needed (`unicode-range`). `web/scripts/check-size.sh` fails `make web-check` above 200 KB gzipped (owner's request, 2026-10-12: the console runs on low-end PCs and bad connections).
-- **`make web-check`** runs install (frozen lockfile), lint (0 warnings), format check, typecheck, unit tests (15 in `ui`, 77 in `agent-ui`, 17 in the console), `pnpm audit --audit-level high`, a rebuild compared with the committed build, and the size budget. It runs in CI's `web` job, next to `check` and `fuzz`, which are unchanged.
+- **What goes over the wire**: `pkg/web` gzips text files once, at start, and sends them compressed to clients that accept it (with `Vary: Accept-Encoding` and an ETag per encoding). The first load is 215,196 bytes: 162,668 of gzipped `index.html`, script (151 KB) and styles (11 KB), out of 548 KB raw, and 52,528 of the two Latin fonts, Geist and Geist Mono (counted whether or not the first screen uses mono; woff2, already compressed, cached for a year). Fonts load after first paint (`font-display: swap`), and Latin Extended loads only when it is needed (`unicode-range`). `web/scripts/check-size.sh` fails `make web-check` above 240 KB (owner's request, 2026-10-12: the console runs on low-end PCs and bad connections). It reads the script and style names from `index.html`, so a new entry file or a missing one can't slip past it.
+- **`make web-check`** runs install (frozen lockfile), lint (0 warnings), format check, typecheck, unit tests (16 in `ui`, 90 in `agent-ui`, 24 in the console), `pnpm audit --audit-level high`, a rebuild compared with the committed build, and the size budget. It runs in CI's `web` job, next to `check` and `fuzz`, which are unchanged.
 - **The stale check fails** when a component the console uses is changed without a rebuild (tried with Composer's placeholder: exit 1, naming the changed files). It compares builds, so a change to a component the console doesn't import (ToolStep, tried) changes nothing that is embedded and passes. That is intended.
 - **Builds are reproducible.** A build in `node:24.14.0` on Linux was byte-identical to the macOS build.
 - **`make web-smoke`** (Playwright, three tests) runs against the real binary (`agent,web`, with a token):
@@ -84,7 +84,7 @@ Owner decision (2026-10-12): the admin console and future consumer apps use **Re
   - other files are revalidated with an ETag;
   - paths without an extension get `index.html`, so routes survive a reload;
   - a miss under `/assets/`, or a miss with an extension, is a 404, so a stale tab never runs HTML as a script;
-  - `/v1/` and `/mcp/` are never answered with the app;
+  - `/v1` and `/mcp`, and paths under them, are never answered with the app, after cleaning the path (`//v1/agents` and `/x/../v1/agents` are 404s too);
   - methods other than GET and HEAD get 405.
   
   It is mounted at `/` for every method, because a method pattern (`GET /`) would conflict with other components' patterns in ServeMux. It imports nothing from the module (archtest rule `"pkg/web": {}`).
@@ -139,6 +139,15 @@ Each mutant was planted, the tests named below were run, and the source was rest
 | A used component changed without `make web` | `check-build.sh` (exit 1) |
 | gzip never sent | TestCompression, TestE2EServeWeb |
 | The bundle over its budget (tried as a 100 KB budget) | `check-size.sh` (exit 1) |
+| The reserved check on the raw path (`//v1/agents` gets the app) | TestNotTheApp |
+| A freshly entered, refused token shown as "rejected or has expired" | app.test "the token > that was just entered and refused says so…" |
+| The app not `inert` behind the prompt | app.test "the token > keeps the app inert behind the prompt" |
+| A failed load without its reason | app.test "a page > that failed to load says why…", "…can't reach the server…" |
+| Reading `localStorage` outside the `try` (site data blocked) | theme.test "survives site data being blocked…" |
+| An abort detected with `instanceof Error` (a DOMException isn't one in every realm) | client.test "list responses > keeps an abort…" |
+| A list that isn't a list read as empty | client.test "list responses > … is a bad response, not an empty list" |
+| A broken body passed through as a `TypeError` | client.test "bytes > turns a broken body into StreamTruncatedError…" |
+| The body not cancelled when the caller stops reading | client.test "bytes > cancels the download…" |
 
 One mutant could not be caught: setting a retry after a 401. The token wait stops the request anyway, so the mutant behaves the same as the original.
 
@@ -154,17 +163,37 @@ One mutant could not be caught: setting a retry after a 401. The token wait stop
   - for a run, call `for await (const ev of client.run(req, { signal }))`; abort the signal to stop. The stream ends after `run_done` or `run_error`, and throws `StreamTruncatedError` if the body ends before either. Unknown event types and blocks are passed through, never thrown;
   - errors are `ApiError` (`status`, `code`, `retryable`, `retryAfter`). Endpoints without a typed helper use `client.getJSON<T>(path)`;
   - add typed helpers to `packages/agent-ui/src/api/client.ts` as T055 needs them: conversations, `POST /v1/conversations` (T092), cancel.
-- **Keep the first load small** (under 200 KB gzipped; `make web-check` enforces it). T055's Markdown renderer and syntax highlighting, and T064's admin pages, should be `React.lazy` chunks (Vite splits them out), so the chat's first screen doesn't wait for them. Test on a throttled connection (DevTools "Slow 4G") and a 4× CPU slowdown.
+- **Keep the first load small** (under 240 KB with the first screen's fonts; `make web-check` enforces it). T055's Markdown renderer and syntax highlighting, and T064's admin pages, should be `React.lazy` chunks (Vite splits them out), so the chat's first screen doesn't wait for them. Test on a throttled connection (DevTools "Slow 4G") and a 4× CPU slowdown.
 - **How to test**:
   - **unit tests** use Vitest and Testing Library (`pnpm --dir web test`). Console tests stub `fetch` with `vi.stubGlobal` and render `<App router={createMemoryRouter(routes, …)}>`, as in `app.test.tsx`;
   - **stories** are tested by being written;
   - **browser tests** go in `apps/console/e2e` and run with `make web-smoke` against the real binary; `e2e/agentkit.json` is its config. T055's chat test needs a model: start the binary with `ANTHROPIC_BASE_URL` pointing at a replay server, as `cmd/agentkit`'s e2e tests do (`cli_e2e_test.go`);
   - after any change under `web/`, run `make web` and commit `pkg/web/dist`, or CI's `web` job fails.
 
+### Review (2026-10-13)
+
+Sub-agents reviewed the two T078 commits (Go serving, the client, the console, the scripts and CI, tests). Fixed on `claude/t078-review-fixes`:
+
+- **`pkg/web`**: the reserved check runs on the cleaned path, and on `/v1` and `/mcp` themselves, before the method check; `/assets` and `/assets/` are 404s, not the app. The CSP names each directive (`script-src`, `style-src`, `img-src`, `font-src`, `connect-src`, `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`), so no fallback is implied.
+- **The client**: a body that breaks mid-run throws `StreamTruncatedError` with the cause, unless it was an abort or `ResponseTooLargeError`; the body is cancelled when the caller stops reading; aborts are detected by name and never turned into `BadResponseError`; `/v1/agents`, `/v1/conversations` and `/v1/toolsets` with a non-list where the list goes are bad responses, not empty lists (null is still empty: Go's nil slice).
+- **The console**: a token just entered and refused says "That token wasn't accepted.", and only one that worked before says it was rejected or expired; a failed load shows why (the error, status and code, Retry-After, or "Couldn't reach the server."); each list column is a `nav`; `App` makes its router once, not on every render.
+- **The theme**: reading `localStorage` is inside the `try`, since with site data blocked the getter itself throws.
+- **Scripts and lint**: `check-build.sh` puts the committed build back when the build fails; `check-size.sh` counts what `index.html` loads, fonts included, with a 240 KB budget in place of 200 KB of scripts and styles alone; ESLint also bans `outerHTML`, `insertAdjacentHTML`, `createContextualFragment` and `document.write`.
+- **Tests** for each of these (the mutation table), plus a UTF-8 character split at every byte and a byte order mark in `SSEReader`.
+
+Left for later:
+
+- **Making `/mcp` configurable** if T-MCP serves it elsewhere; today it is fixed.
+- **Pinning actions by SHA** and `persist-credentials: false` in CI: the existing jobs use tags, so all jobs should move together.
+- **Brotli** (about 22 KB less): it needs a dependency or prebuilt `.br` files.
+- **`theme.js` is revalidated on every load** (a 304); a hashed name would let it be cached.
+- **A system monospace font** in place of Geist Mono would save about 23 KB of the first load.
+- **Lazy-loading** the phone drawer and the account menu, and react-router's declarative mode, would cut the script further; T055 should measure first.
+
 ### Found out of scope (for T055)
 
 - **The Sidebar's shortcut.** shadcn's Sidebar toggles on Mod+B, checking `metaKey || ctrlKey` on every platform. docs/UI.md says Mod+Shift+S with the platform's own modifier. Change `SIDEBAR_KEYBOARD_SHORTCUT` and the check in `sidebar.tsx`, or turn it off.
-- **Modal Radix overlays** (Dialog, AlertDialog, Sheet, and a modal DropdownMenu) lock scrolling through react-remove-scroll, which injects a `<style>` that the CSP blocks. The overlay still works, but the page behind can scroll, and the console logs a CSP violation, which the smoke test fails on. The shell's menu is `modal={false}`. The Sidebar's phone drawer is a Sheet, so it hits this too; the smoke test runs at desktop width only. T055 options:
+- **Modal Radix overlays** (Dialog, AlertDialog, Sheet, and a modal DropdownMenu) lock scrolling through react-remove-scroll, which injects a `<style>` that the CSP blocks. The shell's menu is `modal={false}`. The Sidebar's phone drawer is a Sheet, so it hits this too: `styles/index.css` now locks scrolling with a static `body[data-scroll-locked]` rule, so the page behind no longer scrolls, but the browser still logs a CSP violation for the blocked `<style>`, which the smoke test would fail on (it runs at desktop width only). T055 options:
   - a CSS-class scroll lock in place of react-remove-scroll;
   - `modal={false}` with our own focus handling;
   - a hash in the CSP, which won't work, because the injected style is computed at runtime.

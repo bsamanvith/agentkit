@@ -1,6 +1,7 @@
 import { Button } from "@agentkit/ui/components/button";
 import { Skeleton } from "@agentkit/ui/components/skeleton";
 import { useEffect, useRef, type ReactNode } from "react";
+import { ApiError } from "@agentkit/agent-ui/api";
 import type { Resource } from "../api";
 
 /**
@@ -48,13 +49,29 @@ export function Loaded<T>({
   }
   if (res.state === "failed") {
     return (
-      <div role="alert" className="flex items-center gap-3 text-sm">
-        <span>Couldn&apos;t load {what}.</span>
-        <Button variant="outline" size="sm" onClick={res.retry}>
-          Retry
-        </Button>
+      <div role="alert" className="flex flex-col gap-2 text-sm">
+        <div className="flex items-center gap-3">
+          <span>Couldn&apos;t load {what}.</span>
+          <Button variant="outline" size="sm" onClick={res.retry}>
+            Retry
+          </Button>
+        </div>
+        <span className="text-ak-muted">{failureDetail(res.error)}</span>
       </div>
     );
   }
   return <>{children(res.data)}</>;
+}
+
+/**
+ * What went wrong, for the line under "Couldn't load …" (docs/UI.md "Load
+ * failed"): the server's message, or that it couldn't be reached.
+ */
+function failureDetail(error: Error): string {
+  if (error instanceof ApiError) {
+    const wait = error.retryAfter ? ` Try again in ${error.retryAfter} s.` : "";
+    return `${error.message} (${error.status} ${error.code}).${wait}`;
+  }
+  if (error instanceof TypeError) return "Couldn't reach the server.";
+  return error.message;
 }

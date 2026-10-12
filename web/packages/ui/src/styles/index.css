@@ -115,6 +115,16 @@
   --breakpoint-xl: 1200px;
 }
 
+/*
+ * Radix's modal scroll lock (Sheet, Dialog) marks <body> and injects a
+ * <style> to stop the page scrolling under the overlay. The CSP blocks that
+ * style (no inline styles), so the rule it would add is here instead.
+ */
+body[data-scroll-locked] {
+  overflow: hidden !important;
+  overscroll-behavior: contain;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

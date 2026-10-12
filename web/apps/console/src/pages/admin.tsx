@@ -1,4 +1,4 @@
-import type { AgentClient, Agent } from "@agentkit/agent-ui/api";
+import { BadResponseError, type AgentClient, type Agent } from "@agentkit/agent-ui/api";
 import { Status } from "@agentkit/ui";
 import { Link } from "react-router";
 import { useResource } from "../api";
@@ -8,8 +8,12 @@ import { Loaded, Page } from "./page";
 type Toolset = { name: string; type: string; status: string; reason?: string; tool_count: number };
 
 const listAgents = (c: AgentClient, signal: AbortSignal) => c.listAgents({ signal });
-const listToolsets = async (c: AgentClient, signal: AbortSignal) =>
-  (await c.getJSON<{ toolsets?: Toolset[] }>("/v1/toolsets", { signal })).toolsets ?? [];
+const listToolsets = async (c: AgentClient, signal: AbortSignal): Promise<Toolset[]> => {
+  const body = await c.getJSON<{ toolsets?: unknown } | null>("/v1/toolsets", { signal });
+  const list = body?.toolsets ?? [];
+  if (!Array.isArray(list)) throw new BadResponseError('/v1/toolsets: "toolsets" is not a list');
+  return list as Toolset[];
+};
 
 /** Agents (T064 builds the detail): name, description, readiness. */
 export function AgentsPage() {

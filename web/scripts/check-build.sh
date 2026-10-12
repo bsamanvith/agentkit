@@ -8,7 +8,12 @@ dist=pkg/web/dist
 before=$(mktemp -d)
 trap 'rm -rf "$before"' EXIT
 cp -R "$dist/." "$before/"
-pnpm --dir web build
+if ! pnpm --dir web build; then
+	# Vite empties dist before building: put the committed build back.
+	rm -rf "$dist" && mkdir -p "$dist" && cp -R "$before/." "$dist/"
+	echo "the console build failed; $dist is as it was" >&2
+	exit 1
+fi
 if ! diff -r "$before" "$dist" >/dev/null; then
 	echo "$dist is stale: the sources build something else. Run make web and commit $dist." >&2
 	diff -rq "$before" "$dist" >&2 || true

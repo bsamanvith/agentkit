@@ -4,6 +4,7 @@ import {
   ApiError,
   BadResponseError,
   ResponseTooLargeError,
+  SSEReader,
   StreamTruncatedError,
   decodeMessage,
   type RunEvent,
@@ -112,8 +113,8 @@ describe("run stream framing (pkg/agentclient TestSSEFraming)", () => {
       sameEnd(got.end, tt.end);
     });
 
-    // The same body cut at every place: a CRLF or a UTF-8 sequence split
-    // across reads must read the same.
+    // The same body cut at every place: a CRLF split across reads must read
+    // the same (UTF-8 split inside a character: "bytes" below).
     it(`${tt.name}, split anywhere`, async () => {
       for (let i = 1; i < tt.body.length; i++) {
         const chunks = [tt.body.slice(0, i), tt.body.slice(i)];
@@ -273,5 +274,102 @@ describe("decodeMessage", () => {
       { type: "text", unknown: true, raw: { type: "text" } },
       { type: "unknown", unknown: true, raw: "nonsense" },
     ]);
+  });
+});
+
+/** A fetch whose body is these byte chunks, then error (if given) or the end. */
+function bytesFetch(
+  chunks: Uint8Array[],
+  error?: unknown,
+  onCancel?: () => void,
+  type = "text/event-stream",
+): typeof fetch {
+  return (async () => {
+    let i = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(c) {
+        const chunk = chunks[i++];
+        if (chunk) c.enqueue(chunk);
+        else if (error !== undefined) c.error(error);
+        else c.close();
+      },
+      cancel() {
+        onCancel?.();
+      },
+    });
+    return new Response(body, { headers: { "Content-Type": type } });
+  }) as typeof fetch;
+}
+
+describe("bytes", () => {
+  it("reads a UTF-8 character split across reads", async () => {
+    const answer = "é ü 中文 😀";
+    const bytes = new TextEncoder().encode(
+      `data: ${start}\n\ndata: {"v":1,"type":"run_done","answer":"${answer}"}\n\n`,
+    );
+    for (let i = 1; i < bytes.length; i++) {
+      const got = await readRun(new AgentClient({ fetch: bytesFetch([bytes.slice(0, i), bytes.slice(i)]) }));
+      expect(got.end, `split at ${i}`).toBe("done");
+      expect(got.raw[1], `split at ${i}`).toMatchObject({ type: "run_done", answer });
+    }
+  });
+
+  it("drops a byte order mark the decoder left in", () => {
+    // TextDecoder strips a leading BOM itself, so the framing test can't see
+    // this; SSEReader must too (the spec says so, and not every caller decodes).
+    const r = new SSEReader();
+    r.push("\uFEFFdata: x\n\n");
+    expect([...r.take()]).toEqual(["x"]);
+  });
+
+  it("turns a broken body into StreamTruncatedError, keeping the cause", async () => {
+    const broken = new TypeError("network error");
+    const got = await readRun(
+      new AgentClient({ fetch: bytesFetch([new TextEncoder().encode(`data: ${start}\n\n`)], broken) }),
+    );
+    expect(got.raw.map((e) => e.type)).toEqual(["run_start"]);
+    expect(got.end).toBeInstanceOf(StreamTruncatedError);
+    expect((got.end as Error).cause).toBe(broken);
+  });
+
+  it("cancels the download when the caller stops reading", async () => {
+    let cancelled = false;
+    const chunks = [`data: ${start}\n\n`, `data: ${start}\n\n`].map((c) => new TextEncoder().encode(c));
+    const client = new AgentClient({ fetch: bytesFetch(chunks, undefined, () => (cancelled = true)) });
+    for await (const ev of client.run({ message: "hi" })) {
+      expect(ev.type).toBe("run_start");
+      break;
+    }
+    expect(cancelled).toBe(true);
+  });
+});
+
+describe("list responses", () => {
+  const json = (body: string) =>
+    new AgentClient({
+      fetch: bytesFetch([new TextEncoder().encode(body)], undefined, undefined, "application/json"),
+    });
+
+  it.each(['{"v":1,"agents":[]}', '{"v":1,"agents":null}', '{"v":1}'])("%s is no agents", async (body) => {
+    expect(await json(body).listAgents()).toEqual([]);
+  });
+
+  it.each(['{"v":1,"agents":{}}', '{"v":1,"agents":"x"}', "null", "[]", '"agents"'])(
+    "%s is a bad response, not an empty list",
+    async (body) => {
+      await expect(json(body).listAgents()).rejects.toBeInstanceOf(BadResponseError);
+    },
+  );
+
+  it("keeps an abort while reading the body an abort", async () => {
+    const client = new AgentClient({
+      fetch: bytesFetch(
+        [new TextEncoder().encode('{"v":1,')],
+        new DOMException("aborted", "AbortError"),
+        undefined,
+        "application/json",
+      ),
+    });
+    await expect(client.listAgents()).rejects.toMatchObject({ name: "AbortError" });
   });
 });

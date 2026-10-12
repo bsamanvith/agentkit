@@ -42,8 +42,8 @@ Owner decision (2026-10-12): the admin console and future consumer apps use **Re
 ### Results
 
 - **`make web`** builds the console into `pkg/web/dist` (committed; about 630 KB: a 482 KB script, a 64 KB stylesheet and four woff2 fonts). With `AGENTKIT_COMPONENTS=agent,web`, `agentkit serve` serves the shell at `/` with System, Light and Dark themes from docs/UI.md's tokens.
-- **What goes over the wire**: `pkg/web` gzips text files once, at start, and sends them compressed to clients that accept it (with `Vary: Accept-Encoding` and an ETag per encoding). The first load is 215,196 bytes: 162,668 of gzipped `index.html`, script (151 KB) and styles (11 KB), out of 548 KB raw, and 52,528 of the two Latin fonts, Geist and Geist Mono (counted whether or not the first screen uses mono; woff2, already compressed, cached for a year). Fonts load after first paint (`font-display: swap`), and Latin Extended loads only when it is needed (`unicode-range`). `web/scripts/check-size.sh` fails `make web-check` above 240 KB (owner's request, 2026-10-12: the console runs on low-end PCs and bad connections). It reads the script and style names from `index.html`, so a new entry file or a missing one can't slip past it.
-- **`make web-check`** runs install (frozen lockfile), lint (0 warnings), format check, typecheck, unit tests (16 in `ui`, 90 in `agent-ui`, 24 in the console), `pnpm audit --audit-level high`, a rebuild compared with the committed build, and the size budget. It runs in CI's `web` job, next to `check` and `fuzz`, which are unchanged.
+- **What goes over the wire**: `pkg/web` gzips text files once, at start, and sends them compressed to clients that accept it (with `Vary: Accept-Encoding` and an ETag per encoding). The first load is 215,629 bytes: 163,101 of gzipped `index.html`, `theme.js`, script (151 KB) and styles (11 KB), out of 549 KB raw, and 52,528 of the two Latin fonts, Geist and Geist Mono (counted whether or not the first screen uses mono; woff2, already compressed, cached for a year). Fonts load after first paint (`font-display: swap`), and Latin Extended loads only when it is needed (`unicode-range`). `web/scripts/check-size.sh` fails `make web-check` above 240 KB (owner's request, 2026-10-12: the console runs on low-end PCs and bad connections). It reads the script and style names from `index.html`, so a new entry file or a missing one can't slip past it, and it fails if it finds no Latin fonts to count.
+- **`make web-check`** runs install (frozen lockfile), lint (0 warnings), format check, typecheck, unit tests (16 in `ui`, 98 in `agent-ui`, 29 in the console), `pnpm audit --audit-level high`, a rebuild compared with the committed build, and the size budget. It runs in CI's `web` job, next to `check` and `fuzz`, which are unchanged.
 - **The stale check fails** when a component the console uses is changed without a rebuild (tried with Composer's placeholder: exit 1, naming the changed files). It compares builds, so a change to a component the console doesn't import (ToolStep, tried) changes nothing that is embedded and passes. That is intended.
 - **Builds are reproducible.** A build in `node:24.14.0` on Linux was byte-identical to the macOS build.
 - **`make web-smoke`** (Playwright, three tests) runs against the real binary (`agent,web`, with a token):
@@ -148,6 +148,15 @@ Each mutant was planted, the tests named below were run, and the source was rest
 | A list that isn't a list read as empty | client.test "list responses > … is a bad response, not an empty list" |
 | A broken body passed through as a `TypeError` | client.test "bytes > turns a broken body into StreamTruncatedError…" |
 | The body not cancelled when the caller stops reading | client.test "bytes > cancels the download…" |
+| A failed `fetch` passed through as a `TypeError`, not `NetworkError` | client.test "network errors > is a NetworkError… when fetch fails" |
+| A body that breaks while reading reported as "not JSON" | client.test "network errors > … when the body breaks…" |
+| Any `TypeError` shown as "Couldn't reach the server." | app.test "a page > that failed for a reason other than the network…" |
+| A token with a zero-width space sent | app.test "the token > that can't be sent…" |
+| A token saved before a request with it succeeded | app.test "the token > that was just entered and refused…" |
+| `accepted` doing nothing (a revoked token shown as refused) | app.test "the token > that worked and was revoked later…" |
+| `/v1/toolsets` with a non-list shown as none | app.test "a page > with a list that isn't a list…" |
+| `object-src 'none'` dropped, or `data:` images allowed | TestSecurityHeaders |
+| The Latin fonts not found (renamed) | `check-size.sh` (exit 1) |
 
 One mutant could not be caught: setting a retry after a 401. The token wait stops the request anyway, so the mutant behaves the same as the original.
 
@@ -180,6 +189,15 @@ Sub-agents reviewed the two T078 commits (Go serving, the client, the console, t
 - **The theme**: reading `localStorage` is inside the `try`, since with site data blocked the getter itself throws.
 - **Scripts and lint**: `check-build.sh` puts the committed build back when the build fails; `check-size.sh` counts what `index.html` loads, fonts included, with a 240 KB budget in place of 200 KB of scripts and styles alone; ESLint also bans `outerHTML`, `insertAdjacentHTML`, `createContextualFragment` and `document.write`.
 - **Tests** for each of these (the mutation table), plus a UTF-8 character split at every byte and a byte order mark in `SSEReader`.
+
+A second round of sub-agents (bugs, silent failures, test coverage) reviewed those fixes. Fixed:
+
+- **A pasted token with a zero-width space** made the browser throw before sending, which the console showed as "Couldn't reach the server." on every page, with no way back to the prompt. The card now refuses a token that isn't printable ASCII ("That token wasn't accepted.", no request).
+- **Network failures are `NetworkError`** (with the cause): a failed `fetch`, or a body that breaks while reading, which `getJSON` called "not JSON". "Couldn't reach the server." is shown only for these; any other error shows its message.
+- **A token is saved to `sessionStorage` once a request with it succeeds**, so a reload after a refusal doesn't call it expired.
+- **`/v1/toolsets` uses `listField`**: a body that isn't an object was shown as "No toolsets are configured."
+- **`check-size.sh`** counts `theme.js` too, and fails when it finds no Latin fonts instead of counting 0.
+- **Tests**: `TestSecurityHeaders` checks every CSP directive's value, not just the header against the constant; the "Forget token sends no request" check waits before counting (it compared a length with itself); a revoked token; conversations' list and cursor.
 
 Left for later:
 

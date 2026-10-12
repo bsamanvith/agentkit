@@ -1,7 +1,7 @@
 import { Button } from "@agentkit/ui/components/button";
 import { Skeleton } from "@agentkit/ui/components/skeleton";
 import { useEffect, useRef, type ReactNode } from "react";
-import { ApiError } from "@agentkit/agent-ui/api";
+import { ApiError, NetworkError } from "@agentkit/agent-ui/api";
 import type { Resource } from "../api";
 
 /**
@@ -72,6 +72,6 @@ function failureDetail(error: Error): string {
     const wait = error.retryAfter ? ` Try again in ${error.retryAfter} s.` : "";
     return `${error.message} (${error.status} ${error.code}).${wait}`;
   }
-  if (error instanceof TypeError) return "Couldn't reach the server.";
+  if (error instanceof NetworkError) return "Couldn't reach the server.";
   return error.message;
 }

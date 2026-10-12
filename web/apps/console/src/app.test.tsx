@@ -16,17 +16,18 @@ const agents = {
   ],
 };
 
-/** A fake /v1 that wants the bearer token "good", recording each request. */
-function fakeServer() {
+/** A fake /v1 that wants the bearer token server.token ("good"), recording each request. */
+function fakeServer(server = { token: "good" }) {
   const seen: Request[] = [];
   const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const req = new Request(new URL(String(input), "http://console.test"), init);
     seen.push(req);
-    if (req.headers.get("Authorization") !== "Bearer good") {
+    if (req.headers.get("Authorization") !== `Bearer ${server.token}`) {
       const body = { v: 1, error: { code: "unauthenticated", message: "token required", retryable: false } };
       return Response.json(body, { status: 401 });
     }
     if (new URL(req.url).pathname === "/v1/agents") return Response.json(agents);
+    if (new URL(req.url).pathname === "/v1/toolsets") return Response.json({ v: 1, toolsets: [] });
     return Response.json({ v: 1, error: { code: "not_found", message: "no", retryable: false } }, { status: 404 });
   });
   vi.stubGlobal("fetch", fetch);
@@ -122,6 +123,32 @@ describe("the token", () => {
     expect(await screen.findByText("That token wasn't accepted.")).toBeInTheDocument();
     expect(screen.queryByText("Enter a token")).not.toBeInTheDocument();
     expect(screen.queryByText(/rejected or has expired/)).not.toBeInTheDocument();
+    // Not kept: after a reload it would be taken for one that expired.
+    expect(sessionStorage.getItem(tokenStorageKey)).toBeNull();
+  });
+
+  it("that worked and was revoked later says it was rejected or expired", async () => {
+    const server = { token: "good" };
+    fakeServer(server);
+    renderAt("/agents");
+    await userEvent.type(await screen.findByLabelText("API token"), "good");
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await screen.findByText("researcher");
+
+    server.token = "rotated";
+    await userEvent.click(screen.getByRole("link", { name: "Toolsets" }));
+    expect(await screen.findByText("Your token was rejected or has expired.")).toBeInTheDocument();
+    expect(screen.queryByText("That token wasn't accepted.")).not.toBeInTheDocument();
+  });
+
+  it("that can't be sent (a pasted zero-width space) is refused with no request", async () => {
+    const seen = fakeServer();
+    renderAt("/agents");
+    await userEvent.type(await screen.findByLabelText("API token"), "good\u200b");
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(screen.getByText("That token wasn't accepted.")).toBeInTheDocument();
+    expect(seen).toHaveLength(1);
+    expect(sessionStorage.getItem(tokenStorageKey)).toBeNull();
   });
 
   it("keeps the app inert behind the prompt", async () => {
@@ -150,7 +177,8 @@ describe("the token", () => {
     // Forgetting isn't a failure: the card shows no error.
     expect(screen.getByRole("dialog").textContent).not.toMatch(/rejected|accepted|Enter a token/);
     const before = seen.length;
-    await waitFor(() => expect(seen).toHaveLength(before)); // and makes no request without one
+    await new Promise((r) => setTimeout(r, 50));
+    expect(seen).toHaveLength(before); // and makes no request without one
   });
 
   it("is not offered to forget when there is none", async () => {
@@ -210,6 +238,36 @@ describe("a page", () => {
     );
     renderAt("/agents");
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't reach the server.");
+  });
+
+  it("with a list that isn't a list fails, not shows none", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json({ v: 1, toolsets: {} })),
+    );
+    renderAt("/toolsets");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load toolsets.");
+    expect(screen.queryByText("No toolsets are configured.")).not.toBeInTheDocument();
+  });
+
+  it("with a null list (Go's nil slice) shows none", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json({ v: 1, toolsets: null })),
+    );
+    renderAt("/toolsets");
+    expect(await screen.findByText("No toolsets are configured.")).toBeInTheDocument();
+  });
+
+  it("that failed for a reason other than the network says that reason", async () => {
+    // A token saved by hand with a character a header can't carry: the
+    // browser throws before sending, so "Couldn't reach the server" would lie.
+    sessionStorage.setItem(tokenStorageKey, "good\u200b");
+    fakeServer();
+    renderAt("/agents");
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Couldn't load agents.");
+    expect(alert).not.toHaveTextContent("Couldn't reach the server.");
   });
 
   it("that doesn't exist is Not found, with a way back", async () => {

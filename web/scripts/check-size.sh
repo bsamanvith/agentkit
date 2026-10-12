@@ -13,7 +13,7 @@ dist=pkg/web/dist
 budget=${WEB_BUDGET_KB:-240}
 [ -f "$dist/index.html" ] || { echo "no $dist/index.html: run make web" >&2; exit 1; }
 
-refs=$(grep -oE '(src|href)="/assets/[^"]+\.(js|css)"' "$dist/index.html" | sed -E 's/^(src|href)="\///; s/"$//')
+refs=$(grep -oE '(src|href)="/[^"/][^"]*\.(js|css)"' "$dist/index.html" | sed -E 's/^(src|href)="\///; s/"$//')
 [ -n "$refs" ] || { echo "$dist/index.html loads no script or style" >&2; exit 1; }
 total=$(gzip -9 -c "$dist/index.html" | wc -c)
 for f in $refs; do
@@ -25,6 +25,7 @@ for f in "$dist"/assets/*-latin-wght-*.woff2; do
 	[ -f "$f" ] || continue
 	fonts=$((fonts + $(wc -c < "$f")))
 done
+[ "$fonts" -gt 0 ] || { echo "no Latin fonts (*-latin-wght-*.woff2) in $dist/assets: did their names change?" >&2; exit 1; }
 total=$((total + fonts))
 echo "console first load: $total bytes ($fonts of fonts), budget $((budget * 1000)) (${budget} KB)"
 if [ "$total" -gt $((budget * 1000)) ]; then

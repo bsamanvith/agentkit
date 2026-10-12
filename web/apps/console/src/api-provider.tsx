@@ -2,7 +2,11 @@ import { AgentClient } from "@agentkit/agent-ui/api";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { AuthContext, tokenStorageKey, type Auth } from "./api";
 
-/** The token, in memory and in sessionStorage. Storage may be blocked; then it lasts for this page. */
+/**
+ * The token, in memory, and in sessionStorage once a request with it has
+ * succeeded, so a reload never takes a refused token for an expired one.
+ * Storage may be blocked; then it lasts for this page.
+ */
 class TokenStore {
   #value: string | undefined;
   #unproven = false;
@@ -25,13 +29,19 @@ class TokenStore {
   }
 
   proven() {
+    if (!this.#unproven || this.#value === undefined) return;
     this.#unproven = false;
+    this.#save(this.#value);
   }
 
-  /** Sets a token the user just entered, or forgets it. */
+  /** Sets a token the user just entered (kept once proven), or forgets it. */
   set(token: string | undefined) {
     this.#value = token;
     this.#unproven = token !== undefined;
+    this.#save(undefined);
+  }
+
+  #save(token: string | undefined) {
     try {
       if (token === undefined) sessionStorage.removeItem(tokenStorageKey);
       else sessionStorage.setItem(tokenStorageKey, token);

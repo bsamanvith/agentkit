@@ -3,6 +3,7 @@ import {
   AgentClient,
   ApiError,
   BadResponseError,
+  NetworkError,
   ResponseTooLargeError,
   SSEReader,
   StreamTruncatedError,
@@ -371,5 +372,58 @@ describe("list responses", () => {
       ),
     });
     await expect(client.listAgents()).rejects.toMatchObject({ name: "AbortError" });
+  });
+});
+
+describe("network errors", () => {
+  const json = (body: string, error?: unknown) =>
+    new AgentClient({
+      fetch: bytesFetch([new TextEncoder().encode(body)], error, undefined, "application/json"),
+    });
+
+  it("is a NetworkError, keeping the cause, when fetch fails", async () => {
+    const down = new TypeError("Failed to fetch");
+    const client = new AgentClient({
+      fetch: (async () => {
+        throw down;
+      }) as typeof fetch,
+    });
+    const err: unknown = await client.listAgents().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(NetworkError);
+    expect((err as Error).cause).toBe(down);
+    await expect(readRun(client).then((r) => r.end)).resolves.toBeInstanceOf(NetworkError);
+  });
+
+  it("is a NetworkError when the body breaks, and BadResponseError when it isn't JSON", async () => {
+    await expect(json('{"v":1,', new TypeError("network error")).listAgents()).rejects.toBeInstanceOf(NetworkError);
+    await expect(json("<html>").listAgents()).rejects.toBeInstanceOf(BadResponseError);
+  });
+
+  it("isn't made of a token that can't go in a header", async () => {
+    // The browser throws before sending: that's not the network.
+    const client = new AgentClient({ token: () => "abc\u200b", fetch: bytesFetch([]) });
+    const err: unknown = await client.listAgents().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(TypeError);
+    expect(err).not.toBeInstanceOf(NetworkError);
+  });
+});
+
+describe("conversations", () => {
+  const json = (body: string) =>
+    new AgentClient({
+      fetch: bytesFetch([new TextEncoder().encode(body)], undefined, undefined, "application/json"),
+    });
+
+  it.each([
+    ['{"v":1,"conversations":[],"next_cursor":"c2"}', "c2"],
+    ['{"v":1,"conversations":[],"next_cursor":""}', undefined],
+    ['{"v":1,"conversations":[],"next_cursor":7}', undefined],
+    ['{"v":1,"conversations":null}', undefined],
+  ])("%s has cursor %s", async (body, cursor) => {
+    expect(await json(body).listConversations()).toEqual({ conversations: [], nextCursor: cursor });
+  });
+
+  it("with a non-list is a bad response", async () => {
+    await expect(json('{"v":1,"conversations":{}}').listConversations()).rejects.toBeInstanceOf(BadResponseError);
   });
 });

@@ -6,10 +6,10 @@ import (
 	"context"
 	"io"
 	"io/fs"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
-	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -123,14 +123,20 @@ func TestSecurityHeaders(t *testing.T) {
 			}
 		}
 	}
-	directives := strings.Split(web.CSP, "; ")
-	for _, want := range []string{"default-src 'self'", "script-src 'self'", "style-src 'self'", "frame-ancestors 'none'"} {
-		if !slices.Contains(directives, want) {
-			t.Errorf("CSP %q lacks %q", web.CSP, want)
-		}
+	// Every directive named, so none falls back to default-src unseen.
+	want := map[string]string{
+		"default-src": "'self'", "script-src": "'self'", "style-src": "'self'",
+		"img-src": "'self'", "font-src": "'self'", "connect-src": "'self'",
+		"object-src": "'none'", "base-uri": "'none'", "form-action": "'self'",
+		"frame-ancestors": "'none'",
 	}
-	if strings.Contains(web.CSP, "unsafe-") {
-		t.Errorf("CSP %q allows unsafe sources", web.CSP)
+	got := map[string]string{}
+	for _, d := range strings.Split(web.CSP, "; ") {
+		name, value, _ := strings.Cut(d, " ")
+		got[name] = value
+	}
+	if !maps.Equal(got, want) {
+		t.Errorf("CSP %q\nwant %v", web.CSP, want)
 	}
 }
 

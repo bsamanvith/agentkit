@@ -40,7 +40,7 @@ func TestRepository(t *testing.T) {
 	for _, v := range archtest.Check(archtest.ModuleRules(), pkgs) {
 		t.Error(v)
 	}
-	vs, err := archtest.CheckConnectors(moduleRoot(t), archtest.ModuleRules().Module)
+	vs, err := archtest.CheckConnectors(moduleRoot(t), archtest.ModuleRules())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,14 +51,23 @@ func TestRepository(t *testing.T) {
 
 // TestConnectorRules: a connector's tests must run the kit's suite and fuzz
 // target, through the kit and not a lookalike, and it must have cassettes.
+// A pending connector is exempt while it fails, and its entry is stale once
+// it passes.
 func TestConnectorRules(t *testing.T) {
 	t.Parallel()
-	got, err := archtest.CheckConnectors(filepath.Join("testdata", "repo"), mod)
+	r := rules()
+	r.PendingConnectors = map[string]string{"connectors/lazy": "adopting", "connectors/good": "adopted already"}
+	got, err := archtest.CheckConnectors(filepath.Join("testdata", "repo"), r)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// In directory order: bare, good, imposter (lazy is pending).
 	var want []archtest.Violation
-	for _, pkg := range []string{"connectors/bare", "connectors/imposter"} {
+	for _, pkg := range []string{"connectors/bare", "connectors/good", "connectors/imposter"} {
+		if pkg == "connectors/good" {
+			want = append(want, archtest.Violation{Rule: archtest.RuleConnectorPending, Package: pkg, Detail: "passes the connector rules: remove it from PendingConnectors"})
+			continue
+		}
 		want = append(want,
 			archtest.Violation{Rule: archtest.RuleConnectorSuite, Package: pkg, Detail: "has no test that calls toolsettest.RunConnector"},
 			archtest.Violation{Rule: archtest.RuleConnectorFuzz, Package: pkg, Detail: "has no fuzz target that calls toolsettest.FuzzResponses"},

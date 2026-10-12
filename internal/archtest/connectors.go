@@ -19,6 +19,7 @@ const (
 	RuleConnectorSuite     = "connector-runs-the-suite"
 	RuleConnectorFuzz      = "connector-fuzzes-responses"
 	RuleConnectorCassettes = "connector-has-cassettes"
+	RuleConnectorPending   = "connector-pending-is-stale"
 )
 
 // kitPath is the connector test kit, relative to the module.
@@ -28,7 +29,10 @@ const kitPath = "pkg/toolset/toolsettest"
 // root/connectors. Its tests must call the kit's RunConnector and
 // FuzzResponses, and testdata/cassettes must hold at least one recorded
 // request (.req.json). A connector cannot opt out of the kit by forgetting it.
-func CheckConnectors(root, module string) ([]Violation, error) {
+// A connector in rules.PendingConnectors is exempt until it passes, and then
+// its entry must go.
+func CheckConnectors(root string, rules Rules) ([]Violation, error) {
+	module := rules.Module
 	entries, err := os.ReadDir(filepath.Join(root, "connectors"))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
@@ -50,22 +54,30 @@ func CheckConnectors(root, module string) ([]Violation, error) {
 		if !slices.ContainsFunc(files, func(f string) bool { return !strings.HasSuffix(f, "_test.go") }) {
 			continue // a directory of subpackages, not a connector
 		}
+		var vs []Violation
 		calls, err := kitCalls(files, module+"/"+kitPath)
 		if err != nil {
 			return nil, err
 		}
 		if !calls["RunConnector"] {
-			out = append(out, Violation{Rule: RuleConnectorSuite, Package: rel, Detail: "has no test that calls toolsettest.RunConnector"})
+			vs = append(vs, Violation{Rule: RuleConnectorSuite, Package: rel, Detail: "has no test that calls toolsettest.RunConnector"})
 		}
 		if !calls["FuzzResponses"] {
-			out = append(out, Violation{Rule: RuleConnectorFuzz, Package: rel, Detail: "has no fuzz target that calls toolsettest.FuzzResponses"})
+			vs = append(vs, Violation{Rule: RuleConnectorFuzz, Package: rel, Detail: "has no fuzz target that calls toolsettest.FuzzResponses"})
 		}
 		reqs, err := filepath.Glob(filepath.Join(dir, "testdata", "cassettes", "*.req.json"))
 		if err != nil {
 			return nil, err
 		}
 		if len(reqs) == 0 {
-			out = append(out, Violation{Rule: RuleConnectorCassettes, Package: rel, Detail: "has no cassette in testdata/cassettes (make record-cassettes)"})
+			vs = append(vs, Violation{Rule: RuleConnectorCassettes, Package: rel, Detail: "has no cassette in testdata/cassettes (make record-cassettes)"})
+		}
+		_, pending := rules.PendingConnectors[rel]
+		switch {
+		case pending && len(vs) == 0:
+			out = append(out, Violation{Rule: RuleConnectorPending, Package: rel, Detail: "passes the connector rules: remove it from PendingConnectors"})
+		case !pending:
+			out = append(out, vs...)
 		}
 	}
 	return out, nil

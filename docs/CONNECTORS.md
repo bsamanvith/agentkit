@@ -96,6 +96,8 @@ func FuzzSearchResponses(f *testing.F) { toolsettest.FuzzResponses(f, connector(
 
 Add a fuzz target per tool. `FuzzResponses` fuzzes the 200 bodies, seeded from your cassettes. Any body must give schema-valid output or a classed error, and never a panic. `make fuzz` runs it.
 
+`internal/archtest` enforces the minimum: every package under `connectors/` has a test calling `toolsettest.RunConnector`, a fuzz target calling `toolsettest.FuzzResponses`, and at least one cassette. A connector still adopting the kit is listed in `PendingConnectors` in `internal/archtest/rules.go`, with the reason. The entry must be removed once the connector passes, and the check fails until it is.
+
 Connector-specific behavior goes in ordinary tests next to the suite, for example how a provider's odd field maps to the output. Do not re-test what the suite checks.
 
 ## 4. Cassettes

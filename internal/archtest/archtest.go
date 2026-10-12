@@ -37,6 +37,10 @@ type Rules struct {
 	// tests included. Packages of the tree itself are always allowed. A tree
 	// with no entry may import any module package.
 	ModuleImports map[string][]string
+	// PendingConnectors exempts connectors (paths relative to Module) from
+	// [CheckConnectors], each with the reason, until they adopt the test kit.
+	// An entry for a connector that passes fails the check.
+	PendingConnectors map[string]string
 }
 
 // Violation is one broken rule.

@@ -5,6 +5,7 @@ package postgres_test
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -18,6 +19,15 @@ import (
 
 func prompt(seq int64, text string) store.Entry {
 	return store.Entry{Seq: seq, Kind: store.KindPrompt, Messages: []llm.Message{llm.User(llm.Text{Text: text})}}
+}
+
+// versions is how schema_migrations reads after migrations 1 to n: "1,2,…,n".
+func versions(n int) string {
+	vs := make([]string, n)
+	for i := range vs {
+		vs[i] = strconv.Itoa(i + 1)
+	}
+	return strings.Join(vs, ",")
 }
 
 // migrationRows returns the versions schema_migrations records, in order.
@@ -58,8 +68,8 @@ func TestConcurrentOpensMigrateOnce(t *testing.T) {
 	if t.Failed() {
 		return
 	}
-	if got := migrationRows(t, u); got != "1,2,3,4" {
-		t.Errorf("schema_migrations holds versions %q, want each of 1,2,3,4 once", got)
+	if got, want := migrationRows(t, u), versions(postgres.Latest()); got != want {
+		t.Errorf("schema_migrations holds versions %q, want each of %s once", got, want)
 	}
 	ctx := tenantCtx(t, "acme")
 	if _, err := stores[0].Create(ctx, "r", "c"); err != nil {
@@ -90,8 +100,8 @@ func TestOpenUpgradesAnOlderSchema(t *testing.T) {
 	old.Close()
 
 	s := openURL(t, u)
-	if got := migrationRows(t, u); got != "1,2,3,4" {
-		t.Errorf("schema_migrations holds versions %q after the upgrade, want 1,2,3,4", got)
+	if got, want := migrationRows(t, u), versions(postgres.Latest()); got != want {
+		t.Errorf("schema_migrations holds versions %q after the upgrade, want %s", got, want)
 	}
 	page, err := s.History(ctx, "c", store.Page{})
 	if err != nil || len(page.Entries) != 2 || page.Entries[1].Messages[0].Text() != "two" {
@@ -119,7 +129,8 @@ func TestOpenRefusesANewerSchema(t *testing.T) {
 		t.Fatalf("Append: %v", err)
 	}
 	// A migration from the future, as a newer binary would have recorded it.
-	exec(t, u, `INSERT INTO schema_migrations (version, name, applied_at) VALUES (5, 'future', 0)`)
+	future := postgres.Latest() + 1
+	exec(t, u, `INSERT INTO schema_migrations (version, name, applied_at) VALUES ($1, 'future', 0)`, future)
 
 	for _, opts := range [][]postgres.Option{
 		nil,
@@ -131,18 +142,18 @@ func TestOpenRefusesANewerSchema(t *testing.T) {
 			if got != nil {
 				got.Close()
 			}
-			t.Fatalf("Open(%d options) of a schema at version 5 = %v, want ErrSchemaTooNew", len(opts), err)
+			t.Fatalf("Open(%d options) of a schema at version %d = %v, want ErrSchemaTooNew", len(opts), future, err)
 		}
 		if !strings.Contains(err.Error(), "knows up to") {
 			t.Errorf("error %q does not say which versions disagree", err)
 		}
 	}
 	if err := postgres.Migrate(context.Background(), u); !errors.Is(err, postgres.ErrSchemaTooNew) {
-		t.Errorf("Migrate of a schema at version 5 = %v, want ErrSchemaTooNew", err)
+		t.Errorf("Migrate of a schema at version %d = %v, want ErrSchemaTooNew", future, err)
 	}
 
-	if got := migrationRows(t, u); got != "1,2,3,4,5" {
-		t.Errorf("schema_migrations holds versions %q after the refusals, want 1,2,3,4,5", got)
+	if got, want := migrationRows(t, u), versions(future); got != want {
+		t.Errorf("schema_migrations holds versions %q after the refusals, want %s", got, want)
 	}
 	page, err := s.History(ctx, "c", store.Page{})
 	if err != nil || len(page.Entries) != 1 {

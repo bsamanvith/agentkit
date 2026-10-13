@@ -27,6 +27,7 @@ var (
 	_ store.ConversationStore = (*Store)(nil)
 	_ store.RunStore          = (*Store)(nil)
 	_ store.EventLog          = (*Store)(nil)
+	_ store.ConversationIndex = (*Store)(nil)
 	_ flow.Checkpointer       = (*Store)(nil)
 	_ store.Admin             = admin{}
 )
@@ -47,6 +48,7 @@ type Store struct {
 
 	mu          sync.Mutex
 	convs       map[key][]entry
+	records     map[key]store.Conversation
 	runs        map[key]store.Run
 	events      map[key][]store.Event // by run id
 	checkpoints map[key]flow.Checkpoint
@@ -68,6 +70,7 @@ func New(opts ...Option) *Store {
 	s := &Store{
 		clk:         clock.Real(),
 		convs:       map[key][]entry{},
+		records:     map[key]store.Conversation{},
 		runs:        map[key]store.Run{},
 		events:      map[key][]store.Event{},
 		checkpoints: map[key]flow.Checkpoint{},
@@ -128,6 +131,7 @@ func (s *Store) Append(ctx context.Context, id string, e store.Entry) error {
 		return err
 	}
 	s.convs[k] = append(log, entry{Stored: st, created: created})
+	s.counted(k, created, st)
 	return nil
 }
 
@@ -167,7 +171,24 @@ func (s *Store) AppendBatch(ctx context.Context, id string, entries []store.Entr
 		log = append(log, entry{Stored: st, created: created})
 	}
 	s.convs[k] = log
+	s.counted(k, created, add...)
 	return nil
+}
+
+// counted adds appended entries to the conversation's record, if it has one.
+// Called with s.mu held.
+func (s *Store) counted(k key, at time.Time, added ...backend.Stored) {
+	c, ok := s.records[k]
+	if !ok {
+		return
+	}
+	for _, st := range added {
+		c.Messages += st.MessageCount()
+	}
+	if at.After(c.UpdatedAt) {
+		c.UpdatedAt = at
+	}
+	s.records[k] = c
 }
 
 // History implements [store.ConversationStore].

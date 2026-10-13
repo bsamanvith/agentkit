@@ -39,6 +39,27 @@ func (s Stored) Same(o Stored) bool {
 		bytes.Equal(s.Messages, o.Messages) && bytes.Equal(s.Record, o.Record)
 }
 
+// MessageCount returns how many messages s holds.
+func (s Stored) MessageCount() int64 {
+	var msgs []json.RawMessage
+	if err := json.Unmarshal(s.Messages, &msgs); err != nil {
+		return 0 // cannot happen: Messages is what CheckEntry marshaled
+	}
+	return int64(len(msgs))
+}
+
+// CheckConversation checks a conversation record against the rules on
+// [store.Conversation]. Errors match [store.ErrInvalid].
+func CheckConversation(c store.Conversation) error {
+	if err := CheckID("conversation", c.ID); err != nil {
+		return err
+	}
+	if err := CheckText("conversation agent", c.Agent); err != nil {
+		return err
+	}
+	return CheckText("conversation title", c.Title)
+}
+
 // Entry decodes s into an entry at seq. The result shares no memory with s.
 func (s Stored) Entry(seq int64, created time.Time) (store.Entry, error) {
 	var msgs []llm.Message
@@ -298,7 +319,7 @@ func HistoryCursor(o store.Order, seq int64) string {
 }
 
 // RunKey is a run's position in [store.RunStore.List]: runs are ordered by
-// CreatedAt and then ID.
+// CreatedAt and then ID. Conversation records are ordered the same way.
 type RunKey struct {
 	Created time.Time
 	ID      string
@@ -322,7 +343,15 @@ type RunStart struct {
 }
 
 // ParseRunPage checks p for List and returns its limit and start.
-func ParseRunPage(p store.Page) (int, RunStart, error) {
+func ParseRunPage(p store.Page) (int, RunStart, error) { return parseKeyPage(p, "r", "runs") }
+
+// ParseConversationPage checks p for ListConversations, which orders records
+// as List orders runs, and returns its limit and start.
+func ParseConversationPage(p store.Page) (int, RunStart, error) {
+	return parseKeyPage(p, "c", "conversations")
+}
+
+func parseKeyPage(p store.Page, list, what string) (int, RunStart, error) {
 	limit, err := Limit(p)
 	if err != nil {
 		return 0, RunStart{}, err
@@ -331,7 +360,7 @@ func ParseRunPage(p store.Page) (int, RunStart, error) {
 		return 0, RunStart{}, err
 	}
 	if p.FromSeq != 0 {
-		return 0, RunStart{}, fmt.Errorf("%w: runs have no sequence numbers to seek", store.ErrInvalid)
+		return 0, RunStart{}, fmt.Errorf("%w: %s have no sequence numbers to seek", store.ErrInvalid, what)
 	}
 	if p.Cursor == "" {
 		return limit, RunStart{FromTime: p.FromTime}, nil
@@ -339,7 +368,7 @@ func ParseRunPage(p store.Page) (int, RunStart, error) {
 	if !p.FromTime.IsZero() {
 		return 0, RunStart{}, fmt.Errorf("%w: a page continues from a cursor or seeks, not both", store.ErrInvalid)
 	}
-	fields, err := decodeCursor(p.Cursor, "r", p.Order, 2)
+	fields, err := decodeCursor(p.Cursor, list, p.Order, 2)
 	if err != nil {
 		return 0, RunStart{}, err
 	}
@@ -351,8 +380,14 @@ func ParseRunPage(p store.Page) (int, RunStart, error) {
 }
 
 // RunCursor returns the cursor of the page after one that ended at k.
-func RunCursor(o store.Order, k RunKey) string {
-	return encodeCursor("r", o, strconv.FormatInt(k.Created.UnixNano(), 10), k.ID)
+func RunCursor(o store.Order, k RunKey) string { return keyCursor("r", o, k) }
+
+// ConversationCursor returns the cursor of the ListConversations page after
+// one that ended at k.
+func ConversationCursor(o store.Order, k RunKey) string { return keyCursor("c", o, k) }
+
+func keyCursor(list string, o store.Order, k RunKey) string {
+	return encodeCursor(list, o, strconv.FormatInt(k.Created.UnixNano(), 10), k.ID)
 }
 
 func checkOrder(o store.Order) error {

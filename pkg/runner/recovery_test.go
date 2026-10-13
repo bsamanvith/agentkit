@@ -70,11 +70,11 @@ var readOnlyKillPoints = []killPoint{
 }
 
 // crashRun runs prompt in conv on a process that dies at k.
-func (w *world) crashRun(ctx context.Context, conv, prompt string, k killPoint) string {
+func (w *world) crashRun(ctx context.Context, conv, prompt string, k killPoint, opts ...runner.RunOption) string {
 	w.t.Helper()
 	dead := w.process()
 	dead.store.crashAt(crashAtNth(k.op, k.n, k.landed))
-	x, err := dead.r.Run(ctx, conv, harness.UserText(prompt))
+	x, err := dead.r.Run(ctx, conv, harness.UserText(prompt), opts...)
 	if err != nil {
 		w.t.Fatal(err)
 	}

@@ -41,6 +41,11 @@
 // [RunStore.ListSuspended]. The policy (when to retry, how to recover) belongs
 // to the runner.
 //
+// A run created with [Interactive] is a chat run with a user on the other
+// end. It is never resumable: when nobody runs it (its lease released or
+// expired) it is interrupted ([Run.Interrupted]), and stays so until its
+// user continues it or starts another. Every other run is a background run.
+//
 // # Checkpoints
 //
 // Backends store flow checkpoints by implementing [flow.Checkpointer]

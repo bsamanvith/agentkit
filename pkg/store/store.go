@@ -198,7 +198,7 @@ type ConversationStore interface {
 type Status string
 
 // The statuses of a run. A run is created running. "Interrupted" is not a
-// status: it is a running run whose lease has expired.
+// status: it is a running run whose lease is not held (see [Run.Interrupted]).
 const (
 	// StatusRunning: a process is running it, or was until it crashed.
 	StatusRunning Status = "running"
@@ -262,6 +262,46 @@ type Run struct {
 	// Lease is the run's lease as last written; it may have expired. The zero
 	// Lease means nobody has claimed the run, or the last owner released it.
 	Lease Lease
+	// Interactive is set for a run created with [Interactive]: a chat run
+	// with a user on the other end. It never changes. An interactive run is
+	// never resumable ([RunStore.ListResumable]): when its process stops
+	// running it, it is interrupted, and only its user continues it.
+	Interactive bool
+}
+
+// Interrupted reports whether r is an interactive run that nobody is running
+// at now: running, with its lease released or expired. A run whose process
+// crashed shows as interrupted once its lease expires.
+func (r Run) Interrupted(now time.Time) bool {
+	return r.Interactive && r.Status == StatusRunning && (r.Lease.Owner == "" || !now.Before(r.Lease.Expires))
+}
+
+// CreateOption sets a property of a run [RunStore.Create] stores with it.
+type CreateOption func(*CreateOptions)
+
+// CreateOptions are the properties [CreateOption]s set. Backends read them
+// with [NewCreateOptions].
+type CreateOptions struct {
+	// Interactive is set by [Interactive].
+	Interactive bool
+}
+
+// NewCreateOptions applies opts in order.
+func NewCreateOptions(opts ...CreateOption) CreateOptions {
+	var o CreateOptions
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&o)
+		}
+	}
+	return o
+}
+
+// Interactive creates the run as interactive ([Run.Interactive]): a chat run
+// that stops with its user and is never listed as resumable. Runs created
+// without it are background runs.
+func Interactive() CreateOption {
+	return func(o *CreateOptions) { o.Interactive = true }
 }
 
 // Details is what a [RunStore.Transition] records with the new status. A field
@@ -330,8 +370,10 @@ type RunStore interface {
 	// the stored run, so a retry is safe; one that exists in another
 	// conversation is [ErrConflict]. A conversation has at most one
 	// unfinished run: creating another while one is not final is
-	// [ErrUnfinished].
-	Create(ctx context.Context, id, conversationID string) (Run, error)
+	// [ErrUnfinished]. opts set properties stored with the run
+	// ([Interactive]); a retry returns the run as first stored, whatever
+	// its opts.
+	Create(ctx context.Context, id, conversationID string, opts ...CreateOption) (Run, error)
 	// Get returns the run, or [ErrNotFound].
 	Get(ctx context.Context, id string) (Run, error)
 	// List returns one page of the runs of a conversation, ordered by
@@ -346,10 +388,11 @@ type RunStore interface {
 	// is not from, so that of two processes moving a run, one wins. It does
 	// not check or change the lease.
 	Transition(ctx context.Context, id string, from, to Status, d Details) (Run, error)
-	// ListResumable returns up to limit runs that should continue at now,
-	// ordered by CreatedAt and then ID: running runs whose lease has expired
-	// (or that have none), and failed runs that are Retryable with
-	// NextAttemptAt at or before now. Limit is read like [Page.Limit].
+	// ListResumable returns up to limit background runs that should
+	// continue at now, ordered by CreatedAt and then ID: running runs whose
+	// lease has expired (or that have none), and failed runs that are
+	// Retryable with NextAttemptAt at or before now. An interactive run
+	// ([Run.Interactive]) is never listed. Limit is read like [Page.Limit].
 	ListResumable(ctx context.Context, now time.Time, limit int) ([]Run, error)
 	// ListSuspended returns one page of the suspended runs, ordered by
 	// CreatedAt and then ID, like List.

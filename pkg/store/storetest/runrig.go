@@ -32,8 +32,11 @@ import (
 //  4. A conversation has at most one unfinished run, and Unfinished returns
 //     it (ErrNotFound when there is none).
 //  5. ListSuspended, paged, gives exactly the suspended runs, in order.
-//  6. ListResumable at the clock's time gives exactly the running runs whose
-//     lease is not held and the retryable failed runs that are due, in order.
+//  6. ListResumable at the clock's time gives exactly the background running
+//     runs whose lease is not held and the background retryable failed runs
+//     that are due, in order: never an interactive run. A run keeps whether
+//     it is interactive, and Interrupted reports exactly the interactive
+//     running runs whose lease is not held.
 //  7. With an Admin (RunAdmin), ListResumableAll at the clock's time, with no
 //     tenant in ctx, is the union of every tenant's ListResumable, each run
 //     with its tenant, ordered by CreatedAt, tenant and ID.
@@ -52,14 +55,15 @@ type runRig struct {
 
 // runModel is what a run must read back as.
 type runModel struct {
-	conv     string
-	status   store.Status
-	usage    llm.Usage
-	err      string
-	retry    bool
-	next     time.Time
-	attempts int
-	pending  []string
+	conv        string
+	interactive bool
+	status      store.Status
+	usage       llm.Usage
+	err         string
+	retry       bool
+	next        time.Time
+	attempts    int
+	pending     []string
 }
 
 func newRunRig(t *testing.T, newStore func(t *testing.T, clk clock.Clock) store.RunStore) *runRig {
@@ -96,8 +100,8 @@ func (r *runRig) ctx(id string) context.Context {
 	return tenantCtx(r.t.Context(), r.t, id)
 }
 
-func (r *runRig) create(ctx context.Context, id, conv string) (store.Run, error) {
-	run, err := r.s.Create(ctx, id, conv)
+func (r *runRig) create(ctx context.Context, id, conv string, opts ...store.CreateOption) (store.Run, error) {
+	run, err := r.s.Create(ctx, id, conv, opts...)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if id != "" && conv != "" && textOK(conv) { // the invariant check reads them back
@@ -110,16 +114,19 @@ func (r *runRig) create(ctx context.Context, id, conv string) (store.Run, error)
 	k := logKey{tn.ID(), id}
 	switch m, ok := r.runs[k]; {
 	case !ok:
-		r.runs[k] = &runModel{conv: conv, status: store.StatusRunning}
+		r.runs[k] = &runModel{conv: conv, status: store.StatusRunning, interactive: store.NewCreateOptions(opts...).Interactive}
 	case m.conv != conv:
 		r.t.Errorf("Create moved run %q from conversation %q to %q", id, m.conv, conv)
+	}
+	if m := r.runs[k]; run.Interactive != m.interactive {
+		r.t.Errorf("Create of run %q returned interactive %v, want %v as first created", id, run.Interactive, m.interactive)
 	}
 	return run, err
 }
 
-func (r *runRig) mustCreate(ctx context.Context, id, conv string) store.Run {
+func (r *runRig) mustCreate(ctx context.Context, id, conv string, opts ...store.CreateOption) store.Run {
 	r.t.Helper()
-	run, err := r.create(ctx, id, conv)
+	run, err := r.create(ctx, id, conv, opts...)
 	if err != nil {
 		r.t.Fatalf("Create %q: %v", id, err)
 	}
@@ -235,8 +242,16 @@ func runBefore(a, b store.Run) bool {
 	return a.ID < b.ID
 }
 
+// interrupted restates [store.Run.Interrupted].
+func interrupted(r store.Run, now time.Time) bool {
+	return r.Interactive && r.Status == store.StatusRunning && (r.Lease.Owner == "" || !now.Before(r.Lease.Expires))
+}
+
 // resumable restates which runs ListResumable returns.
 func resumable(r store.Run, now time.Time) bool {
+	if r.Interactive {
+		return false
+	}
 	switch r.Status {
 	case store.StatusRunning:
 		return r.Lease.Owner == "" || !now.Before(r.Lease.Expires)
@@ -276,8 +291,11 @@ func (r *runRig) checkTenant(tenant string) {
 		}
 		all = append(all, run)
 		switch {
-		case run.ID != id || run.ConversationID != m.conv:
-			t.Errorf("tenant %s: run %q reads back as %q in conversation %q, want conversation %q", tenant, id, run.ID, run.ConversationID, m.conv)
+		case run.ID != id || run.ConversationID != m.conv || run.Interactive != m.interactive:
+			t.Errorf("tenant %s: run %q reads back as %q in conversation %q, interactive %v; want conversation %q, interactive %v",
+				tenant, id, run.ID, run.ConversationID, run.Interactive, m.conv, m.interactive)
+		case run.Interrupted(r.clk.Now()) != interrupted(run, r.clk.Now()):
+			t.Errorf("tenant %s: run %+v Interrupted = %v at %v", tenant, run, run.Interrupted(r.clk.Now()), r.clk.Now())
 		case run.Status != m.status || run.Usage != m.usage || run.Error != m.err || run.Retryable != m.retry ||
 			!run.NextAttemptAt.Equal(m.next) || run.Attempts != m.attempts || !slices.Equal(run.Pending, m.pending):
 			t.Errorf("tenant %s: run %q reads back as\n%+v\nwant what its transitions recorded\n%+v", tenant, id, run, *m)
@@ -354,7 +372,8 @@ func sameRun(a, b store.Run) bool {
 	return a.ID == b.ID && a.ConversationID == b.ConversationID && a.Status == b.Status &&
 		a.Usage == b.Usage && a.Error == b.Error && a.Retryable == b.Retryable &&
 		a.NextAttemptAt.Equal(b.NextAttemptAt) && a.Attempts == b.Attempts && slices.Equal(a.Pending, b.Pending) &&
-		a.CreatedAt.Equal(b.CreatedAt) && a.FinishedAt.Equal(b.FinishedAt) && sameLease(a.Lease, b.Lease)
+		a.CreatedAt.Equal(b.CreatedAt) && a.FinishedAt.Equal(b.FinishedAt) && sameLease(a.Lease, b.Lease) &&
+		a.Interactive == b.Interactive
 }
 
 func sameLease(a, b store.Lease) bool {

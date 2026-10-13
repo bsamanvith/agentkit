@@ -46,7 +46,7 @@ From the groundwork handoff; details in those task files' "For T028/T030" Notes.
 - [x] [T032](T032-flow-shape-fingerprint.md) `flow`: detect a changed step tree on resume
 - [ ] [T033](T033-harness-clock.md) harness: use `pkg/clock` instead of `WithNow` (small; any time)
 - [x] [T098](T098-turn-buffer.md) runner: keep a run's turns and store them in batches (`AppendBatch`, `FlushEvery`, `Shutdown`)
-- [ ] [T100](T100-interactive-chat-runs.md) runner: interactive chat runs stop with their user, show as interrupted, never recovered in the background (`Interactive`, `Interrupt`, inline retry)
+- [x] [T100](T100-interactive-chat-runs.md) runner: interactive chat runs stop with their user, show as interrupted, never recovered in the background (`Interactive`, `Interrupt`, inline retry)
 - [ ] [T099](T099-run-queue-order.md) runs: start time, lane and priority; claim the next run in that order (`ClaimNext`, `SKIP LOCKED`)
 
 ```

@@ -19,14 +19,14 @@ import (
 const runColumns = `id, conversation, status,
 	input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
 	error, retryable, next_attempt_at, attempts, pending,
-	created_at, finished_at, lease_owner, lease_expires`
+	created_at, finished_at, lease_owner, lease_expires, interactive`
 
 // final is the SQL list of final statuses (store.Status.Final).
 const final = `('completed', 'rejected', 'canceled')`
 
 // resumable is backend.Resumable in SQL, with now as $1.
-const resumable = `((status = 'running' AND (lease_owner = '' OR lease_expires <= $1))
-	OR (status = 'failed' AND retryable AND (next_attempt_at IS NULL OR next_attempt_at <= $1)))`
+const resumable = `(NOT interactive AND ((status = 'running' AND (lease_owner = '' OR lease_expires <= $1))
+	OR (status = 'failed' AND retryable AND (next_attempt_at IS NULL OR next_attempt_at <= $1))))`
 
 // Create implements [store.RunStore].
 //
@@ -34,7 +34,8 @@ const resumable = `((status = 'running' AND (lease_owner = '' OR lease_expires <
 // index on unfinished runs (runs_unfinished) decide, and when it fails the
 // stored rows say why: the same run (a retry), the id in another
 // conversation, or another unfinished run.
-func (s *Store) Create(ctx context.Context, id, conversationID string) (store.Run, error) {
+func (s *Store) Create(ctx context.Context, id, conversationID string, opts ...store.CreateOption) (store.Run, error) {
+	o := store.NewCreateOptions(opts...)
 	tenant, err := scope(ctx)
 	if err != nil {
 		return store.Run{}, err
@@ -52,10 +53,10 @@ func (s *Store) Create(ctx context.Context, id, conversationID string) (store.Ru
 		if err != nil {
 			return fmt.Errorf("postgres: create run: the clock reads %w", err)
 		}
-		_, insertErr := s.pool.Exec(ctx, `INSERT INTO runs (tenant, id, conversation, status, created_at)
-			VALUES ($1, $2, $3, $4, $5)`, tenant, id, conversationID, string(store.StatusRunning), at)
+		_, insertErr := s.pool.Exec(ctx, `INSERT INTO runs (tenant, id, conversation, status, created_at, interactive)
+			VALUES ($1, $2, $3, $4, $5, $6)`, tenant, id, conversationID, string(store.StatusRunning), at, o.Interactive)
 		if insertErr == nil {
-			run = store.Run{ID: id, ConversationID: conversationID, Status: store.StatusRunning, CreatedAt: now}
+			run = store.Run{ID: id, ConversationID: conversationID, Status: store.StatusRunning, CreatedAt: now, Interactive: o.Interactive}
 			return nil
 		}
 		switch code, constraint := sqlState(insertErr); {
@@ -454,7 +455,7 @@ func scanRun(row pgx.Row, pre ...any) (store.Run, error) {
 	err := row.Scan(append(pre, &r.ID, &r.ConversationID, &status,
 		&r.Usage.InputTokens, &r.Usage.OutputTokens, &r.Usage.CacheReadTokens, &r.Usage.CacheWriteTokens,
 		&r.Error, &r.Retryable, &next, &r.Attempts, &pending,
-		&created, &finished, &r.Lease.Owner, &expires)...)
+		&created, &finished, &r.Lease.Owner, &expires, &r.Interactive)...)
 	if err != nil {
 		return store.Run{}, err
 	}

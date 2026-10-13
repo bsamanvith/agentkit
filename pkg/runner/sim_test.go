@@ -24,6 +24,12 @@ import (
 // replicas (one or two at once, and themselves liable to die) and the clock
 // bring every run to an end, canceling runs that failed for good.
 //
+// Half the messages start interactive runs, which are also interrupted while
+// the model works, retried inline, and left interrupted: the user then
+// continues them (Resume), or a later message replaces them. Every recovery
+// pass is checked to leave every interactive run alone and to call no model
+// for it.
+//
 // Besides the invariants every test checks, the final log of every
 // conversation is judged against a restatement of the scripted model: each
 // run's entries are contiguous, start with its prompt, continue with a prefix
@@ -44,8 +50,70 @@ func simulate(t *testing.T, seed uint64) map[string]int {
 		convs[i] = fmt.Sprint("c", i)
 	}
 
-	// settle brings the conversation's unfinished run, if any, to an end.
-	settle := func(conv string) {
+	// recover runs a recovery pass on p, and checks that it leaves every
+	// unfinished interactive run alone: its status, its failures and its
+	// conversation's log are unchanged, and no request is made for its
+	// prompt.
+	recover := func(p *proc) {
+		type state struct {
+			run      store.Run
+			entries  int
+			requests int
+		}
+		snapshot := func() map[string]state {
+			out := map[string]state{}
+			for _, conv := range convs {
+				page, err := w.mem.List(w.ctx, conv, store.Page{Limit: store.MaxPageLimit})
+				if err != nil {
+					t.Fatal(err)
+				}
+				log := w.log(conv)
+				for _, r := range page.Runs {
+					if !r.Interactive || r.Status.Final() {
+						continue
+					}
+					st := state{run: r, entries: len(log)}
+					for _, e := range log {
+						if e.RunID == r.ID && e.Kind == store.KindPrompt {
+							st.requests = len(w.model.requestsFor(e.Messages[0].Text()))
+						}
+					}
+					out[r.ID] = st
+				}
+			}
+			return out
+		}
+		before := snapshot()
+		_, _ = w.recovery(p).Recover(w.ctx)
+		after := snapshot()
+		for id, b := range before {
+			a, ok := after[id]
+			if !ok || a.run.Status != b.run.Status || a.run.Attempts != b.run.Attempts || a.entries != b.entries || a.requests != b.requests {
+				t.Errorf("seed %d: recovery touched interactive run %q: %+v → %+v", seed, id, b, a)
+			}
+		}
+	}
+
+	// drain reads x like a client, letting inline retries go ahead unless
+	// stop says to stop at that event.
+	drain := func(p *proc, x *runner.Execution, stop func(runner.Event) bool) error {
+		_, err := p.drain(x, func(ev runner.Event) bool {
+			if stop != nil && stop(ev) {
+				return true
+			}
+			if ev.Kind == runner.EventRetrying {
+				mix["inline retry"]++
+				w.advanceWhenWaiting(ev.Delay)
+			}
+			return false
+		})
+		return err
+	}
+
+	// settle brings the conversation's unfinished run, if any, to an end;
+	// unless final, it may leave an interrupted interactive run for the
+	// next message to replace.
+	settle := func(conv string, final bool) {
 		for range 50 {
 			run, err := w.mem.Unfinished(w.ctx, conv)
 			if errors.Is(err, store.ErrNotFound) {
@@ -53,6 +121,33 @@ func simulate(t *testing.T, seed uint64) map[string]int {
 			}
 			if err != nil {
 				t.Fatal(err)
+			}
+			if run.Interactive {
+				w.expire() // a dead process's lease
+				recover(w.process())
+				if !w.get(run.ID).Interrupted(w.clk.Now()) && run.Status == store.StatusRunning {
+					t.Fatalf("seed %d: interactive run %+v is not interrupted", seed, w.get(run.ID))
+				}
+				if !final && rng.IntN(2) == 0 {
+					mix["left for a new message"]++
+					return
+				}
+				mix["continue"]++
+				if run.Status == store.StatusFailed {
+					mix["continue a failed run"]++
+				}
+				p := w.process()
+				x, err := p.r.Resume(w.ctx, run.ID)
+				if err != nil {
+					t.Fatalf("seed %d: continue %q: %v", seed, run.ID, err)
+				}
+				if err := drain(p, x, nil); err != nil && !errors.Is(err, runner.ErrNotStarted) {
+					var re *runner.RunError
+					if !errors.As(err, &re) {
+						t.Fatalf("seed %d: continued run %q ended with %v", seed, run.ID, err)
+					}
+				}
+				continue
 			}
 			switch {
 			case run.Status == store.StatusFailed && !run.Retryable:
@@ -85,8 +180,7 @@ func simulate(t *testing.T, seed uint64) map[string]int {
 					n, landed := 1+rng.IntN(8), rng.IntN(2) == 0
 					p.store.crashAt(func(_ string, _, total int) (bool, bool) { return total == n, landed })
 				}
-				rc := w.recovery(p)
-				wg.Go(func() { _, _ = rc.Recover(w.ctx) })
+				wg.Go(func() { recover(p) })
 			}
 			wg.Wait()
 		}
@@ -97,7 +191,11 @@ func simulate(t *testing.T, seed uint64) map[string]int {
 	n := 2 + rng.IntN(5)
 	for i := range n {
 		conv := convs[rng.IntN(len(convs))]
-		settle(conv)
+		settle(conv, false)
+		replaces := ""
+		if u, err := w.mem.Unfinished(w.ctx, conv); err == nil {
+			replaces = u.ID
+		}
 		name := fmt.Sprintf("%s-%d", conv, i)
 		tools := rng.IntN(4)
 		prompt := w.model.on(name, tools)
@@ -115,8 +213,20 @@ func simulate(t *testing.T, seed uint64) map[string]int {
 			mix["flush every set"]++
 			opts = append(opts, runner.FlushEvery(1+rng.IntN(3)))
 		}
+		interactive := rng.IntN(2) == 0
+		if interactive {
+			mix["interactive"]++
+			opts = append(opts, runner.Interactive())
+			if rng.IntN(6) == 0 {
+				mix["interactive failed for good"]++
+				w.model.failing(name, rng.IntN(tools+1), 3, llm.ErrOverloaded)
+			}
+		}
 		p := w.process()
-		mode := rng.IntN(4)
+		mode := rng.IntN(5)
+		if mode == 4 && !interactive {
+			mode = 0
+		}
 		if mode == 2 {
 			at, landed := 1+rng.IntN(10), rng.IntN(2) == 0
 			mix[fmt.Sprint("dies, landed ", landed)]++
@@ -135,12 +245,41 @@ func simulate(t *testing.T, seed uint64) map[string]int {
 			mix["dies before running"]++
 			continue
 		}
+		if replaces != "" {
+			mix["new message replaces"]++
+			if r := w.get(replaces); r.Status != store.StatusCanceled {
+				t.Fatalf("seed %d: new message started %q, but run %+v was not canceled", seed, x.Run.ID, r)
+			}
+		}
+		if interactive && mode == 2 {
+			mix["interactive dies"]++
+		}
 		var stop func(runner.Event) bool
 		if mode == 1 || mode == 3 {
 			k := rng.IntN(2 * (tools + 2))
 			stop = func(runner.Event) bool { k--; return k < 0 }
 		}
-		_, err = p.drain(x, stop)
+		if mode == 4 {
+			// The user presses stop while the model works on turn k.
+			held := w.holdAt(prompt, rng.IntN(tools+1))
+			done := make(chan error, 1)
+			go func() { done <- drain(p, x, nil) }()
+			select {
+			case <-held:
+				mix["interrupt"]++
+				if _, err := p.r.Interrupt(w.ctx, x.Run.ID); err != nil {
+					t.Fatalf("seed %d: Interrupt: %v", seed, err)
+				}
+				if err := <-done; !errors.Is(err, runner.ErrInterrupted) {
+					t.Fatalf("seed %d: interrupted run ended with %v", seed, err)
+				}
+			case err := <-done:
+				_ = err // ended before that turn (failed for good, say)
+			}
+			w.model.gate = nil
+			continue
+		}
+		err = drain(p, x, stop)
 		switch {
 		case err == nil && w.get(x.Run.ID).Status == store.StatusCompleted:
 			mix["completed at once"]++
@@ -152,7 +291,17 @@ func simulate(t *testing.T, seed uint64) map[string]int {
 		}
 	}
 	for _, conv := range convs {
-		settle(conv)
+		settle(conv, true)
+		// A process that died replacing a run may have canceled it without
+		// its marker: the next message appends it.
+		if tr := w.transcript(conv); len(tr) > 0 && tr[len(tr)-1].Role == llm.RoleUser {
+			mix["marker by the next run"]++
+			prompt := w.model.on(conv+"-last", 0)
+			scripts[prompt] = 0
+			if _, err := w.process().run(conv, prompt); err != nil {
+				t.Fatalf("seed %d: last message: %v", seed, err)
+			}
+		}
 	}
 
 	// The restatement: what the script answers, turn by turn.
@@ -266,6 +415,9 @@ func TestSimulation(t *testing.T) {
 		"dies, landed true", "dies, landed false", "retry", "retryable failure",
 		"fatal failure", "fatal failure canceled", "two replicas", "recovery dies",
 		"read-only tools", "flush every set", "dies writing a batch",
+		"interactive", "interactive dies", "interrupt", "continue", "continue a failed run",
+		"left for a new message", "new message replaces", "inline retry", "interactive failed for good",
+		"marker by the next run",
 	} {
 		if mix[k] == 0 {
 			missing = append(missing, k)

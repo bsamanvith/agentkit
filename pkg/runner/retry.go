@@ -6,7 +6,8 @@ import (
 )
 
 // RetryPolicy says how a run that fails with a transient model error
-// ([llm.IsRetryable]) is tried again. Other errors are never retried
+// ([llm.IsRetryable]) is tried again: a background run by the recovery loop
+// ([WithRetry]), an interactive one inline ([WithInteractiveRetry]). Other errors are never retried
 // automatically: [harness.ErrBudgetExceeded], [harness.ErrRefused],
 // [harness.ErrMaxTokens], [flow.ErrShapeChanged], invalid input, and, until
 // compaction exists (T031), [llm.ErrContextTooLong].
@@ -20,6 +21,12 @@ type RetryPolicy struct {
 	MaxAttempts int
 	BaseDelay   time.Duration
 	MaxDelay    time.Duration
+}
+
+// DefaultInteractiveRetryPolicy is 3 attempts, from 1s up to 8s: a user
+// waits through them ([WithInteractiveRetry]).
+func DefaultInteractiveRetryPolicy() RetryPolicy {
+	return RetryPolicy{MaxAttempts: 3, BaseDelay: time.Second, MaxDelay: 8 * time.Second}
 }
 
 // DefaultRetryPolicy is 5 attempts, from 2s up to 5 minutes.

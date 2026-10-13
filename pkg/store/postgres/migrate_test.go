@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/flow"
@@ -58,8 +59,8 @@ func TestConcurrentOpensMigrateOnce(t *testing.T) {
 	if t.Failed() {
 		return
 	}
-	if got := migrationRows(t, u); got != "1,2,3,4" {
-		t.Errorf("schema_migrations holds versions %q, want each of 1,2,3,4 once", got)
+	if got := migrationRows(t, u); got != "1,2,3,4,5" {
+		t.Errorf("schema_migrations holds versions %q, want each of 1,2,3,4,5 once", got)
 	}
 	ctx := tenantCtx(t, "acme")
 	if _, err := stores[0].Create(ctx, "r", "c"); err != nil {
@@ -90,8 +91,8 @@ func TestOpenUpgradesAnOlderSchema(t *testing.T) {
 	old.Close()
 
 	s := openURL(t, u)
-	if got := migrationRows(t, u); got != "1,2,3,4" {
-		t.Errorf("schema_migrations holds versions %q after the upgrade, want 1,2,3,4", got)
+	if got := migrationRows(t, u); got != "1,2,3,4,5" {
+		t.Errorf("schema_migrations holds versions %q after the upgrade, want 1,2,3,4,5", got)
 	}
 	page, err := s.History(ctx, "c", store.Page{})
 	if err != nil || len(page.Entries) != 2 || page.Entries[1].Messages[0].Text() != "two" {
@@ -108,6 +109,37 @@ func TestOpenUpgradesAnOlderSchema(t *testing.T) {
 	}
 }
 
+// Migration 0005 (T100) makes the runs a binary from before it wrote
+// background runs: they read back as not interactive, are listed as
+// resumable as before, and can be claimed.
+func TestRunsFromBeforeInteractiveStayBackgroundRuns(t *testing.T) {
+	t.Parallel()
+	ctx := tenantCtx(t, "acme")
+	u := schemaURL(t)
+	old := openURL(t, u, postgres.WithMigrations(4))
+	old.Close()
+	// The runs an older binary would have written: one interrupted, one
+	// failed and due. This binary's queries need the new column, so they
+	// are written as rows.
+	exec(t, u, `INSERT INTO runs (tenant, id, conversation, status, created_at) VALUES ('acme', 'interrupted', 'c1', 'running', 1)`)
+	exec(t, u, `INSERT INTO runs (tenant, id, conversation, status, retryable, attempts, error, created_at)
+		VALUES ('acme', 'due', 'c2', 'failed', true, 1, 'overloaded', 2)`)
+
+	s := openURL(t, u)
+	runs, err := s.ListResumable(ctx, time.Unix(0, 3), 0)
+	if err != nil || len(runs) != 2 || runs[0].ID != "interrupted" || runs[1].ID != "due" {
+		t.Fatalf("ListResumable after the upgrade = %+v, %v; want both old runs", runs, err)
+	}
+	for _, r := range runs {
+		if r.Interactive {
+			t.Errorf("old run %q reads back as interactive", r.ID)
+		}
+		if _, err := s.Claim(ctx, r.ID, "worker", time.Minute); err != nil {
+			t.Errorf("Claim of old run %q: %v", r.ID, err)
+		}
+	}
+}
+
 // A binary refuses a database that a newer binary has migrated past what it
 // knows, whether it would migrate or only check, and leaves it as it was.
 func TestOpenRefusesANewerSchema(t *testing.T) {
@@ -119,7 +151,7 @@ func TestOpenRefusesANewerSchema(t *testing.T) {
 		t.Fatalf("Append: %v", err)
 	}
 	// A migration from the future, as a newer binary would have recorded it.
-	exec(t, u, `INSERT INTO schema_migrations (version, name, applied_at) VALUES (5, 'future', 0)`)
+	exec(t, u, `INSERT INTO schema_migrations (version, name, applied_at) VALUES (6, 'future', 0)`)
 
 	for _, opts := range [][]postgres.Option{
 		nil,
@@ -131,18 +163,18 @@ func TestOpenRefusesANewerSchema(t *testing.T) {
 			if got != nil {
 				got.Close()
 			}
-			t.Fatalf("Open(%d options) of a schema at version 5 = %v, want ErrSchemaTooNew", len(opts), err)
+			t.Fatalf("Open(%d options) of a schema at version 6 = %v, want ErrSchemaTooNew", len(opts), err)
 		}
 		if !strings.Contains(err.Error(), "knows up to") {
 			t.Errorf("error %q does not say which versions disagree", err)
 		}
 	}
 	if err := postgres.Migrate(context.Background(), u); !errors.Is(err, postgres.ErrSchemaTooNew) {
-		t.Errorf("Migrate of a schema at version 5 = %v, want ErrSchemaTooNew", err)
+		t.Errorf("Migrate of a schema at version 6 = %v, want ErrSchemaTooNew", err)
 	}
 
-	if got := migrationRows(t, u); got != "1,2,3,4,5" {
-		t.Errorf("schema_migrations holds versions %q after the refusals, want 1,2,3,4,5", got)
+	if got := migrationRows(t, u); got != "1,2,3,4,5,6" {
+		t.Errorf("schema_migrations holds versions %q after the refusals, want 1,2,3,4,5,6", got)
 	}
 	page, err := s.History(ctx, "c", store.Page{})
 	if err != nil || len(page.Entries) != 1 {

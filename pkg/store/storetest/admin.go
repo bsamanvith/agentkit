@@ -342,6 +342,23 @@ func RunAdmin(t *testing.T, newStore func(t *testing.T, clk clock.Clock) (store.
 		}
 	})
 
+	// Interactive runs of every tenant are left out, whatever their lease;
+	// background runs beside them are listed.
+	t.Run("SkipsInteractiveRuns", func(t *testing.T) {
+		t.Parallel()
+		r := newAdminRig(t, newStore)
+		for _, ctx := range []context.Context{r.ctx(tenantA), r.ctx(tenantB)} {
+			r.mustCreate(ctx, "chat", "c1", store.Interactive())
+			r.mustCreate(ctx, "chat-failed", "c2", store.Interactive())
+			r.mustMove(ctx, "chat-failed", store.StatusRunning, store.StatusFailed, store.Details{Error: "boom", Retryable: true})
+			r.mustCreate(ctx, "job", "c3")
+		}
+		got, err := r.admin.ListResumableAll(context.Background(), r.clk.Now(), 0)
+		if want := []string{tenantA + "/job", tenantB + "/job"}; err != nil || !slices.Equal(tenantRunIDs(got), want) {
+			t.Errorf("ListResumableAll = %v, %v; want %v", tenantRunIDs(got), err, want)
+		}
+	})
+
 	t.Run("Simulation", func(t *testing.T) {
 		t.Parallel()
 		for seed := range uint64(24) {

@@ -14,7 +14,8 @@ import (
 )
 
 // SimulateRuns runs one seeded simulation against a fresh store from
-// newStore: runs created (and retried) in a few conversations of two tenants,
+// newStore: runs created (and retried), interactive or background, in a few
+// conversations of two tenants,
 // claims, renewals and releases by several owners, transitions from the right
 // and the wrong status with valid and invalid details, clock moves, and
 // ListResumable and Unfinished reads. Every result, and the stored lease
@@ -67,12 +68,13 @@ type runSim struct {
 }
 
 type simRun struct {
-	conv    string
-	created time.Time
-	status  store.Status
-	lease   store.Lease
-	retry   bool
-	next    time.Time
+	conv        string
+	interactive bool
+	created     time.Time
+	status      store.Status
+	lease       store.Lease
+	retry       bool
+	next        time.Time
 }
 
 // run is the model of run id as a [store.Run], with the fields the resumable
@@ -86,6 +88,7 @@ func (m *simRun) run(id string) store.Run {
 		NextAttemptAt:  m.next,
 		CreatedAt:      m.created,
 		Lease:          m.lease,
+		Interactive:    m.interactive,
 	}
 }
 
@@ -147,11 +150,23 @@ func (s *runSim) create(ctx context.Context, tenant string) {
 	case isBusy:
 		want = store.ErrUnfinished
 	}
-	if _, err := s.r.create(ctx, id, conv); !isErr(err, want) {
+	var opts []store.CreateOption
+	interactive := s.rng.IntN(3) == 0
+	if interactive {
+		opts = append(opts, store.Interactive())
+	}
+	run, err := s.r.create(ctx, id, conv, opts...)
+	if !isErr(err, want) {
 		s.fatalf("Create %s/%s in %s (exists %v, busy with %q) = %v, want %v", tenant, id, conv, exists, busy, err, want)
 	}
+	switch {
+	case exists && want == nil && run.Interactive != m.interactive:
+		s.fatalf("Create again of %s/%s (interactive %v) = interactive %v, want it as first created", tenant, id, interactive, run.Interactive)
+	case !exists && want == nil && run.Interactive != interactive:
+		s.fatalf("Create %s/%s interactive %v = interactive %v", tenant, id, interactive, run.Interactive)
+	}
 	if want == nil && !exists {
-		s.runs[logKey{tenant, id}] = &simRun{conv: conv, created: s.r.clk.Now(), status: store.StatusRunning}
+		s.runs[logKey{tenant, id}] = &simRun{conv: conv, created: s.r.clk.Now(), status: store.StatusRunning, interactive: interactive}
 		s.busy[logKey{tenant, conv}] = id
 		s.order[tenant] = append(s.order[tenant], id)
 	}
@@ -284,6 +299,12 @@ func (s *runSim) checkReads(ctx context.Context, tenant string) {
 	}
 	if s.r.admin != nil {
 		s.checkAdmin(ctx, now)
+	}
+	for _, id := range s.order[tenant] {
+		m := s.runs[logKey{tenant, id}]
+		if got, want := s.r.mustGet(ctx, id).Interrupted(now), interrupted(m.run(id), now); got != want {
+			s.fatalf("%s/%s (interactive %v, %s, lease %+v) Interrupted at %v = %v, want %v", tenant, id, m.interactive, m.status, m.lease, now, got, want)
+		}
 	}
 	for c := range 3 {
 		conv := fmt.Sprintf("c%d", c)

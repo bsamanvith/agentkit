@@ -482,6 +482,74 @@ func RunRunStore(t *testing.T, newStore func(t *testing.T, clk clock.Clock) stor
 		}
 	})
 
+	// An interactive run is never resumable, whatever its lease and status,
+	// and Interrupted reports it once nobody holds its lease; a background
+	// run beside it is listed as before. A retried Create keeps the run as
+	// first created.
+	t.Run("InteractiveRunsAreNeverResumable", func(t *testing.T) {
+		t.Parallel()
+		r := newRunRig(t, newStore)
+		ctx := r.ctx(tenantA)
+		const ttl = 10 * time.Second
+		claim := func(id string) {
+			t.Helper()
+			if _, err := r.s.Claim(ctx, id, "worker", ttl); err != nil {
+				t.Fatalf("Claim %s: %v", id, err)
+			}
+		}
+		for _, kind := range []string{"chat", "job"} {
+			var opts []store.CreateOption
+			if kind == "chat" {
+				opts = append(opts, store.Interactive())
+			}
+			id := func(s string) string { return kind + "-" + s }
+			r.clk.Advance(time.Millisecond)
+			if run := r.mustCreate(ctx, id("unclaimed"), id("unclaimed"), opts...); run.Interactive != (kind == "chat") {
+				t.Fatalf("Create %s = %+v, want interactive %v", id("unclaimed"), run, kind == "chat")
+			}
+			r.mustCreate(ctx, id("live"), id("live"), opts...)
+			claim(id("live"))
+			r.mustCreate(ctx, id("expired"), id("expired"), opts...)
+			claim(id("expired"))
+			r.mustCreate(ctx, id("released"), id("released"), opts...)
+			claim(id("released"))
+			if err := r.s.Release(ctx, id("released"), "worker"); err != nil {
+				t.Fatalf("Release: %v", err)
+			}
+			r.mustCreate(ctx, id("failed"), id("failed"), opts...)
+			r.mustMove(ctx, id("failed"), store.StatusRunning, store.StatusFailed, store.Details{Error: "boom", Retryable: true})
+		}
+		// A retry with the other kind returns the run as first created.
+		if run, err := r.create(ctx, "job-unclaimed", "job-unclaimed", store.Interactive()); err != nil || run.Interactive {
+			t.Errorf("Create again of a background run, as interactive = %+v, %v; want it as stored", run, err)
+		}
+		if run, err := r.create(ctx, "chat-unclaimed", "chat-unclaimed"); err != nil || !run.Interactive {
+			t.Errorf("Create again of an interactive run, as background = %+v, %v; want it as stored", run, err)
+		}
+
+		before := r.clk.Now()
+		r.clk.Advance(ttl) // every lease but live's has expired; live's was claimed first
+		claim("chat-live")
+		claim("job-live")
+		now := r.clk.Now()
+		got, err := r.s.ListResumable(ctx, now, 0)
+		// Created at one time, so ordered by ID.
+		if want := []string{"job-expired", "job-failed", "job-released", "job-unclaimed"}; err != nil || !slices.Equal(runIDs(got), want) {
+			t.Errorf("ListResumable = %v, %v; want only the background runs %v", runIDs(got), err, want)
+		}
+		for id, want := range map[string]bool{
+			"chat-unclaimed": true, "chat-live": false, "chat-expired": true, "chat-released": true, "chat-failed": false,
+			"job-unclaimed": false, "job-released": false,
+		} {
+			if got := r.mustGet(ctx, id).Interrupted(now); got != want {
+				t.Errorf("%s Interrupted = %v, want %v", id, got, want)
+			}
+		}
+		if r.mustGet(ctx, "chat-expired").Interrupted(before) {
+			t.Errorf("chat-expired is interrupted while its lease is held")
+		}
+	})
+
 	// A failed run marked retryable with no next attempt time is due at
 	// once: the zero NextAttemptAt is not after any now.
 	t.Run("RetryableFailureWithNoNextAttemptIsDueAtOnce", func(t *testing.T) {

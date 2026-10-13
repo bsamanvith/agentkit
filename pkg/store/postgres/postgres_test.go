@@ -204,8 +204,8 @@ func (p *pair) Context(ctx context.Context, id string) (store.ContextView, error
 	return p.next().Context(ctx, id)
 }
 
-func (p *pair) Create(ctx context.Context, id, conversationID string) (store.Run, error) {
-	return p.next().Create(ctx, id, conversationID)
+func (p *pair) Create(ctx context.Context, id, conversationID string, opts ...store.CreateOption) (store.Run, error) {
+	return p.next().Create(ctx, id, conversationID, opts...)
 }
 
 func (p *pair) Get(ctx context.Context, id string) (store.Run, error) { return p.next().Get(ctx, id) }

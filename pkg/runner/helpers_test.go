@@ -708,8 +708,8 @@ func (c *crashStore) Context(ctx context.Context, id string) (store.ContextView,
 	return call(c, "Context", func() (store.ContextView, error) { return c.Store.Context(ctx, id) })
 }
 
-func (c *crashStore) Create(ctx context.Context, id, conv string) (store.Run, error) {
-	return call(c, "Create", func() (store.Run, error) { return c.Store.Create(ctx, id, conv) })
+func (c *crashStore) Create(ctx context.Context, id, conv string, opts ...store.CreateOption) (store.Run, error) {
+	return call(c, "Create", func() (store.Run, error) { return c.Store.Create(ctx, id, conv, opts...) })
 }
 
 func (c *crashStore) Get(ctx context.Context, id string) (store.Run, error) {

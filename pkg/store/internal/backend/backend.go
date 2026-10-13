@@ -220,9 +220,13 @@ func Held(l store.Lease, now time.Time) bool {
 	return l.Owner != "" && now.Before(l.Expires)
 }
 
-// Resumable reports whether r should continue at now: running with no lease
-// held, or failed, retryable and due.
+// Resumable reports whether r should continue at now: a background run
+// running with no lease held, or failed, retryable and due. An interactive run
+// never is.
 func Resumable(r store.Run, now time.Time) bool {
+	if r.Interactive {
+		return false
+	}
 	switch r.Status {
 	case store.StatusRunning:
 		return !Held(r.Lease, now)

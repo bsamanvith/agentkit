@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/flow"
 	"github.com/bsamanvith/agentkit/pkg/harness"
@@ -33,8 +34,25 @@ func (e leaseLost) Unwrap() error { return e.err }
 type RunOption func(*runConfig)
 
 type runConfig struct {
-	flush int
-	err   error
+	flush       int
+	interactive bool
+	err         error
+}
+
+// Interactive starts the run as an interactive chat run: one with a user on
+// the other end ([store.Interactive], stored with the run, so every resume
+// keeps it). Such a run stops with its user and is never recovered in the
+// background:
+//
+//   - when its execution stops ([Runner.Interrupt], the consumer stops
+//     reading, ctx ends, [Runner.Shutdown]) or its process dies, it is
+//     interrupted ([store.Run.Interrupted]), and the recovery loop leaves it
+//     alone; [Runner.Resume] continues it;
+//   - a new message on its conversation ([Runner.Run]) cancels it, if
+//     nobody is running it, and starts the new run;
+//   - a retryable model failure is retried inline ([WithInteractiveRetry]).
+func Interactive() RunOption {
+	return func(c *runConfig) { c.interactive = true }
 }
 
 // FlushEvery sets how many turns the run keeps before it stores them in one
@@ -52,7 +70,11 @@ func FlushEvery(n int) RunOption {
 // Run starts a chat run: msg, a user message, on the conversation, run by the
 // conversation's agent. It creates the run and claims its lease before it
 // returns; iterate the execution's events to run it. A conversation with an
-// unfinished run gives an [*UnfinishedError].
+// unfinished run gives an [*UnfinishedError], unless that run is interactive
+// and nobody runs it (interrupted, or failed): Run then cancels it, as
+// [Runner.Cancel] does (with the marker reply if it never answered), and
+// starts the new run in its place. Of two messages racing to replace it, one
+// starts a run and the other gets the UnfinishedError.
 func (r *Runner) Run(ctx context.Context, conversationID string, msg llm.Message, opts ...RunOption) (*Execution, error) {
 	var c runConfig
 	for _, opt := range opts {
@@ -75,7 +97,11 @@ func (r *Runner) Run(ctx context.Context, conversationID string, msg llm.Message
 	if err != nil {
 		return nil, fmt.Errorf("agent of conversation %q: %w", conversationID, err)
 	}
-	x, err := r.start(ctx, tenant, conversationID)
+	var create []store.CreateOption
+	if c.interactive {
+		create = append(create, store.Interactive())
+	}
+	x, err := r.start(ctx, tenant, conversationID, true, create...)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +138,7 @@ func (r *Runner) RunFlow(ctx context.Context, conversationID string, input *flow
 	if err != nil {
 		return nil, err
 	}
-	x, err := r.start(ctx, tenant, conversationID)
+	x, err := r.start(ctx, tenant, conversationID, false)
 	if err != nil {
 		return nil, err
 	}
@@ -133,27 +159,62 @@ func (r *Runner) RunFlow(ctx context.Context, conversationID string, input *flow
 	}), nil
 }
 
-// start creates a run on the conversation and claims it.
-func (r *Runner) start(ctx context.Context, tenant tenancy.Tenant, conv string) (*exec, error) {
+// start creates a run on the conversation and claims it. For a chat run
+// (chat), an interactive unfinished run that nobody runs is canceled first.
+func (r *Runner) start(ctx context.Context, tenant tenancy.Tenant, conv string, chat bool, opts ...store.CreateOption) (*exec, error) {
 	if r.isClosed() {
 		return nil, ErrShutdown
 	}
-	run, err := r.store.Create(ctx, r.newID(), conv)
-	if errors.Is(err, store.ErrUnfinished) {
-		u, uerr := r.store.Unfinished(ctx, conv)
-		if uerr != nil {
-			return nil, fmt.Errorf("%w: %w", ErrRunUnfinished, uerr)
+	for replaced := false; ; replaced = true {
+		run, err := r.store.Create(ctx, r.newID(), conv, opts...)
+		if errors.Is(err, store.ErrUnfinished) {
+			u, uerr := r.store.Unfinished(ctx, conv)
+			if uerr != nil {
+				return nil, fmt.Errorf("%w: %w", ErrRunUnfinished, uerr)
+			}
+			if chat && !replaced && abandoned(u, r.clk.Now()) {
+				// Canceled by this call (if only its marker failed, the new
+				// run appends it) or by another one racing it: either way
+				// the conversation may take a run now. ErrLeased means
+				// someone continued it.
+				c, cerr := r.cancelRun(ctx, tenant, u.ID)
+				if cerr == nil || errors.Is(cerr, store.ErrFinal) || c.Status == store.StatusCanceled {
+					continue
+				}
+				if !errors.Is(cerr, store.ErrLeased) {
+					return nil, fmt.Errorf("%w: run %q could not be canceled: %w", ErrRunUnfinished, u.ID, cerr)
+				}
+			}
+			return nil, &UnfinishedError{ConversationID: conv, RunID: u.ID}
 		}
-		return nil, &UnfinishedError{ConversationID: conv, RunID: u.ID}
+		if err != nil {
+			return nil, fmt.Errorf("create run: %w", err)
+		}
+		x := &exec{r: r, tenant: tenant, run: run, owner: r.nextOwner()}
+		if x.run.Lease, err = r.store.Claim(ctx, run.ID, x.owner, r.ttl); err != nil {
+			if errors.Is(err, store.ErrFinal) {
+				// Canceled before it was claimed, by another new message
+				// that took its place.
+				if u, uerr := r.store.Unfinished(ctx, conv); uerr == nil {
+					return nil, &UnfinishedError{ConversationID: conv, RunID: u.ID}
+				}
+			}
+			return nil, fmt.Errorf("run %q: claim: %w", run.ID, err)
+		}
+		return x, nil
 	}
-	if err != nil {
-		return nil, fmt.Errorf("create run: %w", err)
-	}
-	x := &exec{r: r, tenant: tenant, run: run, owner: r.nextOwner()}
-	if x.run.Lease, err = r.store.Claim(ctx, run.ID, x.owner, r.ttl); err != nil {
-		return nil, fmt.Errorf("run %q: claim: %w", run.ID, err)
-	}
-	return x, nil
+}
+
+// abandoned reports whether a new message may cancel run: an interactive run
+// that nobody runs at now, interrupted or failed.
+func abandoned(run store.Run, now time.Time) bool {
+	return run.Interactive && !held(run.Lease, now) &&
+		(run.Status == store.StatusRunning || run.Status == store.StatusFailed)
+}
+
+// held reports whether l is held at now.
+func held(l store.Lease, now time.Time) bool {
+	return l.Owner != "" && now.Before(l.Expires)
 }
 
 // ResumeOption configures [Runner.Resume].
@@ -345,14 +406,62 @@ func (r *Runner) Cancel(ctx context.Context, runID string) (store.Run, error) {
 	if err != nil {
 		return store.Run{}, err
 	}
-	if l := r.liveRun(tenant, runID); l != nil {
-		l.cancel(ErrCanceled)
-		select {
-		case <-l.done:
-		case <-ctx.Done():
-			return store.Run{}, ctx.Err()
-		}
+	if err := r.stopLive(ctx, tenant, runID, ErrCanceled); err != nil {
+		return store.Run{}, err
 	}
+	return r.cancelRun(ctx, tenant, runID)
+}
+
+// Interrupt stops the run's execution in this process, which ends with
+// [ErrInterrupted]: like a consumer that stops reading, it stores the turns
+// it kept and releases its lease, and the run stays running. An interactive
+// run is then interrupted ([store.Run.Interrupted]) until [Runner.Resume]
+// continues it or a new message replaces it; a background run is left to the
+// recovery loop. It is the stop button of a chat.
+//
+// A run nobody holds (interrupted already, failed, suspended or final) is
+// left as it is. A run whose lease another process holds gives
+// [store.ErrLeased]: the command must reach that process (as for Cancel).
+// So does a run of this runner whose execution has not been iterated yet. It
+// returns the run as stored.
+func (r *Runner) Interrupt(ctx context.Context, runID string) (store.Run, error) {
+	tenant, err := tenancy.Require(ctx)
+	if err != nil {
+		return store.Run{}, err
+	}
+	if err := r.stopLive(ctx, tenant, runID, ErrInterrupted); err != nil {
+		return store.Run{}, err
+	}
+	run, err := r.store.Get(ctx, runID)
+	if err != nil {
+		return store.Run{}, fmt.Errorf("run %q: %w", runID, err)
+	}
+	if !run.Status.Final() && held(run.Lease, r.clk.Now()) {
+		return run, fmt.Errorf("run %q is held by %q: %w", runID, run.Lease.Owner, store.ErrLeased)
+	}
+	return run, nil
+}
+
+// stopLive stops the execution of runID in this process, if there is one,
+// with cause, and waits until it has stopped.
+func (r *Runner) stopLive(ctx context.Context, tenant tenancy.Tenant, runID string, cause error) error {
+	l := r.liveRun(tenant, runID)
+	if l == nil {
+		return nil
+	}
+	l.cancel(cause)
+	select {
+	case <-l.done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// cancelRun makes a run nobody runs canceled, appending the marker reply if
+// its conversation ends on a user message.
+func (r *Runner) cancelRun(ctx context.Context, tenant tenancy.Tenant, runID string) (store.Run, error) {
+	var err error
 	x := &exec{r: r, tenant: tenant, owner: r.nextOwner()}
 	if _, err := r.store.Claim(ctx, runID, x.owner, r.ttl); err != nil {
 		return store.Run{}, fmt.Errorf("run %q: claim: %w", runID, err)
@@ -564,7 +673,8 @@ func (x *exec) finish(ctx, runCtx context.Context, out outcome) (Event, error) {
 		return Event{}, fmt.Errorf("run %q: %w", id, out.err)
 	}
 	d := store.Details{Usage: out.usage, Error: out.err.Error()}
-	if n := x.run.Attempts + 1; llm.IsRetryable(out.err) && n < x.r.retry.MaxAttempts {
+	// An interactive run was retried inline: it fails for good.
+	if n := x.run.Attempts + 1; !x.run.Interactive && llm.IsRetryable(out.err) && n < x.r.retry.MaxAttempts {
 		d.Retryable = true
 		d.NextAttemptAt = x.r.clk.Now().Add(x.r.retry.delay(n, x.r.jitter))
 	}
@@ -669,20 +779,59 @@ func (x *exec) chat(ctx context.Context, agent Agent, msg *llm.Message, flush in
 	if flush == 0 {
 		t.every = r.flush
 	}
-	out := t.run(ctx, agent, in, flush)
-	if t.failed {
-		return out
+	var spent llm.Usage
+	for attempt := 1; ; attempt++ {
+		out := t.run(ctx, agent, in, flush)
+		if t.failed {
+			return out
+		}
+		// The turns the run did are stored before how it ended, and when it
+		// was interrupted; but not after its lease was lost, when the run's
+		// next execution may be writing the same positions.
+		if _, lost := errors.AsType[leaseLost](context.Cause(ctx)); lost {
+			return out
+		}
+		if err := t.flush(context.WithoutCancel(ctx)); err != nil {
+			return outcome{kind: outAbort, err: err}
+		}
+		spent = addUsage(spent, out.usage)
+		out.usage = spent
+		if out.kind != outFailed || !x.run.Interactive || !llm.IsRetryable(out.err) ||
+			attempt >= r.iretry.MaxAttempts || ctx.Err() != nil {
+			return out
+		}
+		// Retried inline, while the user waits: nothing is written but the
+		// turns. An interrupt ends the wait, and finish sees why.
+		delay := r.iretry.delay(attempt, r.jitter)
+		if !emit(Event{Kind: EventRetrying, Attempt: attempt + 1, Delay: delay, Err: out.err}) || !r.wait(ctx, delay) {
+			return out
+		}
+		if !t.v.endsOnUser() {
+			// The model had answered: only the run's end failed.
+			return outcome{kind: outCompleted, usage: spent}
+		}
+		in = harness.Input{Transcript: t.v.tr.Clone()}
 	}
-	// The turns the run did are stored before how it ended, and when it was
-	// interrupted; but not after its lease was lost, when the run's next
-	// execution may be writing the same positions.
-	if _, lost := errors.AsType[leaseLost](context.Cause(ctx)); lost {
-		return out
+}
+
+// wait waits d on the runner's clock. It reports false if ctx ended first.
+func (r *Runner) wait(ctx context.Context, d time.Duration) bool {
+	t := r.clk.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C():
+		return true
+	case <-ctx.Done():
+		return false
 	}
-	if err := t.flush(context.WithoutCancel(ctx)); err != nil {
-		return outcome{kind: outAbort, err: err}
-	}
-	return out
+}
+
+func addUsage(a, b llm.Usage) llm.Usage {
+	a.InputTokens += b.InputTokens
+	a.OutputTokens += b.OutputTokens
+	a.CacheReadTokens += b.CacheReadTokens
+	a.CacheWriteTokens += b.CacheWriteTokens
+	return a
 }
 
 // turns stores a chat execution's entries: the prompt at once, the turns in

@@ -52,6 +52,10 @@ var (
 	// ErrCanceled ends the events of an execution stopped by
 	// [Runner.Cancel].
 	ErrCanceled = errors.New("run canceled")
+	// ErrInterrupted ends the events of an execution stopped by
+	// [Runner.Interrupt]. The run stays running with its lease released: an
+	// interactive run is then interrupted ([store.Run.Interrupted]).
+	ErrInterrupted = errors.New("run interrupted")
 	// ErrIterated means [Execution.Events] was iterated a second time.
 	ErrIterated = errors.New("execution already iterated")
 	// ErrShutdown ends the events of an execution stopped by
@@ -76,7 +80,8 @@ func (e *UnfinishedError) Unwrap() error { return ErrRunUnfinished }
 
 // RunError is how an execution ends when its run failed: the run as stored
 // after the failure, and the cause. Retryable and NextAttemptAt say whether,
-// and from when, the recovery loop tries again. It unwraps to the cause, so
+// and from when, the recovery loop tries again; an interactive run is never
+// retryable, having been retried inline ([WithInteractiveRetry]). It unwraps to the cause, so
 // errors.Is matches the model's, the harness's or flow's sentinels.
 type RunError struct {
 	Run store.Run
@@ -146,6 +151,12 @@ const (
 	// be stored, and its position may be taken by another entry when the run
 	// is resumed.
 	EventSaved
+	// EventRetrying says that an interactive chat run's model failed
+	// retryably (Event.Err) and that the run tries again after Event.Delay,
+	// by the runner's clock, as attempt Event.Attempt (2 for the first
+	// retry). The turns done so far are stored first. See
+	// [WithInteractiveRetry].
+	EventRetrying
 )
 
 func (k EventKind) String() string {
@@ -158,6 +169,8 @@ func (k EventKind) String() string {
 		return "done"
 	case EventSaved:
 		return "saved"
+	case EventRetrying:
+		return "retrying"
 	}
 	return "EventKind(" + strconv.Itoa(int(k)) + ")"
 }
@@ -174,6 +187,11 @@ type Event struct {
 	Run    store.Run
 	Result *harness.Result
 	State  *flow.State
+
+	// Attempt, Delay and Err are set on [EventRetrying].
+	Attempt int
+	Delay   time.Duration
+	Err     error
 }
 
 // Execution is a run that has been created or claimed and is ready to run.
@@ -191,8 +209,10 @@ type Execution struct {
 // [EventDone] when the run completed, suspended or was rejected, and with an
 // error otherwise: a [*RunError] when the run failed (and was stored so), the
 // context's error when ctx was cancelled or the consumer stopped (the run stays
-// running, with its lease released, for the recovery loop), [ErrCanceled] when
-// [Runner.Cancel] stopped it, [ErrShutdown] when [Runner.Shutdown] did, or a
+// running, with its lease released, for the recovery loop or, for an
+// interactive run, its user), [ErrCanceled] when [Runner.Cancel] stopped it,
+// [ErrInterrupted] when [Runner.Interrupt] did, [ErrShutdown] when
+// [Runner.Shutdown] did, or a
 // store error when the run could not be written (another writer, a lost
 // lease). It can be iterated once.
 func (x *Execution) Events() iter.Seq2[Event, error] {
@@ -226,6 +246,7 @@ type Runner struct {
 	owner  string
 	ttl    time.Duration
 	retry  RetryPolicy
+	iretry RetryPolicy
 	newID  func() string
 	jitter func(n int64) int64
 	cache  *cache
@@ -253,6 +274,7 @@ type config struct {
 	owner     string
 	ttl       time.Duration
 	retry     RetryPolicy
+	iretry    RetryPolicy
 	newID     func() string
 	rnd       *mrand.Rand
 	cacheSize int
@@ -319,6 +341,25 @@ func WithRetry(p RetryPolicy) Option {
 	}
 }
 
+// WithInteractiveRetry sets how an interactive chat run ([Interactive]) is
+// retried after a model failure that [llm.IsRetryable] accepts (default
+// [DefaultInteractiveRetryPolicy]). The run is retried inline, while its user
+// waits: the execution stores the turns done so far, emits [EventRetrying],
+// waits the policy's delay on the runner's clock, and runs the agent again
+// from its stored transcript, under the same lease. Nothing else is written
+// between attempts. Failures are counted per execution: after MaxAttempts
+// of them the run is stored failed and not retryable; [Runner.Interrupt], or the end of ctx, ends the wait at
+// once.
+func WithInteractiveRetry(p RetryPolicy) Option {
+	return func(c *config) error {
+		if err := p.check(); err != nil {
+			return err
+		}
+		c.iretry = p
+		return nil
+	}
+}
+
 // WithIDs sets how run IDs are made (default 16 random bytes in hex). Every
 // ID must be new.
 func WithIDs(newID func() string) Option {
@@ -379,7 +420,10 @@ func New(s Store, agents AgentFactory, opts ...Option) (*Runner, error) {
 	if s == nil || agents == nil {
 		return nil, fmt.Errorf("%w: nil store or agent factory", ErrInvalidConfig)
 	}
-	c := config{clk: clock.Real(), ttl: 30 * time.Second, retry: DefaultRetryPolicy(), cacheSize: 1024, flush: 10}
+	c := config{
+		clk: clock.Real(), ttl: 30 * time.Second, retry: DefaultRetryPolicy(), iretry: DefaultInteractiveRetryPolicy(),
+		cacheSize: 1024, flush: 10,
+	}
 	for _, opt := range opts {
 		if err := opt(&c); err != nil {
 			return nil, err
@@ -409,6 +453,7 @@ func New(s Store, agents AgentFactory, opts ...Option) (*Runner, error) {
 		owner:  c.owner,
 		ttl:    c.ttl,
 		retry:  c.retry,
+		iretry: c.iretry,
 		newID:  c.newID,
 		jitter: jitter,
 		cache:  newCache(c.cacheSize),
@@ -442,7 +487,8 @@ func (r *Runner) Context(ctx context.Context, conversationID string) (harness.Tr
 // Shutdown stops every execution of the runner and waits until they have
 // stopped, or ctx is done. Each stores the turns it has not stored yet and
 // releases its lease, leaving its run as it is for a resume or the recovery
-// loop of another process; its events end with [ErrShutdown]. Starting or
+// loop of another process (an interactive run is interrupted, for its user);
+// its events end with [ErrShutdown]. Starting or
 // resuming a run afterwards gives ErrShutdown, so stop a [Recovery] on the
 // runner first. [Runner.Cancel] still works.
 func (r *Runner) Shutdown(ctx context.Context) error {

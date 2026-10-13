@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/flow"
@@ -63,6 +64,48 @@ func TestOpenUpgradesAnOlderSchema(t *testing.T) {
 	}
 	if err := s.Save(ctx, "r", flow.Checkpoint{RunID: "r", Shape: "v1:x"}); err != nil {
 		t.Errorf("Save after the upgrade: %v", err)
+	}
+}
+
+// Migration 0005 (T100) makes the runs a binary from before it wrote
+// background runs: they read back as not interactive, are listed as
+// resumable as before, and can be claimed.
+func TestRunsFromBeforeInteractiveStayBackgroundRuns(t *testing.T) {
+	t.Parallel()
+	ctx := tenantCtx(t, "acme")
+	path := filepath.Join(t.TempDir(), "agentkit.db")
+	old, err := sqlite.Open(ctx, path, sqlite.WithMigrations(4))
+	if err != nil {
+		t.Fatalf("Open at version 4: %v", err)
+	}
+	// The runs an older binary would have written: one interrupted, one
+	// failed and due. This binary's queries need the new column, so they
+	// are written as rows.
+	for _, q := range []string{
+		`INSERT INTO runs (tenant, id, conversation, status, created_at) VALUES ('acme', 'interrupted', 'c1', 'running', 1)`,
+		`INSERT INTO runs (tenant, id, conversation, status, retryable, attempts, error, created_at)
+			VALUES ('acme', 'due', 'c2', 'failed', 1, 1, 'overloaded', 2)`,
+	} {
+		if err := sqlite.Exec(old, q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	if err := old.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	s := openPath(t, path)
+	runs, err := s.ListResumable(ctx, time.Unix(0, 3), 0)
+	if err != nil || len(runs) != 2 || runs[0].ID != "interrupted" || runs[1].ID != "due" {
+		t.Fatalf("ListResumable after the upgrade = %+v, %v; want both old runs", runs, err)
+	}
+	for _, r := range runs {
+		if r.Interactive {
+			t.Errorf("old run %q reads back as interactive", r.ID)
+		}
+		if _, err := s.Claim(ctx, r.ID, "worker", time.Minute); err != nil {
+			t.Errorf("Claim of old run %q: %v", r.ID, err)
+		}
 	}
 }
 

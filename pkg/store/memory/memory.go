@@ -259,7 +259,8 @@ func (s *Store) Context(ctx context.Context, id string) (store.ContextView, erro
 }
 
 // Create implements [store.RunStore].
-func (s *Store) Create(ctx context.Context, id, conversationID string) (store.Run, error) {
+func (s *Store) Create(ctx context.Context, id, conversationID string, opts ...store.CreateOption) (store.Run, error) {
+	o := store.NewCreateOptions(opts...)
 	k, err := scope(ctx, id)
 	if err != nil {
 		return store.Run{}, err
@@ -281,7 +282,7 @@ func (s *Store) Create(ctx context.Context, id, conversationID string) (store.Ru
 	if r, ok := s.unfinished(k.tenant, conversationID); ok {
 		return store.Run{}, fmt.Errorf("%w: conversation %q has run %q", store.ErrUnfinished, conversationID, r.ID)
 	}
-	r := store.Run{ID: id, ConversationID: conversationID, Status: store.StatusRunning, CreatedAt: s.now()}
+	r := store.Run{ID: id, ConversationID: conversationID, Status: store.StatusRunning, CreatedAt: s.now(), Interactive: o.Interactive}
 	if err := backend.CheckTime("the clock's time", r.CreatedAt); err != nil {
 		return store.Run{}, err
 	}

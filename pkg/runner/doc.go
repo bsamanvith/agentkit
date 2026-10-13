@@ -28,9 +28,26 @@
 // position ([store.ErrConflict]) stops the run: the runner never overwrites,
 // it reloads and reports.
 //
+// # Interactive and background runs
+//
+// A chat run started with [Interactive] has a user on the other end, and
+// stops with that user ([T100]). It is stored as interactive
+// ([store.Interactive]), so every resume of it is too. [Runner.Interrupt] is
+// its stop button; a consumer that stops reading (a closed tab) or a dying
+// process stops it the same way. Once nobody holds its lease it is
+// interrupted ([store.Run.Interrupted]): it is never resumed in the
+// background, and [Runner.Resume] ("continue") sends the model exactly the
+// requests that were never answered. A new message on its conversation
+// cancels it and starts a new run. A retryable model failure is retried
+// inline, while the user waits ([WithInteractiveRetry]).
+//
+// Every other run (flows, and chat runs without Interactive, such as those
+// of jobs and webhooks) is a background run: it is recovered and retried as
+// below.
+//
 // # Resuming
 //
-// A stopped run continues in one of four ways ([E05]):
+// A stopped background run continues in one of four ways ([E05]):
 //
 //   - after a crash or deploy, a [Recovery] finds it with [store.Admin] and
 //     resumes it under its tenant;
@@ -39,6 +56,9 @@
 //     recovery loop resumes it when it is due, up to the policy's attempts;
 //   - after an approval, [Runner.Decide] records the decision and resumes it;
 //   - and an operator can resume any failed run with [Runner.Resume].
+//
+// An interactive run continues only by [Runner.Resume], or is replaced by a
+// new message.
 //
 // Completed, rejected and canceled runs are final and never resumed. Resuming
 // a completed flow run returns its final state from its checkpoint, without
@@ -75,11 +95,16 @@
 // Every execution holds its run's lease, renews it from the runner's clock and
 // releases it on every exit path. An execution that loses its lease stops
 // writing, and drops the turns it kept. [Runner.Shutdown] stops a runner's
-// executions, which store their turns and release their leases.
+// executions, and [Runner.Interrupt] one of them; they store their turns and
+// release their leases, and their runs stay running. The lease is how a live
+// run is told from an interrupted one: a process that dies leaves its runs
+// leased until the lease expires, at most one lease time later.
 // [Runner.Cancel] makes a run canceled, and if its conversation ends on a
 // user message (the run stopped before the model answered) appends a marker
 // reply, so the next run sends a valid conversation. Nothing in the log is
-// edited.
+// edited. Interrupt and Cancel stop executions of their own runner only; a
+// run another process holds gives [store.ErrLeased].
 //
 // [E05]: https://github.com/bsamanvith/agentkit/blob/main/tasks/E05-store-runner.md
+// [T100]: https://github.com/bsamanvith/agentkit/blob/main/tasks/T100-interactive-chat-runs.md
 package runner

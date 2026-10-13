@@ -11,9 +11,10 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/tenancy"
 )
 
-// Recovery finds the runs that should continue (interrupted by a crash or a
-// deploy, or failed retryably and now due) in every tenant, and resumes them
-// with their runner. It is the only holder of the store's [store.Admin]: build
+// Recovery finds the background runs that should continue (interrupted by a
+// crash or a deploy, or failed retryably and now due) in every tenant, and
+// resumes them with their runner. Interactive runs ([Interactive]) are never
+// among them: the store does not list them. It is the only holder of the store's [store.Admin]: build
 // the Admin once, in the wiring, and give it to NewRecovery and nothing else.
 type Recovery struct {
 	r        *Runner

@@ -150,3 +150,22 @@ func TestIsRetryable(t *testing.T) {
 		})
 	}
 }
+
+// Add sums every field, including any added to Usage later: each field gets
+// its own value, so a field Add leaves out (or adds to another) shows.
+func TestUsageAddSumsEveryField(t *testing.T) {
+	t.Parallel()
+	var a, b, want llm.Usage
+	va, vb, vw := reflect.ValueOf(&a).Elem(), reflect.ValueOf(&b).Elem(), reflect.ValueOf(&want).Elem()
+	for i := range va.NumField() {
+		if va.Field(i).Kind() != reflect.Int {
+			t.Fatalf("Usage.%s is a %s; extend this test", va.Type().Field(i).Name, va.Field(i).Kind())
+		}
+		va.Field(i).SetInt(int64(1 << (2 * i)))
+		vb.Field(i).SetInt(int64(1 << (2*i + 1)))
+		vw.Field(i).SetInt(int64(3 << (2 * i)))
+	}
+	if got := a.Add(b); got != want {
+		t.Errorf("%+v.Add(%+v) = %+v, want %+v", a, b, got, want)
+	}
+}

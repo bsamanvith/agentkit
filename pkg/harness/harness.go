@@ -316,7 +316,7 @@ func (r *run) turn(ctx context.Context, defs []tool.Definition) (done bool, err 
 
 	tr.DoneAt = r.now()
 	tr.Usage, tr.Stop = resp.Usage, resp.Stop
-	r.usage = addUsage(r.usage, resp.Usage)
+	r.usage = r.usage.Add(resp.Usage)
 	// The response belongs to the model; the transcript keeps its own copy.
 	msg := resp.Message.Clone()
 	uses := toolUses(msg)

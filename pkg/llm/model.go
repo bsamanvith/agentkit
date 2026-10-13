@@ -116,6 +116,17 @@ type Usage struct {
 	CacheWriteTokens int `json:"cache_write_tokens,omitempty"`
 }
 
+// Add returns the field-by-field sum of u and v: the usage of two calls
+// together.
+func (u Usage) Add(v Usage) Usage {
+	return Usage{
+		InputTokens:      u.InputTokens + v.InputTokens,
+		OutputTokens:     u.OutputTokens + v.OutputTokens,
+		CacheReadTokens:  u.CacheReadTokens + v.CacheReadTokens,
+		CacheWriteTokens: u.CacheWriteTokens + v.CacheWriteTokens,
+	}
+}
+
 // EventKind identifies an [Event].
 //
 // Blocks of a reply are streamed one after the other, in the order of the

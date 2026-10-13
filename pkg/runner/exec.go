@@ -794,7 +794,7 @@ func (x *exec) chat(ctx context.Context, agent Agent, msg *llm.Message, flush in
 		if err := t.flush(context.WithoutCancel(ctx)); err != nil {
 			return outcome{kind: outAbort, err: err}
 		}
-		spent = addUsage(spent, out.usage)
+		spent = spent.Add(out.usage)
 		out.usage = spent
 		if out.kind != outFailed || !x.run.Interactive || !llm.IsRetryable(out.err) ||
 			attempt >= r.iretry.MaxAttempts || ctx.Err() != nil {
@@ -824,14 +824,6 @@ func (r *Runner) wait(ctx context.Context, d time.Duration) bool {
 	case <-ctx.Done():
 		return false
 	}
-}
-
-func addUsage(a, b llm.Usage) llm.Usage {
-	a.InputTokens += b.InputTokens
-	a.OutputTokens += b.OutputTokens
-	a.CacheReadTokens += b.CacheReadTokens
-	a.CacheWriteTokens += b.CacheWriteTokens
-	return a
 }
 
 // turns stores a chat execution's entries: the prompt at once, the turns in

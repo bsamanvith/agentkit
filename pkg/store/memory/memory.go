@@ -18,7 +18,6 @@ import (
 
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/flow"
-	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/store"
 	"github.com/bsamanvith/agentkit/pkg/store/internal/backend"
 	"github.com/bsamanvith/agentkit/pkg/tenancy"
@@ -438,7 +437,7 @@ func (s *Store) Transition(ctx context.Context, id string, from, to store.Status
 		return store.Run{}, fmt.Errorf("%w: run %q is %s, not %s", store.ErrConflict, id, r.Status, from)
 	}
 	r.Status = to
-	r.Usage = addUsage(r.Usage, d.Usage)
+	r.Usage = r.Usage.Add(d.Usage)
 	r.Error, r.Retryable, r.NextAttemptAt, r.Pending = d.Error, d.Retryable, d.NextAttemptAt, pending
 	if to == store.StatusFailed {
 		r.Attempts++
@@ -448,15 +447,6 @@ func (s *Store) Transition(ctx context.Context, id string, from, to store.Status
 	}
 	s.runs[k] = r
 	return cloneRun(r), nil
-}
-
-func addUsage(a, b llm.Usage) llm.Usage {
-	return llm.Usage{
-		InputTokens:      a.InputTokens + b.InputTokens,
-		OutputTokens:     a.OutputTokens + b.OutputTokens,
-		CacheReadTokens:  a.CacheReadTokens + b.CacheReadTokens,
-		CacheWriteTokens: a.CacheWriteTokens + b.CacheWriteTokens,
-	}
 }
 
 // ListResumable implements [store.RunStore].

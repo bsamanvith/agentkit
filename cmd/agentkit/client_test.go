@@ -285,9 +285,11 @@ func TestChatCtrlCAsTheRunStarts(t *testing.T) {
 			reached, release := make(chan struct{}), make(chan struct{})
 			var reachOnce, releaseOnce sync.Once
 			free := func() { releaseOnce.Do(func() { close(release) }) }
+			var held context.Context // the held request's; set before reached closes
 			url := newTestAPI(t, model, func(next http.Handler) http.Handler {
 				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.Method == http.MethodPost && r.URL.Path == "/v1/runs" && !model.resuming.Load() {
+						held = r.Context()
 						w = &holdResponse{
 							ResponseWriter: w, headers: at == "headers", release: release,
 							reached: func() { reachOnce.Do(func() { close(reached) }) },
@@ -313,6 +315,15 @@ func TestChatCtrlCAsTheRunStarts(t *testing.T) {
 				t.Fatal("the run never started")
 			}
 			interrupts <- os.Interrupt
+			if at == "headers" {
+				// Before its headers, chat keeps the request: dropping it now
+				// would lose the conversation the server started.
+				select {
+				case <-held.Done():
+					t.Fatal("Ctrl-C dropped the request before its headers came")
+				case <-time.After(200 * time.Millisecond):
+				}
+			}
 			free()
 			select {
 			case <-out.seen:

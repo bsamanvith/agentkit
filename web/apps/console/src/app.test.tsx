@@ -425,6 +425,18 @@ describe("on a phone", () => {
     expect(document.getElementById("content")).not.toHaveAttribute("inert");
   });
 
+  it("closes the drawer on Esc with focus nowhere in it", async () => {
+    renderAt("/new");
+    await screen.findByRole("heading", { level: 1, name: "New chat" });
+    const menu = screen.getByRole("button", { name: "Menu" });
+    await userEvent.click(menu);
+    await waitFor(() => expect(screen.getByRole("link", { name: "Chats" })).toHaveFocus());
+    (document.activeElement as HTMLElement).blur(); // a tap on the drawer's padding
+    await userEvent.keyboard("{Escape}");
+    expect(menu).toHaveAttribute("aria-expanded", "false");
+    await waitFor(() => expect(menu).toHaveFocus());
+  });
+
   it("closes the account menu on Esc, not the drawer under it", async () => {
     renderAt("/new");
     await screen.findByRole("heading", { level: 1, name: "New chat" });

@@ -91,6 +91,9 @@ export function Page({
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
     document.title = `${title} · agentkit`;
+    // Not out of an open menu or dialog: a page whose code arrives late
+    // (React.lazy) would otherwise close the account menu just opened.
+    if (document.activeElement?.closest('[role="menu"], [role="dialog"]')) return;
     root.current?.querySelector<HTMLElement>("h1")?.focus({ preventScroll: true });
   }, [title]);
   const titleClass = cn(

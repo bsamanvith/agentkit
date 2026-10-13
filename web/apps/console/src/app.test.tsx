@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Agent } from "@agentkit/agent-ui/api";
 import { lazy } from "react";
@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 
 import { tokenStorageKey } from "./api";
 import { listStorageKey } from "./layout";
 import { App } from "./app";
+import { Page } from "./pages/page";
 import { readiness } from "./pages/readiness";
 import { inShell, routes } from "./routes";
 import { sectionOf } from "./sections";
@@ -344,6 +345,31 @@ describe("a page that throws", () => {
     await userEvent.click(within(sections).getByRole("link", { name: "Agents" }));
     expect(await researcher()).toBeInTheDocument();
     expect(screen.queryByText("the page broke")).not.toBeInTheDocument();
+  });
+
+  it("that arrives while the account menu is open leaves the menu open", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json(agents)),
+    );
+    let arrive: () => void = () => {};
+    const Late = lazy(
+      () =>
+        new Promise<{ default: () => React.JSX.Element }>((resolve) => {
+          arrive = () => resolve({ default: () => <Page title="Late">here</Page> });
+        }),
+    );
+    render(
+      <App
+        router={createMemoryRouter(inShell([{ path: "/late", element: <Late /> }]), { initialEntries: ["/late"] })}
+      />,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Account and theme" }));
+    const menu = await screen.findByRole("menu");
+    await act(async () => arrive());
+    expect(await screen.findByRole("heading", { level: 1, name: "Late" })).toBeInTheDocument();
+    expect(menu).toBeInTheDocument();
+    expect(screen.getByRole("menu")).toBe(menu);
   });
 
   it("whose code is gone (a tab older than the server) says to reload", async () => {

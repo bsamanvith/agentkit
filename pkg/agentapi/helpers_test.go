@@ -26,6 +26,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
+	"github.com/bsamanvith/agentkit/pkg/runner"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 )
 
@@ -151,7 +152,11 @@ func newRig(t *testing.T, m *model, cfg rigConfig) *rig {
 	var ids atomic.Int64
 	opts := []agentapi.Option{
 		agentapi.WithClock(cfg.clock), agentapi.WithKeepAlive(0), agentapi.WithRunTimeout(0),
-		agentapi.WithNewID(func(prefix string) string { return fmt.Sprintf("%s%d", prefix, ids.Add(1)) }),
+		// The rig's clock stands still, so lists order by ID: make it the
+		// order of creation.
+		agentapi.WithNewID(func(prefix string) string { return fmt.Sprintf("%s%03d", prefix, ids.Add(1)) }),
+		// A retry waits on the clock; a test that wants one turns it on.
+		agentapi.WithRunnerOptions(runner.WithInteractiveRetry(runner.RetryPolicy{MaxAttempts: 1, BaseDelay: time.Second, MaxDelay: time.Second})),
 	}
 	if cfg.token != "" {
 		opts = append(opts, agentapi.WithToken(cfg.token))
@@ -327,6 +332,72 @@ func (r *rig) getConversation(id string) agentapi.Conversation {
 	return c
 }
 
+// events reads GET /v1/runs/{id}/events to its end, from after lastEventID
+// if it is not empty.
+func (r *rig) events(id, lastEventID string) []agentapi.Event {
+	r.t.Helper()
+	s := r.follow(id, lastEventID)
+	s.done = true // the whole run, which check reads itself
+	return s.all()
+}
+
+// follow opens GET /v1/runs/{id}/events, from after lastEventID if it is not
+// empty. Once the response has come, the server counts the client.
+func (r *rig) follow(id, lastEventID string) *stream {
+	r.t.Helper()
+	req, err := http.NewRequestWithContext(context.WithoutCancel(r.t.Context()), http.MethodGet, r.ts.URL+"/v1/runs/"+id+"/events", nil)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	if r.token != "" {
+		req.Header.Set("Authorization", "Bearer "+r.token)
+	}
+	if lastEventID != "" {
+		req.Header.Set("Last-Event-ID", lastEventID)
+	}
+	resp, err := r.client.Do(req)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		r.t.Fatalf("GET /v1/runs/%s/events = %d", id, resp.StatusCode)
+	}
+	s := &stream{r: r, resp: resp, sc: bufio.NewScanner(resp.Body)}
+	s.sc.Buffer(nil, 1<<20)
+	return s
+}
+
+// postPath sends a POST to path with the rig's token and returns the
+// response, its body unread.
+func (r *rig) postPath(ctx context.Context, path, body string) *http.Response {
+	r.t.Helper()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.url+path, strings.NewReader(body))
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	if r.token != "" {
+		req.Header.Set("Authorization", "Bearer "+r.token)
+	}
+	resp, err := r.client.Do(req)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	return resp
+}
+
+// endStatus is the status of a run whose stream ended with a run_error of
+// code: a chat run that stopped is interrupted.
+func endStatus(code string) string {
+	switch code {
+	case agentapi.CodeRunInterrupted, agentapi.CodeTimeout, agentapi.CodeShutdown:
+		return agentapi.StatusInterrupted
+	case agentapi.CodeCancelled:
+		return agentapi.StatusCanceled
+	}
+	return agentapi.StatusFailed
+}
+
 // waitEnded waits until the run is no longer running and returns it.
 func (r *rig) waitEnded(id string) agentapi.Run {
 	r.t.Helper()
@@ -368,7 +439,7 @@ func (s *stream) next() (agentapi.Event, bool) {
 				s.r.t.Errorf("SSE id %q and event %q, want %d and %q", id, name, e.Seq, e.Type)
 			}
 			s.events = append(s.events, e)
-			if e.Type == agentapi.TypeRunStart {
+			if e.Type == agentapi.TypeRunStart && !s.done { // not a read of check's own
 				s.r.mu.Lock()
 				if !slices.Contains(s.r.convs, e.ConversationID) {
 					s.r.convs = append(s.r.convs, e.ConversationID)
@@ -458,30 +529,50 @@ func (r *rig) check() {
 	partial := maps.Clone(r.partial)
 	r.mu.Unlock()
 
-	announced := map[string][]llm.Message{} // conversation → messages, from events
+	// Each run's whole stream, from GET /v1/runs/{id}/events: a stream that
+	// resumed a run is its tail.
+	whole := map[string][]agentapi.Event{}
+	var order []string // runs, in the order their streams ended
 	for _, s := range streams {
-		checkStream(t, s.events)
+		id := s.events[0].RunID
+		full, ok := whole[id]
+		if !ok {
+			full = r.events(id, "")
+			whole[id], order = full, append(order, id)
+		}
+		got := s.events
+		if end := s.last(); end.Type == agentapi.TypeRunError && end.Seq < len(full) && !jsonEqual(end, full[end.Seq]) {
+			got = got[:len(got)-1] // the run went on (resumed, or canceled by a new message): its next event took the ending's place
+		}
+		if from := s.events[0].Seq; from < 0 || from > len(full) || !jsonEqual(got, full[from:min(from+len(got), len(full))]) {
+			t.Errorf("run %s streamed\n%s\nbut its events are\n%s", id, jsonOf(s.events), jsonOf(full))
+		}
+	}
+	announced := map[string][]llm.Message{} // conversation → messages, from events
+	for _, id := range order {
+		events := whole[id]
+		checkStream(t, events)
 		if t.Failed() {
 			return
 		}
-		run := r.getRun(s.runID())
-		end := s.last()
+		run := r.getRun(id)
+		end := events[len(events)-1]
 		switch {
-		case run.ConversationID != s.conversationID(), run.Turns != end.Turns:
+		case run.ConversationID != events[0].ConversationID, run.Turns != end.Turns:
 			t.Errorf("run %s = %+v, disagrees with its stream", run.ID, run)
 		case end.Type == agentapi.TypeRunDone && (run.Status != agentapi.StatusDone || run.Answer != end.Answer || run.Usage != *end.Usage):
 			t.Errorf("run %s = %+v, want done with the stream's answer %q and usage", run.ID, run, end.Answer)
-		case end.Type == agentapi.TypeRunError && (run.Status != agentapi.StatusFailed || run.Error == nil || run.Error.Code != end.Error.Code):
-			t.Errorf("run %s = %+v, want failed with code %q", run.ID, run, end.Error.Code)
+		case end.Type == agentapi.TypeRunError && (run.Status != endStatus(end.Error.Code) || run.Error == nil || run.Error.Code != end.Error.Code):
+			t.Errorf("run %s = %+v, want %s with code %q", run.ID, run, endStatus(end.Error.Code), end.Error.Code)
 		}
-		id := s.conversationID()
-		for _, e := range s.events {
+		conv := events[0].ConversationID
+		for _, e := range events {
 			switch {
 			case e.Type == agentapi.TypeRunStart && e.Prompt != nil:
-				announced[id] = append(announced[id], e.Prompt.Message)
+				announced[conv] = append(announced[conv], e.Prompt.Message)
 			case e.Type == agentapi.TypeTurnDone:
 				for _, m := range e.Record.Messages {
-					announced[id] = append(announced[id], m.Message)
+					announced[conv] = append(announced[conv], m.Message)
 				}
 			}
 		}
@@ -498,11 +589,14 @@ func (r *rig) check() {
 		if sum, ok := listed[id]; !ok || sum.Agent != c.Agent || sum.Status != c.Status || sum.MessageCount != len(c.Messages) {
 			t.Errorf("conversation %s (agent %s, %s, %d messages) is listed as %+v", id, c.Agent, c.Status, len(c.Messages), sum)
 		}
-		var got []llm.Message
+		var got, said []llm.Message
 		for _, m := range c.Messages {
 			got = append(got, m.Message)
+			if m.Message.Role != llm.RoleAssistant || m.Message.Text() != runner.CanceledText {
+				said = append(said, m.Message) // a run replaced before it answered gets a marker no stream announces
+			}
 		}
-		if !partial[id] && !jsonEqual(got, announced[id]) {
+		if !partial[id] && !jsonEqual(said, announced[id]) {
 			t.Errorf("conversation %s holds\n%s\nbut its streams announced\n%s", id, jsonOf(got), jsonOf(announced[id]))
 		}
 		if err := harness.Transcript(got).Validate(); err != nil {
@@ -604,6 +698,16 @@ func checkStream(t *testing.T, events []agentapi.Event) {
 			}
 		case agentapi.TypeRunDone, agentapi.TypeRunError:
 			terminal++
+		case agentapi.TypeRetrying:
+			if e.Attempt < 2 || e.Error == nil {
+				t.Errorf("retrying %+v: want an attempt from 2 and the error", e)
+			}
+			delete(deltas, turn+1) // the turn in progress starts again
+			for k := range calls {
+				if k[0] == turn+1 {
+					delete(calls, k)
+				}
+			}
 		default:
 			t.Errorf("event %d of unknown type %q", i, e.Type)
 		}

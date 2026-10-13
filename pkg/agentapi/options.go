@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/clock"
+	"github.com/bsamanvith/agentkit/pkg/runner"
+	"github.com/bsamanvith/agentkit/pkg/store"
 )
 
 // Defaults of the options.
@@ -21,6 +23,7 @@ const (
 	DefaultRetention         = 24 * time.Hour
 	DefaultMaxBodyBytes      = 1 << 20
 	DefaultKeepAlive         = 15 * time.Second
+	DefaultReconnectGrace    = 10 * time.Second
 	// MinTokenLength is the shortest bearer token WithToken accepts.
 	MinTokenLength = 16
 )
@@ -52,6 +55,18 @@ type config struct {
 	drainRequested bool
 	toolsets       []Toolset
 	tenant         func(*http.Request) string
+	store          Store
+	runnerOpts     []runner.Option
+	grace          time.Duration
+	graceArmed     func(runID string) // tests: called when a run's grace starts
+}
+
+// Store is what the server keeps conversations and runs in: the runner's
+// store and the conversation records. Every backend of package store
+// (memory, sqlite, postgres) is one.
+type Store interface {
+	runner.Store
+	store.ConversationIndex
 }
 
 func newConfig(opts []Option) config {
@@ -63,6 +78,7 @@ func newConfig(opts []Option) config {
 		retention:     DefaultRetention,
 		maxBodyBytes:  DefaultMaxBodyBytes,
 		keepAlive:     DefaultKeepAlive,
+		grace:         DefaultReconnectGrace,
 		clock:         clock.Real(),
 		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
 		newID:         randomID,
@@ -87,10 +103,13 @@ func WithMaxConcurrentRuns(n int) Option { return func(c *config) { c.maxConcurr
 // (default [DefaultRunTimeout]); 0 means no limit.
 func WithRunTimeout(d time.Duration) Option { return func(c *config) { c.runTimeout = d } }
 
-// WithRetention bounds what is kept in memory: at most maxRuns finished runs
-// and maxConversations conversations, none idle for longer than maxAge. The
-// oldest go first; a conversation with a run going on is never evicted.
-// Defaults: [DefaultMaxRuns], [DefaultMaxConversations], [DefaultRetention].
+// WithRetention bounds the finished runs whose events the server keeps in
+// memory: at most maxRuns, none finished longer than maxAge ago, the oldest
+// going first. Runs and conversations stay in the store ([WithStore]); a run
+// whose events were let go is replayed from it, with a failure's code
+// reduced to [CodeRunFailed]. maxConversations is no longer used: the store
+// keeps conversations. Defaults: [DefaultMaxRuns], [DefaultMaxConversations],
+// [DefaultRetention].
 func WithRetention(maxRuns, maxConversations int, maxAge time.Duration) Option {
 	return func(c *config) { c.maxRuns, c.maxConvs, c.retention = maxRuns, maxConversations, maxAge }
 }
@@ -133,6 +152,25 @@ func WithNewID(f func(prefix string) string) Option { return func(c *config) { c
 func WithDrain(stop <-chan struct{}, after time.Duration) Option {
 	return func(c *config) { c.drainStop, c.drainAfter, c.drainRequested = stop, after, true }
 }
+
+// WithStore sets where conversations and runs are kept (default: a new
+// in-memory store on the server's clock, lost on restart). The server does
+// not close it: close it after [Server.Shutdown].
+func WithStore(s Store) Option { return func(c *config) { c.store = s } }
+
+// WithRunnerOptions adds options to the runner the server builds over its
+// store, after its own: the clock ([WithClock]) and run IDs ([WithNewID]).
+// Pass [runner.WithFlows] to serve flow runs' decisions.
+func WithRunnerOptions(opts ...runner.Option) Option {
+	return func(c *config) { c.runnerOpts = append(c.runnerOpts, opts...) }
+}
+
+// WithReconnectGrace sets how long a chat run goes on with nobody reading
+// its events (default [DefaultReconnectGrace]): the last client to go away
+// starts it, and a client that comes back (GET /v1/runs/{id}/events) before
+// it ends follows the run on. When it ends, the run is interrupted, as by
+// POST /v1/runs/{id}/stop. 0 interrupts it at once.
+func WithReconnectGrace(d time.Duration) Option { return func(c *config) { c.grace = d } }
 
 var idEncoding = base32.StdEncoding.WithPadding(base32.NoPadding)
 

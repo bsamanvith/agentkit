@@ -30,7 +30,9 @@ const Version = 1
 // Event types, the "type" of an [Event] and the SSE event name.
 const (
 	// TypeRunStart is the first event of a run: the run and conversation IDs,
-	// and the prompt the run added (absent when it resumed a conversation).
+	// and the prompt the run added (absent only for a run that stopped before
+	// it stored its prompt, or a flow run). A resumed run keeps its events:
+	// its stream goes on from the seq it had reached.
 	TypeRunStart = "run_start"
 	// TypeTextDelta is a piece of the model's text.
 	TypeTextDelta = "text_delta"
@@ -43,8 +45,14 @@ const (
 	TypeTurnDone = "turn_done"
 	// TypeRunDone ends a run that answered.
 	TypeRunDone = "run_done"
-	// TypeRunError ends a run that failed.
+	// TypeRunError ends a run that failed, or an execution of it that
+	// stopped (Error.Code CodeRunInterrupted, CodeShutdown, CodeTimeout).
 	TypeRunError = "run_error"
+	// TypeRetrying says the model failed in a way worth retrying and the run
+	// tries again after DelayMS, as attempt Attempt (2 for the first retry).
+	// It does not end the run. The turn in progress is dropped: discard its
+	// text deltas; the attempt starts that turn again.
+	TypeRetrying = "retrying"
 )
 
 // Event is one event of a run on the wire: the JSON of an SSE "data:" line.
@@ -95,8 +103,12 @@ type Event struct {
 	Usage *llm.Usage `json:"usage,omitempty"`
 	Turns int        `json:"turns,omitempty"`
 
-	// run_error
+	// run_error, retrying
 	Error *Error `json:"error,omitempty"`
+
+	// retrying: the attempt about to be made, and how long until it.
+	Attempt int     `json:"attempt,omitempty"`
+	DelayMS float64 `json:"delay_ms,omitempty"`
 }
 
 // UnmarshalJSON decodes any event, ignoring unknown fields; its final message
@@ -192,6 +204,13 @@ func (e Event) MarshalJSON() ([]byte, error) {
 			Usage *llm.Usage `json:"usage"`
 			Turns int        `json:"turns"`
 		}{h, e.Error, e.Usage, e.Turns})
+	case TypeRetrying:
+		return json.Marshal(struct {
+			header
+			Error   *Error  `json:"error"`
+			Attempt int     `json:"attempt"`
+			DelayMS float64 `json:"delay_ms"`
+		}{h, e.Error, e.Attempt, e.DelayMS})
 	default:
 		return json.Marshal(h)
 	}
@@ -277,6 +296,9 @@ type Error struct {
 	// refusal (Code CodeRefused).
 	Category    string `json:"category,omitempty"`
 	Explanation string `json:"explanation,omitempty"`
+	// RunID names the run an HTTP error is about: the unfinished run that
+	// keeps a conversation busy (CodeBusy).
+	RunID string `json:"run_id,omitempty"`
 }
 
 func (e *Error) Error() string { return e.Code + ": " + e.Message }
@@ -287,7 +309,7 @@ const (
 	CodeMaxTokens      = "max_tokens"               // the reply hit the output limit
 	CodeRefused        = "refused"                  // the model declined; see Category, Explanation
 	CodeUnexpectedStop = "unexpected_stop"          // the model's reply could not be acted on
-	CodeCancelled      = "cancelled"                // the client went away
+	CodeCancelled      = "cancelled"                // the run was canceled (POST /v1/runs/{id}/cancel)
 	CodeTimeout        = "timeout"                  // the run timeout passed
 	CodeShutdown       = "shutdown"                 // the server shut down before the run finished
 	CodeRateLimited    = "rate_limited"             // the provider throttled us (retryable)
@@ -300,18 +322,53 @@ const (
 	CodeUnauthorized   = "unauthorized"             // HTTP 401
 	CodeNotFound       = "not_found"                // HTTP 404
 	CodeTooLarge       = "too_large"                // HTTP 413
-	CodeBusy           = "conversation_busy"        // HTTP 409: a run of this conversation is going on
-	CodeInterrupted    = "conversation_interrupted" // HTTP 409: resume the interrupted run first
+	CodeBusy           = "conversation_busy"        // HTTP 409: a run of this conversation is going on; RunID names it
+	CodeInterrupted    = "conversation_interrupted" // no longer returned: a new message replaces an interrupted run
 	CodeOverCapacity   = "over_capacity"            // HTTP 503 with Retry-After: too many runs
 	CodeShuttingDown   = "shutting_down"            // HTTP 503: the server is draining
+	// CodeRunInterrupted: the run was stopped (POST /v1/runs/{id}/stop, or
+	// its client went away for longer than the reconnect grace). It stays
+	// interrupted: resume it, or send a new message.
+	CodeRunInterrupted = "interrupted"
+	// CodeRunFailed: the run failed in an earlier execution, whose error
+	// is no longer known in detail; Message is what was stored.
+	CodeRunFailed = "run_failed"
+	// CodeRejected: an approval of the run was rejected (a flow run).
+	CodeRejected = "rejected"
+	// CodeSuspended: the run waits for a decision (a flow run).
+	CodeSuspended = "suspended"
+	// CodeRunFinal ("run_final", HTTP 409): the run is completed, rejected
+	// or canceled, and cannot be resumed or decided.
+	CodeRunFinal = "run_final"
+	// CodeRunLeased ("run_leased", HTTP 409): another process runs the run.
+	CodeRunLeased = "run_leased"
+	// CodeAwaitingDecision ("awaiting_decision", HTTP 409): the run waits for
+	// POST /v1/runs/{id}/decisions, not a resume.
+	CodeAwaitingDecision = "awaiting_decision"
+	// CodeNotPending ("not_pending", HTTP 409): the run waits for no
+	// decision at that path.
+	CodeNotPending = "not_pending"
+	// CodeShapeChanged ("shape_changed", HTTP 409): the flow's steps
+	// changed since the run started; an operator decides.
+	CodeShapeChanged = "shape_changed"
 	// CodeAgentMismatch ("agent_mismatch", HTTP 409) is in catalog.go.
 )
 
-// Run statuses.
+// Run statuses. A run is running, interrupted or suspended until it ends:
+// done, failed, canceled or rejected. A failed run can still be resumed.
 const (
 	StatusRunning = "running"
 	StatusDone    = "done"
 	StatusFailed  = "failed"
+	// StatusCanceled: canceled (POST /v1/runs/{id}/cancel, or replaced by a
+	// new message after an interruption).
+	StatusCanceled = "canceled"
+	// StatusRejected: a flow run whose approval was rejected.
+	StatusRejected = "rejected"
+	// StatusSuspended: a flow run waiting for a decision.
+	StatusSuspended = "suspended"
+	// StatusInterrupted (shared with conversations): stopped, with nobody
+	// running it; resume it or send a new message.
 )
 
 // Conversation statuses.
@@ -320,7 +377,8 @@ const (
 	// message to go on.
 	StatusIdle = "idle"
 	// StatusInterrupted: a run stopped before answering; post with no message
-	// to resume it.
+	// (or POST /v1/runs/{id}/resume) to resume it, or a new message to start
+	// over.
 	StatusInterrupted = "interrupted"
 	// StatusRunning (shared with runs): a run of the conversation is going on.
 )
@@ -352,6 +410,24 @@ type Conversation struct {
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	Messages  []TimedMessage `json:"messages"`
+}
+
+// RunList is the body of GET /v1/runs: a page of runs, newest first. The
+// runs carry no Record.
+type RunList struct {
+	V    int   `json:"v"`
+	Runs []Run `json:"runs"`
+	// NextCursor, when set, fetches the next page (?cursor=). It is opaque.
+	NextCursor string `json:"next_cursor,omitempty"`
+}
+
+// DecisionRequest is the body of POST /v1/runs/{id}/decisions: the answer to
+// the approval at Path of a suspended flow run.
+type DecisionRequest struct {
+	Path     string `json:"path"`
+	Approved bool   `json:"approved"`
+	// Reason is kept with a rejection.
+	Reason string `json:"reason,omitempty"`
 }
 
 // RunRequest is the body of POST /v1/runs.

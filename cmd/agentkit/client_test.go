@@ -219,8 +219,12 @@ func TestChatCtrlCCancelsRun(t *testing.T) {
 	// conversation's status (and seen it running): a chat that does not wait
 	// would find the conversation busy when it resumes.
 	var asked sync.Once
+	var stops atomic.Int32 // POST /v1/runs/{id}/stop: closing the stream alone leaves the run going
 	url := newTestAPI(t, model, func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/stop") {
+				stops.Add(1)
+			}
 			next.ServeHTTP(w, r)
 			if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/conversations/") {
 				asked.Do(func() { close(model.ended) })
@@ -255,6 +259,9 @@ func TestChatCtrlCCancelsRun(t *testing.T) {
 	got := out.String()
 	t.Logf("output:\n%s", got)
 	checkClientOutput(t, got+stderr.String())
+	if n := stops.Load(); n != 1 {
+		t.Errorf("chat stopped the run %d times, want once", n)
+	}
 	_, resumed, ok := strings.Cut(got, "cancelled before it answered")
 	if !ok || !strings.Contains(resumed, "ready") {
 		t.Errorf("want the cancel, then the resumed answer")

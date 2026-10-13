@@ -3,9 +3,11 @@ package agentapi_test
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -249,4 +251,67 @@ func TestDecisions(t *testing.T) {
 	if list := r.listRuns(url.Values{"status": {agentapi.StatusSuspended}}); len(list.Runs) != 0 {
 		t.Errorf("suspended runs after the decisions: %v", runIDs(list.Runs))
 	}
+}
+
+// holdLog is a logger that holds the first record of a message until the
+// test releases it, so a test can act in the moment the server logs it.
+type holdLog struct {
+	slog.Handler
+	msg     string
+	reached chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func newHoldLog(msg string) *holdLog {
+	return &holdLog{Handler: slog.DiscardHandler, msg: msg, reached: make(chan struct{}), release: make(chan struct{})}
+}
+
+func (h *holdLog) Enabled(context.Context, slog.Level) bool { return true }
+
+func (h *holdLog) Handle(_ context.Context, r slog.Record) error {
+	if r.Message == h.msg {
+		h.once.Do(func() { close(h.reached); <-h.release })
+	}
+	return nil
+}
+
+// TestSlotFreeBeforeRunDone: a run's slot is free by the time its client
+// sees run_done, so a client that starts its next run at once is not
+// refused over capacity. The server is held after the run's end, before it
+// logs it.
+func TestSlotFreeBeforeRunDone(t *testing.T) {
+	t.Parallel()
+	hold := newHoldLog("run done")
+	r := newRig(t, echo(t), rigConfig{api: []agentapi.Option{agentapi.WithMaxConcurrentRuns(1), agentapi.WithLogger(slog.New(hold))}})
+	defer close(hold.release)
+	first := r.run("one", "")
+	<-hold.reached
+	if next := r.run("two", first.conversationID()); next.last().Type != agentapi.TypeRunDone {
+		t.Errorf("the next run ended %+v, want run_done", next.last())
+	}
+}
+
+// TestRunViewBeforeItsEnding: between the store's end of a run and its
+// execution's last event, GET /v1/runs/{id} reads the run as stored, error
+// and all. The server is held as it logs the lost lease, before the ending.
+func TestRunViewBeforeItsEnding(t *testing.T) {
+	t.Parallel()
+	m := echo(t)
+	m.gate = make(chan struct{}, 1)
+	hold := newHoldLog("run lost its lease")
+	r := newRig(t, m, rigConfig{api: []agentapi.Option{agentapi.WithLogger(slog.New(hold))}})
+	s := r.start(t.Context(), "hi", "")
+	s.until(agentapi.TypeRunStart, 0)
+	if err := r.clock.WaitForTimers(t.Context(), 1); err != nil { // the lease's heartbeat
+		t.Fatal(err)
+	}
+	r.clock.Advance(time.Minute)
+	<-hold.reached
+	run := r.getRun(s.runID())
+	close(hold.release)
+	if run.Status != agentapi.StatusInterrupted || run.Error == nil || run.Error.Code != agentapi.CodeRunInterrupted {
+		t.Errorf("run = %+v, want interrupted, with its error", run)
+	}
+	s.all()
 }

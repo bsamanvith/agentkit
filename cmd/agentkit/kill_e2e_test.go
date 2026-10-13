@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -61,6 +62,7 @@ func TestE2EServeKilledMidRun(t *testing.T) {
 	}
 	id := s.RunID()
 	read, turned := make(chan []agentapi.Event, 1), make(chan struct{})
+	turn := sync.OnceFunc(func() { close(turned) })
 	go func() {
 		defer s.Close()
 		var events []agentapi.Event
@@ -74,7 +76,7 @@ func TestE2EServeKilledMidRun(t *testing.T) {
 				return
 			}
 			if events = append(events, e); e.Type == agentapi.TypeTurnDone {
-				close(turned)
+				turn()
 			}
 		}
 	}()

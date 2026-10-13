@@ -399,7 +399,8 @@ func TestOpenAPIResponses(t *testing.T) {
 		{Name: "other", Harness: agentHarness(t, echo(t), registry(t), now)},
 	}
 	// A flow with an approval, for the decisions; and a store the probes
-	// share with a second server, which holds no run of its own.
+	// share with a second server, which holds no run of its own: it creates
+	// nothing, so its IDs (from 001, as this server's) never meet.
 	flows := runner.WithFlows(func(context.Context, string) (flow.Step, error) {
 		return flow.Sequence("f", flow.Approve("ok")), nil
 	})

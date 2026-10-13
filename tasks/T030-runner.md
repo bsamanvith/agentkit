@@ -208,7 +208,7 @@ The model is `benchModel`: a stateless fake that costs what the scripted fake co
 | Benchmark | Result |
 |---|---|
 | `Run`, empty conversation, 0 / 3 tool turns: harness alone vs runner on memory | The runner adds about 92 / 210 allocs and 7.5 / 20 KB per run, and 10–40 µs |
-| `Run` on SQLite, parallel | 1.2–1.6 ms per run; about 9 committed transactions per 3-tool run (create, claim, 5 appends, transition, release). Half the CPU is in fsync and other syscalls, under `sqlite.(*Store).write` |
+| `Run` on SQLite, parallel | 1.2–1.6 ms per run; about 9 committed transactions per 3-tool run (create, claim, 5 appends, transition, release; 6 since T098 when the tools declare `KindRead`). Half the CPU is in fsync and other syscalls, under `sqlite.(*Store).write` |
 | `RunInLongConversation`, 200 messages: harness alone / runner warm / runner cold (memory) | 1,277 / 1,763 / 6,682 allocs; about 27 µs / 95 µs / 450 µs. Warm, the runner adds about 70 µs: it copies the transcript it hands the harness, so nothing shares memory. That copy grows with the conversation; it is small next to a model call. Cold adds the store's context read |
 | `Context`, 200 messages: cached vs from the store | Memory: 401 vs 4,510 allocs. SQLite: 438 vs 7,748 allocs, about 20–50 µs vs 0.3–1.4 ms. The cache is 10–30× cheaper |
 | `Recover`, 100 dead runs per pass | Memory: 10k–30k runs/s. SQLite: 700–950 runs/s |
@@ -233,9 +233,36 @@ The SQLite rows with no model latency vary from run to run, which is why they sh
 - **Leaks:** none. Goroutines return to their starting count. The +2 per SQLite store is that store's two connection pools, open until the test ends; there is no +2 with the memory store.
 
 **Findings**
-1. **The runner is not the bottleneck; SQLite's single writer is.** On the memory store the same load reaches 14k–27k runs/s. On SQLite, about 9 commits per run cap throughput at a few hundred runs/s, and with no model latency the tail reaches seconds from about 32 users on. With real model latencies (seconds per call) the write rate is far lower: 1,000 active conversations at one turn every 2 s is about 500 commits/s. That is within what SQLite sustains here, but it argues for the Postgres backend (T091) for multi-replica serving. A fix inside the runner would be batching a turn's writes; it is not needed now.
+1. **The runner is not the bottleneck; SQLite's single writer is.** On the memory store the same load reaches 14k–27k runs/s. On SQLite, about 9 commits per run cap throughput at a few hundred runs/s, and with no model latency the tail reaches seconds from about 32 users on. With real model latencies (seconds per call) the write rate is far lower: 1,000 active conversations at one turn every 2 s is about 500 commits/s. That is within what SQLite sustains here, but it argues for the Postgres backend (T091) for multi-replica serving. A fix inside the runner would be batching a turn's writes; it is not needed now. (Done anyway in T098 at the owner's request: see "Since T030".)
 2. **A run copies the conversation it hands to the harness.** That costs about 70 µs at 200 messages and grows with length. Removing it would mean sharing immutable message slices with the harness, which gives up the "nothing shares memory" guarantee. Not worth it now.
 3. **`memory.Store.Create` scans every run of the tenant** to enforce one unfinished run per conversation, so the memory store slows as runs accumulate (110–200 µs per run after 20k runs). It is a test and development backend; recorded for its owner.
+
+### Since T030
+
+T030's runner was done and green on 2026-10-12. These later tasks changed it, or will. Their files have the details.
+
+- **[T098](T098-turn-buffer.md), done (6d16773, 2026-10-13): turns stored in batches.** Owner's rule: a run does not write the database on every turn unless its flush size is 1.
+  - **Store:** `ConversationStore.AppendBatch`, on all three stores.
+  - **Harness:** `ToolRecord.Kind` records whether a tool declares `KindRead`.
+  - **Runner:**
+    - **When turns are stored:** kept, then stored together:
+      - every `FlushEvery` turns (`WithFlushEvery`, default 10, settable per run);
+      - after any turn that called a tool not declared `KindRead`;
+      - when the agent stops;
+      - on interruption, but not after a lost lease.
+    - **The prompt** is still stored at once.
+    - **`EventSaved`** says how far the log is stored.
+    - **`Runner.Shutdown`** stores every live run's turns and releases its lease.
+    - **Renewal:** a freshly claimed execution no longer renews at start.
+  - **Writes:** a read-only 3-tool run now makes 6 writes instead of 10, and the same run with write tools makes 9.
+- **[T100](T100-interactive-chat-runs.md), next: interactive chat runs.** The owner decided this on 2026-10-13, after a read of how opencode, Codex CLI, pi and Gemini CLI handle interruptions.
+  - **Stopping:** a chat run stops with its user (stop button, or a closed tab after a 10s reconnect grace).
+  - **Interrupted runs:** they are shown `interrupted` and never recovered in the background.
+  - **What the user can do next:** Continue is `Resume`. A new message cancels the interrupted run and starts a new one.
+  - **Model errors:** retryable ones are retried inline.
+
+  This replaces the disconnect note under "For T037" below. Background runs (E14) keep recovery and retries. The lease stays: it tells a live run from an interrupted one.
+- **[T099](T099-run-queue-order.md), after T100: queue order.** `start_at`, `lane` and `priority` columns, and `Admin.ClaimNext`, which claims in priority-then-due order with `SKIP LOCKED` and never takes interactive runs. Postgres stays the queue; Redis was decided against for this.
 
 ### For T037 (API wiring)
 
@@ -249,7 +276,7 @@ The SQLite rows with no model latency vary from run to run, which is why they sh
   - `flow.ErrShapeChanged` → 409 with a clear code (the operator decides; `AllowShapeChange` behind an admin flag);
   - `store.ErrNotFound` → 404;
   - `*runner.RunError` → the run's failure in the body, with `Run.Retryable` and `NextAttemptAt`.
-- A client disconnect stops reading `Events()`. The run stays `running` with its lease released, and recovery resumes it after one lease time. If a foreground chat should instead end `canceled` on disconnect, call `Cancel` from the handler.
+- ~~A client disconnect stops reading `Events()`. The run stays `running` with its lease released, and recovery resumes it after one lease time. If a foreground chat should instead end `canceled` on disconnect, call `Cancel` from the handler.~~ Superseded by T100 (owner, 2026-10-13): a chat run is interactive. A disconnect, after T037's reconnect grace, interrupts it: its turns are stored, it is shown `interrupted`, and recovery never resumes it. The user continues it, or sends a new message.
 - `ErrNotStarted`: a run whose process died before its prompt was stored ends `canceled`. Tell the client to resend.
 - Usage of an execution that was interrupted is in its turn records (`Record.Turn.Usage`) but not added to `Run.Usage`, because no transition happened. Sum the turn records if billing needs it.
 - Flow runs: `RunFlow` takes the initial state; `EventFlow` events carry `flow.EventWarning` (and kinds added later: pass them on).
@@ -258,9 +285,9 @@ The SQLite rows with no model latency vary from run to run, which is why they sh
 
 ### For T071 and T073 (background runs, messaging)
 
-- A background run is an `Execution` nobody reads after start. Call `Wait()` in a goroutine the runner's owner keeps (the execution ends at the first stop, so a reader that goes away leaves the run to recovery). The event log (T090) should be written from the same loop, before or with each event; `Event.Seq` gives turn events a durable position.
+- A background run is an `Execution` nobody reads after start. Call `Wait()` in a goroutine the runner's owner keeps (the execution ends at the first stop, so a reader that goes away leaves the run to recovery). The event log (T090) should be written from the same loop, before or with each event; `Event.Seq` gives turn events a position. Since T098 that position is durable only up to the last `EventSaved`.
 - Cancel is already idempotent at the store level: canceling a final run is `ErrFinal`, so the API should treat `ErrFinal` on cancel as success. Within one process, `Cancel` stops a live execution and waits for it, then the marker rule applies. **Across replicas it does not:** a run executing in another process gives `store.ErrLeased`. T071 needs a cancel signal on the bus (E18) that the owning process turns into `Cancel`, or must retry after the lease expires.
-- Restart: recovery resumes `running` runs one lease time after the dead process's last renewal, and `failed` + retryable ones when due. A resumed chat run makes exactly the remaining requests. A tool call in flight when the process died is asked of the model again (see agentstep's side-effects note), so messaging tools must dedupe by message ID (T073's exactly-once processing), not by tool-use ID.
+- Restart: recovery resumes `running` runs (background ones only, since T100) one lease time after the dead process's last renewal, and `failed` + retryable ones when due. A resumed chat run makes exactly the remaining requests. A tool call in flight when the process died is asked of the model again (see agentstep's side-effects note), so messaging tools must dedupe by message ID (T073's exactly-once processing), not by tool-use ID.
 - A wall-clock limit (T071) can be `ctx` with a deadline on the execution. The run is then left `running`, so T071 must transition it to `failed` itself, or the runner gains an option for it. Budgets are the harness's (`ErrBudgetExceeded`, not retried).
 - T073's wake-on-reply is `Run(ctx, conv, replyMessage)` on the sender's conversation. It fails with `ErrRunUnfinished` while the sender's run is still going, so the mailbox must queue and retry after that run ends (or deliver into a waiting tool call).
 - Interrupted executions' usage is not in `Run.Usage` (see T037). Per-thread budgets should sum turn records.

@@ -139,6 +139,11 @@ func TestEventLog(t *testing.T) {
 	storetest.RunEventLog(t, newEvents)
 }
 
+func TestCommandLog(t *testing.T) {
+	t.Parallel()
+	storetest.RunCommandLog(t, func(t *testing.T, clk clock.Clock) storetest.CommandStore { return open(t, clk) })
+}
+
 // The suites again, with every call going to one of two Stores (two
 // connection pools) on the same schema, in turn, as two processes would. The
 // suites' races (sequence races, concurrent appends, claims and transitions)
@@ -168,6 +173,10 @@ func TestTwoPools(t *testing.T) {
 	t.Run("EventLog", func(t *testing.T) {
 		t.Parallel()
 		storetest.RunEventLog(t, func(t *testing.T, clk clock.Clock) store.EventLog { return openPair(t, clk) })
+	})
+	t.Run("CommandLog", func(t *testing.T) {
+		t.Parallel()
+		storetest.RunCommandLog(t, func(t *testing.T, clk clock.Clock) storetest.CommandStore { return openPair(t, clk) })
 	})
 }
 
@@ -260,6 +269,18 @@ func (p *pair) EventsAfter(ctx context.Context, runID string, after int64, limit
 
 func (p *pair) LastEventSeq(ctx context.Context, runID string) (int64, error) {
 	return p.next().LastEventSeq(ctx, runID)
+}
+
+func (p *pair) SendCommand(ctx context.Context, runID string, c store.Command) (store.Command, error) {
+	return p.next().SendCommand(ctx, runID, c)
+}
+
+func (p *pair) PendingCommands(ctx context.Context, runID string, limit int) ([]store.Command, error) {
+	return p.next().PendingCommands(ctx, runID, limit)
+}
+
+func (p *pair) ConsumeCommands(ctx context.Context, runID, owner string, through int64) error {
+	return p.next().ConsumeCommands(ctx, runID, owner, through)
 }
 
 type pairAdmin struct{ p *pair }

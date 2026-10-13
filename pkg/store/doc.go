@@ -64,6 +64,16 @@
 // taken over finds out at its next append. The store does not know event
 // types: which events are durable is the runner's choice.
 //
+// # Commands
+//
+// [CommandLog] keeps what is sent to a run while it runs (steering, an
+// interrupt's answer, a cancel), stored before it is signalled so that a
+// failover cannot lose it. The store numbers commands 1, 2, 3... per run, and
+// the sender's key makes a retry safe. A command is accepted only by a run
+// that is not final, and consumed only by the run's lease holder, each
+// checked in the same write; a runner taking a run over reads the commands
+// still pending.
+//
 // # Times
 //
 // Backends keep times as int64 Unix nanoseconds, which hold 1678 to 2262. A

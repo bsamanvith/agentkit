@@ -27,6 +27,7 @@ var (
 	_ store.ConversationStore = (*Store)(nil)
 	_ store.RunStore          = (*Store)(nil)
 	_ store.EventLog          = (*Store)(nil)
+	_ store.CommandLog        = (*Store)(nil)
 	_ flow.Checkpointer       = (*Store)(nil)
 	_ store.Admin             = admin{}
 )
@@ -48,7 +49,9 @@ type Store struct {
 	mu          sync.Mutex
 	convs       map[key][]entry
 	runs        map[key]store.Run
-	events      map[key][]store.Event // by run id
+	events      map[key][]store.Event   // by run id
+	commands    map[key][]store.Command // by run id
+	consumed    map[key]int64           // by run id: the last consumed command
 	checkpoints map[key]flow.Checkpoint
 }
 
@@ -70,6 +73,8 @@ func New(opts ...Option) *Store {
 		convs:       map[key][]entry{},
 		runs:        map[key]store.Run{},
 		events:      map[key][]store.Event{},
+		commands:    map[key][]store.Command{},
+		consumed:    map[key]int64{},
 		checkpoints: map[key]flow.Checkpoint{},
 	}
 	for _, o := range opts {

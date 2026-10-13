@@ -481,3 +481,63 @@ type EventLog interface {
 	// none.
 	LastEventSeq(ctx context.Context, runID string) (int64, error)
 }
+
+// Command is one message to a run while it runs: a steering message, an
+// interrupt's answer, a cancel. It is stored before it is signalled, so a
+// process that takes the run over after a crash still finds it (E18). The
+// runner holding the run's lease consumes commands at turn boundaries.
+//
+// Rules, enforced by SendCommand ([ErrInvalid] otherwise): Key and Type are
+// not empty and are text (see Text in the package documentation); Data is
+// empty or valid JSON in UTF-8.
+type Command struct {
+	// Seq is the command's position among its run's commands, from 1, set by
+	// the store; the value passed to SendCommand is ignored.
+	Seq int64
+	// Key is the sender's idempotency key, unique per run: sending a command
+	// whose Key the run already has returns the stored one.
+	Key string
+	// Type names the command. The store does not interpret it.
+	Type string
+	// Data is the command's JSON, opaque to the store and kept byte for byte.
+	// Empty is read back as nil.
+	Data json.RawMessage
+	// CreatedAt is set by the store when the command is sent. It never
+	// decreases along a run's commands.
+	CreatedAt time.Time
+}
+
+// CommandLog keeps the commands sent to runs, numbered densely from 1 per
+// run. Unlike [EventLog], it knows the runs of the [RunStore] it is part of:
+// a command goes only to a run that exists and is not final, and only the
+// run's lease holder consumes it, each checked in the same write as the
+// command.
+//
+// Implementations must be safe for concurrent use, must honor ctx, must scope
+// every call by the tenant in ctx, and must not keep or share memory with
+// values passed in or returned. Run storetest.RunCommandLog against every
+// implementation.
+type CommandLog interface {
+	// SendCommand stores c as the run's next command and returns it as
+	// stored. If the run already has a command with c.Key, it returns that
+	// one when its Type and Data bytes are the same as c's, so a retry is
+	// safe, and fails with [ErrConflict] when they differ; this is checked
+	// first, so a retry still succeeds once the run is final. Otherwise it
+	// fails with [ErrNotFound] for a run that does not exist and [ErrFinal]
+	// for a final one. A command that breaks the rules on [Command] is
+	// [ErrInvalid].
+	SendCommand(ctx context.Context, runID string, c Command) (Command, error)
+	// PendingCommands returns up to limit of the run's commands that are not
+	// consumed, in order. limit is read as [Page.Limit] is. A run with no
+	// commands, or that does not exist, gives none.
+	PendingCommands(ctx context.Context, runID string, limit int) ([]Command, error)
+	// ConsumeCommands marks the run's commands up to and including Seq
+	// through as consumed, so that PendingCommands no longer returns them,
+	// as owner, who must hold the run's unexpired lease:
+	// it fails with [ErrLeased] if another owner holds it, [ErrLeaseLost] if
+	// nobody does, [ErrFinal] for a final run and [ErrNotFound] for one that
+	// does not exist. Consuming a consumed command again is a no-op, so a
+	// retry is safe. through must be at least 1 and at most the run's last
+	// command ([ErrInvalid] otherwise).
+	ConsumeCommands(ctx context.Context, runID, owner string, through int64) error
+}

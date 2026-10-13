@@ -48,6 +48,11 @@ func TestEventLog(t *testing.T) {
 	storetest.RunEventLog(t, newEvents)
 }
 
+func TestCommandLog(t *testing.T) {
+	t.Parallel()
+	storetest.RunCommandLog(t, func(_ *testing.T, clk clock.Clock) storetest.CommandStore { return memory.New(memory.WithClock(clk)) })
+}
+
 // The cross-tenant read is not reachable from the tenant-scoped store: code
 // holding it cannot type-assert its way to other tenants' runs, neither to
 // store.Admin itself nor to any method that hands one out.

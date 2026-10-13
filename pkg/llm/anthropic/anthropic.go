@@ -136,16 +136,19 @@ func (m *Model) Generate(ctx context.Context, req llm.Request) iter.Seq2[llm.Eve
 		}
 		// Ending the stream early, whichever way, cancels the request. So
 		// does a stream that goes quiet for the idle timeout: the cause
-		// tells classify it was not the caller's cancellation.
+		// tells classify it was not the caller's cancellation. The clock
+		// runs only while waiting on the server, not while the caller
+		// handles an event.
 		ctx, cancel := context.WithCancelCause(ctx)
 		defer cancel(nil)
-		resetIdle := func() {}
+		pauseIdle, resumeIdle := func() {}, func() {}
 		if m.idle > 0 {
 			watchdog := time.AfterFunc(m.idle, func() {
 				cancel(fmt.Errorf("%w: no event for %v", errStalled, m.idle))
 			})
 			defer watchdog.Stop()
-			resetIdle = func() { watchdog.Reset(m.idle) }
+			pauseIdle = func() { watchdog.Stop() }
+			resumeIdle = func() { watchdog.Reset(m.idle) }
 		}
 		stream := m.client.Beta.Messages.NewStreaming(ctx, params,
 			option.WithRequestBody("application/json", body))
@@ -153,7 +156,7 @@ func (m *Model) Generate(ctx context.Context, req llm.Request) iter.Seq2[llm.Eve
 
 		var r reader
 		for stream.Next() {
-			resetIdle()
+			pauseIdle()
 			if err := ctx.Err(); err != nil {
 				yield(llm.Event{}, classify(ctx, err))
 				return
@@ -171,6 +174,7 @@ func (m *Model) Generate(ctx context.Context, req llm.Request) iter.Seq2[llm.Eve
 			if r.stopped {
 				break
 			}
+			resumeIdle()
 		}
 		if err := stream.Err(); err != nil {
 			yield(llm.Event{}, classify(ctx, err))

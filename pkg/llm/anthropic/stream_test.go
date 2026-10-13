@@ -379,6 +379,35 @@ func TestIdleTimeoutIsBetweenEvents(t *testing.T) {
 	}
 }
 
+// TestIdleTimeoutIgnoresTheConsumer: a caller slower than the idle timeout
+// to handle each event is not a stalled stream.
+func TestIdleTimeoutIgnoresTheConsumer(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		data, err := os.ReadFile("testdata/interleaved.http")
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		_, body, _ := bytes.Cut(data, []byte("\n\n"))
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+	m := newModel(t, srv, anthropicllm.WithIdleTimeout(50*time.Millisecond))
+	slept := false
+	for _, err := range m.Generate(t.Context(), userText("Hello.")) {
+		if err != nil {
+			t.Fatalf("Generate: %v", err)
+		}
+		if !slept {
+			slept = true
+			time.Sleep(200 * time.Millisecond)
+		}
+	}
+}
+
 func TestNegativeIdleTimeoutIsInvalid(t *testing.T) {
 	t.Parallel()
 	_, err := anthropicllm.New(anthropicllm.WithIdleTimeout(-time.Second))

@@ -88,6 +88,8 @@ Background runs (webhooks, jobs, flows, E14) are unchanged: they keep the recove
 - [ ] **Simulation:** the runner simulation draws interactive runs and the operations above (interrupt, new message, continue, crash), and recovery never touches an interactive run.
 - [ ] **Mutation list** recorded.
 
+- [ ] **The CLI keeps working:** `agentkit chat`'s Ctrl-C relies on the run ending `interrupted` and on Enter resuming it with an empty message. `TestChatCtrlCCancelsRun`, `TestChatCtrlCAsTheRunStarts` and `TestE2EChat` (`cmd/agentkit`) pass unchanged, or are updated with the reason recorded (T078 session's handoff, 2026-10-13).
+
 ## Notes
 
 - **Why keep the lease for chat runs.** The lease is how anyone tells a live run from an interrupted one:

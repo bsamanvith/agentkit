@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"iter"
 	"net/http"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -20,6 +21,11 @@ const DefaultModel = "claude-haiku-5-5"
 // (llm.Request.MaxTokens is zero). Thinking counts toward it.
 const DefaultMaxTokens = 64000
 
+// DefaultIdleTimeout is how long a reply's stream may go without an event
+// (the API's pings count) before it is given up as stalled, unless
+// [WithIdleTimeout] says otherwise.
+const DefaultIdleTimeout = 5 * time.Minute
+
 // Model is an llm.Model backed by the Claude Messages API. It is safe for
 // concurrent use.
 type Model struct {
@@ -27,6 +33,7 @@ type Model struct {
 	model     string
 	maxTokens int
 	defaults  Options
+	idle      time.Duration
 }
 
 var _ llm.Model = (*Model)(nil)
@@ -38,6 +45,7 @@ type config struct {
 	model      string
 	maxTokens  int
 	defaults   Options
+	idle       time.Duration
 	baseURL    string
 	httpClient *http.Client
 	sdk        []option.RequestOption
@@ -53,6 +61,13 @@ func WithMaxTokens(n int) Option { return func(c *config) { c.maxTokens = n } }
 // WithOptions sets the model's default [Options]. A request's own Options
 // override them field by field.
 func WithOptions(o Options) Option { return func(c *config) { c.defaults = o } }
+
+// WithIdleTimeout sets how long a reply's stream may go without an event
+// before Generate gives it up with a retryable llm.ErrOverloaded; the default
+// is [DefaultIdleTimeout], and zero turns the limit off. Without it, a
+// connection that stays open but stops sending (a half-open TCP connection)
+// holds the call until its context ends.
+func WithIdleTimeout(d time.Duration) Option { return func(c *config) { c.idle = d } }
 
 // WithBaseURL sends requests to url instead of the API (or
 // ANTHROPIC_BASE_URL), for example a replay server in tests.
@@ -70,10 +85,10 @@ func WithClientOptions(opts ...option.RequestOption) Option {
 
 // New returns a Claude model. The SDK client is built with the SDK's default
 // credential chain; options can override it. New fails with
-// llm.ErrInvalidRequest on an empty model ID, a negative output limit or
-// invalid default options.
+// llm.ErrInvalidRequest on an empty model ID, a negative output limit, a
+// negative idle timeout or invalid default options.
 func New(opts ...Option) (*Model, error) {
-	c := config{model: DefaultModel, maxTokens: DefaultMaxTokens}
+	c := config{model: DefaultModel, maxTokens: DefaultMaxTokens, idle: DefaultIdleTimeout}
 	for _, o := range opts {
 		o(&c)
 	}
@@ -82,6 +97,9 @@ func New(opts ...Option) (*Model, error) {
 	}
 	if c.maxTokens <= 0 {
 		return nil, fmt.Errorf("%w: max tokens %d is not positive", llm.ErrInvalidRequest, c.maxTokens)
+	}
+	if c.idle < 0 {
+		return nil, fmt.Errorf("%w: idle timeout %v is negative", llm.ErrInvalidRequest, c.idle)
 	}
 	defaults := c.defaults.merge(builtin)
 	if err := defaults.validate(); err != nil {
@@ -100,6 +118,7 @@ func New(opts ...Option) (*Model, error) {
 		model:     c.model,
 		maxTokens: c.maxTokens,
 		defaults:  defaults,
+		idle:      c.idle,
 	}, nil
 }
 
@@ -115,17 +134,28 @@ func (m *Model) Generate(ctx context.Context, req llm.Request) iter.Seq2[llm.Eve
 			yield(llm.Event{}, err)
 			return
 		}
-		// Ending the stream early, whichever way, cancels the request.
-		ctx, cancel := context.WithCancel(ctx)
-		defer cancel()
+		// Ending the stream early, whichever way, cancels the request. So
+		// does a stream that goes quiet for the idle timeout: the cause
+		// tells classify it was not the caller's cancellation.
+		ctx, cancel := context.WithCancelCause(ctx)
+		defer cancel(nil)
+		resetIdle := func() {}
+		if m.idle > 0 {
+			watchdog := time.AfterFunc(m.idle, func() {
+				cancel(fmt.Errorf("%w: no event for %v", errStalled, m.idle))
+			})
+			defer watchdog.Stop()
+			resetIdle = func() { watchdog.Reset(m.idle) }
+		}
 		stream := m.client.Beta.Messages.NewStreaming(ctx, params,
 			option.WithRequestBody("application/json", body))
 		defer stream.Close()
 
 		var r reader
 		for stream.Next() {
+			resetIdle()
 			if err := ctx.Err(); err != nil {
-				yield(llm.Event{}, err)
+				yield(llm.Event{}, classify(ctx, err))
 				return
 			}
 			events, err := r.read(stream.Current())
@@ -157,6 +187,9 @@ func (m *Model) Generate(ctx context.Context, req llm.Request) iter.Seq2[llm.Eve
 		yield(llm.Event{Kind: llm.EventMessageDone, Response: &resp}, nil)
 	}
 }
+
+// errStalled is the cause of a stream given up after the idle timeout.
+var errStalled = errors.New("anthropic: stream stalled")
 
 // errIncomplete is a stream that ended before message_stop.
 var errIncomplete = errors.New("anthropic: stream ended before message_stop")

@@ -17,6 +17,11 @@ import (
 // the caller gets the context's own error.
 func classify(ctx context.Context, err error) error {
 	if ctxErr := ctx.Err(); ctxErr != nil {
+		// A stalled stream is cancelled by Generate's own watchdog, with
+		// errStalled as the cause: transient, like a dropped connection.
+		if cause := context.Cause(ctx); errors.Is(cause, errStalled) {
+			return fmt.Errorf("%w: %w", llm.ErrOverloaded, cause)
+		}
 		return ctxErr
 	}
 	var apiErr *anthropic.Error

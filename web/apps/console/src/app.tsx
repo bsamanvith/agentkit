@@ -1,5 +1,4 @@
 import { ThemeProvider } from "@agentkit/ui";
-import { TooltipProvider } from "@agentkit/ui/components/tooltip";
 import { useState } from "react";
 import { createBrowserRouter, RouterProvider } from "react-router";
 import { useApi } from "./api";
@@ -27,11 +26,9 @@ export function App({ router: given }: { router?: Router }) {
   const [router] = useState(() => given ?? createBrowserRouter(routes));
   return (
     <ThemeProvider>
-      <TooltipProvider delayDuration={300}>
-        <ApiProvider>
-          <Body router={router} />
-        </ApiProvider>
-      </TooltipProvider>
+      <ApiProvider>
+        <Body router={router} />
+      </ApiProvider>
     </ThemeProvider>
   );
 }

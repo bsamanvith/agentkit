@@ -1,10 +1,19 @@
-// The app shell (docs/UI.md "Information architecture", "Layouts"): a 56 px
-// icon rail of sections, the section's list column, and the content. It is
-// shadcn's Sidebar in its nested form (the "sidebar-09" block): one
-// collapsible Sidebar holding the rail and the list. On phones (< 768 px)
-// shadcn turns it into a Sheet, the drawer.
+// The app shell (docs/UI.md "Layouts", and the mockup docs/ui/console-mockup.html):
+//
+// - desktop and laptop: a 56 px rail of sections, the section's list column
+//   (288 px, 248 px below 1200 px; Mod+Shift+S or the head bar's toggle
+//   hides it, and the choice is remembered), and the content;
+// - phone (< 768 px): the content with a top bar; its Menu button opens a
+//   drawer with the sections as a grid of icon and label, the Chats list and
+//   the account. Picking anything closes it.
+//
+// The drawer is ours, not shadcn's Sheet: Radix's modal scroll lock injects a
+// <style>, which the CSP blocks. The page doesn't scroll behind it anyway (the
+// shell is the height of the screen; only its panes scroll), and the app
+// behind is inert while it is open.
 
 import { useTheme, themePreferences, type ThemePreference } from "@agentkit/ui";
+import { Button } from "@agentkit/ui/components/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,51 +24,47 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@agentkit/ui/components/dropdown-menu";
+import { Skeleton } from "@agentkit/ui/components/skeleton";
+import { useIsMobile } from "@agentkit/ui/hooks/use-mobile";
+import { cn } from "@agentkit/ui/lib/utils";
+import { Ellipsis, MessageCircle, SquarePen, UserRound } from "lucide-react";
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarHeader,
-  SidebarInset,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarProvider,
-  SidebarSeparator,
-  SidebarTrigger,
-} from "@agentkit/ui/components/sidebar";
-import { Plus, UserRound } from "lucide-react";
-import type { CSSProperties, ReactNode } from "react";
-import { NavLink, Outlet, useLocation } from "react-router";
-import { useApi } from "./api";
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
+import { Link, Outlet, useLocation } from "react-router";
+import { useApi, useResource, type Resource } from "./api";
+import { LayoutContext, isApple, listStorageKey, type Layout } from "./layout";
+import { ListRow } from "./list-row";
+import { agentRow, listAgents, ListsContext, listToolsets, toolsetRow, type Lists } from "./lists";
 import { adminSections, sectionOf, sections, type Section } from "./sections";
 
 const themeLabels: Record<ThemePreference, string> = { system: "System", light: "Light", dark: "Dark" };
 
-function RailItem({ section }: { section: Section }) {
-  const { pathname } = useLocation();
-  const current = sectionOf(pathname).to === section.to;
-  const Icon = section.icon;
-  return (
-    <SidebarMenuItem>
-      <SidebarMenuButton
-        asChild
-        isActive={current}
-        tooltip={{ children: section.label, hidden: false }}
-        className="size-10 justify-center p-0"
-      >
-        <NavLink to={section.to} aria-current={current ? "page" : undefined}>
-          <Icon aria-hidden="true" />
-          <span className="sr-only">{section.label}</span>
-        </NavLink>
-      </SidebarMenuButton>
-    </SidebarMenuItem>
-  );
+// Below 900 px the list starts hidden (the content would be under 600 px),
+// unless you showed it (docs/UI.md "Layouts", laptop).
+function initialListShown(): boolean {
+  try {
+    const v = localStorage.getItem(listStorageKey);
+    if (v === "shown" || v === "hidden") return v === "shown";
+  } catch {
+    // Storage blocked: use the width.
+  }
+  return window.innerWidth >= 900;
 }
 
-function UserMenu() {
+const tip =
+  "pointer-events-none absolute z-30 rounded-sm bg-primary px-2 py-0.5 text-xs whitespace-nowrap text-primary-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100";
+
+/** The account menu: the theme, and Forget token. */
+function UserMenu({ variant }: { variant: "rail" | "drawer" }) {
   const { preference, setPreference } = useTheme();
   const { hasToken, forgetToken } = useApi();
   // Not modal: a modal menu locks scrolling with an injected <style>, which
@@ -67,11 +72,27 @@ function UserMenu() {
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
-        <SidebarMenuButton aria-label="Account and theme" className="size-10 justify-center p-0">
-          <UserRound aria-hidden="true" />
-        </SidebarMenuButton>
+        {variant === "rail" ? (
+          <button
+            type="button"
+            aria-label="Account and theme"
+            className="grid size-10 place-items-center rounded-md hover:bg-ak-hover"
+          >
+            <span className="grid size-7 place-items-center rounded-full bg-ak-select text-ak-text">
+              <UserRound aria-hidden="true" className="size-3.5" />
+            </span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            aria-label="Account and theme"
+            className="grid size-8 place-items-center rounded-md text-ak-muted hover:bg-ak-hover hover:text-ak-text"
+          >
+            <Ellipsis aria-hidden="true" className="size-4" />
+          </button>
+        )}
       </DropdownMenuTrigger>
-      <DropdownMenuContent side="right" align="end" className="w-56">
+      <DropdownMenuContent side={variant === "rail" ? "right" : "top"} align="end" className="w-56">
         <DropdownMenuLabel className="text-ak-muted">Theme</DropdownMenuLabel>
         <DropdownMenuRadioGroup value={preference} onValueChange={(v) => setPreference(v as ThemePreference)}>
           {themePreferences.map((p) => (
@@ -91,87 +112,353 @@ function UserMenu() {
   );
 }
 
-/** The list column's content per section. T055 fills Chats; T064 the admin lists. */
-function ListColumn() {
-  const { pathname } = useLocation();
-  const section = sectionOf(pathname);
+function RailLink({ section, current }: { section: Section; current: boolean }) {
+  const Icon = section.icon;
   return (
-    <Sidebar collapsible="none" className="hidden flex-1 md:flex">
-      <nav aria-label={section.label} className="contents">
-        <SidebarHeader className="gap-2 border-b p-3">
-          <div className="text-sm font-semibold text-ak-text">{section.label}</div>
-          {section.to === "/" ? (
-            <SidebarMenuButton asChild className="border border-ak-line-strong bg-ak-surface">
-              <NavLink to="/new">
-                <Plus aria-hidden="true" />
-                New chat
-              </NavLink>
-            </SidebarMenuButton>
-          ) : null}
-        </SidebarHeader>
-        <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupContent className="px-2 py-1 text-sm text-ak-muted">
-              {section.to === "/" ? "No conversations yet" : "Nothing here yet"}
-            </SidebarGroupContent>
-          </SidebarGroup>
-        </SidebarContent>
+    <Link
+      to={section.to}
+      aria-label={section.label}
+      aria-current={current ? "page" : undefined}
+      className="group relative grid size-10 place-items-center rounded-md text-ak-muted hover:bg-ak-hover hover:text-ak-text aria-[current=page]:bg-ak-select aria-[current=page]:text-ak-text"
+    >
+      <Icon aria-hidden="true" className="size-4.5" />
+      <span aria-hidden="true" className={cn(tip, "top-1/2 left-12 -translate-y-1/2")}>
+        {section.label}
+      </span>
+    </Link>
+  );
+}
+
+/** Laptop and desktop: the rail. */
+function Rail({ current }: { current: Section }) {
+  return (
+    <nav aria-label="Sections" className="flex min-h-0 flex-col items-center gap-1 border-r bg-ak-bg py-3">
+      <div
+        aria-hidden="true"
+        className="mb-2.5 grid size-7 flex-none place-items-center rounded-[7px] bg-primary font-mono text-xs font-medium text-primary-foreground"
+      >
+        ak
+      </div>
+      {sections.map((s) => (
+        <RailLink key={s.to} section={s} current={s === current} />
+      ))}
+      <div role="separator" className="my-1.5 h-px w-6 flex-none bg-ak-line-strong" />
+      {adminSections.map((s) => (
+        <RailLink key={s.to} section={s} current={s === current} />
+      ))}
+      <div className="flex-1" />
+      <UserMenu variant="rail" />
+    </nav>
+  );
+}
+
+/** A list column's head: the section's name, and a count or an action. */
+function ListHead({ title, extra }: { title: string; extra?: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-2 px-3 pt-3 pb-2">
+      <div className="flex min-h-7 items-center justify-between gap-2 px-1">
+        <h2 className="text-(length:--ak-text-md) font-semibold text-ak-text">{title}</h2>
+        {extra}
+      </div>
+    </div>
+  );
+}
+
+function NewChatButton() {
+  return (
+    <Link
+      to="/new"
+      aria-label="New chat"
+      className="group relative grid size-8 place-items-center rounded-md text-ak-muted hover:bg-ak-hover hover:text-ak-text"
+    >
+      <SquarePen aria-hidden="true" className="size-4" />
+      <span aria-hidden="true" className={cn(tip, "top-9 right-0")}>
+        New chat
+      </span>
+    </Link>
+  );
+}
+
+/** Chats: T055 fills it with the caller's conversations. */
+function ChatsList() {
+  return (
+    <>
+      <ListHead title="Chats" extra={<NewChatButton />} />
+      <nav aria-label="Conversations" className="min-h-0 flex-1 overflow-auto px-2 pb-3">
+        <div className="flex flex-col items-center gap-2.5 px-4 pt-10 text-center">
+          <div className="grid size-10 place-items-center rounded-[10px] border bg-ak-surface-2 text-ak-muted">
+            <MessageCircle aria-hidden="true" className="size-4.5" />
+          </div>
+          <p className="text-ak-muted">No conversations yet.</p>
+          <Button asChild variant="outline" size="sm" className="bg-ak-surface">
+            <Link to="/new">New chat</Link>
+          </Button>
+        </div>
       </nav>
-    </Sidebar>
+    </>
+  );
+}
+
+function ListBody<T>({
+  label,
+  res,
+  empty,
+  children,
+}: {
+  label: string;
+  res: Resource<T[]>;
+  empty: string;
+  children: (item: T) => ReactNode;
+}) {
+  let body: ReactNode;
+  if (res.state === "loading") {
+    body = (
+      <div aria-busy="true" className="flex flex-col gap-3 px-2 py-2">
+        <span className="sr-only">Loading</span>
+        {["w-3/5", "w-1/2", "w-2/3"].map((w) => (
+          <div key={w} className="flex flex-col gap-1.5">
+            <Skeleton className={cn("h-3", w)} />
+            <Skeleton className="h-2.5 w-1/3" />
+          </div>
+        ))}
+      </div>
+    );
+  } else if (res.state === "failed") {
+    // Not an alert: the page says it too, with the reason.
+    body = (
+      <div className="flex items-center gap-2 px-2 py-2 text-(length:--ak-text-sm) text-ak-muted">
+        Couldn&apos;t load {label.toLowerCase()}.
+        <Button variant="outline" size="sm" onClick={res.retry}>
+          Retry
+        </Button>
+      </div>
+    );
+  } else if (res.data.length === 0) {
+    body = <p className="px-2 py-2 text-(length:--ak-text-sm) text-ak-muted">{empty}</p>;
+  } else {
+    body = res.data.map(children);
+  }
+  return (
+    <nav aria-label={label} className="min-h-0 flex-1 overflow-auto px-2 pb-3">
+      {body}
+    </nav>
+  );
+}
+
+const count = (res: Resource<unknown[]>) => (
+  <span className="text-xs text-ak-muted">{res.state === "ready" ? res.data.length : ""}</span>
+);
+
+/** The item in the URL, "researcher" in /agents/researcher; "" when none or malformed. */
+function selectedName(pathname: string): string {
+  try {
+    return decodeURIComponent(pathname.split("/")[2] ?? "");
+  } catch {
+    return "";
+  }
+}
+
+/** Laptop and desktop: the section's list. */
+function ListColumn({ current, lists }: { current: Section; lists: Lists }) {
+  const selected = selectedName(useLocation().pathname);
+  let content: ReactNode;
+  if (current.to === "/agents" && lists.agents) {
+    content = (
+      <>
+        <ListHead title="Agents" extra={count(lists.agents)} />
+        <ListBody label="Agents" res={lists.agents} empty="No agents are configured.">
+          {(a) => (
+            <ListRow
+              key={a.name}
+              to={`/agents/${encodeURIComponent(a.name)}`}
+              current={a.name === selected}
+              {...agentRow(a)}
+            />
+          )}
+        </ListBody>
+      </>
+    );
+  } else if (current.to === "/toolsets" && lists.toolsets) {
+    content = (
+      <>
+        <ListHead title="Toolsets" extra={count(lists.toolsets)} />
+        <ListBody label="Toolsets" res={lists.toolsets} empty="No toolsets are configured.">
+          {(t) => (
+            <ListRow
+              key={t.name}
+              to={`/toolsets/${encodeURIComponent(t.name)}`}
+              current={t.name === selected}
+              {...toolsetRow(t)}
+            />
+          )}
+        </ListBody>
+      </>
+    );
+  } else {
+    content = <ChatsList />;
+  }
+  return <div className="flex min-h-0 min-w-0 flex-col border-r bg-ak-bg">{content}</div>;
+}
+
+/** Phone: the drawer. */
+function Drawer({ open, current, close }: { open: boolean; current: Section; close: (returnFocus: boolean) => void }) {
+  // Picking anything in it (a section, a conversation, New chat) closes it.
+  const onClick = (e: MouseEvent) => {
+    if ((e.target as Element).closest("a")) close(false);
+  };
+  const onKeyDown = (e: KeyboardEvent) => {
+    // Esc in the account menu closes the menu only (docs/UI.md: the topmost first).
+    if (e.key === "Escape" && !(e.target as Element).closest("[role=menu]")) {
+      e.stopPropagation();
+      close(true);
+    }
+  };
+  return (
+    <>
+      {open ? <div aria-hidden="true" className="fixed inset-0 z-30 bg-black/30" onClick={() => close(true)} /> : null}
+      <div
+        id="drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Menu"
+        inert={!open}
+        onClick={onClick}
+        onKeyDown={onKeyDown}
+        className={cn(
+          "fixed inset-y-0 left-0 z-40 flex w-[min(320px,86%)] flex-col border-r border-ak-line-strong bg-ak-bg transition-transform duration-(--ak-slow) ease-ak",
+          open ? "translate-x-0 shadow-ak" : "-translate-x-[102%]",
+        )}
+      >
+        <nav aria-label="Sections" className="grid grid-cols-3 gap-0.5 px-3 pt-3 pb-0.5">
+          {[...sections, ...adminSections].map((s) => {
+            const Icon = s.icon;
+            return (
+              <Link
+                key={s.to}
+                to={s.to}
+                aria-current={s === current ? "page" : undefined}
+                className="flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-md px-1 py-1.5 text-center text-xs text-ak-muted aria-[current=page]:bg-ak-select aria-[current=page]:text-ak-text"
+              >
+                <Icon aria-hidden="true" className="size-4" />
+                {s.label}
+              </Link>
+            );
+          })}
+        </nav>
+        {/* On phones the drawer always holds the Chats list; admin lists are pages. */}
+        <ChatsList />
+        <div className="flex items-center gap-2.5 border-t px-4 pt-2.5 pb-[calc(10px+env(safe-area-inset-bottom,0px))]">
+          <span className="grid size-7 place-items-center rounded-full bg-ak-select text-ak-text">
+            <UserRound aria-hidden="true" className="size-3.5" />
+          </span>
+          <span className="flex-1 text-(length:--ak-text-sm) text-ak-text-2">Account</span>
+          <UserMenu variant="drawer" />
+        </div>
+      </div>
+    </>
   );
 }
 
 export function Shell({ children }: { children?: ReactNode }) {
-  return (
-    <SidebarProvider
-      style={
-        {
-          "--sidebar-width": "calc(var(--ak-rail-w) + var(--ak-list-w))",
-          "--sidebar-width-icon": "var(--ak-rail-w)",
-        } as CSSProperties
+  const { pathname } = useLocation();
+  const current = sectionOf(pathname);
+  const phone = useIsMobile();
+  const hasList = current.to !== "/connections"; // one page, no list
+  const [listShown, setListShown] = useState(initialListShown);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const menuButton = useRef<HTMLElement | null>(null);
+  const drawer = useRef<HTMLDivElement>(null);
+
+  const agents = useResource(listAgents, "agents", current.to !== "/agents");
+  const toolsets = useResource(listToolsets, "toolsets", current.to !== "/toolsets");
+  const lists = useMemo<Lists>(
+    () => ({
+      agents: current.to === "/agents" ? agents : null,
+      toolsets: current.to === "/toolsets" ? toolsets : null,
+    }),
+    [current, agents, toolsets],
+  );
+
+  const toggleList = useCallback(() => {
+    setListShown((shown) => {
+      try {
+        localStorage.setItem(listStorageKey, shown ? "hidden" : "shown");
+      } catch {
+        // Storage blocked: remembered for this page only.
       }
-    >
-      <a
-        href="#content"
-        className="sr-only z-50 rounded-md bg-ak-surface px-3 py-2 focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
-      >
-        Skip to content
-      </a>
-      <Sidebar collapsible="icon" className="overflow-hidden *:data-[sidebar=sidebar]:flex-row">
-        <Sidebar collapsible="none" className="w-[calc(var(--sidebar-width-icon)+1px)]! border-r">
-          <nav aria-label="Sections" className="flex h-full flex-col">
-            <SidebarContent className="items-center pt-2">
-              <SidebarMenu className="items-center gap-1">
-                {sections.map((s) => (
-                  <RailItem key={s.to} section={s} />
-                ))}
-              </SidebarMenu>
-              <SidebarSeparator className="mx-0 w-8" />
-              <SidebarMenu className="items-center gap-1">
-                {adminSections.map((s) => (
-                  <RailItem key={s.to} section={s} />
-                ))}
-              </SidebarMenu>
-            </SidebarContent>
-            <SidebarFooter className="items-center pb-3">
-              <SidebarMenu className="items-center">
-                <SidebarMenuItem>
-                  <UserMenu />
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarFooter>
-          </nav>
-        </Sidebar>
-        <ListColumn />
-      </Sidebar>
-      <SidebarInset>
-        <header className="flex h-12 items-center gap-2 border-b px-3">
-          <SidebarTrigger aria-label="Show or hide the list" />
-        </header>
-        <main id="content" tabIndex={-1} className="flex min-h-0 flex-1 flex-col outline-none">
-          {children ?? <Outlet />}
-        </main>
-      </SidebarInset>
-    </SidebarProvider>
+      return !shown;
+    });
+  }, []);
+  const openDrawer = useCallback(() => {
+    menuButton.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setDrawerOpen(true);
+    // Focus where you are, not the search, so the keyboard doesn't open.
+    requestAnimationFrame(() => drawer.current?.querySelector<HTMLElement>("a[aria-current], a")?.focus());
+  }, []);
+  const closeDrawer = useCallback((returnFocus: boolean) => {
+    setDrawerOpen(false);
+    // After the render: until then the app behind is inert and can't take focus.
+    if (returnFocus) requestAnimationFrame(() => menuButton.current?.focus());
+  }, []);
+
+  const onKey = useEffectEvent((e: globalThis.KeyboardEvent) => {
+    const mod = isApple ? e.metaKey : e.ctrlKey;
+    if (mod && e.shiftKey && !e.altKey && e.key.toLowerCase() === "s") {
+      e.preventDefault();
+      if (phone) {
+        if (drawerOpen) closeDrawer(true);
+        else openDrawer();
+      } else if (hasList) toggleList();
+    }
+  });
+  useEffect(() => {
+    const listener = (e: globalThis.KeyboardEvent) => onKey(e);
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, []);
+
+  const layout = useMemo<Layout>(
+    () => ({ phone, hasList, listShown, toggleList, drawerOpen: phone && drawerOpen, openDrawer }),
+    [phone, hasList, listShown, toggleList, drawerOpen, openDrawer],
+  );
+  const showList = !phone && hasList && listShown;
+
+  return (
+    <LayoutContext.Provider value={layout}>
+      <ListsContext.Provider value={lists}>
+        <a
+          href="#content"
+          className="sr-only z-50 rounded-md bg-ak-surface px-3 py-2 focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
+        >
+          Skip to content
+        </a>
+        <div
+          className={cn(
+            "grid h-svh overflow-hidden bg-ak-bg",
+            phone
+              ? "grid-cols-[minmax(0,1fr)]"
+              : showList
+                ? "grid-cols-[var(--ak-rail-w)_var(--ak-list-w-laptop)_minmax(0,1fr)] xl:grid-cols-[var(--ak-rail-w)_var(--ak-list-w)_minmax(0,1fr)]"
+                : "grid-cols-[var(--ak-rail-w)_minmax(0,1fr)]",
+          )}
+        >
+          {phone ? null : <Rail current={current} />}
+          {showList ? <ListColumn current={current} lists={lists} /> : null}
+          <main
+            id="content"
+            tabIndex={-1}
+            inert={layout.drawerOpen}
+            className="flex min-h-0 min-w-0 flex-col bg-ak-surface outline-none"
+          >
+            {children ?? <Outlet />}
+          </main>
+        </div>
+        {phone ? (
+          <div ref={drawer} className="contents">
+            <Drawer open={drawerOpen} current={current} close={closeDrawer} />
+          </div>
+        ) : null}
+      </ListsContext.Provider>
+    </LayoutContext.Provider>
   );
 }

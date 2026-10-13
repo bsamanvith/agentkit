@@ -46,11 +46,13 @@ export type Resource<T> =
 /**
  * Loads a resource with the client, again whenever the token changes. A 401
  * opens the token prompt instead of failing, and is not retried until a new
- * token arrives: no request loop.
+ * token arrives: no request loop. With skip, nothing is loaded (hooks can't
+ * be conditional) and it stays "loading".
  */
 export function useResource<T>(
   load: (client: AgentClient, signal: AbortSignal) => Promise<T>,
   key: string,
+  skip = false,
 ): Resource<T> {
   const { client, epoch, prompt, unauthorized, accepted } = useApi();
   const [attempt, setAttempt] = useState(0);
@@ -61,7 +63,7 @@ export function useResource<T>(
   const run = useEffectEvent((signal: AbortSignal) => load(client, signal));
 
   useEffect(() => {
-    if (prompt !== null) return; // waiting for a token
+    if (skip || prompt !== null) return; // not wanted, or waiting for a token
     const ctl = new AbortController();
     run(ctl.signal).then(
       (data) => {
@@ -86,7 +88,7 @@ export function useResource<T>(
       },
     );
     return () => ctl.abort();
-  }, [client, prompt, unauthorized, accepted, loadId]);
+  }, [client, prompt, unauthorized, accepted, loadId, skip]);
 
   return settled?.loadId === loadId ? settled.res : { state: "loading" };
 }

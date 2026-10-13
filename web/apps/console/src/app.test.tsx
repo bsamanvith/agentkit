@@ -1,9 +1,10 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Agent } from "@agentkit/agent-ui/api";
 import { createMemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { tokenStorageKey } from "./api";
+import { listStorageKey } from "./layout";
 import { App } from "./app";
 import { readiness } from "./pages/readiness";
 import { routes } from "./routes";
@@ -32,6 +33,19 @@ function fakeServer(server = { token: "good" }) {
   });
   vi.stubGlobal("fetch", fetch);
   return seen;
+}
+
+/** /agents shows its first agent on a laptop or desktop: the h1 is its name. */
+const researcher = () => screen.findByRole("heading", { level: 1, name: "researcher" });
+
+/** Answer the phone media query (< 768 px) as matched. */
+function asPhone() {
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: query.includes("max-width: 767px"),
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
 }
 
 function renderAt(path: string) {
@@ -73,6 +87,7 @@ describe("readiness", () => {
   });
   it.each([
     [[], "ok", "Ready"],
+    [["ready"], "ok", "Its toolset is ready"],
     [["ready", "ready"], "ok", "All 2 toolsets ready"],
     [["ready", "failed", "pending"], "warn", "2 of 3 toolsets not ready"],
   ])("%j", (statuses, tone, text) => {
@@ -95,7 +110,7 @@ describe("the token", () => {
 
     await userEvent.type(input, "good");
     await userEvent.click(screen.getByRole("button", { name: "Continue" }));
-    expect(await screen.findByText("researcher")).toBeInTheDocument();
+    expect(await researcher()).toBeInTheDocument();
     expect(screen.queryByLabelText("API token")).not.toBeInTheDocument();
     expect(seen.at(-1)?.headers.get("Authorization")).toBe("Bearer good");
     expect(sessionStorage.getItem(tokenStorageKey)).toBe("good");
@@ -133,7 +148,7 @@ describe("the token", () => {
     renderAt("/agents");
     await userEvent.type(await screen.findByLabelText("API token"), "good");
     await userEvent.click(screen.getByRole("button", { name: "Continue" }));
-    await screen.findByText("researcher");
+    await researcher();
 
     server.token = "rotated";
     await userEvent.click(screen.getByRole("link", { name: "Toolsets" }));
@@ -160,7 +175,7 @@ describe("the token", () => {
 
     await userEvent.type(input, "good");
     await userEvent.click(screen.getByRole("button", { name: "Continue" }));
-    await screen.findByText("researcher");
+    await researcher();
     expect(nav.closest("[inert]")).toBeNull();
   });
 
@@ -168,7 +183,7 @@ describe("the token", () => {
     sessionStorage.setItem(tokenStorageKey, "good");
     const seen = fakeServer();
     renderAt("/agents");
-    await screen.findByText("researcher");
+    await researcher();
 
     await userEvent.click(screen.getByRole("button", { name: "Account and theme" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: "Forget token" }));
@@ -187,7 +202,7 @@ describe("the token", () => {
       vi.fn(async () => Response.json(agents)),
     );
     renderAt("/agents");
-    await screen.findByText("researcher");
+    await researcher();
     await userEvent.click(screen.getByRole("button", { name: "Account and theme" }));
     expect(await screen.findByRole("menu")).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Forget token" })).not.toBeInTheDocument();
@@ -223,8 +238,10 @@ describe("a page", () => {
     expect(alert).toHaveTextContent("Couldn't load agents.");
     expect(alert).toHaveTextContent("the store is down (503 internal). Try again in 5 s.");
 
-    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(await screen.findByText("researcher")).toBeInTheDocument();
+    // The list column says it too, briefly, but only the page is an alert.
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    await userEvent.click(within(alert).getByRole("button", { name: "Retry" }));
+    expect(await researcher()).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(calls).toBe(2);
   });
@@ -282,25 +299,157 @@ describe("a page", () => {
 });
 
 describe("the shell", () => {
-  it("names the page and marks its section", async () => {
+  beforeEach(() => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => Response.json(agents)),
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).endsWith("/v1/toolsets")
+          ? Response.json({ v: 1, toolsets: [{ name: "web", type: "mcp", status: "ready", tool_count: 3 }] })
+          : Response.json(agents),
+      ),
     );
+  });
+
+  it("shows the first agent beside the list, and marks both", async () => {
     renderAt("/agents");
-    expect(await screen.findByRole("heading", { level: 1, name: "Agents" })).toBeInTheDocument();
-    await waitFor(() => expect(document.title).toBe("Agents · agentkit"));
-    expect(screen.getByRole("link", { name: "Agents" })).toHaveAttribute("aria-current", "page");
+    expect(await researcher()).toBeInTheDocument();
+    await waitFor(() => expect(document.title).toBe("researcher · agentkit"));
+    const sections = screen.getByRole("navigation", { name: "Sections" });
+    expect(within(sections).getByRole("link", { name: "Agents" })).toHaveAttribute("aria-current", "page");
+    const list = screen.getByRole("navigation", { name: "Agents" });
+    expect(within(list).getByRole("link", { name: /researcher/ })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Chat with researcher" })).toHaveAttribute("href", "/new?agent=researcher");
     expect(screen.getByRole("link", { name: "Skip to content" })).toHaveAttribute("href", "#content");
+    expect(screen.queryByRole("link", { name: /Back to/ })).not.toBeInTheDocument(); // phones only
+  });
+
+  it("shows a toolset's tool count in the list", async () => {
+    renderAt("/toolsets/web");
+    expect(await screen.findByRole("heading", { level: 1, name: "web" })).toBeInTheDocument();
+    const list = screen.getByRole("navigation", { name: "Toolsets" });
+    expect(within(list).getByRole("link", { name: /web/ })).toHaveTextContent("3 tools");
+  });
+
+  it("says when an agent isn't configured", async () => {
+    renderAt("/agents/nobody");
+    expect(await screen.findByRole("heading", { level: 1, name: "No agent named nobody" })).toBeInTheDocument();
+  });
+
+  it("hides and shows the list, by button or Mod+Shift+S, and remembers", async () => {
+    renderAt("/agents/researcher");
+    await researcher();
+    const toggle = screen.getByRole("button", { name: "List" });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("navigation", { name: "Agents" })).not.toBeInTheDocument();
+    expect(localStorage.getItem(listStorageKey)).toBe("hidden");
+
+    await userEvent.keyboard("{Control>}{Shift>}S{/Shift}{/Control}");
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("navigation", { name: "Agents" })).toBeInTheDocument();
+    expect(localStorage.getItem(listStorageKey)).toBe("shown");
+  });
+
+  it("starts with the list hidden when you hid it", async () => {
+    localStorage.setItem(listStorageKey, "hidden");
+    renderAt("/agents/researcher");
+    await researcher();
+    expect(screen.queryByRole("navigation", { name: "Agents" })).not.toBeInTheDocument();
+  });
+
+  it("starts with the list hidden below 900 px, unless you showed it", async () => {
+    vi.stubGlobal("innerWidth", 800);
+    renderAt("/agents/researcher");
+    await researcher();
+    expect(screen.queryByRole("navigation", { name: "Agents" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "List" })).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("has no list in Connections", async () => {
+    renderAt("/connections");
+    expect(await screen.findByRole("heading", { level: 1, name: "Connections" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "List" })).not.toBeInTheDocument();
+  });
+
+  it("shows the Chats list beside a new chat", async () => {
+    renderAt("/new");
+    expect(await screen.findByRole("heading", { level: 1, name: "New chat" })).toBeInTheDocument();
+    const list = screen.getByRole("navigation", { name: "Conversations" });
+    expect(within(list).getByText("No conversations yet.")).toBeInTheDocument();
   });
 
   it("shows a pinned theme from localStorage on <html>", async () => {
     localStorage.setItem("agentkit.theme", "dark");
+    renderAt("/");
+    await waitFor(() => expect(document.documentElement).toHaveAttribute("data-theme", "dark"));
+  });
+});
+
+describe("on a phone", () => {
+  beforeEach(() => {
+    asPhone();
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => Response.json(agents)),
     );
-    renderAt("/");
-    await waitFor(() => expect(document.documentElement).toHaveAttribute("data-theme", "dark"));
+  });
+
+  it("has no rail; Menu opens the drawer, with the app behind inert", async () => {
+    renderAt("/new");
+    await screen.findByRole("heading", { level: 1, name: "New chat" });
+    const menu = screen.getByRole("button", { name: "Menu" });
+    const drawer = screen.getByRole("dialog", { name: "Menu", hidden: true });
+    expect(drawer).toHaveAttribute("inert");
+    expect(screen.queryByRole("button", { name: "List" })).not.toBeInTheDocument();
+
+    await userEvent.click(menu);
+    expect(menu).toHaveAttribute("aria-expanded", "true");
+    expect(drawer).not.toHaveAttribute("inert");
+    expect(document.getElementById("content")).toHaveAttribute("inert");
+    expect(within(drawer).getByRole("navigation", { name: "Conversations" })).toBeInTheDocument();
+    const sections = within(drawer).getByRole("navigation", { name: "Sections" });
+    await waitFor(() => expect(within(sections).getByRole("link", { name: "Chats" })).toHaveFocus());
+  });
+
+  it("closes the drawer on Esc, back to the Menu button", async () => {
+    renderAt("/new");
+    await screen.findByRole("heading", { level: 1, name: "New chat" });
+    const menu = screen.getByRole("button", { name: "Menu" });
+    await userEvent.click(menu);
+    await waitFor(() => expect(screen.getByRole("link", { name: "Chats" })).toHaveFocus());
+    await userEvent.keyboard("{Escape}");
+    expect(menu).toHaveAttribute("aria-expanded", "false");
+    await waitFor(() => expect(menu).toHaveFocus());
+    expect(document.getElementById("content")).not.toHaveAttribute("inert");
+  });
+
+  it("closes the account menu on Esc, not the drawer under it", async () => {
+    renderAt("/new");
+    await screen.findByRole("heading", { level: 1, name: "New chat" });
+    const menu = screen.getByRole("button", { name: "Menu" });
+    await userEvent.click(menu);
+    await waitFor(() => expect(screen.getByRole("link", { name: "Chats" })).toHaveFocus());
+    await userEvent.click(screen.getByRole("button", { name: "Account and theme" }));
+    await screen.findByRole("menu");
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+    expect(menu).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("closes the drawer on a pick, and lists agents as a page with Back", async () => {
+    renderAt("/new");
+    await screen.findByRole("heading", { level: 1, name: "New chat" });
+    await userEvent.click(screen.getByRole("button", { name: "Menu" }));
+    await userEvent.click(screen.getByRole("link", { name: "Agents" }));
+
+    expect(await screen.findByRole("heading", { level: 1, name: "Agents" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Menu" })).toHaveAttribute("aria-expanded", "false");
+    const list = screen.getByRole("navigation", { name: "Agents" });
+    await userEvent.click(within(list).getByRole("link", { name: /researcher/ }));
+
+    expect(await researcher()).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to agents" })).toHaveAttribute("href", "/agents");
   });
 });

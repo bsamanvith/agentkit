@@ -212,6 +212,10 @@ func (s *Store) write(ctx context.Context, fn func(*sql.Tx) error) error {
 	if err != nil {
 		return fmt.Errorf("sqlite: begin: %w", err)
 	}
+	// If fn panics, roll back on the way out: an open transaction would
+	// keep the writer's one connection, and every later write would wait
+	// for it. After a commit or a rollback this is a no-op (ErrTxDone).
+	defer func() { _ = tx.Rollback() }()
 	if err := fn(tx); err != nil {
 		return errors.Join(err, ignoreDone(tx.Rollback()))
 	}

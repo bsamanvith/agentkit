@@ -3,7 +3,7 @@ id: T099
 title: "runs: start time, lane and priority, and claiming the next run in that order"
 epic: E05
 status: todo
-depends_on: [T030, T088, T098]
+depends_on: [T030, T088, T098, T100]
 ---
 
 # T099: run queue order
@@ -19,7 +19,7 @@ Within a lane, the order is **priority first, then time**. A lane is a named par
 
 ## Scope
 
-- **Runs table:** add three columns, by migration 0005 on SQLite and Postgres:
+- **Runs table:** add three columns, by migration 0006 on SQLite and Postgres (0005 is T100's `interactive`):
   - `lane TEXT NOT NULL DEFAULT ''`;
   - `priority INT NOT NULL DEFAULT 0`;
   - `start_at BIGINT`, backfilled from `created_at`.
@@ -32,8 +32,8 @@ Within a lane, the order is **priority first, then time**. A lane is a named par
 
   `Resumable`, `ListResumable`, `ListResumableAll` and their SQL predicate respect `start_at <= now` on every backend, with `storetest` cases.
 - **Index:** a partial index on `(lane, priority DESC, due)` over the runs that can be claimed.
-- **`Admin.ClaimNext(ctx, lanes, owner, ttl)`:** claims the next due run of the given lanes, highest priority first, then earliest due. On Postgres it uses `FOR UPDATE SKIP LOCKED`, so runners never wait on each other. It returns the tenant and the run.
-- **`Create` options:** variadic (`store.WithLane`, `WithPriority`, `WithStartAt`), so existing call sites don't change.
+- **`Admin.ClaimNext(ctx, lanes, owner, ttl)`:** claims the next due background run of the given lanes (never an interactive one, T100), highest priority first, then earliest due. On Postgres it uses `FOR UPDATE SKIP LOCKED`, so runners never wait on each other. It returns the tenant and the run.
+- **`Create` options:** `store.WithLane`, `WithPriority`, `WithStartAt`, added to the variadic `store.CreateOption` that T100 introduces.
 - **Runner:**
   - `Schedule` (or `Enqueue`) creates a run without claiming it and stores its prompt; it takes `Run`'s `RunOption`s (T098).
   - The recovery loop gets a lane list and claims with `ClaimNext` instead of listing then claiming. It may be renamed to a dispatcher.
@@ -42,6 +42,6 @@ Within a lane, the order is **priority first, then time**. A lane is a named par
 
 - [ ] `storetest`: claim order (priority, then due time) within a lane; lanes isolated; a run not yet due never claimed; two claimers never get the same run. Covered on all three stores, Postgres in the integration tier.
 - [ ] Runner: a scheduled run starts at its time, through the dispatcher; its prompt is stored once.
-- [ ] Migration 0005 backfills existing runs, and leaves them claimable as before.
+- [ ] Migration 0006 backfills existing runs, and leaves them claimable as before.
 - [ ] Benchmark: `ClaimNext` under parallel claimers on Postgres; the plan uses the index (`EXPLAIN`).
 - [ ] Mutation list recorded.

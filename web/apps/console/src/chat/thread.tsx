@@ -159,6 +159,7 @@ function Answer({
       role="assistant"
       text={text}
       state={streaming ? "streaming" : "done"}
+      runId={a.runId}
       body={<Parts parts={a.parts} displays={displays} running={streaming} />}
     >
       {streaming && a.parts.length === 0 ? (

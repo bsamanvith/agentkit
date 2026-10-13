@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -487,4 +488,31 @@ func TestDefinitions(t *testing.T) {
 	out, err := json.Marshal(defs)
 	must(t, err)
 	golden(t, "definitions", out)
+}
+
+// TestNilOptionsMeanDefaults: an option given nil leaves the default in
+// place rather than a nil the toolset dereferences on its first call.
+func TestNilOptionsMeanDefaults(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"search_id": "s", "results": []}`)
+	}))
+	t.Cleanup(srv.Close)
+	tools, err := parallel.Factory(
+		parallel.WithBaseURL(srv.URL),
+		parallel.WithLookupEnv(lookup(map[string]string{"PARALLEL_API_KEY": canary})),
+		parallel.WithHTTPClient(nil),
+		parallel.WithClock(nil),
+		parallel.WithLogger(nil),
+	).Build(t.Context(), json.RawMessage(`{}`))
+	must(t, err)
+	reg, err := tool.NewRegistry(tools)
+	must(t, err)
+	if _, err := reg.Invoke(t.Context(), "parallel_search", json.RawMessage(`{"query": "q"}`)); err != nil {
+		t.Errorf("search with nil options: %v", err)
+	}
+	if _, err := parallel.Factory(parallel.WithLookupEnv(nil)).Build(t.Context(), json.RawMessage(`{}`)); err == nil {
+		t.Error("a nil lookup found a key")
+	}
 }

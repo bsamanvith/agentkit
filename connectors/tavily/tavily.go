@@ -77,15 +77,23 @@ func WithLogger(l *slog.Logger) Option { return func(f *factory) { f.log = l } }
 // Factory returns the "tavily" toolset factory: tavily_search and
 // tavily_extract.
 func Factory(opts ...Option) toolset.Factory {
-	f := &factory{
-		client:    &http.Client{},
-		baseURL:   DefaultBaseURL,
-		lookupEnv: func(string) (string, bool) { return "", false },
-		clock:     clock.Real(),
-		log:       slog.New(slog.DiscardHandler),
-	}
+	f := &factory{baseURL: DefaultBaseURL}
 	for _, o := range opts {
 		o(f)
+	}
+	// Defaults go in after the options, so that a nil option means the
+	// default rather than a nil the toolset would dereference.
+	if f.client == nil {
+		f.client = &http.Client{}
+	}
+	if f.lookupEnv == nil {
+		f.lookupEnv = func(string) (string, bool) { return "", false }
+	}
+	if f.clock == nil {
+		f.clock = clock.Real()
+	}
+	if f.log == nil {
+		f.log = slog.New(slog.DiscardHandler)
 	}
 	return f
 }

@@ -17,7 +17,8 @@ type Message = { role: string; content: string | Block[] };
 
 const port = Number(process.argv[2] ?? 18479);
 
-const blocks = (m: Message): Block[] => (typeof m.content === "string" ? [{ type: "text", text: m.content }] : m.content);
+const blocks = (m: Message): Block[] =>
+  typeof m.content === "string" ? [{ type: "text", text: m.content }] : m.content;
 const textOf = (m: Message) =>
   blocks(m)
     .filter((b) => b.type === "text")
@@ -47,7 +48,12 @@ function start(res: ServerResponse) {
 function finish(res: ServerResponse, stop: string, outputTokens: number) {
   send(res, "message_delta", {
     delta: { stop_reason: stop, stop_sequence: null },
-    usage: { input_tokens: 10, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: outputTokens },
+    usage: {
+      input_tokens: 10,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
+      output_tokens: outputTokens,
+    },
   });
   send(res, "message_stop", {});
   res.end();

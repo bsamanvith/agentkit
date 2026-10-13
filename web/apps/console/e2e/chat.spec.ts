@@ -28,9 +28,7 @@ async function ended(page: Page) {
   await expect(answers(page).last()).toHaveAttribute("aria-busy", "false");
 }
 
-test("a new chat streams an answer with a tool step, takes a follow-up, and reloads from history", async ({
-  page,
-}) => {
+test("a new chat streams an answer with a tool step, takes a follow-up, and reloads from history", async ({ page }) => {
   const errors = watchErrors(page);
   await signIn(page);
   await page.goto("/new");
@@ -86,7 +84,10 @@ test("Stop closes the stream and the server cancels the run", async ({ page, req
     })
     .toBe("failed/cancelled");
   await expect
-    .poll(async () => ((await (await request.get(`http://127.0.0.1:${modelPort}/stalls`)).json()) as { ended: number }).ended)
+    .poll(
+      async () =>
+        ((await (await request.get(`http://127.0.0.1:${modelPort}/stalls`)).json()) as { ended: number }).ended,
+    )
     .toBeGreaterThan(before.ended);
   expect(errors).toEqual([]);
 });

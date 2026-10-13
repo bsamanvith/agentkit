@@ -39,7 +39,12 @@ export function Message({ role, text, body, state = "done", children, runId, cla
     );
   }
   return (
-    <div className={cn("flex flex-col gap-2", className)} data-role="assistant" data-run-id={runId} aria-busy={state === "streaming"}>
+    <div
+      className={cn("flex flex-col gap-2", className)}
+      data-role="assistant"
+      data-run-id={runId}
+      aria-busy={state === "streaming"}
+    >
       {body ?? (text ? <div className="break-words whitespace-pre-wrap text-ak-text">{text}</div> : null)}
       {children}
     </div>

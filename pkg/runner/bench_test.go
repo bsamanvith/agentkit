@@ -61,7 +61,9 @@ func (m benchModel) Generate(ctx context.Context, req llm.Request) iter.Seq2[llm
 }
 
 // benchEnv is a runner over a fresh store of the given backend, with the
-// bench model and an echo tool.
+// bench model and an echo tool. A backend named with "+read" declares the
+// tool read-only, so the runner keeps a run's turns and stores them in one
+// write; otherwise it stores each turn as it completes.
 type benchEnv struct {
 	r      *runner.Runner
 	s      runner.Store
@@ -77,6 +79,11 @@ func newBenchEnv(tb testing.TB, backend string, latency time.Duration, opts ...r
 		tb.Fatal(err)
 	}
 	e := &benchEnv{ctx: tenancy.With(context.Background(), acme)}
+	backend, read := strings.CutSuffix(backend, "+read")
+	var toolOpts []tool.FuncOption
+	if read {
+		toolOpts = append(toolOpts, tool.WithMetadata(tool.Metadata{Kind: tool.KindRead}))
+	}
 	switch backend {
 	case "memory":
 		m := memory.New()
@@ -96,7 +103,7 @@ func newBenchEnv(tb testing.TB, backend string, latency time.Duration, opts ...r
 	},
 	) (string, error) {
 		return "echo " + in.S, nil
-	})
+	}, toolOpts...)
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -150,7 +157,10 @@ func BenchmarkRun(b *testing.B) {
 				}
 			})
 		})
-		for _, backend := range []string{"memory", "sqlite"} {
+		for _, backend := range []string{"memory", "sqlite", "sqlite+read"} {
+			if tools == 0 && backend == "sqlite+read" {
+				continue // no tools: the same as sqlite
+			}
 			b.Run(fmt.Sprintf("tools=%d/%s", tools, backend), func(b *testing.B) {
 				e := newBenchEnv(b, backend, 0)
 				var n atomic.Int64

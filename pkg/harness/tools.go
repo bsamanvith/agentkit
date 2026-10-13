@@ -85,7 +85,7 @@ func (r *run) runTools(ctx context.Context, turn int, uses []llm.ToolUse) ([]too
 			go func() {
 				defer wg.Done()
 				defer func() { <-sem }()
-				r.h.call(toolCtx, stop, turn, i, u, &calls[i], events)
+				r.h.call(toolCtx, stop, turn, i, u, r.kindOf(u.Name), &calls[i], events)
 			}()
 		}
 	}()
@@ -121,8 +121,8 @@ func (r *run) runTools(ctx context.Context, turn int, uses []llm.ToolUse) ([]too
 
 // call runs one tool call, which holds a slot, on its own goroutine. It always
 // sends exactly one done event, after the start event.
-func (h *Harness) call(ctx context.Context, stop context.CancelFunc, turn, i int, u llm.ToolUse, out *toolCall, events chan<- toolEvent) {
-	out.rec = ToolRecord{ToolUseID: u.ID, Name: u.Name}
+func (h *Harness) call(ctx context.Context, stop context.CancelFunc, turn, i int, u llm.ToolUse, kind tool.Kind, out *toolCall, events chan<- toolEvent) {
+	out.rec = ToolRecord{ToolUseID: u.ID, Name: u.Name, Kind: kind}
 	defer func() {
 		if v := recover(); v != nil {
 			// A hook, or a registry that does not protect itself, panicked

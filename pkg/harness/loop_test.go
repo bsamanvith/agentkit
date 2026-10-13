@@ -92,10 +92,15 @@ func TestToolFailuresBecomeErrorResults(t *testing.T) {
 		t.Errorf("panic content = %q, want the panic value without a stack", c)
 	}
 	var recorded []bool
+	var kinds []tool.Kind
 	for _, tr := range res.Record.Turns[0].Tools {
 		recorded = append(recorded, tr.IsError)
+		kinds = append(kinds, tr.Kind)
 	}
 	diff(t, "ToolRecord.IsError", wantErr, recorded)
+	// echo declares read; fail and boom declare nothing; no_such_tool is not
+	// listed. Only a declared read is recorded as one.
+	diff(t, "ToolRecord.Kind", []tool.Kind{tool.KindRead, tool.KindWrite, tool.KindRead, tool.KindWrite, tool.KindWrite}, kinds)
 }
 
 // replies of the 3-turn script used by the append-only and resume tests.

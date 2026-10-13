@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -27,9 +28,12 @@ func (w *world) recovery(p *proc, opts ...runner.RecoveryOption) *runner.Recover
 
 // reference returns the requests an uninterrupted chat run of the scripted
 // prompt name makes.
-func reference(t *testing.T, name string, tools int) []llm.Request {
+func reference(t *testing.T, name string, tools int, setup ...func(*world)) []llm.Request {
 	t.Helper()
 	w := newWorld(t)
+	for _, f := range setup {
+		f(w)
+	}
 	prompt := w.model.on(name, tools)
 	if _, err := w.process().run("c", prompt); err != nil {
 		t.Fatal(err)
@@ -56,6 +60,13 @@ var killPoints = []killPoint{
 	{"before completing", "Transition", 1, false, true},
 	{"after completing", "Transition", 1, true, true},
 	{"releasing the lease", "Release", 1, false, true},
+}
+
+// readOnlyKillPoints are where a process dies during the same run when its
+// tool is read-only: the run keeps its turns and stores them in one write.
+var readOnlyKillPoints = []killPoint{
+	{"losing the kept turns", "AppendBatch", 1, false, true},
+	{"after the kept turns", "AppendBatch", 1, true, true},
 }
 
 // crashRun runs prompt in conv on a process that dies at k.
@@ -95,11 +106,19 @@ func storedTurns(ctx context.Context, t *testing.T, cs store.ConversationStore, 
 // started.
 func TestRecoveryResumesARunKilledAnywhere(t *testing.T) {
 	t.Parallel()
-	ref := reference(t, "q", 2)
-	for _, k := range killPoints {
+	refWrite, refRead := reference(t, "q", 2), reference(t, "q", 2, (*world).readOnly)
+	readOnly := map[string]bool{}
+	for _, k := range readOnlyKillPoints {
+		readOnly[k.name] = true
+	}
+	for _, k := range slices.Concat(killPoints, readOnlyKillPoints) {
 		t.Run(k.name, func(t *testing.T) {
 			t.Parallel()
-			w := newWorld(t)
+			w, ref := newWorld(t), refWrite
+			if readOnly[k.name] {
+				w.readOnly()
+				ref = refRead
+			}
 			prompt := w.model.on("q", 2)
 			id := w.crashRun(w.ctx, "c", prompt, k)
 			stored := storedTurns(w.ctx, t, w.mem, "c")

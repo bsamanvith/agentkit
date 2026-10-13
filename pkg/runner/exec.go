@@ -6,12 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 
 	"github.com/bsamanvith/agentkit/pkg/flow"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/store"
 	"github.com/bsamanvith/agentkit/pkg/tenancy"
+	"github.com/bsamanvith/agentkit/pkg/tool"
 )
 
 // CanceledText is the text of the marker reply [Runner.Cancel] appends when a
@@ -27,11 +29,38 @@ type leaseLost struct{ err error }
 func (e leaseLost) Error() string { return "lease lost: " + e.err.Error() }
 func (e leaseLost) Unwrap() error { return e.err }
 
+// RunOption configures one chat run, started by [Runner.Run].
+type RunOption func(*runConfig)
+
+type runConfig struct {
+	flush int
+	err   error
+}
+
+// FlushEvery sets how many turns the run keeps before it stores them in one
+// write, in place of the runner's [WithFlushEvery], for this run and every
+// resume of it. Below 1, Run gives [ErrInvalidConfig].
+func FlushEvery(n int) RunOption {
+	return func(c *runConfig) {
+		c.flush = n
+		if n < 1 {
+			c.err = fmt.Errorf("%w: flush every %d turns", ErrInvalidConfig, n)
+		}
+	}
+}
+
 // Run starts a chat run: msg, a user message, on the conversation, run by the
 // conversation's agent. It creates the run and claims its lease before it
 // returns; iterate the execution's events to run it. A conversation with an
 // unfinished run gives an [*UnfinishedError].
-func (r *Runner) Run(ctx context.Context, conversationID string, msg llm.Message) (*Execution, error) {
+func (r *Runner) Run(ctx context.Context, conversationID string, msg llm.Message, opts ...RunOption) (*Execution, error) {
+	var c runConfig
+	for _, opt := range opts {
+		opt(&c)
+	}
+	if c.err != nil {
+		return nil, c.err
+	}
 	if msg.Role != llm.RoleUser {
 		return nil, fmt.Errorf("%w: role %q, want user", ErrInvalidInput, msg.Role)
 	}
@@ -52,7 +81,7 @@ func (r *Runner) Run(ctx context.Context, conversationID string, msg llm.Message
 	}
 	msg = msg.Clone()
 	return x.execution(ctx, func(ctx context.Context, emit func(Event) bool) outcome {
-		return x.chat(ctx, agent, &msg, emit)
+		return x.chat(ctx, agent, &msg, c.flush, emit)
 	}), nil
 }
 
@@ -106,6 +135,9 @@ func (r *Runner) RunFlow(ctx context.Context, conversationID string, input *flow
 
 // start creates a run on the conversation and claims it.
 func (r *Runner) start(ctx context.Context, tenant tenancy.Tenant, conv string) (*exec, error) {
+	if r.isClosed() {
+		return nil, ErrShutdown
+	}
 	run, err := r.store.Create(ctx, r.newID(), conv)
 	if errors.Is(err, store.ErrUnfinished) {
 		u, uerr := r.store.Unfinished(ctx, conv)
@@ -182,6 +214,9 @@ func (r *Runner) resume(ctx context.Context, runID string, c resumeConfig) (*Exe
 	if err != nil {
 		return nil, err
 	}
+	if r.isClosed() {
+		return nil, ErrShutdown
+	}
 	run, err := r.store.Get(ctx, runID)
 	if err != nil {
 		return nil, fmt.Errorf("run %q: %w", runID, err)
@@ -226,7 +261,7 @@ func (r *Runner) resume(ctx context.Context, runID string, c resumeConfig) (*Exe
 			return nil, fmt.Errorf("agent of conversation %q: %w", run.ConversationID, err)
 		}
 		body = func(x *exec) func(context.Context, func(Event) bool) outcome {
-			return func(ctx context.Context, emit func(Event) bool) outcome { return x.chat(ctx, agent, nil, emit) }
+			return func(ctx context.Context, emit func(Event) bool) outcome { return x.chat(ctx, agent, nil, 0, emit) }
 		}
 	}
 
@@ -357,14 +392,26 @@ func (r *Runner) appendMarker(ctx context.Context, conv string, v *view) error {
 }
 
 // append stores e at the position after v and applies it to v and the cache.
-// An unknown failure is retried: an identical entry at the same position is a
-// no-op. A conflict means another writer: the cache is brought up to date and
-// the conflict reported; nothing is written again.
 func (r *Runner) append(ctx context.Context, conv string, v *view, e store.Entry) (int64, error) {
-	e.Seq = v.seq + 1
+	return r.appendAll(ctx, conv, v, []store.Entry{e})
+}
+
+// appendAll stores es, in one write, at the positions after v and applies
+// them to v and the cache. It returns the last position. An unknown failure
+// is retried: identical entries at the same positions are a no-op. A
+// conflict means another writer: the cache is brought up to date and the
+// conflict reported; nothing is written again.
+func (r *Runner) appendAll(ctx context.Context, conv string, v *view, es []store.Entry) (int64, error) {
+	for i := range es {
+		es[i].Seq = v.seq + 1 + int64(i)
+	}
 	var err error
 	for range 3 {
-		err = r.store.Append(ctx, conv, e)
+		if len(es) == 1 {
+			err = r.store.Append(ctx, conv, es[0])
+		} else {
+			err = r.store.AppendBatch(ctx, conv, es)
+		}
 		if err == nil || errors.Is(err, store.ErrConflict) || errors.Is(err, store.ErrGap) ||
 			errors.Is(err, store.ErrInvalid) || errors.Is(err, tenancy.ErrNoTenant) || ctx.Err() != nil {
 			break
@@ -374,11 +421,19 @@ func (r *Runner) append(ctx context.Context, conv string, v *view, e store.Entry
 		if errors.Is(err, store.ErrConflict) {
 			_, _ = r.cache.load(ctx, r.store, conv)
 		}
-		return 0, fmt.Errorf("append entry %d to conversation %q: %w", e.Seq, conv, err)
+		at := strconv.FormatInt(es[0].Seq, 10)
+		if len(es) > 1 {
+			at = fmt.Sprintf("entries %s-%d", at, es[len(es)-1].Seq)
+		} else {
+			at = "entry " + at
+		}
+		return 0, fmt.Errorf("append %s to conversation %q: %w", at, conv, err)
 	}
-	r.cache.appended(ctx, conv, e)
-	v.apply(e)
-	return e.Seq, nil
+	for _, e := range es {
+		r.cache.appended(ctx, conv, e)
+		v.apply(e)
+	}
+	return v.seq, nil
 }
 
 // exec is one execution of a run: the run as last stored and the lease owner.
@@ -419,17 +474,22 @@ func (x *exec) drive(ctx context.Context, body func(context.Context, func(Event)
 	wctx := context.WithoutCancel(ctx)
 	runCtx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
-	live, ok := r.register(x.tenant, x.run.ID, cancel)
-	if !ok {
-		yield(Event{}, fmt.Errorf("run %q: %w: running in this process", x.run.ID, store.ErrLeased))
+	live, err := r.register(x.tenant, x.run.ID, cancel)
+	if err != nil {
+		x.release(wctx) // for another process, at once
+		yield(Event{}, fmt.Errorf("run %q: %w", x.run.ID, err))
 		return
 	}
 	defer r.unregister(x.tenant, x.run.ID, live)
 
-	// The lease may have expired since the execution was made.
-	if _, err := r.store.Renew(runCtx, x.run.ID, x.owner, r.ttl); err != nil {
-		yield(Event{}, fmt.Errorf("run %q: %w", x.run.ID, err))
-		return
+	// The lease may have expired since the execution was made. Claimed less
+	// than a third of its time to live ago, it is renewed in time by
+	// keepLease without a write now.
+	if l := x.run.Lease; l.Owner != x.owner || l.Expires.Sub(r.clk.Now()) <= r.ttl*2/3 {
+		if _, err := r.store.Renew(runCtx, x.run.ID, x.owner, r.ttl); err != nil {
+			yield(Event{}, fmt.Errorf("run %q: %w", x.run.ID, err))
+			return
+		}
 	}
 	stopRenewing := x.keepLease(runCtx, cancel)
 	stopped := false
@@ -574,7 +634,9 @@ func (x *exec) keepLease(ctx context.Context, cancel context.CancelCauseFunc) (s
 }
 
 // chat runs a chat run's agent: a new run if msg is set, a resume otherwise.
-func (x *exec) chat(ctx context.Context, agent Agent, msg *llm.Message, emit func(Event) bool) outcome {
+// flush is the run's FlushEvery, 0 for the runner's; a resume reads it from
+// the run's prompt entry.
+func (x *exec) chat(ctx context.Context, agent Agent, msg *llm.Message, flush int, emit func(Event) bool) outcome {
 	r, conv := x.r, x.run.ConversationID
 	v, err := r.cache.load(ctx, r.store, conv)
 	if err != nil {
@@ -601,8 +663,45 @@ func (x *exec) chat(ctx context.Context, agent Agent, msg *llm.Message, emit fun
 			// The run had answered; only its completion was not stored.
 			return outcome{kind: outCompleted}
 		}
+		flush = v.flush
 	}
+	t := &turns{x: x, v: &v, every: flush, emit: emit}
+	if flush == 0 {
+		t.every = r.flush
+	}
+	out := t.run(ctx, agent, in, flush)
+	if t.failed {
+		return out
+	}
+	// The turns the run did are stored before how it ended, and when it was
+	// interrupted; but not after its lease was lost, when the run's next
+	// execution may be writing the same positions.
+	if _, lost := errors.AsType[leaseLost](context.Cause(ctx)); lost {
+		return out
+	}
+	if err := t.flush(context.WithoutCancel(ctx)); err != nil {
+		return outcome{kind: outAbort, err: err}
+	}
+	return out
+}
 
+// turns stores a chat execution's entries: the prompt at once, the turns in
+// batches.
+type turns struct {
+	x     *exec
+	v     *view // the context as stored
+	every int
+	emit  func(Event) bool
+	// pending are the turns not stored yet, at the positions after v.
+	pending []store.Entry
+	// failed is set when a write failed: nothing more is written.
+	failed bool
+}
+
+// run runs the agent, streaming its events. flush is recorded with the
+// prompt.
+func (t *turns) run(ctx context.Context, agent Agent, in harness.Input, flush int) outcome {
+	x := t.x
 	var result *harness.Result
 	for ev, err := range agent.Run(ctx, in) {
 		if err != nil {
@@ -613,47 +712,93 @@ func (x *exec) chat(ctx context.Context, agent Agent, msg *llm.Message, emit fun
 			return out
 		}
 		e := Event{Kind: EventHarness, Harness: ev}
+		save, saved := false, false
 		switch ev.Kind {
 		case harness.EventRunStart:
 			if ev.Prompt != nil {
-				e.Seq, err = r.append(ctx, conv, &v, store.Entry{
+				// Stored before its event: a run whose prompt is not
+				// stored has not started.
+				e.Seq, err = x.r.append(ctx, x.run.ConversationID, t.v, store.Entry{
 					Kind:     store.KindPrompt,
 					Messages: []llm.Message{ev.Prompt.Message},
 					RunID:    x.run.ID,
-					Record:   mustJSON(Record{Prompt: &PromptRecord{At: ev.Prompt.At}}),
+					Record:   mustJSON(Record{Prompt: &PromptRecord{At: ev.Prompt.At, FlushEvery: flush}}),
 				})
+				if err != nil {
+					t.failed = true
+					return outcome{kind: outAbort, err: err}
+				}
+				saved = true
 			}
 		case harness.EventTurnDone:
-			if ev.TurnRecord != nil {
-				msgs := make([]llm.Message, len(ev.TurnRecord.Messages))
-				for i, m := range ev.TurnRecord.Messages {
+			if tr := ev.TurnRecord; tr != nil {
+				msgs := make([]llm.Message, len(tr.Messages))
+				for i, m := range tr.Messages {
 					msgs[i] = m.Message
 				}
-				e.Seq, err = r.append(ctx, conv, &v, store.Entry{
+				e.Seq = t.v.seq + int64(len(t.pending)) + 1
+				t.pending = append(t.pending, store.Entry{
+					Seq:      e.Seq,
 					Kind:     store.KindTurn,
 					Messages: msgs,
 					RunID:    x.run.ID,
-					Record:   mustJSON(Record{Turn: turnRecord(ev.TurnRecord)}),
+					Record:   mustJSON(Record{Turn: turnRecord(tr)}),
 				})
+				save = len(t.pending) >= t.every || changedWorld(tr)
 			}
 		case harness.EventRunDone:
 			result = ev.Result
 		}
-		if err != nil {
-			return outcome{kind: outAbort, err: err}
-		}
-		if !emit(e) {
+		if !t.emit(e) {
 			if result != nil {
-				// Every turn is stored: the run is complete.
+				// Every turn is done: the run is complete once they are
+				// stored.
 				break
 			}
 			return outcome{kind: outAbort, err: errStopped}
+		}
+		if saved {
+			t.emit(Event{Kind: EventSaved, Seq: e.Seq})
+		}
+		// An interrupted run's turns are left to the flush after the loop,
+		// which knows why it was interrupted.
+		if save && ctx.Err() == nil {
+			if err := t.flush(ctx); err != nil {
+				return outcome{kind: outAbort, err: err}
+			}
 		}
 	}
 	if result == nil {
 		return outcome{kind: outFailed, err: fmt.Errorf("%w: agent ended without a result", harness.ErrUnexpectedStop)}
 	}
 	return outcome{kind: outCompleted, usage: result.Usage, result: result}
+}
+
+// flush stores the pending entries in one write and tells the consumer.
+func (t *turns) flush(ctx context.Context) error {
+	if len(t.pending) == 0 || t.failed {
+		return nil
+	}
+	seq, err := t.x.r.appendAll(ctx, t.x.run.ConversationID, t.v, t.pending)
+	if err != nil {
+		t.failed = true
+		return err
+	}
+	t.pending = nil
+	t.emit(Event{Kind: EventSaved, Seq: seq})
+	return nil
+}
+
+// changedWorld reports whether a turn called a tool that may have changed
+// something: one not declared read-only. Such a turn is stored before the
+// next model call, so that a resume does not call the tool again.
+func changedWorld(tr *harness.TurnRecord) bool {
+	for _, c := range tr.Tools {
+		if c.Kind != tool.KindRead {
+			return true
+		}
+	}
+	return false
 }
 
 // flow runs a flow run from its checkpoint, streaming its events.

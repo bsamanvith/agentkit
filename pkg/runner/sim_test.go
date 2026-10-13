@@ -33,6 +33,11 @@ func simulate(t *testing.T, seed uint64) map[string]int {
 	rng := rand.New(rand.NewPCG(seed, 0x5eed))
 	w := newWorld(t)
 	mix := map[string]int{}
+	if rng.IntN(2) == 0 {
+		// Turns are kept and stored in batches.
+		mix["read-only tools"]++
+		w.readOnly()
+	}
 	scripts := map[string]int{} // prompt → tools
 	convs := make([]string, 1+rng.IntN(3))
 	for i := range convs {
@@ -105,14 +110,24 @@ func simulate(t *testing.T, seed uint64) map[string]int {
 			mix["fatal failure"]++
 			w.model.failing(name, rng.IntN(tools+1), 1, llm.ErrInvalidRequest)
 		}
+		var opts []runner.RunOption
+		if rng.IntN(2) == 0 {
+			mix["flush every set"]++
+			opts = append(opts, runner.FlushEvery(1+rng.IntN(3)))
+		}
 		p := w.process()
 		mode := rng.IntN(4)
 		if mode == 2 {
 			at, landed := 1+rng.IntN(10), rng.IntN(2) == 0
 			mix[fmt.Sprint("dies, landed ", landed)]++
-			p.store.crashAt(func(_ string, _, total int) (bool, bool) { return total == at, landed })
+			p.store.crashAt(func(op string, _, total int) (bool, bool) {
+				if total == at && op == "AppendBatch" {
+					mix["dies writing a batch"]++
+				}
+				return total == at, landed
+			})
 		}
-		x, err := p.r.Run(w.ctx, conv, harness.UserText(prompt))
+		x, err := p.r.Run(w.ctx, conv, harness.UserText(prompt), opts...)
 		if err != nil {
 			if !errors.Is(err, errCrashed) {
 				t.Fatalf("seed %d: Run: %v", seed, err)
@@ -250,6 +265,7 @@ func TestSimulation(t *testing.T) {
 		"completed at once", "canceled", "marker", "not started", "dies before running",
 		"dies, landed true", "dies, landed false", "retry", "retryable failure",
 		"fatal failure", "fatal failure canceled", "two replicas", "recovery dies",
+		"read-only tools", "flush every set", "dies writing a batch",
 	} {
 		if mix[k] == 0 {
 			missing = append(missing, k)

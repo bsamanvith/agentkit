@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"iter"
+	"maps"
 	mrand "math/rand/v2"
+	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -52,6 +54,10 @@ var (
 	ErrCanceled = errors.New("run canceled")
 	// ErrIterated means [Execution.Events] was iterated a second time.
 	ErrIterated = errors.New("execution already iterated")
+	// ErrShutdown ends the events of an execution stopped by
+	// [Runner.Shutdown], and is what starting or resuming a run on a runner
+	// that was shut down gives.
+	ErrShutdown = errors.New("runner shut down")
 )
 
 // UnfinishedError reports the unfinished run that keeps a conversation from
@@ -120,8 +126,10 @@ type EventKind uint8
 const (
 	// EventHarness carries an event of a chat run's harness in
 	// Event.Harness. For [harness.EventRunStart] with a prompt and for
-	// [harness.EventTurnDone], Event.Seq is the position the entry was
-	// stored at, and the entry is stored before the event is delivered.
+	// [harness.EventTurnDone], Event.Seq is the position of the
+	// conversation's log the event's entry takes. A prompt entry is stored
+	// before its event is delivered; a turn entry may be stored later (see
+	// [EventSaved]).
 	EventHarness EventKind = iota + 1
 	// EventFlow carries an event of a flow run in Event.Flow, including
 	// [flow.EventWarning].
@@ -131,6 +139,13 @@ const (
 	// chat run that completed by running the agent, Event.State for a
 	// completed flow run.
 	EventDone
+	// EventSaved says that a chat run's entries are stored up to Event.Seq:
+	// every entry an earlier event of the execution named. It follows each
+	// write of the run's entries. An entry named after the last
+	// EventSaved of an execution that did not end in [EventDone] may never
+	// be stored, and its position may be taken by another entry when the run
+	// is resumed.
+	EventSaved
 )
 
 func (k EventKind) String() string {
@@ -141,6 +156,8 @@ func (k EventKind) String() string {
 		return "flow"
 	case EventDone:
 		return "done"
+	case EventSaved:
+		return "saved"
 	}
 	return "EventKind(" + strconv.Itoa(int(k)) + ")"
 }
@@ -175,8 +192,9 @@ type Execution struct {
 // error otherwise: a [*RunError] when the run failed (and was stored so), the
 // context's error when ctx was cancelled or the consumer stopped (the run stays
 // running, with its lease released, for the recovery loop), [ErrCanceled] when
-// [Runner.Cancel] stopped it, or a store error when the run could not be
-// written (another writer, a lost lease). It can be iterated once.
+// [Runner.Cancel] stopped it, [ErrShutdown] when [Runner.Shutdown] did, or a
+// store error when the run could not be written (another writer, a lost
+// lease). It can be iterated once.
 func (x *Execution) Events() iter.Seq2[Event, error] {
 	return func(yield func(Event, error) bool) {
 		if x.used.Swap(true) {
@@ -211,10 +229,12 @@ type Runner struct {
 	newID  func() string
 	jitter func(n int64) int64
 	cache  *cache
+	flush  int
 
-	execs atomic.Uint64
-	mu    sync.Mutex
-	live  map[liveKey]*liveRun
+	execs  atomic.Uint64
+	mu     sync.Mutex
+	live   map[liveKey]*liveRun
+	closed bool
 }
 
 type liveKey struct{ tenant, run string }
@@ -236,6 +256,7 @@ type config struct {
 	newID     func() string
 	rnd       *mrand.Rand
 	cacheSize int
+	flush     int
 }
 
 // WithFlows sets the factory of flow runs. Without it, [Runner.RunFlow] and
@@ -334,13 +355,31 @@ func WithCacheSize(n int) Option {
 	}
 }
 
+// WithFlushEvery sets how many turns of a chat run the runner keeps before it
+// stores them in one write (default 10); a run started with [FlushEvery]
+// keeps its own. Turns are stored sooner when a turn called a tool that
+// does not declare itself [tool.KindRead] (it may have changed the world, so
+// it is stored before the next model call), when the agent stops, and when
+// the execution is interrupted, except by a lost lease. A crash loses the
+// turns not stored yet: the run resumed redoes them, calling the model and
+// the read-only tools again. 1 stores every turn as it completes.
+func WithFlushEvery(n int) Option {
+	return func(c *config) error {
+		if n < 1 {
+			return fmt.Errorf("%w: flush every %d turns", ErrInvalidConfig, n)
+		}
+		c.flush = n
+		return nil
+	}
+}
+
 // New returns a runner over s that runs conversations with the agents from
 // agents.
 func New(s Store, agents AgentFactory, opts ...Option) (*Runner, error) {
 	if s == nil || agents == nil {
 		return nil, fmt.Errorf("%w: nil store or agent factory", ErrInvalidConfig)
 	}
-	c := config{clk: clock.Real(), ttl: 30 * time.Second, retry: DefaultRetryPolicy(), cacheSize: 1024}
+	c := config{clk: clock.Real(), ttl: 30 * time.Second, retry: DefaultRetryPolicy(), cacheSize: 1024, flush: 10}
 	for _, opt := range opts {
 		if err := opt(&c); err != nil {
 			return nil, err
@@ -373,6 +412,7 @@ func New(s Store, agents AgentFactory, opts ...Option) (*Runner, error) {
 		newID:  c.newID,
 		jitter: jitter,
 		cache:  newCache(c.cacheSize),
+		flush:  c.flush,
 		live:   map[liveKey]*liveRun{},
 	}, nil
 }
@@ -399,16 +439,49 @@ func (r *Runner) Context(ctx context.Context, conversationID string) (harness.Tr
 	return v.tr, v.seq, nil
 }
 
-func (r *Runner) register(tenant tenancy.Tenant, runID string, cancel context.CancelCauseFunc) (*liveRun, bool) {
+// Shutdown stops every execution of the runner and waits until they have
+// stopped, or ctx is done. Each stores the turns it has not stored yet and
+// releases its lease, leaving its run as it is for a resume or the recovery
+// loop of another process; its events end with [ErrShutdown]. Starting or
+// resuming a run afterwards gives ErrShutdown, so stop a [Recovery] on the
+// runner first. [Runner.Cancel] still works.
+func (r *Runner) Shutdown(ctx context.Context) error {
+	r.mu.Lock()
+	r.closed = true
+	lives := slices.Collect(maps.Values(r.live))
+	r.mu.Unlock()
+	for _, l := range lives {
+		l.cancel(ErrShutdown)
+	}
+	for _, l := range lives {
+		select {
+		case <-l.done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
+}
+
+func (r *Runner) isClosed() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	return r.closed
+}
+
+func (r *Runner) register(tenant tenancy.Tenant, runID string, cancel context.CancelCauseFunc) (*liveRun, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed {
+		return nil, ErrShutdown
+	}
 	k := liveKey{tenant.ID(), runID}
 	if _, ok := r.live[k]; ok {
-		return nil, false
+		return nil, fmt.Errorf("%w: running in this process", store.ErrLeased)
 	}
 	l := &liveRun{cancel: cancel, done: make(chan struct{})}
 	r.live[k] = l
-	return l, true
+	return l, nil
 }
 
 func (r *Runner) unregister(tenant tenancy.Tenant, runID string, l *liveRun) {

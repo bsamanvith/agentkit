@@ -91,30 +91,54 @@ func (r *convRig) append(ctx context.Context, conv string, e store.Entry) error 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.convs[conv] = true
-	if err != nil {
-		return err
+	if err == nil {
+		r.accept(ctx, conv, e.Seq, want, snapErr)
 	}
+	return err
+}
+
+// appendBatch calls AppendBatch and records the accepted entries, all of
+// them or none. It is safe for concurrent use.
+func (r *convRig) appendBatch(ctx context.Context, conv string, es ...store.Entry) error {
+	wants := make([]snapshot, len(es))
+	errs := make([]error, len(es))
+	for i, e := range es {
+		wants[i], errs[i] = snap(e)
+	}
+	err := r.s.AppendBatch(ctx, conv, es)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.convs[conv] = true
+	if err == nil {
+		for i, e := range es {
+			r.accept(ctx, conv, e.Seq, wants[i], errs[i])
+		}
+	}
+	return err
+}
+
+// accept records an entry the store accepted. r.mu is held.
+func (r *convRig) accept(ctx context.Context, conv string, seq int64, want snapshot, snapErr error) {
 	tn, ok := tenancy.From(ctx)
 	if !ok {
-		r.t.Errorf("Append to %q succeeded without a tenant", conv)
-		return err
+		r.t.Errorf("an append to %q succeeded without a tenant", conv)
+		return
 	}
 	if snapErr != nil {
-		r.t.Errorf("Append accepted entry %d whose messages do not marshal: %v", e.Seq, snapErr)
-		return err
+		r.t.Errorf("an append accepted entry %d whose messages do not marshal: %v", seq, snapErr)
+		return
 	}
 	k := logKey{tn.ID(), conv}
 	if r.accepted[k] == nil {
 		r.accepted[k] = map[int64]snapshot{}
 	}
-	if prev, ok := r.accepted[k][e.Seq]; ok && prev != want {
-		r.t.Errorf("tenant %s conversation %q: Append accepted a different entry at taken seq %d", k.tenant, conv, e.Seq)
-		return err
+	if prev, ok := r.accepted[k][seq]; ok && prev != want {
+		r.t.Errorf("tenant %s conversation %q: an append accepted a different entry at taken seq %d", k.tenant, conv, seq)
+		return
 	}
-	if _, ok := r.accepted[k][e.Seq]; !ok {
-		r.accepted[k][e.Seq] = want
+	if _, ok := r.accepted[k][seq]; !ok {
+		r.accepted[k][seq] = want
 	}
-	return err
 }
 
 // mustAppend appends entries and fails the test on any error.

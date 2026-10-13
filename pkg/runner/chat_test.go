@@ -484,16 +484,24 @@ func TestStoreTimeoutsAreRetriedWithoutDuplicates(t *testing.T) {
 		// reader reads the conversation through the runner before the
 		// retry, so the cache already has the entry that landed.
 		reader bool
+		// readOnly keeps the turns, to store them in one batch.
+		readOnly bool
 	}{
-		{"Append", 2, true, false},
-		{"Append", 2, false, false},
-		{"Append", 1, true, false},
-		{"Append", 2, true, true},
-		{"Transition", 1, true, false},
+		{"Append", 2, true, false, false},
+		{"Append", 2, false, false, false},
+		{"Append", 1, true, false, false},
+		{"Append", 2, true, true, false},
+		{"Transition", 1, true, false, false},
+		{"AppendBatch", 1, true, false, true},
+		{"AppendBatch", 1, false, false, true},
+		{"AppendBatch", 1, true, true, true},
 	} {
 		t.Run(fmt.Sprint(c.op, c.n, c.landed, c.reader), func(t *testing.T) {
 			t.Parallel()
 			w := newWorld(t)
+			if c.readOnly {
+				w.readOnly()
+			}
 			p := w.process()
 			p.store.fail = func(op string, n int) (bool, bool) { return op == c.op && n == c.n, c.landed }
 			if c.reader {
@@ -520,10 +528,22 @@ func TestStoreTimeoutsAreRetriedWithoutDuplicates(t *testing.T) {
 }
 
 // A writer whose lease was taken over (it stalled past its time to live)
-// stops before writing anything more.
+// stops before writing anything more, the turns it kept included.
 func TestLostLeaseStopsTheWriter(t *testing.T) {
 	t.Parallel()
+	for _, readOnly := range []bool{false, true} {
+		t.Run(map[bool]string{false: "write", true: "read"}[readOnly], func(t *testing.T) {
+			t.Parallel()
+			lostLeaseStopsTheWriter(t, readOnly)
+		})
+	}
+}
+
+func lostLeaseStopsTheWriter(t *testing.T, readOnly bool) {
 	w := newWorld(t)
+	if readOnly {
+		w.readOnly()
+	}
 	p := w.process()
 	prompt := w.model.on("q", 2)
 	waiting, gate := make(chan struct{}), make(chan struct{})
@@ -545,7 +565,7 @@ func TestLostLeaseStopsTheWriter(t *testing.T) {
 	// Before the stalled writer renews, another process takes the expired
 	// lease.
 	p.store.before = func(op string, n int) {
-		if op == "Renew" && n == 2 { // the first renewal is at the start
+		if op == "Renew" && n == 1 { // a fresh claim is not renewed at the start
 			if _, err := w.mem.Claim(w.ctx, x.Run.ID, "intruder", ttl); err != nil {
 				t.Error(err)
 			}

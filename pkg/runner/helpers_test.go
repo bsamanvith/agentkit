@@ -34,7 +34,10 @@ const ttl = 30 * time.Second
 // after every run (ENGINEERING §2.6):
 //
 //  1. Entries mirror events: every prompt or turn event a consumer saw is
-//     stored at the position it names, as the same messages and record.
+//     stored at the position it names, as the same messages and record,
+//     once an EventSaved at or past that position followed it. Only events
+//     past the last EventSaved of an execution that did not complete are
+//     unchecked: their positions may be taken on resume.
 //  2. The stored context round-trips to the harness transcript: every
 //     conversation's context is a valid transcript, and a completed run's
 //     Result transcript is exactly the log up to its last entry.
@@ -98,6 +101,18 @@ func newWorld(t *testing.T) *world {
 	}
 	w.mem = memory.New(memory.WithClock(w.clk))
 	w.model = newScriptModel(t)
+	w.setTools()
+	t.Cleanup(w.check)
+	return w
+}
+
+// readOnly declares the echo tool read-only, so that its turns are kept
+// until a flush. By default it declares nothing, and is taken for a write.
+// Call it before starting processes.
+func (w *world) readOnly() { w.setTools(tool.WithMetadata(tool.Metadata{Kind: tool.KindRead})) }
+
+func (w *world) setTools(opts ...tool.FuncOption) {
+	w.t.Helper()
 	echo, err := tool.Func("echo", "Echo s.", func(ctx context.Context, in struct {
 		S string `json:"s"`
 	},
@@ -106,15 +121,13 @@ func newWorld(t *testing.T) *world {
 			w.toolGate(ctx, in.S)
 		}
 		return "echo " + in.S, ctx.Err()
-	})
+	}, opts...)
 	if err != nil {
-		t.Fatal(err)
+		w.t.Fatal(err)
 	}
 	if w.tools, err = tool.NewRegistry([]tool.Tool{echo}); err != nil {
-		t.Fatal(err)
+		w.t.Fatal(err)
 	}
-	t.Cleanup(w.check)
-	return w
 }
 
 // process starts a runner process on the world's store.
@@ -336,9 +349,20 @@ func (w *world) check() {
 	acme := tenancy.MustFrom(w.ctx).ID()
 	for _, s := range w.seen {
 		convs[touch{acme, s.conv}] = w.ctx
-		var last int64
+		var last, saved int64
 		for _, ev := range s.events {
+			if ev.Kind == runner.EventSaved {
+				if ev.Seq < last || ev.Seq <= saved {
+					t.Errorf("invariant 1: saved up to %d of %q after events up to %d, saved before up to %d", ev.Seq, s.conv, last, saved)
+				}
+				saved = ev.Seq
+			}
+			if ev.Kind == runner.EventDone && ev.Result != nil && saved < last {
+				t.Errorf("invariant 1: run %q completed with entries %d-%d of %q not saved", ev.RunID, saved+1, last, s.conv)
+			}
 			last = max(last, ev.Seq)
+		}
+		for _, ev := range s.events {
 			if ev.Kind != runner.EventHarness {
 				continue
 			}
@@ -347,6 +371,9 @@ func (w *world) check() {
 					ev.Harness.Kind == harness.EventTurnDone && ev.Harness.TurnRecord != nil {
 					t.Errorf("invariant 1: %s event of %q names no entry", ev.Harness.Kind, s.conv)
 				}
+				continue
+			}
+			if ev.Seq > saved {
 				continue
 			}
 			log := w.log(s.conv)
@@ -587,6 +614,19 @@ var (
 	errFlaky   = errors.New("store timed out")
 )
 
+// writes returns how many times the process called each method that writes.
+func (c *crashStore) writes() map[string]int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := map[string]int{}
+	for _, op := range []string{"Append", "AppendBatch", "Create", "Transition", "Claim", "Renew", "Release", "Save"} {
+		if n := c.counts[op]; n > 0 {
+			out[op] = n
+		}
+	}
+	return out
+}
+
 func (c *crashStore) isDead() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -653,6 +693,11 @@ func call0(c *crashStore, op string, f func() error) error {
 func (c *crashStore) Append(ctx context.Context, id string, e store.Entry) error {
 	c.w.touch(ctx, id)
 	return call0(c, "Append", func() error { return c.Store.Append(ctx, id, e) })
+}
+
+func (c *crashStore) AppendBatch(ctx context.Context, id string, es []store.Entry) error {
+	c.w.touch(ctx, id)
+	return call0(c, "AppendBatch", func() error { return c.Store.AppendBatch(ctx, id, es) })
 }
 
 func (c *crashStore) History(ctx context.Context, id string, p store.Page) (store.EntryPage, error) {

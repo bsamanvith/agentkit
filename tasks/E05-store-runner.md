@@ -45,6 +45,8 @@ From the groundwork handoff; details in those task files' "For T028/T030" Notes.
 - [ ] [T031](T031-compaction.md) Compaction in the runner (reactive and proactive)
 - [x] [T032](T032-flow-shape-fingerprint.md) `flow`: detect a changed step tree on resume
 - [ ] [T033](T033-harness-clock.md) harness: use `pkg/clock` instead of `WithNow` (small; any time)
+- [x] [T098](T098-turn-buffer.md) runner: keep a run's turns and store them in batches (`AppendBatch`, `FlushEvery`, `Shutdown`)
+- [ ] [T099](T099-run-queue-order.md) runs: start time, lane and priority; claim the next run in that order (`ClaimNext`, `SKIP LOCKED`)
 
 ```
 T019 ─────────────────┐

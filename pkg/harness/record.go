@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/tool"
 )
 
 // TimedMessage is a message and when it was written.
@@ -77,6 +78,10 @@ func (t TurnRecord) clone() TurnRecord {
 type ToolRecord struct {
 	ToolUseID string
 	Name      string
+	// Kind is the tool's kind as [tool.Metadata.Class] reads it from the
+	// definition the run listed: [tool.KindWrite] for a tool that declares
+	// none, or that the run did not list.
+	Kind tool.Kind
 	// StartedAt is when the call began to run, after waiting for a free slot
 	// under [WithMaxParallelTools]; Duration is how long it ran.
 	StartedAt time.Time

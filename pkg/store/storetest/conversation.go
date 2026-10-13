@@ -170,6 +170,167 @@ func RunConversationStore(t *testing.T, newStore func(t *testing.T, clk clock.Cl
 		}
 	})
 
+	t.Run("AppendBatch", func(t *testing.T) {
+		t.Parallel()
+
+		// A batch is stored as Append would store its entries one by one, or
+		// not at all.
+		t.Run("Rules", func(t *testing.T) {
+			t.Parallel()
+			r := newConvRig(t, newStore)
+			ctx := r.ctx(tenantA)
+			r.mustAppend(ctx, "c", promptAt(1, 1), turnAt(2, 2))
+			cases := []struct {
+				name    string
+				conv    string
+				entries []store.Entry
+				want    error
+			}{
+				{"seqs not consecutive", "c", []store.Entry{turnAt(3, 3), turnAt(5, 5)}, store.ErrInvalid},
+				{"seqs repeated", "c", []store.Entry{turnAt(3, 3), turnAt(3, 3)}, store.ErrInvalid},
+				{"seqs going down", "c", []store.Entry{turnAt(3, 3), turnAt(2, 2)}, store.ErrInvalid},
+				{"bad last entry", "c", []store.Entry{turnAt(3, 3), withKind(turnAt(4, 4), "note")}, store.ErrInvalid},
+				{"bad compaction", "c", []store.Entry{turnAt(3, 3), withCovers(compactionAt(4, 4), 1)}, store.ErrInvalid},
+				{"gap", "c", []store.Entry{turnAt(4, 4), turnAt(5, 5)}, store.ErrGap},
+				{"gap on a new conversation", "other", []store.Entry{promptAt(2, 1)}, store.ErrGap},
+				{"conflict after a new entry", "c", []store.Entry{turnAt(2, 99), turnAt(3, 3)}, store.ErrConflict},
+				{"conflict before a new entry", "c", []store.Entry{promptAt(1, 99), turnAt(2, 2), turnAt(3, 3)}, store.ErrConflict},
+			}
+			for _, c := range cases {
+				if err := r.appendBatch(ctx, c.conv, c.entries...); !errors.Is(err, c.want) {
+					t.Errorf("%s: AppendBatch = %v, want %v", c.name, err, c.want)
+				}
+			}
+			for _, es := range [][]store.Entry{{promptAt(1, 1)}, nil} {
+				if err := r.s.AppendBatch(ctx, "", es); !errors.Is(err, store.ErrInvalid) {
+					t.Errorf("empty conversation id, %d entries: AppendBatch = %v, want ErrInvalid", len(es), err)
+				}
+			}
+			// Nothing was stored by any of them (the rig checks the whole log).
+			if got := readAll(ctx, t, r.s, "c", store.Page{}); len(got) != 2 {
+				t.Errorf("after refused batches the log is %v, want entries 1-2", seqs(got))
+			}
+		})
+
+		t.Run("ReadsBackAsAppendedOneByOne", func(t *testing.T) {
+			t.Parallel()
+			r := newConvRig(t, newStore)
+			ctx := r.ctx(tenantA)
+			in := []store.Entry{promptAt(1, 1), turnAt(2, 2), turnAt(3, 3), turnAt(4, 4), compactionAt(5, 5), turnAt(6, 6)}
+			r.mustAppend(ctx, "single", in...)
+			if err := r.appendBatch(ctx, "batch", in[:2]...); err != nil {
+				t.Fatalf("AppendBatch 1-2: %v", err)
+			}
+			if err := r.appendBatch(ctx, "batch", in[2:]...); err != nil {
+				t.Fatalf("AppendBatch 3-6: %v", err)
+			}
+			one, batched := readAll(ctx, t, r.s, "single", store.Page{}), readAll(ctx, t, r.s, "batch", store.Page{})
+			if len(batched) != len(one) {
+				t.Fatalf("batched log is %v, want %v", seqs(batched), seqs(one))
+			}
+			for i := range one {
+				if mustSnap(t, batched[i]) != mustSnap(t, one[i]) {
+					t.Errorf("entry %d reads back differently batched", one[i].Seq)
+				}
+			}
+			view, err := r.s.Context(ctx, "batch")
+			if err != nil || view.Seq != 6 || len(view.Entries) != 2 {
+				t.Errorf("Context of the batched log = seq %d, %v, %v; want 6 and the compaction onwards", view.Seq, seqs(view.Entries), err)
+			}
+		})
+
+		t.Run("RetriesAreNoOps", func(t *testing.T) {
+			t.Parallel()
+			r := newConvRig(t, newStore)
+			ctx := r.ctx(tenantA)
+			batch := []store.Entry{promptAt(1, 1), turnAt(2, 2), turnAt(3, 3)}
+			if err := r.appendBatch(ctx, "c", batch...); err != nil {
+				t.Fatalf("AppendBatch: %v", err)
+			}
+			before := readAll(ctx, t, r.s, "c", store.Page{})
+			r.clk.Advance(time.Hour)
+
+			for _, retry := range [][]store.Entry{batch, batch[1:2]} {
+				if err := r.appendBatch(ctx, "c", retry...); err != nil {
+					t.Fatalf("retry of entries %v: %v, want nil", seqs(retry), err)
+				}
+			}
+			if got := readAll(ctx, t, r.s, "c", store.Page{}); !sameEntries(t, got, before) {
+				t.Errorf("after retries the log is %v, want it unchanged with its times", seqs(got))
+			}
+
+			// A batch whose start is stored and whose end is not appends the
+			// end: the retry of a batch that a crash cut short.
+			if err := r.appendBatch(ctx, "c", turnAt(2, 2), turnAt(3, 3), turnAt(4, 4), turnAt(5, 5)); err != nil {
+				t.Fatalf("overlapping batch: %v", err)
+			}
+			got := readAll(ctx, t, r.s, "c", store.Page{})
+			if len(got) != 5 || !sameEntries(t, got[:3], before) {
+				t.Fatalf("after an overlapping batch the log is %v, want 1-3 unchanged and 4-5 added", seqs(got))
+			}
+			if want := before[0].CreatedAt.Add(time.Hour); !got[3].CreatedAt.Equal(want) || !got[4].CreatedAt.Equal(want) {
+				t.Errorf("entries 4 and 5 were created at %v and %v, want the clock's time %v", got[3].CreatedAt, got[4].CreatedAt, want)
+			}
+		})
+
+		t.Run("EmptyBatchIsANoOp", func(t *testing.T) {
+			t.Parallel()
+			r := newConvRig(t, newStore)
+			ctx := r.ctx(tenantA)
+			for _, entries := range [][]store.Entry{nil, {}} {
+				if err := r.appendBatch(ctx, "c", entries...); err != nil {
+					t.Errorf("AppendBatch(%v) = %v, want nil", entries, err)
+				}
+			}
+			if err := r.s.AppendBatch(t.Context(), "c", nil); !errors.Is(err, tenancy.ErrNoTenant) {
+				t.Errorf("AppendBatch of nothing without a tenant = %v, want ErrNoTenant", err)
+			}
+			if got := readAll(ctx, t, r.s, "c", store.Page{}); len(got) != 0 {
+				t.Errorf("after empty batches the log is %v, want empty", seqs(got))
+			}
+		})
+
+		// Batches racing for the same positions: whatever the schedule,
+		// exactly one wins whole and the others conflict, leaving none of
+		// their entries behind.
+		t.Run("RacingBatchesExactlyOneWins", func(t *testing.T) {
+			t.Parallel()
+			r := newConvRig(t, newStore)
+			ctx := r.ctx(tenantA)
+			const writers = 8
+			for round := range 10 {
+				conv := fmt.Sprintf("race-%d", round)
+				r.mustAppend(ctx, conv, promptAt(1, 0))
+				batchOf := func(w int) []store.Entry {
+					return []store.Entry{turnAt(2, 10*w+2), turnAt(3, 10*w+3), turnAt(4, 10*w+4)}
+				}
+				errs := race(writers, func(w int) error { return r.appendBatch(ctx, conv, batchOf(w+1)...) })
+				var won []int
+				for w, err := range errs {
+					switch {
+					case err == nil:
+						won = append(won, w)
+					case !errors.Is(err, store.ErrConflict):
+						t.Errorf("round %d writer %d: AppendBatch = %v, want nil or ErrConflict", round, w, err)
+					}
+				}
+				if len(won) != 1 {
+					t.Fatalf("round %d: %d batches won (%v), want exactly one", round, len(won), won)
+				}
+				got := readAll(ctx, t, r.s, conv, store.Page{})
+				want := batchOf(won[0] + 1)
+				if len(got) != 4 {
+					t.Fatalf("round %d: log is %v, want 1-4", round, seqs(got))
+				}
+				for i, e := range want {
+					if mustSnap(t, got[i+1]) != mustSnap(t, e) {
+						t.Errorf("round %d: entry %d is not the winning batch's", round, e.Seq)
+					}
+				}
+			}
+		})
+	})
+
 	t.Run("RacingWritersExactlyOneWins", func(t *testing.T) {
 		t.Parallel()
 

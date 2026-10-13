@@ -13,10 +13,18 @@
 // unfinished run ([ErrRunUnfinished]), at once. Iterating
 // [Execution.Events] runs it and streams its events.
 //
-// A chat run writes the prompt entry first and then one turn entry per
-// harness [harness.EventTurnDone], each at the next position of the
-// conversation's log, before the event reaches the consumer. A crash
-// therefore loses at most the turn in flight. Another writer at the same
+// A chat run writes its prompt entry first, before the prompt's event reaches
+// the consumer. It then keeps its turns, one entry per harness
+// [harness.EventTurnDone] at the next positions of the conversation's log,
+// and writes them together: every [WithFlushEvery] turns (10 unless the run
+// set [FlushEvery]), after a turn that called a tool not declared
+// [tool.KindRead], when the agent stops, and when the execution is
+// interrupted, [Runner.Shutdown] included, unless its lease was lost.
+// [EventSaved] tells the consumer how far the log is stored. A crash loses
+// the turns not stored yet: the resumed run redoes them, calling the model
+// and the read-only tools again. A turn that may have changed the world is
+// stored before the next model call, so, as with one write per turn, a crash
+// loses at most the turn in flight of those. Another writer at the same
 // position ([store.ErrConflict]) stops the run: the runner never overwrites,
 // it reloads and reports.
 //
@@ -66,10 +74,12 @@
 //
 // Every execution holds its run's lease, renews it from the runner's clock and
 // releases it on every exit path. An execution that loses its lease stops
-// writing. [Runner.Cancel] makes a run canceled, and if its conversation ends
-// on a user message (the run stopped before the model answered) appends a
-// marker reply, so the next run sends a valid conversation. Nothing in the log
-// is edited.
+// writing, and drops the turns it kept. [Runner.Shutdown] stops a runner's
+// executions, which store their turns and release their leases.
+// [Runner.Cancel] makes a run canceled, and if its conversation ends on a
+// user message (the run stopped before the model answered) appends a marker
+// reply, so the next run sends a valid conversation. Nothing in the log is
+// edited.
 //
 // [E05]: https://github.com/bsamanvith/agentkit/blob/main/tasks/E05-store-runner.md
 package runner

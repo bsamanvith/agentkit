@@ -127,6 +127,10 @@ func (p *pair) Append(ctx context.Context, id string, e store.Entry) error {
 	return p.next().Append(ctx, id, e)
 }
 
+func (p *pair) AppendBatch(ctx context.Context, id string, es []store.Entry) error {
+	return p.next().AppendBatch(ctx, id, es)
+}
+
 func (p *pair) History(ctx context.Context, id string, pg store.Page) (store.EntryPage, error) {
 	return p.next().History(ctx, id, pg)
 }

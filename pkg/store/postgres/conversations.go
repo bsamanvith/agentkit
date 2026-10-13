@@ -77,6 +77,95 @@ func (s *Store) Append(ctx context.Context, id string, e store.Entry) error {
 	})
 }
 
+// AppendBatch implements [store.ConversationStore].
+//
+// One transaction: read the last entry and the stored entries the batch
+// overlaps, decide, then one INSERT of the new ones. A concurrent writer
+// that takes one of their positions first makes the INSERT hit the primary
+// key, and the whole batch is decided again.
+func (s *Store) AppendBatch(ctx context.Context, id string, entries []store.Entry) error {
+	tenant, err := scope(ctx)
+	if err != nil {
+		return err
+	}
+	if err := backend.CheckID("conversation", id); err != nil {
+		return err
+	}
+	batch, first, err := backend.CheckEntries(entries)
+	if err != nil || len(batch) == 0 {
+		return err
+	}
+	return retry(ctx, func() error {
+		now := s.now()
+		err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+			var last int64
+			var lastCreated *int64
+			err := tx.QueryRow(ctx, `SELECT seq, created_at FROM entries
+				WHERE tenant = $1 AND conversation = $2 ORDER BY seq DESC LIMIT 1`,
+				tenant, id).Scan(&last, &lastCreated)
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				return err
+			}
+			var taken []backend.Stored
+			if first <= last {
+				rows, err := tx.Query(ctx, `SELECT `+entryColumns+` FROM entries
+					WHERE tenant = $1 AND conversation = $2 AND seq BETWEEN $3 AND $4 ORDER BY seq`,
+					tenant, id, first, min(last, first+int64(len(batch))-1))
+				if err != nil {
+					return err
+				}
+				for rows.Next() {
+					st, _, err := scanEntry(rows)
+					if err != nil {
+						rows.Close()
+						return err
+					}
+					taken = append(taken, st)
+				}
+				rows.Close()
+				if err := rows.Err(); err != nil {
+					return err
+				}
+			}
+			add, err := backend.NewEntries(id, first, batch, last, taken)
+			if err != nil || len(add) == 0 {
+				return err
+			}
+			created := now
+			if prev := loadTime(lastCreated); created.Before(prev) {
+				created = prev // times never go backwards along the log
+			}
+			at, err := storeTime(created)
+			if err != nil {
+				return fmt.Errorf("postgres: append batch: the clock reads %w", err)
+			}
+			n := len(add)
+			seqs, covers := make([]int64, n), make([]int64, n)
+			kinds, msgs, recs, runs := make([]string, n), make([]string, n), make([]string, n), make([]string, n)
+			for i, st := range add {
+				seqs[i], covers[i] = last+1+int64(i), st.Covers
+				kinds[i], msgs[i], recs[i], runs[i] = string(st.Kind), string(st.Messages), string(st.Record), st.RunID
+			}
+			_, err = tx.Exec(ctx, `INSERT INTO entries
+				(tenant, conversation, seq, kind, messages, record, run_id, covers, created_at)
+				SELECT $1, $2, e.seq, e.kind, e.messages, e.record, e.run_id, e.covers, $9
+				FROM unnest($3::bigint[], $4::text[], $5::text[], $6::text[], $7::text[], $8::bigint[])
+					AS e (seq, kind, messages, record, run_id, covers)`,
+				tenant, id, seqs, kinds, msgs, recs, runs, covers, *at)
+			return err
+		})
+		switch code, constraint := sqlState(err); {
+		case err == nil:
+			return nil
+		case code == uniqueViolation && constraint == "entries_pkey":
+			return errRetry
+		case code != "":
+			return fail("append batch", err)
+		}
+		return err
+	})
+}
+
 // History implements [store.ConversationStore]. Pages are keyset queries on
 // seq (or created_at for a seek by time), so a page reads only its rows.
 func (s *Store) History(ctx context.Context, id string, p store.Page) (store.EntryPage, error) {

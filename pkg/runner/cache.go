@@ -17,6 +17,8 @@ type view struct {
 	tr  harness.Transcript
 	// lastRun is the RunID of the entry at seq, "" for an empty log.
 	lastRun string
+	// flush is the FlushEvery of the last prompt entry's record.
+	flush int
 }
 
 func (v view) clone() view {
@@ -33,6 +35,12 @@ func (v *view) apply(e store.Entry) {
 	}
 	v.seq = e.Seq
 	v.lastRun = e.RunID
+	if e.Kind == store.KindPrompt {
+		v.flush = 0
+		if rec, err := DecodeRecord(e); err == nil && rec.Prompt != nil {
+			v.flush = rec.Prompt.FlushEvery
+		}
+	}
 }
 
 // endsOnUser reports whether the context's last message is the user's.

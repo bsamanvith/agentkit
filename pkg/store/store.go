@@ -175,6 +175,15 @@ type ConversationStore interface {
 	// free position it is [ErrGap]; an entry that breaks the rules on [Entry]
 	// is [ErrInvalid].
 	Append(ctx context.Context, id string, e Entry) error
+	// AppendBatch writes entries to conversation id in one write, all or
+	// none, by Append's rules for each: a position taken by an identical
+	// entry is left as it is, so a retry of a whole or partly stored batch is
+	// safe; a different entry at a taken position is [ErrConflict]; a first
+	// Seq past the next free position is [ErrGap]. Their Seqs must be
+	// consecutive ([ErrInvalid] otherwise), and every entry follow the rules
+	// on [Entry]. No entries is a no-op, once ctx's tenant and id have been
+	// checked.
+	AppendBatch(ctx context.Context, id string, entries []Entry) error
 	// History returns one page of the conversation's entries. Paging in either
 	// order visits every entry that existed at the first page exactly once,
 	// and never one twice, however many are appended between pages; in

@@ -72,6 +72,82 @@ func (s *Store) Append(ctx context.Context, id string, e store.Entry) error {
 	})
 }
 
+// AppendBatch implements [store.ConversationStore].
+//
+// One transaction, which holds the write lock from its start: read the last
+// entry and the stored entries the batch overlaps, decide, then INSERT the
+// new ones.
+func (s *Store) AppendBatch(ctx context.Context, id string, entries []store.Entry) error {
+	tenant, err := scope(ctx)
+	if err != nil {
+		return err
+	}
+	if err := backend.CheckID("conversation", id); err != nil {
+		return err
+	}
+	batch, first, err := backend.CheckEntries(entries)
+	if err != nil || len(batch) == 0 {
+		return err
+	}
+	return s.write(ctx, func(tx *sql.Tx) error {
+		var last int64
+		var lastCreated sql.NullInt64
+		err := tx.QueryRowContext(ctx, `SELECT seq, created_at FROM entries
+			WHERE tenant = ? AND conversation = ? ORDER BY seq DESC LIMIT 1`,
+			tenant, id).Scan(&last, &lastCreated)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("sqlite: append batch: %w", err)
+		}
+		var taken []backend.Stored
+		if first <= last {
+			rows, err := tx.QueryContext(ctx, `SELECT `+entryColumns+` FROM entries
+				WHERE tenant = ? AND conversation = ? AND seq BETWEEN ? AND ? ORDER BY seq`,
+				tenant, id, first, min(last, first+int64(len(batch))-1))
+			if err != nil {
+				return fmt.Errorf("sqlite: append batch: %w", err)
+			}
+			for rows.Next() {
+				st, _, err := scanEntry(rows)
+				if err != nil {
+					rows.Close()
+					return fmt.Errorf("sqlite: append batch: %w", err)
+				}
+				taken = append(taken, st)
+			}
+			if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+				return fmt.Errorf("sqlite: append batch: %w", err)
+			}
+		}
+		add, err := backend.NewEntries(id, first, batch, last, taken)
+		if err != nil || len(add) == 0 {
+			return err
+		}
+		created := s.now()
+		if prev := loadTime(lastCreated); created.Before(prev) {
+			created = prev // times never go backwards along the log
+		}
+		at, err := storeTime(created)
+		if err != nil {
+			return fmt.Errorf("sqlite: append batch: the clock reads %w", err)
+		}
+		stmt, err := tx.PrepareContext(ctx, `INSERT INTO entries
+			(tenant, conversation, seq, kind, messages, record, run_id, covers, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		if err != nil {
+			return fmt.Errorf("sqlite: append batch: %w", err)
+		}
+		defer stmt.Close()
+		for i, st := range add {
+			seq := last + 1 + int64(i)
+			if _, err := stmt.ExecContext(ctx, tenant, id, seq, string(st.Kind), string(st.Messages),
+				string(st.Record), st.RunID, st.Covers, at); err != nil {
+				return fmt.Errorf("sqlite: append entry %d: %w", seq, err)
+			}
+		}
+		return nil
+	})
+}
+
 // History implements [store.ConversationStore]. Pages are keyset queries on
 // seq (or created_at for a seek by time), so a page reads only its rows.
 func (s *Store) History(ctx context.Context, id string, p store.Page) (store.EntryPage, error) {

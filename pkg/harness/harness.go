@@ -106,6 +106,16 @@ type run struct {
 	usage      llm.Usage
 	turns      int
 	rec        Record
+	kinds      map[string]tool.Kind // of the listed tools, by name
+}
+
+// kindOf returns the kind of the named tool, as [ToolRecord.Kind] says.
+func (r *run) kindOf(name string) tool.Kind {
+	if k, ok := r.kinds[name]; ok {
+		return k
+	}
+	k, _ := tool.Metadata{}.Class()
+	return k
 }
 
 func (r *run) now() time.Time { return r.h.cfg.now() }
@@ -186,6 +196,10 @@ func (r *run) exec(ctx context.Context, in Input) {
 	if err != nil {
 		r.fail(ctxOr(ctx, fmt.Errorf("list tools: %w", err)))
 		return
+	}
+	r.kinds = make(map[string]tool.Kind, len(defs))
+	for _, d := range defs {
+		r.kinds[d.Name], _ = d.Class()
 	}
 
 	for {

@@ -26,6 +26,9 @@ type Record struct {
 // PromptRecord is the record of a prompt entry.
 type PromptRecord struct {
 	At time.Time `json:"at"`
+	// FlushEvery is the run's [FlushEvery], kept so that a resume stores
+	// its turns as the run started; 0 when the run took the runner's.
+	FlushEvery int `json:"flush_every,omitempty"`
 }
 
 // CanceledRecord is the record of a cancel marker.

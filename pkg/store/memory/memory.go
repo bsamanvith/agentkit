@@ -132,6 +132,45 @@ func (s *Store) Append(ctx context.Context, id string, e store.Entry) error {
 	return nil
 }
 
+// AppendBatch implements [store.ConversationStore].
+func (s *Store) AppendBatch(ctx context.Context, id string, entries []store.Entry) error {
+	k, err := scope(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := backend.CheckID("conversation", id); err != nil {
+		return err
+	}
+	batch, first, err := backend.CheckEntries(entries)
+	if err != nil || len(batch) == 0 {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	log := s.convs[k]
+	last := int64(len(log))
+	var taken []backend.Stored
+	for seq := first; seq <= min(last, first+int64(len(batch))-1); seq++ {
+		taken = append(taken, log[seq-1].Stored)
+	}
+	add, err := backend.NewEntries(id, first, batch, last, taken)
+	if err != nil || len(add) == 0 {
+		return err
+	}
+	created := s.now()
+	if last > 0 && created.Before(log[last-1].created) {
+		created = log[last-1].created // times never go backwards along the log
+	}
+	if err := backend.CheckTime("the clock's time", created); err != nil {
+		return err
+	}
+	for _, st := range add {
+		log = append(log, entry{Stored: st, created: created})
+	}
+	s.convs[k] = log
+	return nil
+}
+
 // History implements [store.ConversationStore].
 func (s *Store) History(ctx context.Context, id string, p store.Page) (store.EntryPage, error) {
 	k, err := scope(ctx, id)

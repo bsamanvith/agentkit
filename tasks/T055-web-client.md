@@ -46,6 +46,20 @@ People need to use the agent without a terminal: a chat like a terminal agent's,
 - **Unknown events:** never stop the stream on an unknown event type (the additive rule).
 - **Messages:** parse them leniently, as the Go side does since PR #4: ignore unknown fields, and show unknown block types as placeholders.
 
+## From T078's handoff (2026-10-13)
+
+Read T078's Notes "For T055, T064 and T066" first: where components go, `useApi`/`useResource`, the stream helpers, how to test, and the `pkg/web/dist` rebuild rule. Also in scope here:
+- **Modal overlays and the CSP.** Radix's modal overlays (Dialog, AlertDialog, Sheet, modal DropdownMenu) lock scrolling with an injected `<style>` that the strict CSP blocks, and `make web-smoke` fails on the violation. Before the first confirm dialog or bottom sheet, replace react-remove-scroll with a CSS-class scroll lock, or use `modal={false}` with our own focus handling. A CSP hash won't work: the style is computed at runtime.
+- **The list column's chat parts:**
+  - the conversation list itself;
+  - chat search and the agent filter in the list head;
+  - bottom-sheet menus on phones;
+  - the help and shortcuts button, and `Mod+K`.
+- **Route names with a dot:** `pkg/web` treats a final path segment with an extension as a file (`/agents/my.agent` is a 404). Make the fallback check only known file extensions, unless agent and toolset names are restricted to exclude dots (decide and record).
+- **`web` on by default:** `scripts/try-agent.sh` and docs/QUICKSTART.md use `AGENTKIT_COMPONENTS=agent,web,mcp-server`, and QUICKSTART's environment list names `web` and the console URL.
+- **Keep the first load under 240 KB** (`make web-check`). The Markdown renderer and syntax highlighting are `React.lazy` chunks. Measure on "Slow 4G" with a 4× CPU slowdown and record the numbers.
+- **Interrupted runs (T100):** a chat run that stops with its user shows `interrupted`, with **Continue** (`POST /v1/runs/{id}/resume`). The stop button calls `POST /v1/runs/{id}/stop`. A new message cancels the interrupted run and starts a new one (T037). Until T037 lands, the API is T036's in-memory one.
+
 ## Acceptance criteria
 
 - [ ] In Chromium (Playwright) against `agentkit serve` (replayed model): sending a message streams the answer into the page; a tool call appears as a card with its input and result; a follow-up continues the conversation; reload + clicking the conversation in the sidebar shows the history.

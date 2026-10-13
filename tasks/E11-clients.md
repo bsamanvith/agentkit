@@ -53,7 +53,16 @@ Both talk to the public agent API (`/v1`, HTTP + SSE; [E09](E09-agent-api.md)). 
 - [ ] [T061](T061-local-users-login.md) Local users and login sessions (E07 track, needs T039)
 - [x] [T078](T078-web-workspace.md) Web workspace: React + TS + shadcn/ui, packages `ui` / `agent-ui` / `apps/console`, embedding, CI (`make web`, `make web-check`, `make web-smoke`; read its "For T055, T064 and T066" and "Found out of scope" Notes, and `web/README.md`, first)
 - [x] [T070](T070-console-ux-design.md) Console UX design session: layout, navigation, states, components, mockup v3 (before T055). Approved by the owner on 2026-10-12, with the review's fixes; the same day, Connections (per-user credentials, org later) replaced the Credentials page (Decision 11). Read its Notes, "Review (2026-10-12)", "For T055" and "Found out of scope", first
-- [ ] [T055](T055-web-client.md) Console shell, login, chat with agent picker, conversation list
+- [ ] [T055](T055-web-client.md) Console chat, agent picker, conversation list, on T078's shell (read its "From T078's handoff" section; interrupted runs per T100)
 - [ ] [T064](T064-console-admin-pages.md) Console admin pages: agents, toolsets and tools, credentials (editing agents and skills: E15's T075 and T077)
+
+Later, from T078's review (small, take them when the console's numbers call for them):
+- Brotli for the embedded assets (about 22 KB less);
+- a hashed `theme.js` so it isn't revalidated on every load;
+- a system monospace font in place of Geist Mono (about 23 KB of the first load);
+- lazy-loading the phone drawer and the account menu;
+- making `/mcp` configurable in `pkg/web`'s reserved paths.
+
+CI hardening (pinned actions, no persisted credentials) is [T101](T101-ci-hardening.md).
 
 Order: T053 and T062 now (independent), and T039 (E07) now for login. Then T054 (CLI), T063 (MCP) and T055 (console) in parallel, then T061 (login) and T064 (admin pages). The UI design (screens and flows) is in [docs/UI.md](../docs/UI.md); a dedicated design session (T070) settles the layout and produces mockup v3 for the owner's approval before T055 starts. After that: T006 (Compose) and T050 (evals, on `agentkit ask --json` and `/mcp/agentkit`).

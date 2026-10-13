@@ -57,21 +57,23 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 | [T039](T039-auth-principals-middleware.md) | `pkg/auth`: principals, API keys, edge middleware | **Done** (`f08e82e`, CI green): T040, T041 and T061 can start; read its "For T040", "For T041" and "For T061" Notes first |
 | [T040](T040-serve-auth-wiring.md), [T041](T041-auth-jwt-oidc.md) | `serve` behind auth; JWT/OIDC | **Ready** (T039 done) |
 | [T063](T063-agents-over-mcp.md) | Agents over MCP for Claude Code | **Ready** (T062 done) |
-| [T055](T055-web-client.md), [T061](T061-local-users-login.md), [T064](T064-console-admin-pages.md) | Console shell and chat; local users and login; admin pages | **T055 ready** (T078, T062, T070 done); T061 ready; T064 after T055 |
+| [T055](T055-web-client.md), [T061](T061-local-users-login.md), [T064](T064-console-admin-pages.md) | Console shell and chat; local users and login; admin pages | **T055 ready** (T078, T062, T070 done; read T055's "From T078's handoff"); T061 ready; T064 after T055 |
 | [T057](T057-skills.md), [T058](T058-memory-context-store.md) | Skills (Agent Skills format, progressive disclosure); memory context store (Claude memory-tool shape) | Ready; new packages, parallel with everything |
 | [T056](T056-test-speed.md) | `make test` back under 30 s (52 s now) | Ready; small |
 | [T050](T050-connector-tool-evals.md) | Tool-use evals: real Claude with faked connectors | **Later** (owner): after the API is deployed and the clients exist; runs on `agentkit ask --json` |
 | [T047](T047-connector-exa.md) | `connectors/exa`: search and extract | **Review**: on `main`, on the kit (`2f7b951`, `049a7cc`); waits for `EXA_API_KEY` (live test, re-recording synthetic cassettes) |
 | [T048](T048-connector-parallel.md) | `connectors/parallel`: search and extract | **Review**: on `main`, on the kit (`baf4248`); waits for `PARALLEL_API_KEY` (live test, re-recording synthetic cassettes) |
 | [T042](T042-credentials-core.md) | `pkg/credentials`: secrets, sealer, vault, memory backend | Starts E07's credentials track; new package only, parallel with everything |
-| [T037](T037-agent-api-v1.md) | Agent API v1 on the runner; store by `AGENTKIT_STORE` (memory, SQLite, then Postgres) | **Start now** (T030 done): makes `serve` persistent |
+| [T037](T037-agent-api-v1.md) | Agent API v1 on the runner; store by `AGENTKIT_STORE` (memory, SQLite, Postgres); stop and resume for chat runs | **After T100** (owner, 2026-10-13): makes `serve` persistent |
+| [T100](T100-interactive-chat-runs.md) | Runner: interactive chat runs stop with their user (stop, closed tab), show `interrupted`, are never recovered in the background | **Start now** (T030, T088, T098 done): T037 and T099 wait on it |
 | [T090](T090-stream-api.md) | Stream API across replicas: replay from Postgres, tail Redis, commands to the lease holder | **Ready** (T088, T089, T030 done); E14 background tasks wait on it |
 | [T093](T093-postgres-rls.md) | Postgres row-level security by tenant | **Ready** (T088 done); small |
-| [T099](T099-run-queue-order.md) | Runs: start time, lane and priority, `ClaimNext` | **Ready** (T030, T088, T098 done) |
+| [T099](T099-run-queue-order.md) | Runs: start time, lane and priority, `ClaimNext` | After T100 (migration 0006; skips interactive runs) |
 | [T083](T083-tool-policy.md) | Tool policy: presets, rules, allow/flag/approve/deny | **Ready** (T082 done); T084 follows with T030 done |
 | [T031](T031-compaction.md) | Compaction | **Ready** (T030 done) |
 | [T087](T087-console-ux-design-2.md) | Console UX design part 2: skills, agent builder, tool policies, interrupts and approvals, tasks with steering; mockup v4 | **Ready** (owner approved v3) |
 | [T094](T094-mcp-client-toolset.md) | `pkg/mcp/client` and the `mcp` toolset type: use external MCP servers' tools, pin fingerprints | **Ready** (E19); new package, tests against our own MCP server |
+| [T101](T101-ci-hardening.md) | CI hardening: actions pinned by SHA, no persisted credentials, workflow lint | **Ready**; small, from T078's review |
 | [T006](T006-compose-and-dev-script.md) | Compose topologies and `scripts/dev.sh` | Image exists; repeatable local runs |
 | [T033](T033-harness-clock.md) | Harness on `pkg/clock` | Small, independent |
 | [T035](T035-rerecord-anthropic-fixtures.md) | Re-record Anthropic fixtures from the real API | A key is available |
@@ -136,3 +138,5 @@ Each is recorded in the linked file; this list is for orientation.
 - E04 closed; T025 moved to E08. `fakellm` kept, extracted from the replay server ([T004](T004-fakellm.md)).
 - 2026-10-12 (planner, T029 handoff): `IMAGE_BUDGET_MB` 20 → 30 with every store driver in the one default binary (no build tags); CI builds the image and checks its size on every push (`image` job), which would have caught the `.dockerignore` break fixed in `0f22246`. The store contract rejects times outside 1678–2262 in every backend; T088 adds T029's two `storetest` gaps before the Postgres backend. Migrations run at startup by default, `agentkit migrate` for job-style deploys. Postgres row-level security is T093.
 - 2026-10-12: external MCP servers (E19), owner's question "how do I enable my website to accept their MCP". An external server is an `mcp` toolset. Admins add it by URL (API or console, no restart) and users connect their own accounts (the Claude Team model). Auth: none, headers from a credential, or MCP OAuth (pre-registered client, then CIMD, then DCR; PKCE + `resource`). Tool definitions are pinned by hash, and a changed or new tool stays disabled until an admin reviews it. API-added URLs are https only, behind an SSRF-safe dialer. stdio only from the operator's config.
+- 2026-10-13 (owner, T100): **chat runs stop with their user.** The stop button or a closed tab (after a 10 s reconnect grace) interrupts the run, which is shown `interrupted` and never recovered in the background. Continue is Resume; a new message cancels it and starts a new run; retryable model errors are retried inline. Background runs (E14) keep detaching and are recovered. This replaces the planner's "a dropped client detaches" note in T037.
+- 2026-10-13 (T078 handoff): the phone drawer is our own, not shadcn's `Sheet`, because Radix's modal scroll lock injects a `<style>` the strict CSP blocks; T055 must solve modal overlays the same way before its first dialog. The image with the console was 18.1 MB (console: 0.7 MB). CI hardening is T101; small console size savings are listed in E11 as later work.

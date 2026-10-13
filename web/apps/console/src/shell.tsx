@@ -9,10 +9,10 @@
 //
 // The drawer is ours, not shadcn's Sheet: Radix's modal scroll lock injects a
 // <style>, which the CSP blocks. The page doesn't scroll behind it anyway (the
-// shell is the height of the screen; only its panes scroll), and the app
-// behind is inert while it is open.
+// shell is the height of the screen; only its panes scroll), the app behind
+// is inert while it is open, and Tab stays in it.
 
-import { useTheme, themePreferences, type ThemePreference } from "@agentkit/ui";
+import { isPreference, useTheme, themePreferences, type ThemePreference } from "@agentkit/ui";
 import { Button } from "@agentkit/ui/components/button";
 import {
   DropdownMenu,
@@ -29,6 +29,7 @@ import { useIsMobile } from "@agentkit/ui/hooks/use-mobile";
 import { cn } from "@agentkit/ui/lib/utils";
 import { Ellipsis, MessageCircle, SquarePen, UserRound } from "lucide-react";
 import {
+  Suspense,
   useCallback,
   useEffect,
   useEffectEvent,
@@ -42,6 +43,7 @@ import { Link, Outlet, useLocation } from "react-router";
 import { useApi, useResource, type Resource } from "./api";
 import { LayoutContext, isApple, listStorageKey, type Layout } from "./layout";
 import { ListRow } from "./list-row";
+import { Loading } from "./pages/page";
 import { agentRow, listAgents, ListsContext, listToolsets, toolsetRow, type Lists } from "./lists";
 import { adminSections, sectionOf, sections, type Section } from "./sections";
 
@@ -57,6 +59,30 @@ function initialListShown(): boolean {
     // Storage blocked: use the width.
   }
   return window.innerWidth >= 900;
+}
+
+// What Tab can reach in the drawer. It has no hidden or disabled controls.
+const focusable = 'a[href], button:not(:disabled), input:not(:disabled), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Keeps Tab in the open drawer (it is modal): from its last control to its
+ * first and back, and from outside it (focus on <body> after a tap on its
+ * padding) to its first or last.
+ */
+function trapTab(e: globalThis.KeyboardEvent, root: HTMLElement) {
+  const items = root.querySelectorAll<HTMLElement>(focusable);
+  const first = items[0];
+  const last = items[items.length - 1];
+  if (!first || !last) return;
+  const active = document.activeElement;
+  let to: HTMLElement | null = null;
+  if (!root.contains(active)) to = e.shiftKey ? last : first;
+  else if (e.shiftKey && active === first) to = last;
+  else if (!e.shiftKey && active === last) to = first;
+  if (to) {
+    e.preventDefault();
+    to.focus();
+  }
 }
 
 const tip =
@@ -93,7 +119,7 @@ function UserMenu({ variant }: { variant: "rail" | "drawer" }) {
       </DropdownMenuTrigger>
       <DropdownMenuContent side={variant === "rail" ? "right" : "top"} align="end" className="w-56">
         <DropdownMenuLabel className="text-ak-muted">Theme</DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={preference} onValueChange={(v) => setPreference(v as ThemePreference)}>
+        <DropdownMenuRadioGroup value={preference} onValueChange={(v) => isPreference(v) && setPreference(v)}>
           {themePreferences.map((p) => (
             <DropdownMenuRadioItem key={p} value={p}>
               {themeLabels[p]}
@@ -357,6 +383,7 @@ export function Shell({ children }: { children?: ReactNode }) {
   const hasList = current.to !== "/connections"; // one page, no list
   const [listShown, setListShown] = useState(initialListShown);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const { prompt } = useApi();
   const menuButton = useRef<HTMLElement | null>(null);
   const drawer = useRef<HTMLDivElement>(null);
 
@@ -393,6 +420,13 @@ export function Shell({ children }: { children?: ReactNode }) {
   }, []);
 
   const onKey = useEffectEvent((e: globalThis.KeyboardEvent) => {
+    // The sign-in card is a dialog over the app: only its own keys work.
+    if (prompt !== null) return;
+    if (e.key === "Tab" && phone && drawerOpen) {
+      // Radix keeps Tab in an open menu (preventDefault); leave it there.
+      if (!e.defaultPrevented && drawer.current) trapTab(e, drawer.current);
+      return;
+    }
     // Esc closes the drawer wherever focus is (a tap on its padding moves
     // focus to <body>); in the account menu it closes the menu only
     // (docs/UI.md: the topmost first).
@@ -448,7 +482,15 @@ export function Shell({ children }: { children?: ReactNode }) {
             inert={layout.drawerOpen}
             className="flex min-h-0 min-w-0 flex-col bg-ak-surface outline-none"
           >
-            {children ?? <Outlet />}
+            <Suspense
+              fallback={
+                <div className={phone ? "p-4" : "p-6"}>
+                  <Loading />
+                </div>
+              }
+            >
+              {children ?? <Outlet />}
+            </Suspense>
           </main>
         </div>
         {phone ? (

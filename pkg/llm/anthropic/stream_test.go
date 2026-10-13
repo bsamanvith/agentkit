@@ -2,12 +2,17 @@ package anthropic_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"iter"
 	"net/http"
+	"net/http/httptest"
+	"os"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -297,5 +302,116 @@ func TestErrorMapping(t *testing.T) {
 				t.Errorf("errors.As(*anthropic.Error) = %v, want the SDK error with status %d", apiErr, c.status)
 			}
 		})
+	}
+}
+
+// stall answers like the API, sends a ping, then keeps the stream open
+// without another byte until the client goes away or the test ends.
+func stall(t *testing.T) *httptest.Server {
+	t.Helper()
+	done := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "event: ping\ndata: {\"type\": \"ping\"}\n\n")
+		w.(http.Flusher).Flush()
+		select {
+		case <-r.Context().Done():
+		case <-done:
+		}
+	}))
+	t.Cleanup(func() { close(done); srv.Close() })
+	return srv
+}
+
+// A stream that stays open but stops sending is given up after the idle
+// timeout, as a retryable error, not the caller's cancellation.
+func TestStalledStreamIsOverloaded(t *testing.T) {
+	t.Parallel()
+	m := newModel(t, stall(t), anthropicllm.WithIdleTimeout(50*time.Millisecond))
+	_, err := drain(m.Generate(t.Context(), userText("Hello.")))
+	if !errors.Is(err, llm.ErrOverloaded) || !llm.IsRetryable(err) {
+		t.Errorf("err = %v, want a retryable ErrOverloaded", err)
+	}
+	if errors.Is(err, context.Canceled) {
+		t.Errorf("err = %v, reported as a cancellation", err)
+	}
+}
+
+// The caller's own cancellation stays a cancellation, whatever the idle
+// timeout.
+func TestCancelledStallIsCanceled(t *testing.T) {
+	t.Parallel()
+	m := newModel(t, stall(t), anthropicllm.WithIdleTimeout(time.Hour))
+	ctx, cancel := context.WithCancel(t.Context())
+	time.AfterFunc(20*time.Millisecond, cancel)
+	_, err := drain(m.Generate(ctx, userText("Hello.")))
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("err = %v, want context.Canceled", err)
+	}
+}
+
+// Events keep a stream alive: the timeout is between events, not for the
+// whole reply.
+func TestIdleTimeoutIsBetweenEvents(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		data, err := os.ReadFile("testdata/interleaved.http")
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		_, body, _ := bytes.Cut(data, []byte("\n\n"))
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		// Each of the 14 events arrives after a pause well under the
+		// timeout; all of them together take longer than it.
+		for _, ev := range bytes.SplitAfter(body, []byte("\n\n")) {
+			time.Sleep(100 * time.Millisecond)
+			_, _ = w.Write(ev)
+			w.(http.Flusher).Flush()
+		}
+	}))
+	t.Cleanup(srv.Close)
+	m := newModel(t, srv, anthropicllm.WithIdleTimeout(800*time.Millisecond))
+	if _, err := llm.Collect(m.Generate(t.Context(), userText("Hello."))); err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+}
+
+// TestIdleTimeoutIgnoresTheConsumer: a caller slower than the idle timeout
+// to handle each event is not a stalled stream.
+func TestIdleTimeoutIgnoresTheConsumer(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		data, err := os.ReadFile("testdata/interleaved.http")
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		_, body, _ := bytes.Cut(data, []byte("\n\n"))
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+	m := newModel(t, srv, anthropicllm.WithIdleTimeout(50*time.Millisecond))
+	slept := false
+	for _, err := range m.Generate(t.Context(), userText("Hello.")) {
+		if err != nil {
+			t.Fatalf("Generate: %v", err)
+		}
+		if !slept {
+			slept = true
+			time.Sleep(200 * time.Millisecond)
+		}
+	}
+}
+
+func TestNegativeIdleTimeoutIsInvalid(t *testing.T) {
+	t.Parallel()
+	_, err := anthropicllm.New(anthropicllm.WithIdleTimeout(-time.Second))
+	if !errors.Is(err, llm.ErrInvalidRequest) {
+		t.Errorf("err = %v, want ErrInvalidRequest", err)
 	}
 }

@@ -103,13 +103,13 @@ func (c *client) attempt(ctx context.Context, endpoint string, payload []byte, t
 	start := time.Now()
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return 0, nil, nil, c.transportError(ctx, actx, timeout)
+		return 0, nil, nil, c.transportError(ctx, actx, endpoint, timeout, err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes+1))
 	switch {
 	case err != nil:
-		return 0, nil, nil, c.transportError(ctx, actx, timeout)
+		return 0, nil, nil, c.transportError(ctx, actx, endpoint, timeout, err)
 	case len(body) > maxBodyBytes:
 		return 0, nil, nil, errTooLarge
 	}
@@ -120,9 +120,13 @@ func (c *client) attempt(ctx context.Context, endpoint string, payload []byte, t
 
 // transportError reports a request that got no complete response. The
 // cause is not included: it is the client's text, not Tavily's, and says
-// nothing the model can act on. The caller's own cancellation is returned
-// as such.
-func (c *client) transportError(ctx, actx context.Context, timeout time.Duration) error {
+// nothing the model can act on. It is logged instead, redacted, so that a
+// DNS, TLS or proxy failure can be told apart from Tavily being down. The
+// caller's own cancellation is returned as such, and not logged.
+func (c *client) transportError(ctx, actx context.Context, endpoint string, timeout time.Duration, cause error) error {
+	if ctx.Err() == nil {
+		c.log.WarnContext(ctx, "tavily request failed", "endpoint", endpoint, "err", c.redact(cause.Error()))
+	}
 	switch {
 	case ctx.Err() != nil:
 		return ctx.Err()

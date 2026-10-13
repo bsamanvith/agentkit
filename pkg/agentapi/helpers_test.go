@@ -635,7 +635,7 @@ func checkStream(t *testing.T, events []agentapi.Event) {
 			if got := e.Record.Messages[0].Message.Text(); got != deltas[turn] {
 				t.Errorf("turn %d text deltas %q, but its reply says %q", turn, deltas[turn], got)
 			}
-			usage = addUsage(usage, e.Record.Usage)
+			usage = usage.Add(e.Record.Usage)
 		}
 	}
 	if terminal != 1 || (last.Type != agentapi.TypeRunDone && last.Type != agentapi.TypeRunError) {
@@ -655,13 +655,6 @@ func checkStream(t *testing.T, events []agentapi.Event) {
 		if last.Error == nil || last.Error.Code == "" || last.Turns < turn {
 			t.Errorf("run_error %+v: want a typed error and at least %d turns", last, turn)
 		}
-	}
-}
-
-func addUsage(a, b llm.Usage) llm.Usage {
-	return llm.Usage{
-		InputTokens: a.InputTokens + b.InputTokens, OutputTokens: a.OutputTokens + b.OutputTokens,
-		CacheReadTokens: a.CacheReadTokens + b.CacheReadTokens, CacheWriteTokens: a.CacheWriteTokens + b.CacheWriteTokens,
 	}
 }
 

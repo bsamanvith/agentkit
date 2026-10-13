@@ -41,10 +41,6 @@ export default tseslint.config(
   // The packages are libraries: their modules export hooks and helpers next
   // to components by design. Fast refresh matters in the apps.
   { files: ["packages/**"], rules: { "react-refresh/only-export-components": "off" } },
-  // shadcn/ui components are vendored from the CLI and kept as generated, so
-  // that re-adding one is a clean diff. SidebarMenuSkeleton's random width
-  // is the one impurity.
-  { files: ["packages/ui/src/components/**"], rules: { "react-hooks/purity": "off" } },
   {
     files: ["**/*.test.{ts,tsx}", "**/e2e/**", "**/*.config.ts"],
     languageOptions: { globals: { ...globals.node } },

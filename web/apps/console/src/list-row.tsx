@@ -1,4 +1,4 @@
-import { Status } from "@agentkit/ui";
+import { Status, type StatusTone } from "@agentkit/ui";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
@@ -15,7 +15,7 @@ export function ListRow({
   to: string;
   name: string;
   sub: string;
-  tone: "ok" | "warn";
+  tone: StatusTone;
   word: string;
   current?: boolean;
   chevron?: ReactNode;

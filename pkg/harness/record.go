@@ -104,15 +104,6 @@ type Result struct {
 	Record Record
 }
 
-func addUsage(a, b llm.Usage) llm.Usage {
-	return llm.Usage{
-		InputTokens:      a.InputTokens + b.InputTokens,
-		OutputTokens:     a.OutputTokens + b.OutputTokens,
-		CacheReadTokens:  a.CacheReadTokens + b.CacheReadTokens,
-		CacheWriteTokens: a.CacheWriteTokens + b.CacheWriteTokens,
-	}
-}
-
 // totalTokens counts every token a turn paid for. InputTokens excludes cached
 // tokens, so all four fields are added.
 func totalTokens(u llm.Usage) int {

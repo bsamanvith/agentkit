@@ -1,13 +1,15 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Agent } from "@agentkit/agent-ui/api";
+import { lazy } from "react";
 import { createMemoryRouter } from "react-router";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { tokenStorageKey } from "./api";
 import { listStorageKey } from "./layout";
 import { App } from "./app";
+import { Page } from "./pages/page";
 import { readiness } from "./pages/readiness";
-import { routes } from "./routes";
+import { inShell, routes } from "./routes";
 import { sectionOf } from "./sections";
 
 const agents = {
@@ -179,6 +181,19 @@ describe("the token", () => {
     expect(nav.closest("[inert]")).toBeNull();
   });
 
+  it("keeps the shell's shortcuts off while it is asked for", async () => {
+    fakeServer();
+    renderAt("/agents/researcher");
+    await screen.findByLabelText("API token");
+    await userEvent.keyboard("{Control>}{Shift>}S{/Shift}{/Control}");
+    expect(localStorage.getItem(listStorageKey)).toBeNull();
+
+    await userEvent.type(screen.getByLabelText("API token"), "good");
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await researcher();
+    expect(screen.getByRole("button", { name: "List" })).toHaveAttribute("aria-expanded", "true");
+  });
+
   it("can be forgotten from the account menu", async () => {
     sessionStorage.setItem(tokenStorageKey, "good");
     const seen = fakeServer();
@@ -186,14 +201,15 @@ describe("the token", () => {
     await researcher();
 
     await userEvent.click(screen.getByRole("button", { name: "Account and theme" }));
+    const before = seen.length;
     await userEvent.click(await screen.findByRole("menuitem", { name: "Forget token" }));
     expect(sessionStorage.getItem(tokenStorageKey)).toBeNull();
     expect(await screen.findByLabelText("API token")).toBeInTheDocument();
     // Forgetting isn't a failure: the card shows no error.
     expect(screen.getByRole("dialog").textContent).not.toMatch(/rejected|accepted|Enter a token/);
-    const before = seen.length;
-    await new Promise((r) => setTimeout(r, 50));
-    expect(seen).toHaveLength(before); // and makes no request without one
+    // And it makes no request without one: the reload the forget starts ran
+    // its effect in the click (fetch is called synchronously), and waited.
+    expect(seen).toHaveLength(before);
   });
 
   it("is not offered to forget when there is none", async () => {
@@ -295,6 +311,83 @@ describe("a page", () => {
     renderAt("/nowhere");
     expect(await screen.findByRole("heading", { level: 1, name: "Not found" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back to chats" })).toHaveAttribute("href", "/");
+  });
+});
+
+describe("a page that throws", () => {
+  function Boom(): never {
+    throw new Error("the page broke");
+  }
+
+  it("shows an error in the shell, which going elsewhere clears", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {}); // React and the router log it
+    onTestFinished(() => logged.mockRestore());
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json(agents)),
+    );
+    const pages = routes[0]?.children?.[0]?.children ?? [];
+    render(
+      <App
+        router={createMemoryRouter(inShell([{ path: "/boom", element: <Boom /> }, ...pages]), {
+          initialEntries: ["/boom"],
+        })}
+      />,
+    );
+
+    const heading = await screen.findByRole("heading", { level: 1, name: "This page couldn't be shown" });
+    expect(screen.getByText("the page broke")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reload" })).toBeInTheDocument();
+    await waitFor(() => expect(heading).toHaveFocus());
+    expect(document.title).toBe("This page couldn't be shown · agentkit");
+
+    const sections = screen.getByRole("navigation", { name: "Sections" });
+    await userEvent.click(within(sections).getByRole("link", { name: "Agents" }));
+    expect(await researcher()).toBeInTheDocument();
+    expect(screen.queryByText("the page broke")).not.toBeInTheDocument();
+  });
+
+  it("that arrives while the account menu is open leaves the menu open", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json(agents)),
+    );
+    let arrive: () => void = () => {};
+    const Late = lazy(
+      () =>
+        new Promise<{ default: () => React.JSX.Element }>((resolve) => {
+          arrive = () => resolve({ default: () => <Page title="Late">here</Page> });
+        }),
+    );
+    render(
+      <App
+        router={createMemoryRouter(inShell([{ path: "/late", element: <Late /> }]), { initialEntries: ["/late"] })}
+      />,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Account and theme" }));
+    const menu = await screen.findByRole("menu");
+    await act(async () => arrive());
+    expect(await screen.findByRole("heading", { level: 1, name: "Late" })).toBeInTheDocument();
+    expect(menu).toBeInTheDocument();
+    expect(screen.getByRole("menu")).toBe(menu);
+  });
+
+  it("whose code is gone (a tab older than the server) says to reload", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    onTestFinished(() => logged.mockRestore());
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json(agents)),
+    );
+    const Gone = lazy(() => Promise.reject(new TypeError("Failed to fetch dynamically imported module: /assets/x.js")));
+    render(
+      <App
+        router={createMemoryRouter(inShell([{ path: "/gone", element: <Gone /> }]), { initialEntries: ["/gone"] })}
+      />,
+    );
+    expect(await screen.findByRole("heading", { level: 1, name: "The console was updated" })).toBeInTheDocument();
+    expect(screen.getByText("Reload to get the new version.")).toBeInTheDocument();
+    expect(screen.queryByText(/Failed to fetch/)).not.toBeInTheDocument();
   });
 });
 
@@ -448,6 +541,36 @@ describe("on a phone", () => {
     await userEvent.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
     expect(menu).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("keeps Tab in the open drawer", async () => {
+    renderAt("/new");
+    await screen.findByRole("heading", { level: 1, name: "New chat" });
+    await userEvent.click(screen.getByRole("button", { name: "Menu" }));
+    const drawer = screen.getByRole("dialog", { name: "Menu" });
+    const first = within(drawer).getByRole("link", { name: "Chats" });
+    const last = within(drawer).getByRole("button", { name: "Account and theme" });
+    await waitFor(() => expect(first).toHaveFocus());
+
+    await userEvent.tab({ shift: true });
+    expect(last).toHaveFocus();
+    await userEvent.tab();
+    expect(first).toHaveFocus();
+
+    (document.activeElement as HTMLElement).blur(); // a tap on the drawer's padding
+    await userEvent.tab();
+    expect(first).toHaveFocus();
+    (document.activeElement as HTMLElement).blur();
+    await userEvent.tab({ shift: true });
+    expect(last).toHaveFocus();
+
+    // The account menu (outside the drawer, in a portal) keeps its own Tab.
+    await userEvent.click(last);
+    const item = await screen.findByRole("menuitemradio", { name: "System" });
+    await waitFor(() => expect(screen.getByRole("menu")).toContainElement(document.activeElement as HTMLElement));
+    await userEvent.tab();
+    expect(screen.getByRole("menu")).toContainElement(document.activeElement as HTMLElement);
+    expect(item).toBeInTheDocument();
   });
 
   it("closes the drawer on a pick, and lists agents as a page with Back", async () => {

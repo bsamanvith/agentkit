@@ -582,7 +582,7 @@ func (s *Server) apply(st *started, ev harness.Event) {
 	case harness.EventTurnDone:
 		st.conv.messages = append(st.conv.messages, ev.TurnRecord.Messages...)
 		st.run.turns = ev.TurnRecord.Turn
-		st.run.usage = addUsage(st.run.usage, ev.TurnRecord.Usage)
+		st.run.usage = st.run.usage.Add(ev.TurnRecord.Usage)
 	default:
 		return
 	}
@@ -736,14 +736,6 @@ func conversationView(c *conversation) Conversation {
 		V: WireVersion, ID: c.id, Agent: c.agent.Name, Status: c.status(), CreatedAt: c.created, UpdatedAt: c.updated,
 		Messages: timedMessages(c.messages),
 	}
-}
-
-func addUsage(a, b llm.Usage) llm.Usage {
-	a.InputTokens += b.InputTokens
-	a.OutputTokens += b.OutputTokens
-	a.CacheReadTokens += b.CacheReadTokens
-	a.CacheWriteTokens += b.CacheWriteTokens
-	return a
 }
 
 // quote shows a client-supplied ID in a message, shortened.

@@ -3,6 +3,7 @@
 // not two).
 
 import { listField, type Agent, type AgentClient } from "@agentkit/agent-ui/api";
+import type { StatusTone } from "@agentkit/ui";
 import { createContext, useContext } from "react";
 import type { Resource } from "./api";
 import { readiness } from "./pages/readiness";
@@ -23,12 +24,12 @@ export function useLists(): Lists {
 }
 
 /** A toolset's status as a tone and a word. */
-export function toolsetStatus(t: Toolset): { tone: "ok" | "warn"; text: string } {
+export function toolsetStatus(t: Toolset): { tone: StatusTone; text: string } {
   return t.status === "ready" ? { tone: "ok", text: "Ready" } : { tone: "warn", text: "Skipped" };
 }
 
 /** What a list row shows: the name, a muted line, and a status. */
-export type RowInfo = { name: string; sub: string; tone: "ok" | "warn"; word: string };
+export type RowInfo = { name: string; sub: string; tone: StatusTone; word: string };
 
 export function agentRow(a: Agent): RowInfo {
   const r = readiness(a);

@@ -8,7 +8,8 @@ export const themeStorageKey = "agentkit.theme";
 
 export const themePreferences: readonly ThemePreference[] = ["system", "light", "dark"];
 
-function isPreference(v: unknown): v is ThemePreference {
+/** Whether v is a ThemePreference (a stored value, or a menu's string). */
+export function isPreference(v: unknown): v is ThemePreference {
   return typeof v === "string" && (themePreferences as readonly string[]).includes(v);
 }
 

@@ -39,6 +39,9 @@ func ModuleRules() Rules {
 			// tests check for leaked goroutines with goleak.
 			"pkg/bus/redis":  {"github.com/redis/go-redis/v9", "github.com/redis/go-redis/v9/maintnotifications", "go.uber.org/goleak"},
 			"pkg/bus/memory": {"go.uber.org/goleak"},
+			// The stream's tests run on the Redis bus too, and check for
+			// leaked watches with goleak.
+			"pkg/stream": {"github.com/redis/go-redis/v9", "github.com/redis/go-redis/v9/maintnotifications", "go.uber.org/goleak"},
 		},
 		TestOnly: []string{
 			"github.com/google/go-cmp/cmp",
@@ -97,6 +100,13 @@ func ModuleRules() Rules {
 			// nothing else: the store, the runner and the API build on it
 			// (E18). Its tests use the env gating helper.
 			"pkg/bus": {"pkg/tenancy", "pkg/clock", "pkg/clock/clocktest", "internal/testkit"},
+			// The stream joins the store's logs and the bus (E18, T090): it
+			// knows their contracts, never a backend. Its tests run on the
+			// memory store and both buses.
+			"pkg/stream": {
+				"pkg/bus", "pkg/store", "pkg/tenancy", "pkg/clock",
+				"pkg/bus/memory", "pkg/bus/redis", "pkg/store/memory", "pkg/clock/clocktest", "internal/testkit",
+			},
 			// The web component serves the embedded console build over
 			// net/http and nothing else: it is a component by shape, and
 			// knows no other part of the module (E11, T078). The console

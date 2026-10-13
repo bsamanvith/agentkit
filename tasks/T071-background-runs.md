@@ -41,7 +41,7 @@ Runs that outlive the request that started them. Decisions: [E14](E14-background
 
 - [ ] **Detached:** a background run continues after the starting client disconnects, and finishes. Two watchers attached at different times both see every event in order, with no gaps or duplicates (`Last-Event-ID` resume tested mid-stream).
 - [ ] **Restart:** killing the process mid-run and restarting it resumes the run (T030 recovery), and watchers reconnecting with `Last-Event-ID` continue seamlessly (replay e2e with the real binary).
-- [ ] **Cancel:** cancel works and is idempotent; a foreground run still cancels on disconnect.
+- [ ] **Cancel:** cancel works and is idempotent. A foreground chat run is still stopped by a disconnect: it is interrupted, not canceled, after T037's reconnect grace (T100), so the user can continue it.
 - [ ] **Webhook delivery:** signed and verified by a test receiver; retried after a 500 (fake clock); never sent twice for one completion (idempotency key).
 - [ ] **Limits:** the concurrent-background limit gives 429; the wall-clock limit ends the run `failed` with a clear code.
 - [ ] **Mutation list** recorded.

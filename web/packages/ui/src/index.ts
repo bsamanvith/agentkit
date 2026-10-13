@@ -6,6 +6,7 @@ export {
   ThemeProvider,
   useTheme,
   applyThemePreference,
+  isPreference,
   readThemePreference,
   themePreferences,
   themeStorageKey,

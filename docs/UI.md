@@ -219,7 +219,7 @@ Built with React, shadcn/ui and Radix (E11, T078). Each component has a home:
 
 | Component | Package | Built from | Variants | States |
 |---|---|---|---|---|
-| **App shell** (rail + list + content) | console | shadcn `Sidebar` in its nested form (an icon rail plus a second sidebar, like the "sidebar-09" block), `SidebarProvider` for the collapse state | desktop; laptop (list collapsed or not); phone (our own drawer: a fixed panel with a transform, `inert` when closed; not shadcn's `Sheet`, whose scroll lock injects a `<style>` the CSP blocks; T078) | offline bar |
+| **App shell** (rail + list + content) | console | hand-built in `shell.tsx` (an icon rail plus a list column, laid out like shadcn's "sidebar-09" block); shadcn `Sidebar` was removed because it sets a cookie and its phone `Sheet` breaks the CSP | desktop; laptop (list collapsed or not); phone (our own drawer: a fixed panel with a transform, `inert` when closed; not shadcn's `Sheet`, whose scroll lock injects a `<style>` the CSP blocks; T078) | offline bar |
 | **Skip links** | console | ours | "Skip to content"; in a chat also "Skip to message box" | shown on focus |
 | **Rail item** | console | `SidebarMenuButton` as a link + `Tooltip`, `Badge` | icon + tooltip label; badge (count or dot) | default, hover, current (`aria-current="page"`), focus |
 | **List item** (conversation) | console | `SidebarMenuItem` (in a `ul`, date groups as headings) + `SidebarMenuAction` (⋯) + `DropdownMenu` | title + agent + time; with a status mark (running spinner, interrupted amber dot, unread dot), each with an accessible name | default, hover, current, focus, menu open, skeleton (`Skeleton`). On touch the ⋯ is always visible |

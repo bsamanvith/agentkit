@@ -4,7 +4,7 @@ import { afterEach } from "vitest";
 
 afterEach(() => cleanup());
 
-// jsdom has no matchMedia; the sidebar asks it whether this is a phone.
+// jsdom has no matchMedia; the shell asks it whether this is a phone.
 // Answer as a desktop with the light OS theme.
 if (!window.matchMedia) {
   window.matchMedia = (query: string) =>

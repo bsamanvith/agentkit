@@ -150,6 +150,17 @@ export function Empty({ icon: Icon, title, children }: { icon: LucideIcon; title
   );
 }
 
+/** A loading skeleton (docs/UI.md "Loading"): busy, with a hidden "Loading". */
+export function Loading() {
+  return (
+    <div aria-busy="true" className="flex flex-col gap-2">
+      <span className="sr-only">Loading</span>
+      <Skeleton className="h-12 w-full" />
+      <Skeleton className="h-12 w-full" />
+    </div>
+  );
+}
+
 /** A resource's loading skeleton, its error with Retry, or its content. */
 export function Loaded<T>({
   res,
@@ -160,15 +171,7 @@ export function Loaded<T>({
   what: string;
   children: (data: T) => ReactNode;
 }) {
-  if (res.state === "loading") {
-    return (
-      <div aria-busy="true" className="flex flex-col gap-2">
-        <span className="sr-only">Loading</span>
-        <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-12 w-full" />
-      </div>
-    );
-  }
+  if (res.state === "loading") return <Loading />;
   if (res.state === "failed") {
     return (
       <div role="alert" className="flex flex-col gap-2 text-sm">

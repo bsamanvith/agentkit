@@ -35,7 +35,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
 } from "react";
@@ -306,13 +305,6 @@ function Drawer({ open, current, close }: { open: boolean; current: Section; clo
   const onClick = (e: MouseEvent) => {
     if ((e.target as Element).closest("a")) close(false);
   };
-  const onKeyDown = (e: KeyboardEvent) => {
-    // Esc in the account menu closes the menu only (docs/UI.md: the topmost first).
-    if (e.key === "Escape" && !(e.target as Element).closest("[role=menu]")) {
-      e.stopPropagation();
-      close(true);
-    }
-  };
   return (
     <>
       {open ? <div aria-hidden="true" className="fixed inset-0 z-30 bg-black/30" onClick={() => close(true)} /> : null}
@@ -323,7 +315,6 @@ function Drawer({ open, current, close }: { open: boolean; current: Section; clo
         aria-label="Menu"
         inert={!open}
         onClick={onClick}
-        onKeyDown={onKeyDown}
         className={cn(
           "fixed inset-y-0 left-0 z-40 flex w-[min(320px,86%)] flex-col border-r border-ak-line-strong bg-ak-bg transition-transform duration-(--ak-slow) ease-ak",
           open ? "translate-x-0 shadow-ak" : "-translate-x-[102%]",
@@ -402,6 +393,13 @@ export function Shell({ children }: { children?: ReactNode }) {
   }, []);
 
   const onKey = useEffectEvent((e: globalThis.KeyboardEvent) => {
+    // Esc closes the drawer wherever focus is (a tap on its padding moves
+    // focus to <body>); in the account menu it closes the menu only
+    // (docs/UI.md: the topmost first).
+    if (e.key === "Escape" && phone && drawerOpen) {
+      if (!(e.target instanceof Element && e.target.closest("[role=menu]"))) closeDrawer(true);
+      return;
+    }
     const mod = isApple ? e.metaKey : e.ctrlKey;
     if (mod && e.shiftKey && !e.altKey && e.key.toLowerCase() === "s") {
       e.preventDefault();

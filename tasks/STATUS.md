@@ -10,7 +10,7 @@
 | M1 `pkg/tool` | [E03](E03-tool-core-and-mcp.md) | Done |
 | M2 Toolsets from config; one MCP server, one path per toolset | [E03](E03-tool-core-and-mcp.md) | Done |
 | M3 `llm`, Anthropic adapter, harness, `flow`, `agentstep`, `agentkit run` | [E04](E04-llm-harness-flow.md) | Done |
-| M4 Store, runner, compaction | [E05](E05-store-runner.md) | In progress: `pkg/store` (interfaces, memory store, suites, run lifecycle), the SQLite store (T029) and the runner (T030) done; next T037 (the API on the runner, store chosen by `AGENTKIT_STORE`) and compaction (T031). Postgres for servers is T088 (E18) |
+| M4 Store, runner, compaction | [E05](E05-store-runner.md) | In progress: `pkg/store` (interfaces, memory store, suites, run lifecycle), the SQLite store (T029) and the runner (T030) done; next T037 (the API on the runner, store chosen by `AGENTKIT_STORE`) and compaction (T031). Postgres store (T088) and turn batching (T098) done; run start times and priority are T099 |
 | M5 Agent API, `agentkit serve`, image, Compose, smoke tests | [E09](E09-agent-api.md), [E01](E01-foundations.md) | In progress: `agentkit serve`, agent API v0 and the image done; **deployable** |
 | M6 Remote tools over ConnectRPC | E06 (to plan) | Planned |
 | Credentials, auth, tenancy at the edge | [E07](E07-auth-credentials.md) | **In progress**: T039 done (`pkg/auth`, `f08e82e`); T040, T041 and T042 ready. Needed before any public deployment: `/mcp/` has no auth until T040 |
@@ -21,8 +21,8 @@
 | Tasks (background agents) and agent-to-agent messaging | [E14](E14-background-agents-messaging.md) | **Planned** (T071–T074); needs the stream API (T090, E18); the runner (T030) and SQLite store (T029) are done |
 | Agent definitions as versioned data (agents, skills, toolsets) | [E15](E15-agent-definitions.md) | **Planned** (T075; T076, T077 to plan); T029 and T062 are done, so T075 can start |
 | Runtimes and jobs: temporary environments, exported harness images, results outside chat | [E16](E16-runtimes-jobs.md) | **Shaped**, tasks to plan after the console's first version |
-| Tool safety and control: tool kinds and risk, policies, interrupts and approvals, deferred loading, steering | [E17](E17-tool-safety-control.md) | **Planned** (T082–T086); T082 can start now |
-| Streaming and the server backend: SSE + HTTP commands (WebSocket later), Postgres + Redis | [E18](E18-streaming-backend.md) | **Planned** (T088–T091, T093); T088 and T089 can start now |
+| Tool safety and control: tool kinds and risk, policies, interrupts and approvals, deferred loading, steering | [E17](E17-tool-safety-control.md) | **In progress**: T082 (tool metadata) done; T083–T086 next |
+| Streaming and the server backend: SSE + HTTP commands (WebSocket later), Postgres + Redis | [E18](E18-streaming-backend.md) | **In progress**: T088 (Postgres store, event log, `agentkit migrate`), T089 (`pkg/bus`, Redis Streams) and T098 (runner turn batching) done; T090 (stream API) and T093 (row-level security) ready |
 | External MCP servers: add any remote MCP server by URL, MCP OAuth, tool pinning | [E19](E19-external-mcp-servers.md) | **Planned** (T094–T097); T094 can start now |
 | More model providers | [E08](E08-model-providers.md) | Later |
 | Agent skills | [E02](E02-agent-skills.md) | In progress: `write-tests` exists and was dry-run on `pkg/flow` |
@@ -42,7 +42,7 @@ The same checks are one command on a laptop: `scripts/try-agent.sh` ([docs/QUICK
 
 ## Done
 
-T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentkit healthcheck` · T017 `pkg/tool` · T018 MCP server · T019 `pkg/clock` · T020 `pkg/llm` · T021 Anthropic adapter · T022 harness · T023 `flow` · T024 `agentkit run`, `agentstep` · T026 `pkg/toolset` · T027 `pkg/tenancy` · T028 `pkg/store` · T038 `store.Admin` · T046 Tavily connector · T049 connector test kit · T051 cassette OpenAPI validation · T052 kit hardening · T053 `pkg/agentclient` · T032 flow step-tree check · T036 agent API v0 · T029 SQLite store · T054 `agentkit chat` and `ask` · T062 agents, conversations and catalog API · T070 console UX design (owner-approved) · T030 `pkg/runner` · T078 web workspace · T092 `POST /v1/conversations`
+T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentkit healthcheck` · T017 `pkg/tool` · T018 MCP server · T019 `pkg/clock` · T020 `pkg/llm` · T021 Anthropic adapter · T022 harness · T023 `flow` · T024 `agentkit run`, `agentstep` · T026 `pkg/toolset` · T027 `pkg/tenancy` · T028 `pkg/store` · T038 `store.Admin` · T046 Tavily connector · T049 connector test kit · T051 cassette OpenAPI validation · T052 kit hardening · T053 `pkg/agentclient` · T032 flow step-tree check · T036 agent API v0 · T029 SQLite store · T054 `agentkit chat` and `ask` · T062 agents, conversations and catalog API · T070 console UX design (owner-approved) · T030 `pkg/runner` · T078 web workspace · T092 `POST /v1/conversations` · T082 tool metadata · T088 Postgres store and event log · T089 `pkg/bus` · T098 runner turn batching
 
 ## Running or waiting
 
@@ -65,11 +65,12 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 | [T048](T048-connector-parallel.md) | `connectors/parallel`: search and extract | **Review**: on `main`, on the kit (`baf4248`); waits for `PARALLEL_API_KEY` (live test, re-recording synthetic cassettes) |
 | [T042](T042-credentials-core.md) | `pkg/credentials`: secrets, sealer, vault, memory backend | Starts E07's credentials track; new package only, parallel with everything |
 | [T037](T037-agent-api-v1.md) | Agent API v1 on the runner; store by `AGENTKIT_STORE` (memory, SQLite, then Postgres) | **Start now** (T030 done): makes `serve` persistent |
+| [T090](T090-stream-api.md) | Stream API across replicas: replay from Postgres, tail Redis, commands to the lease holder | **Ready** (T088, T089, T030 done); E14 background tasks wait on it |
+| [T093](T093-postgres-rls.md) | Postgres row-level security by tenant | **Ready** (T088 done); small |
+| [T099](T099-run-queue-order.md) | Runs: start time, lane and priority, `ClaimNext` | **Ready** (T030, T088, T098 done) |
+| [T083](T083-tool-policy.md) | Tool policy: presets, rules, allow/flag/approve/deny | **Ready** (T082 done); T084 follows with T030 done |
 | [T031](T031-compaction.md) | Compaction | **Ready** (T030 done) |
-| [T088](T088-store-postgres.md) | Postgres store (pgx v5, migrations) and the `EventLog` interface, suite on memory, SQLite and Postgres | **Start now** (E18): first closes two `storetest` gaps T029 found; the server backend; T090 and background tasks need the event log |
-| [T089](T089-event-bus.md) | `pkg/bus`: memory and Redis Streams backends, resumable subscribe, conformance suite | **Start now** (E18): new package, parallel with everything |
 | [T087](T087-console-ux-design-2.md) | Console UX design part 2: skills, agent builder, tool policies, interrupts and approvals, tasks with steering; mockup v4 | **Ready** (owner approved v3) |
-| [T082](T082-tool-metadata.md) | Tool metadata: kind, risk, interrupts, approval, tags, display; MCP annotations | **Ready**; small, unblocks E17 |
 | [T094](T094-mcp-client-toolset.md) | `pkg/mcp/client` and the `mcp` toolset type: use external MCP servers' tools, pin fingerprints | **Ready** (E19); new package, tests against our own MCP server |
 | [T006](T006-compose-and-dev-script.md) | Compose topologies and `scripts/dev.sh` | Image exists; repeatable local runs |
 | [T033](T033-harness-clock.md) | Harness on `pkg/clock` | Small, independent |
@@ -82,12 +83,10 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 | Task | Waits for |
 |---|---|
 | [T043](T043-credentials-backends.md) credential backends, [T044](T044-credentials-in-tools.md) credentials in tools | T042 |
-| [T090](T090-stream-api.md) Stream API across replicas, commands to the lease holder | T088, T089, T030 |
 | [T091](T091-websocket-binding.md) WebSocket binding | T090 |
 | [T095](T095-mcp-oauth-client.md) MCP OAuth for external servers | T094, T042, T044 (shares T045's callback) |
 | [T096](T096-mcp-servers-api-console.md) Add MCP servers at runtime: API, console, SSRF guard | T094, T062 (done), T040, T082; screens from T087 |
 | [T097](T097-mcp-registry-search.md) MCP Registry search | T096 |
-| [T093](T093-postgres-rls.md) Postgres row-level security by tenant | T088 |
 | [T045](T045-connect-accounts.md) Connecting accounts (OAuth2 + PKCE) | T040, T043, T044 |
 | [T004](T004-fakellm.md) `fakellm`, [T007](T007-e2e-smoke-suite.md) smoke suite, [T008](T008-ci-pipeline.md) full CI | T006 |
 

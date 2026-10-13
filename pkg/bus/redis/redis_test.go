@@ -289,6 +289,11 @@ func TestExpiredStreamRestarts(t *testing.T) {
 	testkit.Eventually(t, 10*time.Second, func() bool { return c.Exists(t.Context(), b.Key(topic)).Val() == 0 })
 	clk.Advance(maxAge)
 	s := subscribe(t, b, topic, bus.ID{})
+	// clk also times the retries of unblocking a cancelled read. When the
+	// test ends (cancelling s), keep it moving until s has ended: a cancel
+	// that races the start of a read otherwise waits on it forever, and so
+	// does Close.
+	t.Cleanup(func() { _ = endAdvancing(t, s, clk) })
 	publish(t, b, topic, 2)
 	expect(t, s, 2)
 }
@@ -623,6 +628,29 @@ func expect(t *testing.T, s bus.Subscription, seqs ...uint64) {
 			}
 		case <-time.After(10 * time.Second):
 			t.Fatalf("no message %d within 10s", seq)
+		}
+	}
+}
+
+// endAdvancing is end for a bus on a fake clock: it moves clk on while it
+// waits, for the cancel hook's unblock retries.
+func endAdvancing(t *testing.T, s bus.Subscription, clk *clocktest.Fake) error {
+	t.Helper()
+	timeout := time.After(10 * time.Second)
+	tick := time.NewTicker(5 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		select {
+		case m, ok := <-s.C():
+			if !ok {
+				return s.Err()
+			}
+			t.Errorf("unexpected message %s before the end", m.ID)
+		case <-tick.C:
+			clk.Advance(10 * time.Millisecond)
+		case <-timeout:
+			t.Fatal("subscription did not end within 10s")
+			return nil
 		}
 	}
 }

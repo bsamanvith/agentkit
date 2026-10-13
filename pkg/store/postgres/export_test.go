@@ -6,3 +6,13 @@ package postgres
 func WithMigrations(n int) Option {
 	return func(o *options) { o.migrations = n }
 }
+
+// Latest is the version of the newest embedded migration: the one a schema
+// this binary migrates ends at.
+func Latest() int {
+	ms, err := migrations(0)
+	if err != nil {
+		panic(err)
+	}
+	return len(ms)
+}

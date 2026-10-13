@@ -219,6 +219,12 @@ The binary is `cmd/agentkit`, built `CGO_ENABLED=0 GOOS=linux -trimpath -ldflags
   - On a failed or unknown append, call it again with the same batch: identical events at taken seqs are a no-op.
   - `ErrConflict` means another process wrote that seq: this runner lost the lease. Stop, don't renumber.
   - `ErrGap` is a bug in the numbering.
+- **Log only stored turns (since T098).** The runner keeps read-only turns and stores them in batches. A harness event's `Seq` is the position its entry will take, and `EventSaved` says how far the conversation log is stored. Suggested rule:
+  - **Run-level events** (started, retrying, suspended, done) go into the log at once. The runner stores its kept turns before any transition.
+  - **A turn's events** go into the log when the `EventSaved` that covers them arrives, in one `AppendEvents` per batch.
+  - **Before that**, publish them on the bus only, live-only like deltas, with delta-style IDs after the last logged seq.
+
+  Otherwise a crash leaves events in the log for turns the conversation never stored. The resumed run, numbering from `LastEventSeq`, redoes those turns, and a replay shows them twice with different content.
 - **Stream handler:**
   - Replay `EventsAfter(run, lastEventID, page)` in pages until a short page, then `Subscribe(topic, lastSentSeq)` on the bus.
   - `Last-Event-ID` is the seq, or `<seq>.<n>` for a delta; replay after its seq.

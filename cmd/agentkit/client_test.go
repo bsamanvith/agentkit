@@ -272,6 +272,127 @@ func TestChatCtrlCCancelsRun(t *testing.T) {
 	}
 }
 
+// TestChatCtrlCAsTheRunStarts: Ctrl-C just after Enter, when the server has
+// started the run but chat has not yet seen its headers, or its first event.
+// Chat still learns the conversation, says the run can be resumed, and
+// resumes it. (Under load, TestE2EChat's Ctrl-C landed in these windows.)
+func TestChatCtrlCAsTheRunStarts(t *testing.T) {
+	t.Parallel()
+	for _, at := range []string{"headers", "first event"} {
+		t.Run(at, func(t *testing.T) {
+			t.Parallel()
+			model := &stallUntilResumed{Model: llmtest.NewFake(t, llmtest.Text("ready"))}
+			reached, release := make(chan struct{}), make(chan struct{})
+			var reachOnce, releaseOnce sync.Once
+			free := func() { releaseOnce.Do(func() { close(release) }) }
+			var held context.Context // the held request's; set before reached closes
+			url := newTestAPI(t, model, func(next http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.Method == http.MethodPost && r.URL.Path == "/v1/runs" && !model.resuming.Load() {
+						held = r.Context()
+						w = &holdResponse{
+							ResponseWriter: w, headers: at == "headers", release: release,
+							reached: func() { reachOnce.Do(func() { close(reached) }) },
+						}
+					}
+					next.ServeHTTP(w, r)
+				})
+			})
+			t.Cleanup(free) // before the server closes
+			in, w := io.Pipe()
+			interrupts := make(chan os.Signal) // unbuffered: the send returns once chat has it
+			out := newSyncBuffer("cancelled before it answered")
+			c, stderr := clientCLI(url, out, in, interrupts)
+
+			code := make(chan int, 1)
+			go func() { code <- c.main(context.WithoutCancel(t.Context()), []string{"chat"}) }()
+			if _, err := io.WriteString(w, "Reply with just the word: ready\n"); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case <-reached:
+			case <-time.After(time.Minute):
+				t.Fatal("the run never started")
+			}
+			interrupts <- os.Interrupt
+			if at == "headers" {
+				// Before its headers, chat keeps the request: dropping it now
+				// would lose the conversation the server started.
+				select {
+				case <-held.Done():
+					t.Fatal("Ctrl-C dropped the request before its headers came")
+				case <-time.After(200 * time.Millisecond):
+				}
+			}
+			free()
+			select {
+			case <-out.seen:
+			case <-time.After(30 * time.Second):
+				t.Fatalf("no \"cancelled before it answered\":\n%s%s", out, stderr)
+			}
+			model.resuming.Store(true)
+			if _, err := io.WriteString(w, "\n"); err != nil { // resume
+				t.Fatal(err)
+			}
+			_ = w.Close()
+			if got := <-code; got != exitDone {
+				t.Fatalf("exit %d\n%s%s", got, out, stderr)
+			}
+			got := out.String()
+			checkClientOutput(t, got+stderr.String())
+			if _, resumed, _ := strings.Cut(got, "cancelled before it answered"); !strings.Contains(resumed, "ready") {
+				t.Errorf("want the resumed answer after the cancel:\n%s", got)
+			}
+		})
+	}
+}
+
+// stallUntilResumed answers with Model once resuming is set; before that,
+// it waits for the run to be cancelled (whether or not the run gets as far
+// as calling it).
+type stallUntilResumed struct {
+	llm.Model
+	resuming atomic.Bool
+}
+
+func (m *stallUntilResumed) Generate(ctx context.Context, req llm.Request) iter.Seq2[llm.Event, error] {
+	if m.resuming.Load() {
+		return m.Model.Generate(ctx, req)
+	}
+	return func(yield func(llm.Event, error) bool) {
+		<-ctx.Done()
+		yield(llm.Event{}, ctx.Err())
+	}
+}
+
+// holdResponse holds a run's response, at its headers or at its first
+// write, until release is closed: the server has started the run, but the
+// client has not seen it yet.
+type holdResponse struct {
+	http.ResponseWriter
+	headers bool
+	reached func()
+	release <-chan struct{}
+}
+
+func (w *holdResponse) WriteHeader(code int) {
+	if w.headers {
+		w.reached()
+		<-w.release
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *holdResponse) Write(b []byte) (int, error) {
+	if !w.headers {
+		w.reached()
+		<-w.release
+	}
+	return w.ResponseWriter.Write(b)
+}
+
+func (w *holdResponse) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
 // holdFirst is a model whose first call waits until release is closed.
 type holdFirst struct {
 	llm.Model

@@ -31,11 +31,11 @@ Owner decision (2026-10-12): the admin console and future consumer apps use **Re
 
 ## Acceptance criteria
 
-- [x] `pnpm install && make web` builds; `agentkit serve` with `web` serves the console shell at `/` with light, dark and system themes from the shared tokens.
-- [x] `make web-check` passes (lint, typecheck, unit tests, build, stale-build check) and runs as its own CI job; changing a component without rebuilding fails the stale check.
-- [x] Playwright smoke: the shell loads, the theme switch works, `/v1/agents` (T062) or a stub is called with the token.
-- [x] `go build ./...` from a fresh clone without Node succeeds; the image builds and its size is recorded.
-- [x] `agent-ui` builds as a separate package that a second app (a throwaway `apps/example`) can import (proves the sharing works); remove the example after.
+- [x] `pnpm install && make web` builds; `agentkit serve` with `web` serves the console shell at `/` with light, dark and system themes from the shared tokens. **`TestE2EServeWeb`** (`cmd/agentkit/web_e2e_test.go`: the real binary with `agent,web`), **`TestServe`** and **`TestEmbeddedBuild`** (`pkg/web`), smoke **"the theme switch pins light and dark, and system follows the OS"**; the tokens are generated from docs/UI.md and a `packages/ui` test fails when they drift.
+- [x] `make web-check` passes (lint, typecheck, unit tests, build, stale-build check) and runs as its own CI job; changing a component without rebuilding fails the stale check. CI's **`web`** job (`.github/workflows/check.yml`, beside `check` and `fuzz`); **`web/scripts/check-build.sh`** exited 1 with Composer changed and not rebuilt (mutation table).
+- [x] Playwright smoke: the shell loads, the theme switch works, `/v1/agents` (T062) or a stub is called with the token. `make web-smoke` (`apps/console/e2e/smoke.spec.ts`, in CI's `web` job): **"the shell loads, asks for the token, and sends it to /v1/agents"**, **"the theme switch pins light and dark, and system follows the OS"**, **"on a phone, the drawer holds the sections and closes on a pick"**, **"theme.js pins the theme before the app's script runs"**.
+- [x] `go build ./...` from a fresh clone without Node succeeds; the image builds and its size is recorded. **Checked by hand**, not by a test: a fresh worktree with no `node` on `PATH`; `make image-size` 18,099,712 bytes (Results). CI's `check` and `image` jobs build without Node.
+- [x] `agent-ui` builds as a separate package that a second app (a throwaway `apps/example`) can import (proves the sharing works); remove the example after. **Checked by hand** (Results: it typechecked and built, was removed, and the lockfile came back byte-identical); no test keeps it, by design.
 
 ## Notes
 
@@ -229,3 +229,19 @@ A manual pass at three widths found the shell short of docs/UI.md "Layouts" and 
   - a hash in the CSP, which won't work, because the injected style is computed at runtime.
 - **Route parameters with a dot** (`/agents/my.agent`) get a 404 from `pkg/web`, which treats a final segment with an extension as a file. Conversation IDs (`conv_…`) are fine. If agent or toolset names may contain dots, T055 can make the fallback check only for known file extensions.
 - **Turning `web` on by default**: `scripts/try-agent.sh` and docs/QUICKSTART still use `AGENTKIT_COMPONENTS=agent,mcp-server`, and QUICKSTART's environment list doesn't name `web`. Changing them is T055's scope.
+
+### Handoff (2026-10-13)
+
+**Done** (all on `main`): the workspace, packages, embedding and CI (`00b8182`, and gzip with the size budget in `32f8af5`); review round 1 (`fb4e9af`: reserved paths, stream errors, token wording, the size budget) and round 2 (`ac05355`: `NetworkError`, unsendable tokens, the CSP pinned per directive); the shell matched to the mockup (`06bfd08`) and Esc closing the drawer wherever focus is (`3fec178`). Every acceptance criterion is met, so `status: done`; the last two are checked by hand, not by a test. Two flakes found in this task's CI runs were fixed afterwards, on PRs #9 and #10: `TestE2EChat`'s Ctrl-C under load (chat, T054's notes) and `TestExpiredStreamRestarts`'s Close hang (`pkg/bus/redis`, a test on a fake clock).
+
+**Open gaps**: "Left for later" (Review), "Left for T055" (the shell section) and "Found out of scope". None blocks T055.
+
+**What T055 must know** (details in "For T055, T064 and T066"):
+
+- **Layout**: primitives in `web/packages/ui`, agent components (with stories) in `web/packages/agent-ui`, pages in `web/apps/console/src/pages`, routes in `routes.tsx`. Packages are sources, not built libraries; import components by path.
+- **The build is committed**: after any change under `web/`, run `make web` and commit `pkg/web/dist`, or CI's stale check fails. `go build` never needs Node.
+- **Size budget**: 240 KB for the first load (gzipped script, styles, `index.html`, `theme.js`, and the Latin fonts), enforced by `check-size.sh` in `make web-check`; it is 213,042 bytes now. Load Markdown, highlighting and admin pages as `React.lazy` chunks.
+- **CSP**: `default-src 'self'`, no inline script or style. Modal Radix overlays (Dialog, Sheet, a modal DropdownMenu) inject a `<style>` it blocks, and the smoke test fails on the violation; see "Found out of scope" for the options.
+- **Gates**: `make web-check` (lint, format, typecheck, unit tests, audit, rebuild and stale check, size) and `make web-smoke` (Playwright against the real binary; never `playwright install`). Both run in CI's `web` job.
+- **Reserved paths**: `pkg/web` never answers `/v1`, `/mcp` or paths under them with the app (checked on the cleaned path). A final segment with an extension is a file, so `/agents/my.agent` is a 404.
+

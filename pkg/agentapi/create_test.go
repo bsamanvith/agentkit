@@ -120,9 +120,8 @@ func TestCreateConversationDefaultAgent(t *testing.T) {
 // tenant does not exist for another.
 func TestCreatedConversationsAreTheCallersTenant(t *testing.T) {
 	t.Parallel()
-	tenant := agentapi.WithTenant(func(r *http.Request) string { return r.Header.Get("Test-Tenant") })
 	m := echo(t)
-	r := newRig(t, m, rigConfig{api: []agentapi.Option{tenant}})
+	r := newRig(t, m, rigConfig{})
 	c := r.create(`{}`, "Test-Tenant", "a")
 	for _, req := range []struct{ method, path, body string }{
 		{"GET", "/v1/conversations/" + c.ID, ""},

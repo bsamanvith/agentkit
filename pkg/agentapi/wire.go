@@ -138,18 +138,6 @@ func turnRecord(r harness.TurnRecord) TurnRecord {
 	}
 }
 
-func record(r harness.Record) *Record {
-	out := &Record{StartedAt: r.StartedAt, FinishedAt: r.FinishedAt, Turns: make([]TurnRecord, len(r.Turns))}
-	if r.Prompt != nil {
-		p := timedMessage(*r.Prompt)
-		out.Prompt = &p
-	}
-	for i, t := range r.Turns {
-		out.Turns[i] = turnRecord(t)
-	}
-	return out
-}
-
 // ms is a duration in milliseconds, to the microsecond.
 func ms(d time.Duration) float64 { return float64(d.Microseconds()) / 1000 }
 

@@ -22,6 +22,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
+	"github.com/bsamanvith/agentkit/pkg/store/scoped"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
@@ -276,7 +277,7 @@ func TestClientDisconnect(t *testing.T) {
 		}
 		r.clock.Advance(agentapi.DefaultReconnectGrace)
 		run := r.waitEnded(s.runID())
-		if run.Status != agentapi.StatusInterrupted || run.Error.Code != agentapi.CodeRunInterrupted {
+		if run.Status != agentapi.StatusInterrupted || run.Error == nil || run.Error.Code != agentapi.CodeRunInterrupted {
 			t.Errorf("run = %+v, want interrupted", run)
 		}
 		if n := len(m.requests()); n != 1 || calls.Load() != 1 {
@@ -534,8 +535,11 @@ func TestTokenRequiredOnEveryPath(t *testing.T) {
 	if n := len(m.requests()); n != 1 {
 		t.Errorf("%d model calls, want only the authorized run's", n)
 	}
-	if _, err := agentapi.New(newHarness(t), agentapi.WithToken("short")); !errors.Is(err, agentapi.ErrInvalidConfig) {
+	if _, err := agentapi.New(newHarness(t), agentapi.WithStore(scoped.Memory(nil)), agentapi.WithToken("short")); !errors.Is(err, agentapi.ErrInvalidConfig) {
 		t.Errorf("a short token: %v, want ErrInvalidConfig", err)
+	}
+	if _, err := agentapi.New(newHarness(t)); !errors.Is(err, agentapi.ErrInvalidConfig) {
+		t.Errorf("no store: %v, want ErrInvalidConfig", err)
 	}
 }
 
@@ -574,8 +578,12 @@ func TestRequestErrors(t *testing.T) {
 		"resume a running conv": {runBody("", conv), http.StatusConflict, agentapi.CodeBusy},
 	} {
 		resp := r.post(t.Context(), tc.body, "")
-		if code, e := errorOf(t, resp); code != tc.code || e.Code != tc.want {
+		code, e := errorOf(t, resp)
+		if code != tc.code || e.Code != tc.want {
 			t.Errorf("%s: %d %+v, want %d %s", name, code, e, tc.code, tc.want)
+		}
+		if code == http.StatusConflict && e.RunID != busy.runID() {
+			t.Errorf("%s: run_id %q, want the busy run %s", name, e.RunID, busy.runID())
 		}
 	}
 	for path, want := range map[string]int{"/v1/runs/run_nope": http.StatusNotFound, "/v1/conversations/conv_nope": http.StatusNotFound, "/v1/other": http.StatusNotFound} {
@@ -703,7 +711,7 @@ func TestDrainEndsRunsWithShutdown(t *testing.T) {
 	s := r.start(t.Context(), "slow", "")
 	s.until(agentapi.TypeRunStart, 0)
 	close(stop)
-	if err := r.clock.WaitForTimers(t.Context(), 1); err != nil {
+	if err := r.clock.WaitForTimers(t.Context(), 2); err != nil { // the drain's and the lease's renewal
 		t.Fatal(err)
 	}
 	resp := r.post(t.Context(), runBody("late", ""), "")
@@ -781,7 +789,7 @@ func TestShutdownThroughTheRuntime(t *testing.T) {
 			if finish {
 				close(m.gate)
 			} else {
-				if err := r.clock.WaitForTimers(t.Context(), 1); err != nil {
+				if err := r.clock.WaitForTimers(t.Context(), 2); err != nil { // the drain's and the lease's renewal
 					t.Fatal(err)
 				}
 				r.clock.Advance(5 * time.Second)

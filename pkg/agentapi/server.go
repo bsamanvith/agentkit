@@ -20,7 +20,6 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/runner"
 	"github.com/bsamanvith/agentkit/pkg/store"
-	"github.com/bsamanvith/agentkit/pkg/store/memory"
 	"github.com/bsamanvith/agentkit/pkg/tenancy"
 )
 
@@ -98,6 +97,8 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 		return nil, fmt.Errorf("%w: negative run timeout, keep-alive or reconnect grace, or a retention that is not positive", ErrInvalidConfig)
 	case cfg.maxRuns < 1, cfg.maxConvs < 1, cfg.maxBodyBytes < 1:
 		return nil, fmt.Errorf("%w: retention counts and the body limit must be at least 1", ErrInvalidConfig)
+	case cfg.store == nil:
+		return nil, fmt.Errorf("%w: no store (WithStore)", ErrInvalidConfig)
 	case cfg.clock == nil, cfg.newID == nil:
 		return nil, fmt.Errorf("%w: nil clock or ID function", ErrInvalidConfig)
 	case cfg.drainRequested && (cfg.drainStop == nil || cfg.drainAfter < 0):
@@ -110,9 +111,6 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 		closed: make(chan struct{}),
 		hubs:   map[hubKey]*hub{},
 		store:  cfg.store,
-	}
-	if s.store == nil {
-		s.store = memory.New(memory.WithClock(cfg.clock))
 	}
 	ropts := append([]runner.Option{
 		runner.WithClock(cfg.clock),
@@ -335,7 +333,7 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !hasMessage {
-			s.resumeConversation(w, r, ctx, convID)
+			s.resumeConversation(ctx, w, r, convID)
 			return
 		}
 	} else {
@@ -524,7 +522,8 @@ func (s *Server) launch(ctx context.Context, cancel context.CancelCauseFunc, x *
 // drive runs an execution to its end, whoever follows it: its events go to
 // the hub, and the last one says how the execution ended.
 func (s *Server) drive(ctx context.Context, cancel context.CancelCauseFunc, x *runner.Execution, h *hub, seed replayed) {
-	defer s.release()
+	freeSlot := sync.OnceFunc(func() { <-s.slots })
+	defer func() { freeSlot(); s.active.Done() }() // s.release, in two steps
 	defer cancel(nil)
 	if s.cfg.runTimeout > 0 {
 		t := s.cfg.clock.NewTimer(s.cfg.runTimeout)
@@ -607,6 +606,9 @@ func (s *Server) drive(ctx context.Context, cancel context.CancelCauseFunc, x *r
 		end.Usage, end.Turns = &usage, turns
 		end.Error = s.stopped(h.runID, runErr, context.Cause(ctx))
 	}
+	// The slot is free before the run's last event reaches its clients, so
+	// one that starts its next run at once is not refused.
+	freeSlot()
 	h.finish(&end, now)
 
 	s.mu.Lock()
@@ -643,6 +645,12 @@ func (s *Server) stopped(runID string, err, cause error) *Error {
 		return &Error{Code: CodeShutdown, Message: "the server shut down before the run finished; the stored turns are kept, resume it", Retryable: true}
 	case errors.Is(err, runner.ErrCanceled):
 		return &Error{Code: CodeCancelled, Message: "the run was canceled"}
+	case errors.Is(err, store.ErrLeaseLost), errors.Is(err, store.ErrLeased),
+		errors.Is(cause, store.ErrLeaseLost), errors.Is(cause, store.ErrLeased):
+		// The store gave the run to another process, or could not renew its
+		// lease in time: this server stopped executing it.
+		s.log.Warn("run lost its lease", "run_id", runID, "err", cause)
+		return interruptedError(runID)
 	case errors.Is(cause, ErrRunTimeout):
 		return &Error{Code: CodeTimeout, Message: fmt.Sprintf("the run took longer than %s; the stored turns are kept, resume it", s.cfg.runTimeout)}
 	case errors.As(err, &re):
@@ -730,7 +738,7 @@ func (s *Server) respond(w http.ResponseWriter, r *http.Request, h *hub, from in
 	if !ok {
 		return
 	}
-	if v, ok := s.viewByID(w, ctx, h.runID); ok {
+	if v, ok := s.viewByID(ctx, w, h.runID); ok {
 		writeJSON(w, http.StatusOK, v)
 	}
 }

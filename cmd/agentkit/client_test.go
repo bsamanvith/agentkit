@@ -24,6 +24,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
+	"github.com/bsamanvith/agentkit/pkg/store/scoped"
 )
 
 const testToken = "test-token-canary-7f3a9c"
@@ -40,7 +41,7 @@ func newTestAPI(t *testing.T, model llm.Model, wrap func(http.Handler) http.Hand
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, err := agentapi.New(h, append([]agentapi.Option{agentapi.WithToken(testToken)}, opts...)...)
+	srv, err := agentapi.New(h, append([]agentapi.Option{agentapi.WithStore(scoped.Memory(nil)), agentapi.WithToken(testToken)}, opts...)...)
 	if err != nil {
 		t.Fatal(err)
 	}

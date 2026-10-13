@@ -11,6 +11,8 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -27,6 +29,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
 	"github.com/bsamanvith/agentkit/pkg/runner"
+	"github.com/bsamanvith/agentkit/pkg/store/scoped"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 )
 
@@ -129,7 +132,44 @@ type rigConfig struct {
 	token   string
 	clock   *clocktest.Fake
 	now     func() time.Time // the harness's clock; default clock.Now
+	store   agentapi.Store   // default: testStore
 }
+
+// testStore is the store of a rig: in memory, or the backend
+// AGENTAPI_TEST_STORE names ("sqlite" for a file of the test's own, or a
+// postgres:// URL, shared by every rig), so the suite runs on each; and the
+// rig's tenant (rigTenant).
+func testStore(t *testing.T, clk *clocktest.Fake) (agentapi.Store, []agentapi.Option) {
+	t.Helper()
+	spec := os.Getenv("AGENTAPI_TEST_STORE")
+	switch spec {
+	case "", "memory":
+		return scoped.Memory(clk), []agentapi.Option{rigTenant()}
+	case "sqlite":
+		spec = "sqlite:" + filepath.Join(t.TempDir(), "agentkit.db")
+	}
+	s, closeFn, err := scoped.Open(t.Context(), spec, clk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = closeFn() })
+	return s, []agentapi.Option{rigTenant()}
+}
+
+// rigTenant gives a rig a tenant of its own, and its requests' Test-Tenant
+// header one of the rig's: tests on a shared store do not meet, nor do runs
+// of the suite.
+func rigTenant() agentapi.Option {
+	tenant := fmt.Sprintf("rig-%d-%d", time.Now().UnixNano(), rigs.Add(1))
+	return agentapi.WithTenant(func(r *http.Request) string {
+		if h := r.Header.Get("Test-Tenant"); h != "" {
+			return tenant + "-" + h
+		}
+		return tenant
+	})
+}
+
+var rigs atomic.Int64
 
 func newRig(t *testing.T, m *model, cfg rigConfig) *rig {
 	t.Helper()
@@ -149,15 +189,20 @@ func newRig(t *testing.T, m *model, cfg rigConfig) *rig {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var tenantOpts []agentapi.Option
+	if cfg.store == nil {
+		cfg.store, tenantOpts = testStore(t, cfg.clock)
+	}
 	var ids atomic.Int64
 	opts := []agentapi.Option{
-		agentapi.WithClock(cfg.clock), agentapi.WithKeepAlive(0), agentapi.WithRunTimeout(0),
+		agentapi.WithStore(cfg.store), agentapi.WithClock(cfg.clock), agentapi.WithKeepAlive(0), agentapi.WithRunTimeout(0),
 		// The rig's clock stands still, so lists order by ID: make it the
 		// order of creation.
 		agentapi.WithNewID(func(prefix string) string { return fmt.Sprintf("%s%03d", prefix, ids.Add(1)) }),
 		// A retry waits on the clock; a test that wants one turns it on.
 		agentapi.WithRunnerOptions(runner.WithInteractiveRetry(runner.RetryPolicy{MaxAttempts: 1, BaseDelay: time.Second, MaxDelay: time.Second})),
 	}
+	opts = append(opts, tenantOpts...) // before the test's: a test's WithTenant replaces it
 	if cfg.token != "" {
 		opts = append(opts, agentapi.WithToken(cfg.token))
 	}
@@ -504,6 +549,20 @@ func (s *stream) abandon(cancel context.CancelFunc) {
 	s.resp.Body.Close()
 }
 
+// superseded reports whether a stream's last event, a run_error, was
+// replaced by now, the event of that seq once the run went on: resumed (an
+// interrupted or failed run continues), or canceled by a new message to its
+// conversation.
+func superseded(end, now agentapi.Event) bool {
+	switch {
+	case now.Type != agentapi.TypeRunError:
+		return endStatus(end.Error.Code) != agentapi.StatusCanceled // resumed
+	case now.Error.Code == agentapi.CodeCancelled:
+		return end.Error.Code != agentapi.CodeCancelled
+	}
+	return false
+}
+
 func (s *stream) last() agentapi.Event { return s.events[len(s.events)-1] }
 
 func (s *stream) runID() string { return s.events[0].RunID }
@@ -541,8 +600,8 @@ func (r *rig) check() {
 			whole[id], order = full, append(order, id)
 		}
 		got := s.events
-		if end := s.last(); end.Type == agentapi.TypeRunError && end.Seq < len(full) && !jsonEqual(end, full[end.Seq]) {
-			got = got[:len(got)-1] // the run went on (resumed, or canceled by a new message): its next event took the ending's place
+		if end := s.last(); end.Type == agentapi.TypeRunError && end.Seq < len(full) && superseded(end, full[end.Seq]) {
+			got = got[:len(got)-1] // the run went on: its next event took the ending's place
 		}
 		if from := s.events[0].Seq; from < 0 || from > len(full) || !jsonEqual(got, full[from:min(from+len(got), len(full))]) {
 			t.Errorf("run %s streamed\n%s\nbut its events are\n%s", id, jsonOf(s.events), jsonOf(full))

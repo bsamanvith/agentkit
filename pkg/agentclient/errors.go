@@ -28,15 +28,21 @@ var (
 	// ErrRequestTooLarge: 413 too_large, a message over the server's limit.
 	ErrRequestTooLarge = errors.New("request too large")
 	// ErrConversationBusy: 409 conversation_busy, a run of the conversation
-	// is going on; retry when it has ended.
+	// is going on ([APIError.RunID]); retry when it has ended. Also 409
+	// run_leased: the run asked to resume is going on.
 	ErrConversationBusy = errors.New("conversation busy")
 	// ErrAgentMismatch: 409 agent_mismatch, the run names another agent than
 	// the conversation's; leave Agent empty to continue it.
 	ErrAgentMismatch = errors.New("agent mismatch")
-	// ErrConversationInterrupted: 409 conversation_interrupted, the
-	// conversation's last run stopped before answering; resume it with an
-	// empty message first.
+	// ErrConversationInterrupted: 409 conversation_interrupted, which
+	// servers since T037 no longer return: a new message to a conversation
+	// whose run was interrupted starts a new run.
 	ErrConversationInterrupted = errors.New("conversation interrupted")
+	// ErrRunState: 409, the run's state does not allow the request: it ended
+	// for good (run_final), waits for a decision (awaiting_decision), has no
+	// approval at the path decided (not_pending), or its flow changed since
+	// it suspended (shape_changed). [APIError.Code] says which.
+	ErrRunState = errors.New("run state does not allow the request")
 	// ErrOverCapacity: 503 over_capacity, too many runs at once; retry after
 	// [APIError.RetryAfter].
 	ErrOverCapacity = errors.New("server over capacity")
@@ -72,6 +78,12 @@ var codeSentinels = map[string]error{
 	wire.CodeAgentMismatch:  ErrAgentMismatch,
 	wire.CodeOverCapacity:   ErrOverCapacity,
 	wire.CodeShuttingDown:   ErrShuttingDown,
+
+	wire.CodeRunLeased:        ErrConversationBusy,
+	wire.CodeRunFinal:         ErrRunState,
+	wire.CodeAwaitingDecision: ErrRunState,
+	wire.CodeNotPending:       ErrRunState,
+	wire.CodeShapeChanged:     ErrRunState,
 }
 
 // APIError is an HTTP error from the agent API: a request refused before a
@@ -88,6 +100,9 @@ type APIError struct {
 	Retryable bool
 	// RetryAfter is the response's Retry-After (set on 503s), or 0.
 	RetryAfter time.Duration
+	// RunID is the run the error is about, when there is one: on a busy
+	// conversation (409), the run going on, to follow with [Client.Events].
+	RunID string
 }
 
 func (e *APIError) Error() string {
@@ -114,7 +129,7 @@ func (c *Client) apiError(resp *http.Response) error {
 	e := &APIError{Status: resp.StatusCode, RetryAfter: retryAfter(resp.Header)}
 	var er wire.ErrorResponse
 	if err := json.Unmarshal(body, &er); err == nil && er.Error != nil && er.Error.Code != "" {
-		e.Code, e.Message, e.Retryable = er.Error.Code, er.Error.Message, er.Error.Retryable
+		e.Code, e.Message, e.Retryable, e.RunID = er.Error.Code, er.Error.Message, er.Error.Retryable, er.Error.RunID
 		return e
 	}
 	e.Message = snippet(body)

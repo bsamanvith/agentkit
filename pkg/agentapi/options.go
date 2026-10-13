@@ -153,9 +153,12 @@ func WithDrain(stop <-chan struct{}, after time.Duration) Option {
 	return func(c *config) { c.drainStop, c.drainAfter, c.drainRequested = stop, after, true }
 }
 
-// WithStore sets where conversations and runs are kept (default: a new
-// in-memory store on the server's clock, lost on restart). The server does
-// not close it: close it after [Server.Shutdown].
+// WithStore sets where conversations and runs are kept; it is required. A
+// program picks the backend (cmd/agentkit by AGENTKIT_STORE); this package
+// never imports one, so as never to reach the store's cross-tenant Admin.
+// [github.com/bsamanvith/agentkit/pkg/store/scoped.Memory] is a store kept
+// in memory. The server does not close the store: close it after
+// [Server.Shutdown].
 func WithStore(s Store) Option { return func(c *config) { c.store = s } }
 
 // WithRunnerOptions adds options to the runner the server builds over its

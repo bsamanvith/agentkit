@@ -115,7 +115,9 @@ func (s *Server) runView(ctx context.Context, run store.Run) (Run, error) {
 			return v, nil
 		}
 	}
-	v.Usage, v.Turns, v.Record, v.Error, v.FinishedAt = usage, len(rec.Turns), rec, nil, nil
+	// No ending yet: the run goes on, or has just ended and its execution
+	// has not said so; then its error and end are as stored.
+	v.Usage, v.Turns, v.Record = usage, len(rec.Turns), rec
 	return v, nil
 }
 
@@ -144,7 +146,7 @@ func (s *Server) runSummary(ctx context.Context, run store.Run) Run {
 
 // getStored reads a run of the request's tenant; it answers 404 or 500 and
 // returns false if it cannot.
-func (s *Server) getStored(w http.ResponseWriter, ctx context.Context, id string) (store.Run, bool) {
+func (s *Server) getStored(ctx context.Context, w http.ResponseWriter, id string) (store.Run, bool) {
 	run, err := s.store.Get(ctx, id)
 	switch {
 	case errors.Is(err, store.ErrNotFound), errors.Is(err, store.ErrInvalid):
@@ -159,8 +161,8 @@ func (s *Server) getStored(w http.ResponseWriter, ctx context.Context, id string
 
 // viewByID reads the run and its view; it answers 404 or 500 and returns
 // false if it cannot.
-func (s *Server) viewByID(w http.ResponseWriter, ctx context.Context, id string) (Run, bool) {
-	run, ok := s.getStored(w, ctx, id)
+func (s *Server) viewByID(ctx context.Context, w http.ResponseWriter, id string) (Run, bool) {
+	run, ok := s.getStored(ctx, w, id)
 	if !ok {
 		return Run{}, false
 	}
@@ -177,7 +179,7 @@ func (s *Server) getRun(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if v, ok := s.viewByID(w, ctx, r.PathValue("id")); ok {
+	if v, ok := s.viewByID(ctx, w, r.PathValue("id")); ok {
 		writeJSON(w, http.StatusOK, v)
 	}
 }
@@ -200,7 +202,7 @@ func (s *Server) runEvents(w http.ResponseWriter, r *http.Request) {
 		}
 		from = n + 1
 	}
-	run, ok := s.getStored(w, ctx, r.PathValue("id"))
+	run, ok := s.getStored(ctx, w, r.PathValue("id"))
 	if !ok {
 		return
 	}
@@ -232,16 +234,16 @@ func (s *Server) resumeRun(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	run, ok := s.getStored(w, ctx, r.PathValue("id"))
+	run, ok := s.getStored(ctx, w, r.PathValue("id"))
 	if !ok {
 		return
 	}
-	s.resume(w, r, ctx, run, CodeRunLeased)
+	s.resume(ctx, w, r, run, CodeRunLeased)
 }
 
 // resumeConversation resumes the conversation's unfinished run: a run
 // request with an empty message.
-func (s *Server) resumeConversation(w http.ResponseWriter, r *http.Request, ctx context.Context, convID string) {
+func (s *Server) resumeConversation(ctx context.Context, w http.ResponseWriter, r *http.Request, convID string) {
 	run, err := s.store.Unfinished(ctx, convID)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
@@ -251,12 +253,12 @@ func (s *Server) resumeConversation(w http.ResponseWriter, r *http.Request, ctx 
 		s.internal(w, "reading the conversation's runs", err)
 		return
 	}
-	s.resume(w, r, ctx, run, CodeBusy)
+	s.resume(ctx, w, r, run, CodeBusy)
 }
 
 // resume continues a run that is not final and not going on. busy is the
 // code of a run that is going on.
-func (s *Server) resume(w http.ResponseWriter, r *http.Request, ctx context.Context, run store.Run, busy string) {
+func (s *Server) resume(ctx context.Context, w http.ResponseWriter, r *http.Request, run store.Run, busy string) {
 	switch {
 	case s.isDraining():
 		s.unavailable(w, shuttingDown())
@@ -315,7 +317,7 @@ func (s *Server) stopRun(w http.ResponseWriter, r *http.Request) {
 		s.commandError(w, id, err)
 		return
 	}
-	s.afterCommand(w, r, ctx, id)
+	s.afterCommand(ctx, w, r, id)
 }
 
 // cancelRun serves POST /v1/runs/{id}/cancel: the run is canceled, which is
@@ -329,14 +331,14 @@ func (s *Server) cancelRun(w http.ResponseWriter, r *http.Request) {
 	if _, err := s.runner.Cancel(ctx, id); err != nil {
 		if errors.Is(err, store.ErrFinal) {
 			if run, gerr := s.store.Get(ctx, id); gerr == nil && run.Status == store.StatusCanceled {
-				s.afterCommand(w, r, ctx, id)
+				s.afterCommand(ctx, w, r, id)
 				return
 			}
 		}
 		s.commandError(w, id, err)
 		return
 	}
-	s.afterCommand(w, r, ctx, id)
+	s.afterCommand(ctx, w, r, id)
 }
 
 func (s *Server) commandError(w http.ResponseWriter, id string, err error) {
@@ -354,7 +356,7 @@ func (s *Server) commandError(w http.ResponseWriter, id string, err error) {
 
 // afterCommand answers a stop or cancel with the run, once this server's
 // execution of it has ended.
-func (s *Server) afterCommand(w http.ResponseWriter, r *http.Request, ctx context.Context, id string) {
+func (s *Server) afterCommand(ctx context.Context, w http.ResponseWriter, r *http.Request, id string) {
 	if h := s.hubOf(ctx, id); h != nil {
 		select {
 		case <-h.ended:
@@ -362,7 +364,7 @@ func (s *Server) afterCommand(w http.ResponseWriter, r *http.Request, ctx contex
 			return
 		}
 	}
-	if v, ok := s.viewByID(w, ctx, id); ok {
+	if v, ok := s.viewByID(ctx, w, id); ok {
 		writeJSON(w, http.StatusOK, v)
 	}
 }
@@ -416,7 +418,7 @@ func (s *Server) decideRun(w http.ResponseWriter, r *http.Request) {
 		s.follow(w, r, h, len(seed.events))
 		return
 	}
-	if v, ok := s.viewByID(w, ctx, id); ok {
+	if v, ok := s.viewByID(ctx, w, id); ok {
 		writeJSON(w, http.StatusOK, v)
 	}
 }

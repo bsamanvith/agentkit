@@ -8,10 +8,6 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/store/postgres"
 )
 
-// envStore names the store: a postgres:// URL selects the Postgres store.
-// T037 adds the switch in serve that reads it; agentkit migrate reads it now.
-const envStore = "AGENTKIT_STORE"
-
 // migrate applies the Postgres store's migrations to the database
 // $AGENTKIT_STORE names, then exits: the one-off job for deployments that
 // start serve with AGENTKIT_STORE_MIGRATE=off, so that no server changes the

@@ -127,7 +127,14 @@ describe("a run's events", () => {
 
   it("decoded from the wire keep a tool result's markup as text", () => {
     const e = decodeEvent(
-      JSON.stringify({ v: 1, type: "tool_result", seq: 3, run_id: "r", tool_use_id: "t1", content: "<script>x</script>" }),
+      JSON.stringify({
+        v: 1,
+        type: "tool_result",
+        seq: 3,
+        run_id: "r",
+        tool_use_id: "t1",
+        content: "<script>x</script>",
+      }),
     )!;
     const a = play([ev({ type: "tool_call", tool_use_id: "t1", name: "echo" }), e]);
     expect(steps(a.parts)[0]?.result).toBe("<script>x</script>");
@@ -167,7 +174,10 @@ describe("a conversation's history", () => {
     const [, first, , second] = turns as [Turn, AssistantTurn, Turn, AssistantTurn];
     expect(first.parts).toEqual([
       { kind: "text", text: "Sure." },
-      { kind: "tools", steps: [{ id: "t1", name: "echo", input: { text: "hi" }, state: "done", result: '{"text":"hi"}' }] },
+      {
+        kind: "tools",
+        steps: [{ id: "t1", name: "echo", input: { text: "hi" }, state: "done", result: '{"text":"hi"}' }],
+      },
       { kind: "text", text: "It said hi." },
     ]);
     expect(first.durationMs).toBe(3000);

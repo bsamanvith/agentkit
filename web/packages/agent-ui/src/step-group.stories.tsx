@@ -15,3 +15,15 @@ export const ThreeCalls: Story<StepGroupProps> = {
     ],
   },
 };
+export const ManyCalls: Story<StepGroupProps> = {
+  args: {
+    steps: Array.from({ length: 9 }, (_, i) => ({
+      id: String(i),
+      kind: "page" as const,
+      state: i === 6 ? ("failed" as const) : ("done" as const),
+      label: "Read a page",
+      detail: `site${i}.example`,
+      durationMs: 300,
+    })),
+  },
+};

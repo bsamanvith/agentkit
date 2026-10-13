@@ -54,14 +54,14 @@ function inline(text: string, key: string): ReactNode[] {
     } else if (label !== undefined && url !== undefined) {
       out.push(link(url, inline(label, k), k));
     } else if (angle !== undefined || bare !== undefined) {
-      const u = (angle ?? bare)!;
+      const u = angle ?? bare ?? "";
       out.push(link(u, [u], k));
     } else if (strong !== undefined || strong2 !== undefined) {
-      out.push(<strong key={k}>{inline((strong ?? strong2)!, k)}</strong>);
+      out.push(<strong key={k}>{inline(strong ?? strong2 ?? "", k)}</strong>);
     } else if (del !== undefined) {
       out.push(<del key={k}>{inline(del, k)}</del>);
     } else if (em !== undefined || em2 !== undefined) {
-      out.push(<em key={k}>{inline((em ?? em2)!, k)}</em>);
+      out.push(<em key={k}>{inline(em ?? em2 ?? "", k)}</em>);
     } else if (escaped !== undefined) {
       out.push(escaped);
     } else {
@@ -112,8 +112,10 @@ function blocks(lines: string[], key: string): ReactNode[] {
   const out: ReactNode[] = [];
   let i = 0;
   let n = 0;
+  // The line at j ("" past the end), as noUncheckedIndexedAccess wants.
+  const at = (j: number) => lines[j] ?? "";
   while (i < lines.length) {
-    const line = lines[i]!;
+    const line = at(i);
     const k = `${key}.${n++}`;
     if (line.trim() === "") {
       i++;
@@ -121,10 +123,11 @@ function blocks(lines: string[], key: string): ReactNode[] {
     }
     const f = fence.exec(line);
     if (f) {
-      const close = new RegExp(`^ {0,3}${f[1]![0] === "`" ? "`" : "~"}{${f[1]!.length},}\\s*$`);
+      const mark = f[1] ?? "```";
+      const close = new RegExp(`^ {0,3}${mark.startsWith("`") ? "`" : "~"}{${mark.length},}\\s*$`);
       const body: string[] = [];
       i++;
-      while (i < lines.length && !close.test(lines[i]!)) body.push(lines[i++]!);
+      while (i < lines.length && !close.test(at(i))) body.push(at(i++));
       i++; // the closing fence, or the end
       out.push(
         <pre
@@ -140,11 +143,11 @@ function blocks(lines: string[], key: string): ReactNode[] {
     }
     const h = heading.exec(line);
     if (h) {
-      const level = h[1]!.length;
+      const level = (h[1] ?? "").length;
       const Tag = (level <= 2 ? "h3" : "h4") as "h3" | "h4";
       out.push(
         <Tag key={k} className={cn("font-semibold text-ak-text", level <= 2 ? "text-(length:--ak-text-md)" : "")}>
-          {inline(h[2]!, k)}
+          {inline(h[2] ?? "", k)}
         </Tag>,
       );
       i++;
@@ -157,8 +160,8 @@ function blocks(lines: string[], key: string): ReactNode[] {
     }
     if (quote.test(line)) {
       const body: string[] = [];
-      while (i < lines.length && lines[i]!.trim() !== "" && (quote.test(lines[i]!) || body.length > 0)) {
-        body.push(lines[i]!.replace(quote, ""));
+      while (i < lines.length && at(i).trim() !== "" && (quote.test(at(i)) || body.length > 0)) {
+        body.push(at(i).replace(quote, ""));
         i++;
       }
       out.push(
@@ -175,7 +178,7 @@ function blocks(lines: string[], key: string): ReactNode[] {
       const items: string[][] = [];
       let indent = 0;
       while (i < lines.length) {
-        const l = lines[i]!;
+        const l = at(i);
         const m = marker.exec(l);
         if (m) {
           indent = m[0].length;
@@ -187,15 +190,15 @@ function blocks(lines: string[], key: string): ReactNode[] {
           // A blank line ends the list unless the next line continues it.
           const next = lines[i + 1];
           if (next !== undefined && (marker.test(next) || /^\s{2,}\S/.test(next))) {
-            items[items.length - 1]!.push("");
+            items.at(-1)?.push("");
             i++;
             continue;
           }
           break;
         }
-        const leading = /^\s*/.exec(l)![0].length;
+        const leading = l.length - l.trimStart().length;
         if (leading >= 2 || !startsBlock(l)) {
-          items[items.length - 1]!.push(l.slice(Math.min(leading, indent)));
+          items.at(-1)?.push(l.slice(Math.min(leading, indent)));
           i++;
           continue;
         }
@@ -203,7 +206,7 @@ function blocks(lines: string[], key: string): ReactNode[] {
       }
       const children = items.map((it, j) => (
         <li key={`${k}.${j}`} className="pl-1">
-          {it.length === 1 ? inline(it[0]!, `${k}.${j}`) : blocks(it, `${k}.${j}`)}
+          {it.length === 1 ? inline(it[0] ?? "", `${k}.${j}`) : blocks(it, `${k}.${j}`)}
         </li>
       ));
       const start = o ? Number(o[2]) : 1;
@@ -220,11 +223,11 @@ function blocks(lines: string[], key: string): ReactNode[] {
       );
       continue;
     }
-    if (line.includes("|") && i + 1 < lines.length && tableSep.test(lines[i + 1]!)) {
+    if (line.includes("|") && i + 1 < lines.length && tableSep.test(at(i + 1))) {
       const head = cells(line);
       const rows: string[][] = [];
       i += 2;
-      while (i < lines.length && lines[i]!.includes("|") && lines[i]!.trim() !== "") rows.push(cells(lines[i++]!));
+      while (i < lines.length && at(i).includes("|") && at(i).trim() !== "") rows.push(cells(at(i++)));
       out.push(
         <div key={k} tabIndex={0} aria-label="Table" className="overflow-x-auto">
           <table className="w-full border-collapse text-(length:--ak-text-sm)">
@@ -256,7 +259,7 @@ function blocks(lines: string[], key: string): ReactNode[] {
     // A paragraph: lines up to a blank line or the start of another block.
     const para: string[] = [line.trim()];
     i++;
-    while (i < lines.length && lines[i]!.trim() !== "" && !startsBlock(lines[i]!)) para.push(lines[i++]!.trim());
+    while (i < lines.length && at(i).trim() !== "" && !startsBlock(at(i))) para.push(at(i++).trim());
     out.push(<p key={k}>{inline(para.join("\n"), k)}</p>);
   }
   return out;

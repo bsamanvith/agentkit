@@ -107,6 +107,7 @@ export function threadFromHistory(messages: TimedMessage[]): Turn[] {
     const key = `h${i}`;
     if (message.role === "user") {
       for (const b of message.content) {
+        if ("unknown" in b) continue;
         if (b.type === "tool_result" && answer) {
           answer.parts = updateStep(answer.parts, b.tool_use_id, (s) => ({
             ...s,
@@ -128,10 +129,10 @@ export function threadFromHistory(messages: TimedMessage[]): Turn[] {
       turns.push(answer);
     }
     for (const b of message.content) {
-      if (b.type === "text") answer.parts = addText(answer.parts, b.text);
+      if ("unknown" in b) answer.parts = [...answer.parts, { kind: "unknown", type: b.type }];
+      else if (b.type === "text") answer.parts = addText(answer.parts, b.text);
       else if (b.type === "tool_use")
         answer.parts = addStep(answer.parts, { id: b.id, name: b.name, input: b.input, state: "running" });
-      else if (b.type !== "tool_result") answer.parts = [...answer.parts, { kind: "unknown", type: b.type }];
     }
     const end = ms(at);
     if (askedAt !== undefined && end !== undefined && end >= askedAt) answer.durationMs = end - askedAt;

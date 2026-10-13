@@ -120,7 +120,10 @@ export class AgentClient {
    * POST /v1/conversations: an empty conversation with the agent (the
    * default when empty). The first message is then a run in it (T092).
    */
-  async createConversation(agent: string | undefined, opts: RequestOptions = {}): Promise<{ id: string; agent: string }> {
+  async createConversation(
+    agent: string | undefined,
+    opts: RequestOptions = {},
+  ): Promise<{ id: string; agent: string }> {
     const body = agent ? JSON.stringify({ agent }) : "{}";
     const resp = await this.#send("POST", "/v1/conversations", body, "application/json", opts.signal);
     const c = (await this.#json(resp, "/v1/conversations")) as { id?: unknown; agent?: unknown } | null;

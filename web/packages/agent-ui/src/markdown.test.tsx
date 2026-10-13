@@ -73,7 +73,7 @@ describe("Markdown", () => {
         "> quoted",
         "",
         "```go",
-        "fmt.Println(\"<b>hi</b>\")",
+        'fmt.Println("<b>hi</b>")',
         "```",
         "",
         "| a | b |",
@@ -153,7 +153,14 @@ describe("safeHref", () => {
   it("allows only absolute http(s) URLs", () => {
     expect(safeHref("https://go.dev")).toBe("https://go.dev/");
     expect(safeHref("http://localhost:8080/x")).toBe("http://localhost:8080/x");
-    for (const bad of ["javascript:alert(1)", " javascript:alert(1)", "data:text/html,x", "/relative", "mailto:a@b.c", "vbscript:x"]) {
+    for (const bad of [
+      "javascript:alert(1)",
+      " javascript:alert(1)",
+      "data:text/html,x",
+      "/relative",
+      "mailto:a@b.c",
+      "vbscript:x",
+    ]) {
       expect(safeHref(bad), bad).toBeUndefined();
     }
   });

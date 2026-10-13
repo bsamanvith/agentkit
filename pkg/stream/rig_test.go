@@ -2,7 +2,6 @@ package stream_test
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,14 +10,10 @@ import (
 	"testing"
 	"time"
 
-	goredis "github.com/redis/go-redis/v9"
-	"github.com/redis/go-redis/v9/maintnotifications"
 	"go.uber.org/goleak"
 
-	"github.com/bsamanvith/agentkit/internal/testkit"
 	"github.com/bsamanvith/agentkit/pkg/bus"
 	busmemory "github.com/bsamanvith/agentkit/pkg/bus/memory"
-	redisbus "github.com/bsamanvith/agentkit/pkg/bus/redis"
 	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
 	"github.com/bsamanvith/agentkit/pkg/store"
 	"github.com/bsamanvith/agentkit/pkg/stream"
@@ -64,6 +59,14 @@ func forEachBus(t *testing.T, trim func(bus.Topic) bus.Trim, f func(t *testing.T
 	})
 }
 
+// redisBackend makes a backend on the Redis bus (AGENTKIT_REDIS_URL). It is
+// set only in the integration tier (-tags integration); without it the
+// Redis subtests skip.
+var redisBackend = func(t *testing.T, _ func(bus.Topic) bus.Trim) backend {
+	t.Skip("the Redis bus runs with -tags integration")
+	return backend{}
+}
+
 func memoryBackend(t *testing.T, trim func(bus.Topic) bus.Trim) backend {
 	clk := clocktest.NewFake(time.Time{})
 	b := busmemory.New(busmemory.WithClock(clk), busmemory.WithTrim(trim))
@@ -73,41 +76,6 @@ func memoryBackend(t *testing.T, trim func(bus.Topic) bus.Trim) backend {
 		bus:  b,
 		// The memory bus loses a topic only when it expires: let it.
 		lose: func(_ *testing.T, topic bus.Topic) { clk.Advance(trim(topic).MaxAge) },
-	}
-}
-
-func redisBackend(t *testing.T, trim func(bus.Topic) bus.Trim) backend {
-	url := testkit.IntegrationEnv(t, "AGENTKIT_REDIS_URL")
-	opt, err := goredis.ParseURL(url)
-	if err != nil {
-		t.Fatalf("AGENTKIT_REDIS_URL: %v", err)
-	}
-	opt.MaintNotificationsConfig = &maintnotifications.Config{Mode: maintnotifications.ModeDisabled}
-	c := goredis.NewClient(opt)
-	prefix := "agentkit-test:" + rand.Text() + ":"
-	b, err := redisbus.New(c, redisbus.WithPrefix(prefix), redisbus.WithTrim(trim),
-		redisbus.WithBackoff(10*time.Millisecond, 200*time.Millisecond))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		_ = b.Close()
-		ctx := context.Background()
-		if keys, err := c.Keys(ctx, prefix+"*").Result(); err == nil && len(keys) > 0 {
-			_ = c.Del(ctx, keys...).Err()
-		}
-		_ = c.Close()
-	})
-	return backend{
-		name: "redis",
-		bus:  b,
-		// As when Redis restarts without its data. The bus still remembers
-		// what it published, which only helps.
-		lose: func(t *testing.T, topic bus.Topic) {
-			if err := c.Del(t.Context(), b.Key(topic)).Err(); err != nil {
-				t.Fatal(err)
-			}
-		},
 	}
 }
 

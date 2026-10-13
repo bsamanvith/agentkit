@@ -5,7 +5,7 @@
 // text:
 //
 //   "echo"   calls the demo toolset's echo tool, then says what it echoed
-//   "xss"    answers with hostile HTML and a javascript: link
+//   "xss"    echoes hostile HTML, then answers with more and a javascript: link
 //   "stall"  starts an answer and never finishes it, until the request ends
 //   other    "You said: …" with the number of messages so far
 //
@@ -88,26 +88,10 @@ const server = createServer((req, res) => {
     const said = [...users].reverse().map(textOf)[0] ?? "";
     start(res);
 
+    const xss = /\bxss\b/i.test(said);
     // The echo tool's result is back: say what it echoed.
     const result = last && blocks(last).find((b) => b.type === "tool_result");
-    if (result) {
-      text(res, 0, `The echo tool said ${(result.content ?? []).map((b) => b.text ?? "").join("")}.`);
-      return finish(res, "end_turn", 12);
-    }
-    if (/\becho\b/i.test(said)) {
-      const echo = tools.find((t) => t.name.endsWith("__echo"))?.name ?? "echo";
-      send(res, "content_block_start", {
-        index: 0,
-        content_block: { type: "tool_use", id: `toolu_fake${Date.now()}`, name: echo, input: {} },
-      });
-      send(res, "content_block_delta", {
-        index: 0,
-        delta: { type: "input_json_delta", partial_json: '{"text": "pineapple"}' },
-      });
-      send(res, "content_block_stop", { index: 0 });
-      return finish(res, "tool_use", 20);
-    }
-    if (/\bxss\b/i.test(said)) {
+    if (result && xss) {
       text(
         res,
         0,
@@ -115,6 +99,25 @@ const server = createServer((req, res) => {
           "[a link](javascript:window.__xss=3) and **bold**.",
       );
       return finish(res, "end_turn", 30);
+    }
+    if (result) {
+      text(res, 0, `The echo tool said ${(result.content ?? []).map((b) => b.text ?? "").join("")}.`);
+      return finish(res, "end_turn", 12);
+    }
+    if (xss || /\becho\b/i.test(said)) {
+      // With "xss", the tool's input and result are hostile too.
+      const input = xss ? '<img src=x onerror="window.__xss=4"><script>window.__xss=5</script>' : "pineapple";
+      const echo = tools.find((t) => t.name.endsWith("__echo"))?.name ?? "echo";
+      send(res, "content_block_start", {
+        index: 0,
+        content_block: { type: "tool_use", id: `toolu_fake${Date.now()}`, name: echo, input: {} },
+      });
+      send(res, "content_block_delta", {
+        index: 0,
+        delta: { type: "input_json_delta", partial_json: JSON.stringify({ text: input }) },
+      });
+      send(res, "content_block_stop", { index: 0 });
+      return finish(res, "tool_use", 20);
     }
     if (/\bstall\b/i.test(said)) {
       send(res, "content_block_start", { index: 0, content_block: { type: "text", text: "" } });

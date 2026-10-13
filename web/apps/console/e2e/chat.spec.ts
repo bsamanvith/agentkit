@@ -39,8 +39,11 @@ test("a new chat streams an answer with a tool step, takes a follow-up, and relo
   const thread = page.getByRole("log");
   await expect(thread.getByText("The echo tool said", { exact: false })).toBeVisible();
   await expect(thread.getByText("pineapple", { exact: false }).first()).toBeVisible();
-  await expect(thread.getByRole("button", { name: /Echo/ })).toBeVisible();
   await ended(page);
+  // The tool call opens to its input and result.
+  const shown = await thread.getByText("pineapple").count();
+  await thread.getByRole("button", { name: /Echo/ }).click();
+  await expect.poll(() => thread.getByText("pineapple").count()).toBeGreaterThanOrEqual(shown + 2);
   await expect(thread.getByText(/2 turns · [\d,]+ tokens/)).toBeVisible();
   await expect(page.getByRole("heading", { level: 1, name: "Please echo something" })).toBeVisible();
   const list = page.getByRole("navigation", { name: "Conversations" });
@@ -50,9 +53,12 @@ test("a new chat streams an answer with a tool step, takes a follow-up, and relo
   await expect(thread.getByText("You said: And again. That's 2 messages from you.")).toBeVisible();
   await ended(page);
 
-  // The history has both exchanges and the tool step.
+  // After a reload, the conversation in the list opens to its history: both
+  // exchanges and the tool step.
   const url = page.url();
-  await page.reload();
+  await page.goto("/new");
+  await expect(page.getByRole("heading", { level: 1, name: "New chat" })).toBeVisible();
+  await list.getByRole("link", { name: /Please echo something/ }).click();
   await expect(page).toHaveURL(url);
   await expect(thread.getByText("You said: And again.", { exact: false })).toBeVisible();
   await expect(thread.getByText("The echo tool said", { exact: false })).toBeVisible();
@@ -102,6 +108,9 @@ test("hostile model output renders as text, under the CSP", async ({ page }) => 
   await expect(thread.getByText("Hostile:", { exact: false })).toBeVisible();
   await ended(page);
 
+  // The tool's hostile input and result are text too.
+  await thread.getByRole("button", { name: /Echo/ }).click();
+  await expect(thread.getByText('<img src=x onerror="window.__xss=4">', { exact: false }).first()).toBeVisible();
   await expect(thread.locator("img, script, iframe")).toHaveCount(0);
   await expect(thread.getByText('<img src=x onerror="window.__xss=1">', { exact: false })).toBeVisible();
   // The javascript: link isn't a link.
@@ -111,9 +120,11 @@ test("hostile model output renders as text, under the CSP", async ({ page }) => 
   await expect(thread.locator("strong", { hasText: "bold" })).toBeVisible();
   expect(await page.evaluate(() => (window as { __xss?: unknown }).__xss)).toBeUndefined();
 
-  // The same after a reload, from history.
-  await page.reload();
+  // The same after a reload, from history; every page response has the CSP.
+  const again = await page.reload();
+  expect(again?.headers()["content-security-policy"]).toContain("default-src 'self'");
   await expect(thread.getByText("Hostile:", { exact: false })).toBeVisible();
+  await thread.getByRole("button", { name: /Echo/ }).click();
   await expect(thread.locator("img, script, iframe")).toHaveCount(0);
   expect(await page.evaluate(() => (window as { __xss?: unknown }).__xss)).toBeUndefined();
   expect(errors).toEqual([]);

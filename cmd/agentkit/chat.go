@@ -180,12 +180,20 @@ func (s *chatSession) send(ctx context.Context, message string) {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var cancelled atomic.Bool
-	stop, exited := make(chan struct{}), make(chan struct{})
+	stop, exited, opened := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	go func() {
 		defer close(exited)
 		select {
 		case <-s.interrupts:
 			cancelled.Store(true)
+			// A Ctrl-C just after Enter: let the stream open first (briefly),
+			// so chat learns the conversation the server started and can
+			// resume it, instead of losing it with the request.
+			select {
+			case <-opened:
+			case <-time.After(openGrace):
+			case <-stop:
+			}
 			cancel() // like closing the stream, cancels the run on the server
 		case <-stop:
 		}
@@ -193,6 +201,12 @@ func (s *chatSession) send(ctx context.Context, message string) {
 	defer func() { close(stop); <-exited }()
 
 	stream, err := s.client.Stream(runCtx, agentclient.RunRequest{Message: message, ConversationID: s.conv, Agent: s.agent})
+	close(opened)
+	if err == nil && s.conv == "" {
+		// From the headers, before any event: a Ctrl-C before the first one
+		// still knows which conversation to check and resume.
+		s.conv = stream.ConversationID()
+	}
 	if err != nil {
 		if cancelled.Load() {
 			s.say("cancelled")
@@ -252,10 +266,12 @@ func (s *chatSession) cancelled(ctx context.Context) {
 }
 
 // How long chat waits for the server to end a cancelled run, and how often
-// it asks.
+// it asks; and how long a Ctrl-C waits for a run's stream to open before it
+// gives up on the request.
 const (
 	settleTimeout = 10 * time.Second
 	settlePoll    = 50 * time.Millisecond
+	openGrace     = 2 * time.Second
 )
 
 // refused explains a run the server did not start.

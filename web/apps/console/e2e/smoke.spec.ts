@@ -26,14 +26,20 @@ test("the shell loads, asks for the token, and sends it to /v1/agents", async ({
   await page.getByRole("button", { name: "Continue" }).click();
   expect(await (await agents).headerValue("authorization")).toBe(`Bearer ${token}`);
 
-  await expect(page.getByRole("heading", { level: 1, name: "Agents" })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Sections" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Agents" })).toHaveAttribute("aria-current", "page");
-  await expect(page).toHaveTitle("Agents · agentkit");
+  // A laptop or desktop shows the first agent beside the list.
+  await expect(page).toHaveURL(/\/agents\/default$/);
+  await expect(page.getByRole("heading", { level: 1, name: "default" })).toBeVisible();
+  const sections = page.getByRole("navigation", { name: "Sections" });
+  await expect(sections.getByRole("link", { name: "Agents" })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("navigation", { name: "Agents" }).getByRole("link")).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(page).toHaveTitle("default · agentkit");
 
   // The token lasts for the tab: a reload doesn't ask again.
   await page.reload();
-  await expect(page.getByRole("heading", { level: 1, name: "Agents" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "default" })).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
@@ -71,6 +77,42 @@ test("the theme switch pins light and dark, and system follows the OS", async ({
   expect(await background(page)).toBe(light);
   await page.emulateMedia({ colorScheme: "dark" });
   expect(await background(page)).toBe(dark);
+  expect(errors).toEqual([]);
+});
+
+test("on a phone, the drawer holds the sections and closes on a pick", async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.addInitScript((t) => sessionStorage.setItem("agentkit.token", t), token);
+  await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1, name: "New chat" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "List" })).toHaveCount(0);
+  // No sideways scroll at phone width.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+
+  const menu = page.getByRole("button", { name: "Menu" });
+  await menu.click();
+  const drawer = page.getByRole("dialog", { name: "Menu" });
+  await expect(drawer).toBeInViewport();
+  await expect(drawer.getByRole("navigation", { name: "Conversations" })).toBeVisible();
+  // Esc closes it, back to Menu (the app behind was inert: focus must wait for it).
+  await page.keyboard.press("Escape");
+  await expect(drawer).not.toBeInViewport();
+  await expect(menu).toBeFocused();
+  await menu.click();
+  await drawer.getByRole("link", { name: "Agents" }).click();
+  await expect(menu).toHaveAttribute("aria-expanded", "false");
+  await expect(drawer).not.toBeInViewport();
+
+  // Agents is a list page on a phone; an agent's page has Back.
+  await expect(page.getByRole("heading", { level: 1, name: "Agents" })).toBeVisible();
+  await page
+    .getByRole("navigation", { name: "Agents" })
+    .getByRole("link", { name: /default/ })
+    .click();
+  await expect(page.getByRole("heading", { level: 1, name: "default" })).toBeVisible();
+  await page.getByRole("link", { name: "Back to agents" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Agents" })).toBeVisible();
   expect(errors).toEqual([]);
 });
 

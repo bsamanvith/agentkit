@@ -62,7 +62,7 @@ change the build, so it doesn't fail the check either.
   fonts use `font-display: swap` and `unicode-range`, so text shows at once
   and Latin Extended loads only when used. `make web-check` fails when the
   first load (gzipped `index.html`, scripts and styles, plus the Latin
-  fonts) is over 240 KB (`scripts/check-size.sh`; it is 216 KB at T078). Lazy-load
+  fonts) is over 240 KB (`scripts/check-size.sh`; it is 214 KB at T078). Lazy-load
   (`React.lazy`) what the first screen doesn't need instead of raising it.
 - **Untrusted text stays text**: ESLint bans `dangerouslySetInnerHTML`,
   `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `createContextualFragment`

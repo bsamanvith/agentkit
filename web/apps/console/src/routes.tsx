@@ -1,5 +1,5 @@
 import type { RouteObject } from "react-router";
-import { AgentsPage, ConnectionsPage, DetailPage, NotFoundPage, ToolsetsPage } from "./pages/admin";
+import { AgentPage, AgentsPage, ConnectionsPage, NotFoundPage, ToolsetPage, ToolsetsPage } from "./pages/admin";
 import { ChatPage } from "./pages/chat";
 import { Shell } from "./shell";
 
@@ -13,9 +13,9 @@ export const routes: RouteObject[] = [
       { path: "/new", element: <ChatPage /> },
       { path: "/c/:id", element: <ChatPage /> },
       { path: "/agents", element: <AgentsPage /> },
-      { path: "/agents/:name", element: <DetailPage kind="Agent" /> },
+      { path: "/agents/:name", element: <AgentPage /> },
       { path: "/toolsets", element: <ToolsetsPage /> },
-      { path: "/toolsets/:name", element: <DetailPage kind="Toolset" /> },
+      { path: "/toolsets/:name", element: <ToolsetPage /> },
       { path: "/connections", element: <ConnectionsPage /> },
       { path: "*", element: <NotFoundPage /> },
     ],

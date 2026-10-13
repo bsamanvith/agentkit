@@ -42,15 +42,16 @@ Owner decision (2026-10-12): the admin console and future consumer apps use **Re
 ### Results
 
 - **`make web`** builds the console into `pkg/web/dist` (committed; about 630 KB: a 482 KB script, a 64 KB stylesheet and four woff2 fonts). With `AGENTKIT_COMPONENTS=agent,web`, `agentkit serve` serves the shell at `/` with System, Light and Dark themes from docs/UI.md's tokens.
-- **What goes over the wire**: `pkg/web` gzips text files once, at start, and sends them compressed to clients that accept it (with `Vary: Accept-Encoding` and an ETag per encoding). The first load is 215,629 bytes: 163,101 of gzipped `index.html`, `theme.js`, script (151 KB) and styles (11 KB), out of 549 KB raw, and 52,528 of the two Latin fonts, Geist and Geist Mono (counted whether or not the first screen uses mono; woff2, already compressed, cached for a year). Fonts load after first paint (`font-display: swap`), and Latin Extended loads only when it is needed (`unicode-range`). `web/scripts/check-size.sh` fails `make web-check` above 240 KB (owner's request, 2026-10-12: the console runs on low-end PCs and bad connections). It reads the script and style names from `index.html`, so a new entry file or a missing one can't slip past it, and it fails if it finds no Latin fonts to count.
-- **`make web-check`** runs install (frozen lockfile), lint (0 warnings), format check, typecheck, unit tests (16 in `ui`, 98 in `agent-ui`, 29 in the console), `pnpm audit --audit-level high`, a rebuild compared with the committed build, and the size budget. It runs in CI's `web` job, next to `check` and `fuzz`, which are unchanged.
+- **What goes over the wire**: `pkg/web` gzips text files once, at start, and sends them compressed to clients that accept it (with `Vary: Accept-Encoding` and an ETag per encoding). The first load is 213,051 bytes: 160,523 of gzipped `index.html`, `theme.js`, script (148 KB) and styles (12 KB), out of 539 KB raw, and 52,528 of the two Latin fonts, Geist and Geist Mono (counted whether or not the first screen uses mono; woff2, already compressed, cached for a year). Fonts load after first paint (`font-display: swap`), and Latin Extended loads only when it is needed (`unicode-range`). `web/scripts/check-size.sh` fails `make web-check` above 240 KB (owner's request, 2026-10-12: the console runs on low-end PCs and bad connections). It reads the script and style names from `index.html`, so a new entry file or a missing one can't slip past it, and it fails if it finds no Latin fonts to count.
+- **`make web-check`** runs install (frozen lockfile), lint (0 warnings), format check, typecheck, unit tests (16 in `ui`, 98 in `agent-ui`, 41 in the console), `pnpm audit --audit-level high`, a rebuild compared with the committed build, and the size budget. It runs in CI's `web` job, next to `check` and `fuzz`, which are unchanged.
 - **The stale check fails** when a component the console uses is changed without a rebuild (tried with Composer's placeholder: exit 1, naming the changed files). It compares builds, so a change to a component the console doesn't import (ToolStep, tried) changes nothing that is embedded and passes. That is intended.
 - **Builds are reproducible.** A build in `node:24.14.0` on Linux was byte-identical to the macOS build.
-- **`make web-smoke`** (Playwright, three tests) runs against the real binary (`agent,web`, with a token):
-  - the shell loads;
+- **`make web-smoke`** (Playwright, four tests) runs against the real binary (`agent,web`, with a token):
+  - the shell loads, and `/agents` shows the first agent beside the list;
   - the token prompt appears after a 401, and `/v1/agents` is then called with `Authorization: Bearer`;
   - Dark and Light set `data-theme` and change the computed background, a reload keeps the choice, and System follows `prefers-color-scheme`;
   - `theme.js` pins the theme with the app bundle blocked;
+  - at 375 px: no rail and no sideways scroll; Menu opens the drawer, Esc closes it and returns focus to Menu, picking Agents closes it, and Agents is a list page whose items have Back;
   - no console error or CSP violation appears.
 - **`go build ./...` works without Node**, from a fresh worktree with no `node` on `PATH`.
 - **The image** (`make image`, `make image-size`) is 18,099,712 bytes uncompressed, against a 20 MB budget. Without the console (HEAD `4af15e5`) it was 17,378,816 bytes, so the console adds 720,896 bytes. The Dockerfile is unchanged: `.dockerignore` already lets `pkg/` in.
@@ -111,7 +112,7 @@ Owner decision (2026-10-12): the admin console and future consumer apps use **Re
   - `tool-step`, `step-group`, `source-chip`, `message`, `composer`, each with stories;
   - `components.test.tsx`.
 - `web/apps/console`:
-  - `src/`: `app.tsx`, `routes.tsx`, `shell.tsx`, `sections.ts`, `api.ts`, `api-provider.tsx`, `token-prompt.tsx`, `pages/` (`chat`, `admin`, `page`, `readiness`), `app.test.tsx`;
+  - `src/`: `app.tsx`, `routes.tsx`, `shell.tsx`, `layout.ts`, `lists.ts`, `list-row.tsx`, `sections.ts`, `api.ts`, `api-provider.tsx`, `token-prompt.tsx`, `pages/` (`chat`, `admin`, `page`, `readiness`), `app.test.tsx`;
   - `public/theme.js`;
   - `e2e/smoke.spec.ts`, `e2e/agentkit.json`;
   - `playwright.config.ts`, `vite.config.ts`.
@@ -166,7 +167,8 @@ One mutant could not be caught: setting a retry after a 401. The token wait stop
   - generic primitives go in `packages/ui`: add shadcn ones with `pnpm --filter @agentkit/ui add-component <name>`, and write our own (like `Status`) in `src/`, exported from `index.ts`;
   - agent-specific components (chat, tool steps, A2UI for T066) go in `packages/agent-ui/src`, each with a `*.stories.tsx`, and are exported from `index.ts`;
   - console pages go in `apps/console/src/pages`, with routes in `routes.tsx` (UI.md's routes are all there already) and the rail's sections in `sections.ts`;
-  - the list column (Chats list for T055, admin lists for T064) is `ListColumn` in `shell.tsx`.
+  - the list column (Chats list for T055, admin lists for T064) is `ListColumn` in `shell.tsx`; the shell loads the admin section's list once (`lists.ts`) and the column and the page both read it with `useLists()`;
+  - a page is `<Page title aside back …>` (`pages/page.tsx`): the head bar (list toggle or Menu, Back on a phone, the h1, status and actions) and a scrolling body; `useLayout()` says whether it is a phone.
 - **How to call the API**:
   - in the console, `useApi().client` is an `AgentClient`, and `useResource(load, key)` loads a resource with a skeleton, an error with Retry, and the token prompt on a 401. Render it with `<Loaded res={…} what="agents">` (in `pages/page.tsx`);
   - for a run, call `for await (const ev of client.run(req, { signal }))`; abort the signal to stop. The stream ends after `run_done` or `run_error`, and throws `StreamTruncatedError` if the body ends before either. Unknown event types and blocks are passed through, never thrown;
@@ -208,10 +210,20 @@ Left for later:
 - **A system monospace font** in place of Geist Mono would save about 23 KB of the first load.
 - **Lazy-loading** the phone drawer and the account menu, and react-router's declarative mode, would cut the script further; T055 should measure first.
 
+### The shell, matched to the mockup (2026-10-13)
+
+A manual pass at three widths found the shell short of docs/UI.md "Layouts" and `docs/ui/console-mockup.html`: shadcn's Sidebar gave a rail and a list, but no head bar, no drawer grid, and the admin pages were lists in the content. The shell now follows the mockup:
+
+- **Laptop and desktop**: a 56 px rail (the `ak` mark, sections, a divider, admin sections, the account at the bottom; labels as tooltips), the section's list column (248 px below 1200 px, 288 px above; a row is the name in mono, a muted line and a status dot), and the content. Its head bar (52 px) holds the list toggle (`Mod+Shift+S`, the platform's own modifier; remembered in `localStorage` as `agentkit.list`; below 900 px it starts hidden), the h1, and the page's status and action. `/agents` and `/toolsets` show the first item, as the mockup does; an agent's head has its status and "Chat with {name}" (to `/new?agent=`). Connections has no list.
+- **Phone** (< 768 px): no rail. The head bar has Menu; the drawer has the sections as a three-column grid of icon and label, the Chats list, and the account. Picking anything closes it; Esc and the scrim close it and return focus to Menu; the content behind is `inert` while it is open. Admin lists are pages (rows of 44 px, with a chevron); an item's head bar has Back, and its status and action wrap to a row of their own. The chat's head bar has New chat.
+- **One deviation from docs/UI.md**: its component table says the drawer is shadcn's `Sheet`. It is our own (a fixed panel with a transform), because the Sheet's scroll lock injects a `<style>` that the CSP blocks and logs. The smoke test now runs at phone width and fails on any CSP violation. The Sidebar, Sheet and Tooltip are no longer imported (they stay in `packages/ui`), so the first load dropped from 215,629 to 213,051 bytes.
+- **Found while checking it in a browser**: closing the drawer focused Menu before React had removed `inert` from the content, so focus fell to `<body>`. jsdom doesn't enforce `inert`, so the unit test passed; the smoke test checks it (and fails with the fix reverted).
+- **Mutation check**: 18 mutants in the shell and pages (the list toggle not saved or not read, the width ignored below 900 px, Esc in the account menu closing the drawer too, the shortcut ignored, a pick or Esc not closing the drawer, the content or the closed drawer not inert, no focus on open, a list in Connections, no current row, no redirect or a redirect on a phone, Back on a desktop, an unknown agent shown, a wrong tool count, `skip` ignored) were each caught by a console unit test.
+- **Left for T055**: chat search and the agent filter in the list head, bottom-sheet menus on phones, the help and shortcuts button, `Mod+K`, and the conversation list itself. T064 fills the item pages ("Details are not built yet.").
+
 ### Found out of scope (for T055)
 
-- **The Sidebar's shortcut.** shadcn's Sidebar toggles on Mod+B, checking `metaKey || ctrlKey` on every platform. docs/UI.md says Mod+Shift+S with the platform's own modifier. Change `SIDEBAR_KEYBOARD_SHORTCUT` and the check in `sidebar.tsx`, or turn it off.
-- **Modal Radix overlays** (Dialog, AlertDialog, Sheet, and a modal DropdownMenu) lock scrolling through react-remove-scroll, which injects a `<style>` that the CSP blocks. The shell's menu is `modal={false}`. The Sidebar's phone drawer is a Sheet, so it hits this too: `styles/index.css` now locks scrolling with a static `body[data-scroll-locked]` rule, so the page behind no longer scrolls, but the browser still logs a CSP violation for the blocked `<style>`, which the smoke test would fail on (it runs at desktop width only). T055 options:
+- **Modal Radix overlays** (Dialog, AlertDialog, Sheet, and a modal DropdownMenu) lock scrolling through react-remove-scroll, which injects a `<style>` that the CSP blocks. The shell's menus are `modal={false}`, and the phone drawer is our own, not a Sheet. `styles/index.css` has a static `body[data-scroll-locked]` rule, but the browser still logs a CSP violation for the blocked `<style>`, which the smoke test fails on. Before T055 uses a modal overlay (a confirm dialog, a bottom sheet), the options are:
   - a CSS-class scroll lock in place of react-remove-scroll;
   - `modal={false}` with our own focus handling;
   - a hash in the CSP, which won't work, because the injected style is computed at runtime.

@@ -56,12 +56,12 @@ func simulate(t *testing.T, name string, seed uint64) {
 	log := memory.New()
 	f := &faulty{Bus: b.bus}
 	p, _ := stream.NewPublisher(log, f, quiet)
-	r := newRun(t, ctx, p, log, "run")
-	topic := runTopic(t, ctx, "run")
+	r := newRun(ctx, t, p, log, "run")
+	topic := runTopic(ctx, t, "run")
 
 	var clients [][]*stretch // each client's connections, in order
 	connect := func(after bus.ID) *stretch {
-		return &stretch{w: startWatch(t, ctx, log, b.bus, "run", after)}
+		return &stretch{w: startWatch(ctx, t, log, b.bus, "run", after)}
 	}
 	// collect moves what a connection got so far into its stretch.
 	collect := func(s *stretch) {

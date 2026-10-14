@@ -21,11 +21,11 @@ func TestWatchReplaysThenFollows(t *testing.T) {
 		ctx := tenantCtx(t, "acme")
 		log := memory.New()
 		p, _ := stream.NewPublisher(log, b.bus, quiet)
-		r := newRun(t, ctx, p, log, "run")
+		r := newRun(ctx, t, p, log, "run")
 		r.durable("run_start")
 		r.delta()
 		r.durable("tool_call")
-		w := startWatch(t, ctx, log, b.bus, "run", bus.ID{})
+		w := startWatch(ctx, t, log, b.bus, "run", bus.ID{})
 		// The log has no delta: those of a turn that ended are gone.
 		var got []stream.Event
 		for range 2 {
@@ -59,7 +59,7 @@ func TestWatchResumesAfterEveryID(t *testing.T) {
 		ctx := tenantCtx(t, "acme")
 		log := memory.New()
 		p, _ := stream.NewPublisher(log, b.bus, quiet)
-		r := newRun(t, ctx, p, log, "run")
+		r := newRun(ctx, t, p, log, "run")
 		r.durable("run_start")
 		for range 3 {
 			r.delta()
@@ -68,7 +68,7 @@ func TestWatchResumesAfterEveryID(t *testing.T) {
 		}
 		r.durable("run_done")
 		for _, from := range append([]stream.Event{{}}, r.events...) {
-			got, err := startWatch(t, ctx, log, b.bus, "run", from.ID).end()
+			got, err := startWatch(ctx, t, log, b.bus, "run", from.ID).end()
 			if err != nil {
 				t.Errorf("after %s: err = %v", from.ID, err)
 			}
@@ -94,9 +94,9 @@ func TestWatchTrimmedHistory(t *testing.T) {
 		ctx := tenantCtx(t, "acme")
 		log := memory.New()
 		p, _ := stream.NewPublisher(log, b.bus, quiet)
-		r := newRun(t, ctx, p, log, "run")
+		r := newRun(ctx, t, p, log, "run")
 		r.durable("run_start")
-		w := startWatch(t, ctx, log, b.bus, "run", bus.ID{})
+		w := startWatch(ctx, t, log, b.bus, "run", bus.ID{})
 		got := []stream.Event{w.next()}
 		w.cancel() // a client that went away and comes back later
 		<-w.done
@@ -105,7 +105,7 @@ func TestWatchTrimmedHistory(t *testing.T) {
 			r.delta()
 			r.durable("turn_done")
 		}
-		w2 := startWatch(t, ctx, log, b.bus, "run", got[0].ID)
+		w2 := startWatch(ctx, t, log, b.bus, "run", got[0].ID)
 		got2 := []stream.Event{w2.next()} // a while behind
 		for range 5 {
 			r.delta()
@@ -132,9 +132,9 @@ func TestWatchFailedPublishes(t *testing.T) {
 		log := memory.New()
 		f := &faulty{Bus: b.bus}
 		p, _ := stream.NewPublisher(log, f, quiet)
-		r := newRun(t, ctx, p, log, "run")
+		r := newRun(ctx, t, p, log, "run")
 		r.durable("run_start")
-		w := startWatch(t, ctx, log, b.bus, "run", bus.ID{})
+		w := startWatch(ctx, t, log, b.bus, "run", bus.ID{})
 		got := []stream.Event{w.next()}
 		f.failNext(1)
 		r.durable("tool_call")
@@ -164,11 +164,11 @@ func TestTakeoverRepublishes(t *testing.T) {
 		log := memory.New()
 		dying := &faulty{Bus: b.bus}
 		p, _ := stream.NewPublisher(log, dying, quiet)
-		r := newRun(t, ctx, p, log, "run")
+		r := newRun(ctx, t, p, log, "run")
 		r.durable("run_start")
 		r.durable("tool_call")
 		// A subscriber straight on the bus, as a watch tailing it.
-		sub, err := b.bus.Subscribe(ctx, runTopic(t, ctx, "run"), bus.ID{Seq: 2})
+		sub, err := b.bus.Subscribe(ctx, runTopic(ctx, t, "run"), bus.ID{Seq: 2})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -199,14 +199,14 @@ func TestWatchLostHistory(t *testing.T) {
 		ctx := tenantCtx(t, "acme")
 		log := memory.New()
 		p, _ := stream.NewPublisher(log, b.bus, quiet)
-		r := newRun(t, ctx, p, log, "run")
+		r := newRun(ctx, t, p, log, "run")
 		r.durable("run_start")
 		r.delta()
 		r.durable("tool_call")
-		w := startWatch(t, ctx, log, b.bus, "run", bus.ID{})
+		w := startWatch(ctx, t, log, b.bus, "run", bus.ID{})
 		got := []stream.Event{w.next(), w.next()}
-		b.lose(t, runTopic(t, ctx, "run"))
-		late := startWatch(t, ctx, log, b.bus, "run", bus.ID{Seq: 1})
+		b.lose(t, runTopic(ctx, t, "run"))
+		late := startWatch(ctx, t, log, b.bus, "run", bus.ID{Seq: 1})
 		r.delta()
 		r.durable("tool_result")
 		r.delta()
@@ -236,15 +236,15 @@ func TestWatchTenantsAreSeparate(t *testing.T) {
 		acme, other := tenantCtx(t, "acme"), tenantCtx(t, "other")
 		log := memory.New()
 		p, _ := stream.NewPublisher(log, b.bus, quiet)
-		ra := newRun(t, acme, p, log, "run")
-		ro := newRun(t, other, p, log, "run")
+		ra := newRun(acme, t, p, log, "run")
+		ro := newRun(other, t, p, log, "run")
 		ro.durable("run_start")
 		ra.durable("run_start")
 		ro.durable("secret")
 		ro.durable("run_done")
 		ra.durable("run_done")
 		for _, r := range []*run{ra, ro} {
-			got, err := startWatch(t, r.ctx, log, b.bus, "run", bus.ID{}).end()
+			got, err := startWatch(r.ctx, t, log, b.bus, "run", bus.ID{}).end()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -262,7 +262,7 @@ func TestWatchErrors(t *testing.T) {
 	ctx := tenantCtx(t, "acme")
 	log := memory.New()
 	b := memoryBackend(t, roomy).bus
-	w := startWatch(t, ctx, log, b, "run", bus.ID{})
+	w := startWatch(ctx, t, log, b, "run", bus.ID{})
 	w.cancel()
 	if _, err := w.end(); !errors.Is(err, context.Canceled) {
 		t.Errorf("cancelled watch: err = %v, want context.Canceled", err)

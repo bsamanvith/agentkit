@@ -18,7 +18,7 @@ func steer(i int) store.Command {
 }
 
 // leasedRun makes run runID, leased to owner.
-func leasedRun(t *testing.T, ctx context.Context, s *memory.Store, runID, owner string) {
+func leasedRun(ctx context.Context, t *testing.T, s *memory.Store, runID, owner string) {
 	t.Helper()
 	if _, err := s.Create(ctx, runID, "conv"); err != nil {
 		t.Fatal(err)
@@ -28,7 +28,7 @@ func leasedRun(t *testing.T, ctx context.Context, s *memory.Store, runID, owner 
 	}
 }
 
-func send(t *testing.T, ctx context.Context, c *stream.Commands, runID string, cmd store.Command) store.Command {
+func send(ctx context.Context, t *testing.T, c *stream.Commands, runID string, cmd store.Command) store.Command {
 	t.Helper()
 	got, err := c.Send(ctx, runID, cmd)
 	if err != nil {
@@ -58,13 +58,13 @@ func TestCommandsReachTheRun(t *testing.T) {
 	forEachBus(t, roomy, func(t *testing.T, b backend) {
 		ctx := tenantCtx(t, "acme")
 		s := memory.New()
-		leasedRun(t, ctx, s, "run", "a")
+		leasedRun(ctx, t, s, "run", "a")
 		c, err := stream.NewCommands(s, b.bus, quiet)
 		if err != nil {
 			t.Fatal(err)
 		}
-		send(t, ctx, c, "run", steer(1))
-		send(t, ctx, c, "run", steer(2))
+		send(ctx, t, c, "run", steer(1))
+		send(ctx, t, c, "run", steer(2))
 		in, err := c.Open(ctx, "run", "a")
 		if err != nil {
 			t.Fatal(err)
@@ -73,7 +73,7 @@ func TestCommandsReachTheRun(t *testing.T) {
 		if got := pendingSeqs(t, in); fmt.Sprint(got) != "[1 2]" {
 			t.Errorf("pending at open = %v, want [1 2]", got)
 		}
-		awaitWake(t, ctx, c, in, 3)
+		awaitWake(ctx, t, c, in, 3)
 		if err := in.Consume(2); err != nil {
 			t.Fatal(err)
 		}
@@ -82,7 +82,7 @@ func TestCommandsReachTheRun(t *testing.T) {
 		}
 		// A retry with the same key is the same command, and signals
 		// nothing new.
-		if again := send(t, ctx, c, "run", steer(1)); again.Seq != 1 {
+		if again := send(ctx, t, c, "run", steer(1)); again.Seq != 1 {
 			t.Errorf("a retry was stored at %d, want 1", again.Seq)
 		}
 		// Only the lease holder consumes.
@@ -102,11 +102,11 @@ func TestCommandSignalFails(t *testing.T) {
 	t.Parallel()
 	ctx := tenantCtx(t, "acme")
 	s := memory.New()
-	leasedRun(t, ctx, s, "run", "a")
+	leasedRun(ctx, t, s, "run", "a")
 	f := &faulty{Bus: memoryBackend(t, roomy).bus}
 	c, _ := stream.NewCommands(s, f, quiet)
 	f.failNext(1)
-	if got := send(t, ctx, c, "run", steer(1)); got.Seq != 1 {
+	if got := send(ctx, t, c, "run", steer(1)); got.Seq != 1 {
 		t.Errorf("stored at %d, want 1", got.Seq)
 	}
 	in, _ := c.Open(ctx, "run", "a")
@@ -122,18 +122,18 @@ func TestInboxWakesAfterAGap(t *testing.T) {
 	t.Parallel()
 	ctx := tenantCtx(t, "acme")
 	s := memory.New()
-	leasedRun(t, ctx, s, "run", "a")
+	leasedRun(ctx, t, s, "run", "a")
 	b := memoryBackend(t, roomy)
 	c, _ := stream.NewCommands(s, b.bus, quiet)
 	in, _ := c.Open(ctx, "run", "a")
 	defer in.Close()
 	f := &faulty{Bus: b.bus}
 	cf, _ := stream.NewCommands(s, f, quiet)
-	awaitWake(t, ctx, c, in, 1)
+	awaitWake(ctx, t, c, in, 1)
 	// The signal for 2 fails; the one for 3 is then a gap, not a message.
 	f.failNext(1)
-	send(t, ctx, cf, "run", steer(2))
-	send(t, ctx, c, "run", steer(3))
+	send(ctx, t, cf, "run", steer(2))
+	send(ctx, t, c, "run", steer(3))
 	select {
 	case <-in.Wake():
 	case <-time.After(wait):
@@ -143,10 +143,10 @@ func TestInboxWakesAfterAGap(t *testing.T) {
 
 // awaitWake sends commands from i on until one wakes the inbox (the first
 // may beat its subscription), and returns the next i.
-func awaitWake(t *testing.T, ctx context.Context, c *stream.Commands, in *stream.Inbox, i int) int {
+func awaitWake(ctx context.Context, t *testing.T, c *stream.Commands, in *stream.Inbox, i int) int {
 	t.Helper()
 	for deadline := time.Now().Add(wait); time.Now().Before(deadline); i++ {
-		send(t, ctx, c, "run", steer(i))
+		send(ctx, t, c, "run", steer(i))
 		select {
 		case <-in.Wake():
 			return i + 1

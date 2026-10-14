@@ -88,7 +88,7 @@ func tenantCtx(t *testing.T, id string) context.Context {
 	return tenancy.With(t.Context(), tn)
 }
 
-func runTopic(t *testing.T, ctx context.Context, runID string) bus.Topic {
+func runTopic(ctx context.Context, t *testing.T, runID string) bus.Topic {
 	t.Helper()
 	topic, err := bus.RunTopic(tenancy.MustFrom(ctx), runID)
 	if err != nil {
@@ -145,7 +145,7 @@ type run struct {
 	live   map[bus.ID]bool
 }
 
-func newRun(t *testing.T, ctx context.Context, p *stream.Publisher, log store.EventLog, id string) *run {
+func newRun(ctx context.Context, t *testing.T, p *stream.Publisher, log store.EventLog, id string) *run {
 	t.Helper()
 	r := &run{t: t, ctx: ctx, id: id, log: log, live: map[bus.ID]bool{}}
 	r.reopen(p)
@@ -269,7 +269,7 @@ type watch struct {
 	err    error
 }
 
-func startWatch(t *testing.T, ctx context.Context, log store.EventLog, b bus.Bus, runID string, after bus.ID) *watch {
+func startWatch(ctx context.Context, t *testing.T, log store.EventLog, b bus.Bus, runID string, after bus.ID) *watch {
 	t.Helper()
 	ctx, cancel := context.WithCancel(ctx)
 	w := &watch{t: t, after: after, events: make(chan stream.Event, 100000), cancel: cancel, done: make(chan struct{})}

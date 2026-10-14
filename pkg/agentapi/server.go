@@ -1,7 +1,6 @@
 package agentapi
 
 import (
-	"cmp"
 	"context"
 	"crypto/subtle"
 	"encoding/json"
@@ -16,12 +15,19 @@ import (
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/component"
+	"github.com/bsamanvith/agentkit/pkg/flow"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/runner"
+	"github.com/bsamanvith/agentkit/pkg/store"
+	"github.com/bsamanvith/agentkit/pkg/tenancy"
 )
 
 // Name is the component's name, in /readyz and logs.
 const Name = "agent"
+
+// DefaultTenant is the tenant of a request that [WithTenant] gives none.
+const DefaultTenant = "default"
 
 var (
 	// ErrInvalidConfig reports an unusable argument to [New].
@@ -36,12 +42,10 @@ var (
 	ErrRunsCutOff = errors.New("runs cut off by the shutdown")
 )
 
-// errClientGone is the cause of a run whose client could not be written to.
-var errClientGone = errors.New("client went away")
-
-// Server is the agent API: a [component.Component] serving /v1/ on top of
-// one [harness.Harness] per agent. Build it with [New] or [NewAgents]; it is
-// safe for concurrent use.
+// Server is the agent API: a [component.Component] serving /v1/ on top of a
+// [runner.Runner] that runs one [harness.Harness] per agent and keeps runs in
+// a store. Build it with [New] or [NewAgents]; it is safe for concurrent
+// use.
 type Server struct {
 	cfg     config
 	log     *slog.Logger
@@ -54,8 +58,8 @@ type Server struct {
 	defaultAgent *agent // nil when a run must name its agent
 	toolsets     map[string]*Toolset
 
-	stopCtx context.Context // done when runs must end (the drain deadline, Shutdown)
-	stop    context.CancelCauseFunc
+	store  Store
+	runner *runner.Runner
 
 	closeOnce sync.Once
 	closed    chan struct{} // closed by Shutdown
@@ -63,55 +67,15 @@ type Server struct {
 
 	mu       sync.Mutex
 	draining bool
-	active   sync.WaitGroup // runs going on; Add only under mu while !draining
-	runs     map[string]*run
-	runOrder []*run // creation order
-	convs    map[string]*conversation
-	convSeq  uint64   // counts conversations created, for conversation.seq
-	touches  uint64   // counts conversation starts and ends, for conversation.touched
+	active   sync.WaitGroup // executions going on; Add only under mu while !draining
+	hubs     map[hubKey]*hub
+	finished []*hub   // hubs whose execution ended, oldest first: the retention order
 	cut      []string // runs ended by the shutdown
 }
 
+type hubKey struct{ tenant, runID string }
+
 var _ component.Component = (*Server)(nil)
-
-// run is a run's state. Guarded by Server.mu.
-type run struct {
-	id, convID string
-	agent      string
-	tenant     string
-	created    time.Time
-	finished   time.Time
-	status     string
-	answer     string
-	usage      llm.Usage
-	turns      int
-	err        *Error
-	record     *Record
-}
-
-// conversation is a conversation's state. Guarded by Server.mu.
-type conversation struct {
-	id               string
-	agent            *agent
-	tenant           string
-	seq              uint64 // order of creation, from 1: the listing order
-	title            string
-	created, updated time.Time
-	touched          uint64 // Server.touches when it was created or a run of it last started or ended: the eviction order
-	messages         []harness.TimedMessage
-	running          bool
-}
-
-func (c *conversation) status() string {
-	switch {
-	case c.running:
-		return StatusRunning
-	case len(c.messages) > 0 && c.messages[len(c.messages)-1].Message.Role == llm.RoleUser:
-		return StatusInterrupted
-	default:
-		return StatusIdle
-	}
-}
 
 // New returns the agent API for h, the one agent, named [DefaultAgent]. It
 // fails with [ErrInvalidConfig] for a nil harness or an option with an
@@ -129,10 +93,12 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 		return nil, fmt.Errorf("%w: the token must be at least %d bytes", ErrInvalidConfig, MinTokenLength)
 	case cfg.maxConcurrent < 1:
 		return nil, fmt.Errorf("%w: max concurrent runs must be at least 1", ErrInvalidConfig)
-	case cfg.runTimeout < 0, cfg.retention <= 0, cfg.keepAlive < 0:
-		return nil, fmt.Errorf("%w: negative run timeout or keep-alive, or a retention that is not positive", ErrInvalidConfig)
+	case cfg.runTimeout < 0, cfg.retention <= 0, cfg.keepAlive < 0, cfg.grace < 0:
+		return nil, fmt.Errorf("%w: negative run timeout, keep-alive or reconnect grace, or a retention that is not positive", ErrInvalidConfig)
 	case cfg.maxRuns < 1, cfg.maxConvs < 1, cfg.maxBodyBytes < 1:
 		return nil, fmt.Errorf("%w: retention counts and the body limit must be at least 1", ErrInvalidConfig)
+	case cfg.store == nil:
+		return nil, fmt.Errorf("%w: no store (WithStore)", ErrInvalidConfig)
 	case cfg.clock == nil, cfg.newID == nil:
 		return nil, fmt.Errorf("%w: nil clock or ID function", ErrInvalidConfig)
 	case cfg.drainRequested && (cfg.drainStop == nil || cfg.drainAfter < 0):
@@ -143,10 +109,19 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 		agents: agents, agentOrder: order, defaultAgent: def, toolsets: toolsets,
 		slots:  make(chan struct{}, cfg.maxConcurrent),
 		closed: make(chan struct{}),
-		runs:   map[string]*run{},
-		convs:  map[string]*conversation{},
+		hubs:   map[hubKey]*hub{},
+		store:  cfg.store,
 	}
-	s.stopCtx, s.stop = context.WithCancelCause(context.Background())
+	ropts := append([]runner.Option{
+		runner.WithClock(cfg.clock),
+		runner.WithIDs(func() string { return cfg.newID("run_") }),
+	}, cfg.runnerOpts...)
+	rn, err := runner.New(s.store, s.agentFor, ropts...)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+	}
+	s.runner = rn
+
 	mux := http.NewServeMux()
 	// Every endpoint is in this table, which [Server.Routes] lists, so the
 	// OpenAPI test sees each one.
@@ -155,7 +130,13 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 		handler http.HandlerFunc
 	}{
 		{"POST /v1/runs", s.postRun},
+		{"GET /v1/runs", s.listRuns},
 		{"GET /v1/runs/{id}", s.getRun},
+		{"GET /v1/runs/{id}/events", s.runEvents},
+		{"POST /v1/runs/{id}/resume", s.resumeRun},
+		{"POST /v1/runs/{id}/stop", s.stopRun},
+		{"POST /v1/runs/{id}/cancel", s.cancelRun},
+		{"POST /v1/runs/{id}/decisions", s.decideRun},
 		{"POST /v1/conversations", s.createConversation},
 		{"GET /v1/conversations", s.listConversations},
 		{"GET /v1/conversations/{id}", s.getConversation},
@@ -179,9 +160,30 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 	return s, nil
 }
 
+// errNoAgent means a conversation's agent is not one this server runs.
+var errNoAgent = errors.New("agent not served")
+
+// agentFor is the runner's agent factory: the harness of the conversation's
+// agent, from its record.
+func (s *Server) agentFor(ctx context.Context, conversationID string) (runner.Agent, error) {
+	c, err := s.store.GetConversation(ctx, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	a := s.agents[c.Agent]
+	if a == nil {
+		return nil, fmt.Errorf("%w: conversation %q is of agent %q", errNoAgent, conversationID, c.Agent)
+	}
+	return a.Harness, nil
+}
+
 // Routes returns the server's endpoints as "METHOD /path" patterns
 // (net/http's, such as "GET /v1/runs/{id}"), in a fixed order.
 func (s *Server) Routes() []string { return slices.Clone(s.routes) }
+
+// Runner returns the runner the server runs its runs with, for the recovery
+// loop ([runner.NewRecovery]) of the process.
+func (s *Server) Runner() *runner.Runner { return s.runner }
 
 // Name implements [component.Component]: "agent".
 func (s *Server) Name() string { return Name }
@@ -192,17 +194,21 @@ func (s *Server) Handler() http.Handler { return s.handler }
 // Ready implements [component.Component]: the server is ready once built.
 func (s *Server) Ready(ctx context.Context) error { return ctx.Err() }
 
-// Shutdown ends the runs still going on with [CodeShutdown] and waits for
-// them to be recorded, until ctx is done. It returns an error matching
-// [ErrRunsCutOff] if the shutdown ended any run (here or at the drain
-// deadline), so an unclean shutdown is reported. Later requests get 503.
+// Shutdown stops the runs still going on, which end with [CodeShutdown] and
+// stay interrupted in the store, and waits for them to be stored, until ctx
+// is done. It returns an error matching [ErrRunsCutOff] if the shutdown
+// stopped any run (here or at the drain deadline), so an unclean shutdown is
+// reported. Later requests get 503. Stop the recovery loop first.
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.mu.Lock()
 	s.draining = true
 	s.mu.Unlock()
 	s.closeOnce.Do(func() { close(s.closed) })
-	s.stop(ErrShutdown)
 
+	var errs []error
+	if err := s.runner.Shutdown(ctx); err != nil {
+		errs = append(errs, fmt.Errorf("stopping the runs: %w", err))
+	}
 	done := make(chan struct{})
 	go func() {
 		s.active.Wait()
@@ -211,7 +217,6 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		}
 		close(done)
 	}()
-	var errs []error
 	select {
 	case <-done:
 	case <-ctx.Done():
@@ -226,7 +231,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// drain waits for stop, then refuses new runs, and after the given time ends
+// drain waits for stop, then refuses new runs, and after the given time stops
 // the runs still going on.
 func (s *Server) drain(stop <-chan struct{}, after time.Duration) {
 	defer close(s.drainDone)
@@ -245,9 +250,18 @@ func (s *Server) drain(stop <-chan struct{}, after time.Duration) {
 	select {
 	case <-t.C():
 		if n := len(s.slots); n > 0 {
-			s.log.Warn("ending runs at the drain deadline", "active", n)
+			s.log.Warn("stopping runs at the drain deadline", "active", n)
 		}
-		s.stop(ErrShutdown)
+		ctx, cancel := context.WithCancel(context.Background())
+		go func() {
+			select {
+			case <-s.closed:
+			case <-ctx.Done():
+			}
+			cancel()
+		}()
+		_ = s.runner.Shutdown(ctx) // Shutdown waits for what is left
+		cancel()
 	case <-s.closed:
 	}
 }
@@ -269,13 +283,19 @@ func (s *Server) auth(next http.Handler) http.Handler {
 	})
 }
 
-// started is a run that passed admission.
-type started struct {
-	agent      *agent
-	run        *run
-	conv       *conversation
-	message    string // empty to resume
-	transcript harness.Transcript
+// scope returns r's context with the request's tenant, which every store call
+// is scoped by. It answers 500 for a tenant the middleware got wrong.
+func (s *Server) scope(w http.ResponseWriter, r *http.Request) (context.Context, bool) {
+	id := s.tenantOf(r)
+	if id == "" {
+		id = DefaultTenant
+	}
+	t, err := tenancy.NewTenant(id)
+	if err != nil {
+		s.internal(w, "reading the request's tenant", err)
+		return nil, false
+	}
+	return tenancy.With(r.Context(), t), true
 }
 
 func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
@@ -284,16 +304,81 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 		writeError(w, code, apiErr)
 		return
 	}
-	st, apiErr, code := s.admit(req, s.tenantOf(r))
-	if apiErr != nil {
-		if code == http.StatusServiceUnavailable {
-			w.Header().Set("Retry-After", retryAfter)
-		}
-		writeError(w, code, apiErr)
+	ctx, ok := s.scope(w, r)
+	if !ok {
 		return
 	}
-	defer s.active.Done()
-	s.execute(w, r, st, wantsJSON(r.Header.Get("Accept")))
+	if s.isDraining() {
+		s.unavailable(w, shuttingDown())
+		return
+	}
+	hasMessage := strings.TrimSpace(req.Message) != ""
+	convID := req.ConversationID
+	var ag *agent
+	if convID != "" {
+		c, err := s.store.GetConversation(ctx, convID)
+		switch {
+		case errors.Is(err, store.ErrNotFound), errors.Is(err, store.ErrInvalid):
+			writeError(w, http.StatusNotFound, notFoundConversation(convID))
+			return
+		case err != nil:
+			s.internal(w, "reading conversation "+quote(convID), err)
+			return
+		case req.Agent != "" && req.Agent != c.Agent:
+			writeError(w, http.StatusConflict, &Error{Code: CodeAgentMismatch, Message: "the conversation belongs to agent " + quote(c.Agent) + ", not " + quote(req.Agent) + "; continue it without \"agent\", or start a new conversation"})
+			return
+		}
+		if ag = s.agents[c.Agent]; ag == nil {
+			writeError(w, http.StatusConflict, &Error{Code: CodeAgentMismatch, Message: "the conversation belongs to agent " + quote(c.Agent) + ", which this server no longer runs"})
+			return
+		}
+		if !hasMessage {
+			s.resumeConversation(ctx, w, r, convID)
+			return
+		}
+	} else {
+		if !hasMessage {
+			writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "message is empty"})
+			return
+		}
+		if ag, apiErr, code = s.resolveAgent(req.Agent); apiErr != nil {
+			writeError(w, code, apiErr)
+			return
+		}
+	}
+	if apiErr := s.admit(); apiErr != nil {
+		s.unavailable(w, apiErr)
+		return
+	}
+	created := false
+	if convID == "" {
+		convID = s.cfg.newID("conv_")
+		if _, err := s.store.CreateConversation(ctx, store.Conversation{ID: convID, Agent: ag.Name}); err != nil {
+			s.release()
+			s.internal(w, "creating a conversation", err)
+			return
+		}
+		created = true
+	}
+	execCtx, cancel := execContext(ctx)
+	x, err := s.runner.Run(execCtx, convID, harness.UserText(req.Message), runner.Interactive())
+	if err != nil {
+		cancel(nil)
+		s.release()
+		if created {
+			if derr := s.store.DeleteConversation(ctx, convID); derr != nil {
+				s.log.Warn("deleting the conversation of a run that did not start", "conversation_id", convID, "err", derr)
+			}
+		}
+		s.startError(w, err, CodeBusy)
+		return
+	}
+	if _, err := s.store.SetTitle(ctx, convID, title(req.Message)); err != nil {
+		s.log.Warn("setting a conversation's title", "conversation_id", convID, "err", err)
+	}
+	s.log.Info("run started", "run_id", x.Run.ID, "conversation_id", convID, "agent", ag.Name)
+	h := s.launch(execCtx, cancel, x, replayed{})
+	s.respond(w, r, h, 0)
 }
 
 // decode reads and checks the body of POST /v1/runs. Unknown fields and
@@ -341,136 +426,105 @@ func wantsJSON(accept string) bool {
 	return strings.Contains(accept, "application/json") && !strings.Contains(accept, "text/event-stream")
 }
 
-// admit checks the request against the conversation and the limits, and
-// registers the run. On success the caller must call s.active.Done when the
-// run has been finished.
-func (s *Server) admit(req RunRequest, tenant string) (*started, *Error, int) {
+func (s *Server) isDraining() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.draining
+}
+
+func shuttingDown() *Error {
+	return &Error{Code: CodeShuttingDown, Message: "the server is shutting down", Retryable: true}
+}
+
+// admit takes a slot for an execution. On success the caller must call
+// release when the execution has ended, or did not start.
+func (s *Server) admit() *Error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.draining {
-		return nil, &Error{Code: CodeShuttingDown, Message: "the server is shutting down", Retryable: true}, http.StatusServiceUnavailable
-	}
-	now := s.cfg.clock.Now()
-	s.evict(now, nil)
-	hasMessage := strings.TrimSpace(req.Message) != ""
-	conv := (*conversation)(nil)
-	var ag *agent
-	if req.ConversationID != "" {
-		conv = s.convs[req.ConversationID]
-		if conv != nil && conv.tenant != tenant {
-			conv = nil // another tenant's conversation does not exist for this one
-		}
-		switch {
-		case conv == nil:
-			return nil, notFoundConversation(req.ConversationID), http.StatusNotFound
-		case req.Agent != "" && req.Agent != conv.agent.Name:
-			return nil, &Error{Code: CodeAgentMismatch, Message: "the conversation belongs to agent " + quote(conv.agent.Name) + ", not " + quote(req.Agent) + "; continue it without \"agent\", or start a new conversation"}, http.StatusConflict
-		case conv.running:
-			return nil, &Error{Code: CodeBusy, Message: "a run of this conversation is going on; wait for it to end", Retryable: true}, http.StatusConflict
-		case conv.status() == StatusInterrupted && hasMessage:
-			return nil, &Error{Code: CodeInterrupted, Message: "the conversation's last run stopped before answering; resume it first with an empty message"}, http.StatusConflict
-		case conv.status() != StatusInterrupted && !hasMessage:
-			return nil, &Error{Code: CodeInvalidRequest, Message: "message is empty"}, http.StatusBadRequest
-		}
-		ag = conv.agent
-	} else {
-		if !hasMessage {
-			return nil, &Error{Code: CodeInvalidRequest, Message: "message is empty"}, http.StatusBadRequest
-		}
-		var apiErr *Error
-		var code int
-		if ag, apiErr, code = s.resolveAgent(req.Agent); apiErr != nil {
-			return nil, apiErr, code
-		}
+		return shuttingDown()
 	}
 	select {
 	case s.slots <- struct{}{}:
 	default:
-		return nil, &Error{Code: CodeOverCapacity, Message: fmt.Sprintf("%d runs are going on, the most this server takes; retry later", s.cfg.maxConcurrent), Retryable: true}, http.StatusServiceUnavailable
+		return &Error{Code: CodeOverCapacity, Message: fmt.Sprintf("%d runs are going on, the most this server takes; retry later", s.cfg.maxConcurrent), Retryable: true}
 	}
-	if conv == nil {
-		conv = s.newConversation(ag, tenant, now)
-	}
-	if conv.title == "" && hasMessage { // its first message
-		conv.title = title(req.Message)
-	}
-	s.touches++
-	conv.running, conv.updated, conv.touched = true, now, s.touches
-	transcript := make(harness.Transcript, len(conv.messages))
-	for i, m := range conv.messages {
-		transcript[i] = m.Message
-	}
-	ru := &run{id: s.cfg.newID("run_"), convID: conv.id, agent: ag.Name, tenant: tenant, created: now, status: StatusRunning}
-	s.runs[ru.id] = ru
-	s.runOrder = append(s.runOrder, ru)
-	s.evict(now, nil)
 	s.active.Add(1)
-	msg := ""
-	if hasMessage {
-		msg = req.Message
-	}
-	return &started{agent: ag, run: ru, conv: conv, message: msg, transcript: transcript}, nil, 0
+	return nil
 }
 
-// newConversation creates an empty conversation of ag for tenant and adds it
-// to the server's. Called with Server.mu held.
-func (s *Server) newConversation(ag *agent, tenant string, now time.Time) *conversation {
-	s.convSeq++
-	s.touches++
-	c := &conversation{id: s.cfg.newID("conv_"), agent: ag, tenant: tenant, seq: s.convSeq, created: now, updated: now, touched: s.touches}
-	s.convs[c.id] = c
-	return c
+func (s *Server) release() {
+	<-s.slots
+	s.active.Done()
 }
 
-// evict drops what retention no longer allows: finished runs and idle
-// conversations older than the retention, then the least recently used past
-// the counts. It never drops keep.
-func (s *Server) evict(now time.Time, keep *conversation) {
-	cutoff := now.Add(-s.cfg.retention)
-	kept := s.runOrder[:0]
-	finished := 0
-	for _, r := range s.runOrder {
-		if r.status != StatusRunning {
-			finished++
-		}
-	}
-	for _, r := range s.runOrder {
-		if r.status != StatusRunning && (r.finished.Before(cutoff) || finished > s.cfg.maxRuns) {
-			delete(s.runs, r.id)
-			finished--
-			continue
-		}
-		kept = append(kept, r)
-	}
-	clear(s.runOrder[len(kept):])
-	s.runOrder = kept
+// unavailable answers 503 with Retry-After.
+func (s *Server) unavailable(w http.ResponseWriter, e *Error) {
+	w.Header().Set("Retry-After", retryAfter)
+	writeError(w, http.StatusServiceUnavailable, e)
+}
 
-	var idle []*conversation
-	for _, c := range s.convs {
-		if c.running || c == keep {
-			continue
-		}
-		if c.updated.Before(cutoff) {
-			delete(s.convs, c.id)
-			continue
-		}
-		idle = append(idle, c)
-	}
-	if extra := len(s.convs) - s.cfg.maxConvs; extra > 0 {
-		slices.SortFunc(idle, func(a, b *conversation) int { return cmp.Compare(a.touched, b.touched) })
-		for _, c := range idle[:min(extra, len(idle))] {
-			delete(s.convs, c.id)
-		}
+// execContext is the context of an execution: the request's tenant, but
+// not its cancellation, since a run outlives its request (the reconnect
+// grace).
+func execContext(req context.Context) (context.Context, context.CancelCauseFunc) {
+	t, _ := tenancy.From(req)
+	return context.WithCancelCause(tenancy.With(context.Background(), t))
+}
+
+// startError answers a run the runner would not start or resume. busy is the
+// code of a run that is going on.
+func (s *Server) startError(w http.ResponseWriter, err error, busy string) {
+	var unfinished *runner.UnfinishedError
+	switch {
+	case errors.As(err, &unfinished):
+		writeError(w, http.StatusConflict, &Error{Code: CodeBusy, RunID: unfinished.RunID, Retryable: true, Message: "run " + quote(unfinished.RunID) + " of this conversation is going on; wait for it to end, or stop it"})
+	case errors.Is(err, store.ErrLeased):
+		writeError(w, http.StatusConflict, &Error{Code: busy, Retryable: true, Message: "the run is going on: " + err.Error()})
+	case errors.Is(err, store.ErrNotFound):
+		writeError(w, http.StatusNotFound, &Error{Code: CodeNotFound, Message: err.Error()})
+	case errors.Is(err, runner.ErrInvalidInput):
+		writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: err.Error()})
+	case errors.Is(err, store.ErrFinal), errors.Is(err, runner.ErrNotStarted):
+		writeError(w, http.StatusConflict, &Error{Code: CodeRunFinal, Message: err.Error()})
+	case errors.Is(err, runner.ErrAwaitingDecision):
+		writeError(w, http.StatusConflict, &Error{Code: CodeAwaitingDecision, Message: "the run waits for a decision (POST /v1/runs/{id}/decisions)"})
+	case errors.Is(err, runner.ErrNotPending):
+		writeError(w, http.StatusConflict, &Error{Code: CodeNotPending, Message: err.Error()})
+	case errors.Is(err, flow.ErrShapeChanged):
+		writeError(w, http.StatusConflict, &Error{Code: CodeShapeChanged, Message: err.Error()})
+	case errors.Is(err, runner.ErrNoFlows):
+		writeError(w, http.StatusConflict, &Error{Code: CodeInvalidRequest, Message: "this server runs no flows"})
+	case errors.Is(err, runner.ErrShutdown):
+		s.unavailable(w, shuttingDown())
+	default:
+		s.internal(w, "starting the run", err)
 	}
 }
 
-// execute runs the harness for st and writes the outcome: events as they come,
-// or the final run as JSON.
-func (s *Server) execute(w http.ResponseWriter, r *http.Request, st *started, asJSON bool) {
-	ctx, cancel := context.WithCancelCause(r.Context())
+// launch registers the hub of an execution, seeded with the events the run
+// had, and runs the execution in its own goroutine. The admit slot is the
+// execution's: drive releases it.
+func (s *Server) launch(ctx context.Context, cancel context.CancelCauseFunc, x *runner.Execution, seed replayed) *hub {
+	t, _ := tenancy.From(ctx)
+	h := newHub(x.Run.ID, x.Run.ConversationID, t, x.Run.Interactive, seed.events)
+	s.mu.Lock()
+	k := hubKey{t.ID(), h.runID}
+	if old := s.hubs[k]; old != nil {
+		s.finished = slices.DeleteFunc(s.finished, func(f *hub) bool { return f == old })
+	}
+	s.hubs[k] = h
+	s.mu.Unlock()
+	go s.drive(ctx, cancel, x, h, seed)
+	return h
+}
+
+// drive runs an execution to its end, whoever follows it: its events go to
+// the hub, and the last one says how the execution ended.
+func (s *Server) drive(ctx context.Context, cancel context.CancelCauseFunc, x *runner.Execution, h *hub, seed replayed) {
+	freeSlot := sync.OnceFunc(func() { <-s.slots })
+	defer func() { freeSlot(); s.active.Done() }() // s.release, in two steps
 	defer cancel(nil)
-	stopAfter := context.AfterFunc(s.stopCtx, func() { cancel(context.Cause(s.stopCtx)) })
-	defer stopAfter()
 	if s.cfg.runTimeout > 0 {
 		t := s.cfg.clock.NewTimer(s.cfg.runTimeout)
 		defer t.Stop()
@@ -482,165 +536,137 @@ func (s *Server) execute(w http.ResponseWriter, r *http.Request, st *started, as
 			}
 		}()
 	}
-	s.log.Info("run started", "run_id", st.run.id, "conversation_id", st.conv.id, "agent", st.agent.Name, "resume", st.message == "")
-
-	var out *sseWriter
-	if !asJSON {
-		out = newSSEWriter(w, func() { cancel(errClientGone) })
-		h := w.Header()
-		h.Set("Content-Type", "text/event-stream")
-		h.Set("Cache-Control", "no-store")
-		h.Set("X-Accel-Buffering", "no")
-		h.Set("Agentkit-Run-Id", st.run.id)
-		h.Set("Agentkit-Conversation-Id", st.conv.id)
-		out.open()
-		defer out.close()
-		if s.cfg.keepAlive > 0 {
-			stopKeepAlive := out.keepAlive(s.cfg.clock, s.cfg.keepAlive)
-			defer stopKeepAlive()
-		}
-	}
-
-	in := harness.Input{Transcript: st.transcript}
-	if st.message != "" {
-		in.Message = harness.UserText(st.message)
-	}
-	seq := 0
-	emit := func(e Event) {
-		if out != nil {
-			out.event(e)
-		}
-		seq++
-	}
+	// base is the run's turns and usage before the harness's current attempt,
+	// which numbers its turns from 1.
+	baseTurns, baseUsage := seed.turns, seed.usage
+	turns, usage, final := seed.turns, seed.usage, seed.final
+	started := len(seed.events) > 0
 	var (
-		result *harness.Result
+		done   *runner.Event
 		runErr error
 	)
-	for ev, err := range st.agent.Harness.Run(ctx, in) {
+	for ev, err := range x.Events() {
 		if err != nil {
 			runErr = err
 			break
 		}
-		if ev.Kind == harness.EventRunDone {
-			result = ev.Result
-			continue
+		switch ev.Kind {
+		case runner.EventHarness:
+			switch ev.Harness.Kind {
+			case harness.EventRunDone:
+				continue
+			case harness.EventRunStart:
+				if started { // a resume or a retry: the run started before
+					continue
+				}
+				started = true
+			case harness.EventTurnDone:
+				turns, usage = turns+1, usage.Add(ev.Harness.TurnRecord.Usage)
+				reply := ev.Harness.TurnRecord.Messages[0].Message
+				final = &reply
+			}
+			if e, ok := wireEvent(h.runID, h.convID, baseTurns, ev.Harness); ok {
+				h.append(e)
+			}
+		case runner.EventRetrying:
+			baseTurns, baseUsage = turns, usage
+			h.append(Event{
+				V: WireVersion, Type: TypeRetrying, RunID: h.runID, At: s.cfg.clock.Now(),
+				Attempt: ev.Attempt, DelayMS: ms(ev.Delay), Error: s.classify(h.runID, ev.Err),
+			})
+		case runner.EventDone:
+			e := ev
+			done = &e
 		}
-		e, ok := wireEvent(st.run.id, st.conv.id, seq, ev)
-		if !ok {
-			continue
-		}
-		s.apply(st, ev)
-		emit(e)
 	}
-	if seq == 0 { // the run failed before it started: announce it anyway
-		emit(Event{V: WireVersion, Type: TypeRunStart, Seq: 0, RunID: st.run.id, ConversationID: st.conv.id, At: s.cfg.clock.Now()})
+	now := s.cfg.clock.Now()
+	if !started { // the run failed before it started: announce it anyway
+		h.append(Event{V: WireVersion, Type: TypeRunStart, RunID: h.runID, ConversationID: h.convID, At: now})
 	}
-
-	end := Event{V: WireVersion, Seq: seq, RunID: st.run.id}
-	var rec *Record
+	end := Event{V: WireVersion, Type: TypeRunError, RunID: h.runID, At: now}
 	switch {
-	case result != nil:
-		final := result.Final
-		usage := result.Usage
-		end.Type, end.At = TypeRunDone, result.Record.FinishedAt
-		end.Answer, end.Final, end.Usage, end.Turns = final.Text(), &final, &usage, result.Turns
-		rec = record(result.Record)
+	case done != nil && done.Run.Status == store.StatusCompleted:
+		end.Type = TypeRunDone
+		if r := done.Result; r != nil {
+			f := r.Final
+			final, turns, usage = &f, baseTurns+r.Turns, baseUsage.Add(r.Usage)
+		}
+		if final != nil {
+			f := *final
+			end.Answer, end.Final = f.Text(), &f
+		}
+		end.Usage, end.Turns = &usage, turns
+	case done != nil:
+		end = *ending(done.Run, replayed{turns: turns, usage: usage, final: final}, now)
 	default:
-		if runErr == nil { // cannot happen: a run ends with run_done or an error
-			runErr = errors.New("the run ended without an outcome")
+		var hre *harness.RunError
+		if errors.As(runErr, &hre) {
+			turns, usage = baseTurns+hre.Turns(), baseUsage.Add(hre.Usage())
 		}
-		end.Type, end.At = TypeRunError, s.cfg.clock.Now()
-		end.Error = s.classify(st.run.id, runErr, context.Cause(ctx))
-		var re *harness.RunError
-		if errors.As(runErr, &re) {
-			usage := re.Usage()
-			end.Usage, end.Turns = &usage, re.Turns()
-			rec = record(re.Record())
-			end.At = rec.FinishedAt
-		} else {
-			end.Usage = &llm.Usage{}
-		}
+		end.Usage, end.Turns = &usage, turns
+		end.Error = s.stopped(h.runID, runErr, context.Cause(ctx))
 	}
-	s.finish(st, end, rec)
-	emit(end)
-	if asJSON {
-		writeJSON(w, http.StatusOK, s.view(st.run))
-	}
-}
+	// The slot is free before the run's last event reaches its clients, so
+	// one that starts its next run at once is not refused.
+	freeSlot()
+	h.finish(&end, now)
 
-// apply records a harness event in the run and its conversation: the
-// conversation grows by the prompt and by each completed turn, so it always
-// holds what the model has seen, even if the run fails later.
-func (s *Server) apply(st *started, ev harness.Event) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	switch ev.Kind {
-	case harness.EventRunStart:
-		if ev.Prompt != nil {
-			st.conv.messages = append(st.conv.messages, *ev.Prompt)
-		}
-	case harness.EventTurnDone:
-		st.conv.messages = append(st.conv.messages, ev.TurnRecord.Messages...)
-		st.run.turns = ev.TurnRecord.Turn
-		st.run.usage = st.run.usage.Add(ev.TurnRecord.Usage)
-	default:
-		return
+	if end.Error != nil && end.Error.Code == CodeShutdown {
+		s.cut = append(s.cut, h.runID)
 	}
-	st.conv.updated = ev.At
-}
-
-// finish records the run's outcome and frees its slot.
-func (s *Server) finish(st *started, end Event, rec *Record) {
-	s.mu.Lock()
-	ru := st.run
-	ru.finished, ru.record, ru.turns = end.At, rec, end.Turns
-	if end.Usage != nil {
-		ru.usage = *end.Usage
-	}
-	if end.Type == TypeRunDone {
-		ru.status, ru.answer = StatusDone, end.Answer
-	} else {
-		ru.status, ru.err = StatusFailed, end.Error
-		if end.Error.Code == CodeShutdown {
-			s.cut = append(s.cut, ru.id)
-		}
-	}
-	s.touches++
-	st.conv.running, st.conv.updated, st.conv.touched = false, s.cfg.clock.Now(), s.touches
-	<-s.slots
+	s.finished = append(s.finished, h)
+	s.evict(now)
 	s.mu.Unlock()
 
 	attrs := []any{
-		"run_id", ru.id, "conversation_id", ru.convID, "status", ru.status, "turns", ru.turns,
-		"input_tokens", ru.usage.InputTokens, "output_tokens", ru.usage.OutputTokens,
-		"cache_read_tokens", ru.usage.CacheReadTokens, "cache_write_tokens", ru.usage.CacheWriteTokens,
+		"run_id", h.runID, "conversation_id", h.convID, "event", end.Type, "turns", end.Turns,
+		"input_tokens", usage.InputTokens, "output_tokens", usage.OutputTokens,
+		"cache_read_tokens", usage.CacheReadTokens, "cache_write_tokens", usage.CacheWriteTokens,
 	}
 	switch {
-	case ru.err == nil:
+	case end.Error == nil:
 		s.log.Info("run done", attrs...)
-	case ru.err.Code == CodeShutdown:
-		s.log.Warn("run cut off by the shutdown", append(attrs, "error", ru.err.Message)...)
+	case end.Error.Code == CodeShutdown:
+		s.log.Warn("run cut off by the shutdown", append(attrs, "error", end.Error.Message)...)
 	default:
-		s.log.Info("run failed", append(attrs, "code", ru.err.Code, "error", ru.err.Message)...)
+		s.log.Info("run ended", append(attrs, "code", end.Error.Code, "error", end.Error.Message)...)
 	}
 }
 
-// classify turns a run's error into its wire form. cause is the run
-// context's cause, which says why a cancelled run was cancelled.
-func (s *Server) classify(runID string, err, cause error) *Error {
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		s.mu.Lock()
-		draining := s.draining
-		s.mu.Unlock()
-		switch {
-		case errors.Is(cause, ErrShutdown), draining:
-			return &Error{Code: CodeShutdown, Message: "the server shut down before the run finished; the completed turns are kept", Retryable: true}
-		case errors.Is(cause, ErrRunTimeout):
-			return &Error{Code: CodeTimeout, Message: fmt.Sprintf("the run took longer than %s; the completed turns are kept", s.cfg.runTimeout)}
-		default:
-			return &Error{Code: CodeCancelled, Message: "the client went away; the completed turns are kept"}
-		}
+// stopped is the wire error of an execution that ended with err. cause is
+// the execution context's cause.
+func (s *Server) stopped(runID string, err, cause error) *Error {
+	var re *runner.RunError
+	switch {
+	case errors.Is(err, runner.ErrInterrupted):
+		return interruptedError(runID)
+	case errors.Is(err, runner.ErrShutdown):
+		return &Error{Code: CodeShutdown, Message: "the server shut down before the run finished; the stored turns are kept, resume it", Retryable: true}
+	case errors.Is(err, runner.ErrCanceled):
+		return &Error{Code: CodeCancelled, Message: "the run was canceled"}
+	case errors.Is(err, store.ErrLeaseLost), errors.Is(err, store.ErrLeased),
+		errors.Is(cause, store.ErrLeaseLost), errors.Is(cause, store.ErrLeased):
+		// The store gave the run to another process, or could not renew its
+		// lease in time: this server stopped executing it.
+		s.log.Warn("run lost its lease", "run_id", runID, "err", cause)
+		return interruptedError(runID)
+	case errors.Is(cause, ErrRunTimeout):
+		return &Error{Code: CodeTimeout, Message: fmt.Sprintf("the run took longer than %s; the stored turns are kept, resume it", s.cfg.runTimeout)}
+	case errors.As(err, &re):
+		e := s.classify(runID, re.Err)
+		e.Retryable = e.Retryable || re.Run.Retryable
+		return e
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return interruptedError(runID)
+	default:
+		s.log.Error("run stopped by an internal error", "run_id", runID, "err", err)
+		return &Error{Code: CodeInternal, Message: "internal error; see the server log for run " + runID}
 	}
+}
+
+// classify turns the error of a failed run into its wire form.
+func (s *Server) classify(runID string, err error) *Error {
 	msg := err.Error()
 	var refusal *harness.RefusalError
 	switch {
@@ -662,80 +688,119 @@ func (s *Server) classify(runID string, err, cause error) *Error {
 		return &Error{Code: CodeContextTooLong, Message: msg}
 	case errors.Is(err, llm.ErrInvalidRequest):
 		return &Error{Code: CodeModelRejected, Message: msg}
+	case errors.Is(err, flow.ErrShapeChanged):
+		return &Error{Code: CodeShapeChanged, Message: msg}
 	default:
 		s.log.Error("run failed with an internal error", "run_id", runID, "err", err)
 		return &Error{Code: CodeInternal, Message: "internal error; see the server log for run " + runID}
 	}
 }
 
-func (s *Server) getRun(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	s.mu.Lock()
-	ru := s.runs[id]
-	if ru != nil && ru.tenant != s.tenantOf(r) {
-		ru = nil
+// evict lets go of the hubs retention no longer allows: past the count, and
+// older than the retention. Called with Server.mu held.
+func (s *Server) evict(now time.Time) {
+	cutoff := now.Add(-s.cfg.retention)
+	n := 0
+	for n < len(s.finished) && (len(s.finished)-n > s.cfg.maxRuns || s.finished[n].finished.Before(cutoff)) {
+		h := s.finished[n]
+		if k := (hubKey{h.tenant.ID(), h.runID}); s.hubs[k] == h {
+			delete(s.hubs, k)
+		}
+		n++
 	}
-	var v Run
-	if ru != nil {
-		v = s.viewLocked(ru)
-	}
-	s.mu.Unlock()
-	if ru == nil {
-		writeError(w, http.StatusNotFound, &Error{Code: CodeNotFound, Message: "no run " + quote(id) + " (runs are kept in memory, for a while, and lost on restart)"})
-		return
-	}
-	writeJSON(w, http.StatusOK, v)
+	clear(s.finished[:n])
+	s.finished = s.finished[n:]
 }
 
-func (s *Server) view(ru *run) Run {
+// hubOf returns the run's hub, or nil.
+func (s *Server) hubOf(ctx context.Context, runID string) *hub {
+	t, _ := tenancy.From(ctx)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.viewLocked(ru)
+	s.evict(s.cfg.clock.Now())
+	return s.hubs[hubKey{t.ID(), runID}]
 }
 
-func (s *Server) viewLocked(ru *run) Run {
-	v := Run{
-		V: WireVersion, ID: ru.id, ConversationID: ru.convID, Agent: ru.agent, Status: ru.status, CreatedAt: ru.created,
-		Answer: ru.answer, Usage: ru.usage, Turns: ru.turns, Error: ru.err, Record: ru.record,
+// respond answers a request that started or resumed a run: its events from
+// seq from on, or, for a client that asked for JSON, the run once it ended.
+func (s *Server) respond(w http.ResponseWriter, r *http.Request, h *hub, from int) {
+	if !wantsJSON(r.Header.Get("Accept")) {
+		s.follow(w, r, h, from)
+		return
 	}
-	if ru.status != StatusRunning {
-		at := ru.finished
-		v.FinishedAt = &at
+	h.subscribe()
+	select {
+	case <-h.ended:
+	case <-r.Context().Done():
 	}
-	return v
-}
-
-func (s *Server) getConversation(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	s.mu.Lock()
-	c := s.convs[id]
-	if c != nil && c.tenant != s.tenantOf(r) {
-		c = nil
+	s.leave(h)
+	ctx, ok := s.scope(w, r)
+	if !ok {
+		return
 	}
-	var body []byte
-	var err error
-	if c != nil {
-		body, err = json.Marshal(conversationView(c))
-	}
-	s.mu.Unlock()
-	switch {
-	case c == nil:
-		writeError(w, http.StatusNotFound, notFoundConversation(id))
-	case err != nil:
-		s.log.Error("encoding a conversation", "conversation_id", id, "err", err)
-		writeError(w, http.StatusInternalServerError, &Error{Code: CodeInternal, Message: "the conversation could not be encoded"})
-	default:
-		writeRaw(w, http.StatusOK, append(body, '\n'))
+	if v, ok := s.viewByID(ctx, w, h.runID); ok {
+		writeJSON(w, http.StatusOK, v)
 	}
 }
 
-// conversationView is c as GET /v1/conversations/{id} returns it. Called
-// with Server.mu held.
-func conversationView(c *conversation) Conversation {
-	return Conversation{
-		V: WireVersion, ID: c.id, Agent: c.agent.Name, Status: c.status(), CreatedAt: c.created, UpdatedAt: c.updated,
-		Messages: timedMessages(c.messages),
+// follow streams the hub's events from seq from on, as they come, until the
+// run ends or the client goes away.
+func (s *Server) follow(w http.ResponseWriter, r *http.Request, h *hub, from int) {
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	out := newSSEWriter(w, cancel)
+	hd := w.Header()
+	hd.Set("Content-Type", "text/event-stream")
+	hd.Set("Cache-Control", "no-store")
+	hd.Set("X-Accel-Buffering", "no")
+	hd.Set("Agentkit-Run-Id", h.runID)
+	hd.Set("Agentkit-Conversation-Id", h.convID)
+	h.subscribe() // before the client sees the response: it is back
+	defer s.leave(h)
+	out.open()
+	defer out.close()
+	if s.cfg.keepAlive > 0 {
+		stopKeepAlive := out.keepAlive(s.cfg.clock, s.cfg.keepAlive)
+		defer stopKeepAlive()
 	}
+	for {
+		evs, _ := h.next(ctx, from)
+		if evs == nil {
+			return
+		}
+		for _, e := range evs {
+			out.event(e)
+		}
+		from += len(evs)
+	}
+}
+
+// leave counts a client of h gone, and starts the reconnect grace if it was
+// the last one of a chat run going on.
+func (s *Server) leave(h *hub) {
+	off, ok := h.unsubscribe()
+	if !ok {
+		return
+	}
+	t := s.cfg.clock.NewTimer(s.cfg.grace)
+	if s.cfg.graceArmed != nil {
+		s.cfg.graceArmed(h.runID)
+	}
+	go func() {
+		defer t.Stop()
+		select {
+		case <-t.C():
+		case <-off:
+			return
+		}
+		if !h.abandoned() {
+			return
+		}
+		s.log.Info("interrupting a run nobody follows", "run_id", h.runID, "grace", s.cfg.grace.String())
+		if _, err := s.runner.Interrupt(tenancy.With(context.Background(), h.tenant), h.runID); err != nil {
+			s.log.Warn("interrupting a run nobody follows", "run_id", h.runID, "err", err)
+		}
+	}()
 }
 
 // quote shows a client-supplied ID in a message, shortened.

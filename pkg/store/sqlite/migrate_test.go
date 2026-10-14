@@ -2,6 +2,7 @@ package sqlite_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -42,9 +43,17 @@ func TestOpenUpgradesAnOlderSchema(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open at version 1: %v", err)
 	}
+	// The entries an older binary would have appended. This binary's Append
+	// counts them on the conversation's record, a later table, so they are
+	// written as rows.
 	for i, text := range []string{"one", "two"} {
-		if err := old.Append(ctx, "c", prompt(int64(i+1), text)); err != nil {
-			t.Fatalf("Append at version 1: %v", err)
+		msgs, err := json.Marshal(prompt(int64(i+1), text).Messages)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := sqlite.Exec(old, `INSERT INTO entries (tenant, conversation, seq, kind, messages, created_at)
+			VALUES ('acme', 'c', ?, 'prompt', ?, ?)`, i+1, string(msgs), i+1); err != nil {
+			t.Fatalf("entry %d at version 1: %v", i+1, err)
 		}
 	}
 	if _, err := old.Create(ctx, "r", "c"); err == nil {
@@ -64,6 +73,9 @@ func TestOpenUpgradesAnOlderSchema(t *testing.T) {
 	}
 	if err := s.Save(ctx, "r", flow.Checkpoint{RunID: "r", Shape: "v1:x"}); err != nil {
 		t.Errorf("Save after the upgrade: %v", err)
+	}
+	if c, err := s.CreateConversation(ctx, store.Conversation{ID: "c", Agent: "a"}); err != nil || c.Messages != 2 {
+		t.Errorf("CreateConversation after the upgrade = %+v, %v; want the two messages written before it counted", c, err)
 	}
 }
 

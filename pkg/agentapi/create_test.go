@@ -3,7 +3,6 @@ package agentapi_test
 import (
 	"encoding/json"
 	"fmt"
-	"maps"
 	"net/http"
 	"slices"
 	"strings"
@@ -121,9 +120,8 @@ func TestCreateConversationDefaultAgent(t *testing.T) {
 // tenant does not exist for another.
 func TestCreatedConversationsAreTheCallersTenant(t *testing.T) {
 	t.Parallel()
-	tenant := agentapi.WithTenant(func(r *http.Request) string { return r.Header.Get("Test-Tenant") })
 	m := echo(t)
-	r := newRig(t, m, rigConfig{api: []agentapi.Option{tenant}})
+	r := newRig(t, m, rigConfig{})
 	c := r.create(`{}`, "Test-Tenant", "a")
 	for _, req := range []struct{ method, path, body string }{
 		{"GET", "/v1/conversations/" + c.ID, ""},
@@ -141,58 +139,6 @@ func TestCreatedConversationsAreTheCallersTenant(t *testing.T) {
 	if resp.StatusCode != http.StatusOK || len(m.requests()) != 1 {
 		t.Errorf("tenant a's run in its conversation = %d %s", resp.StatusCode, body)
 	}
-}
-
-// TestRetentionOfCreatedConversations: a created conversation counts as
-// used when it is created, so past the conversation count the least recently
-// used goes, empty or not, and never the one just created, even when nothing
-// else can go; past the retention age, an empty one goes like any other.
-func TestRetentionOfCreatedConversations(t *testing.T) {
-	t.Parallel()
-	r := newRig(t, echo(t), rigConfig{api: []agentapi.Option{agentapi.WithRetention(10, 3, time.Hour)}})
-	used := r.runJSON("keep me", "").ConversationID
-	e1, e2 := r.create(`{}`).ID, r.create(`{}`).ID
-	wantKept := func(step string, want ...string) {
-		t.Helper()
-		if got := slices.Sorted(maps.Keys(r.listAll())); !slices.Equal(got, slices.Sorted(slices.Values(want))) {
-			t.Errorf("%s: kept %v, want %v", step, got, want)
-		}
-	}
-	wantKept("at the count", used, e1, e2)
-	e3 := r.create(`{}`).ID
-	wantKept("a create past the count", e1, e2, e3) // used is the least recently used
-	r.startAgent(t.Context(), "hi", e1, "").all()
-	e4 := r.create(`{}`).ID
-	wantKept("a create after a run in e1", e1, e3, e4)
-
-	// A create that must drop the only other conversation drops it, never
-	// itself; past the retention age, an empty conversation goes.
-	r2 := newRig(t, echo(t), rigConfig{api: []agentapi.Option{agentapi.WithRetention(10, 1, time.Hour)}})
-	old := r2.runJSON("old", "").ConversationID
-	c := r2.create(`{}`)
-	var v agentapi.ErrorResponse
-	if code := r2.get("/v1/conversations/"+old, &v); code != http.StatusNotFound {
-		t.Errorf("the used conversation is still there (%d), past a count of 1", code)
-	}
-	r2.getConversation(c.ID)
-
-	r2.clock.Advance(2 * time.Hour)
-	c2 := r2.create(`{}`)
-	if code := r2.get("/v1/conversations/"+c.ID, &v); code != http.StatusNotFound {
-		t.Errorf("an empty conversation older than the retention is still there (%d)", code)
-	}
-	r2.getConversation(c2.ID)
-
-	// With the count taken by a conversation whose run is going on, there is
-	// nothing to drop: the new one stays, over the count.
-	m := echo(t)
-	m.gate = make(chan struct{})
-	r3 := newRig(t, m, rigConfig{api: []agentapi.Option{agentapi.WithRetention(10, 1, time.Hour)}})
-	busy := r3.start(t.Context(), "busy", "")
-	busy.until(agentapi.TypeRunStart, 0)
-	r3.getConversation(r3.create(`{}`).ID)
-	m.gate <- struct{}{}
-	busy.all()
 }
 
 // TestCreateConversationsConcurrently: concurrent creates and runs (under

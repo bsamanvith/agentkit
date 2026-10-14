@@ -24,6 +24,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
+	"github.com/bsamanvith/agentkit/pkg/store/scoped"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
@@ -110,7 +111,7 @@ func newRig(t *testing.T, m *model, api ...agentapi.Option) *rig {
 	}
 	var ids atomic.Int64
 	opts := []agentapi.Option{
-		agentapi.WithToken(testToken), agentapi.WithKeepAlive(0),
+		agentapi.WithStore(scoped.Memory(nil)), agentapi.WithToken(testToken), agentapi.WithKeepAlive(0),
 		agentapi.WithNewID(func(prefix string) string { return fmt.Sprintf("%s%d", prefix, ids.Add(1)) }),
 	}
 	srv, err := agentapi.New(h, append(opts, api...)...)

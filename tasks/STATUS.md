@@ -10,7 +10,7 @@
 | M1 `pkg/tool` | [E03](E03-tool-core-and-mcp.md) | Done |
 | M2 Toolsets from config; one MCP server, one path per toolset | [E03](E03-tool-core-and-mcp.md) | Done |
 | M3 `llm`, Anthropic adapter, harness, `flow`, `agentstep`, `agentkit run` | [E04](E04-llm-harness-flow.md) | Done |
-| M4 Store, runner, compaction | [E05](E05-store-runner.md) | In progress: `pkg/store` (interfaces, memory store, suites, run lifecycle), the SQLite store (T029) and the runner (T030) done; next T037 (the API on the runner, store chosen by `AGENTKIT_STORE`) and compaction (T031). Postgres store (T088) and turn batching (T098) done; run start times and priority are T099 |
+| M4 Store, runner, compaction | [E05](E05-store-runner.md) | In progress: `pkg/store` (interfaces, memory store, suites, run lifecycle), the SQLite store (T029), the runner (T030) and the API on the runner (T037: store chosen by `AGENTKIT_STORE`, runs outlive `serve`) done; next compaction (T031). Postgres store (T088) and turn batching (T098) done; run start times and priority are T099 |
 | M5 Agent API, `agentkit serve`, image, Compose, smoke tests | [E09](E09-agent-api.md), [E01](E01-foundations.md) | In progress: `agentkit serve`, agent API v0 and the image done; **deployable** |
 | M6 Remote tools over ConnectRPC | E06 (to plan) | Planned |
 | Credentials, auth, tenancy at the edge | [E07](E07-auth-credentials.md) | **In progress**: T039 done (`pkg/auth`, `f08e82e`); T040, T041 and T042 ready. Needed before any public deployment: `/mcp/` has no auth until T040 |
@@ -42,7 +42,7 @@ The same checks are one command on a laptop: `scripts/try-agent.sh` ([docs/QUICK
 
 ## Done
 
-T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentkit healthcheck` · T017 `pkg/tool` · T018 MCP server · T019 `pkg/clock` · T020 `pkg/llm` · T021 Anthropic adapter · T022 harness · T023 `flow` · T024 `agentkit run`, `agentstep` · T026 `pkg/toolset` · T027 `pkg/tenancy` · T028 `pkg/store` · T038 `store.Admin` · T046 Tavily connector · T049 connector test kit · T051 cassette OpenAPI validation · T052 kit hardening · T053 `pkg/agentclient` · T032 flow step-tree check · T036 agent API v0 · T029 SQLite store · T054 `agentkit chat` and `ask` · T062 agents, conversations and catalog API · T070 console UX design (owner-approved) · T030 `pkg/runner` · T078 web workspace · T092 `POST /v1/conversations` · T082 tool metadata · T088 Postgres store and event log · T089 `pkg/bus` · T098 runner turn batching
+T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentkit healthcheck` · T017 `pkg/tool` · T018 MCP server · T019 `pkg/clock` · T020 `pkg/llm` · T021 Anthropic adapter · T022 harness · T023 `flow` · T024 `agentkit run`, `agentstep` · T026 `pkg/toolset` · T027 `pkg/tenancy` · T028 `pkg/store` · T038 `store.Admin` · T046 Tavily connector · T049 connector test kit · T051 cassette OpenAPI validation · T052 kit hardening · T053 `pkg/agentclient` · T032 flow step-tree check · T036 agent API v0 · T029 SQLite store · T054 `agentkit chat` and `ask` · T062 agents, conversations and catalog API · T070 console UX design (owner-approved) · T030 `pkg/runner` · T078 web workspace · T092 `POST /v1/conversations` · T082 tool metadata · T088 Postgres store and event log · T089 `pkg/bus` · T098 runner turn batching · T037 agent API v1 on the runner
 
 ## Running or waiting
 
@@ -64,7 +64,6 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 | [T047](T047-connector-exa.md) | `connectors/exa`: search and extract | **Review**: on `main`, on the kit (`2f7b951`, `049a7cc`); waits for `EXA_API_KEY` (live test, re-recording synthetic cassettes) |
 | [T048](T048-connector-parallel.md) | `connectors/parallel`: search and extract | **Review**: on `main`, on the kit (`baf4248`); waits for `PARALLEL_API_KEY` (live test, re-recording synthetic cassettes) |
 | [T042](T042-credentials-core.md) | `pkg/credentials`: secrets, sealer, vault, memory backend | Starts E07's credentials track; new package only, parallel with everything |
-| [T037](T037-agent-api-v1.md) | Agent API v1 on the runner; store by `AGENTKIT_STORE` (memory, SQLite, Postgres); stop and resume for chat runs | **After T100** (owner, 2026-10-13): makes `serve` persistent |
 | [T100](T100-interactive-chat-runs.md) | Runner: interactive chat runs stop with their user (stop, closed tab), show `interrupted`, are never recovered in the background | **Start now** (T030, T088, T098 done): T037 and T099 wait on it |
 | [T090](T090-stream-api.md) | Stream API across replicas: replay from Postgres, tail Redis, commands to the lease holder | **Ready** (T088, T089, T030 done); E14 background tasks wait on it |
 | [T093](T093-postgres-rls.md) | Postgres row-level security by tenant | **Ready** (T088 done); small |

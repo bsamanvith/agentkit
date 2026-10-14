@@ -15,10 +15,10 @@ const entryColumns = `seq, kind, messages, record, run_id, covers, created_at`
 
 // Append implements [store.ConversationStore].
 //
-// One transaction: read the last entry, refuse a gap, then a plain INSERT.
-// The primary key, not the read, decides whether the position is free: when
-// the INSERT fails, the row at that position tells a retry (the same entry,
-// nil) from a conflict.
+// One transaction: read the last entry, refuse a gap, then a plain INSERT
+// and the count on the conversation's record. The primary key, not the read,
+// decides whether the position is free: when the INSERT fails, the row at
+// that position tells a retry (the same entry, nil) from a conflict.
 func (s *Store) Append(ctx context.Context, id string, e store.Entry) error {
 	tenant, err := scope(ctx)
 	if err != nil {
@@ -56,7 +56,7 @@ func (s *Store) Append(ctx context.Context, id string, e store.Entry) error {
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			tenant, id, e.Seq, string(st.Kind), string(st.Messages), string(st.Record), st.RunID, st.Covers, at)
 		if insertErr == nil {
-			return nil
+			return counted(ctx, tx, tenant, id, st.MessageCount(), at)
 		}
 		taken, _, err := scanEntry(tx.QueryRowContext(ctx, `SELECT `+entryColumns+` FROM entries
 			WHERE tenant = ? AND conversation = ? AND seq = ?`, tenant, id, e.Seq))
@@ -76,7 +76,7 @@ func (s *Store) Append(ctx context.Context, id string, e store.Entry) error {
 //
 // One transaction, which holds the write lock from its start: read the last
 // entry and the stored entries the batch overlaps, decide, then INSERT the
-// new ones.
+// new ones and count them on the conversation's record.
 func (s *Store) AppendBatch(ctx context.Context, id string, entries []store.Entry) error {
 	tenant, err := scope(ctx)
 	if err != nil {
@@ -144,7 +144,11 @@ func (s *Store) AppendBatch(ctx context.Context, id string, entries []store.Entr
 				return fmt.Errorf("sqlite: append entry %d: %w", seq, err)
 			}
 		}
-		return nil
+		var n int64
+		for _, st := range add {
+			n += st.MessageCount()
+		}
+		return counted(ctx, tx, tenant, id, n, at)
 	})
 }
 

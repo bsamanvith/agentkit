@@ -2,18 +2,21 @@ package agentapi
 
 import (
 	"bytes"
-	"encoding/base64"
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/harness"
+	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/store"
+	"github.com/bsamanvith/agentkit/pkg/tenancy"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 )
 
@@ -303,17 +306,91 @@ func (s *Server) createConversation(w http.ResponseWriter, r *http.Request) {
 		writeError(w, code, apiErr)
 		return
 	}
-	tenant := s.tenantOf(r)
+	ctx, ok := s.scope(w, r)
+	if !ok {
+		return
+	}
+	c, err := s.store.CreateConversation(ctx, store.Conversation{ID: s.cfg.newID("conv_"), Agent: ag.Name})
+	if err != nil {
+		s.internal(w, "creating a conversation", err)
+		return
+	}
+	s.log.Info("conversation created", "conversation_id", c.ID, "agent", ag.Name)
+	w.Header().Set("Location", "/v1/conversations/"+url.PathEscape(c.ID))
+	writeJSON(w, http.StatusCreated, Conversation{
+		V: WireVersion, ID: c.ID, Agent: c.Agent, Status: StatusIdle, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
+		Messages: []TimedMessage{},
+	})
+}
 
-	s.mu.Lock()
+func (s *Server) getConversation(w http.ResponseWriter, r *http.Request) {
+	ctx, ok := s.scope(w, r)
+	if !ok {
+		return
+	}
+	id := r.PathValue("id")
+	c, err := s.store.GetConversation(ctx, id)
+	switch {
+	case errors.Is(err, store.ErrNotFound), errors.Is(err, store.ErrInvalid):
+		writeError(w, http.StatusNotFound, notFoundConversation(id))
+		return
+	case err != nil:
+		s.internal(w, "reading conversation "+quote(id), err)
+		return
+	}
+	msgs, err := s.conversationMessages(ctx, id)
+	if err != nil {
+		s.internal(w, "reading the messages of conversation "+quote(id), err)
+		return
+	}
+	endsOnUser := len(msgs) > 0 && msgs[len(msgs)-1].Message.Role == llm.RoleUser
+	status, err := s.conversationStatus(ctx, id, func() (bool, error) { return endsOnUser, nil })
+	if err != nil {
+		s.internal(w, "reading the runs of conversation "+quote(id), err)
+		return
+	}
+	writeJSON(w, http.StatusOK, Conversation{
+		V: WireVersion, ID: c.ID, Agent: c.Agent, Status: status, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
+		Messages: msgs,
+	})
+}
+
+// conversationStatus is the conversation's status: running while a run of it
+// goes on (or waits for a decision, or for the recovery loop), interrupted
+// when its chat run stopped before it answered, else idle. endsOnUser tells
+// whether its log ends on a user message; it is read only for a failed run.
+func (s *Server) conversationStatus(ctx context.Context, id string, endsOnUser func() (bool, error)) (string, error) {
+	run, err := s.store.Unfinished(ctx, id)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return StatusIdle, nil
+	case err != nil:
+		return "", err
+	}
 	now := s.cfg.clock.Now()
-	c := s.newConversation(ag, tenant, now)
-	s.evict(now, c)
-	view := conversationView(c)
-	s.mu.Unlock()
-	s.log.Info("conversation created", "conversation_id", c.id, "agent", ag.Name)
-	w.Header().Set("Location", "/v1/conversations/"+url.PathEscape(c.id))
-	writeJSON(w, http.StatusCreated, view)
+	switch {
+	case held(run, now), run.Status == store.StatusSuspended:
+		return StatusRunning, nil
+	case run.Interrupted(now):
+		return StatusInterrupted, nil
+	case run.Status == store.StatusRunning: // a background run, for the recovery loop
+		return StatusRunning, nil
+	}
+	user, err := endsOnUser()
+	if err != nil || !user {
+		return StatusIdle, err
+	}
+	return StatusInterrupted, nil
+}
+
+// lastIsUser reports whether the conversation's log ends on a user message.
+func (s *Server) lastIsUser(ctx context.Context, id string) (bool, error) {
+	page, err := s.store.History(ctx, id, store.Page{Order: store.Descending, Limit: 1})
+	if err != nil || len(page.Entries) == 0 {
+		return false, err
+	}
+	msgs := page.Entries[0].Messages
+	return msgs[len(msgs)-1].Role == llm.RoleUser, nil
 }
 
 // listConversations serves GET /v1/conversations: the caller's
@@ -322,51 +399,40 @@ func (s *Server) createConversation(w http.ResponseWriter, r *http.Request) {
 // first page: it sees every older one exactly once.
 func (s *Server) listConversations(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	limit := DefaultListLimit
-	if v := q.Get("limit"); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil || n < 1 || n > MaxListLimit {
-			writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: fmt.Sprintf("limit must be a number from 1 to %d", MaxListLimit)})
-			return
-		}
-		limit = n
-	}
-	var before uint64 // list conversations created before this one; 0: from the newest
-	if v := q.Get("cursor"); v != "" {
-		seq, ok := decodeCursor(v)
-		if !ok {
-			writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "cursor is not one this server gave"})
-			return
-		}
-		before = seq
+	limit, ok := listLimit(w, q.Get("limit"))
+	if !ok {
+		return
 	}
 	agentName := q.Get("agent")
 	if agentName != "" && s.agents[agentName] == nil {
 		writeError(w, http.StatusNotFound, &Error{Code: CodeNotFound, Message: "no agent " + quote(agentName)})
 		return
 	}
-	tenant := s.tenantOf(r)
-
-	s.mu.Lock()
-	var page []*conversation
-	for _, c := range s.convs {
-		if c.tenant == tenant && (agentName == "" || c.agent.Name == agentName) && (before == 0 || c.seq < before) {
-			page = append(page, c)
+	ctx, ok := s.scope(w, r)
+	if !ok {
+		return
+	}
+	page, err := s.store.ListConversations(ctx, agentName, store.Page{Cursor: q.Get("cursor"), Limit: limit, Order: store.Descending})
+	switch {
+	case errors.Is(err, store.ErrInvalid):
+		writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "cursor is not one this server gave"})
+		return
+	case err != nil:
+		s.internal(w, "listing conversations", err)
+		return
+	}
+	out := wire.ConversationList{V: WireVersion, Conversations: []wire.ConversationSummary{}, NextCursor: page.Next}
+	for _, c := range page.Conversations {
+		status, err := s.conversationStatus(ctx, c.ID, func() (bool, error) { return s.lastIsUser(ctx, c.ID) })
+		if err != nil {
+			s.internal(w, "reading the runs of conversation "+quote(c.ID), err)
+			return
 		}
-	}
-	slices.SortFunc(page, func(a, b *conversation) int { return compareDesc(a.seq, b.seq) })
-	out := wire.ConversationList{V: WireVersion, Conversations: []wire.ConversationSummary{}}
-	if len(page) > limit {
-		page = page[:limit]
-		out.NextCursor = encodeCursor(page[limit-1].seq)
-	}
-	for _, c := range page {
 		out.Conversations = append(out.Conversations, wire.ConversationSummary{
-			ID: c.id, Agent: c.agent.Name, Title: c.title, Status: c.status(), MessageCount: len(c.messages),
-			CreatedAt: c.created, UpdatedAt: c.updated,
+			ID: c.ID, Agent: c.Agent, Title: c.Title, Status: status, MessageCount: int(c.Messages),
+			CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
 		})
 	}
-	s.mu.Unlock()
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -374,31 +440,30 @@ func (s *Server) listConversations(w http.ResponseWriter, r *http.Request) {
 // and its runs are gone (204). One with a run going on is 409
 // conversation_busy.
 func (s *Server) deleteConversation(w http.ResponseWriter, r *http.Request) {
+	ctx, ok := s.scope(w, r)
+	if !ok {
+		return
+	}
 	id := r.PathValue("id")
-	tenant := s.tenantOf(r)
-	s.mu.Lock()
-	c := s.convs[id]
+	err := s.store.DeleteConversation(ctx, id)
 	switch {
-	case c == nil || c.tenant != tenant:
-		s.mu.Unlock()
+	case errors.Is(err, store.ErrNotFound), errors.Is(err, store.ErrInvalid):
 		writeError(w, http.StatusNotFound, notFoundConversation(id))
 		return
-	case c.running:
-		s.mu.Unlock()
-		writeError(w, http.StatusConflict, &Error{Code: CodeBusy, Message: "a run of this conversation is going on; wait for it to end", Retryable: true})
+	case errors.Is(err, store.ErrLeased):
+		writeError(w, http.StatusConflict, &Error{Code: CodeBusy, Message: "a run of this conversation is going on; stop it first", Retryable: true})
+		return
+	case err != nil:
+		s.internal(w, "deleting conversation "+quote(id), err)
 		return
 	}
-	delete(s.convs, id)
-	kept := s.runOrder[:0]
-	for _, ru := range s.runOrder {
-		if ru.convID == id {
-			delete(s.runs, ru.id)
-			continue
+	t, _ := tenancy.From(ctx)
+	s.mu.Lock()
+	for k, h := range s.hubs {
+		if k.tenant == t.ID() && h.convID == id && h.isDone() {
+			delete(s.hubs, k)
 		}
-		kept = append(kept, ru)
 	}
-	clear(s.runOrder[len(kept):])
-	s.runOrder = kept
 	s.mu.Unlock()
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusNoContent)
@@ -421,43 +486,8 @@ func title(message string) string {
 	return strings.TrimRight(string(r[:titleRunes-1]), " ") + "…"
 }
 
-// cursorPrefix makes cursors this server's: an opaque token is base64url of
-// it and the sequence number of the last conversation of the page.
-const cursorPrefix = "conversations-before:"
-
-func encodeCursor(seq uint64) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(cursorPrefix + strconv.FormatUint(seq, 10)))
-}
-
-// decodeCursor accepts exactly what encodeCursor makes.
-func decodeCursor(s string) (uint64, bool) {
-	b, err := base64.RawURLEncoding.Strict().DecodeString(s)
-	if err != nil {
-		return 0, false
-	}
-	digits, ok := strings.CutPrefix(string(b), cursorPrefix)
-	if !ok {
-		return 0, false
-	}
-	seq, err := strconv.ParseUint(digits, 10, 64)
-	if err != nil || seq == 0 || encodeCursor(seq) != s {
-		return 0, false
-	}
-	return seq, true
-}
-
-func compareDesc(a, b uint64) int {
-	switch {
-	case a > b:
-		return -1
-	case a < b:
-		return 1
-	}
-	return 0
-}
-
 func notFoundConversation(id string) *Error {
-	return &Error{Code: CodeNotFound, Message: "no conversation " + quote(id) + " (conversations are kept in memory and lost on restart)"}
+	return &Error{Code: CodeNotFound, Message: "no conversation " + quote(id)}
 }
 
 // internal answers 500 for a failure the client cannot act on, and logs it.

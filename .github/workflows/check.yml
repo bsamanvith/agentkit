@@ -73,6 +73,10 @@ jobs:
         run: go test -race -shuffle=on -count=1 -tags integration ./pkg/bus/... ./pkg/store/...
       - name: go test -tags integration -run '^TestMigrate' ./cmd/agentkit/
         run: go test -race -count=1 -tags integration -run '^TestMigrate' ./cmd/agentkit/
+      - name: the agent API's suite on SQLite and Postgres (AGENTAPI_TEST_STORE)
+        run: |
+          AGENTAPI_TEST_STORE=sqlite go test -race -count=1 ./pkg/agentapi/...
+          AGENTAPI_TEST_STORE="$AGENTKIT_PG_URL" go test -race -count=1 ./pkg/agentapi/...
 
   # Coverage-guided fuzzing, in parallel with check so it never delays the
   # test result. Still required: a fuzz failure turns the commit red.

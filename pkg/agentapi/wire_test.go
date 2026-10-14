@@ -40,7 +40,7 @@ func goldenRun(t *testing.T, replies ...llmtest.Reply) (stream, run, conv []byte
 	if err != nil {
 		t.Fatal(err)
 	}
-	return stream, rawGet(t, r, "/v1/runs/run_2"), rawGet(t, r, "/v1/conversations/conv_1")
+	return stream, rawGet(t, r, "/v1/runs/run_002"), rawGet(t, r, "/v1/conversations/conv_001")
 }
 
 func rawGet(t *testing.T, r *rig, path string) []byte {

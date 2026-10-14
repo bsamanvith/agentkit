@@ -52,7 +52,7 @@ func serveAgents(t *testing.T, config string, models map[string]*llmtest.Fake) *
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, _, err := c.newAgents(t.Context(), cfg, built, problems, env, scoped.Memory(nil), clock.Real(), log)
+	m, _, err := c.newAgents(t.Context(), cfg, built, problems, env, scoped.Memory(nil), nil, clock.Real(), log)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -22,6 +22,7 @@ type Recovery struct {
 	limit    int
 	workers  int
 	interval time.Duration
+	execute  func(context.Context, *Execution)
 }
 
 // RecoveryOption configures [NewRecovery].
@@ -60,13 +61,30 @@ func WithInterval(d time.Duration) RecoveryOption {
 	}
 }
 
+// WithExecute sets how a pass runs an execution it resumed: f must run x to
+// its end (default: [Execution.Wait]). A server passes the function that
+// runs it as it runs its own, so that the run's events reach its clients.
+// ctx carries the run's tenant.
+func WithExecute(f func(ctx context.Context, x *Execution)) RecoveryOption {
+	return func(rc *Recovery) error {
+		if f == nil {
+			return fmt.Errorf("%w: nil execute", ErrInvalidConfig)
+		}
+		rc.execute = f
+		return nil
+	}
+}
+
 // NewRecovery returns the recovery loop of r over admin, the cross-tenant
 // view of r's store.
 func NewRecovery(r *Runner, admin store.Admin, opts ...RecoveryOption) (*Recovery, error) {
 	if r == nil || admin == nil {
 		return nil, fmt.Errorf("%w: nil runner or admin", ErrInvalidConfig)
 	}
-	rc := &Recovery{r: r, admin: admin, limit: 100, workers: 4, interval: 30 * time.Second}
+	rc := &Recovery{
+		r: r, admin: admin, limit: 100, workers: 4, interval: 30 * time.Second,
+		execute: func(_ context.Context, x *Execution) { _, _ = x.Wait() },
+	}
 	for _, opt := range opts {
 		if err := opt(rc); err != nil {
 			return nil, err
@@ -148,7 +166,7 @@ func (rc *Recovery) Recover(ctx context.Context) (Report, error) {
 			}
 			// The run's own outcome is stored with it; a failure here is
 			// the run's, not recovery's.
-			_, _ = x.Wait()
+			rc.execute(tctx, x)
 			count(&rep.Resumed, nil)
 		})
 	}

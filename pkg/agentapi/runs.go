@@ -234,8 +234,9 @@ func (s *Server) runEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	out, stop := s.openStream(w, r, run, nil)
 	defer stop()
-	if !held(run, s.cfg.clock.Now()) {
-		// Nobody runs it: what the store has is all there is.
+	if !held(run, s.cfg.clock.Now()) || s.ownBus {
+		// Nobody runs it, or no bus joins this server to the one that
+		// does: what the store has is all there is.
 		for _, e := range withText(evs, after) {
 			if eventID(e).Compare(after) > 0 {
 				out.event(e)
@@ -279,10 +280,12 @@ var errReleased = errors.New("the run is no longer held")
 // its status says; when another process takes it over, the stream follows
 // that one.
 func (s *Server) watch(ctx context.Context, out *sseWriter, run store.Run, after bus.ID) {
-	poll := s.cfg.streamPoll
-	if poll <= 0 {
-		poll = stream.DefaultPoll
-	}
+	s.watchRun(ctx, run, after, out.event)
+}
+
+// watchRun is watch, for any reader of the events: emit gets each one.
+func (s *Server) watchRun(ctx context.Context, run store.Run, after bus.ID, emit func(Event)) {
+	poll := s.poll()
 	for {
 		wctx, cancel := context.WithCancelCause(ctx)
 		stopCheck := s.checkHeld(wctx, cancel, run.ID, poll)
@@ -298,7 +301,7 @@ func (s *Server) watch(ctx context.Context, out *sseWriter, run store.Run, after
 				s.log.Error("decoding a run's event", "run_id", run.ID, "err", err)
 				continue
 			}
-			out.event(e)
+			emit(e)
 			after = se.ID
 			if isTerminal(e.Type) {
 				stopCheck()
@@ -327,7 +330,7 @@ func (s *Server) watch(ctx context.Context, out *sseWriter, run store.Run, after
 		}
 		for _, e := range withText(withEnding(cur, rp, s.cfg.clock.Now()), after) {
 			if eventID(e).Compare(after) > 0 {
-				out.event(e)
+				emit(e)
 			}
 		}
 		return
@@ -448,11 +451,15 @@ func (s *Server) stopRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
-	if _, err := s.runner.Interrupt(ctx, id); err != nil {
+	_, err := s.runner.Interrupt(ctx, id)
+	switch {
+	case errors.Is(err, store.ErrLeased) && !s.ownBus:
+		s.command(ctx, w, r, id, commandStop)
+	case err != nil:
 		s.commandError(w, id, err)
-		return
+	default:
+		s.afterCommand(ctx, w, r, id)
 	}
-	s.afterCommand(ctx, w, r, id)
 }
 
 // cancelRun serves POST /v1/runs/{id}/cancel: the run is canceled, which is
@@ -464,6 +471,10 @@ func (s *Server) cancelRun(w http.ResponseWriter, r *http.Request) {
 	}
 	id := r.PathValue("id")
 	if _, err := s.runner.Cancel(ctx, id); err != nil {
+		if errors.Is(err, store.ErrLeased) && !s.ownBus {
+			s.command(ctx, w, r, id, commandCancel)
+			return
+		}
 		if errors.Is(err, store.ErrFinal) {
 			if run, gerr := s.store.Get(ctx, id); gerr == nil && run.Status == store.StatusCanceled {
 				s.afterCommand(ctx, w, r, id)

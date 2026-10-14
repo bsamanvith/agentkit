@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
+	"github.com/bsamanvith/agentkit/pkg/bus"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/component"
 	"github.com/bsamanvith/agentkit/pkg/runner"
@@ -105,12 +106,18 @@ func (c cli) serve(ctx context.Context, args []string) error {
 	var (
 		agents *agentapi.Server
 		st     openedStore
+		b      bus.Bus
 	)
 	if slices.Contains(env.components, agentapi.Name) {
 		if st, err = c.openStore(ctx, clk); err != nil {
 			return err
 		}
 		defer st.close()
+		var closeBus func()
+		if b, closeBus, err = c.openBus(ctx, clk, log); err != nil {
+			return err
+		}
+		defer closeBus()
 	}
 
 	// The wiring: one constructor per component, chosen by name.
@@ -121,7 +128,7 @@ func (c cli) serve(ctx context.Context, args []string) error {
 		case mcpServerName:
 			m, err = newMCPServer(ctx, cfg.MCP, built, problems, log)
 		case agentapi.Name:
-			m, agents, err = c.newAgents(ctx, cfg, built, problems, env, st.Store, clk, log)
+			m, agents, err = c.newAgents(ctx, cfg, built, problems, env, st.Store, b, clk, log)
 		case web.Name:
 			m = newWeb()
 		default: // in knownComponents but not wired here
@@ -147,7 +154,7 @@ func (c cli) serve(ctx context.Context, args []string) error {
 	if agents == nil {
 		return rt.Serve(ctx, ln)
 	}
-	rc, err := runner.NewRecovery(agents.Runner(), st.admin)
+	rc, err := runner.NewRecovery(agents.Runner(), st.admin, runner.WithExecute(agents.RunRecovered))
 	if err != nil {
 		ln.Close()
 		return err

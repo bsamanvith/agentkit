@@ -524,6 +524,28 @@ func (s *Server) startError(w http.ResponseWriter, err error, busy string) {
 	}
 }
 
+// RunRecovered runs an execution the runner's recovery loop resumed as the
+// server runs its own: its events go to the run's log, the bus and the
+// clients that follow the run, and commands sent through other servers reach
+// it. Give it to the loop with [runner.WithExecute]. It returns when the
+// execution has ended; cancelling ctx stops it. Past the server's limit of
+// runs going on, or while it shuts down, the execution runs without its
+// events.
+func (s *Server) RunRecovered(ctx context.Context, x *runner.Execution) {
+	if apiErr := s.admit(); apiErr != nil {
+		_, _ = x.Wait()
+		return
+	}
+	execCtx, cancel := context.WithCancelCause(ctx)
+	seed, err := s.history(ctx, x.Run, true)
+	if err != nil {
+		s.log.Error("reading a recovered run's events", "run_id", x.Run.ID, "err", err)
+	}
+	s.log.Info("run recovered", "run_id", x.Run.ID, "conversation_id", x.Run.ConversationID, "turns", seed.turns)
+	h := s.launch(execCtx, cancel, x, seed)
+	<-h.ended
+}
+
 // launch registers the hub of an execution, seeded with the events the run
 // had, and runs the execution in its own goroutine. The admit slot is the
 // execution's: drive releases it.
@@ -555,6 +577,7 @@ func (s *Server) drive(ctx context.Context, cancel context.CancelCauseFunc, x *r
 	freeSlot := sync.OnceFunc(func() { <-s.slots })
 	defer func() { freeSlot(); s.active.Done() }() // s.release, in two steps
 	defer cancel(nil)
+	defer s.obey(ctx, x, h)() // commands sent through other servers
 	if s.cfg.runTimeout > 0 {
 		t := s.cfg.clock.NewTimer(s.cfg.runTimeout)
 		defer t.Stop()

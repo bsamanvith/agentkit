@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
+	"github.com/bsamanvith/agentkit/pkg/bus"
+	redisbus "github.com/bsamanvith/agentkit/pkg/bus/redis"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/store"
 	"github.com/bsamanvith/agentkit/pkg/store/memory"
@@ -66,4 +69,27 @@ func (c cli) openStore(ctx context.Context, clk clock.Clock) (openedStore, error
 		return openedStore{Store: s, admin: postgres.Admin(s), close: s.Close}, nil
 	}
 	return openedStore{}, fmt.Errorf("%s: unknown store; want memory, sqlite:/path or postgres://…", envStore)
+}
+
+// envBus names the bus that joins replicas of agentkit serve (E18): empty or
+// "memory" for one replica (the agent API keeps its own, in process), or a
+// redis:// or rediss:// URL. Every replica sharing a store must share it.
+const envBus = "AGENTKIT_BUS"
+
+// openBus opens the bus $AGENTKIT_BUS names: nil for one replica, and the
+// function that closes it. An unknown value is an error, which never echoes
+// it (a URL can carry a password).
+func (c cli) openBus(ctx context.Context, clk clock.Clock, log *slog.Logger) (bus.Bus, func(), error) {
+	spec := c.env(envBus)
+	switch {
+	case spec == "" || spec == "memory":
+		return nil, func() {}, nil
+	case strings.HasPrefix(spec, "redis://"), strings.HasPrefix(spec, "rediss://"):
+		b, closeBus, err := redisbus.Open(ctx, spec, redisbus.WithClock(clk), redisbus.WithLogger(log.With("component", "bus")))
+		if err != nil {
+			return nil, nil, fmt.Errorf("%s: %w", envBus, err)
+		}
+		return b, func() { _ = closeBus() }, nil
+	}
+	return nil, nil, fmt.Errorf("%s: unknown bus; want memory or redis://…", envBus)
 }

@@ -14,6 +14,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
+	"github.com/bsamanvith/agentkit/pkg/bus"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/component"
 	"github.com/bsamanvith/agentkit/pkg/harness"
@@ -157,7 +158,7 @@ func (a *agentComponent) Ready(ctx context.Context) error {
 // served (specs, as built and skipped); and the API on top, mounted at /v1/,
 // on st and the clock clk. ctx is the signal context: when it is done, the
 // drain begins.
-func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]tool.Registry, problems []toolset.Problem, env serveEnv, st agentapi.Store, clk clock.Clock, log *slog.Logger) (component.Mount, *agentapi.Server, error) {
+func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]tool.Registry, problems []toolset.Problem, env serveEnv, st agentapi.Store, b bus.Bus, clk clock.Clock, log *slog.Logger) (component.Mount, *agentapi.Server, error) {
 	specs, err := servedSpecs(env, cfg)
 	if err != nil {
 		return component.Mount{}, nil, err
@@ -223,6 +224,7 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 	}
 	srv, err := agentapi.NewAgents(agents,
 		agentapi.WithStore(st),
+		agentapi.WithBus(b),
 		agentapi.WithRunnerOptions(runnerOpts...),
 		agentapi.WithToolsets(c.toolsetCatalog(cfg, specs, built, problems, env)...),
 		agentapi.WithToken(token),

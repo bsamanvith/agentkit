@@ -6,8 +6,11 @@ import { defaultMaxEventBytes, readSSE, ResponseTooLargeError } from "./sse";
 import {
   decodeEvent,
   isTerminal,
+  decodeConversation,
   type Agent,
+  type Conversation,
   type ConversationSummary,
+  type Run,
   type RunEvent,
   type RunRequest,
   type WireError,
@@ -105,11 +108,73 @@ export class AgentClient {
     };
   }
 
+  /** GET /v1/conversations/{id}: the conversation with its messages. */
+  async getConversation(id: string, opts: RequestOptions = {}): Promise<Conversation> {
+    const path = `/v1/conversations/${encodeURIComponent(id)}`;
+    const c = decodeConversation(await this.getJSON<unknown>(path, opts));
+    if (!c) throw new BadResponseError(`${path}: the response is not a conversation`);
+    return c;
+  }
+
+  /**
+   * POST /v1/conversations: an empty conversation with the agent (the
+   * default when empty). The first message is then a run in it (T092).
+   */
+  async createConversation(
+    agent: string | undefined,
+    opts: RequestOptions = {},
+  ): Promise<{ id: string; agent: string }> {
+    const body = agent ? JSON.stringify({ agent }) : "{}";
+    const resp = await this.#send("POST", "/v1/conversations", body, "application/json", opts.signal);
+    const c = (await this.#json(resp, "/v1/conversations")) as { id?: unknown; agent?: unknown } | null;
+    if (typeof c?.id !== "string" || c.id === "") {
+      throw new BadResponseError("/v1/conversations: the response has no conversation ID");
+    }
+    return { id: c.id, agent: typeof c.agent === "string" ? c.agent : (agent ?? "") };
+  }
+
+  /** DELETE /v1/conversations/{id}: 409 conversation_busy while a run is going on. */
+  async deleteConversation(id: string, opts: RequestOptions = {}): Promise<void> {
+    const resp = await this.#send(
+      "DELETE",
+      `/v1/conversations/${encodeURIComponent(id)}`,
+      undefined,
+      "application/json",
+      opts.signal,
+    );
+    await resp.body?.cancel();
+  }
+
+  /** GET /v1/runs/{id}. */
+  async getRun(id: string, opts: RequestOptions = {}): Promise<Run> {
+    return this.getJSON<Run>(`/v1/runs/${encodeURIComponent(id)}`, opts);
+  }
+
+  /**
+   * POST /v1/runs/{id}/stop (T037): interrupts the run at once, keeping its
+   * completed turns; POST /v1/runs/{id}/resume continues it. A run that has
+   * already ended is left as it is.
+   */
+  async stopRun(id: string, opts: RequestOptions = {}): Promise<void> {
+    const resp = await this.#send(
+      "POST",
+      `/v1/runs/${encodeURIComponent(id)}/stop`,
+      undefined,
+      "application/json",
+      opts.signal,
+    );
+    await resp.body?.cancel();
+  }
+
   /** GET a JSON resource under /v1. */
   async getJSON<T>(path: string, opts: RequestOptions = {}): Promise<T> {
     const resp = await this.#send("GET", path, undefined, "application/json", opts.signal);
+    return (await this.#json(resp, path)) as T;
+  }
+
+  async #json(resp: Response, path: string): Promise<unknown> {
     try {
-      return (await resp.json()) as T;
+      return await resp.json();
     } catch (e) {
       if (isAbort(e)) throw e;
       // A SyntaxError is the body; anything else is reading it (a reset).
@@ -123,8 +188,9 @@ export class AgentClient {
    * which ends the iteration (events after it are not read). Unknown event
    * types are yielded like any other; the caller skips what it doesn't know.
    *
-   * Abort the signal to stop the run: the server sees the request end and
-   * cancels it (the conversation may be left interrupted). A body that ends
+   * Aborting the signal only closes the stream: since T037 the server lets
+   * a run nobody follows go on for a grace period, then interrupts it. To
+   * stop the run, call stopRun as well. A body that ends
    * or breaks (a reset connection) before the end event throws
    * StreamTruncatedError, as pkg/agentclient does.
    */

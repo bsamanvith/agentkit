@@ -74,7 +74,7 @@ if [ "$use_docker" = 1 ]; then
   echo "==> starting container $container on port $port"
   docker run -d --rm --name "$container" --stop-timeout 20 -p "${port}:8080" \
     -e ANTHROPIC_API_KEY="$key" -e AGENTKIT_API_TOKEN="$token" \
-    -e AGENTKIT_COMPONENTS=agent,mcp-server \
+    -e AGENTKIT_COMPONENTS=agent,web,mcp-server \
     -e TAVILY_API_KEY -e EXA_API_KEY -e PARALLEL_API_KEY \
     -v "$PWD/$config:/etc/agentkit/config.json:ro" \
     agentkit:latest >/dev/null
@@ -85,7 +85,7 @@ else
   go build -o bin/agentkit ./cmd/agentkit
   echo "==> starting agentkit serve on 127.0.0.1:${port} (log: $log)"
   ANTHROPIC_API_KEY="$key" AGENTKIT_API_TOKEN="$token" \
-    AGENTKIT_COMPONENTS=agent,mcp-server AGENTKIT_ADDR="127.0.0.1:${port}" \
+    AGENTKIT_COMPONENTS=agent,web,mcp-server AGENTKIT_ADDR="127.0.0.1:${port}" \
     bin/agentkit serve -config "$config" >"$log" 2>&1 &
   pid=$!
 fi
@@ -172,6 +172,8 @@ fi
 cat <<INFO
 
 The server keeps running at $base. Ctrl-C stops it. Log: $log
+
+Chat in the browser: open $base and paste the token ($token).
 
   export AGENTKIT_API_TOKEN=$token AGENTKIT_SERVER=$base
   bin/agentkit chat                                                # talk to the agent (/help for commands)

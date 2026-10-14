@@ -88,6 +88,33 @@ export type ConversationSummary = {
   updated_at: string;
 };
 
+/** A message of a conversation, with when it was added. */
+export type TimedMessage = { at: string; message: Message };
+
+/** GET /v1/conversations/{id}: the conversation and every message the model has seen. */
+export type Conversation = {
+  id: string;
+  agent: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  messages: TimedMessage[];
+};
+
+/** GET /v1/runs/{id}. */
+export type Run = {
+  id: string;
+  conversation_id: string;
+  agent: string;
+  status: string;
+  created_at: string;
+  finished_at?: string;
+  answer?: string;
+  usage?: Usage;
+  turns?: number;
+  error?: WireError;
+};
+
 export type RunRequest = {
   message: string;
   conversation_id?: string;
@@ -128,6 +155,27 @@ export function decodeMessage(raw: unknown): Message | undefined {
   if (!isObject(raw) || typeof raw.role !== "string") return undefined;
   const content = Array.isArray(raw.content) ? raw.content.map(decodeBlock) : [];
   return { role: raw.role, content };
+}
+
+/** Decodes a conversation leniently: messages that aren't messages are dropped. */
+export function decodeConversation(raw: unknown): Conversation | undefined {
+  if (!isObject(raw) || typeof raw.id !== "string") return undefined;
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
+  const messages: TimedMessage[] = [];
+  if (Array.isArray(raw.messages)) {
+    for (const m of raw.messages) {
+      const message = isObject(m) ? decodeMessage(m.message) : undefined;
+      if (message && isObject(m)) messages.push({ at: str(m.at), message });
+    }
+  }
+  return {
+    id: raw.id,
+    agent: str(raw.agent),
+    status: str(raw.status),
+    created_at: str(raw.created_at),
+    updated_at: str(raw.updated_at),
+    messages,
+  };
 }
 
 /**

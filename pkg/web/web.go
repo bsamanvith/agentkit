@@ -11,10 +11,10 @@
 // under /assets/ are cached for a year; other files (favicon, theme.js) are
 // revalidated. Text files (scripts, styles, HTML, SVG) are gzipped once, at
 // start, and sent compressed to clients that accept it: a third of the bytes
-// on a slow connection. Paths without a file extension get index.html, so the app's
-// routes (/c/{id}, /agents) work on reload; a missing file with an
-// extension, or anything under /assets/, is 404, so a stale tab never gets
-// HTML for a script. /v1/ and /mcp/ belong to other components and are
+// on a slow connection. Paths that don't end in a file's extension (.js,
+// .css, .png, ...) get index.html, so the app's routes (/c/{id}, /agents,
+// /agents/research.v2) work on reload; a missing file with one, or anything
+// under /assets/, is 404, so a stale tab never gets HTML for a script. /v1/ and /mcp/ belong to other components and are
 // never answered with the app.
 package web
 
@@ -74,6 +74,21 @@ var types = map[string]string{
 	".ico":   "image/x-icon",
 	".woff2": "font/woff2",
 	".txt":   "text/plain; charset=utf-8",
+}
+
+// moreFiles are file extensions the build doesn't have: a request for one is
+// for a file too, never an app route.
+var moreFiles = map[string]bool{
+	".map": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true, ".avif": true,
+	".woff": true, ".ttf": true, ".otf": true, ".xml": true, ".webmanifest": true, ".wasm": true,
+}
+
+// isFile reports whether a path asks for a file, by its extension. Any other
+// path, dots and all, is an app route.
+func isFile(name string) bool {
+	ext := strings.ToLower(path.Ext(name))
+	_, ok := types[ext]
+	return ok || moreFiles[ext]
 }
 
 // file is one file of the build, read once.
@@ -210,7 +225,7 @@ func (c *Component) serve(w http.ResponseWriter, r *http.Request) {
 		name = "index.html"
 	}
 	f, ok := c.files[name]
-	if !ok && name != "assets" && !strings.HasPrefix(name, "assets/") && path.Ext(name) == "" {
+	if !ok && name != "assets" && !strings.HasPrefix(name, "assets/") && !isFile(name) {
 		f, ok = c.files["index.html"] // an app route
 		name = "index.html"
 	}

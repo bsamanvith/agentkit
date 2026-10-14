@@ -73,6 +73,7 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 | [T087](T087-console-ux-design-2.md) | Console UX design part 2: skills, agent builder, tool policies, interrupts and approvals, tasks with steering; mockup v4 | **Ready** (owner approved v3) |
 | [T094](T094-mcp-client-toolset.md) | `pkg/mcp/client` and the `mcp` toolset type: use external MCP servers' tools, pin fingerprints | **Ready** (E19); new package, tests against our own MCP server |
 | [T101](T101-ci-hardening.md) | CI hardening: actions pinned by SHA, no persisted credentials, workflow lint | **Ready**; small, from T078's review |
+| [T102](T102-component-images.md) | An image per component (agent, MCP, console), a migrate image, and the all-in-one image; a budget each | After T037 (rewrites `serve.go` and adds `store.go`); owner asked 2026-10-14 |
 | [T006](T006-compose-and-dev-script.md) | Compose topologies and `scripts/dev.sh` | Image exists; repeatable local runs |
 | [T033](T033-harness-clock.md) | Harness on `pkg/clock` | Small, independent |
 | [T035](T035-rerecord-anthropic-fixtures.md) | Re-record Anthropic fixtures from the real API | A key is available |

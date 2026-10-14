@@ -30,14 +30,14 @@ The demo shows:
 3. the same tools listed over MCP at `/mcp/demo` (`calculate`, `current_time`, `echo`);
 4. a request without the token refused with 401.
 
-It then prints the token and ready-to-paste commands.
+It then prints the token and ready-to-paste commands. Open http://localhost:8080 to chat in the browser: the console asks for the token once per tab.
 
 ## 3. By hand
 
 ```sh
 go build -o bin/agentkit ./cmd/agentkit
 export AGENTKIT_API_TOKEN=$(openssl rand -hex 16)
-AGENTKIT_COMPONENTS=agent,mcp-server bin/agentkit serve -config deploy/local/agent/config.json
+AGENTKIT_COMPONENTS=agent,web,mcp-server bin/agentkit serve -config deploy/local/agent/config.json
 ```
 
 In another terminal (same `AGENTKIT_API_TOKEN`):
@@ -129,7 +129,7 @@ bin/agentkit chat -conversation "$conv"
 make image
 docker run --rm --stop-timeout 20 -p 8080:8080 \
   -e ANTHROPIC_API_KEY -e AGENTKIT_API_TOKEN \
-  -e AGENTKIT_COMPONENTS=agent,mcp-server \
+  -e AGENTKIT_COMPONENTS=agent,web,mcp-server \
   -v "$PWD/deploy/local/agent/config.json:/etc/agentkit/config.json:ro" \
   agentkit:latest
 ```
@@ -178,7 +178,7 @@ Each entry of `agents`:
 
 The one-agent form still works: an `agent` section (instead of `agents` and `agent_api`) with the fields of both tables except `name` is served as the agent `default`.
 
-Environment: `AGENTKIT_COMPONENTS` (`agent`, `mcp-server`, or both), `AGENTKIT_ADDR` (default `127.0.0.1:8080`), `AGENTKIT_API_TOKEN` (required off loopback), `AGENTKIT_CONFIG`, `AGENTKIT_LOG_LEVEL`, `AGENTKIT_SHUTDOWN_TIMEOUT`.
+Environment: `AGENTKIT_COMPONENTS` (any of `agent`, `web`, `mcp-server`, comma-separated; `web` serves the console at `/`, a chat client of `agent` on the same address), `AGENTKIT_ADDR` (default `127.0.0.1:8080`), `AGENTKIT_API_TOKEN` (required off loopback), `AGENTKIT_CONFIG`, `AGENTKIT_LOG_LEVEL`, `AGENTKIT_SHUTDOWN_TIMEOUT`. The API's reference: [docs/api/openapi.yaml](api/openapi.yaml) (OpenAPI 3.1); the event format and error codes are also in [tasks/T036](../tasks/T036-agent-api-v0.md) Notes.
 
 The store: `AGENTKIT_STORE` is `memory` (the default), `sqlite:/path/agentkit.db`, or `postgres://user:pass@host/db`; anything else fails startup. Postgres is migrated at startup unless `AGENTKIT_STORE_MIGRATE=off` (run `agentkit migrate` first then). `AGENTKIT_RUN_LEASE` (default `30s`, at least `1s`) is how long a run stays claimed by a process that stops renewing it: after a crash, a chat run reads as `interrupted` once its lease runs out, and `POST /v1/runs/{id}/resume` continues it.
 
@@ -191,7 +191,7 @@ curl -s 'localhost:8080/v1/runs?conversation_id=conv_...' -H "Authorization: Bea
 curl -s -X POST localhost:8080/v1/runs/run_.../stop -H "Authorization: Bearer $AGENTKIT_API_TOKEN"
 curl -sN -X POST localhost:8080/v1/runs/run_.../resume -H "Authorization: Bearer $AGENTKIT_API_TOKEN"
 curl -sN localhost:8080/v1/runs/run_.../events -H "Authorization: Bearer $AGENTKIT_API_TOKEN" -H 'Last-Event-ID: 3'
-``` The API's reference: [docs/api/openapi.yaml](api/openapi.yaml) (OpenAPI 3.1); the event format and error codes are also in [tasks/T036](../tasks/T036-agent-api-v0.md) Notes.
+```
 
 ## 6. Web search
 

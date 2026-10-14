@@ -3,6 +3,7 @@ import { useState } from "react";
 import { createBrowserRouter, RouterProvider } from "react-router";
 import { useApi } from "./api";
 import { ApiProvider } from "./api-provider";
+import { RunsProvider } from "./chat/context";
 import { routes } from "./routes";
 import { TokenPrompt } from "./token-prompt";
 
@@ -12,7 +13,10 @@ function Body({ router }: { router: Router }) {
   return (
     <>
       <div inert={prompt !== null} className="contents">
-        <RouterProvider router={router} />
+        {/* Runs outlive pages: the store is above the router. */}
+        <RunsProvider>
+          <RouterProvider router={router} />
+        </RunsProvider>
       </div>
       <TokenPrompt />
     </>

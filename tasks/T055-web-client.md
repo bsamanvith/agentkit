@@ -67,16 +67,16 @@ Read T078's Notes "For T055, T064 and T066" first: where components go, `useApi`
 - [x] XSS: a tool result and an answer containing `<script>`, `<img onerror=...>` and `javascript:` links render as text or are dropped; no script runs (a test hook that would fire on injection never does). CSP header present on every page response.
 - [x] Without a token, or with a wrong one: the token prompt and a clear error, no request loop.
 - [x] The committed bundle matches `make web` (CI check); `go build` from a fresh clone needs no Node.js (the committed build).
-- [ ] Docker: `make image` then the container with `AGENTKIT_COMPONENTS=agent,mcp-server,web` serves the UI on `:8080`; the image stays within its 20 MB budget (report the new size).
+- [x] Docker: `make image` then the container with `AGENTKIT_COMPONENTS=agent,mcp-server,web` serves the UI on `:8080`; the image stays within its 30 MB budget (`IMAGE_BUDGET_MB`), and the new size is in docs/SIZES.md.
 - [x] Mutation list recorded (at least: Markdown renderer allowing raw HTML, tool result inserted as HTML, CSP header missing, Stop not closing the stream, token stored in `localStorage`).
 
 ## Notes
 
 ### Status: review
 
-Three things keep this in `review`:
+Two things keep this in `review`:
 
-- **The image criterion.** `make image` ran, and the container with `AGENTKIT_COMPONENTS=agent,mcp-server,web` served the console on `:8080` (`/readyz` lists `web` ready; `/c/conv.1` is the app with the CSP). But the image is 22,162,944 bytes, over the 20 MB the criterion names. The budget CI enforces is 30 MB (`IMAGE_BUDGET_MB` in the Makefile), and the base of this branch (`e197728`) was already 22,097,408 bytes, so this task adds 65,536 bytes. The criterion stays unticked until the owner confirms the 30 MB budget is the one meant.
+- **The image criterion is met.** `make image` ran, and the container with `AGENTKIT_COMPONENTS=agent,mcp-server,web` served the console on `:8080` (`/readyz` lists `web` ready; `/c/conv.1` is the app with the CSP). The image is 22,162,944 bytes; the base of this branch (`e197728`) was already 22,097,408 bytes, so this task adds 65,536 bytes. The criterion used to say 20 MB. On 2026-10-14 the owner chose 30 MB, the budget CI enforces (`IMAGE_BUDGET_MB`), since Postgres stays in the image (the 4.1 MB pgx driver; see docs/SIZES.md).
 - **Login page (T061)** isn't built: the server has no users yet. The token prompt is the only sign-in.
 - **Stop and Resume use T036's API**, not T037's `POST /v1/runs/{id}/stop` and `/resume`, which haven't landed (see Decisions).
 

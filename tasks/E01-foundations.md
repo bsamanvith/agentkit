@@ -21,6 +21,7 @@ Put [docs/ENGINEERING.md](../docs/ENGINEERING.md) into practice. Split in two ph
 - [ ] [T006](T006-compose-and-dev-script.md) Compose topologies and `scripts/dev.sh`
 - [ ] [T007](T007-e2e-smoke-suite.md) E2E smoke suite
 - [ ] [T008](T008-ci-pipeline.md) Full CI pipeline (images, integration, smoke)
+- [ ] [T102](T102-component-images.md) An image per component, a migrate image, and the all-in-one image (after T037)
 
 ## CI follow-ups
 

@@ -113,6 +113,7 @@ Each mutation was applied by hand, the tests were run, and the source was restor
 
 ### Decisions
 
+- **Image sizes are logged, with reasons** (owner, 2026-10-14): [docs/SIZES.md](../docs/SIZES.md) holds the history and what each part weighs, and [AGENTS.md](../AGENTS.md#sizes) makes a row with the reason part of any PR that moves an image by 100 KB or more. The image per component, the migrate image and per-image budgets are [T102](T102-component-images.md), after T037. This task added 65,536 bytes to the image.
 - **The fake model replaces cassettes for the browser tests.** A small Node server picks its answer from the last message, so a test can stall a run or send hostile text. Recorded cassettes can't do either. It speaks the API's wire shape (see `cmd/agentkit/testdata/e2e`).
 - **Stop aborts the request; Resume and Retry run with an empty message** (T036). A new message to an interrupted conversation gets 409 `conversation_interrupted`: the message goes back to the composer and the notice offers Resume. When T037 lands, Stop should call `POST /v1/runs/{id}/stop`, Resume should call `/resume`, and a new message should cancel the interrupted run.
 - **History has no usage or errors**, so this tab keeps both per exchange and lays them over the history. After a reload, answers show no usage line.

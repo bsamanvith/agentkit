@@ -134,6 +134,16 @@ docker run --rm --stop-timeout 20 -p 8080:8080 \
   agentkit:latest
 ```
 
+Three builds of the image, by the stores and bus they hold:
+
+| Command | Image | Stores and bus | Size |
+|---|---|---|---|
+| `make image-local` | `agentkit-local` | memory or SQLite, one process; no Postgres, Redis or `migrate` | 24.3 MB |
+| `make image-dev` | `agentkit-dev` | memory or Postgres, and Redis for several replicas; no SQLite | 26.1 MB |
+| `make image` | `agentkit` | all of them | 30.4 MB |
+
+A backend an image leaves out fails at startup and says so (`AGENTKIT_STORE: this agentkit is built without SQLite`).
+
 Inside the container the server listens on `:8080` (not loopback), so `AGENTKIT_API_TOKEN` is required. `--stop-timeout 20` lets runs drain within the 15 s shutdown deadline.
 
 ## 5. Configuration

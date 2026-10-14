@@ -101,6 +101,10 @@ jobs:
         run: make image BIN=agentkit
       - name: make image-size
         run: make image-size BIN=agentkit
+      - name: the local and dev variants (make image-local, make image-dev)
+        run: |
+          make image-local && make image-size-local
+          make image-dev && make image-size-dev
 
   # The web workspace (web/): lint, typecheck, unit tests, audit, and a
   # rebuild that must match the committed pkg/web/dist; then the browser

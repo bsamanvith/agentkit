@@ -340,14 +340,14 @@ func (s *Server) watchRun(ctx context.Context, run store.Run, after bus.ID, emit
 // checkHeld cancels ctx with errReleased once nobody holds the run, checking
 // every d; the returned function stops it and waits for it.
 func (s *Server) checkHeld(ctx context.Context, cancel context.CancelCauseFunc, runID string, d time.Duration) func() {
-	t := s.cfg.clock.NewTicker(d)
+	t := time.NewTicker(d) // real time, as obey's poll
 	stop, done := make(chan struct{}), make(chan struct{})
 	go func() {
 		defer close(done)
 		defer t.Stop()
 		for {
 			select {
-			case <-t.C():
+			case <-t.C:
 			case <-stop:
 				return
 			case <-ctx.Done():

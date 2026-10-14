@@ -66,6 +66,14 @@ func (s *Server) command(ctx context.Context, w http.ResponseWriter, r *http.Req
 	if ctx.Err() != nil {
 		return
 	}
+	if typ == commandCancel {
+		// The holder lets the run go, then cancels it: cancel it here too,
+		// so the answer is the run canceled (one of the two finds it final).
+		if _, err := s.runner.Cancel(ctx, id); err != nil && !errors.Is(err, store.ErrFinal) {
+			s.commandError(w, id, err)
+			return
+		}
+	}
 	s.afterCommand(ctx, w, r, id)
 }
 
@@ -81,7 +89,7 @@ func lastStored(ctx context.Context, log store.EventLog, id string) int64 {
 // awaitReleased waits until no process holds the run, checking the store
 // every poll, or until ctx is done.
 func (s *Server) awaitReleased(ctx context.Context, id string) {
-	t := s.cfg.clock.NewTicker(s.poll())
+	t := time.NewTicker(s.poll()) // real time, as obey's poll
 	defer t.Stop()
 	for {
 		run, err := s.store.Get(ctx, id)
@@ -89,7 +97,7 @@ func (s *Server) awaitReleased(ctx context.Context, id string) {
 			return
 		}
 		select {
-		case <-t.C():
+		case <-t.C:
 		case <-ctx.Done():
 			return
 		}
@@ -114,7 +122,10 @@ func (s *Server) obey(ctx context.Context, x *runner.Execution, h *hub) func() {
 	go func() {
 		defer close(done)
 		defer in.Close()
-		t := s.cfg.clock.NewTicker(s.poll())
+		// The poll is on real time, not the server's clock: it only makes up
+		// for a lost signal, and is no part of the run's timing (its lease,
+		// timeout or drain), which a fake clock in tests steps through.
+		t := time.NewTicker(s.poll())
 		defer t.Stop()
 		for {
 			if s.consume(in, h) {
@@ -122,7 +133,7 @@ func (s *Server) obey(ctx context.Context, x *runner.Execution, h *hub) func() {
 			}
 			select {
 			case <-in.Wake():
-			case <-t.C():
+			case <-t.C:
 			case <-ctx.Done():
 				return
 			}

@@ -129,6 +129,16 @@ IMAGE ?= $(BIN)
 # drivers joined the one default binary (SQLite: about 21 MB, then pgx; E18).
 # Log every size change, with its reason, in docs/SIZES.md (AGENTS.md, Sizes).
 IMAGE_BUDGET_MB ?= 35
+# Variants of the agentkit image, by the store and bus backends it links
+# (cmd/agentkit/backends.go). `make image-local` and `make image-dev` build
+# them as agentkit-local and agentkit-dev; `make image` is the all-in-one.
+#   local  one machine: memory or SQLite, no Postgres, no Redis, no migrate
+#   dev    deployed replicas: memory or Postgres, and Redis; no SQLite
+VARIANTS := local dev
+TAGS_local := nopostgres noredis
+TAGS_dev := nosqlite
+IMAGE_BUDGET_MB_local ?= 26
+IMAGE_BUDGET_MB_dev ?= 30
 # Binaries that get an image; fakellm joins when cmd/fakellm exists (T004).
 IMAGE_BINS := $(notdir $(wildcard $(addprefix cmd/,agentkit fakellm)))
 # An extra CA for the module download, behind a TLS-intercepting proxy.
@@ -149,6 +159,12 @@ image: ## Build an image: BIN=agentkit|fakellm TAGS=... VERSION=... (tags :VERSI
 .PHONY: images
 images: ## Build the image of every binary in cmd/
 	@set -e; for b in $(IMAGE_BINS); do $(MAKE) --no-print-directory image BIN=$$b IMAGE=$$b; done
+
+.PHONY: $(addprefix image-,$(VARIANTS)) $(addprefix image-size-,$(VARIANTS))
+$(addprefix image-,$(VARIANTS)): image-%: ## Build agentkit-local or agentkit-dev (see VARIANTS)
+	@$(MAKE) --no-print-directory image BIN=agentkit IMAGE=agentkit-$* TAGS="$(TAGS_$*)"
+$(addprefix image-size-,$(VARIANTS)): image-size-%: ## Check agentkit-local or agentkit-dev against its budget
+	@$(MAKE) --no-print-directory image-size IMAGE=agentkit-$* IMAGE_BUDGET_MB=$(IMAGE_BUDGET_MB_$*)
 
 .PHONY: image-size
 image-size: ## Fail if the built image (BIN=..., VERSION=...) is over IMAGE_BUDGET_MB

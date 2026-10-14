@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"reflect"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -326,12 +325,12 @@ func TestClientDisconnect(t *testing.T) {
 		s.abandon(cancel)
 		<-armed
 		r.clock.Advance(agentapi.DefaultReconnectGrace - time.Second)
-		back := r.follow(s.runID(), strconv.Itoa(last.Seq)) // within the grace
-		r.clock.Advance(2 * time.Second)                    // past when the grace would have ended
+		back := r.follow(s.runID(), last.ID) // within the grace
+		r.clock.Advance(2 * time.Second)     // past when the grace would have ended
 		m.gate <- struct{}{}
 		events := back.all()
-		if events[0].Seq != last.Seq+1 || back.last().Type != agentapi.TypeRunDone || back.last().Answer != "Done." {
-			t.Errorf("reconnected stream %s, want the run from seq %d to its answer", jsonOf(events), last.Seq+1)
+		if events[0].Seq != last.Seq || events[0].ID == last.ID || back.last().Type != agentapi.TypeRunDone || back.last().Answer != "Done." {
+			t.Errorf("reconnected stream %s, want the run from after %s to its answer", jsonOf(events), last.ID)
 		}
 		if run := r.getRun(s.runID()); run.Status != agentapi.StatusDone {
 			t.Errorf("run = %s, want done", run.Status)

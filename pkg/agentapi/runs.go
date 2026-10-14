@@ -10,11 +10,14 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/bsamanvith/agentkit/pkg/bus"
 	"github.com/bsamanvith/agentkit/pkg/flow"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/store"
+	"github.com/bsamanvith/agentkit/pkg/stream"
 )
 
 // runStatus is the run's status on the wire, at now.
@@ -59,8 +62,8 @@ func endStatus(e Event, interactive bool) string {
 }
 
 // eventsOf returns the run's events: its hub's, while they say what the
-// store says, else replayed from the store, with a last event from its status
-// unless it is going on.
+// store says, else the stored ones, with a last event from its status unless
+// it is going on.
 func (s *Server) eventsOf(ctx context.Context, run store.Run) ([]Event, *hub, error) {
 	now := s.cfg.clock.Now()
 	if h := s.hubOf(ctx, run.ID); h != nil {
@@ -69,22 +72,29 @@ func (s *Server) eventsOf(ctx context.Context, run store.Run) ([]Event, *hub, er
 			return evs, h, nil
 		}
 	}
-	entries, err := s.runEntries(ctx, run)
+	rp, err := s.history(ctx, run, false)
 	if err != nil {
 		return nil, nil, err
 	}
-	rp, err := replay(run, entries)
-	if err != nil {
-		return nil, nil, err
+	return withEnding(run, rp, now), nil, nil
+}
+
+// withEnding returns the run's events, and after them, unless the last one
+// ends the run or the run is going on, the last event its status says.
+func withEnding(run store.Run, rp replayed, now time.Time) []Event {
+	evs := rp.events
+	if n := len(evs); n > 0 && isTerminal(evs[n-1].Type) {
+		return evs
 	}
-	if end := ending(run, rp, now); end != nil {
-		end.Seq = len(rp.events)
-		if last := rp.events[len(rp.events)-1].At; end.At.Before(last) {
-			end.At = last
-		}
-		rp.events = append(rp.events, *end)
+	end := ending(run, rp, now)
+	if end == nil {
+		return evs
 	}
-	return rp.events, nil, nil
+	*end = withID(*end, endingID(lastSeq(evs)))
+	if n := len(evs); n > 0 && end.At.Before(evs[n-1].At) {
+		end.At = evs[n-1].At
+	}
+	return append(evs[:len(evs):len(evs)], *end)
 }
 
 // runView is the run as GET /v1/runs/{id} returns it, from its events.
@@ -104,6 +114,14 @@ func (s *Server) runView(ctx context.Context, run store.Run) (Run, error) {
 		case TypeTurnDone:
 			rec.Turns = append(rec.Turns, *e.Record)
 			usage = usage.Add(e.Record.Usage)
+		case TypeRewind:
+			if e.Turns < len(rec.Turns) {
+				rec.Turns = rec.Turns[:max(e.Turns, 0)]
+				usage = llm.Usage{}
+				for _, t := range rec.Turns {
+					usage = usage.Add(t.Usage)
+				}
+			}
 		case TypeRunDone, TypeRunError:
 			at := e.At
 			v.FinishedAt, rec.FinishedAt = &at, at
@@ -184,23 +202,22 @@ func (s *Server) getRun(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// runEvents serves GET /v1/runs/{id}/events: the run's events from the one
-// after Last-Event-ID (from the first without it), then, while this server
-// runs it, the new ones as they come. A run going on in another process is
-// replayed as far as it is stored, and the stream ends there.
+// runEvents serves GET /v1/runs/{id}/events: the run's events after
+// Last-Event-ID (all of them without it), then the new ones as they come
+// while the run goes on, here or in another process (E18).
 func (s *Server) runEvents(w http.ResponseWriter, r *http.Request) {
 	ctx, ok := s.scope(w, r)
 	if !ok {
 		return
 	}
-	from := 0
+	var after bus.ID
 	if v := r.Header.Get("Last-Event-ID"); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil || n < 0 {
-			writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "Last-Event-ID must be the seq of an event"})
+		id, err := bus.ParseID(v)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "Last-Event-ID must be the id of an event"})
 			return
 		}
-		from = n + 1
+		after = id
 	}
 	run, ok := s.getStored(ctx, w, r.PathValue("id"))
 	if !ok {
@@ -212,19 +229,138 @@ func (s *Server) runEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h != nil {
-		s.follow(w, r, h, from)
+		s.follow(w, r, h, after)
 		return
 	}
-	out := newSSEWriter(w, func() {})
+	out, stop := s.openStream(w, r, run, nil)
+	defer stop()
+	if !held(run, s.cfg.clock.Now()) {
+		// Nobody runs it: what the store has is all there is.
+		for _, e := range withText(evs, after) {
+			if eventID(e).Compare(after) > 0 {
+				out.event(e)
+			}
+		}
+		return
+	}
+	s.watch(ctx, out, run, after)
+}
+
+// openStream sends an event stream's headers; stop ends it.
+func (s *Server) openStream(w http.ResponseWriter, r *http.Request, run store.Run, gone func()) (*sseWriter, func()) {
+	if gone == nil {
+		gone = func() {}
+	}
+	out := newSSEWriter(w, gone)
 	hd := w.Header()
 	hd.Set("Content-Type", "text/event-stream")
 	hd.Set("Cache-Control", "no-store")
+	hd.Set("X-Accel-Buffering", "no")
 	hd.Set("Agentkit-Run-Id", run.ID)
 	hd.Set("Agentkit-Conversation-Id", run.ConversationID)
 	out.open()
-	defer out.close()
-	for _, e := range evs[min(from, len(evs)):] {
-		out.event(e)
+	stopKeepAlive := func() {}
+	if s.cfg.keepAlive > 0 {
+		stopKeepAlive = out.keepAlive(s.cfg.clock, s.cfg.keepAlive)
+	}
+	return out, func() {
+		stopKeepAlive()
+		out.close()
+	}
+}
+
+// errReleased means the process running a run let it go.
+var errReleased = errors.New("the run is no longer held")
+
+// watch streams the events of a run another process runs, after the ID
+// after, from the log and the bus, until its last event. When the process
+// lets the run go without that event reaching the bus (it crashed, or was
+// stopped), the stream ends with the run's stored events and the last event
+// its status says; when another process takes it over, the stream follows
+// that one.
+func (s *Server) watch(ctx context.Context, out *sseWriter, run store.Run, after bus.ID) {
+	poll := s.cfg.streamPoll
+	if poll <= 0 {
+		poll = stream.DefaultPoll
+	}
+	for {
+		wctx, cancel := context.WithCancelCause(ctx)
+		stopCheck := s.checkHeld(wctx, cancel, run.ID, poll)
+		for se, err := range stream.Watch(wctx, s.store, s.bus, run.ID, after, isTerminal, stream.WithClock(s.cfg.clock), stream.WithPoll(poll)) {
+			if err != nil {
+				if !errors.Is(context.Cause(wctx), errReleased) && ctx.Err() == nil {
+					s.log.Error("following a run's events", "run_id", run.ID, "err", err)
+				}
+				break
+			}
+			e, err := decodeEvent(se.ID, se.Data)
+			if err != nil {
+				s.log.Error("decoding a run's event", "run_id", run.ID, "err", err)
+				continue
+			}
+			out.event(e)
+			after = se.ID
+			if isTerminal(e.Type) {
+				stopCheck()
+				cancel(nil)
+				return
+			}
+		}
+		stopCheck()
+		released := errors.Is(context.Cause(wctx), errReleased)
+		cancel(nil)
+		if !released || ctx.Err() != nil {
+			return
+		}
+		cur, err := s.store.Get(ctx, run.ID)
+		if err != nil {
+			s.log.Error("reading a run let go", "run_id", run.ID, "err", err)
+			return
+		}
+		if held(cur, s.cfg.clock.Now()) {
+			continue // taken over: follow its new process
+		}
+		rp, err := s.history(ctx, cur, false)
+		if err != nil {
+			s.log.Error("reading the events of a run let go", "run_id", run.ID, "err", err)
+			return
+		}
+		for _, e := range withText(withEnding(cur, rp, s.cfg.clock.Now()), after) {
+			if eventID(e).Compare(after) > 0 {
+				out.event(e)
+			}
+		}
+		return
+	}
+}
+
+// checkHeld cancels ctx with errReleased once nobody holds the run, checking
+// every d; the returned function stops it and waits for it.
+func (s *Server) checkHeld(ctx context.Context, cancel context.CancelCauseFunc, runID string, d time.Duration) func() {
+	t := s.cfg.clock.NewTicker(d)
+	stop, done := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(done)
+		defer t.Stop()
+		for {
+			select {
+			case <-t.C():
+			case <-stop:
+				return
+			case <-ctx.Done():
+				return
+			}
+			run, err := s.store.Get(ctx, runID)
+			if err == nil && !held(run, s.cfg.clock.Now()) {
+				cancel(errReleased)
+				return
+			}
+		}
+	}()
+	var once sync.Once
+	return func() {
+		once.Do(func() { close(stop) })
+		<-done
 	}
 }
 
@@ -285,24 +421,23 @@ func (s *Server) resume(ctx context.Context, w http.ResponseWriter, r *http.Requ
 		s.startError(w, err, busy)
 		return
 	}
-	seed, err := s.seed(ctx, x.Run)
+	seed, err := s.history(ctx, x.Run, true)
 	if err != nil {
 		// The execution holds the lease: run it anyway, from a log of its
 		// own, rather than leave the run claimed.
-		s.log.Error("replaying a resumed run", "run_id", run.ID, "err", err)
+		s.log.Error("reading a resumed run's events", "run_id", run.ID, "err", err)
 	}
 	s.log.Info("run resumed", "run_id", run.ID, "conversation_id", run.ConversationID, "turns", seed.turns)
 	h := s.launch(execCtx, cancel, x, seed)
-	s.respond(w, r, h, len(seed.events))
+	s.respond(w, r, h, lastID(seed.events))
 }
 
-// seed is a resumed run's events so far, replayed from the store.
-func (s *Server) seed(ctx context.Context, run store.Run) (replayed, error) {
-	entries, err := s.runEntries(ctx, run)
-	if err != nil {
-		return replayed{}, err
+// lastID is the ID of the last of evs, or the zero ID.
+func lastID(evs []Event) bus.ID {
+	if len(evs) == 0 {
+		return bus.ID{}
 	}
-	return replay(run, entries)
+	return eventID(evs[len(evs)-1])
 }
 
 // stopRun serves POST /v1/runs/{id}/stop: the run's execution stops at once,
@@ -408,14 +543,14 @@ func (s *Server) decideRun(w http.ResponseWriter, r *http.Request) {
 		s.startError(w, err, CodeRunLeased)
 		return
 	}
-	seed, err := s.seed(ctx, x.Run)
+	seed, err := s.history(ctx, x.Run, true)
 	if err != nil {
-		s.log.Error("replaying a decided run", "run_id", id, "err", err)
+		s.log.Error("reading a decided run's events", "run_id", id, "err", err)
 	}
 	s.log.Info("run decided", "run_id", id, "path", req.Path, "approved", req.Approved)
 	h := s.launch(execCtx, cancel, x, seed)
 	if strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
-		s.follow(w, r, h, len(seed.events))
+		s.follow(w, r, h, lastID(seed.events))
 		return
 	}
 	if v, ok := s.viewByID(ctx, w, id); ok {

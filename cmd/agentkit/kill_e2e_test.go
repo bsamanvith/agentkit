@@ -125,7 +125,7 @@ func TestE2EServeKilledMidRun(t *testing.T) {
 		t.Errorf("resumed run ended with %+v, want the answer", end)
 	}
 
-	es, err := client.Events(t.Context(), id, -1)
+	es, err := client.Events(t.Context(), id, "")
 	if err != nil {
 		t.Fatal(err)
 	}

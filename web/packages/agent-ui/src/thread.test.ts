@@ -12,7 +12,7 @@ import {
   type Turn,
 } from "./thread";
 
-const ev = (e: Partial<RunEvent> & { type: string }): RunEvent => ({ v: 1, seq: 0, run_id: "run_1", ...e });
+const ev = (e: Partial<RunEvent> & { type: string }): RunEvent => ({ v: 1, id: "1", seq: 1, run_id: "run_1", ...e });
 
 /** Plays events on a fresh answer, checking the invariants after each one. */
 function play(events: RunEvent[], end?: "stopped" | "lost"): AssistantTurn {

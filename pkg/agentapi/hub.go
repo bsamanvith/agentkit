@@ -2,9 +2,11 @@ package agentapi
 
 import (
 	"context"
+	"sort"
 	"sync"
 	"time"
 
+	"github.com/bsamanvith/agentkit/pkg/bus"
 	"github.com/bsamanvith/agentkit/pkg/tenancy"
 )
 
@@ -23,6 +25,7 @@ type hub struct {
 
 	mu       sync.Mutex
 	events   []Event
+	ids      []bus.ID      // events' IDs, increasing
 	done     bool          // the execution ended; events holds its last event
 	ended    chan struct{} // closed when done is set
 	wake     chan struct{} // closed and replaced on every append
@@ -34,32 +37,38 @@ type hub struct {
 func newHub(runID, convID string, tenant tenancy.Tenant, interactive bool, seed []Event) *hub {
 	h := &hub{
 		runID: runID, convID: convID, tenant: tenant, interactive: interactive,
-		events: seed, ended: make(chan struct{}), wake: make(chan struct{}),
+		ended: make(chan struct{}), wake: make(chan struct{}),
+	}
+	for _, e := range seed {
+		h.add(e)
 	}
 	return h
 }
 
-// append adds e to the log, numbered next, and wakes the followers.
+// append adds e, whose ID comes after every event's, to the log and wakes
+// the followers.
 func (h *hub) append(e Event) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.done {
 		return
 	}
-	e.Seq = len(h.events)
-	if n := len(h.events); n > 0 && e.At.Before(h.events[n-1].At) {
-		e.At = h.events[n-1].At // times never go back, whoever stamped them
-	}
-	h.events = append(h.events, e)
+	h.add(e)
 	close(h.wake)
 	h.wake = make(chan struct{})
 }
 
-// finish appends the last event, if any, and ends the log.
-func (h *hub) finish(last *Event, now time.Time) {
-	if last != nil {
-		h.append(*last)
+// add adds e to the log. Call with h.mu held, or before h is shared.
+func (h *hub) add(e Event) {
+	if n := len(h.events); n > 0 && e.At.Before(h.events[n-1].At) {
+		e.At = h.events[n-1].At // times never go back, whoever stamped them
 	}
+	h.events = append(h.events, e)
+	h.ids = append(h.ids, eventID(e))
+}
+
+// finish ends the log.
+func (h *hub) finish(now time.Time) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.done {
@@ -89,13 +98,14 @@ func (h *hub) isDone() bool {
 	return h.done
 }
 
-// next waits for the events from seq from on: it returns them as soon as
+// next waits for the events after the ID after: it returns them as soon as
 // there are any, or nil and true once the log has ended without more, or nil
 // and false when ctx is done.
-func (h *hub) next(ctx context.Context, from int) ([]Event, bool) {
+func (h *hub) next(ctx context.Context, after bus.ID) ([]Event, bool) {
 	for {
 		h.mu.Lock()
-		evs, done, wake := h.events[min(from, len(h.events)):len(h.events):len(h.events)], h.done, h.wake
+		from := sort.Search(len(h.ids), func(i int) bool { return h.ids[i].Compare(after) > 0 })
+		evs, done, wake := h.events[from:len(h.events):len(h.events)], h.done, h.wake
 		h.mu.Unlock()
 		switch {
 		case len(evs) > 0:

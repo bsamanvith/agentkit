@@ -36,7 +36,10 @@ func NewPublisher(log store.EventLog, b bus.Bus, opts ...Option) (*Publisher, er
 // It first republishes the stored events the bus lacks, those after the
 // topic's last message: a crash between storing an event and publishing it,
 // on this process or another, leaves no hole that readers on the bus cannot
-// see. A failure to do so is logged, not returned.
+// see. A failure to do so is logged, not returned. When the topic's last
+// message is a live event after the last stored one (an earlier execution
+// of the run streamed it), the stream's live events go on after it, so no
+// two of the run's events share an ID.
 func (p *Publisher) Open(ctx context.Context, runID string) (*RunStream, error) {
 	t, err := tenancy.Require(ctx)
 	if err != nil {
@@ -51,7 +54,9 @@ func (p *Publisher) Open(ctx context.Context, runID string) (*RunStream, error) 
 		return nil, fmt.Errorf("stream: open run %q: %w", runID, err)
 	}
 	s := &RunStream{p: p, runID: runID, topic: topic, seq: seq}
-	s.republish(ctx)
+	if last, ok := s.republish(ctx); ok && last.Seq == uint64(seq) {
+		s.n = last.N
+	}
 	return s, nil
 }
 
@@ -123,18 +128,19 @@ func (s *RunStream) publish(ctx context.Context, id bus.ID, msg []byte) {
 	}
 }
 
-// republish publishes the stored events after the topic's last message. A
+// republish publishes the stored events after the topic's last message,
+// and returns that message's ID, with false when the bus could not say. A
 // topic with no message needs none: the next message starts a new history,
 // and a reader positioned before it gets ErrGap and reads the log.
-func (s *RunStream) republish(ctx context.Context) {
+func (s *RunStream) republish(ctx context.Context) (bus.ID, bool) {
 	last, err := s.p.bus.Last(ctx, s.topic)
 	if err != nil {
 		s.p.cfg.log.WarnContext(ctx, "stream: reading the bus's last event failed; not republishing",
 			slog.String("run", s.runID), slog.Any("err", err))
-		return
+		return bus.ID{}, false
 	}
 	if last.IsZero() {
-		return
+		return last, true
 	}
 	after := int64(last.Seq)
 	for after < s.seq {
@@ -142,10 +148,10 @@ func (s *RunStream) republish(ctx context.Context) {
 		if err != nil {
 			s.p.cfg.log.WarnContext(ctx, "stream: reading stored events to republish failed",
 				slog.String("run", s.runID), slog.Any("err", err))
-			return
+			return last, true
 		}
 		if len(events) == 0 {
-			return
+			return last, true
 		}
 		for _, e := range events {
 			msg, err := encode(e.Type, e.Data)
@@ -156,4 +162,5 @@ func (s *RunStream) republish(ctx context.Context) {
 			after = e.Seq
 		}
 	}
+	return last, true
 }

@@ -295,10 +295,10 @@
           {
             "name": "Last-Event-ID",
             "in": "header",
-            "description": "The seq of the last event the client has.",
+            "description": "The id of the last event the client has. Any server sharing the run's store answers from the event after it.",
             "schema": {
-              "type": "integer",
-              "minimum": 0
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)(\\.[1-9][0-9]*)?$"
             }
           }
         ],
@@ -309,13 +309,13 @@
               "text/event-stream": {
                 "schema": {
                   "type": "string",
-                  "description": "Server-Sent Events: each event's name is its type, its id its seq, and its data the JSON of an Event (components.schemas.Event)."
+                  "description": "Server-Sent Events: each event's name is its type, its id the event's id, and its data the JSON of an Event (components.schemas.Event)."
                 }
               }
             }
           },
           "400": {
-            "description": "invalid_request: Last-Event-ID is not an event's seq.",
+            "description": "invalid_request: Last-Event-ID is not an event's id.",
             "content": {
               "application/json": {
                 "schema": {
@@ -359,7 +359,7 @@
       "post": {
         "operationId": "resumeRun",
         "summary": "Resume a run",
-        "description": "Continues a run that is interrupted, failed, or was left by a process that stopped. The response is the run's event stream from the first event of the continuation (its seq goes on from the run's events so far), or with Accept: application/json the run once it ends.",
+        "description": "Continues a run that is interrupted, failed, or was left by a process that stopped. The response is the run's event stream from the first event of the continuation (its ids go on after the run's events so far), or with Accept: application/json the run once it ends.",
         "parameters": [
           {
             "name": "id",
@@ -383,7 +383,7 @@
               "text/event-stream": {
                 "schema": {
                   "type": "string",
-                  "description": "Server-Sent Events: each event's name is its type, its id its seq, and its data the JSON of an Event (components.schemas.Event)."
+                  "description": "Server-Sent Events: each event's name is its type, its id the event's id, and its data the JSON of an Event (components.schemas.Event)."
                 }
               }
             }
@@ -621,7 +621,7 @@
               "text/event-stream": {
                 "schema": {
                   "type": "string",
-                  "description": "Server-Sent Events: each event's name is its type, its id its seq, and its data the JSON of an Event (components.schemas.Event)."
+                  "description": "Server-Sent Events: each event's name is its type, its id the event's id, and its data the JSON of an Event (components.schemas.Event)."
                 }
               }
             }
@@ -1763,9 +1763,13 @@
             "type": "string",
             "description": "run_start, text_delta, tool_call, tool_result, turn_done, retrying, run_done or run_error; new types may be added: skip an unknown one."
           },
+          "id": {
+            "type": "string",
+            "description": "Orders the run's events, and is the SSE id. Every event but text_delta is stored, and its id is its seq (\"12\"); a text_delta is only streamed, and its id is the seq of the stored event before it and its count after it, from 1 (\"12.3\"). Compare ids by seq, then count. A client that missed text_delta events has the turn's whole reply in its turn_done."
+          },
           "seq": {
             "type": "integer",
-            "description": "Counts the run's events from 0, with no gaps."
+            "description": "Counts the run's stored events from 1, with no gaps; a text_delta has the seq of the stored event before it."
           },
           "run_id": {
             "type": "string"
@@ -1851,6 +1855,7 @@
         "required": [
           "v",
           "type",
+          "id",
           "seq",
           "run_id",
           "at"

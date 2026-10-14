@@ -37,12 +37,15 @@ export type Block = TextBlock | ToolUseBlock | ToolResultBlock | UnknownBlock;
 export type Message = { role: "user" | "assistant" | string; content: Block[] };
 
 /**
- * One event of a run. Every event has v, type, seq and run_id; the other
+ * One event of a run. Every event has v, type, id, seq and run_id; the other
  * fields depend on the type (pkg/agentapi/wire.Event).
  */
 export type RunEvent = {
   v: number;
   type: EventType | (string & {});
+  /** Orders the run's events, and is the SSE id: "12" for a stored event, "12.3" for a text_delta after it. */
+  id: string;
+  /** The stored events' count from 1; a text_delta has the seq of the stored event before it. */
   seq: number;
   run_id: string;
   at?: string;

@@ -179,7 +179,7 @@ func TestEventsOfAnEvictedRun(t *testing.T) {
 	if after := r.getRun(first.runID()); !jsonEqual(after, before) {
 		t.Errorf("evicted run reads\n%s\nnot\n%s", jsonOf(after), jsonOf(before))
 	}
-	if tail := r.events(first.runID(), "2"); len(tail) != len(got)-3 || tail[0].Seq != 3 {
+	if tail := r.events(first.runID(), "2"); len(tail) == 0 || tail[0].ID != "3" || !jsonEqual(tail, got[from(got, "3"):]) {
 		t.Errorf("from Last-Event-ID 2: %s", jsonOf(tail))
 	}
 }

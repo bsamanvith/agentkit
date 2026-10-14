@@ -82,6 +82,10 @@ func ModuleRules() Rules {
 			"pkg/agentapi": {
 				"pkg/harness", "pkg/llm", "pkg/tool", "pkg/toolset", "pkg/component", "pkg/clock",
 				"pkg/runner", "pkg/store", "pkg/tenancy", "pkg/flow",
+				// Runs' events and commands between replicas (T090): the
+				// stream over the store and a bus, in memory unless serve
+				// gives one.
+				"pkg/stream", "pkg/bus", "pkg/bus/memory",
 				"pkg/llm/llmtest", "pkg/clock/clocktest", "internal/testkit", "pkg/toolset/toolsettest",
 				"pkg/store/scoped",
 			},

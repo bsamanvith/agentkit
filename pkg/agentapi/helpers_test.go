@@ -464,7 +464,7 @@ type stream struct {
 }
 
 // next returns the next event, or false at the end of the stream. It checks
-// the SSE framing: the id is the seq, the event name is the type.
+// the SSE framing: the id is the event's, the event name is the type.
 func (s *stream) next() (agentapi.Event, bool) {
 	s.r.t.Helper()
 	var id, name string
@@ -480,8 +480,8 @@ func (s *stream) next() (agentapi.Event, bool) {
 			if err := json.Unmarshal([]byte(strings.Join(data, "\n")), &e); err != nil {
 				s.r.t.Fatalf("event %q: %v", data, err)
 			}
-			if id != strconv.Itoa(e.Seq) || name != e.Type {
-				s.r.t.Errorf("SSE id %q and event %q, want %d and %q", id, name, e.Seq, e.Type)
+			if seq, _, ok := wire.ParseID(e.ID); !ok || id != e.ID || seq != uint64(e.Seq) || name != e.Type {
+				s.r.t.Errorf("SSE id %q and event %q, want the event's id %q (of seq %d) and %q", id, name, e.ID, e.Seq, e.Type)
 			}
 			s.events = append(s.events, e)
 			if e.Type == agentapi.TypeRunStart && !s.done { // not a read of check's own
@@ -600,10 +600,14 @@ func (r *rig) check() {
 			whole[id], order = full, append(order, id)
 		}
 		got := s.events
-		if end := s.last(); end.Type == agentapi.TypeRunError && end.Seq < len(full) && superseded(end, full[end.Seq]) {
-			got = got[:len(got)-1] // the run went on: its next event took the ending's place
+		if end := s.last(); end.Type == agentapi.TypeRunError && indexOf(full, end.ID) < 0 {
+			// The run went on: the ending was streamed, not stored, and
+			// the run's events go on after it.
+			if i := after(full, end.ID); i < len(full) && superseded(end, full[i]) {
+				got = got[:len(got)-1]
+			}
 		}
-		if from := s.events[0].Seq; from < 0 || from > len(full) || !jsonEqual(got, full[from:min(from+len(got), len(full))]) {
+		if !sameRun(got, full[from(full, s.events[0].ID):]) {
 			t.Errorf("run %s streamed\n%s\nbut its events are\n%s", id, jsonOf(s.events), jsonOf(full))
 		}
 	}
@@ -742,9 +746,15 @@ func checkStream(t *testing.T, events []agentapi.Event) {
 	deltas := map[int]string{} // turn → text deltas
 	calls := map[[2]int]string{}
 	var usage llm.Usage
+	stored := 0
 	for i, e := range events {
-		if e.V != agentapi.WireVersion || e.Seq != i || e.RunID != events[0].RunID || (i > 0 && e.At.Before(events[i-1].At)) {
-			t.Errorf("event %d %+v: want v 1, seq %d, run %s, time not before the last", i, e, i, events[0].RunID)
+		seq, n, ok := wire.ParseID(e.ID)
+		if n == 0 {
+			stored++
+		}
+		if !ok || e.V != agentapi.WireVersion || seq != uint64(stored) || e.Seq != stored || e.RunID != events[0].RunID ||
+			(i > 0 && (e.At.Before(events[i-1].At) || wire.CompareIDs(events[i-1].ID, e.ID) >= 0)) {
+			t.Errorf("event %d %+v: want v 1, an ID after the last's of stored event %d, run %s, time not before the last", i, e, stored, events[0].RunID)
 		}
 		switch e.Type {
 		case agentapi.TypeRunStart:
@@ -757,6 +767,19 @@ func checkStream(t *testing.T, events []agentapi.Event) {
 			}
 		case agentapi.TypeRunDone, agentapi.TypeRunError:
 			terminal++
+		case agentapi.TypeRewind:
+			if e.Turns > turn {
+				t.Errorf("rewind to %d turns after %d", e.Turns, turn)
+			}
+			for k := turn + 1; k > e.Turns; k-- {
+				delete(deltas, k)
+			}
+			for k := range calls {
+				if k[0] > e.Turns {
+					delete(calls, k)
+				}
+			}
+			turn = e.Turns
 		case agentapi.TypeRetrying:
 			if e.Attempt < 2 || e.Error == nil {
 				t.Errorf("retrying %+v: want an attempt from 2 and the error", e)
@@ -838,3 +861,57 @@ func jsonOf(v any) []byte {
 }
 
 func jsonEqual(a, b any) bool { return bytes.Equal(jsonOf(a), jsonOf(b)) }
+
+// indexOf returns the index of the event of ID id in evs, or -1.
+func indexOf(evs []agentapi.Event, id string) int {
+	return slices.IndexFunc(evs, func(e agentapi.Event) bool { return e.ID == id })
+}
+
+// after returns the index of the first event of evs after the ID id.
+func after(evs []agentapi.Event, id string) int {
+	i := slices.IndexFunc(evs, func(e agentapi.Event) bool { return wire.CompareIDs(e.ID, id) > 0 })
+	if i < 0 {
+		return len(evs)
+	}
+	return i
+}
+
+// from returns the index of the first event of evs at or after the ID id.
+func from(evs []agentapi.Event, id string) int {
+	i := slices.IndexFunc(evs, func(e agentapi.Event) bool { return wire.CompareIDs(e.ID, id) >= 0 })
+	if i < 0 {
+		return len(evs)
+	}
+	return i
+}
+
+// sameRun reports whether got is a prefix of want, the events of one run, as
+// a client sees them: the same stored events, and each turn the same text,
+// however its text_delta events cut it (a run read from the store streams
+// each text block as one).
+func sameRun(got, want []agentapi.Event) bool {
+	norm := func(evs []agentapi.Event) []agentapi.Event {
+		var out []agentapi.Event
+		for _, e := range evs {
+			if e.Type == agentapi.TypeTextDelta {
+				if n := len(out); n > 0 && out[n-1].Type == agentapi.TypeTextDelta && out[n-1].Turn == e.Turn {
+					out[n-1].Text += e.Text
+					continue
+				}
+				e.ID, e.Block, e.At = "", 0, time.Time{}
+			}
+			out = append(out, e)
+		}
+		return out
+	}
+	g, w := norm(got), norm(want)
+	if len(g) > len(w) {
+		return false
+	}
+	if n := len(g); n > 0 && g[n-1].Type == agentapi.TypeTextDelta && n < len(w) {
+		// a stream cut in a turn's text has some of it
+		w = slices.Clone(w[:n])
+		w[n-1].Text = w[n-1].Text[:min(len(w[n-1].Text), len(g[n-1].Text))]
+	}
+	return jsonEqual(g, w[:len(g)])
+}

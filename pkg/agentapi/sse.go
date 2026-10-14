@@ -13,7 +13,7 @@ import (
 
 // sseWriter writes a run's events as Server-Sent Events:
 //
-//	id: <seq>
+//	id: <the event's ID>
 //	event: <type>
 //	data: <the event's JSON, one line>
 //
@@ -45,11 +45,11 @@ func (s *sseWriter) event(e Event) {
 	data, err := json.Marshal(e)
 	if err != nil { // cannot happen: every field marshals
 		data, _ = json.Marshal(Event{
-			V: WireVersion, Type: TypeRunError, Seq: e.Seq, RunID: e.RunID, At: e.At,
+			V: WireVersion, Type: TypeRunError, ID: e.ID, Seq: e.Seq, RunID: e.RunID, At: e.At,
 			Error: &Error{Code: CodeInternal, Message: "encoding an event failed"},
 		})
 	}
-	s.write(fmt.Sprintf("id: %d\nevent: %s\ndata: %s\n\n", e.Seq, e.Type, data))
+	s.write(fmt.Sprintf("id: %s\nevent: %s\ndata: %s\n\n", e.ID, e.Type, data))
 }
 
 func (s *sseWriter) write(msg string) {

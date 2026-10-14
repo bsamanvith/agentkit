@@ -6,7 +6,8 @@ import { busyRetryMs, RunStore } from "./runs";
 const ev = (type: string, extra: Record<string, unknown> = {}): RunEvent => ({
   v: 1,
   type,
-  seq: 0,
+  id: "1",
+  seq: 1,
   run_id: "r1",
   ...extra,
 });

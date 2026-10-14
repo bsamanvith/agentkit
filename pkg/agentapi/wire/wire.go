@@ -16,6 +16,8 @@ package wire
 
 import (
 	"encoding/json"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/llm"
@@ -53,20 +55,35 @@ const (
 	// It does not end the run. The turn in progress is dropped: discard its
 	// text deltas; the attempt starts that turn again.
 	TypeRetrying = "retrying"
+	// TypeRewind says the run goes on from an earlier point than its events
+	// so far: the process running it stopped (it crashed, or was killed)
+	// before it kept its last turns, and the run, resumed, does them again.
+	// Only the first Turns turns stand: discard the events of the later
+	// ones, and of the turn that was in progress. It does not end the run.
+	TypeRewind = "rewind"
 )
 
 // Event is one event of a run on the wire: the JSON of an SSE "data:" line.
-// Every event has the header fields (v, type, seq, run_id, at); the others
-// depend on Type and are written only for that type. Decoding into Event
-// works for every type and ignores unknown fields.
+// Every event has the header fields (v, type, id, seq, run_id, at); the
+// others depend on Type and are written only for that type. Decoding into
+// Event works for every type and ignores unknown fields.
 //
 // A run's events are: one run_start; then per turn its text_delta events, a
 // tool_call and a tool_result per tool call (each call's tool_call first),
-// and one turn_done; and last exactly one run_done or run_error. Seq counts
-// events from 0 with no gaps.
+// and one turn_done; and last exactly one run_done or run_error.
+//
+// Every event but text_delta is stored: Seq numbers the stored events from 1
+// with no gaps, and such an event's ID is its Seq ("12"). A text_delta is
+// only streamed: it has the Seq of the stored event before it, and the ID
+// "12.3", counting from 1 after it. IDs order a run's events (see
+// [CompareIDs]) and are the same from every server, so a client resumes with
+// the last ID it has (the SSE Last-Event-ID) from any of them. A client that
+// missed text_delta events (it resumed after the server let them go) has the
+// turn's whole reply in its turn_done.
 type Event struct {
 	V     int       `json:"v"`
 	Type  string    `json:"type"`
+	ID    string    `json:"id"`
 	Seq   int       `json:"seq"`
 	RunID string    `json:"run_id"`
 	At    time.Time `json:"at"`
@@ -141,6 +158,7 @@ func (e *Event) UnmarshalJSON(data []byte) error {
 type header struct {
 	V     int       `json:"v"`
 	Type  string    `json:"type"`
+	ID    string    `json:"id"`
 	Seq   int       `json:"seq"`
 	RunID string    `json:"run_id"`
 	At    time.Time `json:"at"`
@@ -149,7 +167,7 @@ type header struct {
 // MarshalJSON writes the header and the fields of e's type, zero values
 // included, so that "call": 0 or "is_error": false are explicit.
 func (e Event) MarshalJSON() ([]byte, error) {
-	h := header{V: e.V, Type: e.Type, Seq: e.Seq, RunID: e.RunID, At: e.At}
+	h := header{V: e.V, Type: e.Type, ID: e.ID, Seq: e.Seq, RunID: e.RunID, At: e.At}
 	switch e.Type {
 	case TypeRunStart:
 		return json.Marshal(struct {
@@ -211,6 +229,11 @@ func (e Event) MarshalJSON() ([]byte, error) {
 			Attempt int     `json:"attempt"`
 			DelayMS float64 `json:"delay_ms"`
 		}{h, e.Error, e.Attempt, e.DelayMS})
+	case TypeRewind:
+		return json.Marshal(struct {
+			header
+			Turns int `json:"turns"`
+		}{h, e.Turns})
 	default:
 		return json.Marshal(h)
 	}
@@ -447,4 +470,65 @@ type RunRequest struct {
 type ErrorResponse struct {
 	V     int    `json:"v"`
 	Error *Error `json:"error"`
+}
+
+// CompareIDs compares two event IDs of one run by their order in the run:
+// -1 if a comes before b, 0 if they are the same, +1 if a comes after b. An
+// ID that is not one (see [ParseID]) comes before every ID.
+func CompareIDs(a, b string) int {
+	sa, na, oka := ParseID(a)
+	sb, nb, okb := ParseID(b)
+	switch {
+	case !oka || !okb:
+		return compareBool(oka, okb)
+	case sa != sb:
+		return compareUint(sa, sb)
+	}
+	return compareUint(na, nb)
+}
+
+// ParseID splits an event ID into the Seq of its stored event and the count
+// of the text_delta after it (0 for a stored event): "12" is 12, 0 and
+// "12.3" is 12, 3. ok is false for text that is not an ID.
+func ParseID(id string) (seq, n uint64, ok bool) {
+	s, d, dot := strings.Cut(id, ".")
+	seq, err := parseDecimal(s)
+	if err != nil {
+		return 0, 0, false
+	}
+	if !dot {
+		return seq, 0, true
+	}
+	n, err = parseDecimal(d)
+	if err != nil || n == 0 {
+		return 0, 0, false
+	}
+	return seq, n, true
+}
+
+func parseDecimal(s string) (uint64, error) {
+	if s == "" || (len(s) > 1 && s[0] == '0') || s[0] < '0' || s[0] > '9' {
+		return 0, strconv.ErrSyntax
+	}
+	return strconv.ParseUint(s, 10, 64)
+}
+
+func compareUint(a, b uint64) int {
+	switch {
+	case a < b:
+		return -1
+	case a > b:
+		return 1
+	}
+	return 0
+}
+
+func compareBool(a, b bool) int {
+	switch {
+	case a == b:
+		return 0
+	case b:
+		return -1
+	}
+	return 1
 }

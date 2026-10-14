@@ -49,4 +49,4 @@ Image sizes are uncompressed, as `make image-size` reports them.
 | 2026-10-13 | T078 | agentkit | 18,099,712 | +720,896 | The console shell embedded (`pkg/web/dist`) |
 | 2026-10-13 | T088 (`e197728`) | agentkit | 22,097,408 | +4.0 MB | The Postgres driver, linked by `agentkit migrate` |
 | 2026-10-14 | T055, bsamanvith/agentkit#14 | agentkit | 22,162,944 | +65,536 | The console chat (lazy chunks, Markdown renderer) |
-| pending | T037 (branch `claude/project-thread-xwz75u`, not merged) | agentkit | binary 24,838,304 (main: 20,029,600) | +4.8 MB binary | SQLite and the stores in serve. Image projected at about 27 MB |
+| 2026-10-14 | T037, bsamanvith/agentkit#15 (`b292d25`) | agentkit | binary 24,838,304 (before: 20,029,600) | +4.8 MB binary | SQLite and the stores in serve. Image projected at about 27 MB, under the 30 MB budget; not yet measured with `make image-size` |

@@ -67,7 +67,7 @@ test("a new chat streams an answer with a tool step, takes a follow-up, and relo
   expect(errors).toEqual([]);
 });
 
-test("Stop closes the stream and the server cancels the run", async ({ page, request }) => {
+test("Stop closes the stream and the server stops the run", async ({ page, request }) => {
   const errors = watchErrors(page);
   await signIn(page);
   await page.goto("/new");
@@ -81,14 +81,15 @@ test("Stop closes the stream and the server cancels the run", async ({ page, req
   await expect(page.getByText("Stopped. This part isn't saved.")).toBeVisible();
   await expect(box(page)).toBeEnabled();
 
-  // The run is cancelled on the server, and its model request ended.
+  // The run is stopped on the server (T037: interrupted, so Resume can
+  // continue it), and its model request ended.
   await expect
     .poll(async () => {
       const r = await request.get(`/v1/runs/${runId}`, { headers: { Authorization: `Bearer ${token}` } });
       const run = (await r.json()) as { status: string; error?: { code: string } };
       return `${run.status}/${run.error?.code ?? ""}`;
     })
-    .toBe("failed/cancelled");
+    .toBe("interrupted/interrupted");
   await expect
     .poll(
       async () =>

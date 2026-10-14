@@ -150,6 +150,22 @@ export class AgentClient {
     return this.getJSON<Run>(`/v1/runs/${encodeURIComponent(id)}`, opts);
   }
 
+  /**
+   * POST /v1/runs/{id}/stop (T037): interrupts the run at once, keeping its
+   * completed turns; POST /v1/runs/{id}/resume continues it. A run that has
+   * already ended is left as it is.
+   */
+  async stopRun(id: string, opts: RequestOptions = {}): Promise<void> {
+    const resp = await this.#send(
+      "POST",
+      `/v1/runs/${encodeURIComponent(id)}/stop`,
+      undefined,
+      "application/json",
+      opts.signal,
+    );
+    await resp.body?.cancel();
+  }
+
   /** GET a JSON resource under /v1. */
   async getJSON<T>(path: string, opts: RequestOptions = {}): Promise<T> {
     const resp = await this.#send("GET", path, undefined, "application/json", opts.signal);
@@ -172,8 +188,9 @@ export class AgentClient {
    * which ends the iteration (events after it are not read). Unknown event
    * types are yielded like any other; the caller skips what it doesn't know.
    *
-   * Abort the signal to stop the run: the server sees the request end and
-   * cancels it (the conversation may be left interrupted). A body that ends
+   * Aborting the signal only closes the stream: since T037 the server lets
+   * a run nobody follows go on for a grace period, then interrupts it. To
+   * stop the run, call stopRun as well. A body that ends
    * or breaks (a reset connection) before the end event throws
    * StreamTruncatedError, as pkg/agentclient does.
    */

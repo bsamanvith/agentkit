@@ -3,8 +3,8 @@
 // showing it, so it goes on while you look at another conversation or an
 // admin page, and its page picks it up again when you come back.
 //
-// Stop aborts the run's request; the server sees the request end and
-// cancels the run (T036). Resume is a run with an empty message. Pages read
+// Stop asks the server to stop the run (POST /v1/runs/{id}/stop, T037) and
+// closes its stream. Resume is a run with an empty message. Pages read
 // a conversation's state with useSyncExternalStore; each state is a new
 // object when it changes, and text deltas are applied once per frame.
 
@@ -50,6 +50,8 @@ export const busyRetryMs = 2000;
 export class RunStore {
   #states = new Map<string, ConversationState>();
   #controllers = new Map<string, AbortController>();
+  /** Stops a conversation's run on the server, once its ID is known. */
+  #stoppers = new Map<string, () => void>();
   #timers = new Map<string, ReturnType<typeof setTimeout>>();
   #listeners = new Set<() => void>();
   #pending = new Map<string, AssistantTurn>();
@@ -124,6 +126,7 @@ export class RunStore {
       this.#giveBack(id);
       return;
     }
+    this.#stoppers.get(id)?.();
     this.#controllers.get(id)?.abort();
   }
 
@@ -183,6 +186,10 @@ export class RunStore {
     const ctl = new AbortController();
     this.#controllers.set(id, ctl);
     let answer = startAnswer(`a${Date.now()}`, Date.now());
+    this.#stoppers.set(id, () => {
+      // Closing the stream alone leaves the run going for a grace period.
+      if (answer.runId) client.stopRun(answer.runId).catch(() => {});
+    });
     this.#update(id, (s) => ({
       ...s,
       problem: undefined,
@@ -206,13 +213,17 @@ export class RunStore {
         answer = endAnswer(answer, "stopped", Date.now());
       } else if (!started && (e instanceof ApiError || e instanceof NetworkError)) {
         this.#controllers.delete(id);
+        this.#stoppers.delete(id);
         this.#notSent(client, id, e, req.message, agent, retried);
         return;
       } else {
         answer = endAnswer(answer, "lost", Date.now());
       }
     } finally {
-      if (this.#controllers.get(id) === ctl) this.#controllers.delete(id);
+      if (this.#controllers.get(id) === ctl) {
+        this.#controllers.delete(id);
+        this.#stoppers.delete(id);
+      }
     }
     this.#ended(id, answer, run.exchange);
   }

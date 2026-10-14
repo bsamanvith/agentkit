@@ -108,6 +108,9 @@ function fakeServer() {
         messages: c.messages,
       });
     }
+    if (/^\/v1\/runs\/[^/]+\/stop$/.test(path) && method === "POST") {
+      return json({ v: 1, id: path.split("/")[3], status: "interrupted" });
+    }
     if (path === "/v1/runs" && method === "POST") {
       const script = state.scripts.shift() ?? [{ type: "run_start" }, { type: "run_done", answer: "" }];
       if (!Array.isArray(script) && script !== "stall") return error(script.status, script.code, script.message);
@@ -291,6 +294,7 @@ describe("a conversation", () => {
     await userEvent.click(screen.getByRole("button", { name: "Stop" }));
     expect(run?.signal?.aborted).toBe(true);
     expect(server.aborted).toBe(1);
+    expect(server.seen.some((r) => r.method === "POST" && r.path === "/v1/runs/run_1/stop")).toBe(true);
     expect(await screen.findByText("Stopped. This part isn't saved.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Resume: let researcher continue" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();

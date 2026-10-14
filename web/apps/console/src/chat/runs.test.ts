@@ -14,7 +14,11 @@ const ev = (type: string, extra: Record<string, unknown> = {}): RunEvent => ({
 /** A client whose runs follow scripts: events, a thrown error, or a stall until aborted. */
 function fakeClient(scripts: (RunEvent[] | Error | "stall")[]) {
   const calls: { req: unknown; signal: AbortSignal | undefined }[] = [];
+  const stopped: string[] = [];
   const client = {
+    async stopRun(id: string) {
+      stopped.push(id);
+    },
     async *run(req: unknown, opts: { signal?: AbortSignal } = {}) {
       calls.push({ req, signal: opts.signal });
       const s = scripts.shift() ?? [ev("run_start"), ev("run_done")];
@@ -32,7 +36,7 @@ function fakeClient(scripts: (RunEvent[] | Error | "stall")[]) {
       for (const e of s) yield e;
     },
   } as unknown as AgentClient;
-  return { client, calls };
+  return { client, calls, stopped };
 }
 
 let hooks: {
@@ -68,12 +72,13 @@ describe("RunStore", () => {
     expect(hooks.announce).toHaveBeenLastCalledWith("Answer complete");
   });
 
-  it("stops a run by aborting its request", async () => {
-    const { client, calls } = fakeClient(["stall"]);
+  it("stops a run on the server and aborts its request", async () => {
+    const { client, calls, stopped } = fakeClient(["stall"]);
     store.send(client, "c1", "Long", [], "researcher");
-    await vi.waitFor(() => expect(calls[0]?.signal).toBeDefined());
+    await vi.waitFor(() => expect(store.get("c1").live?.answer.runId).toBe("r1"));
     expect(store.running("c1")).toBe(true);
     store.stop("c1");
+    expect(stopped).toEqual(["r1"]);
     expect(calls[0]?.signal?.aborted).toBe(true);
     await settled();
     expect(store.get("c1").live?.answer.state).toBe("stopped");

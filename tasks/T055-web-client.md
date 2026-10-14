@@ -63,7 +63,7 @@ Read T078's Notes "For T055, T064 and T066" first: where components go, `useApi`
 ## Acceptance criteria
 
 - [x] In Chromium (Playwright) against `agentkit serve` (replayed model): sending a message streams the answer into the page; a tool call appears as a card with its input and result; a follow-up continues the conversation; reload + clicking the conversation in the sidebar shows the history.
-- [x] Stop during a run cancels it on the server (the run ends `cancelled`) and the UI returns to ready.
+- [x] Stop during a run cancels it on the server (the run ends `cancelled`) and the UI returns to ready. *Since T037, Stop calls `POST /v1/runs/{id}/stop` and the run ends `interrupted`, so it can be resumed (Background).*
 - [x] XSS: a tool result and an answer containing `<script>`, `<img onerror=...>` and `javascript:` links render as text or are dropped; no script runs (a test hook that would fire on injection never does). CSP header present on every page response.
 - [x] Without a token, or with a wrong one: the token prompt and a clear error, no request loop.
 - [x] The committed bundle matches `make web` (CI check); `go build` from a fresh clone needs no Node.js (the committed build).
@@ -78,7 +78,7 @@ Two things keep this in `review`:
 
 - **The image criterion is met.** `make image` ran, and the container with `AGENTKIT_COMPONENTS=agent,mcp-server,web` served the console on `:8080` (`/readyz` lists `web` ready; `/c/conv.1` is the app with the CSP). The image is 22,162,944 bytes; the base of this branch (`e197728`) was already 22,097,408 bytes, so this task adds 65,536 bytes. The criterion used to say 20 MB. On 2026-10-14 the owner chose 30 MB, the budget CI enforces (`IMAGE_BUDGET_MB`), since Postgres stays in the image (the 4.1 MB pgx driver; see docs/SIZES.md).
 - **Login page (T061)** isn't built: the server has no users yet. The token prompt is the only sign-in.
-- **Stop and Resume use T036's API**, not T037's `POST /v1/runs/{id}/stop` and `/resume`, which haven't landed (see Decisions).
+- **Resume uses T036's API** (a run with an empty message), not T037's `POST /v1/runs/{id}/resume`. Stop calls T037's `POST /v1/runs/{id}/stop` since main brought T037 in: closing the stream alone now leaves the run going for a grace period, then interrupts it, so the stopped run reads `interrupted` and the browser test checks that.
 
 ### Results
 
@@ -94,7 +94,7 @@ Two things keep this in `review`:
 - **Speed**, with Lighthouse's mobile throttling (150 ms RTT, 1.6 Mbps down, 4× CPU slowdown) against a local server, three runs each: `/new` to a usable composer took 1.57 to 1.65 s, and a conversation to its history took 2.07 s.
 - **Tests**:
   - Unit tests: 16 in `ui`, 128 in `agent-ui` and 78 in the console. They cover the run store, the chat page against a fake server and the Chats list.
-  - `make web-smoke`: 8 tests, the 4 smoke tests and 4 chat tests. The chat tests run `agentkit serve` against `e2e/fake-model.ts`, a fake Anthropic Messages API that streams a tool call, hostile HTML, a stalled answer or an echo. They cover a new chat with a tool card (input and result), a follow-up, the conversation from the list after a reload, Stop ending the run `failed/cancelled` and its model request, hostile tool input, results and answers staying text with no `window.__xss` under the CSP, and a wrong token prompting with no request loop.
+  - `make web-smoke`: 8 tests, the 4 smoke tests and 4 chat tests. The chat tests run `agentkit serve` against `e2e/fake-model.ts`, a fake Anthropic Messages API that streams a tool call, hostile HTML, a stalled answer or an echo. They cover a new chat with a tool card (input and result), a follow-up, the conversation from the list after a reload, Stop ending the run `interrupted` (T037's stop endpoint) and its model request, hostile tool input, results and answers staying text with no `window.__xss` under the CSP, and a wrong token prompting with no request loop.
   - `go build ./cmd/agentkit` works from a fresh clone with no `node` on `PATH`.
 
 ### Mutations

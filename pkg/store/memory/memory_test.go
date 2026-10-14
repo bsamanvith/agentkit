@@ -116,3 +116,10 @@ func FuzzEventSimulation(f *testing.F) {
 		storetest.SimulateEvents(t, newEvents, seed)
 	})
 }
+
+func TestConversationIndex(t *testing.T) {
+	t.Parallel()
+	storetest.RunConversationIndex(t, func(_ *testing.T, clk clock.Clock) storetest.IndexStore {
+		return memory.New(memory.WithClock(clk))
+	})
+}

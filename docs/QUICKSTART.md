@@ -5,7 +5,7 @@ One process serves two things:
 - the **agent API**: `POST /v1/runs` sends a prompt to one of the configured agents (Claude with its own system prompt and tools from the configured toolsets, run by our harness); the reply streams back as Server-Sent Events, and follow-ups continue the conversation. `GET /v1/agents`, `/v1/conversations` and `/v1/toolsets` list what the server has;
 - the same **toolsets over MCP** at `/mcp/<name>`, for Claude Code, Codex or any MCP client.
 
-Runs and conversations are kept in memory for now (lost on restart); persistence comes with the store and runner (M4).
+Runs and conversations are kept in memory by default (lost on restart); `AGENTKIT_STORE=sqlite:/path/agentkit.db` or a `postgres://` URL keeps them (section 5).
 
 ## 1. Prerequisites (macOS)
 
@@ -30,14 +30,14 @@ The demo shows:
 3. the same tools listed over MCP at `/mcp/demo` (`calculate`, `current_time`, `echo`);
 4. a request without the token refused with 401.
 
-It then prints the token and ready-to-paste commands.
+It then prints the token and ready-to-paste commands. Open http://localhost:8080 to chat in the browser: the console asks for the token once per tab.
 
 ## 3. By hand
 
 ```sh
 go build -o bin/agentkit ./cmd/agentkit
 export AGENTKIT_API_TOKEN=$(openssl rand -hex 16)
-AGENTKIT_COMPONENTS=agent,mcp-server bin/agentkit serve -config deploy/local/agent/config.json
+AGENTKIT_COMPONENTS=agent,web,mcp-server bin/agentkit serve -config deploy/local/agent/config.json
 ```
 
 In another terminal (same `AGENTKIT_API_TOKEN`):
@@ -129,7 +129,7 @@ bin/agentkit chat -conversation "$conv"
 make image
 docker run --rm --stop-timeout 20 -p 8080:8080 \
   -e ANTHROPIC_API_KEY -e AGENTKIT_API_TOKEN \
-  -e AGENTKIT_COMPONENTS=agent,mcp-server \
+  -e AGENTKIT_COMPONENTS=agent,web,mcp-server \
   -v "$PWD/deploy/local/agent/config.json:/etc/agentkit/config.json:ro" \
   agentkit:latest
 ```
@@ -173,12 +173,25 @@ Each entry of `agents`:
 |---|---|---|
 | `max_concurrent_runs` | 16 | past it: 503 with `Retry-After` |
 | `run_timeout` | `10m` | per run |
-| `max_runs`, `max_conversations`, `retention` | 1000, 1000, `24h` | what is kept in memory |
+| `max_runs`, `max_conversations`, `retention` | 1000, 1000, `24h` | recent runs whose events are kept in memory to stream; older ones are read from the store |
 | `max_body_bytes` | 1 MiB | limit on a run's request body |
 
 The one-agent form still works: an `agent` section (instead of `agents` and `agent_api`) with the fields of both tables except `name` is served as the agent `default`.
 
-Environment: `AGENTKIT_COMPONENTS` (`agent`, `mcp-server`, or both), `AGENTKIT_ADDR` (default `127.0.0.1:8080`), `AGENTKIT_API_TOKEN` (required off loopback), `AGENTKIT_CONFIG`, `AGENTKIT_LOG_LEVEL`, `AGENTKIT_SHUTDOWN_TIMEOUT`. The API's reference: [docs/api/openapi.yaml](api/openapi.yaml) (OpenAPI 3.1); the event format and error codes are also in [tasks/T036](../tasks/T036-agent-api-v0.md) Notes.
+Environment: `AGENTKIT_COMPONENTS` (any of `agent`, `web`, `mcp-server`, comma-separated; `web` serves the console at `/`, a chat client of `agent` on the same address), `AGENTKIT_ADDR` (default `127.0.0.1:8080`), `AGENTKIT_API_TOKEN` (required off loopback), `AGENTKIT_CONFIG`, `AGENTKIT_LOG_LEVEL`, `AGENTKIT_SHUTDOWN_TIMEOUT`. The API's reference: [docs/api/openapi.yaml](api/openapi.yaml) (OpenAPI 3.1); the event format and error codes are also in [tasks/T036](../tasks/T036-agent-api-v0.md) Notes.
+
+The store: `AGENTKIT_STORE` is `memory` (the default), `sqlite:/path/agentkit.db`, or `postgres://user:pass@host/db`; anything else fails startup. Postgres is migrated at startup unless `AGENTKIT_STORE_MIGRATE=off` (run `agentkit migrate` first then). `AGENTKIT_RUN_LEASE` (default `30s`, at least `1s`) is how long a run stays claimed by a process that stops renewing it: after a crash, a chat run reads as `interrupted` once its lease runs out, and `POST /v1/runs/{id}/resume` continues it.
+
+```bash
+# runs that outlive the server
+AGENTKIT_STORE=sqlite:bin/agentkit.db AGENTKIT_COMPONENTS=agent,mcp-server bin/agentkit serve -config deploy/local/agent/config.json
+
+# a conversation's runs; stop, resume or cancel one; follow its events (from after seq 3)
+curl -s 'localhost:8080/v1/runs?conversation_id=conv_...' -H "Authorization: Bearer $AGENTKIT_API_TOKEN"
+curl -s -X POST localhost:8080/v1/runs/run_.../stop -H "Authorization: Bearer $AGENTKIT_API_TOKEN"
+curl -sN -X POST localhost:8080/v1/runs/run_.../resume -H "Authorization: Bearer $AGENTKIT_API_TOKEN"
+curl -sN localhost:8080/v1/runs/run_.../events -H "Authorization: Bearer $AGENTKIT_API_TOKEN" -H 'Last-Event-ID: 3'
+```
 
 ## 6. Web search
 

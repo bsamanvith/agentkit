@@ -17,8 +17,10 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/agentclient"
+	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
+	"github.com/bsamanvith/agentkit/pkg/store/scoped"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
@@ -50,7 +52,7 @@ func serveAgents(t *testing.T, config string, models map[string]*llmtest.Fake) *
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := c.newAgents(t.Context(), cfg, built, problems, env, log)
+	m, _, err := c.newAgents(t.Context(), cfg, built, problems, env, scoped.Memory(nil), clock.Real(), log)
 	if err != nil {
 		t.Fatal(err)
 	}

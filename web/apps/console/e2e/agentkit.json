@@ -3,7 +3,7 @@
     "toolsets": [{ "name": "demo", "type": "demo" }]
   },
   "agent": {
-    "system": "The console smoke test's agent. The test never runs it.",
+    "system": "The console browser tests' agent. Its model is e2e/fake-model.ts.",
     "toolsets": ["demo"]
   }
 }

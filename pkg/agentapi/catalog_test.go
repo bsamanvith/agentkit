@@ -18,6 +18,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/store/scoped"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 )
 
@@ -376,9 +377,8 @@ func TestConversationListFiltersByAgent(t *testing.T) {
 // not continued, not deleted.
 func TestConversationsAreTheCallersTenant(t *testing.T) {
 	t.Parallel()
-	tenant := agentapi.WithTenant(func(r *http.Request) string { return r.Header.Get("Test-Tenant") })
 	m := echo(t)
-	r := newRig(t, m, rigConfig{api: []agentapi.Option{tenant}})
+	r := newRig(t, m, rigConfig{})
 	resp, body := r.do("POST", "/v1/runs", jsonRun("mine", "", ""), "Accept", "application/json", "Test-Tenant", "a")
 	var run agentapi.Run
 	if resp.StatusCode != http.StatusOK || json.Unmarshal(body, &run) != nil {
@@ -525,7 +525,7 @@ func TestNewAgentsRejectsBadConfig(t *testing.T) {
 		"toolset tools skipped": {agents: []agentapi.Agent{{Name: "a", Harness: h}}, sets: []agentapi.Toolset{{Name: "x", Tools: reg, Skipped: "why"}}},
 		"bad toolset name":      {agents: []agentapi.Agent{{Name: "a", Harness: h}}, sets: []agentapi.Toolset{{Name: "x y", Tools: reg}}},
 	} {
-		if _, err := agentapi.NewAgents(tc.agents, agentapi.WithToolsets(tc.sets...)); !errors.Is(err, agentapi.ErrInvalidConfig) {
+		if _, err := agentapi.NewAgents(tc.agents, agentapi.WithStore(scoped.Memory(nil)), agentapi.WithToolsets(tc.sets...)); !errors.Is(err, agentapi.ErrInvalidConfig) {
 			t.Errorf("%s: %v, want ErrInvalidConfig", name, err)
 		}
 	}

@@ -23,6 +23,7 @@ const (
 	TypeTurnDone   = wire.TypeTurnDone
 	TypeRunDone    = wire.TypeRunDone
 	TypeRunError   = wire.TypeRunError
+	TypeRetrying   = wire.TypeRetrying
 )
 
 // Error codes of a failed run, and of HTTP errors.
@@ -49,6 +50,16 @@ const (
 	CodeOverCapacity   = wire.CodeOverCapacity
 	CodeShuttingDown   = wire.CodeShuttingDown
 	CodeAgentMismatch  = wire.CodeAgentMismatch
+
+	CodeRunInterrupted   = wire.CodeRunInterrupted
+	CodeRunFailed        = wire.CodeRunFailed
+	CodeRejected         = wire.CodeRejected
+	CodeSuspended        = wire.CodeSuspended
+	CodeRunFinal         = wire.CodeRunFinal
+	CodeRunLeased        = wire.CodeRunLeased
+	CodeAwaitingDecision = wire.CodeAwaitingDecision
+	CodeNotPending       = wire.CodeNotPending
+	CodeShapeChanged     = wire.CodeShapeChanged
 )
 
 // Run statuses.
@@ -56,6 +67,10 @@ const (
 	StatusRunning = wire.StatusRunning
 	StatusDone    = wire.StatusDone
 	StatusFailed  = wire.StatusFailed
+
+	StatusCanceled  = wire.StatusCanceled
+	StatusRejected  = wire.StatusRejected
+	StatusSuspended = wire.StatusSuspended
 )
 
 // Conversation statuses (and [StatusRunning]).
@@ -85,6 +100,11 @@ type (
 	RunRequest = wire.RunRequest
 	// ErrorResponse is [wire.ErrorResponse]: the body of every HTTP error.
 	ErrorResponse = wire.ErrorResponse
+	// RunList is [wire.RunList]: the body of GET /v1/runs.
+	RunList = wire.RunList
+	// DecisionRequest is [wire.DecisionRequest]: the body of POST
+	// /v1/runs/{id}/decisions.
+	DecisionRequest = wire.DecisionRequest
 	// Credential is [wire.Credential]: where a toolset's credential comes
 	// from. The other catalog types (agents, toolsets, tools, conversation
 	// lists) are used from package wire: [Agent] and [Toolset] here are what
@@ -118,25 +138,18 @@ func turnRecord(r harness.TurnRecord) TurnRecord {
 	}
 }
 
-func record(r harness.Record) *Record {
-	out := &Record{StartedAt: r.StartedAt, FinishedAt: r.FinishedAt, Turns: make([]TurnRecord, len(r.Turns))}
-	if r.Prompt != nil {
-		p := timedMessage(*r.Prompt)
-		out.Prompt = &p
-	}
-	for i, t := range r.Turns {
-		out.Turns[i] = turnRecord(t)
-	}
-	return out
-}
-
 // ms is a duration in milliseconds, to the microsecond.
 func ms(d time.Duration) float64 { return float64(d.Microseconds()) / 1000 }
 
 // wireEvent converts a harness event other than EventRunDone (which the
 // server turns into run_done itself). ok is false for a kind it does not know.
-func wireEvent(runID, convID string, seq int, ev harness.Event) (Event, bool) {
-	e := Event{V: WireVersion, Seq: seq, RunID: runID, At: ev.At, Turn: ev.Turn}
+// turns is added to the event's turn: the turns of the run before this
+// execution, which the harness does not count.
+func wireEvent(runID, convID string, turns int, ev harness.Event) (Event, bool) {
+	e := Event{V: WireVersion, RunID: runID, At: ev.At, Turn: ev.Turn}
+	if e.Turn > 0 {
+		e.Turn += turns
+	}
 	switch ev.Kind {
 	case harness.EventRunStart:
 		e.Type, e.ConversationID = TypeRunStart, convID
@@ -153,6 +166,7 @@ func wireEvent(runID, convID string, seq int, ev harness.Event) (Event, bool) {
 		e.Content, e.IsError, e.DurationMS = ev.ToolResult.Content, ev.ToolResult.IsError, ms(ev.Duration)
 	case harness.EventTurnDone:
 		r := turnRecord(*ev.TurnRecord)
+		r.Turn += turns
 		e.Type, e.Record = TypeTurnDone, &r
 	default:
 		return Event{}, false

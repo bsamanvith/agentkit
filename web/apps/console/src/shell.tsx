@@ -27,7 +27,7 @@ import {
 import { Skeleton } from "@agentkit/ui/components/skeleton";
 import { useIsMobile } from "@agentkit/ui/hooks/use-mobile";
 import { cn } from "@agentkit/ui/lib/utils";
-import { Ellipsis, MessageCircle, SquarePen, UserRound } from "lucide-react";
+import { Ellipsis, SquarePen, UserRound } from "lucide-react";
 import {
   Suspense,
   useCallback,
@@ -39,9 +39,11 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
-import { Link, Outlet, useLocation } from "react-router";
+import { Link, Outlet, useLocation, useNavigate } from "react-router";
 import { useApi, useResource, type Resource } from "./api";
-import { LayoutContext, isApple, listStorageKey, type Layout } from "./layout";
+import { ChatsList } from "./chat/list";
+import { composerId, searchId } from "./chat/shared";
+import { LayoutContext, isApple, listStorageKey, modHint, modKey, type Layout } from "./layout";
 import { ListRow } from "./list-row";
 import { Loading } from "./pages/page";
 import { agentRow, listAgents, ListsContext, listToolsets, toolsetRow, type Lists } from "./lists";
@@ -178,13 +180,14 @@ function Rail({ current }: { current: Section }) {
 }
 
 /** A list column's head: the section's name, and a count or an action. */
-function ListHead({ title, extra }: { title: string; extra?: ReactNode }) {
+function ListHead({ title, extra, below }: { title: string; extra?: ReactNode; below?: ReactNode }) {
   return (
     <div className="flex flex-col gap-2 px-3 pt-3 pb-2">
       <div className="flex min-h-7 items-center justify-between gap-2 px-1">
         <h2 className="text-(length:--ak-text-md) font-semibold text-ak-text">{title}</h2>
         {extra}
       </div>
+      {below}
     </div>
   );
 }
@@ -193,35 +196,22 @@ function NewChatButton() {
   return (
     <Link
       to="/new"
+      state={{ focus: "composer" }}
       aria-label="New chat"
+      aria-keyshortcuts={`${modKey}+Shift+O`}
       className="group relative grid size-8 place-items-center rounded-md text-ak-muted hover:bg-ak-hover hover:text-ak-text"
     >
       <SquarePen aria-hidden="true" className="size-4" />
       <span aria-hidden="true" className={cn(tip, "top-9 right-0")}>
-        New chat
+        New chat {modHint}⇧O
       </span>
     </Link>
   );
 }
 
-/** Chats: T055 fills it with the caller's conversations. */
-function ChatsList() {
-  return (
-    <>
-      <ListHead title="Chats" extra={<NewChatButton />} />
-      <nav aria-label="Conversations" className="min-h-0 flex-1 overflow-auto px-2 pb-3">
-        <div className="flex flex-col items-center gap-2.5 px-4 pt-10 text-center">
-          <div className="grid size-10 place-items-center rounded-[10px] border bg-ak-surface-2 text-ak-muted">
-            <MessageCircle aria-hidden="true" className="size-4.5" />
-          </div>
-          <p className="text-ak-muted">No conversations yet.</p>
-          <Button asChild variant="outline" size="sm" className="bg-ak-surface">
-            <Link to="/new">New chat</Link>
-          </Button>
-        </div>
-      </nav>
-    </>
-  );
+/** Chats: the caller's conversations (chat/list.tsx). */
+function Chats() {
+  return <ChatsList head={(search) => <ListHead title="Chats" extra={<NewChatButton />} below={search} />} />;
 }
 
 function ListBody<T>({
@@ -320,7 +310,7 @@ function ListColumn({ current, lists }: { current: Section; lists: Lists }) {
       </>
     );
   } else {
-    content = <ChatsList />;
+    content = <Chats />;
   }
   return <div className="flex min-h-0 min-w-0 flex-col border-r bg-ak-bg">{content}</div>;
 }
@@ -363,7 +353,7 @@ function Drawer({ open, current, close }: { open: boolean; current: Section; clo
           })}
         </nav>
         {/* On phones the drawer always holds the Chats list; admin lists are pages. */}
-        <ChatsList />
+        <Chats />
         <div className="flex items-center gap-2.5 border-t px-4 pt-2.5 pb-[calc(10px+env(safe-area-inset-bottom,0px))]">
           <span className="grid size-7 place-items-center rounded-full bg-ak-select text-ak-text">
             <UserRound aria-hidden="true" className="size-3.5" />
@@ -386,6 +376,7 @@ export function Shell({ children }: { children?: ReactNode }) {
   const { prompt } = useApi();
   const menuButton = useRef<HTMLElement | null>(null);
   const drawer = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
 
   const agents = useResource(listAgents, "agents", current.to !== "/agents");
   const toolsets = useResource(listToolsets, "toolsets", current.to !== "/toolsets");
@@ -435,7 +426,29 @@ export function Shell({ children }: { children?: ReactNode }) {
       return;
     }
     const mod = isApple ? e.metaKey : e.ctrlKey;
-    if (mod && e.shiftKey && !e.altKey && e.key.toLowerCase() === "s") {
+    if (!mod || e.altKey || e.repeat) return;
+    if (e.shiftKey && e.code === "KeyO") {
+      e.preventDefault();
+      if (phone && drawerOpen) closeDrawer(false);
+      navigate("/new", { state: { focus: "composer" } });
+      return;
+    }
+    if (!e.shiftKey && e.code === "KeyK") {
+      // Search conversations: the Chats list, wherever it is.
+      e.preventDefault();
+      if (phone) {
+        if (!drawerOpen) openDrawer();
+      } else {
+        if (current.to !== "/") navigate("/");
+        if (!listShown) toggleList();
+      }
+      setTimeout(() => {
+        const box = (phone ? drawer.current : document)?.querySelector<HTMLInputElement>(`#${searchId}`);
+        box?.focus();
+      }, 50);
+      return;
+    }
+    if (e.shiftKey && e.key.toLowerCase() === "s") {
       e.preventDefault();
       if (phone) {
         if (drawerOpen) closeDrawer(true);
@@ -464,6 +477,14 @@ export function Shell({ children }: { children?: ReactNode }) {
         >
           Skip to content
         </a>
+        {current.to === "/" ? (
+          <a
+            href={`#${composerId}`}
+            className="sr-only z-50 rounded-md bg-ak-surface px-3 py-2 focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
+          >
+            Skip to message box
+          </a>
+        ) : null}
         <div
           className={cn(
             "grid h-svh overflow-hidden bg-ak-bg",

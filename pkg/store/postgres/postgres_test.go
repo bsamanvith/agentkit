@@ -129,6 +129,11 @@ func TestAdmin(t *testing.T) {
 	storetest.RunAdmin(t, newAdmin)
 }
 
+func TestConversationIndex(t *testing.T) {
+	t.Parallel()
+	storetest.RunConversationIndex(t, func(t *testing.T, clk clock.Clock) storetest.IndexStore { return open(t, clk) })
+}
+
 func TestCheckpointer(t *testing.T) {
 	t.Parallel()
 	storetest.RunCheckpointer(t, func(t *testing.T) flow.Checkpointer { return open(t, clock.Real()) })
@@ -177,6 +182,11 @@ func TestTwoPools(t *testing.T) {
 	t.Run("CommandLog", func(t *testing.T) {
 		t.Parallel()
 		storetest.RunCommandLog(t, func(t *testing.T, clk clock.Clock) storetest.CommandStore { return openPair(t, clk) })
+	})
+
+	t.Run("ConversationIndex", func(t *testing.T) {
+		t.Parallel()
+		storetest.RunConversationIndex(t, func(t *testing.T, clk clock.Clock) storetest.IndexStore { return openPair(t, clk) })
 	})
 }
 
@@ -281,6 +291,26 @@ func (p *pair) PendingCommands(ctx context.Context, runID string, limit int) ([]
 
 func (p *pair) ConsumeCommands(ctx context.Context, runID, owner string, through int64) error {
 	return p.next().ConsumeCommands(ctx, runID, owner, through)
+}
+
+func (p *pair) CreateConversation(ctx context.Context, c store.Conversation) (store.Conversation, error) {
+	return p.next().CreateConversation(ctx, c)
+}
+
+func (p *pair) GetConversation(ctx context.Context, id string) (store.Conversation, error) {
+	return p.next().GetConversation(ctx, id)
+}
+
+func (p *pair) ListConversations(ctx context.Context, agent string, pg store.Page) (store.ConversationPage, error) {
+	return p.next().ListConversations(ctx, agent, pg)
+}
+
+func (p *pair) SetTitle(ctx context.Context, id, title string) (store.Conversation, error) {
+	return p.next().SetTitle(ctx, id, title)
+}
+
+func (p *pair) DeleteConversation(ctx context.Context, id string) error {
+	return p.next().DeleteConversation(ctx, id)
 }
 
 type pairAdmin struct{ p *pair }

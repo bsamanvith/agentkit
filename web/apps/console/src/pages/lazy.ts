@@ -6,7 +6,7 @@ import { lazy } from "react";
 
 const admin = () => import("./admin");
 
-export const ChatPage = lazy(() => import("./chat").then((m) => ({ default: m.ChatPage })));
+export const ChatPage = lazy(() => import("../chat/page").then((m) => ({ default: m.ChatPage })));
 export const AgentsPage = lazy(() => admin().then((m) => ({ default: m.AgentsPage })));
 export const AgentPage = lazy(() => admin().then((m) => ({ default: m.AgentPage })));
 export const ToolsetsPage = lazy(() => admin().then((m) => ({ default: m.ToolsetsPage })));

@@ -6,7 +6,8 @@
   "description": "Agent components (messages, tool steps, composer, ...) shared by the console and the consumer apps.",
   "exports": {
     ".": "./src/index.ts",
-    "./api": "./src/api/index.ts"
+    "./api": "./src/api/index.ts",
+    "./markdown": "./src/markdown.tsx"
   },
   "sideEffects": false,
   "scripts": {

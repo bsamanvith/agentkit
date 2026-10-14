@@ -1,7 +1,7 @@
 // Package postgres is the multi-node store: a [store.ConversationStore],
-// [store.RunStore], [store.EventLog] and [flow.Checkpointer] in one value
-// over a Postgres database, and a [store.Admin] view of it as a separate
-// value ([Admin]). It passes the same conformance suites as packages memory
+// [store.ConversationIndex], [store.RunStore], [store.EventLog] and
+// [flow.Checkpointer] in one value over a Postgres database, and a
+// [store.Admin] view of it as a separate value ([Admin]). It passes the same conformance suites as packages memory
 // and sqlite, and its schema is SQLite's, ported column for column.
 //
 // The driver is pgx, through a pgxpool connection pool. Many processes may use
@@ -56,6 +56,7 @@ var (
 	_ store.RunStore          = (*Store)(nil)
 	_ store.EventLog          = (*Store)(nil)
 	_ store.CommandLog        = (*Store)(nil)
+	_ store.ConversationIndex = (*Store)(nil)
 	_ flow.Checkpointer       = (*Store)(nil)
 	_ store.Admin             = admin{}
 )

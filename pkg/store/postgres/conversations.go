@@ -17,11 +17,13 @@ const entryColumns = `seq, kind, messages, record, run_id, covers, created_at`
 
 // Append implements [store.ConversationStore].
 //
-// One statement inserts the entry only if the entry before it exists, at a
-// time no earlier than that entry's. The primary key, not a read, decides
-// whether the position is free. When nothing was inserted, the log says why:
-// a gap, or a taken position whose row tells a retry (the same entry, nil)
-// from a conflict.
+// One transaction, under the conversation's lock (see lockConversation):
+// one statement inserts the entry only if the entry before it exists, at a
+// time no earlier than that entry's, and a second counts it on the
+// conversation's record. The primary key, not a read, decides whether the
+// position is free. When nothing was inserted, the log says why: a gap, or a
+// taken position whose row tells a retry (the same entry, nil) from a
+// conflict.
 func (s *Store) Append(ctx context.Context, id string, e store.Entry) error {
 	tenant, err := scope(ctx)
 	if err != nil {
@@ -39,16 +41,32 @@ func (s *Store) Append(ctx context.Context, id string, e store.Entry) error {
 		if err != nil {
 			return fmt.Errorf("postgres: append: the clock reads %w", err)
 		}
-		tag, insertErr := s.pool.Exec(ctx, `INSERT INTO entries
-			(tenant, conversation, seq, kind, messages, record, run_id, covers, created_at)
-			SELECT $1::text, $2::text, $3::bigint, $4::text, $5::text, $6::text, $7::text, $8::bigint,
-				GREATEST($9::bigint, COALESCE(prev.created_at, $9::bigint))
-			FROM (SELECT 1) AS one
-			LEFT JOIN entries AS prev ON prev.tenant = $1 AND prev.conversation = $2 AND prev.seq = $3::bigint - 1
-			WHERE $3::bigint = 1 OR prev.seq IS NOT NULL`,
-			tenant, id, e.Seq, string(st.Kind), string(st.Messages), string(st.Record), st.RunID, st.Covers, *created)
+		inserted := false
+		insertErr := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+			if err := lockConversation(ctx, tx, tenant, id); err != nil {
+				return err
+			}
+			var at int64
+			err := tx.QueryRow(ctx, `INSERT INTO entries
+				(tenant, conversation, seq, kind, messages, record, run_id, covers, created_at)
+				SELECT $1::text, $2::text, $3::bigint, $4::text, $5::text, $6::text, $7::text, $8::bigint,
+					GREATEST($9::bigint, COALESCE(prev.created_at, $9::bigint))
+				FROM (SELECT 1) AS one
+				LEFT JOIN entries AS prev ON prev.tenant = $1 AND prev.conversation = $2 AND prev.seq = $3::bigint - 1
+				WHERE $3::bigint = 1 OR prev.seq IS NOT NULL
+				RETURNING created_at`,
+				tenant, id, e.Seq, string(st.Kind), string(st.Messages), string(st.Record), st.RunID, st.Covers, *created).Scan(&at)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil // a gap, or overtaken; told apart below
+			}
+			if err != nil {
+				return err
+			}
+			inserted = true
+			return counted(ctx, tx, tenant, id, st.MessageCount(), at)
+		})
 		switch code, _ := sqlState(insertErr); {
-		case insertErr == nil && tag.RowsAffected() == 1:
+		case insertErr == nil && inserted:
 			return nil
 		case insertErr != nil && code != uniqueViolation:
 			return fail("append", insertErr)
@@ -79,10 +97,11 @@ func (s *Store) Append(ctx context.Context, id string, e store.Entry) error {
 
 // AppendBatch implements [store.ConversationStore].
 //
-// One transaction: read the last entry and the stored entries the batch
-// overlaps, decide, then one INSERT of the new ones. A concurrent writer
-// that takes one of their positions first makes the INSERT hit the primary
-// key, and the whole batch is decided again.
+// One transaction, under the conversation's lock (see lockConversation):
+// read the last entry and the stored entries the batch overlaps, decide, then
+// one INSERT of the new ones and their count on the conversation's record. A
+// concurrent writer that takes one of their positions first makes the INSERT
+// hit the primary key, and the whole batch is decided again.
 func (s *Store) AppendBatch(ctx context.Context, id string, entries []store.Entry) error {
 	tenant, err := scope(ctx)
 	if err != nil {
@@ -98,6 +117,9 @@ func (s *Store) AppendBatch(ctx context.Context, id string, entries []store.Entr
 	return retry(ctx, func() error {
 		now := s.now()
 		err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+			if err := lockConversation(ctx, tx, tenant, id); err != nil {
+				return err
+			}
 			var last int64
 			var lastCreated *int64
 			err := tx.QueryRow(ctx, `SELECT seq, created_at FROM entries
@@ -142,9 +164,11 @@ func (s *Store) AppendBatch(ctx context.Context, id string, entries []store.Entr
 			n := len(add)
 			seqs, covers := make([]int64, n), make([]int64, n)
 			kinds, msgs, recs, runs := make([]string, n), make([]string, n), make([]string, n), make([]string, n)
+			var count int64
 			for i, st := range add {
 				seqs[i], covers[i] = last+1+int64(i), st.Covers
 				kinds[i], msgs[i], recs[i], runs[i] = string(st.Kind), string(st.Messages), string(st.Record), st.RunID
+				count += st.MessageCount()
 			}
 			_, err = tx.Exec(ctx, `INSERT INTO entries
 				(tenant, conversation, seq, kind, messages, record, run_id, covers, created_at)
@@ -152,7 +176,10 @@ func (s *Store) AppendBatch(ctx context.Context, id string, entries []store.Entr
 				FROM unnest($3::bigint[], $4::text[], $5::text[], $6::text[], $7::text[], $8::bigint[])
 					AS e (seq, kind, messages, record, run_id, covers)`,
 				tenant, id, seqs, kinds, msgs, recs, runs, covers, *at)
-			return err
+			if err != nil {
+				return err
+			}
+			return counted(ctx, tx, tenant, id, count, *at)
 		})
 		switch code, constraint := sqlState(err); {
 		case err == nil:

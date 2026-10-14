@@ -21,3 +21,14 @@ export const Failed: Story<ToolStepProps> = {
 export const Stopped: Story<ToolStepProps> = {
   args: { kind: "search", state: "stopped", label: "Searching the web" },
 };
+export const WithDetails: Story<ToolStepProps> = {
+  args: {
+    kind: "search",
+    state: "done",
+    label: "Searched the web",
+    detail: "“go 1.27”",
+    durationMs: 1400,
+    input: { query: "go 1.27", max_results: 5 },
+    result: JSON.stringify({ results: [{ title: "Go 1.27 Release Notes", url: "https://go.dev/doc/go1.27" }] }),
+  },
+};

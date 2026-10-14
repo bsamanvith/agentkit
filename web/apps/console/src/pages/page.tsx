@@ -71,6 +71,8 @@ export function Page({
   heading = "head",
   body = "page",
   wrap = false,
+  lead,
+  autoFocus = true,
 }: {
   title: string;
   children: ReactNode;
@@ -85,17 +87,22 @@ export function Page({
   body?: "page" | "bare";
   /** Phone: put the aside on a row of its own, under the title. */
   wrap?: boolean;
+  /** Before the title: the chat's agent picker or chip. */
+  lead?: ReactNode;
+  /** Whether the h1 takes focus when the page opens (not when the composer should). */
+  autoFocus?: boolean;
 }) {
   const { phone } = useLayout();
   const wrapped = phone && wrap && aside !== undefined;
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
     document.title = `${title} · agentkit`;
+    if (!autoFocus) return;
     // Not out of an open menu or dialog: a page whose code arrives late
     // (React.lazy) would otherwise close the account menu just opened.
     if (document.activeElement?.closest('[role="menu"], [role="dialog"]')) return;
     root.current?.querySelector<HTMLElement>("h1")?.focus({ preventScroll: true });
-  }, [title]);
+  }, [title, autoFocus]);
   const titleClass = cn(
     "min-w-0 flex-1 truncate text-(length:--ak-text-md) font-medium text-ak-text outline-none",
     mono && "font-mono",
@@ -117,6 +124,7 @@ export function Page({
             <ChevronLeft aria-hidden="true" className="size-4" />
           </Link>
         ) : null}
+        {lead}
         {heading === "head" ? (
           <h1 tabIndex={-1} className={titleClass}>
             {title}

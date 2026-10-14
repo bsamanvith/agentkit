@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -21,6 +22,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
+	"github.com/bsamanvith/agentkit/pkg/store/scoped"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
@@ -245,24 +247,38 @@ func TestToolsFromTwoToolsets(t *testing.T) {
 	}
 }
 
-// TestClientDisconnectCancelsTheRun: a client that goes away cancels its run.
-// The test disconnects at a fixed point of the run, seen from the client's
-// side; afterwards no model or tool call happens, and the conversation keeps
-// the completed turns.
-func TestClientDisconnectCancelsTheRun(t *testing.T) {
+// graceRig is a rig whose server reports each reconnect grace it starts on
+// the returned channel.
+func graceRig(t *testing.T, m *model, cfg rigConfig) (*rig, chan string) {
+	armed := make(chan string, 16)
+	cfg.api = append(cfg.api, agentapi.WithGraceHook(func(id string) { armed <- id }))
+	return newRig(t, m, cfg), armed
+}
+
+// TestClientDisconnect: a chat run outlives its stream for the reconnect
+// grace (T100). A client that comes back within it follows the run to its
+// end; past it the run is interrupted, keeping its completed turns, and no
+// model or tool call happens after that. This replaces T036's "a client
+// that goes away cancels its run" (owner, 2026-10-13).
+func TestClientDisconnect(t *testing.T) {
 	t.Parallel()
-	t.Run("mid_tool", func(t *testing.T) {
+	t.Run("past_the_grace_mid_tool", func(t *testing.T) {
 		t.Parallel()
 		var calls atomic.Int32
 		m := script(t, llmtest.ToolCalls(call("c1", "wait", `{"text":"x"}`)), llmtest.Text("never sent"))
-		r := newRig(t, m, rigConfig{tools: registry(t, waitTool(t, &calls))})
+		r, armed := graceRig(t, m, rigConfig{tools: registry(t, waitTool(t, &calls))})
 		ctx, cancel := context.WithCancel(t.Context())
 		s := r.start(ctx, "wait", "")
 		s.until(agentapi.TypeToolCall, 1)
 		s.abandon(cancel)
+		<-armed
+		if run := r.getRun(s.runID()); run.Status != agentapi.StatusRunning {
+			t.Errorf("run within the grace = %s, want running", run.Status)
+		}
+		r.clock.Advance(agentapi.DefaultReconnectGrace)
 		run := r.waitEnded(s.runID())
-		if run.Status != agentapi.StatusFailed || run.Error.Code != agentapi.CodeCancelled {
-			t.Errorf("run = %+v, want failed, cancelled", run)
+		if run.Status != agentapi.StatusInterrupted || run.Error == nil || run.Error.Code != agentapi.CodeRunInterrupted {
+			t.Errorf("run = %+v, want interrupted", run)
 		}
 		if n := len(m.requests()); n != 1 || calls.Load() != 1 {
 			t.Errorf("%d model calls and %d tool calls, want 1 each", n, calls.Load())
@@ -272,20 +288,22 @@ func TestClientDisconnectCancelsTheRun(t *testing.T) {
 			t.Errorf("conversation = %s, want only the prompt, interrupted", jsonOf(c))
 		}
 	})
-	t.Run("between_turns", func(t *testing.T) {
+	t.Run("past_the_grace_between_turns", func(t *testing.T) {
 		t.Parallel()
 		sets := demoTools(t)
 		m := script(t, llmtest.ToolCalls(call("c1", "echo", `{"text":"x"}`)), llmtest.Text("never answered"))
 		m.gate = make(chan struct{}, 1)
 		m.gate <- struct{}{} // the first reply goes through; the second waits for ever
-		r := newRig(t, m, rigConfig{tools: sets["a"]})
+		r, armed := graceRig(t, m, rigConfig{tools: sets["a"]})
 		ctx, cancel := context.WithCancel(t.Context())
 		s := r.start(ctx, "echo x", "")
 		s.until(agentapi.TypeTurnDone, 1)
 		s.abandon(cancel)
+		<-armed
+		r.clock.Advance(agentapi.DefaultReconnectGrace)
 		run := r.waitEnded(s.runID())
-		if run.Status != agentapi.StatusFailed || run.Error.Code != agentapi.CodeCancelled || len(run.Record.Turns) != 1 {
-			t.Errorf("run = %+v, want failed, cancelled, after 1 completed turn", run)
+		if run.Status != agentapi.StatusInterrupted || len(run.Record.Turns) != 1 {
+			t.Errorf("run = %+v, want interrupted after 1 completed turn", run)
 		}
 		if n := len(m.requests()); n > 2 {
 			t.Errorf("%d model calls, want at most 2", n)
@@ -295,11 +313,66 @@ func TestClientDisconnectCancelsTheRun(t *testing.T) {
 			t.Errorf("conversation = %s, want the prompt and turn 1 (reply, results), interrupted", jsonOf(c))
 		}
 	})
+	t.Run("reconnect_within_the_grace", func(t *testing.T) {
+		t.Parallel()
+		sets := demoTools(t)
+		m := script(t, llmtest.ToolCalls(call("c1", "echo", `{"text":"x"}`)), llmtest.Text("Done."))
+		m.gate = make(chan struct{}, 1)
+		m.gate <- struct{}{}
+		r, armed := graceRig(t, m, rigConfig{tools: sets["a"]})
+		ctx, cancel := context.WithCancel(t.Context())
+		s := r.start(ctx, "echo x", "")
+		last := s.until(agentapi.TypeTurnDone, 1)
+		s.abandon(cancel)
+		<-armed
+		r.clock.Advance(agentapi.DefaultReconnectGrace - time.Second)
+		back := r.follow(s.runID(), strconv.Itoa(last.Seq)) // within the grace
+		r.clock.Advance(2 * time.Second)                    // past when the grace would have ended
+		m.gate <- struct{}{}
+		events := back.all()
+		if events[0].Seq != last.Seq+1 || back.last().Type != agentapi.TypeRunDone || back.last().Answer != "Done." {
+			t.Errorf("reconnected stream %s, want the run from seq %d to its answer", jsonOf(events), last.Seq+1)
+		}
+		if run := r.getRun(s.runID()); run.Status != agentapi.StatusDone {
+			t.Errorf("run = %s, want done", run.Status)
+		}
+	})
+}
+
+// TestStop: POST /v1/runs/{id}/stop interrupts a run at once, with its
+// stream ending in run_error interrupted; resuming it sends the model the
+// conversation as it was.
+func TestStop(t *testing.T) {
+	t.Parallel()
+	m := echo(t)
+	m.gate = make(chan struct{}, 1)
+	r := newRig(t, m, rigConfig{})
+	s := r.start(t.Context(), "hi", "")
+	s.until(agentapi.TypeRunStart, 0)
+	var run agentapi.Run
+	resp, body := r.do(http.MethodPost, "/v1/runs/"+s.runID()+"/stop", "")
+	if resp.StatusCode != http.StatusOK || json.Unmarshal(body, &run) != nil || run.Status != agentapi.StatusInterrupted {
+		t.Fatalf("stop = %d %s, want 200 and the run interrupted", resp.StatusCode, body)
+	}
+	if e := s.all(); e[len(e)-1].Error == nil || e[len(e)-1].Error.Code != agentapi.CodeRunInterrupted {
+		t.Errorf("stream ended with %+v, want run_error interrupted", e[len(e)-1])
+	}
+	if resp, body := r.do(http.MethodPost, "/v1/runs/"+s.runID()+"/stop", ""); resp.StatusCode != http.StatusOK {
+		t.Errorf("stopping a stopped run = %d %s, want 200", resp.StatusCode, body)
+	}
+	m.gate <- struct{}{}
+	resumed := r.open(r.postPath(t.Context(), "/v1/runs/"+s.runID()+"/resume", ""))
+	resumed.all()
+	if e := resumed.last(); e.Type != agentapi.TypeRunDone || e.Answer != "echo: hi" || resumed.events[0].Seq == 0 {
+		t.Errorf("resumed stream %s, want the rest of the run, answered", jsonOf(resumed.events))
+	}
 }
 
 // TestResumeInterruptedConversation: a conversation whose run stopped after
-// tool results takes no new message until it is resumed with an empty one,
-// which sends the model the conversation as it was.
+// tool results is interrupted; an empty message resumes the same run, which
+// sends the model the conversation as it was, and its stream goes on from
+// where the run's events stopped. A new message instead replaces the
+// interrupted run (T100), so it is never 409.
 func TestResumeInterruptedConversation(t *testing.T) {
 	t.Parallel()
 	sets := demoTools(t)
@@ -313,19 +386,32 @@ func TestResumeInterruptedConversation(t *testing.T) {
 	if c := r.getConversation(conv); c.Status != agentapi.StatusInterrupted {
 		t.Fatalf("conversation status %q", c.Status)
 	}
-	resp := r.post(t.Context(), runBody("new question", conv), "")
-	if code, e := errorOf(t, resp); code != http.StatusConflict || e.Code != agentapi.CodeInterrupted {
-		t.Errorf("message to an interrupted conversation = %d %+v, want 409 %s", code, e, agentapi.CodeInterrupted)
-	}
 	resumed := r.run("", conv)
-	if resumed.events[0].Prompt != nil || resumed.last().Answer != "Resumed answer." {
-		t.Errorf("resume = %v, want no prompt and the answer", types(resumed.events))
+	if resumed.runID() != s.runID() || resumed.events[0].Seq != len(s.events)-1 || resumed.last().Answer != "Resumed answer." {
+		t.Errorf("resume = %s, want run %s going on from seq %d, answered", jsonOf(resumed.events), s.runID(), len(s.events)-1)
 	}
 	reqs := m.requests()
 	if c := r.getConversation(conv); !jsonEqual(reqs[1].Messages, messagesOf(c)[:3]) || c.Status != agentapi.StatusIdle {
 		t.Errorf("resumed request %s, want the interrupted conversation", jsonOf(reqs[1].Messages))
 	}
 	r.run("next", conv)
+}
+
+// TestNewMessageReplacesAnInterruptedRun: a message to a conversation whose
+// run was interrupted starts a new run and cancels the old one.
+func TestNewMessageReplacesAnInterruptedRun(t *testing.T) {
+	t.Parallel()
+	sets := demoTools(t)
+	m := script(t, llmtest.ToolCalls(call("c1", "echo", `{"text":"x"}`)), llmtest.Text("Fresh."))
+	r := newRig(t, m, rigConfig{tools: sets["a"], harness: []harness.Option{harness.WithMaxTurns(1)}})
+	s := r.run("echo x", "")
+	next := r.run("never mind", s.conversationID())
+	if next.runID() == s.runID() || next.last().Answer != "Fresh." {
+		t.Errorf("new message = %s, want a new run, answered", jsonOf(next.events))
+	}
+	if old := r.getRun(s.runID()); old.Status != agentapi.StatusCanceled {
+		t.Errorf("replaced run = %s, want canceled", old.Status)
+	}
 }
 
 func messagesOf(c agentapi.Conversation) []llm.Message {
@@ -449,8 +535,11 @@ func TestTokenRequiredOnEveryPath(t *testing.T) {
 	if n := len(m.requests()); n != 1 {
 		t.Errorf("%d model calls, want only the authorized run's", n)
 	}
-	if _, err := agentapi.New(newHarness(t), agentapi.WithToken("short")); !errors.Is(err, agentapi.ErrInvalidConfig) {
+	if _, err := agentapi.New(newHarness(t), agentapi.WithStore(scoped.Memory(nil)), agentapi.WithToken("short")); !errors.Is(err, agentapi.ErrInvalidConfig) {
 		t.Errorf("a short token: %v, want ErrInvalidConfig", err)
+	}
+	if _, err := agentapi.New(newHarness(t)); !errors.Is(err, agentapi.ErrInvalidConfig) {
+		t.Errorf("no store: %v, want ErrInvalidConfig", err)
 	}
 }
 
@@ -489,8 +578,12 @@ func TestRequestErrors(t *testing.T) {
 		"resume a running conv": {runBody("", conv), http.StatusConflict, agentapi.CodeBusy},
 	} {
 		resp := r.post(t.Context(), tc.body, "")
-		if code, e := errorOf(t, resp); code != tc.code || e.Code != tc.want {
+		code, e := errorOf(t, resp)
+		if code != tc.code || e.Code != tc.want {
 			t.Errorf("%s: %d %+v, want %d %s", name, code, e, tc.code, tc.want)
+		}
+		if code == http.StatusConflict && e.RunID != busy.runID() {
+			t.Errorf("%s: run_id %q, want the busy run %s", name, e.RunID, busy.runID())
 		}
 	}
 	for path, want := range map[string]int{"/v1/runs/run_nope": http.StatusNotFound, "/v1/conversations/conv_nope": http.StatusNotFound, "/v1/other": http.StatusNotFound} {
@@ -547,13 +640,15 @@ func TestRunErrorsAreTyped(t *testing.T) {
 		t.Parallel()
 		m := echo(t)
 		m.gate = make(chan struct{})
-		r := newRig(t, m, rigConfig{api: []agentapi.Option{agentapi.WithRunTimeout(time.Minute)}})
+		// Within the runner's lease (30s), so the run times out with its
+		// lease held; the timers are the run timeout and the lease's renewal.
+		r := newRig(t, m, rigConfig{api: []agentapi.Option{agentapi.WithRunTimeout(20 * time.Second)}})
 		s := r.start(t.Context(), "hi", "")
 		s.until(agentapi.TypeRunStart, 0)
-		if err := r.clock.WaitForTimers(t.Context(), 1); err != nil {
+		if err := r.clock.WaitForTimers(t.Context(), 2); err != nil {
 			t.Fatal(err)
 		}
-		r.clock.Advance(time.Minute)
+		r.clock.Advance(20 * time.Second)
 		s.all()
 		if e := s.last(); e.Error == nil || e.Error.Code != agentapi.CodeTimeout {
 			t.Errorf("last event %+v, want run_error timeout", e)
@@ -561,52 +656,46 @@ func TestRunErrorsAreTyped(t *testing.T) {
 	})
 }
 
-// TestRetention: finished runs and idle conversations beyond the counts or
-// older than the retention are dropped; running ones never are.
+// TestRetention: past the retention, the server lets go of a finished run's
+// events, and the run is replayed from the store: it reads the same, its
+// text in one delta per block. Runs and conversations stay in the store,
+// whatever the bounds.
 func TestRetention(t *testing.T) {
 	t.Parallel()
-	r := newRig(t, echo(t), rigConfig{api: []agentapi.Option{agentapi.WithRetention(2, 2, time.Hour)}})
-	var runs, convs []string
-	for i := range 3 {
-		run := r.runJSON(fmt.Sprint("m", i), "")
-		runs, convs = append(runs, run.ID), append(convs, run.ConversationID)
+	r := newRig(t, echo(t), rigConfig{api: []agentapi.Option{agentapi.WithRetention(2, 1, time.Hour)}})
+	long := "a message long enough to stream in several deltas"
+	var runs []agentapi.Run
+	for range 3 {
+		runs = append(runs, r.runJSON(long, ""))
 	}
-	// Eviction happens when a run starts: the third run's start left two
-	// finished runs and (with its own) up to three conversations; one more
-	// start trims to the bounds.
-	r.clock.Advance(time.Minute)
-	last := r.runJSON("m3", "")
-	var v agentapi.ErrorResponse
-	if code := r.get("/v1/runs/"+runs[0], &v); code != http.StatusNotFound {
-		t.Errorf("oldest run still there (%d)", code)
-	}
-	if code := r.get("/v1/conversations/"+convs[0], &v); code != http.StatusNotFound {
-		t.Errorf("oldest conversation still there (%d)", code)
-	}
-	r.getRun(last.ID)
-	r.getConversation(last.ConversationID)
-
-	r.clock.Advance(2 * time.Hour)
-	m := newModel(t, func(req llm.Request) llmtest.Reply {
-		if text := req.Messages[0].Text(); text != "held" {
-			return llmtest.Text("echo: " + text)
+	deltas := func(id string) int {
+		n := 0
+		for _, e := range r.events(id, "") {
+			if e.Type == agentapi.TypeTextDelta {
+				n++
+			}
 		}
-		stall := llmtest.Text("held for ever")
-		stall.Stall = true
-		return stall
-	})
-	r2 := newRig(t, m, rigConfig{clock: r.clock, api: []agentapi.Option{agentapi.WithRetention(10, 10, time.Hour)}})
-	ctx, cancel := context.WithCancel(t.Context())
-	held := r2.start(ctx, "held", "")
-	held.until(agentapi.TypeRunStart, 0)
-	r2.clock.Advance(2 * time.Hour)
-	r2.runJSON("later", "") // evicts nothing that is running
-	if run := r2.getRun(held.runID()); run.Status != agentapi.StatusRunning {
-		t.Errorf("held run = %+v", run)
+		return n
 	}
-	r2.getConversation(held.conversationID())
-	held.abandon(cancel)
-	r2.waitEnded(held.runID())
+	if n := deltas(runs[2].ID); n < 2 {
+		t.Fatalf("a kept run has %d text deltas, want its live ones", n)
+	}
+	if n := deltas(runs[0].ID); n != 1 {
+		t.Errorf("the oldest run, past the count, has %d text deltas, want 1 (replayed)", n)
+	}
+	r.clock.Advance(2 * time.Hour)
+	if n := deltas(runs[2].ID); n != 1 {
+		t.Errorf("a run past the age has %d text deltas, want 1 (replayed)", n)
+	}
+	for _, run := range runs {
+		if got := r.getRun(run.ID); !jsonEqual(got, run) {
+			t.Errorf("replayed run = %s, want %s", jsonOf(got), jsonOf(run))
+		}
+		r.getConversation(run.ConversationID)
+	}
+	if n := len(r.listAll()); n != len(runs) {
+		t.Errorf("%d conversations listed, want %d", n, len(runs))
+	}
 }
 
 // TestDrainEndsRunsWithShutdown: once the drain begins no run starts; at the
@@ -622,7 +711,7 @@ func TestDrainEndsRunsWithShutdown(t *testing.T) {
 	s := r.start(t.Context(), "slow", "")
 	s.until(agentapi.TypeRunStart, 0)
 	close(stop)
-	if err := r.clock.WaitForTimers(t.Context(), 1); err != nil {
+	if err := r.clock.WaitForTimers(t.Context(), 2); err != nil { // the drain's and the lease's renewal
 		t.Fatal(err)
 	}
 	resp := r.post(t.Context(), runBody("late", ""), "")
@@ -700,7 +789,7 @@ func TestShutdownThroughTheRuntime(t *testing.T) {
 			if finish {
 				close(m.gate)
 			} else {
-				if err := r.clock.WaitForTimers(t.Context(), 1); err != nil {
+				if err := r.clock.WaitForTimers(t.Context(), 2); err != nil { // the drain's and the lease's renewal
 					t.Fatal(err)
 				}
 				r.clock.Advance(5 * time.Second)

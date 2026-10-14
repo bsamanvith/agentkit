@@ -41,6 +41,7 @@ func TestServeRejectsBadSetup(t *testing.T) {
 		"bad base path":          {config: `{"mcp":{"base_path":"mcp","toolsets":[{"name":"demo","type":"demo"}]}}`, code: 1, says: "base path"},
 		"bad log level":          {env: map[string]string{envLogLevel: "loud"}, config: good, code: 1, says: envLogLevel},
 		"bad shutdown timeout":   {env: map[string]string{envShutdownTimeout: "0s"}, config: good, code: 1, says: envShutdownTimeout},
+		"short run lease":        {env: map[string]string{envRunLease: "10ms"}, config: good, code: 1, says: envRunLease},
 		"unusable address":       {env: map[string]string{envAddr: "127.0.0.1:not-a-port"}, config: good, code: 1, says: "not-a-port"},
 		"positional argument":    {config: good, args: []string{"extra"}, code: 2},
 		// The agent component.
@@ -53,6 +54,9 @@ func TestServeRejectsBadSetup(t *testing.T) {
 		"agent: unknown field":         {env: map[string]string{envComponents: "agent"}, config: `{"agent":{"max_turn":3}}`, code: 1, says: "max_turn"},
 		"agent: no concurrent runs":    {env: map[string]string{envComponents: "agent"}, config: `{"agent":{"max_concurrent_runs":0}}`, code: 1, says: "concurrent"},
 		"agent: bad effort":            {env: map[string]string{envComponents: "agent"}, config: `{"agent":{"model":{"effort":"extreme"}}}`, code: 1, says: "agent.model"},
+		"agent: unknown store":         {env: map[string]string{envComponents: "agent", envStore: "mysql://u:hunter2@db/x"}, config: good, code: 1, says: envStore + ": unknown store"},
+		"agent: sqlite without a path": {env: map[string]string{envComponents: "agent", envStore: "sqlite:"}, config: good, code: 1, says: "file path"},
+		"agent: bad store migrate":     {env: map[string]string{envComponents: "agent", envStore: "postgres://localhost:1/x", envStoreMigrate: "maybe"}, config: good, code: 1, says: envStoreMigrate},
 		// Several agents.
 		"agents: and agent":             {env: map[string]string{envComponents: "agent"}, config: `{"agent":{},"agents":[{"name":"a"}]}`, code: 1, says: `"agent" is the one-agent form`},
 		"agents: agent_api and agent":   {env: map[string]string{envComponents: "agent"}, config: `{"agent":{},"agent_api":{}}`, code: 1, says: `"agent" is the one-agent form`},
@@ -92,6 +96,9 @@ func TestServeRejectsBadSetup(t *testing.T) {
 			code := c.main(ctx, args)
 			if code != tc.code || !strings.Contains(stderr.String(), tc.says) {
 				t.Errorf("agentkit %q = exit %d, stderr:\n%s\nwant exit %d and a message containing %q", args, code, &stderr, tc.code, tc.says)
+			}
+			if strings.Contains(stderr.String(), "hunter2") {
+				t.Errorf("stderr echoes the store's password:\n%s", &stderr)
 			}
 		})
 	}

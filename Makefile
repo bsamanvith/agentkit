@@ -127,6 +127,7 @@ IMAGE ?= $(BIN)
 # filesystem, the same whatever docker's image store). agentkit measured
 # 17.7 MB in T005 (5.9 MB compressed). Raised from 20 to 30 when the store
 # drivers joined the one default binary (SQLite: about 21 MB, then pgx; E18).
+# Log every size change, with its reason, in docs/SIZES.md (AGENTS.md, Sizes).
 IMAGE_BUDGET_MB ?= 30
 # Binaries that get an image; fakellm joins when cmd/fakellm exists (T004).
 IMAGE_BINS := $(notdir $(wildcard $(addprefix cmd/,agentkit fakellm)))

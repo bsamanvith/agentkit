@@ -13,6 +13,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/agentclient"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/store/scoped"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 )
 
@@ -36,7 +37,7 @@ func Example() {
 	ctx := context.Background()
 	tools, _ := tool.NewRegistry(nil)
 	h, _ := harness.New(parrot{}, tools)
-	srv, _ := agentapi.New(h)
+	srv, _ := agentapi.New(h, agentapi.WithStore(scoped.Memory(nil)))
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 

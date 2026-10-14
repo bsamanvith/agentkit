@@ -1,7 +1,7 @@
 // Package sqlite is the local and single-node store: a
-// [store.ConversationStore], [store.RunStore], [store.EventLog] and
-// [flow.Checkpointer] in one value over one SQLite file, and a [store.Admin]
-// view of it as a separate value ([Admin]). It passes the same conformance
+// [store.ConversationStore], [store.ConversationIndex], [store.RunStore],
+// [store.EventLog] and [flow.Checkpointer] in one value over one SQLite file,
+// and a [store.Admin] view of it as a separate value ([Admin]). It passes the same conformance
 // suites as package memory.
 //
 // The driver is modernc.org/sqlite, pure Go, so binaries stay static. The file
@@ -56,6 +56,7 @@ var (
 	_ store.RunStore          = (*Store)(nil)
 	_ store.EventLog          = (*Store)(nil)
 	_ store.CommandLog        = (*Store)(nil)
+	_ store.ConversationIndex = (*Store)(nil)
 	_ flow.Checkpointer       = (*Store)(nil)
 	_ store.Admin             = admin{}
 )

@@ -241,6 +241,22 @@ describe("requests", () => {
     expect(await req.json()).toEqual({ message: "hi" });
   });
 
+  it("stops a run with POST /v1/runs/{id}/stop", async () => {
+    const seen: Request[] = [];
+    const client = new AgentClient({
+      fetch: fakeFetch(
+        ['{"v":1,"id":"run/1","status":"interrupted"}'],
+        { headers: { "Content-Type": "application/json" } },
+        seen,
+      ),
+      token: () => "tok-1",
+    });
+    await client.stopRun("run/1");
+    expect(seen[0]!.method).toBe("POST");
+    expect(new URL(seen[0]!.url).pathname).toBe("/v1/runs/run%2F1/stop");
+    expect(seen[0]!.headers.get("Authorization")).toBe("Bearer tok-1");
+  });
+
   it("sends no Authorization without a token", async () => {
     const seen: Request[] = [];
     const client = new AgentClient({

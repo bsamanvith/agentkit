@@ -16,7 +16,9 @@ import (
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
+	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/component"
+	"github.com/bsamanvith/agentkit/pkg/runner"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 	"github.com/bsamanvith/agentkit/pkg/web"
@@ -29,6 +31,10 @@ const (
 	envLogLevel        = "AGENTKIT_LOG_LEVEL"        // debug, info, warn or error; default info
 	envConfig          = "AGENTKIT_CONFIG"           // config file, if -config is not given
 	envShutdownTimeout = "AGENTKIT_SHUTDOWN_TIMEOUT" // e.g. 15s; default component.DefaultShutdownTimeout
+	// envRunLease is how long a run's lease lasts unrenewed: how soon the run
+	// of a process that died shows as interrupted, or is resumed by another
+	// process. Default 30s.
+	envRunLease = "AGENTKIT_RUN_LEASE"
 )
 
 // knownComponents are the names AGENTKIT_COMPONENTS accepts.
@@ -64,6 +70,7 @@ type serveEnv struct {
 	addr            string
 	logLevel        slog.Level
 	shutdownTimeout time.Duration
+	runLease        time.Duration // 0 for the runner's default
 }
 
 func (c cli) serve(ctx context.Context, args []string) error {
@@ -90,6 +97,22 @@ func (c cli) serve(ctx context.Context, args []string) error {
 		return err
 	}
 
+	// The agent API's store, and the recovery loop over it, which resumes
+	// the background runs a process left (chat runs stay interrupted for
+	// their user). It stops first, then the server drains, then the store
+	// closes.
+	clk := clock.Real()
+	var (
+		agents *agentapi.Server
+		st     openedStore
+	)
+	if slices.Contains(env.components, agentapi.Name) {
+		if st, err = c.openStore(ctx, clk); err != nil {
+			return err
+		}
+		defer st.close()
+	}
+
 	// The wiring: one constructor per component, chosen by name.
 	var mounts []component.Mount
 	for _, name := range env.components {
@@ -98,7 +121,7 @@ func (c cli) serve(ctx context.Context, args []string) error {
 		case mcpServerName:
 			m, err = newMCPServer(ctx, cfg.MCP, built, problems, log)
 		case agentapi.Name:
-			m, err = c.newAgents(ctx, cfg, built, problems, env, log)
+			m, agents, err = c.newAgents(ctx, cfg, built, problems, env, st.Store, clk, log)
 		case web.Name:
 			m = newWeb()
 		default: // in knownComponents but not wired here
@@ -121,7 +144,35 @@ func (c cli) serve(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	return rt.Serve(ctx, ln)
+	if agents == nil {
+		return rt.Serve(ctx, ln)
+	}
+	rc, err := runner.NewRecovery(agents.Runner(), st.admin)
+	if err != nil {
+		ln.Close()
+		return err
+	}
+	rctx, stopRecovery := context.WithCancel(ctx)
+	recovered := make(chan struct{})
+	go func() {
+		defer close(recovered)
+		_ = rc.Run(rctx, func(r runner.Report, err error) {
+			switch {
+			case err != nil:
+				log.Error("recovery pass", "component", agentapi.Name, "resumed", r.Resumed, "skipped", r.Skipped, "errors", r.Errors, "err", err)
+			case r.Resumed > 0:
+				log.Info("recovery pass", "component", agentapi.Name, "resumed", r.Resumed, "skipped", r.Skipped)
+			}
+		})
+	}()
+	go func() { // the recovery loop stops as the shutdown begins
+		<-ctx.Done()
+		stopRecovery()
+	}()
+	err = rt.Serve(ctx, ln)
+	stopRecovery()
+	<-recovered
+	return err
 }
 
 // buildToolsets is cli.buildToolsets with the compiled-in catalog.
@@ -209,6 +260,13 @@ func (c cli) serveEnv() (serveEnv, error) {
 			return e, fmt.Errorf("%s: %q is not a positive duration", envShutdownTimeout, v)
 		}
 		e.shutdownTimeout = d
+	}
+	if v := c.env(envRunLease); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d < time.Second {
+			return e, fmt.Errorf("%s: %q is not a duration of 1s or more", envRunLease, v)
+		}
+		e.runLease = d
 	}
 	return e, nil
 }

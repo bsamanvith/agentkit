@@ -1,44 +1,44 @@
 id: 0
 event: run_start
-data: {"v":1,"type":"run_start","seq":0,"run_id":"run_2","at":"2026-10-11T12:00:00.001Z","conversation_id":"conv_1","prompt":{"at":"2026-10-11T12:00:00.002Z","message":{"role":"user","content":[{"type":"text","text":"Echo hi, then tell me what it said."}]}}}
+data: {"v":1,"type":"run_start","seq":0,"run_id":"run_002","at":"2026-10-11T12:00:00.001Z","conversation_id":"conv_001","prompt":{"at":"2026-10-11T12:00:00.002Z","message":{"role":"user","content":[{"type":"text","text":"Echo hi, then tell me what it said."}]}}}
 
 id: 1
 event: text_delta
-data: {"v":1,"type":"text_delta","seq":1,"run_id":"run_2","at":"2026-10-11T12:00:00.005Z","turn":1,"block":1,"text":"Let me e"}
+data: {"v":1,"type":"text_delta","seq":1,"run_id":"run_002","at":"2026-10-11T12:00:00.005Z","turn":1,"block":1,"text":"Let me e"}
 
 id: 2
 event: text_delta
-data: {"v":1,"type":"text_delta","seq":2,"run_id":"run_2","at":"2026-10-11T12:00:00.006Z","turn":1,"block":1,"text":"cho that"}
+data: {"v":1,"type":"text_delta","seq":2,"run_id":"run_002","at":"2026-10-11T12:00:00.006Z","turn":1,"block":1,"text":"cho that"}
 
 id: 3
 event: text_delta
-data: {"v":1,"type":"text_delta","seq":3,"run_id":"run_2","at":"2026-10-11T12:00:00.007Z","turn":1,"block":1,"text":"."}
+data: {"v":1,"type":"text_delta","seq":3,"run_id":"run_002","at":"2026-10-11T12:00:00.007Z","turn":1,"block":1,"text":"."}
 
 id: 4
 event: tool_call
-data: {"v":1,"type":"tool_call","seq":4,"run_id":"run_2","at":"2026-10-11T12:00:00.009Z","turn":1,"call":0,"tool_use_id":"toolu_1","name":"echo","input":{"text":"hi"}}
+data: {"v":1,"type":"tool_call","seq":4,"run_id":"run_002","at":"2026-10-11T12:00:00.009Z","turn":1,"call":0,"tool_use_id":"toolu_1","name":"echo","input":{"text":"hi"}}
 
 id: 5
 event: tool_result
-data: {"v":1,"type":"tool_result","seq":5,"run_id":"run_2","at":"2026-10-11T12:00:00.011Z","turn":1,"call":0,"tool_use_id":"toolu_1","content":"{\"text\":\"[a] hi\"}","is_error":false,"duration_ms":1}
+data: {"v":1,"type":"tool_result","seq":5,"run_id":"run_002","at":"2026-10-11T12:00:00.011Z","turn":1,"call":0,"tool_use_id":"toolu_1","content":"{\"text\":\"[a] hi\"}","is_error":false,"duration_ms":1}
 
 id: 6
 event: turn_done
-data: {"v":1,"type":"turn_done","seq":6,"run_id":"run_2","at":"2026-10-11T12:00:00.013Z","turn":1,"record":{"turn":1,"messages":[{"at":"2026-10-11T12:00:00.008Z","message":{"role":"assistant","content":[{"type":"opaque","provider":"anthropic","data":"{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"c2lnbmF0dXJl\"}"},{"type":"text","text":"Let me echo that."},{"type":"tool_use","id":"toolu_1","name":"echo","input":{"text":"hi"}}]}},{"at":"2026-10-11T12:00:00.012Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"{\"text\":\"[a] hi\"}"}]}}],"requested_at":"2026-10-11T12:00:00.003Z","first_event_at":"2026-10-11T12:00:00.004Z","done_at":"2026-10-11T12:00:00.008Z","usage":{"input_tokens":120,"output_tokens":30,"cache_write_tokens":640},"stop":{"kind":"tool_use"},"tools":[{"tool_use_id":"toolu_1","name":"echo","started_at":"2026-10-11T12:00:00.009Z","duration_ms":1,"is_error":false}]}}
+data: {"v":1,"type":"turn_done","seq":6,"run_id":"run_002","at":"2026-10-11T12:00:00.013Z","turn":1,"record":{"turn":1,"messages":[{"at":"2026-10-11T12:00:00.008Z","message":{"role":"assistant","content":[{"type":"opaque","provider":"anthropic","data":"{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"c2lnbmF0dXJl\"}"},{"type":"text","text":"Let me echo that."},{"type":"tool_use","id":"toolu_1","name":"echo","input":{"text":"hi"}}]}},{"at":"2026-10-11T12:00:00.012Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"{\"text\":\"[a] hi\"}"}]}}],"requested_at":"2026-10-11T12:00:00.003Z","first_event_at":"2026-10-11T12:00:00.004Z","done_at":"2026-10-11T12:00:00.008Z","usage":{"input_tokens":120,"output_tokens":30,"cache_write_tokens":640},"stop":{"kind":"tool_use"},"tools":[{"tool_use_id":"toolu_1","name":"echo","started_at":"2026-10-11T12:00:00.009Z","duration_ms":1,"is_error":false}]}}
 
 id: 7
 event: text_delta
-data: {"v":1,"type":"text_delta","seq":7,"run_id":"run_2","at":"2026-10-11T12:00:00.016Z","turn":2,"block":0,"text":"It said:"}
+data: {"v":1,"type":"text_delta","seq":7,"run_id":"run_002","at":"2026-10-11T12:00:00.016Z","turn":2,"block":0,"text":"It said:"}
 
 id: 8
 event: text_delta
-data: {"v":1,"type":"text_delta","seq":8,"run_id":"run_2","at":"2026-10-11T12:00:00.017Z","turn":2,"block":0,"text":" [a] hi"}
+data: {"v":1,"type":"text_delta","seq":8,"run_id":"run_002","at":"2026-10-11T12:00:00.017Z","turn":2,"block":0,"text":" [a] hi"}
 
 id: 9
 event: turn_done
-data: {"v":1,"type":"turn_done","seq":9,"run_id":"run_2","at":"2026-10-11T12:00:00.019Z","turn":2,"record":{"turn":2,"messages":[{"at":"2026-10-11T12:00:00.018Z","message":{"role":"assistant","content":[{"type":"text","text":"It said: [a] hi"}]}}],"requested_at":"2026-10-11T12:00:00.014Z","first_event_at":"2026-10-11T12:00:00.015Z","done_at":"2026-10-11T12:00:00.018Z","usage":{"input_tokens":15,"output_tokens":9,"cache_read_tokens":640},"stop":{"kind":"end_turn"},"tools":[]}}
+data: {"v":1,"type":"turn_done","seq":9,"run_id":"run_002","at":"2026-10-11T12:00:00.019Z","turn":2,"record":{"turn":2,"messages":[{"at":"2026-10-11T12:00:00.018Z","message":{"role":"assistant","content":[{"type":"text","text":"It said: [a] hi"}]}}],"requested_at":"2026-10-11T12:00:00.014Z","first_event_at":"2026-10-11T12:00:00.015Z","done_at":"2026-10-11T12:00:00.018Z","usage":{"input_tokens":15,"output_tokens":9,"cache_read_tokens":640},"stop":{"kind":"end_turn"},"tools":[]}}
 
 id: 10
 event: run_done
-data: {"v":1,"type":"run_done","seq":10,"run_id":"run_2","at":"2026-10-11T12:00:00.02Z","answer":"It said: [a] hi","final":{"role":"assistant","content":[{"type":"text","text":"It said: [a] hi"}]},"usage":{"input_tokens":135,"output_tokens":39,"cache_read_tokens":640,"cache_write_tokens":640},"turns":2}
+data: {"v":1,"type":"run_done","seq":10,"run_id":"run_002","at":"2026-10-11T12:00:00.02Z","answer":"It said: [a] hi","final":{"role":"assistant","content":[{"type":"text","text":"It said: [a] hi"}]},"usage":{"input_tokens":135,"output_tokens":39,"cache_read_tokens":640,"cache_write_tokens":640},"turns":2}
 

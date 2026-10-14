@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"os"
 	"slices"
 	"strings"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/component"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm/anthropic"
+	"github.com/bsamanvith/agentkit/pkg/runner"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
@@ -152,35 +154,35 @@ func (a *agentComponent) Ready(ctx context.Context) error {
 
 // newAgents builds the agent component: per agent the model, its toolsets
 // merged into one registry and the harness; the catalog of the toolsets
-// served (specs, as built and skipped); and the API on top, mounted at /v1/.
-// ctx is the signal context: when it is done, the drain begins.
-func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]tool.Registry, problems []toolset.Problem, env serveEnv, log *slog.Logger) (component.Mount, error) {
+// served (specs, as built and skipped); and the API on top, mounted at /v1/,
+// on st and the clock clk. ctx is the signal context: when it is done, the
+// drain begins.
+func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]tool.Registry, problems []toolset.Problem, env serveEnv, st agentapi.Store, clk clock.Clock, log *slog.Logger) (component.Mount, *agentapi.Server, error) {
 	specs, err := servedSpecs(env, cfg)
 	if err != nil {
-		return component.Mount{}, err
+		return component.Mount{}, nil, err
 	}
 	token := c.env(envAPIToken)
 	if token == "" && !isLoopback(env.addr) {
-		return component.Mount{}, fmt.Errorf("serving on %s, which is not a loopback address, needs a bearer token in $%s", env.addr, envAPIToken)
+		return component.Mount{}, nil, fmt.Errorf("serving on %s, which is not a loopback address, needs a bearer token in $%s", env.addr, envAPIToken)
 	}
 	newModel := c.newModel
 	if newModel == nil {
 		newModel = newClaude
 	}
-	clk := clock.Real()
 	var agents []agentapi.Agent
 	var skipped []string
 	for _, a := range cfg.Agents {
 		label := a.label(cfg.legacy)
 		if a.Model.Provider != "anthropic" {
-			return component.Mount{}, fmt.Errorf("%s.model.provider %q: the only provider is \"anthropic\"", label, a.Model.Provider)
+			return component.Mount{}, nil, fmt.Errorf("%s.model.provider %q: the only provider is \"anthropic\"", label, a.Model.Provider)
 		}
 		if a.MaxTotalTokens < 0 || a.Model.MaxTokens < 0 {
-			return component.Mount{}, fmt.Errorf("%s: negative limit", label)
+			return component.Mount{}, nil, fmt.Errorf("%s: negative limit", label)
 		}
 		model, err := newModel(modelFlags{model: a.Model.ID, effort: a.Model.Effort})
 		if err != nil {
-			return component.Mount{}, fmt.Errorf("%s.model: %w", label, err)
+			return component.Mount{}, nil, fmt.Errorf("%s.model: %w", label, err)
 		}
 		sets := map[string]tool.Registry{}
 		for _, name := range a.Toolsets {
@@ -192,7 +194,7 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 		}
 		tools, err := agentapi.MergeTools(ctx, sets, a.PrefixToolNames)
 		if err != nil {
-			return component.Mount{}, fmt.Errorf("%s.toolsets: %w", label, err)
+			return component.Mount{}, nil, fmt.Errorf("%s.toolsets: %w", label, err)
 		}
 		h, err := harness.New(model, tools,
 			harness.WithSystem(a.System),
@@ -202,7 +204,7 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 			harness.WithNow(clk.Now),
 		)
 		if err != nil {
-			return component.Mount{}, fmt.Errorf("%s: %w", label, err)
+			return component.Mount{}, nil, fmt.Errorf("%s: %w", label, err)
 		}
 		agents = append(agents, agentapi.Agent{
 			Name: a.Name, Description: a.Description, Harness: h, System: a.System,
@@ -211,9 +213,17 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 		})
 	}
 	if cfg.API.RunTimeout < 0 {
-		return component.Mount{}, errors.New("agent_api: negative limit")
+		return component.Mount{}, nil, errors.New("agent_api: negative limit")
+	}
+	host, _ := os.Hostname()
+	// The lease owner names this process in the store, for operators.
+	runnerOpts := []runner.Option{runner.WithOwner(fmt.Sprintf("%s-%d", host, os.Getpid()))}
+	if env.runLease > 0 {
+		runnerOpts = append(runnerOpts, runner.WithLease(env.runLease))
 	}
 	srv, err := agentapi.NewAgents(agents,
+		agentapi.WithStore(st),
+		agentapi.WithRunnerOptions(runnerOpts...),
 		agentapi.WithToolsets(c.toolsetCatalog(cfg, specs, built, problems, env)...),
 		agentapi.WithToken(token),
 		agentapi.WithMaxConcurrentRuns(cfg.API.MaxConcurrentRuns),
@@ -227,9 +237,9 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 		agentapi.WithDrain(ctx.Done(), env.shutdownTimeout*9/10),
 	)
 	if err != nil {
-		return component.Mount{}, err
+		return component.Mount{}, nil, err
 	}
-	return component.Mount{Pattern: "/v1/", Component: &agentComponent{Server: srv, skipped: skipped}}, nil
+	return component.Mount{Pattern: "/v1/", Component: &agentComponent{Server: srv, skipped: skipped}}, srv, nil
 }
 
 // toolsetCatalog describes the toolsets served, for GET /v1/toolsets: each

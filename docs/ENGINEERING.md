@@ -168,7 +168,7 @@ We use only `connect-go`: one handler on a standard `net/http` server serves the
 
 - The default image is `agentkit` (everything in the core build) plus `fakellm` for dev and tests. Deployment shape is config, not image choice.
 - Heavy optional backends sit behind build tags (for example `-tags aws,vault`) so the default image stays small. `make image TAGS=...` builds a variant.
-- Size budget: measure the first real image (M5), then set the limit in CI. The pure-Go SQLite driver alone is several MB, so the earlier 10-20 MB target is a goal, not a promise.
+- Size budget: measure the first real image (M5), then set the limit in CI. The pure-Go SQLite driver alone is several MB, so the earlier 10-20 MB target is a goal, not a promise. Every size change and its reason is logged in [SIZES.md](SIZES.md) (rule in [AGENTS.md](../AGENTS.md#sizes)); per-component images are T102.
 - If you need a truly custom bundle, write a 20-line `main` that imports the components you want. They are ordinary packages.
 
 ---

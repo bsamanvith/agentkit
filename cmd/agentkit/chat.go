@@ -21,7 +21,7 @@ const chatHelp = `  /new      start a new conversation
   /history  show the conversation so far
   /details  show the last tool call and its result in full
   /quit     quit (so does Ctrl-D)
-  Ctrl-C cancels the answer that is coming; at the prompt it quits.
+  Ctrl-C stops the answer that is coming; at the prompt it quits.
 `
 
 // chat is a REPL: each line is a message to the agent, whose answer streams
@@ -175,11 +175,15 @@ func (s *chatSession) command(ctx context.Context, line string) bool {
 }
 
 // send runs one message (empty to resume an interrupted run) and shows the
-// answer as it streams. Ctrl-C meanwhile cancels the run on the server.
+// answer as it streams. Ctrl-C meanwhile stops the run on the server, which
+// keeps it to resume.
 func (s *chatSession) send(ctx context.Context, message string) {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	var cancelled atomic.Bool
+	var (
+		cancelled atomic.Bool
+		runID     string // set before opened closes
+	)
 	stop, exited, opened := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	go func() {
 		defer close(exited)
@@ -187,20 +191,34 @@ func (s *chatSession) send(ctx context.Context, message string) {
 		case <-s.interrupts:
 			cancelled.Store(true)
 			// A Ctrl-C just after Enter: let the stream open first (briefly),
-			// so chat learns the conversation the server started and can
-			// resume it, instead of losing it with the request.
+			// so chat learns the run to stop and the conversation to resume,
+			// instead of losing them with the request.
 			select {
 			case <-opened:
+				if runID != "" {
+					// Closing the stream alone would leave the run going for
+					// the server's reconnect grace. The stop answers once
+					// the run has ended, which chat waits for anyway.
+					stopped := make(chan struct{})
+					go func() {
+						defer close(stopped)
+						_, _ = s.client.Stop(ctx, runID)
+					}()
+					defer func() { <-stopped }()
+				}
 			case <-time.After(openGrace):
 			case <-stop:
 			}
-			cancel() // like closing the stream, cancels the run on the server
+			cancel()
 		case <-stop:
 		}
 	}()
 	defer func() { close(stop); <-exited }()
 
 	stream, err := s.client.Stream(runCtx, agentclient.RunRequest{Message: message, ConversationID: s.conv, Agent: s.agent})
+	if err == nil {
+		runID = stream.RunID()
+	}
 	close(opened)
 	if err == nil && s.conv == "" {
 		// From the headers, before any event: a Ctrl-C before the first one
@@ -234,6 +252,10 @@ func (s *chatSession) send(ctx context.Context, message string) {
 		if s.conv == "" { // from the response headers, or else run_start
 			s.conv = stream.ConversationID()
 		}
+		if e.Type == wire.TypeRunError && cancelled.Load() {
+			s.cancelled(ctx) // the stop's end, not a failure
+			return
+		}
 		s.r.event(e)
 	}
 }
@@ -265,11 +287,12 @@ func (s *chatSession) cancelled(ctx context.Context) {
 	}
 }
 
-// How long chat waits for the server to end a cancelled run, and how often
-// it asks; and how long a Ctrl-C waits for a run's stream to open before it
-// gives up on the request.
+// How long chat waits for the server to end a cancelled run (longer than the
+// server's reconnect grace, which ends a run chat could not stop), and how
+// often it asks; and how long a Ctrl-C waits for a run's stream to open
+// before it gives up on the request.
 const (
-	settleTimeout = 10 * time.Second
+	settleTimeout = 15 * time.Second
 	settlePoll    = 50 * time.Millisecond
 	openGrace     = 2 * time.Second
 )

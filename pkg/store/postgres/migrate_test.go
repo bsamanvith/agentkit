@@ -4,6 +4,7 @@ package postgres_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
@@ -90,10 +91,16 @@ func TestOpenUpgradesAnOlderSchema(t *testing.T) {
 	u := schemaURL(t)
 
 	old := openURL(t, u, postgres.WithMigrations(1))
+	// The entries an older binary would have appended. This binary's Append
+	// counts them on the conversation's record, a later table, so they are
+	// written as rows.
 	for i, text := range []string{"one", "two"} {
-		if err := old.Append(ctx, "c", prompt(int64(i+1), text)); err != nil {
-			t.Fatalf("Append at version 1: %v", err)
+		msgs, err := json.Marshal(prompt(int64(i+1), text).Messages)
+		if err != nil {
+			t.Fatal(err)
 		}
+		exec(t, u, `INSERT INTO entries (tenant, conversation, seq, kind, messages, created_at)
+			VALUES ('acme', 'c', $1, 'prompt', $2, $3)`, i+1, string(msgs), i+1)
 	}
 	if _, err := old.Create(ctx, "r", "c"); err == nil {
 		t.Fatal("Create at version 1 succeeded; the old schema has no runs table, so the test proves nothing")
@@ -116,6 +123,9 @@ func TestOpenUpgradesAnOlderSchema(t *testing.T) {
 	}
 	if err := s.AppendEvents(ctx, "r", []store.Event{{Seq: 1, Type: "started"}}); err != nil {
 		t.Errorf("AppendEvents after the upgrade: %v", err)
+	}
+	if c, err := s.CreateConversation(ctx, store.Conversation{ID: "c", Agent: "a"}); err != nil || c.Messages != 2 {
+		t.Errorf("CreateConversation after the upgrade = %+v, %v; want the two messages written before it counted", c, err)
 	}
 }
 

@@ -413,10 +413,11 @@ func addUnknown(obj map[string]any) {
 	obj["another_new_flag"] = true
 }
 
-// TestCloseCancelsTheRun: closing a stream before its last event, or ending
-// its context, cancels the run on the server: the run ends failed with
-// "cancelled", no further model call starts, and Next reports why it stopped.
-func TestCloseCancelsTheRun(t *testing.T) {
+// TestCloseLeavesTheRunToTheGrace: closing a stream before its last event,
+// or ending its context, leaves the run going for the server's reconnect
+// grace; past it the run is interrupted, no further model call starts, and
+// Next reports why the stream stopped.
+func TestCloseLeavesTheRunToTheGrace(t *testing.T) {
 	t.Parallel()
 	for _, tt := range []struct {
 		name  string
@@ -431,12 +432,12 @@ func TestCloseCancelsTheRun(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			// The first reply calls a tool; the second waits until the run
-			// is cancelled.
+			// is interrupted.
 			m := &model{replies: []llmtest.Reply{llmtest.ToolCalls(call("toolu_1", "echo", `{"text":"x"}`)), llmtest.Text("never sent")}, gate: make(chan struct{}), pass: 1}
 			if tt.after == "" {
 				m.pass = 0
 			}
-			r := newRig(t, m)
+			r := newRig(t, m, agentapi.WithReconnectGrace(10*time.Millisecond))
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			s, err := r.client.Stream(ctx, agentclient.RunRequest{Message: "echo x"})
@@ -453,13 +454,73 @@ func TestCloseCancelsTheRun(t *testing.T) {
 				}
 			}
 			run := r.waitEnded(s.RunID())
-			if run.Status != wire.StatusFailed || run.Error == nil || run.Error.Code != wire.CodeCancelled {
-				t.Errorf("run = %s, want failed, cancelled", jsonOf(run))
+			if run.Status != wire.StatusInterrupted || run.Error == nil || run.Error.Code != wire.CodeRunInterrupted {
+				t.Errorf("run = %s, want interrupted", jsonOf(run))
 			}
 			if n := len(m.requests()); n > m.pass+1 {
-				t.Errorf("%d model calls after the run was cancelled at call %d", n, m.pass+1)
+				t.Errorf("%d model calls after the run was interrupted at call %d", n, m.pass+1)
 			}
 		})
+	}
+}
+
+// TestRunCommands: a run stopped from another client ends its stream with
+// run_error interrupted and is listed so; Events replays it; Resume carries
+// it on from the next seq to its answer; a new message after that, stopped
+// and then canceled, ends canceled, and stays so when canceled again.
+func TestRunCommands(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	m := &model{replies: []llmtest.Reply{
+		llmtest.ToolCalls(call("toolu_1", "echo", `{"text":"x"}`)), llmtest.Text("never sent"), llmtest.Text("Resumed."), llmtest.Text("never either"),
+	}, gate: make(chan struct{}, 1), pass: 1}
+	r := newRig(t, m)
+	s, err := r.client.Stream(ctx, agentclient.RunRequest{Message: "echo x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	until(t, s, wire.TypeTurnDone)
+	if run, err := r.client.Stop(ctx, s.RunID()); err != nil || run.Status != wire.StatusInterrupted {
+		t.Fatalf("Stop = %s, %v; want interrupted", jsonOf(run), err)
+	}
+	end := until(t, s, wire.TypeRunError)
+	if end.Error.Code != wire.CodeRunInterrupted {
+		t.Errorf("stopped stream ended with %s", jsonOf(end))
+	}
+	list, err := r.client.Runs(ctx, agentclient.RunsQuery{ConversationID: s.ConversationID()})
+	if err != nil || len(list.Runs) != 1 || list.Runs[0].ID != s.RunID() || list.Runs[0].Status != wire.StatusInterrupted {
+		t.Errorf("Runs = %s, %v; want the interrupted run", jsonOf(list), err)
+	}
+	replay, err := r.client.Events(ctx, s.RunID(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := readAll(replay); !errors.Is(got.err, io.EOF) || len(got.events) == 0 || got.events[0].Seq != 1 || got.events[len(got.events)-1].Seq != end.Seq {
+		t.Errorf("Events after seq 0 = %s, %v; want seq 1 to %d", jsonOf(got.events), got.err, end.Seq)
+	}
+
+	m.gate <- struct{}{} // the resumed call goes through; it reads the second reply
+	resumed, err := r.client.Resume(ctx, s.RunID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := readAll(resumed)
+	if !errors.Is(got.err, io.EOF) || len(got.events) == 0 || got.events[0].Seq != end.Seq || got.events[len(got.events)-1].Answer != "Resumed." {
+		t.Errorf("resumed stream = %s, %v; want seq %d on to the answer", jsonOf(got.events), got.err, end.Seq)
+	}
+
+	next, err := r.client.Stream(ctx, agentclient.RunRequest{Message: "more", ConversationID: s.ConversationID()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	until(t, next, wire.TypeRunStart)
+	for range 2 {
+		if run, err := r.client.Cancel(ctx, next.RunID()); err != nil || run.Status != wire.StatusCanceled {
+			t.Errorf("Cancel = %s, %v; want canceled", jsonOf(run), err)
+		}
+	}
+	if end := until(t, next, wire.TypeRunError); end.Error.Code != wire.CodeCancelled {
+		t.Errorf("canceled stream ended with %s", jsonOf(end))
 	}
 }
 
@@ -537,7 +598,8 @@ var sentinels = map[string]error{
 	wire.CodeNotFound:       agentclient.ErrNotFound,
 	wire.CodeTooLarge:       agentclient.ErrRequestTooLarge,
 	wire.CodeBusy:           agentclient.ErrConversationBusy,
-	wire.CodeInterrupted:    agentclient.ErrConversationInterrupted,
+	wire.CodeRunFinal:       agentclient.ErrRunState,
+	wire.CodeRunLeased:      agentclient.ErrConversationBusy,
 	wire.CodeAgentMismatch:  agentclient.ErrAgentMismatch,
 	wire.CodeOverCapacity:   agentclient.ErrOverCapacity,
 	wire.CodeShuttingDown:   agentclient.ErrShuttingDown,
@@ -555,8 +617,8 @@ func checkAPIError(t *testing.T, err error, status int, code string, retryAfter 
 		t.Errorf("APIError %+v, want status %d, code %q, Retry-After %s, a message", ae, status, code, retryAfter)
 	}
 	for c, s := range sentinels {
-		if errors.Is(err, s) != (c == code) {
-			t.Errorf("errors.Is(%v, the sentinel of %s) = %t", err, c, c != code)
+		if want := s == sentinels[code]; errors.Is(err, s) != want { //nolint:errorlint // which sentinel this is
+			t.Errorf("errors.Is(%v, the sentinel of %s) = %t", err, c, !want)
 		}
 	}
 }
@@ -624,14 +686,20 @@ func TestAPIErrors(t *testing.T) {
 		s := running(t, r)
 		_, err := r.client.Stream(ctx, agentclient.RunRequest{Message: "and", ConversationID: s.ConversationID()})
 		check(t, err, http.StatusConflict, wire.CodeBusy, 0)
+		if ae, ok := errors.AsType[*agentclient.APIError](err); !ok || ae.RunID != s.RunID() {
+			t.Errorf("busy error %+v, want the run going on, %s", err, s.RunID())
+		}
+		_, err = r.client.Resume(ctx, s.RunID())
+		check(t, err, http.StatusConflict, wire.CodeRunLeased, 0)
 	})
-	t.Run("conversation_interrupted", func(t *testing.T) {
-		r := gated(t)
-		s := running(t, r)
-		_ = s.Close()
-		r.waitEnded(s.RunID())
-		_, err := r.client.Run(ctx, agentclient.RunRequest{Message: "and", ConversationID: s.ConversationID()})
-		check(t, err, http.StatusConflict, wire.CodeInterrupted, 0)
+	t.Run("run_final", func(t *testing.T) {
+		r := newRig(t, &model{replies: []llmtest.Reply{llmtest.Text("a")}})
+		run, err := r.client.Run(ctx, agentclient.RunRequest{Message: "hi"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = r.client.Resume(ctx, run.ID)
+		check(t, err, http.StatusConflict, wire.CodeRunFinal, 0)
 	})
 	t.Run("agent_mismatch", func(t *testing.T) {
 		r := newRig(t, &model{replies: []llmtest.Reply{llmtest.Text("a")}})

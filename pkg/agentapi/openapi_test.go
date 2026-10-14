@@ -20,9 +20,16 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
+	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
+	"github.com/bsamanvith/agentkit/pkg/flow"
+	"github.com/bsamanvith/agentkit/pkg/harness"
+	"github.com/bsamanvith/agentkit/pkg/runner"
+	"github.com/bsamanvith/agentkit/pkg/store/scoped"
+	"github.com/bsamanvith/agentkit/pkg/tenancy"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 	"github.com/bsamanvith/agentkit/pkg/toolset/toolsettest"
 )
@@ -162,7 +169,7 @@ func TestOpenAPISpec(t *testing.T) {
 		}
 	}
 
-	srv, err := agentapi.New(agentHarness(t, echo(t), registry(t)))
+	srv, err := agentapi.New(agentHarness(t, echo(t), registry(t)), agentapi.WithStore(scoped.Memory(nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -279,6 +286,37 @@ func (rec *recorder) write(name string, req toolsettest.CassetteRequest, resp *h
 	}
 }
 
+// stream sends a request answered by an event stream, checks it is one, and
+// records each event, to check against the spec's Event.
+func (rec *recorder) stream(r *rig, name, method, target string) {
+	rec.t.Helper()
+	resp, got := r.do(method, target, "")
+	ct, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	if resp.StatusCode != http.StatusOK || ct != "text/event-stream" {
+		rec.t.Fatalf("%s: %s %s = %d %s", name, method, target, resp.StatusCode, ct)
+	}
+	u, err := url.Parse(target)
+	if err != nil {
+		rec.t.Fatal(err)
+	}
+	tmpl := rec.template(method, u.Path)
+	if rec.spec.Paths[tmpl][strings.ToLower(method)].Responses["200"].Content[ct] == nil {
+		rec.t.Errorf("%s: Content-Type %q, not one the spec documents", name, ct)
+	}
+	rec.probed[fmt.Sprintf("%s %s 200", method, tmpl)] = true
+	n := 0
+	for line := range strings.SplitSeq(string(got), "\n") {
+		if data, ok := strings.CutPrefix(line, "data: "); ok {
+			n++
+			ev := &http.Response{StatusCode: 200, ProtoMajor: 1, ProtoMinor: 1, Header: http.Header{"Content-Type": {"application/json"}}}
+			rec.write(fmt.Sprintf("%s_event_%02d", name, n), toolsettest.CassetteRequest{Method: "POST", Path: "/x-test/event"}, ev, []byte(data))
+		}
+	}
+	if n < 2 {
+		rec.t.Errorf("%s: %d events", name, n)
+	}
+}
+
 // strictSpec writes a copy of the spec in which no object takes properties
 // it does not list (the published spec leaves them open: the API grows), and
 // with an operation POST /x-test/event answering an Event, to check stream
@@ -349,16 +387,28 @@ func TestOpenAPIResponses(t *testing.T) {
 			Credential: agentapi.Credential{Status: wire.CredentialMissing, Env: "EXA_API_KEY"},
 		},
 	)
+	// The harnesses run on the rig's clock, as the rig's own does: a run's
+	// replayed run_start has its prompt's time.
+	clk := clocktest.NewFake(time.Time{})
+	now := harness.WithNow(clk.Now)
 	agents := []agentapi.Agent{
 		{
 			Name: agentapi.DefaultAgent, Description: "The default.", Model: wire.Model{Provider: "anthropic", ID: "claude", Effort: "low"}, System: "Be brief.",
-			Toolsets: []string{"a", "web"}, Harness: agentHarness(t, m, sets["a"]),
+			Toolsets: []string{"a", "web"}, Harness: agentHarness(t, m, sets["a"], now),
 		},
-		{Name: "other", Harness: agentHarness(t, echo(t), registry(t))},
+		{Name: "other", Harness: agentHarness(t, echo(t), registry(t), now)},
 	}
-	r := newRig(t, m, rigConfig{agents: agents, token: token, api: []agentapi.Option{
-		toolsets, agentapi.WithMaxConcurrentRuns(1), agentapi.WithMaxBodyBytes(512),
+	// A flow with an approval, for the decisions; and a store the probes
+	// share with a second server, which holds no run of its own: it creates
+	// nothing, so its IDs (from 001, as this server's) never meet.
+	flows := runner.WithFlows(func(context.Context, string) (flow.Step, error) {
+		return flow.Sequence("f", flow.Approve("ok")), nil
+	})
+	st := scoped.Memory(clk)
+	r := newRig(t, m, rigConfig{agents: agents, token: token, clock: clk, store: st, api: []agentapi.Option{
+		toolsets, agentapi.WithMaxConcurrentRuns(1), agentapi.WithMaxBodyBytes(512), agentapi.WithRunnerOptions(flows),
 	}})
+	other := newRig(t, echo(t), rigConfig{token: token, clock: clk, store: st})
 	// The probes post raw requests the rig does not track, and delete a
 	// conversation: there is no transcript to match the model's requests to.
 	r.models = nil
@@ -401,6 +451,56 @@ func TestOpenAPIResponses(t *testing.T) {
 	rec.probe(r, "get_run_unauthorized", 401, "GET", "/v1/runs/"+run.ID, "", "", bearer...)
 	rec.probe(r, "get_run_not_found", 404, "GET", "/v1/runs/nope", "", "")
 
+	rec.probe(r, "list_runs", 200, "GET", "/v1/runs?conversation_id="+conv+"&limit=1", "", "")
+	rec.probe(r, "list_runs_bad_request", 400, "GET", "/v1/runs", "", "")
+	rec.probe(r, "list_runs_unauthorized", 401, "GET", "/v1/runs?conversation_id="+conv, "", "", bearer...)
+	rec.probe(r, "list_runs_not_found", 404, "GET", "/v1/runs?conversation_id=nope", "", "")
+	rec.stream(r, "run_events", "GET", "/v1/runs/"+run.ID+"/events")
+	rec.probe(r, "run_events_bad_request", 400, "GET", "/v1/runs/"+run.ID+"/events", "", "", "Last-Event-ID", "x")
+	rec.probe(r, "run_events_unauthorized", 401, "GET", "/v1/runs/"+run.ID+"/events", "", "", bearer...)
+	rec.probe(r, "run_events_not_found", 404, "GET", "/v1/runs/nope/events", "", "")
+
+	// Runs stopped while they wait for the model: interrupted. The first is
+	// resumed; the second waits for the probes of a full server.
+	stopped := func(message string) string {
+		s := r.start(t.Context(), message, "")
+		id := s.until(agentapi.TypeRunStart, 0).RunID
+		rec.probe(r, "stop_run", 200, "POST", "/v1/runs/"+id+"/stop", "", "")
+		s.all()
+		return id
+	}
+	resumed, interrupted := stopped("stop me"), stopped("stop me too")
+	rec.probe(r, "stop_run_unauthorized", 401, "POST", "/v1/runs/"+resumed+"/stop", "", "", bearer...)
+	rec.probe(r, "stop_run_not_found", 404, "POST", "/v1/runs/nope/stop", "", "")
+	m.gate <- struct{}{}
+	rec.probe(r, "resume_run", 200, "POST", "/v1/runs/"+resumed+"/resume", "", "", jsonAccept...)
+	rec.probe(r, "resume_run_final", 409, "POST", "/v1/runs/"+resumed+"/resume", "", "")
+	rec.probe(r, "resume_run_unauthorized", 401, "POST", "/v1/runs/"+resumed+"/resume", "", "", bearer...)
+	rec.probe(r, "resume_run_not_found", 404, "POST", "/v1/runs/nope/resume", "", "")
+	rec.probe(r, "cancel_run_final", 409, "POST", "/v1/runs/"+resumed+"/cancel", "", "")
+	rec.probe(r, "cancel_run_unauthorized", 401, "POST", "/v1/runs/"+resumed+"/cancel", "", "", bearer...)
+	rec.probe(r, "cancel_run_not_found", 404, "POST", "/v1/runs/nope/cancel", "", "")
+
+	// A flow run waiting at its approval.
+	tenant, err := tenancy.NewTenant(agentapi.DefaultTenant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	x, err := r.srv.Runner().RunFlow(tenancy.With(t.Context(), tenant), r.create(`{}`).ID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := x.Wait(); err != nil {
+		t.Fatal(err)
+	}
+	suspended := x.Run.ID
+	decisions := "/v1/runs/" + suspended + "/decisions"
+	rec.probe(r, "decide_bad_request", 400, "POST", decisions, `{"path":"","approved":true}`, "")
+	rec.probe(r, "decide_unauthorized", 401, "POST", decisions, `{"path":"f/ok","approved":true}`, "", bearer...)
+	rec.probe(r, "decide_not_found", 404, "POST", "/v1/runs/nope/decisions", `{"path":"f/ok","approved":true}`, "")
+	rec.probe(r, "decide_not_pending", 409, "POST", decisions, `{"path":"f/nope","approved":true}`, "")
+	rec.probe(r, "decide_too_large", 413, "POST", decisions, `{"path":"`+strings.Repeat("x", 600)+`"}`, `{"path":"too long"}`)
+
 	rec.probe(r, "list_conversations", 200, "GET", "/v1/conversations?limit=1", "", "")
 	rec.probe(r, "list_conversations_bad_limit", 400, "GET", "/v1/conversations?limit=0", "", "")
 	rec.probe(r, "list_conversations_unauthorized", 401, "GET", "/v1/conversations", "", "", bearer...)
@@ -438,9 +538,16 @@ func TestOpenAPIResponses(t *testing.T) {
 	s2 := r.start(t.Context(), "hold on", "")
 	busy := s2.until(agentapi.TypeRunStart, 0).ConversationID
 	rec.probe(r, "run_over_capacity", 503, "POST", "/v1/runs", `{"message":"one more"}`, "", jsonAccept...)
+	rec.probe(r, "resume_over_capacity", 503, "POST", "/v1/runs/"+interrupted+"/resume", "", "")
+	rec.probe(r, "decide_over_capacity", 503, "POST", decisions, `{"path":"f/ok","approved":true}`, "")
 	rec.probe(r, "delete_busy", 409, "DELETE", "/v1/conversations/"+busy, "", "")
+	// The other server shares the store: the run is held by this one.
+	rec.probe(other, "stop_run_leased", 409, "POST", "/v1/runs/"+s2.runID()+"/stop", "", "")
 	m.gate <- struct{}{}
 	s2.all()
+	rec.probe(r, "cancel_run", 200, "POST", "/v1/runs/"+interrupted+"/cancel", "", "")
+	rec.probe(r, "decide", 200, "POST", decisions, `{"path":"f/ok","approved":true}`, "")
+	r.waitEnded(suspended)
 
 	rec.probe(r, "delete_unauthorized", 401, "DELETE", "/v1/conversations/"+conv, "", "", bearer...)
 	rec.probe(r, "delete", 204, "DELETE", "/v1/conversations/"+conv, "", "")

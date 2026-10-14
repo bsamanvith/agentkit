@@ -21,7 +21,7 @@
       "post": {
         "operationId": "createRun",
         "summary": "Run an agent on a message",
-        "description": "Starts a conversation, continues one, or (with an empty message) resumes an interrupted one. The response is the run's event stream (text/event-stream), or with Accept: application/json the run once it ends.",
+        "description": "Starts a conversation, continues one, or (with an empty message) resumes an interrupted one. A new message to an interrupted conversation cancels the interrupted run and starts a new one. The response is the run's event stream (text/event-stream), or with Accept: application/json the run once it ends. A client that goes away from a stream leaves the run going for a reconnect grace (10s), in which GET /v1/runs/{id}/events follows it again; after the grace the run is interrupted.",
         "requestBody": {
           "required": true,
           "content": {
@@ -88,7 +88,7 @@
             }
           },
           "409": {
-            "description": "conversation_busy: a run of the conversation is going on; conversation_interrupted: resume it first (empty message); agent_mismatch: the conversation belongs to another agent.",
+            "description": "conversation_busy: a run of the conversation is going on (run_id names it); agent_mismatch: the conversation belongs to another agent. A new message to an interrupted conversation replaces its run, so is not 409.",
             "content": {
               "application/json": {
                 "schema": {
@@ -117,6 +117,98 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listRuns",
+        "summary": "List runs",
+        "description": "A conversation's runs, newest first; or, with status=suspended and no conversation, every run waiting for a decision.",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "query",
+            "description": "The conversation whose runs to list; required unless status is suspended.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Only runs of this status.",
+            "schema": {
+              "$ref": "#/components/schemas/Run/properties/status"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Runs per page.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "The previous page's next_cursor.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of runs.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: no conversation_id (and status is not suspended), an unknown status, a bad limit or cursor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such conversation.",
             "content": {
               "application/json": {
                 "schema": {
@@ -174,6 +266,434 @@
           },
           "404": {
             "description": "not_found: no such run (or it was dropped by retention).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runs/{id}/events": {
+      "get": {
+        "operationId": "runEvents",
+        "summary": "Follow a run's events",
+        "description": "The run's events from the one after Last-Event-ID (from the first without it), then, while this server runs it, the new ones as they come. A run that ended, or that another process runs, is replayed from the store as far as it is stored, and the stream ends there. Within the reconnect grace this is how a client comes back to a chat run.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The run's ID.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "description": "The seq of the last event the client has.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run's event stream.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "Server-Sent Events: each event's name is its type, its id its seq, and its data the JSON of an Event (components.schemas.Event)."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: Last-Event-ID is not an event's seq.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runs/{id}/resume": {
+      "post": {
+        "operationId": "resumeRun",
+        "summary": "Resume a run",
+        "description": "Continues a run that is interrupted, failed, or was left by a process that stopped. The response is the run's event stream from the first event of the continuation (its seq goes on from the run's events so far), or with Accept: application/json the run once it ends.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The run's ID.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The resumed run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "Server-Sent Events: each event's name is its type, its id its seq, and its data the JSON of an Event (components.schemas.Event)."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "run_final: the run is done, canceled or rejected; awaiting_decision: it waits for a decision; run_leased: it is going on (retryable). run_id names the run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "over_capacity: too many runs (retryable); shutting_down: the server is draining.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runs/{id}/stop": {
+      "post": {
+        "operationId": "stopRun",
+        "summary": "Stop a run",
+        "description": "Interrupts the run at once, keeping its completed turns: POST /v1/runs/{id}/resume continues it, and a new message to its conversation starts a new run. A run that is not going on is returned as it is.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The run's ID.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run, once this server's execution of it has ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "run_leased: another process runs it; the command must reach that process (retryable).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runs/{id}/cancel": {
+      "post": {
+        "operationId": "cancelRun",
+        "summary": "Cancel a run",
+        "description": "Ends the run for good (canceled). Canceling a canceled run is a no-op.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The run's ID.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run, once this server's execution of it has ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "run_final: the run ended otherwise (done, failed or rejected are final too); run_leased: another process runs it (retryable).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runs/{id}/decisions": {
+      "post": {
+        "operationId": "decideRun",
+        "summary": "Decide a pending step",
+        "description": "Approves or rejects the step a suspended flow run waits for. The run goes on in the background; the response is the run as it is then, or with Accept: text/event-stream its events from there on.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The run's ID.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "Server-Sent Events: each event's name is its type, its id its seq, and its data the JSON of an Event (components.schemas.Event)."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: the body is not a DecisionRequest with a path.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "not_pending: the run does not wait at that path; run_final: the run has ended; awaiting_decision, shape_changed: the flow changed since the run suspended; run_leased: it is going on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "too_large: the body is over the server's limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "over_capacity: too many runs (retryable); shutting_down: the server is draining.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -712,7 +1232,7 @@
         "properties": {
           "code": {
             "type": "string",
-            "description": "What went wrong, for programs: invalid_request (400), unauthorized (401), not_found (404), too_large (413), conversation_busy, conversation_interrupted, agent_mismatch (409), over_capacity, shutting_down (503), internal (500); a failed run's codes are budget_exceeded, max_tokens, refused, unexpected_stop, cancelled, timeout, shutdown, rate_limited, overloaded, model_auth, context_too_long, model_rejected and internal. New codes may be added: treat an unknown one as internal."
+            "description": "What went wrong, for programs: invalid_request (400), unauthorized (401), not_found (404), too_large (413), conversation_busy, agent_mismatch, run_final, run_leased, awaiting_decision, not_pending, shape_changed (409), over_capacity, shutting_down (503), internal (500); a run's codes are interrupted, run_failed, suspended, rejected, budget_exceeded, max_tokens, refused, unexpected_stop, cancelled, timeout, shutdown, rate_limited, overloaded, model_auth, context_too_long, model_rejected and internal. conversation_interrupted is no longer returned. New codes may be added: treat an unknown one as internal."
           },
           "message": {
             "type": "string",
@@ -729,6 +1249,10 @@
           "explanation": {
             "type": "string",
             "description": "A refusal's explanation (code refused)."
+          },
+          "run_id": {
+            "type": "string",
+            "description": "The run a 409 is about: the conversation's unfinished run, or the run the command named."
           }
         },
         "required": [
@@ -1056,9 +1580,14 @@
           "status": {
             "enum": [
               "running",
+              "interrupted",
+              "suspended",
               "done",
-              "failed"
-            ]
+              "failed",
+              "canceled",
+              "rejected"
+            ],
+            "description": "running: an execution is going on; interrupted: a chat run stopped with nobody running it (resume it, or post a new message); suspended: a flow run waits for a decision; then done, failed (it can still be resumed), canceled or rejected, which never change. New statuses may be added."
           },
           "created_at": {
             "type": "string",
@@ -1095,6 +1624,30 @@
           "created_at",
           "usage",
           "turns"
+        ]
+      },
+      "RunList": {
+        "type": "object",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Run"
+            },
+            "description": "Newest first. A listed run has no record: GET /v1/runs/{id} has it."
+          },
+          "next_cursor": {
+            "type": "string",
+            "description": "Fetches the next page (?cursor=); absent on the last page. Opaque."
+          }
+        },
+        "required": [
+          "v",
+          "runs"
         ]
       },
       "Conversation": {
@@ -1167,6 +1720,26 @@
         ],
         "additionalProperties": false
       },
+      "DecisionRequest": {
+        "type": "object",
+        "description": "The answer to the approval at path of a suspended flow run.",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The approval's path in the flow, as the run's pending steps name it."
+          },
+          "approved": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Kept with a rejection."
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
       "CreateConversationRequest": {
         "type": "object",
         "description": "The body of POST /v1/conversations (optional: no body is {}). Unknown fields are refused.",
@@ -1188,7 +1761,7 @@
           },
           "type": {
             "type": "string",
-            "description": "run_start, text_delta, tool_call, tool_result, turn_done, run_done or run_error; new types may be added: skip an unknown one."
+            "description": "run_start, text_delta, tool_call, tool_result, turn_done, retrying, run_done or run_error; new types may be added: skip an unknown one."
           },
           "seq": {
             "type": "integer",
@@ -1265,6 +1838,14 @@
           },
           "error": {
             "$ref": "#/components/schemas/Error"
+          },
+          "attempt": {
+            "type": "integer",
+            "description": "retrying: the attempt that comes next (2 for the first retry)."
+          },
+          "delay_ms": {
+            "type": "number",
+            "description": "retrying: how long the run waits before it."
           }
         },
         "required": [

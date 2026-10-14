@@ -1,0 +1,145 @@
+package agentapi
+
+import (
+	"context"
+	"sync"
+	"time"
+
+	"github.com/bsamanvith/agentkit/pkg/tenancy"
+)
+
+// hub is the event log of a run this server executes: the events of the run
+// so far (replayed from the store for a resumed run, then the live ones), in
+// memory, for every client that follows the run. It is how a client that
+// went away comes back to a run within the reconnect grace, and how a run's
+// events outlive its stream for GET /v1/runs/{id}/events.
+//
+// Single replica: a run executed by another process has no hub here, and is
+// replayed from the store instead.
+type hub struct {
+	runID, convID string
+	tenant        tenancy.Tenant
+	interactive   bool // the grace applies
+
+	mu       sync.Mutex
+	events   []Event
+	done     bool          // the execution ended; events holds its last event
+	ended    chan struct{} // closed when done is set
+	wake     chan struct{} // closed and replaced on every append
+	subs     int           // clients following the run
+	graceOff chan struct{} // closes the grace timer's goroutine; nil when it is not armed
+	finished time.Time     // when done was set, for retention
+}
+
+func newHub(runID, convID string, tenant tenancy.Tenant, interactive bool, seed []Event) *hub {
+	h := &hub{
+		runID: runID, convID: convID, tenant: tenant, interactive: interactive,
+		events: seed, ended: make(chan struct{}), wake: make(chan struct{}),
+	}
+	return h
+}
+
+// append adds e to the log, numbered next, and wakes the followers.
+func (h *hub) append(e Event) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.done {
+		return
+	}
+	e.Seq = len(h.events)
+	if n := len(h.events); n > 0 && e.At.Before(h.events[n-1].At) {
+		e.At = h.events[n-1].At // times never go back, whoever stamped them
+	}
+	h.events = append(h.events, e)
+	close(h.wake)
+	h.wake = make(chan struct{})
+}
+
+// finish appends the last event, if any, and ends the log.
+func (h *hub) finish(last *Event, now time.Time) {
+	if last != nil {
+		h.append(*last)
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.done {
+		return
+	}
+	h.done, h.finished = true, now
+	if h.graceOff != nil {
+		close(h.graceOff)
+		h.graceOff = nil
+	}
+	close(h.ended)
+	close(h.wake)
+	h.wake = make(chan struct{})
+}
+
+// snapshot returns the events so far and whether the log has ended.
+func (h *hub) snapshot() ([]Event, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.events[:len(h.events):len(h.events)], h.done
+}
+
+// isDone reports whether the execution has ended.
+func (h *hub) isDone() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.done
+}
+
+// next waits for the events from seq from on: it returns them as soon as
+// there are any, or nil and true once the log has ended without more, or nil
+// and false when ctx is done.
+func (h *hub) next(ctx context.Context, from int) ([]Event, bool) {
+	for {
+		h.mu.Lock()
+		evs, done, wake := h.events[min(from, len(h.events)):len(h.events):len(h.events)], h.done, h.wake
+		h.mu.Unlock()
+		switch {
+		case len(evs) > 0:
+			return evs, false
+		case done:
+			return nil, true
+		}
+		select {
+		case <-wake:
+		case <-ctx.Done():
+			return nil, false
+		}
+	}
+}
+
+// subscribe counts a client following the run, and disarms the grace.
+func (h *hub) subscribe() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.subs++
+	if h.graceOff != nil {
+		close(h.graceOff)
+		h.graceOff = nil
+	}
+}
+
+// unsubscribe counts a client gone. When the last one goes while an
+// interactive run is going on, it returns a channel the grace waits on
+// (closed if a client comes back or the run ends), and true.
+func (h *hub) unsubscribe() (<-chan struct{}, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.subs--
+	if h.subs > 0 || h.done || !h.interactive || h.graceOff != nil {
+		return nil, false
+	}
+	h.graceOff = make(chan struct{})
+	return h.graceOff, true
+}
+
+// abandoned reports whether, with the grace over, nobody follows the run and
+// it is still going on.
+func (h *hub) abandoned() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.subs == 0 && !h.done
+}

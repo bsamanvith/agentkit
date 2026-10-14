@@ -16,6 +16,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/harness"
+	"github.com/bsamanvith/agentkit/pkg/store/scoped"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 )
 
@@ -52,7 +53,7 @@ func FuzzPostRun(f *testing.F) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		srv, err := agentapi.New(h, agentapi.WithMaxBodyBytes(256), agentapi.WithKeepAlive(0))
+		srv, err := agentapi.New(h, agentapi.WithStore(scoped.Memory(nil)), agentapi.WithMaxBodyBytes(256), agentapi.WithKeepAlive(0))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -129,7 +130,7 @@ func FuzzConversationList(f *testing.F) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		srv, err := agentapi.New(h, agentapi.WithKeepAlive(0))
+		srv, err := agentapi.New(h, agentapi.WithStore(scoped.Memory(nil)), agentapi.WithKeepAlive(0))
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -69,14 +69,24 @@ func ModuleRules() Rules {
 			// toolsets and the fakes.
 			//
 			// It serves requests, so it never imports a store backend
-			// (pkg/store/memory, pkg/store/sqlite), tests included: a backend
-			// is the only way to its store.Admin, the cross-tenant view that
-			// only the runner's recovery loop may hold (T038). cmd/ wires
-			// backends. T037 adds pkg/runner and pkg/store here, never a
-			// backend.
+			// (pkg/store/memory, pkg/store/sqlite, pkg/store/postgres), tests
+			// included: a backend is the only way to its store.Admin, the
+			// cross-tenant view that only the runner's recovery loop may hold
+			// (T038). cmd/ wires backends; its tests get their store from
+			// pkg/store/scoped, which hides the backend. T037 runs it on
+			// pkg/runner over pkg/store, scoped by pkg/tenancy; pkg/flow is
+			// for the decisions of a suspended flow run.
 			"pkg/agentapi": {
 				"pkg/harness", "pkg/llm", "pkg/tool", "pkg/toolset", "pkg/component", "pkg/clock",
+				"pkg/runner", "pkg/store", "pkg/tenancy", "pkg/flow",
 				"pkg/llm/llmtest", "pkg/clock/clocktest", "internal/testkit", "pkg/toolset/toolsettest",
+				"pkg/store/scoped",
+			},
+			// The tenant-scoped view of a backend: the one package outside
+			// cmd/ and the runner that opens one, and it returns only the
+			// interfaces, never the backend or its Admin.
+			"pkg/store/scoped": {
+				"pkg/store", "pkg/flow", "pkg/clock", "pkg/store/memory", "pkg/store/sqlite", "pkg/store/postgres", "pkg/tenancy",
 			},
 			// Edge authentication knows tenants and nothing else: no server,
 			// no store, no harness (E07). Tenancy never imports it back.
@@ -92,6 +102,7 @@ func ModuleRules() Rules {
 			"pkg/agentclient": {
 				"pkg/agentapi/wire", "pkg/llm",
 				"pkg/agentapi", "pkg/harness", "pkg/tool", "pkg/toolset", "pkg/llm/llmtest", "internal/testkit",
+				"pkg/store/scoped",
 			},
 			// The event bus knows tenants (for topic names) and the clock,
 			// nothing else: the store, the runner and the API build on it

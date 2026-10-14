@@ -12,6 +12,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/store/scoped"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 )
 
@@ -32,7 +33,7 @@ func (shout) Generate(_ context.Context, req llm.Request) iter.Seq2[llm.Event, e
 func Example() {
 	tools, _ := tool.NewRegistry(nil)
 	h, _ := harness.New(shout{}, tools)
-	srv, _ := agentapi.New(h)
+	srv, _ := agentapi.New(h, agentapi.WithStore(scoped.Memory(nil)))
 	ts := httptest.NewServer(srv.Handler()) // agentkit serve mounts it at /v1/
 	defer ts.Close()
 

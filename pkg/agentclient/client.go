@@ -86,32 +86,19 @@ func New(baseURL string, opts ...Option) (*Client, error) {
 }
 
 // Stream starts a run and returns its event stream, open: read it with
-// [Stream.Next], and close it. The run goes on until its last event, until
-// the stream is closed or ctx is done (either cancels the run on the server).
+// [Stream.Next], and close it. The run goes on until its last event. A
+// stream closed before that, or whose ctx is done, leaves the run going for
+// the server's reconnect grace: [Client.Events] follows it again, and past
+// the grace the run is interrupted ([Client.Stop] interrupts it at once).
 // An HTTP error before the run starts is an [*APIError].
 func (c *Client) Stream(ctx context.Context, req RunRequest) (*Stream, error) {
-	ctx, cancel := context.WithCancel(ctx)
-	resp, err := c.postRun(ctx, req, "text/event-stream")
-	if err != nil {
-		cancel()
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		defer cancel()
-		return nil, c.apiError(resp)
-	}
-	if !hasMediaType(resp.Header.Get("Content-Type"), "text/event-stream") {
-		cancel()
-		resp.Body.Close()
-		return nil, fmt.Errorf("%w: POST /v1/runs answered %q, not an event stream", ErrBadResponse, resp.Header.Get("Content-Type"))
-	}
-	return newStream(resp, cancel, c.maxBytes), nil
+	return c.openStream(ctx, http.MethodPost, "/v1/runs", req, nil)
 }
 
 // Run starts a run and waits for it to end, then returns it (JSON mode). A
 // run that failed is not a Go error: its Status is [wire.StatusFailed] and
 // its Error says why. An HTTP error before the run starts is an [*APIError].
-// If ctx is done before the run ends, the run is cancelled on the server.
+// If ctx is done before the run ends, the run is left as by [Client.Stream].
 func (c *Client) Run(ctx context.Context, req RunRequest) (wire.Run, error) {
 	var run wire.Run
 	resp, err := c.postRun(ctx, req, "application/json")
@@ -121,7 +108,7 @@ func (c *Client) Run(ctx context.Context, req RunRequest) (wire.Run, error) {
 	return run, c.decode(resp, "POST /v1/runs", &run)
 }
 
-// GetRun returns a recent run (GET /v1/runs/{id}). An unknown or evicted run
+// GetRun returns a run (GET /v1/runs/{id}). An unknown run
 // matches [ErrNotFound].
 func (c *Client) GetRun(ctx context.Context, id string) (wire.Run, error) {
 	var run wire.Run

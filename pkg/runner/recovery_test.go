@@ -486,3 +486,27 @@ func TestDeadProcessRunIsResumedByHandAfterItsLease(t *testing.T) {
 		})
 	}
 }
+
+// WithExecute runs each resumed execution: the pass waits for it, and its
+// report counts the run.
+func TestRecoveryWithExecute(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	prompt := w.model.on("q", 2)
+	id := w.crashRun(w.ctx, "c", prompt, killPoints[2]) // after the first turn
+	var got []string
+	rc := w.recovery(w.process(), runner.WithExecute(func(_ context.Context, x *runner.Execution) {
+		got = append(got, x.Run.ID)
+		if _, err := x.Wait(); err != nil {
+			t.Error(err)
+		}
+	}))
+	w.expire()
+	rep, err := rc.Recover(w.ctx)
+	if err != nil || rep.Resumed != 1 || !slices.Equal(got, []string{id}) || w.get(id).Status != store.StatusCompleted {
+		t.Errorf("Recover = %+v, %v, executed %v; want run %s executed to completion", rep, err, got, id)
+	}
+	if _, err := runner.NewRecovery(w.process().r, memory.Admin(w.mem), runner.WithExecute(nil)); !errors.Is(err, runner.ErrInvalidConfig) {
+		t.Errorf("WithExecute(nil) = %v, want ErrInvalidConfig", err)
+	}
+}

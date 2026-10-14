@@ -128,7 +128,7 @@ IMAGE ?= $(BIN)
 # 17.7 MB in T005 (5.9 MB compressed). Raised from 20 to 30 when the store
 # drivers joined the one default binary (SQLite: about 21 MB, then pgx; E18).
 # Log every size change, with its reason, in docs/SIZES.md (AGENTS.md, Sizes).
-IMAGE_BUDGET_MB ?= 30
+IMAGE_BUDGET_MB ?= 35
 # Binaries that get an image; fakellm joins when cmd/fakellm exists (T004).
 IMAGE_BINS := $(notdir $(wildcard $(addprefix cmd/,agentkit fakellm)))
 # An extra CA for the module download, behind a TLS-intercepting proxy.

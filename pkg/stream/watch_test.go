@@ -316,3 +316,23 @@ func TestDurableErrors(t *testing.T) {
 		t.Errorf("NewPublisher(nil, nil): err = %v, want ErrInvalid", err)
 	}
 }
+
+// A process that takes a run over after live events with no durable event
+// since goes on from the last one's ID: its live events never repeat an ID.
+func TestReopenContinuesLiveIDs(t *testing.T) {
+	t.Parallel()
+	forEachBus(t, roomy, func(t *testing.T, b backend) {
+		ctx := tenantCtx(t, "acme")
+		log := memory.New()
+		p, _ := stream.NewPublisher(log, b.bus, quiet)
+		r := newRun(ctx, t, p, log, "run")
+		r.durable("run_start")
+		r.delta()
+		r.delta()
+		r.reopen(p)
+		if e := r.delta(); e.ID != (bus.ID{Seq: 1, N: 3}) {
+			t.Errorf("after the reopen a live event has ID %s, want 1.3", e.ID)
+		}
+		r.durable("run_done")
+	})
+}

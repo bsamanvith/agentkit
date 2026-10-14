@@ -72,8 +72,8 @@ jobs:
           redis-server --version
       - name: go test -tags integration ./pkg/bus/... ./pkg/store/... ./pkg/stream/...
         run: go test -race -shuffle=on -count=1 -tags integration ./pkg/bus/... ./pkg/store/... ./pkg/stream/...
-      - name: go test -tags integration -run '^TestMigrate' ./cmd/agentkit/
-        run: go test -race -count=1 -tags integration -run '^TestMigrate' ./cmd/agentkit/
+      - name: go test -tags integration -run '^(TestMigrate|TestE2EServeReplicas)' ./cmd/agentkit/
+        run: go test -race -count=1 -tags integration -run '^(TestMigrate|TestE2EServeReplicas)' ./cmd/agentkit/
       - name: the agent API's suite on SQLite and Postgres (AGENTAPI_TEST_STORE)
         run: |
           AGENTAPI_TEST_STORE=sqlite go test -race -count=1 ./pkg/agentapi/...

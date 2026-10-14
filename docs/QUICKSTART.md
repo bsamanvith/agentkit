@@ -182,11 +182,13 @@ Environment: `AGENTKIT_COMPONENTS` (any of `agent`, `web`, `mcp-server`, comma-s
 
 The store: `AGENTKIT_STORE` is `memory` (the default), `sqlite:/path/agentkit.db`, or `postgres://user:pass@host/db`; anything else fails startup. Postgres is migrated at startup unless `AGENTKIT_STORE_MIGRATE=off` (run `agentkit migrate` first then). `AGENTKIT_RUN_LEASE` (default `30s`, at least `1s`) is how long a run stays claimed by a process that stops renewing it: after a crash, a chat run reads as `interrupted` once its lease runs out, and `POST /v1/runs/{id}/resume` continues it.
 
+Several replicas: run each `agentkit serve` on the same Postgres store with `AGENTKIT_BUS=redis://host:6379/0` (default `memory`: one process). Any replica then streams any run's events (`GET /v1/runs/{id}/events`, live, and from `Last-Event-ID` after a reconnect to another replica), and stop and cancel reach the replica running the run. An event's ID is its place in the run: `12` for a stored event, `12.3` for a text delta after it.
+
 ```bash
 # runs that outlive the server
 AGENTKIT_STORE=sqlite:bin/agentkit.db AGENTKIT_COMPONENTS=agent,mcp-server bin/agentkit serve -config deploy/local/agent/config.json
 
-# a conversation's runs; stop, resume or cancel one; follow its events (from after seq 3)
+# a conversation's runs; stop, resume or cancel one; follow its events (from after event 3)
 curl -s 'localhost:8080/v1/runs?conversation_id=conv_...' -H "Authorization: Bearer $AGENTKIT_API_TOKEN"
 curl -s -X POST localhost:8080/v1/runs/run_.../stop -H "Authorization: Bearer $AGENTKIT_API_TOKEN"
 curl -sN -X POST localhost:8080/v1/runs/run_.../resume -H "Authorization: Bearer $AGENTKIT_API_TOKEN"

@@ -110,7 +110,9 @@
 //
 // Runs and conversations are stored, so they outlive the process and any
 // replica on the same store reads them; a run another process executes is
-// read from what was stored. A process that dies leaves its runs to their
+// read from what was stored and, with a shared bus ([WithBus]), followed
+// live through one watch per run that all its viewers on this server share.
+// A process that dies leaves its runs to their
 // leases: a chat run whose lease ran out reads as interrupted, and only its
 // user resumes it. Runs started without a user (background work) are resumed
 // by the runner's recovery loop, which `agentkit serve` runs. The server

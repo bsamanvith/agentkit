@@ -59,6 +59,7 @@ type config struct {
 	store          Store
 	bus            bus.Bus
 	streamPoll     time.Duration
+	watchBuffer    int // events a viewer of a shared watch may be behind (T103)
 	runnerOpts     []runner.Option
 	grace          time.Duration
 	graceArmed     func(runID string) // tests: called when a run's grace starts
@@ -83,6 +84,7 @@ func newConfig(opts []Option) config {
 		retention:     DefaultRetention,
 		maxBodyBytes:  DefaultMaxBodyBytes,
 		keepAlive:     DefaultKeepAlive,
+		watchBuffer:   defaultWatchBuffer,
 		grace:         DefaultReconnectGrace,
 		clock:         clock.Real(),
 		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),

@@ -35,7 +35,7 @@ Owner request (2026-10-12): plan how clients and agents talk **both ways** in re
 - [ ] [T088](T088-store-postgres.md) `pkg/store/postgres`: the server store, the same suites as SQLite, plus the durable event log table
 - [x] [T089](T089-event-bus.md) `pkg/bus`: event bus interface, in-process and Redis Streams backends, conformance suite
 - [ ] [T090](T090-stream-api.md) Streaming API across replicas: resumable run streams (Postgres replay + Redis tail), the user notification stream, commands routed to the lease holder
-- [ ] [T103](T103-shared-run-watch.md) One watch per run per replica, shared by its viewers (after T090)
+- [x] [T103](T103-shared-run-watch.md) One watch per run per replica, shared by its viewers (after T090)
 - [ ] [T093](T093-postgres-rls.md) Postgres row-level security by tenant (after T088)
 - [ ] [T091](T091-websocket-binding.md) WebSocket binding of the same messages (later)
 - T006 (Compose) gains Postgres and Redis services and an integration tier against them

@@ -75,6 +75,7 @@ func TestSharedWatchStopsWithLastViewer(t *testing.T) {
 		t.Fatal("viewers not waiting were not dropped from an unbuffered watch")
 	}
 	a2, _, _, ok := w.join()
+	w.publish(toolCall(2)) // a2 is dropped too before a leaves: nobody is sent to
 	if !ok || w.leave(a) {
 		t.Fatal("a viewer joining again after it was dropped stopped the watch")
 	}
@@ -89,5 +90,24 @@ func TestSharedWatchStopsWithLastViewer(t *testing.T) {
 	}
 	if _, _, _, ok := w.join(); ok {
 		t.Error("a viewer joined a watch that was stopped before the run's end")
+	}
+}
+
+// TestSharedWatchTrim: past its size the ring drops its older half, up to a
+// stored event a turn starts after, whose turns' text the store has.
+func TestSharedWatchTrim(t *testing.T) {
+	t.Parallel()
+	w := newSharedWatch(hubKey{"t", "run_1"}, 0, bus.ID{})
+	turn := uint64(maxWatchRing/2 + 10) // the first turn_done past half
+	for i := range uint64(maxWatchRing + 1) {
+		e := toolCall(i + 1)
+		if i+1 == turn {
+			e.Type = TypeTurnDone
+		}
+		w.publish(e)
+	}
+	_, start, ring, _ := w.join()
+	if start != (bus.ID{Seq: turn}) || len(ring) != maxWatchRing+1-int(turn) || eventID(ring[0]) != (bus.ID{Seq: turn + 1}) {
+		t.Errorf("after trimming the ring starts after %v with %d events from %s, want after the turn_done %d", start, len(ring), ring[0].ID, turn)
 	}
 }

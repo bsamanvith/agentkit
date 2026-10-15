@@ -41,14 +41,16 @@ func replicasWith(t *testing.T, m *model, cfg replicaConfig) (a, b *rig) {
 		}
 		return f(sh.store)
 	}
-	busB := bus.Bus(sh.bus)
+	subs := &countingBus{Bus: sh.bus}
+	busB := bus.Bus(subs)
 	if cfg.busB != nil {
-		busB = cfg.busB(sh.bus)
+		busB = cfg.busB(subs)
 	}
 	a = newRig(t, m, rigConfig{clock: sh.clock, store: wrap(cfg.storeA), tools: cfg.tools, api: sh.api(sh.bus)})
 	b = newRig(t, echo(t), rigConfig{clock: sh.clock, store: wrap(cfg.storeB), api: append(sh.api(busB), cfg.apiB...)})
 	b.models = nil // b runs nothing: a's model requests are a's
 	a.shared, b.shared = sh, sh
+	b.subs = subs
 	return a, b
 }
 

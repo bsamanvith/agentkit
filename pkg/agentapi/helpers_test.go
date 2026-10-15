@@ -114,7 +114,8 @@ type rig struct {
 	token  string
 	url    string // where runs are posted: the httptest server, unless a test serves elsewhere
 	client *http.Client
-	shared *shared // the store, bus and clock of replicas; nil for a lone rig
+	shared *shared      // the store, bus and clock of replicas; nil for a lone rig
+	subs   *countingBus // b's run subscriptions, for a replica that serves runs
 
 	mu      sync.Mutex
 	streams []*stream       // every stream read to its end, in the order they ended

@@ -105,12 +105,15 @@ func threeTurns(t *testing.T) *model {
 	return m
 }
 
-// watching waits until b runs the given shared watches with that many viewers.
+// watching waits until b runs the given shared watches with that many
+// viewers, each watch following the bus: from then on b gets the run's live
+// events (a watch that starts after events were stored skips the live ones
+// before them).
 func watching(t *testing.T, b *rig, watches, viewers int) {
 	t.Helper()
 	testkit.Eventually(t, 10*time.Second, func() bool {
 		w, v := b.srv.Watching()
-		return w == watches && v == viewers
+		return w == watches && v == viewers && b.subs.active.Load() == int64(watches)
 	})
 }
 
@@ -294,8 +297,16 @@ func TestSharedWatchCommands(t *testing.T) {
 	if end := holder[len(holder)-1]; end.Error == nil || end.Error.Code != agentapi.CodeRunInterrupted {
 		t.Fatalf("the run ended with %+v, want interrupted", end)
 	}
-	checkViewer(t, "from the start", views[0].all(), holder, "")
-	checkViewer(t, "after run_start", views[1].all(), holder, start.ID)
+	// The interruption is streamed, not stored: a viewer gets the holder's,
+	// or, when b sees the run let go before it, the one its status says.
+	for i, v := range views {
+		got := v.all()
+		want := storedIDs(holder[after(holder, []string{"", start.ID}[i]):])
+		end := got[len(got)-1]
+		if g := storedIDs(got); !slices.Equal(g, want) || end.Error == nil || end.Error.Code != agentapi.CodeRunInterrupted {
+			t.Errorf("viewer %d streamed %v %v, want the stored events %v and run_error interrupted", i, idsOf(got), types(got), want)
+		}
+	}
 	if n := cb.most.Load(); n != 1 {
 		t.Errorf("two viewers and a stop held %d bus subscriptions at once, want 1", n)
 	}
@@ -363,4 +374,50 @@ func idsOf(evs []agentapi.Event) []string {
 		out[i] = e.ID
 	}
 	return out
+}
+
+// slowEndStore holds the storing of a run_done event until release: the
+// holder has let the run go by then.
+type slowEndStore struct {
+	agentapi.Store
+	reached, release chan struct{}
+	once             sync.Once
+}
+
+func (s *slowEndStore) AppendEvents(ctx context.Context, runID string, events []store.Event) error {
+	for _, e := range events {
+		if e.Type == agentapi.TypeRunDone {
+			s.once.Do(func() { close(s.reached) })
+			select {
+			case <-s.release:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+	}
+	return s.Store.AppendEvents(ctx, runID, events)
+}
+
+// TestSharedWatchStoredEnding: a run's holder lets it go just before it
+// stores its last event; the watch waits for that event rather than end
+// with one made up from the run's status, with another ID.
+func TestSharedWatchStoredEnding(t *testing.T) {
+	t.Parallel()
+	m := echo(t)
+	m.gate = make(chan struct{}, 1)
+	se := &slowEndStore{reached: make(chan struct{}), release: make(chan struct{})}
+	a, b := replicasWith(t, m, replicaConfig{
+		storeA: func(st agentapi.Store) agentapi.Store { se.Store = st; return se },
+	})
+	s := a.start(t.Context(), "hi", "")
+	start := s.until(agentapi.TypeRunStart, 0)
+	views := []*stream{b.follow(start.RunID, ""), b.follow(start.RunID, start.ID)}
+	watching(t, b, 1, 2)
+	m.gate <- struct{}{}
+	<-se.reached
+	time.Sleep(5 * testPoll) // b's held-check sees the run let go
+	close(se.release)
+	holder := s.all()
+	checkViewer(t, "from the start", views[0].all(), holder, "")
+	checkViewer(t, "after run_start", views[1].all(), holder, start.ID)
 }

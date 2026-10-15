@@ -3,14 +3,14 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
+	"github.com/bsamanvith/agentkit/pkg/bus"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/store"
 	"github.com/bsamanvith/agentkit/pkg/store/memory"
-	"github.com/bsamanvith/agentkit/pkg/store/postgres"
-	"github.com/bsamanvith/agentkit/pkg/store/sqlite"
 )
 
 const (
@@ -31,9 +31,9 @@ type openedStore struct {
 	close func()
 }
 
-// openStore opens the store $AGENTKIT_STORE names; an unknown scheme is an
-// error, which never echoes the value (a connection string can carry a
-// password).
+// openStore opens the store $AGENTKIT_STORE names; an unknown scheme, or a
+// backend this build leaves out (backends.go), is an error, which never
+// echoes the value (a connection string can carry a password).
 func (c cli) openStore(ctx context.Context, clk clock.Clock) (openedStore, error) {
 	spec := c.env(envStore)
 	switch {
@@ -41,15 +41,7 @@ func (c cli) openStore(ctx context.Context, clk clock.Clock) (openedStore, error
 		s := memory.New(memory.WithClock(clk))
 		return openedStore{Store: s, admin: memory.Admin(s), close: func() {}}, nil
 	case strings.HasPrefix(spec, "sqlite:"):
-		path := strings.TrimPrefix(spec, "sqlite:")
-		if path == "" {
-			return openedStore{}, fmt.Errorf("%s: sqlite: needs a file path (sqlite:/data/agentkit.db)", envStore)
-		}
-		s, err := sqlite.Open(ctx, path, sqlite.WithClock(clk))
-		if err != nil {
-			return openedStore{}, fmt.Errorf("%s: %w", envStore, err)
-		}
-		return openedStore{Store: s, admin: sqlite.Admin(s), close: func() { _ = s.Close() }}, nil
+		return c.openSQLite(ctx, strings.TrimPrefix(spec, "sqlite:"), clk)
 	case strings.HasPrefix(spec, "postgres://"), strings.HasPrefix(spec, "postgresql://"):
 		migrate := true
 		switch v := c.env(envStoreMigrate); v {
@@ -59,11 +51,26 @@ func (c cli) openStore(ctx context.Context, clk clock.Clock) (openedStore, error
 		default:
 			return openedStore{}, fmt.Errorf("%s: %q is not on or off", envStoreMigrate, v)
 		}
-		s, err := postgres.Open(ctx, spec, postgres.WithClock(clk), postgres.WithMigrate(migrate))
-		if err != nil {
-			return openedStore{}, fmt.Errorf("%s: %w", envStore, err)
-		}
-		return openedStore{Store: s, admin: postgres.Admin(s), close: s.Close}, nil
+		return openPostgres(ctx, spec, clk, migrate)
 	}
 	return openedStore{}, fmt.Errorf("%s: unknown store; want memory, sqlite:/path or postgres://…", envStore)
+}
+
+// envBus names the bus that joins replicas of agentkit serve (E18): empty or
+// "memory" for one replica (the agent API keeps its own, in process), or a
+// redis:// or rediss:// URL. Every replica sharing a store must share it.
+const envBus = "AGENTKIT_BUS"
+
+// openBus opens the bus $AGENTKIT_BUS names: nil for one replica, and the
+// function that closes it. An unknown value is an error, which never echoes
+// it (a URL can carry a password).
+func (c cli) openBus(ctx context.Context, clk clock.Clock, log *slog.Logger) (bus.Bus, func(), error) {
+	spec := c.env(envBus)
+	switch {
+	case spec == "" || spec == "memory":
+		return nil, func() {}, nil
+	case strings.HasPrefix(spec, "redis://"), strings.HasPrefix(spec, "rediss://"):
+		return openRedis(ctx, spec, clk, log)
+	}
+	return nil, nil, fmt.Errorf("%s: unknown bus; want memory or redis://…", envBus)
 }

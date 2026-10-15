@@ -19,6 +19,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/internal/testkit"
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
+	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/agentclient"
 )
 
@@ -89,8 +90,9 @@ func (a agentClient) stream(message, conversationID string, each func(agentapi.E
 }
 
 // checkAgentStream checks what holds for every run's stream: it starts with
-// run_start, seq counts from 0, exactly one run_done or run_error comes last,
-// and the last turn's text deltas are the answer.
+// run_start, ids go up with seq counting the stored events from 1, exactly
+// one run_done or run_error comes last, and the last turn's text deltas are
+// the answer.
 func checkAgentStream(t *testing.T, events []agentapi.Event) {
 	t.Helper()
 	if len(events) < 2 || events[0].Type != agentapi.TypeRunStart {
@@ -98,13 +100,25 @@ func checkAgentStream(t *testing.T, events []agentapi.Event) {
 	}
 	deltas := map[int]string{}
 	last, terminal := 0, 0
+	stored := 0
 	for i, e := range events {
-		if e.Seq != i || e.V != agentapi.WireVersion || e.RunID != events[0].RunID {
+		seq, n, ok := wire.ParseID(e.ID)
+		if n == 0 {
+			stored++
+		}
+		if !ok || seq != uint64(stored) || e.Seq != stored || e.V != agentapi.WireVersion || e.RunID != events[0].RunID ||
+			(i > 0 && wire.CompareIDs(events[i-1].ID, e.ID) >= 0) {
 			t.Errorf("event %d: %+v", i, e)
 		}
 		switch e.Type {
 		case agentapi.TypeTextDelta:
 			deltas[e.Turn] += e.Text
+		case agentapi.TypeRewind:
+			for k := range deltas {
+				if k > e.Turns {
+					delete(deltas, k)
+				}
+			}
 		case agentapi.TypeTurnDone:
 			last = e.Turn
 		case agentapi.TypeRunDone, agentapi.TypeRunError:

@@ -57,6 +57,8 @@ func TestServeRejectsBadSetup(t *testing.T) {
 		"agent: unknown store":         {env: map[string]string{envComponents: "agent", envStore: "mysql://u:hunter2@db/x"}, config: good, code: 1, says: envStore + ": unknown store"},
 		"agent: sqlite without a path": {env: map[string]string{envComponents: "agent", envStore: "sqlite:"}, config: good, code: 1, says: "file path"},
 		"agent: bad store migrate":     {env: map[string]string{envComponents: "agent", envStore: "postgres://localhost:1/x", envStoreMigrate: "maybe"}, config: good, code: 1, says: envStoreMigrate},
+		"agent: unknown bus":           {env: map[string]string{envComponents: "agent", envBus: "nats://u:hunter2@bus"}, config: good, code: 1, says: envBus + ": unknown bus"},
+		"agent: unreachable bus":       {env: map[string]string{envComponents: "agent", envBus: "redis://u:hunter2@127.0.0.1:1/0"}, config: good, code: 1, says: envBus + ": redis bus: ping"},
 		// Several agents.
 		"agents: and agent":             {env: map[string]string{envComponents: "agent"}, config: `{"agent":{},"agents":[{"name":"a"}]}`, code: 1, says: `"agent" is the one-agent form`},
 		"agents: agent_api and agent":   {env: map[string]string{envComponents: "agent"}, config: `{"agent":{},"agent_api":{}}`, code: 1, says: `"agent" is the one-agent form`},

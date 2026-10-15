@@ -26,7 +26,8 @@ jobs:
   # TestRestart starts and restarts itself (installed, never started as a
   # service). pkg/store (T088) runs every store suite, simulation and race
   # against a Postgres 17 service container, each test in a schema of its
-  # own; cmd/agentkit's migrate command runs against it too.
+  # own; cmd/agentkit's migrate command runs against it too. pkg/stream (T090)
+  # runs its watch, notification and command tests on the Redis bus.
   # AGENTKIT_REQUIRE_INTEGRATION turns a missing variable into a failure.
   integration:
     runs-on: ubuntu-latest
@@ -69,10 +70,10 @@ jobs:
           sudo apt-get install -y -qq --no-install-recommends redis-server
           sudo rm /usr/sbin/policy-rc.d
           redis-server --version
-      - name: go test -tags integration ./pkg/bus/... ./pkg/store/...
-        run: go test -race -shuffle=on -count=1 -tags integration ./pkg/bus/... ./pkg/store/...
-      - name: go test -tags integration -run '^TestMigrate' ./cmd/agentkit/
-        run: go test -race -count=1 -tags integration -run '^TestMigrate' ./cmd/agentkit/
+      - name: go test -tags integration ./pkg/bus/... ./pkg/store/... ./pkg/stream/...
+        run: go test -race -shuffle=on -count=1 -tags integration ./pkg/bus/... ./pkg/store/... ./pkg/stream/...
+      - name: go test -tags integration -run '^(TestMigrate|TestE2EServeReplicas)' ./cmd/agentkit/
+        run: go test -race -count=1 -tags integration -run '^(TestMigrate|TestE2EServeReplicas)' ./cmd/agentkit/
       - name: the agent API's suite on SQLite and Postgres (AGENTAPI_TEST_STORE)
         run: |
           AGENTAPI_TEST_STORE=sqlite go test -race -count=1 ./pkg/agentapi/...
@@ -100,6 +101,10 @@ jobs:
         run: make image BIN=agentkit
       - name: make image-size
         run: make image-size BIN=agentkit
+      - name: the local and dev variants (make image-local, make image-dev)
+        run: |
+          make image-local && make image-size-local
+          make image-dev && make image-size-dev
 
   # The web workspace (web/): lint, typecheck, unit tests, audit, and a
   # rebuild that must match the committed pkg/web/dist; then the browser

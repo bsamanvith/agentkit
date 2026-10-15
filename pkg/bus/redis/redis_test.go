@@ -671,3 +671,58 @@ func end(t *testing.T, s bus.Subscription) error {
 		}
 	}
 }
+
+// Open connects with separate publish and subscribe clients; its errors
+// never carry the URL's password.
+func TestOpen(t *testing.T) {
+	t.Parallel()
+	if _, _, err := redisbus.Open(t.Context(), "http://example.com"); !errors.Is(err, bus.ErrInvalid) {
+		t.Errorf("Open(http://…) = %v, want ErrInvalid", err)
+	}
+	if _, _, err := redisbus.Open(t.Context(), "redis://:hunter2@127.0.0.1:1/0"); err == nil || strings.Contains(err.Error(), "hunter2") {
+		t.Errorf("Open on a closed port = %v, want an error without the password", err)
+	}
+
+	raw := testkit.IntegrationEnv(t, "AGENTKIT_REDIS_URL")
+	prefix := "agentkit-test:" + rand.Text() + ":"
+	b, closeBus, err := redisbus.Open(t.Context(), raw, redisbus.WithPrefix(prefix))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newClient(t, raw)
+	t.Cleanup(func() {
+		if keys, err := c.Keys(context.Background(), prefix+"*").Result(); err == nil && len(keys) > 0 {
+			_ = c.Del(context.Background(), keys...).Err()
+		}
+	})
+	acme, err := tenancy.NewTenant("acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	topic, err := bus.RunTopic(acme, "run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	sub, err := b.Subscribe(ctx, topic, bus.ID{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Publish(t.Context(), topic, bus.Message{ID: bus.ID{Seq: 1}, Data: []byte("x")}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case m := <-sub.C():
+		if m.ID != (bus.ID{Seq: 1}) || string(m.Data) != "x" {
+			t.Errorf("got %s %q, want 1 \"x\"", m.ID, m.Data)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatalf("no message in 10s (err %v)", sub.Err())
+	}
+	cancel()
+	for range sub.C() {
+	}
+	if err := closeBus(); err != nil {
+		t.Errorf("close = %v", err)
+	}
+}

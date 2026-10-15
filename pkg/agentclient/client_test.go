@@ -491,12 +491,13 @@ func TestRunCommands(t *testing.T) {
 	if err != nil || len(list.Runs) != 1 || list.Runs[0].ID != s.RunID() || list.Runs[0].Status != wire.StatusInterrupted {
 		t.Errorf("Runs = %s, %v; want the interrupted run", jsonOf(list), err)
 	}
-	replay, err := r.client.Events(ctx, s.RunID(), 0)
+	replay, err := r.client.Events(ctx, s.RunID(), "1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := readAll(replay); !errors.Is(got.err, io.EOF) || len(got.events) == 0 || got.events[0].Seq != 1 || got.events[len(got.events)-1].Seq != end.Seq {
-		t.Errorf("Events after seq 0 = %s, %v; want seq 1 to %d", jsonOf(got.events), got.err, end.Seq)
+	if got := readAll(replay); !errors.Is(got.err, io.EOF) || len(got.events) == 0 || wire.CompareIDs(got.events[0].ID, "1") <= 0 ||
+		got.events[len(got.events)-1].Error == nil || got.events[len(got.events)-1].Error.Code != wire.CodeRunInterrupted {
+		t.Errorf("Events after 1 = %s, %v; want the events after run_start, to the run interrupted", jsonOf(got.events), got.err)
 	}
 
 	m.gate <- struct{}{} // the resumed call goes through; it reads the second reply
@@ -505,8 +506,8 @@ func TestRunCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := readAll(resumed)
-	if !errors.Is(got.err, io.EOF) || len(got.events) == 0 || got.events[0].Seq != end.Seq || got.events[len(got.events)-1].Answer != "Resumed." {
-		t.Errorf("resumed stream = %s, %v; want seq %d on to the answer", jsonOf(got.events), got.err, end.Seq)
+	if !errors.Is(got.err, io.EOF) || len(got.events) == 0 || wire.CompareIDs(got.events[0].ID, end.ID) <= 0 || got.events[len(got.events)-1].Answer != "Resumed." {
+		t.Errorf("resumed stream = %s, %v; want the events after %s on to the answer", jsonOf(got.events), got.err, end.ID)
 	}
 
 	next, err := r.client.Stream(ctx, agentclient.RunRequest{Message: "more", ConversationID: s.ConversationID()})

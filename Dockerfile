@@ -4,7 +4,9 @@
 #
 #   make image                      agentkit
 #   make image BIN=fakellm          fakellm (T004)
-#   make image TAGS=nopostgres      Go build tags, for variants without heavy backends
+#   make image-local                agentkit-local: SQLite, no Postgres or Redis
+#   make image-dev                  agentkit-dev: Postgres and Redis, no SQLite
+#   make image TAGS=...             other build tags (cmd/agentkit/backends.go)
 #
 # The binary is the entrypoint and "serve" the default command, so
 # `docker run <image> healthcheck` runs the self-check (there is no shell).

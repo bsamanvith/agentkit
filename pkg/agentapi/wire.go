@@ -24,6 +24,7 @@ const (
 	TypeRunDone    = wire.TypeRunDone
 	TypeRunError   = wire.TypeRunError
 	TypeRetrying   = wire.TypeRetrying
+	TypeRewind     = wire.TypeRewind
 )
 
 // Error codes of a failed run, and of HTTP errors.

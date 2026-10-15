@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bsamanvith/agentkit/pkg/bus"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/runner"
 	"github.com/bsamanvith/agentkit/pkg/store"
@@ -56,17 +57,21 @@ type config struct {
 	toolsets       []Toolset
 	tenant         func(*http.Request) string
 	store          Store
+	bus            bus.Bus
+	streamPoll     time.Duration
 	runnerOpts     []runner.Option
 	grace          time.Duration
 	graceArmed     func(runID string) // tests: called when a run's grace starts
 }
 
 // Store is what the server keeps conversations and runs in: the runner's
-// store and the conversation records. Every backend of package store
-// (memory, sqlite, postgres) is one.
+// store, the conversation records, and runs' events and commands (T090).
+// Every backend of package store (memory, sqlite, postgres) is one.
 type Store interface {
 	runner.Store
 	store.ConversationIndex
+	store.EventLog
+	store.CommandLog
 }
 
 func newConfig(opts []Option) config {
@@ -160,6 +165,18 @@ func WithDrain(stop <-chan struct{}, after time.Duration) Option {
 // in memory. The server does not close the store: close it after
 // [Server.Shutdown].
 func WithStore(s Store) Option { return func(c *config) { c.store = s } }
+
+// WithBus sets the bus runs' events and commands go between replicas on
+// (E18). Every server sharing a store must share the bus too; the server does
+// not close it. Without this option, the server makes an in-memory bus of its
+// own, which is right for one replica.
+func WithBus(b bus.Bus) Option { return func(c *config) { c.bus = b } }
+
+// WithStreamPoll sets how often a stream of a run another replica runs reads
+// the store while the bus is quiet, for events whose publish was lost
+// (default [stream.DefaultPoll]), and how often such a stream checks that
+// the run is still held.
+func WithStreamPoll(d time.Duration) Option { return func(c *config) { c.streamPoll = d } }
 
 // WithRunnerOptions adds options to the runner the server builds over its
 // store, after its own: the clock ([WithClock]) and run IDs ([WithNewID]).

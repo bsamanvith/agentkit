@@ -38,7 +38,7 @@ function fakeServer() {
         events.forEach((e, i) =>
           ctl.enqueue(
             enc.encode(
-              `id: ${i}\nevent: ${e.type}\ndata: ${JSON.stringify({ v: 1, seq: i, run_id: "run_1", ...e })}\n\n`,
+              `id: ${i + 1}\nevent: ${e.type}\ndata: ${JSON.stringify({ v: 1, id: String(i + 1), seq: i + 1, run_id: "run_1", ...e })}\n\n`,
             ),
           ),
         );

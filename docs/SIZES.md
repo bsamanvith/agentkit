@@ -8,6 +8,8 @@ the size is worth it, or what it cuts first. See AGENTS.md, "Sizes".
 
 ```sh
 make image BIN=agentkit && make image-size BIN=agentkit   # the budgeted number
+make image-local && make image-size-local                 # and each variant
+make image-dev && make image-size-dev
 ```
 
 `make image-size` counts the files of a created container, uncompressed
@@ -50,3 +52,6 @@ Image sizes are uncompressed, as `make image-size` reports them.
 | 2026-10-13 | T088 (`e197728`) | agentkit | 22,097,408 | +4.0 MB | The Postgres driver, linked by `agentkit migrate` |
 | 2026-10-14 | T055, bsamanvith/agentkit#14 | agentkit | 22,162,944 | +65,536 | The console chat (lazy chunks, Markdown renderer) |
 | 2026-10-14 | T037, bsamanvith/agentkit#15 (`b292d25`) | agentkit | binary 24,838,304 (before: 20,029,600) | +4.8 MB binary | SQLite and the stores in serve. Image projected at about 27 MB, under the 30 MB budget; not yet measured with `make image-size` |
+| 2026-10-14 | T090, bsamanvith/agentkit#13 | agentkit | 30,360,064 (before: 28,246,528, main at `9cffbcd`) | +2,113,536 | Streams across replicas in serve: the Redis bus client (go-redis, 0.6 MB of symbols plus its runtime metadata), pkg/stream and pkg/bus. Binary 24,891,552 → 27,005,088. Measured as `make image-size` counts it, on the Dockerfile's final stage with a binary built as the Dockerfile builds it. Crosses the 30 MB budget, raised to 35 MB: several replicas need the bus, and serve is one image. What gets cut first: the Redis client from images that run a single replica, once there are per-component images |
+| 2026-10-14 | T090, bsamanvith/agentkit#13 | agentkit-local | 24,269,312 | new (agentkit: 30,360,064) | `make image-local`: tags `nopostgres noredis` drop pgx (and `migrate`), go-redis and the bus. For one machine on memory or SQLite. Budget 26 MB |
+| 2026-10-14 | T090, bsamanvith/agentkit#13 | agentkit-dev | 26,100,224 | new (agentkit: 30,360,064) | `make image-dev`: tag `nosqlite` drops modernc SQLite (4.3 MB). For deployed replicas on Postgres and Redis. Budget 30 MB |

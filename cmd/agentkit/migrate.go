@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-
-	"github.com/bsamanvith/agentkit/pkg/store/postgres"
 )
 
 // migrate applies the Postgres store's migrations to the database
@@ -32,5 +30,5 @@ func (c cli) migrate(ctx context.Context, args []string) error {
 		// Not echoed: a connection string can carry a password.
 		return fmt.Errorf("%s is not a postgres:// URL: only the Postgres store has migrations to run as a job (SQLite migrates itself when opened)", envStore)
 	}
-	return postgres.Migrate(ctx, url)
+	return migratePostgres(ctx, url)
 }

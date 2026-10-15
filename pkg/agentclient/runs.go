@@ -48,15 +48,15 @@ func (c *Client) Runs(ctx context.Context, q RunsQuery) (wire.RunList, error) {
 	return list, c.get(ctx, path, &list)
 }
 
-// Events follows a run's events (GET /v1/runs/{id}/events): those after seq
-// after (-1 for all of them), then, while the run goes on, the new ones. A
-// chat run whose stream went away is followed again this way within the
-// server's reconnect grace. A run another server executes, or that has
-// ended, is read from what was stored.
-func (c *Client) Events(ctx context.Context, id string, after int) (*Stream, error) {
+// Events follows a run's events (GET /v1/runs/{id}/events): those after the
+// event of ID after ("" for all of them), then, while the run goes on, the
+// new ones. Any server sharing the run's store serves them, whichever one
+// runs it. A chat run whose stream went away is followed again this way
+// within the server's reconnect grace.
+func (c *Client) Events(ctx context.Context, id, after string) (*Stream, error) {
 	var header http.Header
-	if after >= 0 {
-		header = http.Header{"Last-Event-Id": {strconv.Itoa(after)}}
+	if after != "" {
+		header = http.Header{"Last-Event-Id": {after}}
 	}
 	return c.openStream(ctx, http.MethodGet, "/v1/runs/"+url.PathEscape(id)+"/events", nil, header)
 }

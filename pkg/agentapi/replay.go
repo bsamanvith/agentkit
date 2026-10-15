@@ -25,10 +25,14 @@ import (
 
 // replayed is a run rebuilt from its entries.
 type replayed struct {
-	events []Event // run_start and the turns' events, numbered from 0
+	events []Event // run_start and the turns' events
 	turns  int
 	usage  llm.Usage
 	final  *llm.Message // the last turn's reply; nil if the run has no turn
+	// rewind, when set, is the event an execution resuming the run sends
+	// first: the log has turns, or a turn's beginning, that the run did not
+	// keep (see [TypeRewind]). turns, usage and final are the kept turns'.
+	rewind *Event
 }
 
 // runEntries returns the entries the run wrote, in order. They are read from

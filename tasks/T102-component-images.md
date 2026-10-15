@@ -80,3 +80,11 @@ It waits for T037, because T037 rewrites the code this changes: `serve.go`
   T037 links pgx (4.1 MB) and SQLite into `serve` for the store. The reason
   for the migrate image is operational (a release runs it once, before the
   pods), not size.
+- 2026-10-14 (from T090, bsamanvith/agentkit#13): the owner asked for the
+  local and the deployed image to stop carrying each other's store. Build
+  tags `nosqlite`, `nopostgres`, `noredis` now pick serve's backends
+  (`cmd/agentkit/backends.go`), and `make image-local` (SQLite, 24.3 MB) and
+  `make image-dev` (Postgres and Redis, 26.1 MB) build the two, each with its
+  budget; `make image` stays the all-in-one (30.4 MB). The component split
+  here builds on those tags, so "Build tags for optional backends" is no
+  longer out of scope.

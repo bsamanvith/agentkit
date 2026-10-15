@@ -27,6 +27,7 @@ var (
 	_ store.ConversationStore = (*Store)(nil)
 	_ store.RunStore          = (*Store)(nil)
 	_ store.EventLog          = (*Store)(nil)
+	_ store.CommandLog        = (*Store)(nil)
 	_ store.ConversationIndex = (*Store)(nil)
 	_ flow.Checkpointer       = (*Store)(nil)
 	_ store.Admin             = admin{}
@@ -50,7 +51,9 @@ type Store struct {
 	convs       map[key][]entry
 	records     map[key]store.Conversation
 	runs        map[key]store.Run
-	events      map[key][]store.Event // by run id
+	events      map[key][]store.Event   // by run id
+	commands    map[key][]store.Command // by run id
+	consumed    map[key]int64           // by run id: the last consumed command
 	checkpoints map[key]flow.Checkpoint
 }
 
@@ -73,6 +76,8 @@ func New(opts ...Option) *Store {
 		records:     map[key]store.Conversation{},
 		runs:        map[key]store.Run{},
 		events:      map[key][]store.Event{},
+		commands:    map[key][]store.Command{},
+		consumed:    map[key]int64{},
 		checkpoints: map[key]flow.Checkpoint{},
 	}
 	for _, o := range opts {

@@ -14,12 +14,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bsamanvith/agentkit/pkg/bus"
+	memorybus "github.com/bsamanvith/agentkit/pkg/bus/memory"
 	"github.com/bsamanvith/agentkit/pkg/component"
 	"github.com/bsamanvith/agentkit/pkg/flow"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/runner"
 	"github.com/bsamanvith/agentkit/pkg/store"
+	"github.com/bsamanvith/agentkit/pkg/stream"
 	"github.com/bsamanvith/agentkit/pkg/tenancy"
 )
 
@@ -60,6 +63,10 @@ type Server struct {
 
 	store  Store
 	runner *runner.Runner
+	bus    bus.Bus
+	ownBus bool // the server made the bus, and closes it
+	pub    *stream.Publisher
+	cmds   *stream.Commands
 
 	closeOnce sync.Once
 	closed    chan struct{} // closed by Shutdown
@@ -93,7 +100,7 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 		return nil, fmt.Errorf("%w: the token must be at least %d bytes", ErrInvalidConfig, MinTokenLength)
 	case cfg.maxConcurrent < 1:
 		return nil, fmt.Errorf("%w: max concurrent runs must be at least 1", ErrInvalidConfig)
-	case cfg.runTimeout < 0, cfg.retention <= 0, cfg.keepAlive < 0, cfg.grace < 0:
+	case cfg.runTimeout < 0, cfg.retention <= 0, cfg.keepAlive < 0, cfg.grace < 0, cfg.streamPoll < 0:
 		return nil, fmt.Errorf("%w: negative run timeout, keep-alive or reconnect grace, or a retention that is not positive", ErrInvalidConfig)
 	case cfg.maxRuns < 1, cfg.maxConvs < 1, cfg.maxBodyBytes < 1:
 		return nil, fmt.Errorf("%w: retention counts and the body limit must be at least 1", ErrInvalidConfig)
@@ -111,6 +118,18 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 		closed: make(chan struct{}),
 		hubs:   map[hubKey]*hub{},
 		store:  cfg.store,
+		bus:    cfg.bus,
+	}
+	if s.bus == nil {
+		s.bus, s.ownBus = memorybus.New(memorybus.WithClock(cfg.clock)), true
+	}
+	sopts := []stream.Option{stream.WithLogger(cfg.logger), stream.WithClock(cfg.clock), stream.WithPoll(cfg.streamPoll)}
+	var err error
+	if s.pub, err = stream.NewPublisher(s.store, s.bus, sopts...); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+	}
+	if s.cmds, err = stream.NewCommands(s.store, s.bus, sopts...); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
 	}
 	ropts := append([]runner.Option{
 		runner.WithClock(cfg.clock),
@@ -225,6 +244,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	s.mu.Lock()
 	cut := slices.Clone(s.cut)
 	s.mu.Unlock()
+	if s.ownBus {
+		_ = s.bus.Close()
+	}
 	if len(cut) > 0 {
 		errs = append(errs, fmt.Errorf("%w: %d (%s)", ErrRunsCutOff, len(cut), strings.Join(cut, ", ")))
 	}
@@ -378,7 +400,7 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.Info("run started", "run_id", x.Run.ID, "conversation_id", convID, "agent", ag.Name)
 	h := s.launch(execCtx, cancel, x, replayed{})
-	s.respond(w, r, h, 0)
+	s.respond(w, r, h, bus.ID{})
 }
 
 // decode reads and checks the body of POST /v1/runs. Unknown fields and
@@ -502,12 +524,41 @@ func (s *Server) startError(w http.ResponseWriter, err error, busy string) {
 	}
 }
 
+// RunRecovered runs an execution the runner's recovery loop resumed as the
+// server runs its own: its events go to the run's log, the bus and the
+// clients that follow the run, and commands sent through other servers reach
+// it. Give it to the loop with [runner.WithExecute]. It returns when the
+// execution has ended; cancelling ctx stops it. Past the server's limit of
+// runs going on, or while it shuts down, the execution runs without its
+// events.
+func (s *Server) RunRecovered(ctx context.Context, x *runner.Execution) {
+	if apiErr := s.admit(); apiErr != nil {
+		_, _ = x.Wait()
+		return
+	}
+	execCtx, cancel := context.WithCancelCause(ctx)
+	seed, err := s.history(ctx, x.Run, true)
+	if err != nil {
+		s.log.Error("reading a recovered run's events", "run_id", x.Run.ID, "err", err)
+	}
+	s.log.Info("run recovered", "run_id", x.Run.ID, "conversation_id", x.Run.ConversationID, "turns", seed.turns)
+	h := s.launch(execCtx, cancel, x, seed)
+	<-h.ended
+}
+
 // launch registers the hub of an execution, seeded with the events the run
 // had, and runs the execution in its own goroutine. The admit slot is the
 // execution's: drive releases it.
 func (s *Server) launch(ctx context.Context, cancel context.CancelCauseFunc, x *runner.Execution, seed replayed) *hub {
 	t, _ := tenancy.From(ctx)
 	h := newHub(x.Run.ID, x.Run.ConversationID, t, x.Run.Interactive, seed.events)
+	em := &emitter{log: s.log, h: h, seq: lastSeq(seed.events)}
+	rs, err := s.pub.Open(ctx, x.Run.ID)
+	if err != nil {
+		s.log.Error("opening a run's event stream; its events reach this server's clients only", "run_id", x.Run.ID, "err", err)
+	} else {
+		em.rs = rs
+	}
 	s.mu.Lock()
 	k := hubKey{t.ID(), h.runID}
 	if old := s.hubs[k]; old != nil {
@@ -515,16 +566,18 @@ func (s *Server) launch(ctx context.Context, cancel context.CancelCauseFunc, x *
 	}
 	s.hubs[k] = h
 	s.mu.Unlock()
-	go s.drive(ctx, cancel, x, h, seed)
+	go s.drive(ctx, cancel, x, em, seed)
 	return h
 }
 
 // drive runs an execution to its end, whoever follows it: its events go to
 // the hub, and the last one says how the execution ended.
-func (s *Server) drive(ctx context.Context, cancel context.CancelCauseFunc, x *runner.Execution, h *hub, seed replayed) {
+func (s *Server) drive(ctx context.Context, cancel context.CancelCauseFunc, x *runner.Execution, em *emitter, seed replayed) {
+	h := em.h
 	freeSlot := sync.OnceFunc(func() { <-s.slots })
 	defer func() { freeSlot(); s.active.Done() }() // s.release, in two steps
 	defer cancel(nil)
+	defer s.obey(ctx, x, h)() // commands sent through other servers
 	if s.cfg.runTimeout > 0 {
 		t := s.cfg.clock.NewTimer(s.cfg.runTimeout)
 		defer t.Stop()
@@ -541,6 +594,9 @@ func (s *Server) drive(ctx context.Context, cancel context.CancelCauseFunc, x *r
 	baseTurns, baseUsage := seed.turns, seed.usage
 	turns, usage, final := seed.turns, seed.usage, seed.final
 	started := len(seed.events) > 0
+	if seed.rewind != nil {
+		em.emit(ctx, *seed.rewind, true)
+	}
 	var (
 		done   *runner.Event
 		runErr error
@@ -566,14 +622,14 @@ func (s *Server) drive(ctx context.Context, cancel context.CancelCauseFunc, x *r
 				final = &reply
 			}
 			if e, ok := wireEvent(h.runID, h.convID, baseTurns, ev.Harness); ok {
-				h.append(e)
+				em.emit(ctx, e, !streamedOnly(e.Type))
 			}
 		case runner.EventRetrying:
 			baseTurns, baseUsage = turns, usage
-			h.append(Event{
+			em.emit(ctx, Event{
 				V: WireVersion, Type: TypeRetrying, RunID: h.runID, At: s.cfg.clock.Now(),
 				Attempt: ev.Attempt, DelayMS: ms(ev.Delay), Error: s.classify(h.runID, ev.Err),
-			})
+			}, true)
 		case runner.EventDone:
 			e := ev
 			done = &e
@@ -581,7 +637,7 @@ func (s *Server) drive(ctx context.Context, cancel context.CancelCauseFunc, x *r
 	}
 	now := s.cfg.clock.Now()
 	if !started { // the run failed before it started: announce it anyway
-		h.append(Event{V: WireVersion, Type: TypeRunStart, RunID: h.runID, ConversationID: h.convID, At: now})
+		em.emit(ctx, Event{V: WireVersion, Type: TypeRunStart, RunID: h.runID, ConversationID: h.convID, At: now}, true)
 	}
 	end := Event{V: WireVersion, Type: TypeRunError, RunID: h.runID, At: now}
 	switch {
@@ -609,7 +665,15 @@ func (s *Server) drive(ctx context.Context, cancel context.CancelCauseFunc, x *r
 	// The slot is free before the run's last event reaches its clients, so
 	// one that starts its next run at once is not refused.
 	freeSlot()
-	h.finish(&end, now)
+	// The last event is stored only when the run is final: a run that goes
+	// on later (resumed, decided, retried) streams on after it.
+	switch endStatus(end, h.interactive) {
+	case StatusDone, StatusCanceled, StatusRejected:
+		end = em.emit(ctx, end, true)
+	default:
+		end = em.emit(ctx, end, false)
+	}
+	h.finish(now)
 
 	s.mu.Lock()
 	if end.Error != nil && end.Error.Code == CodeShutdown {
@@ -721,11 +785,11 @@ func (s *Server) hubOf(ctx context.Context, runID string) *hub {
 	return s.hubs[hubKey{t.ID(), runID}]
 }
 
-// respond answers a request that started or resumed a run: its events from
-// seq from on, or, for a client that asked for JSON, the run once it ended.
-func (s *Server) respond(w http.ResponseWriter, r *http.Request, h *hub, from int) {
+// respond answers a request that started or resumed a run: its events after
+// the ID after, or, for a client that asked for JSON, the run once it ended.
+func (s *Server) respond(w http.ResponseWriter, r *http.Request, h *hub, after bus.ID) {
 	if !wantsJSON(r.Header.Get("Accept")) {
-		s.follow(w, r, h, from)
+		s.follow(w, r, h, after)
 		return
 	}
 	h.subscribe()
@@ -743,9 +807,9 @@ func (s *Server) respond(w http.ResponseWriter, r *http.Request, h *hub, from in
 	}
 }
 
-// follow streams the hub's events from seq from on, as they come, until the
-// run ends or the client goes away.
-func (s *Server) follow(w http.ResponseWriter, r *http.Request, h *hub, from int) {
+// follow streams the hub's events after the ID after, as they come, until
+// the run ends or the client goes away.
+func (s *Server) follow(w http.ResponseWriter, r *http.Request, h *hub, after bus.ID) {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 	out := newSSEWriter(w, cancel)
@@ -764,14 +828,14 @@ func (s *Server) follow(w http.ResponseWriter, r *http.Request, h *hub, from int
 		defer stopKeepAlive()
 	}
 	for {
-		evs, _ := h.next(ctx, from)
+		evs, _ := h.next(ctx, after)
 		if evs == nil {
 			return
 		}
 		for _, e := range evs {
 			out.event(e)
 		}
-		from += len(evs)
+		after = eventID(evs[len(evs)-1])
 	}
 }
 

@@ -31,6 +31,8 @@ type Store interface {
 	store.ConversationStore
 	store.ConversationIndex
 	store.RunStore
+	store.EventLog
+	store.CommandLog
 	flow.Checkpointer
 }
 

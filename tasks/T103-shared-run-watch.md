@@ -101,7 +101,7 @@ the run is not affected: its viewers read the run's hub. The owner asked
 - **Fix found by these tests (T090's code):** `drive` stores a run's last event
   after the runner lets the run go, so a held-check in between ended the watch
   with an ending made up from the status, with another ID (`8.4294967295`
-  instead of `9`). `storedEnding` now waits up to `endingWaits` polls for the
+  instead of `9`). `storedEnding` now waits up to `endingWait` (2 s, reading the log every 50 ms, not every poll: the default poll is 10 s) for the
   stored last event of a run let go as done, canceled or rejected.
 - **Takeover test in process, not e2e.** API runs are interactive, so across
   `serve` processes a run whose holder dies reads as interrupted and only its

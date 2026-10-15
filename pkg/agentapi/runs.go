@@ -332,17 +332,23 @@ func (s *Server) watchRun(ctx context.Context, run store.Run, after bus.ID, emit
 	}
 }
 
-// endingWaits is how many polls a watch waits for the stored last event of
-// a run let go as done, canceled or rejected.
-const endingWaits = 50
+// endingWait is how long a watch waits for the stored last event of a run
+// let go as done, canceled or rejected, reading the log every endingStep (or
+// poll, if shorter). The holder stores it right after it lets the run go.
+const (
+	endingWait = 2 * time.Second
+	endingStep = 50 * time.Millisecond
+)
 
 // storedEnding is the history of a run let go. Its holder lets a run go
 // before it stores the run's last event (drive, after the runner's end): for
-// a run whose status says that event is stored, it waits for it, a poll at a
-// time, so the watch ends with the event the log has, not one made up from
-// the status with another ID.
+// a run whose status says that event is stored, it waits for it, up to
+// endingWait, so the watch ends with the event the log has, not one made up
+// from the status with another ID.
 func (s *Server) storedEnding(ctx context.Context, run store.Run, poll time.Duration) (replayed, error) {
-	for i := 0; ; i++ {
+	step := min(poll, endingStep)
+	deadline := time.Now().Add(endingWait) // real time, as checkHeld's
+	for {
 		rp, err := s.history(ctx, run, false)
 		if err != nil {
 			return rp, err
@@ -352,10 +358,10 @@ func (s *Server) storedEnding(ctx context.Context, run store.Run, poll time.Dura
 		default:
 			return rp, nil // its last event is streamed, never stored
 		}
-		if n := len(rp.events); n > 0 && isTerminal(rp.events[n-1].Type) || i == endingWaits {
+		if n := len(rp.events); n > 0 && isTerminal(rp.events[n-1].Type) || !time.Now().Before(deadline) {
 			return rp, nil
 		}
-		t := time.NewTimer(poll) // real time, as checkHeld's
+		t := time.NewTimer(step)
 		select {
 		case <-t.C:
 		case <-ctx.Done():

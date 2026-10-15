@@ -7,6 +7,7 @@ import (
 	"github.com/bsamanvith/agentkit/connectors/exa"
 	"github.com/bsamanvith/agentkit/connectors/parallel"
 	"github.com/bsamanvith/agentkit/connectors/tavily"
+	"github.com/bsamanvith/agentkit/pkg/coretools"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
@@ -20,6 +21,8 @@ func newCatalog() (*toolset.Catalog, error) {
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	return toolset.NewCatalog(
 		toolset.Demo(),
+		coretools.Math(),
+		coretools.Files(),
 		tavily.Factory(tavily.WithLookupEnv(os.LookupEnv), tavily.WithLogger(logger)),
 		exa.Factory(exa.WithLookupEnv(os.LookupEnv)),
 		parallel.Factory(parallel.WithLookupEnv(os.LookupEnv), parallel.WithLogger(logger)),

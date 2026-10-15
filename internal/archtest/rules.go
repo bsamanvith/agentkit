@@ -130,6 +130,9 @@ func ModuleRules() Rules {
 			// The MCP server serves requests: tools only, never a store
 			// backend (and so never store.Admin; see pkg/agentapi above).
 			"pkg/mcp/server": {"pkg/tool", "pkg/tool/tooltest", "internal/testkit"},
+			// The built-in toolsets (math, files) are factories like the demo:
+			// the tool abstraction and the factory contract, nothing else.
+			"pkg/coretools": {"pkg/tool", "pkg/toolset"},
 			// Connectors are toolset factories over plain net/http: the tool
 			// abstraction, the factory contract and the clock, never the
 			// server, the harness or another connector (E10). Their tests

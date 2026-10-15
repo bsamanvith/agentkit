@@ -65,7 +65,8 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 | [T048](T048-connector-parallel.md) | `connectors/parallel`: search and extract | **Review**: on `main`, on the kit (`baf4248`); waits for `PARALLEL_API_KEY` (live test, re-recording synthetic cassettes) |
 | [T042](T042-credentials-core.md) | `pkg/credentials`: secrets, sealer, vault, memory backend | Starts E07's credentials track; new package only, parallel with everything |
 | [T100](T100-interactive-chat-runs.md) | Runner: interactive chat runs stop with their user (stop, closed tab), show `interrupted`, are never recovered in the background | **Start now** (T030, T088, T098 done): T037 and T099 wait on it |
-| [T090](T090-stream-api.md) | Stream API across replicas: replay from Postgres, tail Redis, commands to the lease holder | **Ready** (T088, T089, T030 done); E14 background tasks wait on it |
+| [T090](T090-stream-api.md) | Stream API across replicas: replay from Postgres, tail Redis, commands to the lease holder | **Mostly done** (bsamanvith/agentkit#13, merged 2026-10-15): run streams and stop/cancel across replicas, local/dev image variants. Left: steering (needs T086), `GET /v1/events` (needs T040) |
+| [T103](T103-shared-run-watch.md) | One watch per run per replica, shared by its viewers: one Redis connection and one held-check per run, not per viewer | **Ready** (T090 merged); owner asked 2026-10-15 |
 | [T093](T093-postgres-rls.md) | Postgres row-level security by tenant | **Ready** (T088 done); small |
 | [T099](T099-run-queue-order.md) | Runs: start time, lane and priority, `ClaimNext` | After T100 (migration 0006; skips interactive runs) |
 | [T083](T083-tool-policy.md) | Tool policy: presets, rules, allow/flag/approve/deny | **Ready** (T082 done); T084 follows with T030 done |

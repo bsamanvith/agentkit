@@ -28,13 +28,14 @@ Owner request (2026-10-12): plan how clients and agents talk **both ways** in re
 | Tables before and after Postgres (T029 handoff) | Until T088 lands, a new table ships on SQLite and T088 ports it. Once T088 is on `main`, **every new table ships on every SQL backend in the same task**, under the shared `storetest` suite. |
 | Migrations | At startup under an advisory lock by default; `agentkit migrate` runs them as a job; `AGENTKIT_STORE_MIGRATE=off` refuses an old schema instead of migrating (T088). |
 | When Postgres is required | Before the first deploy with more than one replica: SQLite is single-node. The managed Postgres (RDS, Cloud SQL, Neon, ...) is the owner's deploy decision. |
-| Image size | All store drivers (SQLite, pgx) are in the one default binary; no build tags. `IMAGE_BUDGET_MB` went from 20 to 30. CI builds the image and checks the budget on every push. |
+| Image size | Build tags pick serve's backends (T090): `make image-local` has SQLite, `make image-dev` has Postgres and Redis, `make image` has all of them. Each has its budget, checked in CI; sizes in [docs/SIZES.md](../docs/SIZES.md). |
 
 ## Tasks
 
 - [ ] [T088](T088-store-postgres.md) `pkg/store/postgres`: the server store, the same suites as SQLite, plus the durable event log table
 - [x] [T089](T089-event-bus.md) `pkg/bus`: event bus interface, in-process and Redis Streams backends, conformance suite
 - [ ] [T090](T090-stream-api.md) Streaming API across replicas: resumable run streams (Postgres replay + Redis tail), the user notification stream, commands routed to the lease holder
+- [ ] [T103](T103-shared-run-watch.md) One watch per run per replica, shared by its viewers (after T090)
 - [ ] [T093](T093-postgres-rls.md) Postgres row-level security by tenant (after T088)
 - [ ] [T091](T091-websocket-binding.md) WebSocket binding of the same messages (later)
 - T006 (Compose) gains Postgres and Redis services and an integration tier against them

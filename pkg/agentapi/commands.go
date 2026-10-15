@@ -61,7 +61,7 @@ func (s *Server) command(ctx context.Context, w http.ResponseWriter, r *http.Req
 		s.commandError(w, id, err)
 		return
 	}
-	s.watchRun(ctx, run, bus.ID{Seq: uint64(max(lastStored(ctx, s.store, id), 0))}, func(Event) {})
+	s.viewRun(ctx, run, bus.ID{Seq: uint64(max(lastStored(ctx, s.store, id), 0))}, func(Event) {})
 	s.awaitReleased(ctx, id)
 	if ctx.Err() != nil {
 		return

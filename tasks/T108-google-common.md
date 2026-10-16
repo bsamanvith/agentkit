@@ -41,7 +41,7 @@ Gmail, Calendar and Drive ([E21](E21-google-connectors.md)) all call Google's RE
 - [x] **Text:** cut at a rune boundary with a marker that counts what was cut — test: `TestTruncateCutsAtARuneBoundaryAndSaysHowToGetMore`
 - [x] **Settings:** defaults; a token pasted as a variable name, plain-http and credentialed base URLs, bad timeouts are refused without echoing the value; literal tokens refused with a pointer to `access_token_env` — tests: `TestSettings`, `TestLiteralTokensAreRefusedWithoutBeingEchoed`, `TestEnvTokens`
 - [x] **Connector rules at depth:** a toolset package under a family directory is checked by the kit rules; a listed library is not — test: `archtest.TestConnectorRules`
-- [ ] **Mutation list** recorded.
+- [x] **Mutation list** recorded (Notes).
 
 ## Notes
 
@@ -50,3 +50,29 @@ Gmail, Calendar and Drive ([E21](E21-google-connectors.md)) all call Google's RE
 - Build your factory like Tavily's, with `common.Env` behind your options (`WithHTTPClient`, `WithBaseURL`, `WithLookupEnv`, `WithClock`, `WithLogger`) and one more, `WithTokenSource`. In `Build`: `common.RefuseLiteralToken`, `toolset.DecodeSettings` into a struct that embeds `common.Settings`, `Validate`, `env.TokensFor(type, settings.AccessTokenEnv)`, `common.NewClient`. `Build` makes no request.
 - Make tools with `common.Func`, return `common.Invalid(...)` for input the schema accepts but the API would refuse, and use `common.Path` for every id.
 - If you need something every Google connector would (a new error reason, a helper for RFC 3339 times), add it here in a small separate PR, not in your package.
+
+### Mutation list (2026-10-16)
+
+Each planted bug made a test fail (a compile error does not count). Run with `go test ./connectors/google/...`.
+
+| Planted bug | Caught by |
+|---|---|
+| 5xx treated as a rate limit (retried) | `TestConformance` (`errors.no_retry_5xx`) |
+| token not replaced in error text | `TestErrorTextNeverShowsTheTokenAndIsCapped` |
+| ids not escaped in `Path` | `TestRequestCarriesTheTokenInOneHeaderOnly` |
+| `Retry-After` cap ignored (waits 60 s) | `TestRateLimitIsNotRetriedTwiceOrAfterALongWait` (fails in 5 s instead of hanging) |
+| 401 not refreshed | `TestUnauthorizedRefreshesTheTokenOnce` |
+| truncation by bytes, not runes | `TestTruncateCutsAtARuneBoundaryAndSaysHowToGetMore` |
+| `Paginate` ignores the limit | `TestPaginate` |
+| literal token accepted | `TestLiteralTokensAreRefusedWithoutBeingEchoed` |
+| `http` base URL accepted for any host | `TestSettings`, kit `settings.plain_http_base_url` |
+| 400 not the model's error | `TestFailuresAreClassed` |
+| body limit off | `TestOversizedBodyIsRefused` |
+
+### For T096 (connect API)
+
+`common.TokenSource` is the seam. The adapter from `pkg/mcp/oauth` (the `google` profile) and the vault is a few lines: `Token(ctx)` asks the connector for the calling owner's access token (refreshing it) and maps "not connected" to `common.ErrNoToken`; `Invalidate(token)` marks that token stale so the next call refreshes. It belongs in T096, which also decides how the owner reaches the tool call (context value or per-owner toolset build). Until then `WithTokenSource` or `access_token_env` is the only way in.
+
+### Decision: the kit and OAuth connectors
+
+`RunConnector` needs no change for OAuth connectors. It checks that the secret named by `KeyEnv` goes in exactly one header and nowhere else, and a bearer access token is such a secret. The one thing it does not cover is the per-user `TokenSource` path (`WithTokenSource`): each connector tests that itself (Gmail: `TestTokenComesFromTheSourcePerCallAndNeverFromTheEnvironmentWhenGiven`). A kit check for it is worth adding when a second family of OAuth connectors exists.

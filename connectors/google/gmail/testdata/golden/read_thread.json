@@ -1,0 +1,31 @@
+{
+  "id": "t1",
+  "messages": [
+    {
+      "id": "m0",
+      "thread_id": "t1",
+      "from": "grace@example.com",
+      "to": "ada@example.com",
+      "subject": "Lunch plans",
+      "date": "Wed, 14 Oct 2026 18:00:00 +0000",
+      "message_id": "\u003cCAF0@mail.example.com\u003e",
+      "label_ids": [
+        "SENT"
+      ],
+      "body": "Hi Ada,\nLunch this week? \u0026 maybe a walk.\n\nGrace"
+    },
+    {
+      "id": "m1",
+      "thread_id": "t1",
+      "from": "Ada Lovelace \u003cada@example.com\u003e",
+      "to": "grace@example.com",
+      "subject": "Re: Lunch plans",
+      "date": "Thu, 15 Oct 2026 09:12:03 +0000",
+      "message_id": "\u003cCAF1@mail.example.com\u003e",
+      "label_ids": [
+        "INBOX"
+      ],
+      "body": "Friday?"
+    }
+  ]
+}

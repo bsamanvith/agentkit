@@ -42,8 +42,8 @@ connectors/
 
 ## Tasks
 
-- [ ] [T108](T108-google-common.md) `connectors/google/common`: client, token sources, settings, paging, text limits; the family layout and archtest rule
-- [ ] [T109](T109-connector-gmail.md) `connectors/google/gmail`: search, read, labels, drafts, send
+- [x] [T108](T108-google-common.md) `connectors/google/common`: client, token sources, settings, paging, text limits; the family layout and archtest rule — in review (draft PR #23)
+- [x] [T109](T109-connector-gmail.md) `connectors/google/gmail`: search, read, labels, drafts, send — in review: on the kit with synthetic cassettes; live test and recording wait for a Google test account
 - [ ] [T110](T110-connector-google-calendar.md) `connectors/google/calendar`: calendars, events, free/busy
 - [ ] [T111](T111-connector-google-drive.md) `connectors/google/drive`: search, read, create, share, trash
 

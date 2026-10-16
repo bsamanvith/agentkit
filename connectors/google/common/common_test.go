@@ -201,9 +201,20 @@ func TestRateLimitIsNotRetriedTwiceOrAfterALongWait(t *testing.T) {
 	t.Run("asked to wait over 10s", func(t *testing.T) {
 		t.Parallel()
 		r := newRig(t, nil, reply{status: 429, header: http.Header{"Retry-After": {"60"}}, body: `{}`})
-		err := r.client.DoJSON(t.Context(), common.Request{Path: "/x"}, nil)
-		if err == nil || r.hits.Load() != 1 {
-			t.Errorf("error = %v after %d requests, want a rate limit error after 1", err, r.hits.Load())
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		done := make(chan error, 1)
+		go func() { done <- r.client.DoJSON(ctx, common.Request{Path: "/x"}, nil) }()
+		// A client that waits 60 s on the fake clock never returns; real time
+		// here only lets a broken client fail instead of hanging the test.
+		select {
+		case err := <-done:
+			if err == nil || !strings.Contains(err.Error(), "rate limited") || r.hits.Load() != 1 {
+				t.Errorf("error = %v after %d requests, want a rate limit error after 1", err, r.hits.Load())
+			}
+		case <-time.After(5 * time.Second):
+			t.Error("the client waits for a Retry-After over 10 s instead of giving up")
+			cancel()
 		}
 	})
 }

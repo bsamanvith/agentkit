@@ -1,0 +1,17 @@
+{
+  "method": "GET",
+  "path": "/gmail/v1/users/me/messages/m1",
+  "query": {
+    "format": [
+      "metadata"
+    ],
+    "metadataHeaders": [
+      "Message-ID",
+      "References",
+      "Subject",
+      "Reply-To",
+      "From"
+    ]
+  },
+  "synthetic": true
+}

@@ -1,0 +1,80 @@
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=UTF-8
+
+{
+  "id": "t1",
+  "messages": [
+    {
+      "id": "m0",
+      "threadId": "t1",
+      "labelIds": [
+        "SENT"
+      ],
+      "payload": {
+        "mimeType": "text/html",
+        "headers": [
+          {
+            "name": "From",
+            "value": "grace@example.com"
+          },
+          {
+            "name": "To",
+            "value": "ada@example.com"
+          },
+          {
+            "name": "Subject",
+            "value": "Lunch plans"
+          },
+          {
+            "name": "Date",
+            "value": "Wed, 14 Oct 2026 18:00:00 +0000"
+          },
+          {
+            "name": "Message-ID",
+            "value": "<CAF0@mail.example.com>"
+          }
+        ],
+        "body": {
+          "size": 90,
+          "data": "PGh0bWw-PGhlYWQ-PHN0eWxlPnB7Y29sb3I6cmVkfTwvc3R5bGU-PC9oZWFkPjxib2R5PjxwPkhpIEFkYSw8L3A-PHA-THVuY2ggdGhpcyB3ZWVrPyAmYW1wOyBtYXliZSBhIHdhbGsuPC9wPjxicj5HcmFjZTwvYm9keT48L2h0bWw-"
+        }
+      }
+    },
+    {
+      "id": "m1",
+      "threadId": "t1",
+      "labelIds": [
+        "INBOX"
+      ],
+      "payload": {
+        "mimeType": "text/plain",
+        "headers": [
+          {
+            "name": "From",
+            "value": "Ada Lovelace <ada@example.com>"
+          },
+          {
+            "name": "To",
+            "value": "grace@example.com"
+          },
+          {
+            "name": "Subject",
+            "value": "Re: Lunch plans"
+          },
+          {
+            "name": "Date",
+            "value": "Thu, 15 Oct 2026 09:12:03 +0000"
+          },
+          {
+            "name": "Message-ID",
+            "value": "<CAF1@mail.example.com>"
+          }
+        ],
+        "body": {
+          "size": 40,
+          "data": "RnJpZGF5Pw0K"
+        }
+      }
+    }
+  ]
+}

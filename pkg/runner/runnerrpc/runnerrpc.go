@@ -226,7 +226,7 @@ func fromWire(w event) (harness.Event, error) {
 		b, err := llm.UnmarshalBlock(w.ToolUse)
 		u, ok := b.(llm.ToolUse)
 		if err != nil || !ok {
-			return ev, fmt.Errorf("tool use: %v", errors.Join(err, errors.New("not a tool use")))
+			return ev, fmt.Errorf("tool use: %w", errors.Join(err, errors.New("not a tool use")))
 		}
 		ev.ToolUse = u
 	}
@@ -234,7 +234,7 @@ func fromWire(w event) (harness.Event, error) {
 		b, err := llm.UnmarshalBlock(w.ToolResult)
 		r, ok := b.(llm.ToolResult)
 		if err != nil || !ok {
-			return ev, fmt.Errorf("tool result: %v", errors.Join(err, errors.New("not a tool result")))
+			return ev, fmt.Errorf("tool result: %w", errors.Join(err, errors.New("not a tool result")))
 		}
 		ev.ToolResult = r
 	}

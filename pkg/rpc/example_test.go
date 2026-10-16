@@ -8,8 +8,10 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/rpc"
 )
 
-type greetReq struct{ Name string }
-type greetResp struct{ Greeting string }
+type (
+	greetReq  struct{ Name string }
+	greetResp struct{ Greeting string }
+)
 
 // greet is declared once; the server handles it and the client calls it.
 var greet = rpc.Unary[greetReq, greetResp]{Name: "hello/Greet"}

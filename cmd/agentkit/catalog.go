@@ -1,3 +1,5 @@
+//go:build !noconnectors
+
 package main
 
 import (

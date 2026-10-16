@@ -14,7 +14,7 @@
 // on a slow connection. Paths that don't end in a file's extension (.js,
 // .css, .png, ...) get index.html, so the app's routes (/c/{id}, /agents,
 // /agents/research.v2) work on reload; a missing file with one, or anything
-// under /assets/, is 404, so a stale tab never gets HTML for a script. /v1/ and /mcp/ belong to other components and are
+// under /assets/, is 404, so a stale tab never gets HTML for a script. /v1/, /mcp/ and /rpc/ belong to other components and are
 // never answered with the app.
 package web
 
@@ -194,7 +194,7 @@ func (c *Component) Handler() http.Handler { return http.HandlerFunc(c.serve) }
 // reserved are the paths of other components: a request there that no
 // component took is a 404, never the app, whatever its method. They are
 // matched on the cleaned path, so //v1/x and /a/../v1/x are reserved too.
-var reserved = []string{"/v1", "/mcp"}
+var reserved = []string{"/v1", "/mcp", "/rpc"}
 
 func isReserved(clean string) bool {
 	for _, prefix := range reserved {

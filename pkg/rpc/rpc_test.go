@@ -23,11 +23,13 @@ var (
 	codes    = []rpc.Code{{Name: "calc.odd", Err: errOdd}, {Name: "calc.large", Err: errLarge}}
 )
 
-type addReq struct{ A, B int }
-type addResp struct{ Sum int }
-type countReq struct{ To int }
-type countMsg struct{ N int }
-type detail struct{ Done int }
+type (
+	addReq   struct{ A, B int }
+	addResp  struct{ Sum int }
+	countReq struct{ To int }
+	countMsg struct{ N int }
+	detail   struct{ Done int }
+)
 
 var (
 	add   = rpc.Unary[addReq, addResp]{Name: "calc/Add", Errors: codes}

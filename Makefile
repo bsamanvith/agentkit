@@ -77,7 +77,7 @@ tidy-check: ## Fail if go.mod/go.sum are not tidy
 	$(GO) mod tidy -diff
 
 .PHONY: check
-check: tidy-check fmt-check lint test ## Everything a change must pass
+check: tidy-check fmt-check lint deps-check test ## Everything a change must pass
 
 $(GOLANGCI):
 	@mkdir -p bin
@@ -129,16 +129,29 @@ IMAGE ?= $(BIN)
 # drivers joined the one default binary (SQLite: about 21 MB, then pgx; E18).
 # Log every size change, with its reason, in docs/SIZES.md (AGENTS.md, Sizes).
 IMAGE_BUDGET_MB ?= 35
-# Variants of the agentkit image, by the store and bus backends it links
-# (cmd/agentkit/backends.go). `make image-local` and `make image-dev` build
-# them as agentkit-local and agentkit-dev; `make image` is the all-in-one.
-#   local  one machine: memory or SQLite, no Postgres, no Redis, no migrate
-#   dev    deployed replicas: memory or Postgres, and Redis; no SQLite
-VARIANTS := local dev
+# Variants of the agentkit image, by the build tags that leave parts out
+# (cmd/agentkit/backends.go). `make image-<variant>` builds agentkit-<variant>;
+# `make image` is the all-in-one, which runs any set of components.
+#   local     one machine: memory or SQLite, no Postgres, no Redis, no migrate
+#   dev       deployed replicas: memory or Postgres, and Redis; no SQLite
+# The split deployment (T102, docs/COMPONENTS.md), one image per component:
+#   api       agent API and console; agents run on a runner, no model SDK,
+#             no connectors, no MCP server
+#   runner    the agents' turn loops: the model SDK; toolsets come from the
+#             toolsets component; no store, bus, console or MCP server
+#   toolsets  the connectors, to runners (/rpc/toolsets/) and over MCP; no
+#             model SDK, store, bus or console
+VARIANTS := local dev api runner toolsets
 TAGS_local := nopostgres noredis
 TAGS_dev := nosqlite
+TAGS_api := nomodels noconnectors nomcp nosqlite
+TAGS_runner := noconnectors nomcp noweb nosqlite nopostgres noredis
+TAGS_toolsets := nomodels noweb nosqlite nopostgres noredis
 IMAGE_BUDGET_MB_local ?= 26
 IMAGE_BUDGET_MB_dev ?= 30
+IMAGE_BUDGET_MB_api ?= 22
+IMAGE_BUDGET_MB_runner ?= 20
+IMAGE_BUDGET_MB_toolsets ?= 17
 # Binaries that get an image; fakellm joins when cmd/fakellm exists (T004).
 IMAGE_BINS := $(notdir $(wildcard $(addprefix cmd/,agentkit fakellm)))
 # An extra CA for the module download, behind a TLS-intercepting proxy.
@@ -160,10 +173,21 @@ image: ## Build an image: BIN=agentkit|fakellm TAGS=... VERSION=... (tags :VERSI
 images: ## Build the image of every binary in cmd/
 	@set -e; for b in $(IMAGE_BINS); do $(MAKE) --no-print-directory image BIN=$$b IMAGE=$$b; done
 
+# The split deployment: one image per component.
+SPLIT := api runner toolsets
+
+.PHONY: images-split
+images-split: ## Build agentkit-api, agentkit-runner and agentkit-toolsets
+	@set -e; for v in $(SPLIT); do $(MAKE) --no-print-directory image-$$v; done
+
+.PHONY: deps-check
+deps-check: ## Fail if a variant's binary links a dependency its build tags leave out
+	@$(foreach v,$(VARIANTS),TAGS_$(v)="$(TAGS_$(v))") scripts/check-deps.sh $(VARIANTS)
+
 .PHONY: $(addprefix image-,$(VARIANTS)) $(addprefix image-size-,$(VARIANTS))
-$(addprefix image-,$(VARIANTS)): image-%: ## Build agentkit-local or agentkit-dev (see VARIANTS)
+$(addprefix image-,$(VARIANTS)): image-%: ## Build agentkit-<variant>: local, dev, api, runner or toolsets (see VARIANTS)
 	@$(MAKE) --no-print-directory image BIN=agentkit IMAGE=agentkit-$* TAGS="$(TAGS_$*)"
-$(addprefix image-size-,$(VARIANTS)): image-size-%: ## Check agentkit-local or agentkit-dev against its budget
+$(addprefix image-size-,$(VARIANTS)): image-size-%: ## Check agentkit-<variant> against its budget
 	@$(MAKE) --no-print-directory image-size IMAGE=agentkit-$* IMAGE_BUDGET_MB=$(IMAGE_BUDGET_MB_$*)
 
 .PHONY: image-size

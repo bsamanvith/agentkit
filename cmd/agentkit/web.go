@@ -1,3 +1,5 @@
+//go:build !noweb
+
 package main
 
 import (
@@ -7,6 +9,6 @@ import (
 
 // newWeb is the web component: the console, embedded in the binary, at /
 // (AGENTKIT_COMPONENTS=agent,web). It calls only /v1, on the same origin.
-func newWeb() component.Mount {
-	return component.Mount{Pattern: "/", Component: web.New(web.Dist())}
+func newWeb() (component.Mount, error) {
+	return component.Mount{Pattern: "/", Component: web.New(web.Dist())}, nil
 }

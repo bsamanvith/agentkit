@@ -41,6 +41,10 @@ type Rules struct {
 	// [CheckConnectors], each with the reason, until they adopt the test kit.
 	// An entry for a connector that passes fails the check.
 	PendingConnectors map[string]string
+	// ConnectorLibraries lists packages under connectors/ (paths relative to
+	// Module) that are shared code for a family of connectors, such as
+	// connectors/google/common, and so are not connectors themselves.
+	ConnectorLibraries []string
 	// SharedChildren lists, per package (a path relative to Module), the
 	// subpackages it may import despite the no-child-imports rule: shared
 	// types split out so that other code can use them without the parent's

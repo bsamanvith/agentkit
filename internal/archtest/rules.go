@@ -146,6 +146,9 @@ func ModuleRules() Rules {
 		// Connectors that do not yet run the connector test kit
 		// (docs/CONNECTORS.md). Each entry goes when its connector adopts it.
 		PendingConnectors: map[string]string{},
+		// Shared code of connector families: not connectors, so not run
+		// through the kit (their own tests cover them).
+		ConnectorLibraries: []string{"connectors/google/common"},
 		// The agent API's wire types live in their own package so that
 		// clients get them without the harness (E11, T053).
 		SharedChildren: map[string][]string{"pkg/agentapi": {"pkg/agentapi/wire"}},

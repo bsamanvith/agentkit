@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -120,7 +121,12 @@ type Request struct {
 	Query url.Values
 	// Body, if not nil, is sent as JSON.
 	Body any
-	// Header adds request headers (Content-Type of a body is set).
+	// Raw, if not nil, is sent as it is instead of Body (a multipart upload,
+	// say). Set its Content-Type in Header.
+	Raw []byte
+	// Header adds request headers. A Content-Type or Accept given here is
+	// kept; otherwise they are application/json (Content-Type only when
+	// there is a body).
 	Header http.Header
 }
 
@@ -156,6 +162,10 @@ func (c *Client) DoJSON(ctx context.Context, r Request, out any) error {
 // how failures and retries work.
 func (c *Client) Do(ctx context.Context, r Request) ([]byte, error) {
 	var payload []byte
+	if r.Raw != nil && r.Body != nil {
+		return nil, errors.New("request has both Body and Raw")
+	}
+	payload = r.Raw
 	if r.Body != nil {
 		var err error
 		if payload, err = json.Marshal(r.Body); err != nil {
@@ -256,10 +266,12 @@ func (c *Client) attempt(ctx context.Context, r Request, payload []byte, token s
 		return 0, nil, nil, fmt.Errorf("build request: %w", err)
 	}
 	for k, v := range r.Header {
-		req.Header[k] = v
+		req.Header[k] = slices.Clone(v)
 	}
-	req.Header.Set("Accept", "application/json")
-	if payload != nil {
+	if req.Header.Get("Accept") == "" {
+		req.Header.Set("Accept", "application/json")
+	}
+	if payload != nil && req.Header.Get("Content-Type") == "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	req.Header.Set("Authorization", "Bearer "+token)

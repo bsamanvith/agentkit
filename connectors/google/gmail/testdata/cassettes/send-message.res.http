@@ -1,0 +1,10 @@
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=UTF-8
+
+{
+  "id": "m12",
+  "threadId": "t12",
+  "labelIds": [
+    "SENT"
+  ]
+}

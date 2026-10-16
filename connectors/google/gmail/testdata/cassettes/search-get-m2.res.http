@@ -1,0 +1,32 @@
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=UTF-8
+
+{
+  "id": "m2",
+  "threadId": "t2",
+  "labelIds": [
+    "INBOX"
+  ],
+  "snippet": "The invoice is attached.",
+  "payload": {
+    "mimeType": "multipart/mixed",
+    "headers": [
+      {
+        "name": "From",
+        "value": "billing@example.com"
+      },
+      {
+        "name": "To",
+        "value": "grace@example.com"
+      },
+      {
+        "name": "Subject",
+        "value": "Invoice 1042"
+      },
+      {
+        "name": "Date",
+        "value": "Wed, 14 Oct 2026 16:40:00 +0000"
+      }
+    ]
+  }
+}

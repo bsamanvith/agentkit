@@ -6,6 +6,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/connectors/exa"
 	"github.com/bsamanvith/agentkit/connectors/google/drive"
+	"github.com/bsamanvith/agentkit/connectors/google/gmail"
 	"github.com/bsamanvith/agentkit/connectors/parallel"
 	"github.com/bsamanvith/agentkit/connectors/tavily"
 	"github.com/bsamanvith/agentkit/pkg/coretools"
@@ -26,6 +27,7 @@ func newCatalog() (*toolset.Catalog, error) {
 		coretools.Files(),
 		tavily.Factory(tavily.WithLookupEnv(os.LookupEnv), tavily.WithLogger(logger)),
 		exa.Factory(exa.WithLookupEnv(os.LookupEnv)),
+		gmail.Factory(gmail.WithLookupEnv(os.LookupEnv), gmail.WithLogger(logger)),
 		parallel.Factory(parallel.WithLookupEnv(os.LookupEnv), parallel.WithLogger(logger)),
 		drive.Factory(drive.WithLookupEnv(os.LookupEnv), drive.WithLogger(logger)),
 	)

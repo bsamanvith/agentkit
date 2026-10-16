@@ -1,0 +1,18 @@
+{
+  "method": "POST",
+  "path": "/gmail/v1/users/me/messages/batchModify",
+  "body": {
+    "ids": [
+      "m1",
+      "m2"
+    ],
+    "addLabelIds": [
+      "STARRED"
+    ],
+    "removeLabelIds": [
+      "UNREAD",
+      "INBOX"
+    ]
+  },
+  "synthetic": true
+}

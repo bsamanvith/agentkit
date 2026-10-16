@@ -24,7 +24,7 @@
 | Tool safety and control: tool kinds and risk, policies, interrupts and approvals, deferred loading, steering | [E17](E17-tool-safety-control.md) | **In progress**: T082 (tool metadata) done; T083–T086 next |
 | Streaming and the server backend: SSE + HTTP commands (WebSocket later), Postgres + Redis | [E18](E18-streaming-backend.md) | **In progress**: T088 (Postgres store, event log, `agentkit migrate`), T089 (`pkg/bus`, Redis Streams) and T098 (runner turn batching) done; T090 (stream API) and T093 (row-level security) ready |
 | External MCP servers: add any remote MCP server by URL, MCP OAuth, tool pinning | [E19](E19-external-mcp-servers.md) | **Planned** (T094–T097); T094 can start now |
-| Google connectors: Gmail, Calendar, Drive as toolsets, one package each, shared `common` | [E21](E21-google-connectors.md) | **In progress** (T108–T111): T108 (`connectors/google/common`) in review; T109 (Gmail) building; T110 (Calendar) and T111 (Drive) start from T108 |
+| Google connectors: Gmail, Calendar, Drive as toolsets, one package each, shared `common` | [E21](E21-google-connectors.md) | **In progress** (T108–T111): T108 (`connectors/google/common`) and T109 (Gmail, synthetic cassettes) in review (PR #23); T110 (Calendar) and T111 (Drive) start from T108 |
 | More model providers | [E08](E08-model-providers.md) | Later |
 | Agent skills | [E02](E02-agent-skills.md) | In progress: `write-tests` exists and was dry-run on `pkg/flow` |
 
@@ -74,7 +74,7 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 | [T031](T031-compaction.md) | Compaction | **Ready** (T030 done) |
 | [T087](T087-console-ux-design-2.md) | Console UX design part 2: skills, agent builder, tool policies, interrupts and approvals, tasks with steering; mockup v4 | **Ready** (owner approved v3) |
 | [T108](T108-google-common.md) | `connectors/google/common`: the client, token sources, settings, paging and text limits the Google connectors share | **Review** (draft PR with Gmail); T110 and T111 build on it |
-| [T109](T109-connector-gmail.md), [T110](T110-connector-google-calendar.md), [T111](T111-connector-google-drive.md) | Gmail, Google Calendar and Google Drive connectors | T109 in progress; T110 and T111 **ready** once T108 is on `main` or its branch |
+| [T109](T109-connector-gmail.md), [T110](T110-connector-google-calendar.md), [T111](T111-connector-google-drive.md) | Gmail, Google Calendar and Google Drive connectors | T109 **Review** (PR #23); T110 and T111 **ready** to start on T108's branch |
 | [T094](T094-mcp-client-toolset.md) | `pkg/mcp/client` and the `mcp` toolset type: use external MCP servers' tools, pin fingerprints | **Ready** (E19); new package, tests against our own MCP server |
 | [T101](T101-ci-hardening.md) | CI hardening: actions pinned by SHA, no persisted credentials, workflow lint | **Ready**; small, from T078's review |
 | [T102](T102-component-images.md) | An image per component (agent, MCP, console), a migrate image, and the all-in-one image; a budget each | After T037 (rewrites `serve.go` and adds `store.go`); owner asked 2026-10-14 |

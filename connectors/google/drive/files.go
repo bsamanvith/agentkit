@@ -1,8 +1,8 @@
 package drive
 
 import (
-	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -63,7 +63,7 @@ func (a apiFile) show() file {
 		Description: a.Description, ModifiedTime: a.ModifiedTime, CreatedTime: a.CreatedTime,
 		ParentIDs: a.Parents, WebLink: a.WebViewLink, Trashed: a.Trashed, Shared: a.Shared,
 	}
-	fmt.Sscan(a.Size, &f.SizeBytes) // absent for Google-native files
+	f.SizeBytes, _ = strconv.ParseInt(a.Size, 10, 64) // absent for Google-native files
 	for _, o := range a.Owners {
 		switch {
 		case o.DisplayName != "" && o.EmailAddress != "":

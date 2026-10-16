@@ -102,7 +102,7 @@ func decode(data []byte, out any) error {
 		return nil
 	}
 	if err := json.Unmarshal(data, out); err != nil {
-		return errors.New("Google Drive returned a response that is not valid JSON")
+		return errors.New("the response from Google Drive is not valid JSON")
 	}
 	return nil
 }

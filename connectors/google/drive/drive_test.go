@@ -174,18 +174,18 @@ func TestSearchRefusesBadInput(t *testing.T) {
 func TestReadFile(t *testing.T) {
 	const pngMeta = `{"id":"img1","name":"pic","mimeType":"image/png","webViewLink":"https://drive.example/pic"}`
 	tools, f := newRig(t, `{"max_read_chars": 100}`, func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/drive/v3/files/doc1":
+		switch r.URL.Path {
+		case "/drive/v3/files/doc1":
 			reply(w, 200, `{"id":"doc1","name":"Notes","mimeType":"application/vnd.google-apps.document"}`)
-		case r.URL.Path == "/drive/v3/files/doc1/export":
-			io.WriteString(w, strings.Repeat("héllo ", 40)) // 240 characters
-		case r.URL.Path == "/drive/v3/files/sheet1":
+		case "/drive/v3/files/doc1/export":
+			_, _ = io.WriteString(w, strings.Repeat("héllo ", 40)) // 240 characters
+		case "/drive/v3/files/sheet1":
 			reply(w, 200, `{"id":"sheet1","name":"Data","mimeType":"application/vnd.google-apps.spreadsheet"}`)
-		case r.URL.Path == "/drive/v3/files/sheet1/export":
-			io.WriteString(w, "a,b\n1,2\n")
-		case r.URL.Path == "/drive/v3/files/img1":
+		case "/drive/v3/files/sheet1/export":
+			_, _ = io.WriteString(w, "a,b\n1,2\n")
+		case "/drive/v3/files/img1":
 			reply(w, 200, pngMeta)
-		case r.URL.Path == "/drive/v3/files/dir1":
+		case "/drive/v3/files/dir1":
 			reply(w, 200, `{"id":"dir1","name":"Docs","mimeType":"application/vnd.google-apps.folder"}`)
 		default:
 			http.NotFound(w, r)
@@ -227,7 +227,7 @@ func TestReadFile(t *testing.T) {
 func TestReadTextFileDownloadsMedia(t *testing.T) {
 	tools, f := newRig(t, "", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("alt") == "media" {
-			io.WriteString(w, "# Title\n")
+			_, _ = io.WriteString(w, "# Title\n")
 			return
 		}
 		reply(w, 200, `{"id":"md1","name":"README.md","mimeType":"text/markdown"}`)

@@ -244,7 +244,7 @@ func (s *Server) runEvents(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	s.watch(ctx, out, run, after)
+	s.viewRun(ctx, run, after, out.event)
 }
 
 // openStream sends an event stream's headers; stop ends it.
@@ -273,17 +273,12 @@ func (s *Server) openStream(w http.ResponseWriter, r *http.Request, run store.Ru
 // errReleased means the process running a run let it go.
 var errReleased = errors.New("the run is no longer held")
 
-// watch streams the events of a run another process runs, after the ID
-// after, from the log and the bus, until its last event. When the process
+// watchRun sends emit the events of a run another process runs, after the
+// ID after, from the log and the bus, until its last event. When the process
 // lets the run go without that event reaching the bus (it crashed, or was
-// stopped), the stream ends with the run's stored events and the last event
-// its status says; when another process takes it over, the stream follows
-// that one.
-func (s *Server) watch(ctx context.Context, out *sseWriter, run store.Run, after bus.ID) {
-	s.watchRun(ctx, run, after, out.event)
-}
-
-// watchRun is watch, for any reader of the events: emit gets each one.
+// stopped), it ends with the run's stored events and the last event its
+// status says; when another process takes it over, it follows that one.
+// Readers share one per run through [Server.viewRun] (T103).
 func (s *Server) watchRun(ctx context.Context, run store.Run, after bus.ID, emit func(Event)) {
 	poll := s.poll()
 	for {
@@ -323,7 +318,7 @@ func (s *Server) watchRun(ctx context.Context, run store.Run, after bus.ID, emit
 		if held(cur, s.cfg.clock.Now()) {
 			continue // taken over: follow its new process
 		}
-		rp, err := s.history(ctx, cur, false)
+		rp, err := s.storedEnding(ctx, cur, poll)
 		if err != nil {
 			s.log.Error("reading the events of a run let go", "run_id", run.ID, "err", err)
 			return
@@ -334,6 +329,45 @@ func (s *Server) watchRun(ctx context.Context, run store.Run, after bus.ID, emit
 			}
 		}
 		return
+	}
+}
+
+// endingWait is how long a watch waits for the stored last event of a run
+// let go as done, canceled or rejected, reading the log every endingStep (or
+// poll, if shorter). The holder stores it right after it lets the run go.
+const (
+	endingWait = 2 * time.Second
+	endingStep = 50 * time.Millisecond
+)
+
+// storedEnding is the history of a run let go. Its holder lets a run go
+// before it stores the run's last event (drive, after the runner's end): for
+// a run whose status says that event is stored, it waits for it, up to
+// endingWait, so the watch ends with the event the log has, not one made up
+// from the status with another ID.
+func (s *Server) storedEnding(ctx context.Context, run store.Run, poll time.Duration) (replayed, error) {
+	step := min(poll, endingStep)
+	deadline := time.Now().Add(endingWait) // real time, as checkHeld's
+	for {
+		rp, err := s.history(ctx, run, false)
+		if err != nil {
+			return rp, err
+		}
+		switch runStatus(run, s.cfg.clock.Now()) {
+		case StatusDone, StatusCanceled, StatusRejected:
+		default:
+			return rp, nil // its last event is streamed, never stored
+		}
+		if n := len(rp.events); n > 0 && isTerminal(rp.events[n-1].Type) || !time.Now().Before(deadline) {
+			return rp, nil
+		}
+		t := time.NewTimer(step)
+		select {
+		case <-t.C:
+		case <-ctx.Done():
+			t.Stop()
+			return rp, nil
+		}
 	}
 }
 

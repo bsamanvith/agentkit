@@ -114,6 +114,8 @@ type rig struct {
 	token  string
 	url    string // where runs are posted: the httptest server, unless a test serves elsewhere
 	client *http.Client
+	shared *shared      // the store, bus and clock of replicas; nil for a lone rig
+	subs   *countingBus // b's run subscriptions, for a replica that serves runs
 
 	mu      sync.Mutex
 	streams []*stream       // every stream read to its end, in the order they ended
@@ -390,7 +392,13 @@ func (r *rig) events(id, lastEventID string) []agentapi.Event {
 // empty. Once the response has come, the server counts the client.
 func (r *rig) follow(id, lastEventID string) *stream {
 	r.t.Helper()
-	req, err := http.NewRequestWithContext(context.WithoutCancel(r.t.Context()), http.MethodGet, r.ts.URL+"/v1/runs/"+id+"/events", nil)
+	return r.followCtx(context.WithoutCancel(r.t.Context()), id, lastEventID)
+}
+
+// followCtx is follow, for a request that ends with ctx.
+func (r *rig) followCtx(ctx context.Context, id, lastEventID string) *stream {
+	r.t.Helper()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.ts.URL+"/v1/runs/"+id+"/events", nil)
 	if err != nil {
 		r.t.Fatal(err)
 	}

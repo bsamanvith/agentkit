@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"maps"
@@ -65,6 +66,13 @@ func TestSearchConfigBuilds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The files toolset's root is relative to the working directory: point
+	// it at a temporary folder, so the test leaves the source tree alone.
+	for i, s := range cfg.MCP.Toolsets {
+		if s.Name == "files" {
+			cfg.MCP.Toolsets[i].Settings = json.RawMessage(fmt.Sprintf(`{"root": %q, "create_root": true}`, filepath.Join(t.TempDir(), "workspace")))
+		}
+	}
 	env := serveEnv{components: []string{"agent", mcpServerName}}
 	built, problems, err := buildToolsets(t.Context(), env, cfg, path, slog.New(slog.DiscardHandler))
 	if err != nil {
@@ -105,7 +113,7 @@ func TestSearchConfigBuilds(t *testing.T) {
 	for _, a := range cfg.Agents {
 		toolsets[a.Name] = a.Toolsets
 	}
-	if want := map[string][]string{"default": {"demo"}, "search": {"tavily", "exa", "parallel"}}; !maps.EqualFunc(toolsets, want, slices.Equal) {
+	if want := map[string][]string{"default": {"demo"}, "search": {"tavily", "exa", "parallel"}, "workspace": {"files", "math"}}; !maps.EqualFunc(toolsets, want, slices.Equal) {
 		t.Errorf("agents' toolsets %v, want %v", toolsets, want)
 	}
 }

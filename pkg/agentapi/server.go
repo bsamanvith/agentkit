@@ -78,6 +78,9 @@ type Server struct {
 	hubs     map[hubKey]*hub
 	finished []*hub   // hubs whose execution ended, oldest first: the retention order
 	cut      []string // runs ended by the shutdown
+
+	wmu     sync.Mutex
+	watches map[hubKey]*sharedWatch // runs held elsewhere that this server follows (T103)
 }
 
 type hubKey struct{ tenant, runID string }
@@ -114,11 +117,12 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 	s := &Server{
 		cfg: cfg, log: cfg.logger,
 		agents: agents, agentOrder: order, defaultAgent: def, toolsets: toolsets,
-		slots:  make(chan struct{}, cfg.maxConcurrent),
-		closed: make(chan struct{}),
-		hubs:   map[hubKey]*hub{},
-		store:  cfg.store,
-		bus:    cfg.bus,
+		slots:   make(chan struct{}, cfg.maxConcurrent),
+		closed:  make(chan struct{}),
+		hubs:    map[hubKey]*hub{},
+		watches: map[hubKey]*sharedWatch{},
+		store:   cfg.store,
+		bus:     cfg.bus,
 	}
 	if s.bus == nil {
 		s.bus, s.ownBus = memorybus.New(memorybus.WithClock(cfg.clock)), true
@@ -241,6 +245,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	case <-ctx.Done():
 		errs = append(errs, fmt.Errorf("runs still ending: %w", ctx.Err()))
 	}
+	s.stopWatches()
 	s.mu.Lock()
 	cut := slices.Clone(s.cut)
 	s.mu.Unlock()

@@ -2,7 +2,7 @@
 id: T109
 title: "connectors/google/gmail: search, read, label, draft and send mail"
 epic: E21
-status: todo
+status: review
 depends_on: [T108]
 ---
 
@@ -38,17 +38,58 @@ Mail is the first thing people ask an agent to look at. This connector gives an 
 
 ## Acceptance criteria
 
-- [ ] **Kit:** passes `toolsettest.RunConnector` with `access_token_env` as the key, and a `FuzzResponses` target per read tool; cassettes (synthetic until recorded) validated against Gmail's discovery document.
-- [ ] **Search** returns the fields above in the order Gmail gave, follows `nextPageToken` as `next_page_token`, and makes at most 1 + 50 requests.
-- [ ] **Read** returns plain text from multipart/alternative, from HTML-only mail, from nested multipart/mixed with attachments, and from a base64url body with non-ASCII text; attachments are listed, not fetched.
-- [ ] **Truncation** is at a rune boundary with a marker that names `max_body_chars`.
-- [ ] **Compose:** a draft's raw message round-trips: parsed back, its headers and body equal the input (non-ASCII subject and body included); a CR/LF in any header field, a bad address, 101 recipients and an empty message are `ErrInvalidInput` and make no request.
-- [ ] **Reply** carries `threadId`, `In-Reply-To` and `References` of the original.
-- [ ] **Gating:** with default settings the send tools and, with `allow_modify: false`, `gmail_modify_labels` are not in the toolset; the send tools are classified send/high with approval.
-- [ ] **Labels:** `TRASH` and `SPAM` are refused; an empty change is refused.
-- [ ] **Errors and limits** as E21 (kit suite).
-- [ ] **Mutation list** recorded.
+- [x] **Kit:** passes `toolsettest.RunConnector` with `GOOGLE_ACCESS_TOKEN` as the key, and a `FuzzResponses` target per read tool — test: `gmail_test.TestConformance`, `FuzzSearchResponses`, `FuzzReadMessageResponses`, `FuzzReadThreadResponses`. Cassettes are **synthetic**, written from the API reference; not validated against the discovery document (the kit's check is OpenAPI-only, skipped with that reason). Left unticked below: recording them.
+- [x] **Search** returns the fields above in the order Gmail gave, follows `nextPageToken` as `next_page_token`, and makes at most 1 + 50 requests.
+- [x] **Read** returns plain text from multipart/alternative, from HTML-only mail, from nested multipart/mixed with attachments, and from a base64url body with non-ASCII text; attachments are listed, not fetched.
+- [x] **Truncation** is at a rune boundary with a marker that names `max_body_chars`.
+- [x] **Compose:** a draft's raw message round-trips: parsed back, its headers and body equal the input (non-ASCII subject and body included); a CR/LF in any header field, a bad address, 101 recipients and an empty message are `ErrInvalidInput` and make no request.
+- [x] **Reply** carries `threadId`, `In-Reply-To` and `References` of the original.
+- [x] **Gating:** with default settings the send tools and, with `allow_modify: false`, `gmail_modify_labels` are not in the toolset; the send tools are classified send/high with approval.
+- [x] **Labels:** `TRASH` and `SPAM` are refused; an empty change is refused.
+- [x] **Errors and limits** as E21 (kit suite).
+- [x] **Mutation list** recorded (Notes).
 
 ## Notes
 
 - Live check needs a test Google account with a token (`GMAIL_TEST_ACCESS_TOKEN`); the live test skips without it. Cassette recording is the same. Leave `status: review` until done.
+
+### Tests that cover the criteria
+
+| Criterion | Test |
+|---|---|
+| Search: fields, order, `next_page_token`, 1 + N requests, five at a time | `TestSearchFetchesEachMessageOnceFewAtATimeAndKeepsGmailsOrder`, `TestSearchFailsWholeWhenOneMessageFails` |
+| Read: plain, HTML-only, alternative, mixed with attachments, non-ASCII, bad base64 | `TestReadMessageFindsTheTextInEveryMessageShape` |
+| Truncation | `TestBodyIsCutAtARuneBoundaryAndSaysHowToGetMore`, `TestBodyLimitSetting`, `TestReadThreadSharesTheBodyBudget` |
+| Compose round trip | `TestDraftRoundTripsHeadersAndNonASCIIText` |
+| Invalid input makes no request | kit `invalid` checks, `TestInvalidMessagesMakeNoRequest` |
+| Reply | `TestReplyKeepsTheConversationAndDefaultsRecipientAndSubject` |
+| Gating and classification | `TestSendToolsAndModifyAreGatedBySettingsAndClassified`, `TestScopesFollowTheSettings` |
+| Labels | `TestModifyLabels` |
+| Token per call | `TestTokenComesFromTheSourcePerCallAndNeverFromTheEnvironmentWhenGiven`, `TestBuildNeedsATokenAndRefusesBadSettings` |
+
+### Mutation list (2026-10-16)
+
+| Planted bug | Caught by |
+|---|---|
+| line-break check on a subject removed | `TestInvalidMessagesMakeNoRequest`, kit `invalid` |
+| `TRASH`/`SPAM` allowed in modify | `TestModifyLabels`, kit `invalid` |
+| send tools always built | `TestSendToolsAndModifyAreGatedBySettingsAndClassified` |
+| modify tool always built | same |
+| send tools not approval-gated | same |
+| HTML preferred over plain | `TestReadMessageFindsTheTextInEveryMessageShape`, kit golden |
+| snippet entities not unescaped | `TestSearchFetches...`, kit golden |
+| metadata fan-out unbounded (500) | `TestSearchFetchesEachMessageOnceFewAtATimeAndKeepsGmailsOrder` |
+| search results out of order | same |
+| reply drops the References chain / the thread id | `TestReplyKeepsTheConversation...` |
+| subject not RFC 2047 encoded | `TestDraftRoundTripsHeadersAndNonASCIIText` |
+| body not cut | `TestBodyIsCut...`, `TestBodyLimitSetting`, `TestReadThreadSharesTheBodyBudget` |
+| attachments not listed | `TestReadMessageFindsTheTextInEveryMessageShape` |
+
+**Equivalent mutant:** removing the line-break check on addresses survives, because `net/mail` refuses an address with a line break by itself. The check stays as a second line of defence against header injection.
+
+### State and what is left
+
+- **Status `review`.** Cassettes are synthetic (hand-written from the API reference). Left to do with a Google test account: a live test (`//go:build live`, skipped without `GMAIL_TEST_ACCESS_TOKEN`), recording the cassettes with `make record-cassettes`, then `make golden`. The thread-reading path (`gmail_read_thread`) and the compose path have never met the real API.
+- **Registered in the catalog** (`cmd/agentkit/catalog.go`): type `gmail`, token from `GOOGLE_ACCESS_TOKEN` until T096. Binary +393,216 bytes (docs/SIZES.md).
+- **Scopes:** Gmail's are restricted. Using the connector with accounts outside the OAuth client's own Google Cloud organisation needs Google's app verification (and a security assessment for the restricted scopes); testing with the project's own accounts needs none.
+- The Google OAuth client (ID and secret from Google Cloud Console) is the owner's to create: the `google` profile has no client built in.

@@ -1,0 +1,10 @@
+{
+  "method": "GET",
+  "path": "/gmail/v1/users/me/threads/t1",
+  "query": {
+    "format": [
+      "full"
+    ]
+  },
+  "synthetic": true
+}

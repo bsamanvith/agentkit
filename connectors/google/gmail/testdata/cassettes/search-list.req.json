@@ -1,0 +1,13 @@
+{
+  "method": "GET",
+  "path": "/gmail/v1/users/me/messages",
+  "query": {
+    "q": [
+      "from:ada is:unread"
+    ],
+    "maxResults": [
+      "2"
+    ]
+  },
+  "synthetic": true
+}

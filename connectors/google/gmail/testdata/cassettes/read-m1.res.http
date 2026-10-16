@@ -1,0 +1,76 @@
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=UTF-8
+
+{
+  "id": "m1",
+  "threadId": "t1",
+  "labelIds": [
+    "UNREAD",
+    "INBOX"
+  ],
+  "snippet": "Are you free",
+  "payload": {
+    "mimeType": "multipart/mixed",
+    "headers": [
+      {
+        "name": "From",
+        "value": "Ada Lovelace <ada@example.com>"
+      },
+      {
+        "name": "To",
+        "value": "grace@example.com"
+      },
+      {
+        "name": "Cc",
+        "value": "charles@example.com"
+      },
+      {
+        "name": "Subject",
+        "value": "Lunch plans"
+      },
+      {
+        "name": "Date",
+        "value": "Thu, 15 Oct 2026 09:12:03 +0000"
+      },
+      {
+        "name": "Message-ID",
+        "value": "<CAF1@mail.example.com>"
+      }
+    ],
+    "body": {
+      "size": 0
+    },
+    "parts": [
+      {
+        "mimeType": "multipart/alternative",
+        "body": {
+          "size": 0
+        },
+        "parts": [
+          {
+            "mimeType": "text/plain",
+            "body": {
+              "size": 80,
+              "data": "QXJlIHlvdSBmcmVlIGZvciBsdW5jaCBvbiBGcmlkYXk_DQpJJ2QgbGlrZSB0byB0cnkgdGhlIG5ldyBwbGFjZSBvbiBNYWluIFN0cmVldC4gQ2Fmw6kgw4VuZ3N0csO2bT8NCg"
+            }
+          },
+          {
+            "mimeType": "text/html",
+            "body": {
+              "size": 120,
+              "data": "PGRpdj5BcmUgeW91IGZyZWUgZm9yIGx1bmNoIG9uIEZyaWRheT88L2Rpdj4"
+            }
+          }
+        ]
+      },
+      {
+        "mimeType": "application/pdf",
+        "filename": "menu.pdf",
+        "body": {
+          "attachmentId": "ANGjdJ-att-1",
+          "size": 48213
+        }
+      }
+    ]
+  }
+}

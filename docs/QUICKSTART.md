@@ -267,6 +267,10 @@ Settings of a `parallel` toolset (all optional; unknown fields, including a lite
 | `extract_defaults.full_content` | `false` | return each page's full content instead of the excerpts relevant to the objective |
 | `extract_defaults.fetch_policy` | Parallel's default | as for search |
 
+### Gmail
+
+The `gmail` toolset (`gmail_search_messages`, `gmail_read_message`, `gmail_read_thread`, `gmail_list_labels`, `gmail_modify_labels`, `gmail_create_draft`, and with `"allow_send": true` the send tools) acts on one Google account. It is not in `search.json`: it needs an OAuth access token, which per-user sign-in (T096) will supply. Until then, for your own account, put a token with the Gmail scopes (`gmail.readonly`, `gmail.compose`, `gmail.modify`) in `GOOGLE_ACCESS_TOKEN`; it expires in about an hour. Add `{"name": "gmail", "type": "gmail", "optional": true}` to a config's toolsets. Without the variable the toolset is skipped. Sending is off unless the settings turn it on, and a send tool asks for approval. Settings and limits: [connectors/google/gmail](../connectors/google/gmail/doc.go).
+
 ## 7. Core tools: math and files
 
 Two built-in toolset types need no account (`pkg/coretools`):

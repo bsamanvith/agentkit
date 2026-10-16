@@ -1,0 +1,11 @@
+{
+  "method": "POST",
+  "path": "/gmail/v1/users/me/drafts",
+  "body": {
+    "message": {
+      "raw": "VG86ICJBZGEgTG92ZWxhY2UiIDxhZGFAZXhhbXBsZS5jb20-DQpTdWJqZWN0OiBSZTogTHVuY2ggcGxhbnMNCkluLVJlcGx5LVRvOiA8Q0FGMUBtYWlsLmV4YW1wbGUuY29tPg0KUmVmZXJlbmNlczogPENBRjBAbWFpbC5leGFtcGxlLmNvbT4gPENBRjFAbWFpbC5leGFtcGxlLmNvbT4NCk1JTUUtVmVyc2lvbjogMS4wDQpDb250ZW50LVR5cGU6IHRleHQvcGxhaW47IGNoYXJzZXQ9IlVURi04Ig0KQ29udGVudC1UcmFuc2Zlci1FbmNvZGluZzogcXVvdGVkLXByaW50YWJsZQ0KDQpGcmlkYXkgd29ya3MgZm9yIG1lLiBDYWY9QzM9QTkgYXQgbm9vbj8=",
+      "threadId": "t1"
+    }
+  },
+  "synthetic": true
+}

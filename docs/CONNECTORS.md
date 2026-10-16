@@ -20,6 +20,8 @@ connectors/<name>/
   testdata/openapi-overlay.json  corrections to that spec, where the real API contradicts it (rare)
 ```
 
+A provider with several products is a **family**: a directory with one connector package per toolset and a shared library package, such as `connectors/google/{common,gmail,calendar,drive}` ([E21](../tasks/E21-google-connectors.md)). `internal/archtest` checks connectors at any depth, and the library is named in `ConnectorLibraries` in `rules.go` so it is not held to the connector rules. A connector that acts for a user's account, not a deployment's key, takes the user's OAuth access token as its "key": `KeyEnv` names the variable the dev fallback reads, and the per-user path is a `TokenSource` option the connector tests itself.
+
 ## 2. The contract (the suite checks every point)
 
 **Options.** `WithHTTPClient`, `WithBaseURL`, `WithLookupEnv`, `WithClock`, `WithLogger`. No globals: no `http.DefaultClient`, no `os.Getenv`, no `time.Sleep`. `WithBaseURL("")` means the default URL, because the suite passes `""` when it checks the `base_url` setting.
@@ -211,7 +213,9 @@ A new check rolls in, not crashes in. When a check would fail connectors that ex
 
 | Connector | Check | Reason |
 |---|---|---|
-| (none yet) | | |
+| `connectors/google/gmail` | `cassettes.openapi` | Google publishes Discovery documents for Gmail, not OpenAPI; the synthetic cassettes are checked against the API reference by hand until they are recorded |
+| `connectors/google/gmail` | `settings.honored` | the only behavioural setting, `max_body_chars`, changes the output and not the request; `TestBodyLimitSetting` covers it |
+| `connectors/google/gmail` | `limits.rune_boundary` | bodies are base64url in Gmail's responses, so the kit cannot put its multi-byte text there; `TestBodyIsCutAtARuneBoundaryAndSaysHowToGetMore` covers it |
 
 ### Every generic bug becomes a check
 

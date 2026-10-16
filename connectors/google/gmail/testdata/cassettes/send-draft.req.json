@@ -1,0 +1,8 @@
+{
+  "method": "POST",
+  "path": "/gmail/v1/users/me/drafts/send",
+  "body": {
+    "id": "r-draft-1"
+  },
+  "synthetic": true
+}

@@ -15,6 +15,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/runner/pool"
 	"github.com/bsamanvith/agentkit/pkg/store"
 	"github.com/bsamanvith/agentkit/pkg/tenancy"
 	"github.com/bsamanvith/agentkit/pkg/tool"
@@ -59,6 +60,10 @@ type Agent struct {
 	// Skills and Memory describe the agent's skills and long-term memory.
 	Skills []string
 	Memory bool
+	// Isolation is the least isolation the agent's runs need; the server's
+	// router ([WithRouter]) never runs them in a weaker pool. The zero value
+	// is [pool.Process].
+	Isolation pool.Isolation
 }
 
 // Toolset is a toolset of the server, as GET /v1/toolsets lists it.

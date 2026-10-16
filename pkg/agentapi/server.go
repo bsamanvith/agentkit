@@ -21,6 +21,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/runner"
+	"github.com/bsamanvith/agentkit/pkg/runner/pool"
 	"github.com/bsamanvith/agentkit/pkg/store"
 	"github.com/bsamanvith/agentkit/pkg/stream"
 	"github.com/bsamanvith/agentkit/pkg/tenancy"
@@ -139,7 +140,11 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 		runner.WithClock(cfg.clock),
 		runner.WithIDs(func() string { return cfg.newID("run_") }),
 	}, cfg.runnerOpts...)
-	rn, err := runner.New(s.store, s.agentFor, ropts...)
+	router := cfg.router
+	if router == nil {
+		router = pool.Default()
+	}
+	rn, err := runner.New(s.store, router.Factory(s.describe), ropts...)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
 	}
@@ -186,18 +191,19 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 // errNoAgent means a conversation's agent is not one this server runs.
 var errNoAgent = errors.New("agent not served")
 
-// agentFor is the runner's agent factory: the harness of the conversation's
-// agent, from its record.
-func (s *Server) agentFor(ctx context.Context, conversationID string) (runner.Agent, error) {
-	c, err := s.store.GetConversation(ctx, conversationID)
+// describe tells the router about the agent of a run: the conversation's
+// agent, from its record, with the isolation it needs and its harness, which
+// a pool that runs agents in process runs.
+func (s *Server) describe(ctx context.Context, p runner.Placement) (pool.Request, error) {
+	c, err := s.store.GetConversation(ctx, p.ConversationID)
 	if err != nil {
-		return nil, err
+		return pool.Request{}, err
 	}
 	a := s.agents[c.Agent]
 	if a == nil {
-		return nil, fmt.Errorf("%w: conversation %q is of agent %q", errNoAgent, conversationID, c.Agent)
+		return pool.Request{}, fmt.Errorf("%w: conversation %q is of agent %q", errNoAgent, p.ConversationID, c.Agent)
 	}
-	return a.Harness, nil
+	return pool.Request{Agent: a.Name, Isolation: a.Isolation, Local: a.Harness}, nil
 }
 
 // Routes returns the server's endpoints as "METHOD /path" patterns
@@ -520,6 +526,8 @@ func (s *Server) startError(w http.ResponseWriter, err error, busy string) {
 		writeError(w, http.StatusConflict, &Error{Code: CodeNotPending, Message: err.Error()})
 	case errors.Is(err, flow.ErrShapeChanged):
 		writeError(w, http.StatusConflict, &Error{Code: CodeShapeChanged, Message: err.Error()})
+	case errors.Is(err, pool.ErrNoPool):
+		writeError(w, http.StatusConflict, &Error{Code: CodeInvalidRequest, Message: "this server has no pool isolated enough for the agent: " + err.Error()})
 	case errors.Is(err, runner.ErrNoFlows):
 		writeError(w, http.StatusConflict, &Error{Code: CodeInvalidRequest, Message: "this server runs no flows"})
 	case errors.Is(err, runner.ErrShutdown):

@@ -62,10 +62,12 @@ type world struct {
 	// agent, if set, replaces the harness of every process.
 	agent func(conv string) runner.Agent
 
-	mu    sync.Mutex
-	procs []*proc
-	seen  []seen
-	ids   int
+	mu sync.Mutex
+	// placements is every placement any process asked its factory for.
+	placements []runner.Placement
+	procs      []*proc
+	seen       []seen
+	ids        int
 	// touched is every conversation any process appended to, in its
 	// tenant's context: the invariants are checked on all of them, not
 	// only on those whose executions a test drained.
@@ -137,7 +139,11 @@ func (w *world) process(opts ...runner.Option) *proc {
 	n := len(w.procs)
 	w.mu.Unlock()
 	p := &proc{w: w, store: &crashStore{Store: w.mem, w: w}, owner: fmt.Sprintf("proc%d", n)}
-	agents := func(_ context.Context, conv string) (runner.Agent, error) {
+	agents := func(_ context.Context, pl runner.Placement) (runner.Agent, error) {
+		conv := pl.ConversationID
+		w.mu.Lock()
+		w.placements = append(w.placements, pl)
+		w.mu.Unlock()
 		if w.agent != nil {
 			return w.agent(conv), nil
 		}

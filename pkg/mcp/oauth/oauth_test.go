@@ -186,6 +186,27 @@ func TestDiscovery(t *testing.T) {
 		e := newEnv(t, setup{as: spec, res: oauthtest.ResourceOptions{NoHeader: true}})
 		e.connect(t, alice)
 	})
+	t.Run("challenge scopes on cached metadata", func(t *testing.T) {
+		t.Parallel()
+		e := newEnv(t, setup{as: spec, res: oauthtest.ResourceOptions{
+			Scopes: []string{"crm.read"}, MetadataScopes: []string{"crm.read", "crm.admin"},
+		}})
+		// The second Begin finds the metadata cached; it must still ask for
+		// what the server's challenge names, not everything it supports.
+		for _, owner := range []oauth.Owner{alice, bob} {
+			authURL, err := e.c.Begin(t.Context(), owner, e.srv, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			u, err := url.Parse(authURL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := u.Query().Get("scope"); strings.Contains(got, "crm.admin") || !strings.Contains(got, "crm.read") {
+				t.Fatalf("%s: scope = %q, want the challenge's crm.read only", owner.User, got)
+			}
+		}
+	})
 	for name, as := range map[string]oauthtest.AuthServerOptions{
 		"issuer mismatch": {DCR: true, WrongIssuer: true},
 		"no PKCE":         {DCR: true, NoPKCE: true},

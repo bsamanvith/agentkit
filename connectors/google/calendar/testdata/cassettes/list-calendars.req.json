@@ -1,0 +1,10 @@
+{
+  "method": "GET",
+  "path": "/users/me/calendarList",
+  "query": {
+    "maxResults": [
+      "50"
+    ]
+  },
+  "synthetic": true
+}

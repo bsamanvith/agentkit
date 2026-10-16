@@ -1,0 +1,10 @@
+{
+  "method": "DELETE",
+  "path": "/calendars/primary/events/n3wev3nt01",
+  "query": {
+    "sendUpdates": [
+      "none"
+    ]
+  },
+  "synthetic": true
+}

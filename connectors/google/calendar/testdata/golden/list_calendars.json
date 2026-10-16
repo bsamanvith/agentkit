@@ -1,0 +1,19 @@
+{
+  "calendars": [
+    {
+      "id": "asha@example.com",
+      "summary": "asha@example.com",
+      "primary": true,
+      "access_role": "owner",
+      "time_zone": "Asia/Kolkata"
+    },
+    {
+      "id": "team-ops@example.com",
+      "summary": "Team ops",
+      "primary": false,
+      "access_role": "reader",
+      "time_zone": "Europe/London"
+    }
+  ],
+  "next_page_token": "CgkIABAB"
+}

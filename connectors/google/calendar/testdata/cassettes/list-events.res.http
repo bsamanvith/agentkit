@@ -1,0 +1,309 @@
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=UTF-8
+
+{
+  "kind": "calendar#events",
+  "summary": "asha@example.com",
+  "timeZone": "Asia/Kolkata",
+  "accessRole": "owner",
+  "nextPageToken": "CigKGjdoMms",
+  "items": [
+    {
+      "kind": "calendar#event",
+      "id": "7h2k9q0s1d",
+      "status": "confirmed",
+      "htmlLink": "https://www.google.com/calendar/event?eid=N2gyazlx",
+      "summary": "Design review",
+      "description": "Walk through the new onboarding flow.",
+      "location": "Room 4",
+      "start": {
+        "dateTime": "2026-10-20T14:00:00+05:30",
+        "timeZone": "Asia/Kolkata"
+      },
+      "end": {
+        "dateTime": "2026-10-20T15:00:00+05:30",
+        "timeZone": "Asia/Kolkata"
+      },
+      "organizer": {
+        "email": "asha@example.com",
+        "self": true
+      },
+      "attendees": [
+        {
+          "email": "asha@example.com",
+          "responseStatus": "accepted",
+          "self": true,
+          "organizer": true
+        },
+        {
+          "email": "ravi@example.com",
+          "responseStatus": "needsAction"
+        }
+      ],
+      "hangoutLink": "https://meet.google.com/abc-defg-hij"
+    },
+    {
+      "kind": "calendar#event",
+      "id": "standup_20261021",
+      "status": "confirmed",
+      "htmlLink": "https://www.google.com/calendar/event?eid=c3RhbmR1cA",
+      "summary": "Standup",
+      "recurringEventId": "standup",
+      "start": {
+        "dateTime": "2026-10-21T10:00:00+05:30",
+        "timeZone": "Asia/Kolkata"
+      },
+      "end": {
+        "dateTime": "2026-10-21T10:15:00+05:30",
+        "timeZone": "Asia/Kolkata"
+      },
+      "organizer": {
+        "email": "asha@example.com",
+        "self": true
+      }
+    },
+    {
+      "kind": "calendar#event",
+      "id": "offsite0",
+      "status": "confirmed",
+      "htmlLink": "https://www.google.com/calendar/event?eid=b2Zmc2l0ZQ",
+      "summary": "Team offsite",
+      "start": {
+        "date": "2026-10-22"
+      },
+      "end": {
+        "date": "2026-10-24"
+      },
+      "organizer": {
+        "email": "team-ops@example.com"
+      }
+    },
+    {
+      "kind": "calendar#event",
+      "id": "allhands01",
+      "status": "confirmed",
+      "htmlLink": "https://www.google.com/calendar/event?eid=YWxsaGFuZHM",
+      "summary": "All hands",
+      "start": {
+        "dateTime": "2026-10-22T16:00:00+05:30"
+      },
+      "end": {
+        "dateTime": "2026-10-22T17:00:00+05:30"
+      },
+      "organizer": {
+        "email": "asha@example.com",
+        "self": true
+      },
+      "attendees": [
+        {
+          "email": "person00@example.com",
+          "responseStatus": "needsAction"
+        },
+        {
+          "email": "person01@example.com",
+          "responseStatus": "accepted"
+        },
+        {
+          "email": "person02@example.com",
+          "responseStatus": "needsAction"
+        },
+        {
+          "email": "person03@example.com",
+          "responseStatus": "accepted"
+        },
+        {
+          "email": "person04@example.com",
+          "responseStatus": "needsAction"
+        },
+        {
+          "email": "person05@example.com",
+          "responseStatus": "accepted"
+        },
+        {
+          "email": "person06@example.com",
+          "responseStatus": "needsAction"
+        },
+        {
+          "email": "person07@example.com",
+          "responseStatus": "accepted"
+        },
+        {
+          "email": "person08@example.com",
+          "responseStatus": "needsAction"
+        },
+        {
+          "email": "person09@example.com",
+          "responseStatus": "accepted"
+        },
+        {
+          "email": "person10@example.com",
+          "responseStatus": "needsAction"
+        },
+        {
+          "email": "person11@example.com",
+          "responseStatus": "accepted"
+        },
+        {
+          "email": "person12@example.com",
+          "responseStatus": "needsAction"
+        },
+        {
+          "email": "person13@example.com",
+          "responseStatus": "accepted"
+        },
+        {
+          "email": "person14@example.com",
+          "responseStatus": "needsAction"
+        },
+        {
+          "email": "person15@example.com",
+          "responseStatus": "accepted"
+        },
+        {
+          "email": "person16@example.com",
+          "responseStatus": "needsAction"
+        },
+        {
+          "email": "person17@example.com",
+          "responseStatus": "accepted"
+        },
+        {
+          "email": "person18@example.com",
+          "responseStatus": "needsAction"
+        },
+        {
+          "email": "person19@example.com",
+          "responseStatus": "accepted"
+        },
+        {
+          "email": "person20@example.com",
+          "responseStatus": "needsAction"
+        },
+        {
+          "email": "person21@example.com",
+          "responseStatus": "accepted"
+        },
+        {
+          "email": "person22@example.com",
+          "responseStatus": "needsAction"
+        },
+        {
+          "email": "person23@example.com",
+          "responseStatus": "accepted"
+        },
+        {
+          "email": "person24@example.com",
+          "responseStatus": "needsAction"
+        },
+        {
+          "email": "person25@example.com",
+          "responseStatus": "accepted"
+        },
+        {
+          "email": "person26@example.com",
+          "responseStatus": "needsAction"
+        },
+        {
+          "email": "person27@example.com",
+          "responseStatus": "accepted"
+        },
+        {
+          "email": "person28@example.com",
+          "responseStatus": "needsAction"
+        },
+        {
+          "email": "person29@example.com",
+          "responseStatus": "accepted"
+        },
+        {
+          "email": "person30@example.com",
+          "responseStatus": "needsAction"
+        },
+        {
+          "email": "person31@example.com",
+          "responseStatus": "accepted"
+        },
+        {
+          "email": "person32@example.com",
+          "responseStatus": "needsAction"
+        },
+        {
+          "email": "person33@example.com",
+          "responseStatus": "accepted"
+        },
+        {
+          "email": "person34@example.com",
+          "responseStatus": "needsAction"
+        },
+        {
+          "email": "person35@example.com",
+          "responseStatus": "accepted"
+        },
+        {
+          "email": "person36@example.com",
+          "responseStatus": "needsAction"
+        },
+        {
+          "email": "person37@example.com",
+          "responseStatus": "accepted"
+        },
+        {
+          "email": "person38@example.com",
+          "responseStatus": "needsAction"
+        },
+        {
+          "email": "person39@example.com",
+          "responseStatus": "accepted"
+        },
+        {
+          "email": "person40@example.com",
+          "responseStatus": "needsAction"
+        },
+        {
+          "email": "person41@example.com",
+          "responseStatus": "accepted"
+        },
+        {
+          "email": "person42@example.com",
+          "responseStatus": "needsAction"
+        },
+        {
+          "email": "person43@example.com",
+          "responseStatus": "accepted"
+        },
+        {
+          "email": "person44@example.com",
+          "responseStatus": "needsAction"
+        },
+        {
+          "email": "person45@example.com",
+          "responseStatus": "accepted"
+        },
+        {
+          "email": "person46@example.com",
+          "responseStatus": "needsAction"
+        },
+        {
+          "email": "person47@example.com",
+          "responseStatus": "accepted"
+        },
+        {
+          "email": "person48@example.com",
+          "responseStatus": "needsAction"
+        },
+        {
+          "email": "person49@example.com",
+          "responseStatus": "accepted"
+        },
+        {
+          "email": "person50@example.com",
+          "responseStatus": "needsAction"
+        },
+        {
+          "email": "person51@example.com",
+          "responseStatus": "accepted"
+        }
+      ]
+    }
+  ]
+}

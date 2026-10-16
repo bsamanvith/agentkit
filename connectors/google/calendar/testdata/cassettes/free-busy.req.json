@@ -1,0 +1,17 @@
+{
+  "method": "POST",
+  "path": "/freeBusy",
+  "body": {
+    "timeMin": "2026-10-19T00:00:00+05:30",
+    "timeMax": "2026-10-26T00:00:00+05:30",
+    "items": [
+      {
+        "id": "asha@example.com"
+      },
+      {
+        "id": "nobody@example.invalid"
+      }
+    ]
+  },
+  "synthetic": true
+}

@@ -2,7 +2,7 @@
 id: T111
 title: "connectors/google/drive: search, read, create, share and trash files"
 epic: E21
-status: todo
+status: review
 depends_on: [T108]
 ---
 
@@ -33,10 +33,19 @@ Files are where the work lives: docs, sheets, slides, PDFs. This connector lets 
 
 ## Acceptance criteria
 
-- [ ] **Kit:** passes `toolsettest.RunConnector` and fuzz targets; synthetic cassettes validated against Drive's discovery document.
-- [ ] **Query building:** user text with quotes, backslashes and `'` cannot break out of the `q` (property test over the escaper); `drive_query` is passed through unchanged.
-- [ ] **Read** exports a Doc, a Sheet and a Slides deck, downloads a text file, refuses a PDF and a file over `max_download_bytes` with a message naming type or size, and cuts long text with the marker.
-- [ ] **Share** never grants to `anyone`/`domain`; `notify` defaults to false; the tool is absent without `allow_share`.
-- [ ] **Trash** sets `trashed: true`; no request ever uses `DELETE`.
-- [ ] **Gating:** default settings have only the read tools; destructive and sending tools are classified delete/send, high, with approval.
+- [x] **Kit:** passes `toolsettest.RunConnector` and a fuzz target for each read tool; the cassettes are synthetic (written from the v3 reference). `cassettes.openapi`, `settings.honored` and `limits.rune_boundary` are skipped with reasons (Notes) — tests: `TestConformance`, `FuzzResponses*`. Discovery-document validation is not done yet
+- [x] **Query building:** user text with quotes, backslashes and `'` cannot break out of the `q` (property test over the escaper); `drive_query` is passed through unchanged — tests: `TestQuoteCannotBreakOut`, `TestSearchQueryBuildsOneExpression`.
+- [x] **Read** exports a Doc, a Sheet and a Slides deck, downloads a text file, refuses a PDF and a file over `max_download_bytes` with a message naming type or size, and cuts long text with the marker — tests: `TestReadFile`, `TestReadCutsAtARuneBoundary`, the `read_q3_report` call.
+- [x] **Share** never grants to `anyone`/`domain`; `notify` defaults to false; the tool is absent without `allow_share` — test: `TestShare`, `TestGatingFollowsSettings`.
+- [x] **Trash** sets `trashed: true`; no request ever uses `DELETE` — test: `TestTrashSetsTrashedAndNeverDeletes`.
+- [x] **Gating:** default settings have only the read tools; destructive and sending tools are classified delete/send, high, with approval — tests: `TestGatingFollowsSettings`, `TestToolClasses`.
 - [ ] **Mutation list** recorded.
+
+## Notes
+
+- **Settings beyond the scope list:** `narrow_scopes` (default false) chooses `drive.file` over `drive` when the write tools are on; `drive.Scopes(settings)` returns the scopes a configuration needs. `allow_share: true` with `read_only: true` fails `Build`, because the share tool is a write tool.
+- **Differences from the scope above:** `drive_share_file` takes an optional `type` (`user`, the default, or `group`), since Drive refuses a group address as a user. `sheet_gid` is not offered: the Drive export API exports a spreadsheet's first sheet only, and other sheets need a different host and URL. Docs export as `text/markdown`. `drive_create_file`'s `mime_type` is `text/plain`, `text/markdown`, `text/csv`, `google_doc` or `google_sheet`. `drive_update_file` replaces content only for text files, Docs (from text) and Sheets (from CSV); every other Google type and every binary is refused.
+- **Skipped kit checks:** `cassettes.openapi` (Google publishes Drive as a discovery document, not OpenAPI), `settings.honored` (no setting changes a request) and `limits.rune_boundary` (the text is a raw body, not a JSON field; covered by `TestReadCutsAtARuneBoundary`).
+- **Uploads** (create and update with content) are one `multipart/related` request, which the kit's cassettes cannot match (they match JSON bodies), so the kit's calls cover the JSON paths (an empty Doc, a rename) and `TestCreateAndUpdateUploadContent` covers the upload. It needs `common.Request.Raw` and a `Content-Type` and `Accept` that `Header` can set.
+- **Not yet done:** recording the cassettes with a test account (`DRIVE_TEST_ACCESS_TOKEN`; no live test exists yet), the discovery-document validation, the console's credential line for Google toolsets (`credentialOf` in `cmd/agentkit/agent.go` reads `api_key_env`, not `access_token_env`), and the mutation list. Leave `status: review` until the cassettes are recorded.
+- **Restricted scopes:** `drive` and `drive.readonly` are restricted by Google: an app used by people outside the owner's organization needs Google's verification and a security assessment. `drive.file` is not restricted.

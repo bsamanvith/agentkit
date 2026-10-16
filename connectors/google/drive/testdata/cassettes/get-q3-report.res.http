@@ -1,0 +1,19 @@
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=UTF-8
+
+{
+  "id": "1AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+  "name": "Q3 report",
+  "mimeType": "application/vnd.google-apps.document",
+  "modifiedTime": "2026-10-12T14:03:22.114Z",
+  "parents": [
+    "0BfolderReports"
+  ],
+  "webViewLink": "https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/edit?usp=drivesdk",
+  "owners": [
+    {
+      "displayName": "Ada Lovelace",
+      "emailAddress": "ada@example.com"
+    }
+  ]
+}

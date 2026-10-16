@@ -4,136 +4,175 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
+	"log/slog"
 	"net/http"
-	"net/url"
-	"strings"
 
+	"github.com/bsamanvith/agentkit/connectors/google/common"
+	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
 // Type is the factory's type, the "type" of a toolset spec.
-const Type = "google_drive"
+const Type = "drive"
 
-// DefaultBaseURL is Google's API host (Drive's paths, including uploads,
-// hang under it).
+// DefaultBaseURL is Google's API host; Drive's paths, uploads included, hang
+// under it.
 const DefaultBaseURL = "https://www.googleapis.com"
 
+// The OAuth scopes the tools need ([Scopes] picks them for a configuration).
 const (
-	defaultReadChars = 20000
-	maxReadChars     = 200_000
+	ScopeReadonly = "https://www.googleapis.com/auth/drive.readonly"
+	ScopeFile     = "https://www.googleapis.com/auth/drive.file"
+	Scope         = "https://www.googleapis.com/auth/drive"
+)
+
+const (
+	defaultContentChars  = 20_000
+	maxContentChars      = 200_000
+	defaultDownloadBytes = 5 << 20
+	maxDownloadBytes     = common.MaxBodyBytes
 )
 
 // Option configures [Factory].
-type Option func(*factory)
-
-// WithTokenSource sets where the user's access token comes from. Without
-// it every call fails with "not connected".
-func WithTokenSource(ts TokenSource) Option { return func(f *factory) { f.tokens = ts } }
+type Option func(*common.Env)
 
 // WithHTTPClient sets the client requests go through.
-func WithHTTPClient(c *http.Client) Option { return func(f *factory) { f.client = c } }
+func WithHTTPClient(c *http.Client) Option { return func(e *common.Env) { e.HTTPClient = c } }
 
-// WithBaseURL sets Google's address; "" keeps the default. A base_url
-// setting overrides it for its toolset.
-func WithBaseURL(u string) Option {
-	return func(f *factory) {
-		if u != "" {
-			f.baseURL = strings.TrimSuffix(u, "/")
+// WithBaseURL sets Google's address (default [DefaultBaseURL]; "" keeps the
+// default); tests point it at a fake. A base_url setting overrides it.
+func WithBaseURL(u string) Option { return func(e *common.Env) { e.BaseURL = u } }
+
+// WithLookupEnv sets how access_token_env is read; cmd/agentkit passes
+// [os.LookupEnv].
+func WithLookupEnv(f func(string) (string, bool)) Option {
+	return func(e *common.Env) { e.LookupEnv = f }
+}
+
+// WithClock sets the clock a rate-limit wait uses.
+func WithClock(c clock.Clock) Option { return func(e *common.Env) { e.Clock = c } }
+
+// WithLogger sets the logger (default: discard). Build logs where the token
+// comes from, never the token.
+func WithLogger(l *slog.Logger) Option { return func(e *common.Env) { e.Logger = l } }
+
+// WithTokenSource sets where the acting user's access token comes from. It
+// takes the place of the environment variable.
+func WithTokenSource(ts common.TokenSource) Option { return func(e *common.Env) { e.Tokens = ts } }
+
+// Factory returns the "drive" toolset factory.
+//
+// Settings (all optional):
+//
+//	{"access_token_env": "GOOGLE_ACCESS_TOKEN", "base_url": "", "timeout": "30s",
+//	 "read_only": true, "allow_share": false, "narrow_scopes": false,
+//	 "max_content_chars": 20000, "max_download_bytes": 5242880}
+//
+// read_only (default true) leaves out every tool that changes something;
+// allow_share adds drive_share_file and needs read_only false; narrow_scopes
+// asks for drive.file instead of drive when the write tools are on.
+// max_content_chars caps the text drive_read_file returns (at most 200,000);
+// max_download_bytes is the largest file it downloads or exports (at most
+// 8 MiB).
+func Factory(opts ...Option) toolset.Factory {
+	var env common.Env
+	for _, o := range opts {
+		if o != nil {
+			o(&env)
 		}
 	}
+	env.Defaults()
+	return &factory{env: env}
 }
 
-// Factory returns the "google_drive" toolset factory.
-//
-// Settings:
-//
-//	{"base_url": "", "max_read_chars": 20000, "allow_public_sharing": false}
-//
-// max_read_chars caps the text drive_read_file returns per call (the agent
-// pages on with offset). allow_public_sharing lets drive_share_file make a
-// file readable by anyone with the link; by default it refuses.
-func Factory(opts ...Option) toolset.Factory {
-	f := &factory{baseURL: DefaultBaseURL}
-	for _, o := range opts {
-		o(f)
-	}
-	if f.client == nil {
-		f.client = &http.Client{}
-	}
-	if f.tokens == nil {
-		f.tokens = notConnected{}
-	}
-	return f
-}
-
-type factory struct {
-	client  *http.Client
-	baseURL string
-	tokens  TokenSource
-}
+type factory struct{ env common.Env }
 
 func (*factory) Type() string { return Type }
 
 type settings struct {
-	BaseURL            string `json:"base_url"`
-	MaxReadChars       int    `json:"max_read_chars"`
-	AllowPublicSharing bool   `json:"allow_public_sharing"`
+	common.Settings
+	ReadOnly         *bool `json:"read_only,omitempty"`
+	AllowShare       bool  `json:"allow_share,omitempty"`
+	NarrowScopes     bool  `json:"narrow_scopes,omitempty"`
+	MaxContentChars  int   `json:"max_content_chars,omitempty"`
+	MaxDownloadBytes int   `json:"max_download_bytes,omitempty"`
 }
 
-type notConnected struct{}
+func (s settings) readOnly() bool { return s.ReadOnly == nil || *s.ReadOnly }
 
-func (notConnected) Token(context.Context) (string, error) {
-	return "", fmt.Errorf("%w: no Google account is connected", tool.ErrToolFailed)
+func decodeSettings(raw json.RawMessage) (settings, error) {
+	var s settings
+	if err := common.RefuseLiteralToken(Type, raw); err != nil {
+		return s, err
+	}
+	if err := toolset.DecodeSettings(raw, &s); err != nil {
+		return s, err
+	}
+	if err := s.Validate(Type); err != nil {
+		return s, err
+	}
+	bad := func(format string, args ...any) (settings, error) {
+		return s, fmt.Errorf("%w: drive: %s", toolset.ErrInvalidSettings, fmt.Sprintf(format, args...))
+	}
+	if s.MaxContentChars == 0 {
+		s.MaxContentChars = defaultContentChars
+	}
+	if s.MaxDownloadBytes == 0 {
+		s.MaxDownloadBytes = defaultDownloadBytes
+	}
+	switch {
+	case s.MaxContentChars < 100 || s.MaxContentChars > maxContentChars:
+		return bad("max_content_chars must be in 100..%d", maxContentChars)
+	case s.MaxDownloadBytes < 1 || s.MaxDownloadBytes > maxDownloadBytes:
+		return bad("max_download_bytes must be in 1..%d", maxDownloadBytes)
+	case s.AllowShare && s.readOnly():
+		return bad("allow_share needs \"read_only\": false")
+	}
+	return s, nil
+}
+
+// Scopes returns the OAuth scopes the tools of a configuration need, so that
+// the connect flow asks for exactly those. raw is the toolset's settings.
+func Scopes(raw json.RawMessage) ([]string, error) {
+	s, err := decodeSettings(raw)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case s.readOnly():
+		return []string{ScopeReadonly}, nil
+	case s.NarrowScopes:
+		return []string{ScopeReadonly, ScopeFile}, nil
+	}
+	return []string{Scope}, nil
 }
 
 func (f *factory) Build(_ context.Context, raw json.RawMessage) ([]tool.Tool, error) {
-	var s settings
-	if err := toolset.DecodeSettings(raw, &s); err != nil {
+	s, err := decodeSettings(raw)
+	if err != nil {
 		return nil, err
 	}
-	bad := func(format string, args ...any) ([]tool.Tool, error) {
-		return nil, fmt.Errorf("%w: google_drive: %s", toolset.ErrInvalidSettings, fmt.Sprintf(format, args...))
+	env := f.env // options are shared by every toolset, so copy
+	tokens, err := env.TokensFor(Type, s.AccessTokenEnv)
+	if err != nil {
+		return nil, fmt.Errorf("%w: drive: %w", toolset.ErrInvalidSettings, err)
 	}
-	if s.MaxReadChars == 0 {
-		s.MaxReadChars = defaultReadChars
-	}
-	if s.MaxReadChars < 100 || s.MaxReadChars > maxReadChars {
-		return bad("max_read_chars must be in 100..%d", maxReadChars)
-	}
-	base := f.baseURL
-	if s.BaseURL != "" {
-		u, ok := checkBaseURL(s.BaseURL)
-		if !ok {
-			return bad("base_url must be an https URL with a host and no user, query or fragment (http only for localhost or a loopback IP)")
-		}
-		base = u
+	base := DefaultBaseURL
+	switch {
+	case s.BaseURL != "":
+		base = s.BaseURL
+	case env.BaseURL != "":
+		base = env.BaseURL
 	}
 	d := &drive{
-		api:      &api{http: f.client, baseURL: base, tokens: f.tokens},
-		maxChars: s.MaxReadChars,
-		public:   s.AllowPublicSharing,
+		client: common.NewClient(common.ClientConfig{
+			Service: Type, BaseURL: base, Tokens: tokens, Timeout: s.RequestTimeout(), Env: env,
+		}),
+		maxChars:    s.MaxContentChars,
+		maxDownload: s.MaxDownloadBytes,
+		write:       !s.readOnly(),
+		share:       s.AllowShare,
 	}
 	return d.tools()
-}
-
-// checkBaseURL accepts an https URL, or an http one on a loopback host (a
-// local replay server). The token goes wherever base_url points.
-func checkBaseURL(raw string) (string, bool) {
-	u, err := url.Parse(raw)
-	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Opaque != "" {
-		return "", false
-	}
-	switch u.Scheme {
-	case "https":
-	case "http":
-		host := u.Hostname()
-		if ip := net.ParseIP(host); host != "localhost" && (ip == nil || !ip.IsLoopback()) {
-			return "", false
-		}
-	default:
-		return "", false
-	}
-	return strings.TrimSuffix(u.String(), "/"), true
 }

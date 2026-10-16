@@ -1,0 +1,20 @@
+{
+  "method": "POST",
+  "path": "/drive/v3/files",
+  "query": {
+    "fields": [
+      "id,name,mimeType,modifiedTime,size,parents,webViewLink,owners(displayName,emailAddress)"
+    ],
+    "supportsAllDrives": [
+      "true"
+    ]
+  },
+  "body": {
+    "name": "Meeting notes",
+    "mimeType": "application/vnd.google-apps.document",
+    "parents": [
+      "0BfolderReports"
+    ]
+  },
+  "synthetic": true
+}

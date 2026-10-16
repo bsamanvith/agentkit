@@ -1,0 +1,10 @@
+HTTP/1.1 200 OK
+Content-Type: text/markdown; charset=UTF-8
+
+# Q3 report
+
+Revenue grew **12%** over Q2.
+
+- Europe: +9%
+- Asia: +17%
+

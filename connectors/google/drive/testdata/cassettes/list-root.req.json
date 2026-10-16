@@ -1,0 +1,25 @@
+{
+  "method": "GET",
+  "path": "/drive/v3/files",
+  "query": {
+    "q": [
+      "'root' in parents and trashed = false"
+    ],
+    "orderBy": [
+      "modifiedTime desc"
+    ],
+    "pageSize": [
+      "20"
+    ],
+    "fields": [
+      "nextPageToken,files(id,name,mimeType,modifiedTime,size,parents,webViewLink,owners(displayName,emailAddress))"
+    ],
+    "supportsAllDrives": [
+      "true"
+    ],
+    "includeItemsFromAllDrives": [
+      "true"
+    ]
+  },
+  "synthetic": true
+}

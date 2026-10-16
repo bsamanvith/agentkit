@@ -15,6 +15,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/runner"
 	"github.com/bsamanvith/agentkit/pkg/store"
 	"github.com/bsamanvith/agentkit/pkg/tenancy"
 	"github.com/bsamanvith/agentkit/pkg/tool"
@@ -46,6 +47,11 @@ type Agent struct {
 	Description string
 	// Harness runs the agent: its model, tools, system prompt and budgets.
 	Harness *harness.Harness
+	// Runner, set instead of Harness, runs the agent somewhere else: a
+	// runner component in another container (package runnerrpc). The
+	// server still keeps the agent's runs; only the turn loop runs there.
+	// Exactly one of Harness and Runner is set.
+	Runner runner.Agent
 	// Model describes the model, for clients (the harness has the model).
 	Model wire.Model
 	// System is the system prompt the harness was built with, shown by
@@ -94,7 +100,7 @@ func WithTenant(f func(*http.Request) string) Option { return func(c *config) { 
 // NewAgents returns the agent API for several agents. A run names its agent
 // (POST /v1/runs "agent"), or gets the default one: the only agent, else the
 // one named [DefaultAgent]. It fails with [ErrInvalidConfig] for no agents,
-// a nil harness, an invalid or duplicate name, an agent naming a toolset
+// an agent with neither or both of a harness and a runner, an invalid or duplicate name, an agent naming a toolset
 // [WithToolsets] does not give, or an option with an unusable value.
 func NewAgents(agents []Agent, opts ...Option) (*Server, error) {
 	cfg := newConfig(opts)
@@ -118,8 +124,8 @@ func NewAgents(agents []Agent, opts ...Option) (*Server, error) {
 	order := make([]*agent, 0, len(agents))
 	for _, a := range agents {
 		switch {
-		case a.Harness == nil:
-			return nil, fmt.Errorf("%w: agent %q: nil harness", ErrInvalidConfig, a.Name)
+		case (a.Harness == nil) == (a.Runner == nil):
+			return nil, fmt.Errorf("%w: agent %q: needs either a harness or a runner", ErrInvalidConfig, a.Name)
 		case !validName.MatchString(a.Name):
 			return nil, fmt.Errorf("%w: agent name %q must match %s", ErrInvalidConfig, a.Name, validName)
 		case byName[a.Name] != nil:
@@ -148,6 +154,14 @@ func NewAgents(agents []Agent, opts ...Option) (*Server, error) {
 // agent is an agent of the server.
 type agent struct {
 	Agent
+}
+
+// run is what runs the agent's turns: its harness, or its runner.
+func (a *agent) run() runner.Agent {
+	if a.Runner != nil {
+		return a.Runner
+	}
+	return a.Harness
 }
 
 // resolveAgent picks the agent of a new conversation.

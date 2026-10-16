@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -28,6 +29,7 @@ type rig struct {
 	srv    *httptest.Server
 	hits   atomic.Int32
 	last   atomic.Pointer[http.Request]
+	body   atomic.Pointer[string]
 }
 
 type reply struct {
@@ -42,6 +44,10 @@ func newRig(t *testing.T, tokens common.TokenSource, script ...reply) *rig {
 	r.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		n := int(r.hits.Add(1)) - 1
 		r.last.Store(req)
+		if b, err := io.ReadAll(req.Body); err == nil {
+			s := string(b)
+			r.body.Store(&s)
+		}
 		rep := script[min(n, len(script)-1)]
 		for k, v := range rep.header {
 			w.Header()[k] = v
@@ -483,5 +489,27 @@ func TestEnvTokens(t *testing.T) {
 	}
 	if _, err := common.EnvTokens(nil, "X"); err == nil {
 		t.Error("nil lookup gave no error")
+	}
+}
+
+func TestRawBodyAndCallerHeadersAreKept(t *testing.T) {
+	t.Parallel()
+	r := newRig(t, nil, ok(`media`))
+	body, err := r.client.Do(t.Context(), common.Request{
+		Method: "POST", Path: "/upload", Raw: []byte("--b\r\nraw\r\n--b--"),
+		Header: http.Header{"Content-Type": {"multipart/related; boundary=b"}, "Accept": {"*/*"}},
+	})
+	if err != nil || string(body) != "media" {
+		t.Fatalf("%q, %v", body, err)
+	}
+	req := r.last.Load()
+	if req.Header.Get("Content-Type") != "multipart/related; boundary=b" || req.Header.Get("Accept") != "*/*" {
+		t.Errorf("headers = %v", req.Header)
+	}
+	if got := r.body.Load(); got == nil || *got != "--b\r\nraw\r\n--b--" {
+		t.Errorf("body = %v, want it sent as it is", got)
+	}
+	if _, err := r.client.Do(t.Context(), common.Request{Path: "/x", Body: 1, Raw: []byte("x")}); err == nil {
+		t.Error("Body and Raw together were accepted")
 	}
 }

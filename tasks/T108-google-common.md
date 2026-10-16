@@ -18,6 +18,7 @@ Gmail, Calendar and Drive ([E21](E21-google-connectors.md)) all call Google's RE
 - **`common.TokenSource`** (`Token(ctx)`), `TokenSourceFunc`, optional `Invalidator` (a 401 invalidates and retries once), `EnvTokens`, `ErrNoToken`.
 - **`common.Env`**: what a factory's options fill in (`HTTPClient`, `BaseURL`, `LookupEnv`, `Clock`, `Logger`, `Tokens`), `Defaults()` and `TokensFor`.
 - **`common.Settings`** (`access_token_env`, `base_url`, `timeout`) with `Validate`, `RequestTimeout`, `CheckBaseURL`, `RefuseLiteralToken`.
+- **Raw bodies:** `Request.Raw` sends bytes as they are (multipart uploads); a `Content-Type` or `Accept` in `Header` is kept (Drive exports and uploads; added at the Drive thread's request) — test: `TestRawBodyAndCallerHeadersAreKept`.
 - **Errors:** `InputError`/`Invalid` for the model's mistakes, Google's error body parsed (message, reasons), rate and quota reasons recognised, the token redacted from any text taken from a response.
 - **Paging and text:** `Paginate`, `ClampLimit`, `Truncate`, `TruncateContent` (rune boundary, marker says how to get more).
 - **Tool helpers:** `Func` and `Checked` (limits merged into the input schema, `InputError` reported as `ErrInvalidInput`).

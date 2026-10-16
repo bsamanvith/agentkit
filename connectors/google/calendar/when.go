@@ -51,18 +51,6 @@ func (w when) api(zone string) *timeOut {
 	return &timeOut{DateTime: w.t.Format(time.RFC3339), TimeZone: zone}
 }
 
-// span parses and orders a start and an end.
-func span(start, end string) (s, e when, err error) {
-	if s, err = parseWhen("start", start); err != nil {
-		return
-	}
-	if e, err = parseWhen("end", end); err != nil {
-		return
-	}
-	err = checkOrder(s, e)
-	return
-}
-
 func checkOrder(s, e when) error {
 	switch {
 	case s.allDay != e.allDay:

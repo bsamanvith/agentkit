@@ -90,7 +90,7 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 |---|---|
 | [T043](T043-credentials-backends.md) credential backends, [T044](T044-credentials-in-tools.md) credentials in tools | T042 |
 | [T091](T091-websocket-binding.md) WebSocket binding | T090 |
-| [T095](T095-mcp-oauth-client.md) MCP OAuth for external servers | T094, T042, T044 (shares T045's callback) |
+| [T095](T095-mcp-oauth-client.md) MCP OAuth for external servers | **In progress**: the core (`pkg/mcp/oauth`: discovery, CIMD/DCR, PKCE + resource, refresh, provider profiles) is built and tested on fakes. Wiring needs T094 (client), T042 (vault) and T096 (API, callback page) |
 | [T096](T096-mcp-servers-api-console.md) Add MCP servers at runtime: API, console, SSRF guard | T094, T062 (done), T040, T082; screens from T087 |
 | [T097](T097-mcp-registry-search.md) MCP Registry search | T096 |
 | [T045](T045-connect-accounts.md) Connecting accounts (OAuth2 + PKCE) | T040, T043, T044 |

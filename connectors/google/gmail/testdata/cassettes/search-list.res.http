@@ -1,0 +1,17 @@
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=UTF-8
+
+{
+  "messages": [
+    {
+      "id": "m1",
+      "threadId": "t1"
+    },
+    {
+      "id": "m2",
+      "threadId": "t2"
+    }
+  ],
+  "nextPageToken": "tok-2",
+  "resultSizeEstimate": 14
+}

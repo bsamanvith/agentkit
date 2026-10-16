@@ -1,0 +1,30 @@
+{
+  "messages": [
+    {
+      "id": "m1",
+      "thread_id": "t1",
+      "from": "Ada Lovelace \u003cada@example.com\u003e",
+      "to": "grace@example.com",
+      "subject": "Lunch plans",
+      "date": "Thu, 15 Oct 2026 09:12:03 +0000",
+      "snippet": "Are you free for lunch on Friday? I'd like to try the new place.",
+      "label_ids": [
+        "UNREAD",
+        "INBOX"
+      ]
+    },
+    {
+      "id": "m2",
+      "thread_id": "t2",
+      "from": "billing@example.com",
+      "to": "grace@example.com",
+      "subject": "Invoice 1042",
+      "date": "Wed, 14 Oct 2026 16:40:00 +0000",
+      "snippet": "The invoice is attached.",
+      "label_ids": [
+        "INBOX"
+      ]
+    }
+  ],
+  "next_page_token": "tok-2"
+}

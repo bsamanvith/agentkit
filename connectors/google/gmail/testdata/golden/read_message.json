@@ -1,0 +1,23 @@
+{
+  "id": "m1",
+  "thread_id": "t1",
+  "from": "Ada Lovelace \u003cada@example.com\u003e",
+  "to": "grace@example.com",
+  "cc": "charles@example.com",
+  "subject": "Lunch plans",
+  "date": "Thu, 15 Oct 2026 09:12:03 +0000",
+  "message_id": "\u003cCAF1@mail.example.com\u003e",
+  "label_ids": [
+    "UNREAD",
+    "INBOX"
+  ],
+  "body": "Are you free for lunch on Friday?\nI'd like to try the new place on Main Street. Café Ångström?",
+  "attachments": [
+    {
+      "filename": "menu.pdf",
+      "mime_type": "application/pdf",
+      "size": 48213,
+      "attachment_id": "ANGjdJ-att-1"
+    }
+  ]
+}

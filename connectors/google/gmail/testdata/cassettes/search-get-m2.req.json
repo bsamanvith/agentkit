@@ -1,0 +1,16 @@
+{
+  "method": "GET",
+  "path": "/gmail/v1/users/me/messages/m2",
+  "query": {
+    "format": [
+      "metadata"
+    ],
+    "metadataHeaders": [
+      "From",
+      "To",
+      "Subject",
+      "Date"
+    ]
+  },
+  "synthetic": true
+}

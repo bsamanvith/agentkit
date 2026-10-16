@@ -1,0 +1,28 @@
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=UTF-8
+
+{
+  "id": "m1",
+  "threadId": "t1",
+  "payload": {
+    "mimeType": "multipart/alternative",
+    "headers": [
+      {
+        "name": "From",
+        "value": "Ada Lovelace <ada@example.com>"
+      },
+      {
+        "name": "Subject",
+        "value": "Lunch plans"
+      },
+      {
+        "name": "Message-ID",
+        "value": "<CAF1@mail.example.com>"
+      },
+      {
+        "name": "References",
+        "value": "<CAF0@mail.example.com>"
+      }
+    ]
+  }
+}

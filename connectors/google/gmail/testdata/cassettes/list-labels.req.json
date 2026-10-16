@@ -1,0 +1,5 @@
+{
+  "method": "GET",
+  "path": "/gmail/v1/users/me/labels",
+  "synthetic": true
+}

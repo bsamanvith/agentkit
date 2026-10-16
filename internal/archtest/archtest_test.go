@@ -58,13 +58,16 @@ func TestConnectorRules(t *testing.T) {
 	t.Parallel()
 	r := rules()
 	r.PendingConnectors = map[string]string{"connectors/lazy": "adopting", "connectors/good": "adopted already"}
+	// A family's shared code is not a connector; the nested package beside
+	// it is, and is checked like any other.
+	r.ConnectorLibraries = []string{"connectors/lib/sub"}
 	got, err := archtest.CheckConnectors(filepath.Join("testdata", "repo"), r)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// In directory order: bare, good, imposter (lazy is pending).
+	// In directory order: bare, family/nested, good, imposter (lazy is pending).
 	var want []archtest.Violation
-	for _, pkg := range []string{"connectors/bare", "connectors/good", "connectors/imposter"} {
+	for _, pkg := range []string{"connectors/bare", "connectors/family/nested", "connectors/good", "connectors/imposter"} {
 		if pkg == "connectors/good" {
 			want = append(want, archtest.Violation{Rule: archtest.RuleConnectorPending, Package: pkg, Detail: "passes the connector rules: remove it from PendingConnectors"})
 			continue
@@ -73,7 +76,7 @@ func TestConnectorRules(t *testing.T) {
 			archtest.Violation{Rule: archtest.RuleConnectorSuite, Package: pkg, Detail: "has no test that calls toolsettest.RunConnector"},
 			archtest.Violation{Rule: archtest.RuleConnectorFuzz, Package: pkg, Detail: "has no fuzz target that calls toolsettest.FuzzResponses"},
 		)
-		if pkg == "connectors/bare" {
+		if pkg == "connectors/bare" || pkg == "connectors/family/nested" {
 			want = append(want, archtest.Violation{Rule: archtest.RuleConnectorCassettes, Package: pkg, Detail: "has no cassette in testdata/cassettes (make record-cassettes)"})
 		}
 	}

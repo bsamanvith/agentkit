@@ -25,39 +25,50 @@ const (
 // kitPath is the connector test kit, relative to the module.
 const kitPath = "pkg/toolset/toolsettest"
 
-// CheckConnectors checks every connector: each package directly under
-// root/connectors. Its tests must call the kit's RunConnector and
-// FuzzResponses, and testdata/cassettes must hold at least one recorded
-// request (.req.json). A connector cannot opt out of the kit by forgetting it.
-// A connector in rules.PendingConnectors is exempt until it passes, and then
-// its entry must go.
+// CheckConnectors checks every connector: each package under root/connectors,
+// at any depth (a family such as connectors/google holds one package per
+// toolset). Its tests must call the kit's RunConnector and FuzzResponses, and
+// testdata/cassettes must hold at least one recorded request (.req.json). A
+// connector cannot opt out of the kit by forgetting it. A connector in
+// rules.PendingConnectors is exempt until it passes, and then its entry must
+// go. A package in rules.ConnectorLibraries is shared code for connectors
+// (such as a family's HTTP client), not a connector, and is not checked.
 func CheckConnectors(root string, rules Rules) ([]Violation, error) {
 	module := rules.Module
-	entries, err := os.ReadDir(filepath.Join(root, "connectors"))
-	if errors.Is(err, fs.ErrNotExist) {
+	base := filepath.Join(root, "connectors")
+	if _, err := os.Stat(base); errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
-	if err != nil {
-		return nil, err
-	}
 	var out []Violation
-	for _, e := range entries {
-		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") || strings.HasPrefix(e.Name(), "_") || e.Name() == "testdata" {
-			continue
+	err := filepath.WalkDir(base, func(dir string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
 		}
-		rel := path.Join("connectors", e.Name())
-		dir := filepath.Join(root, "connectors", e.Name())
+		if !d.IsDir() || dir == base {
+			return nil
+		}
+		if name := d.Name(); strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_") || name == "testdata" {
+			return filepath.SkipDir
+		}
+		relDir, err := filepath.Rel(root, dir)
+		if err != nil {
+			return err
+		}
+		rel := filepath.ToSlash(relDir)
 		files, err := filepath.Glob(filepath.Join(dir, "*.go"))
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if !slices.ContainsFunc(files, func(f string) bool { return !strings.HasSuffix(f, "_test.go") }) {
-			continue // a directory of subpackages, not a connector
+			return nil // a directory of subpackages, not a connector
+		}
+		if slices.Contains(rules.ConnectorLibraries, rel) {
+			return nil
 		}
 		var vs []Violation
 		calls, err := kitCalls(files, module+"/"+kitPath)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if !calls["RunConnector"] {
 			vs = append(vs, Violation{Rule: RuleConnectorSuite, Package: rel, Detail: "has no test that calls toolsettest.RunConnector"})
@@ -67,7 +78,7 @@ func CheckConnectors(root string, rules Rules) ([]Violation, error) {
 		}
 		reqs, err := filepath.Glob(filepath.Join(dir, "testdata", "cassettes", "*.req.json"))
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if len(reqs) == 0 {
 			vs = append(vs, Violation{Rule: RuleConnectorCassettes, Package: rel, Detail: "has no cassette in testdata/cassettes (make record-cassettes)"})
@@ -79,6 +90,10 @@ func CheckConnectors(root string, rules Rules) ([]Violation, error) {
 		case !pending:
 			out = append(out, vs...)
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return out, nil
 }

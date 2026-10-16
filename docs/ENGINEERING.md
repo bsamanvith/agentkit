@@ -363,6 +363,7 @@ We keep coding-agent skills in the repo and improve them like code. They turn th
 | `plan` | Turn an idea into an epic and task files with testable acceptance criteria | §5, `tasks/README.md` |
 | `design-module` | Shape a new package: interfaces, subpackages, `xxxtest`, component wiring | §1 |
 | `write-tests` | Pick the tier, write one test per criterion, add or reuse a conformance suite | §2 |
+| `write-connector` | Write a connector or a provider family, wire its auth, test it with the kit, run it locally and over MCP | §2.8, [CONNECTORS.md](CONNECTORS.md) |
 | `implement-task` | Take a task from `todo` to `review`: branch, code, tests, `make check`, update the task file | §1, §2, §5 |
 | `review` | Review a diff against our rules: boundaries, brittle tests, test budget, errors, ctx, goroutines | §1, §2 |
 | `local-env` | Bring up a topology, run smoke tests, read logs | §3 |

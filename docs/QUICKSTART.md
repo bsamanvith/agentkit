@@ -148,7 +148,7 @@ Inside the container the server listens on `:8080` (not loopback), so `AGENTKIT_
 
 ## 5. Configuration
 
-`deploy/local/agent/config.json` is the starting point: one agent. `deploy/local/agent/search.json` has two (section 6). A server runs one or more agents, each with its own model, system prompt and toolsets, listed in `agents`; the API's limits are in `agent_api`. All fields are optional except `name`; unknown fields fail startup.
+`deploy/local/agent/config.json` is the starting point: one agent. `deploy/local/agent/search.json` has three (sections 6 and 7). A server runs one or more agents, each with its own model, system prompt and toolsets, listed in `agents`; the API's limits are in `agent_api`. All fields are optional except `name`; unknown fields fail startup.
 
 ```json
 {
@@ -207,7 +207,7 @@ curl -sN localhost:8080/v1/runs/run_.../events -H "Authorization: Bearer $AGENTK
 
 ## 6. Web search
 
-`deploy/local/agent/search.json` adds three web search toolsets to the demo tools, each served over MCP at its own route, and has two agents: `default`, a plain assistant with the demo tools, and `search`, a research assistant with the web search toolsets:
+`deploy/local/agent/search.json` adds three web search toolsets to the demo tools, each served over MCP at its own route, and has these agents: `default`, a plain assistant with the demo tools, `search`, a research assistant with the web search toolsets, and `workspace` (section 7):
 
 - `tavily`: `tavily_search` (web search) and `tavily_extract` (a page's content), at `/mcp/tavily`. No key needed.
 - `exa`: `exa_search` and `exa_extract` through [Exa](https://exa.ai), at `/mcp/exa`. Needs `EXA_API_KEY`.
@@ -266,6 +266,31 @@ Settings of a `parallel` toolset (all optional; unknown fields, including a lite
 | `search_defaults.fetch_policy` | Parallel's default | `max_age_seconds` (at least 600), `timeout_seconds`, `disable_cache_fallback` |
 | `extract_defaults.full_content` | `false` | return each page's full content instead of the excerpts relevant to the objective |
 | `extract_defaults.fetch_policy` | Parallel's default | as for search |
+
+## 7. Core tools: math and files
+
+Two built-in toolset types need no account (`pkg/coretools`):
+
+- `math`: `add` and `multiply` (a list of numbers), `subtract`, `divide`, `modulo`, `power`, `sqrt`, `round`, and `statistics` (count, sum, min, max, mean, median, standard deviation). Numbers are float64; results are rounded to 15 significant digits, so 0.1 + 0.2 is 0.3. Dividing by zero and overflows are errors the model reads.
+- `files`: `list_files`, `read_file` (a range of lines for large files), `search_files` (a regular expression, optionally filtered by a name glob) and `edit_file`, on the files under one `root` folder. Paths are relative to the root, and nothing outside it is reachable, by `..` or through a symlink. `edit_file` replaces `old_text`, which must appear exactly once unless `replace_all` is set, with `new_text`; an empty `old_text` creates a new file and its folders. Writes replace the file atomically and keep its mode. `.git` is never listed or searched.
+
+```json
+{"name": "math", "type": "math"},
+{"name": "files", "type": "files", "settings": {"root": "/srv/workspace"}},
+{"name": "docs", "type": "files", "settings": {"root": "/srv/docs"}, "exclude": ["edit_file"]}
+```
+
+`files` settings: `root` (required; relative paths are from the server's working directory), `create_root` (create it when missing; default false, so a typo fails startup), and `max_file_bytes` (default 1 MiB, at most 64 MiB: the largest file read, searched or edited). Excluding `edit_file`, as `docs` does above, makes a read-only toolset.
+
+`search.json` serves both, at `/mcp/math` and `/mcp/files`, with the agent `workspace` on `.data/workspace` (created at startup):
+
+```sh
+scripts/try-agent.sh --agent workspace
+bin/agentkit ask -agent workspace "Create notes/todo.md with three items, then tell me the average of 4, 8 and 15."
+claude mcp add --transport http agentkit-files http://localhost:8080/mcp/files   # or use them from Claude Code
+```
+
+`edit_file` is a write tool (kind `write`, risk `medium`); the rest are read-only. Until tool policies (T083) and `/mcp` auth (T040) land, give `files` a root you are happy for anyone who can reach the server to change, and keep the server on loopback.
 
 ## Troubleshooting
 

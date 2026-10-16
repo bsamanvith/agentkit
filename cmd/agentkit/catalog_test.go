@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
@@ -79,5 +82,54 @@ func TestServeMCPWithAFakeCatalog(t *testing.T) {
 	t.Cleanup(func() { _ = cs.Close() })
 	if got, err := echo(t, cs, "hi"); err != nil || got != "FAKE hi" {
 		t.Errorf("echo over MCP = %q, %v; want the fake's %q", got, err, "FAKE hi")
+	}
+}
+
+// TestServeCoreToolsOverMCP: the built-in math and files toolsets are in the
+// binary's catalog, and serve offers them over MCP like any connector.
+func TestServeCoreToolsOverMCP(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	path := filepath.Join(t.TempDir(), "config.json")
+	config := fmt.Sprintf(`{"mcp": {"toolsets": [{"name": "math", "type": "math"}, {"name": "files", "type": "files", "settings": {"root": %q}}]}}`, root)
+	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := loadServeConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := slog.New(slog.DiscardHandler)
+	built, problems, err := cli{}.buildToolsets(t.Context(), serveEnv{components: []string{mcpServerName}}, cfg, path, log)
+	if err != nil || len(problems) != 0 {
+		t.Fatalf("build: %v %v", err, problems)
+	}
+	m, err := newMCPServer(t.Context(), cfg.MCP, built, problems, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(m.Component.Handler())
+	t.Cleanup(ts.Close)
+
+	call := func(toolset, name string, args map[string]any) map[string]any {
+		t.Helper()
+		cs := connectMCP(t, ts.URL+"/mcp/"+toolset, nil)
+		defer cs.Close()
+		res, err := cs.CallTool(t.Context(), &mcp.CallToolParams{Name: name, Arguments: args})
+		if err != nil || res.IsError {
+			t.Fatalf("%s: %v %+v", name, err, res)
+		}
+		sc, _ := res.StructuredContent.(map[string]any)
+		return sc
+	}
+	if got := call("math", "multiply", map[string]any{"numbers": []float64{17, 23}}); got["result"] != 391.0 {
+		t.Errorf("multiply over MCP = %v, want 391", got)
+	}
+	call("files", "edit_file", map[string]any{"path": "notes/todo.md", "new_text": "- one\n"})
+	if got := call("files", "read_file", map[string]any{"path": "notes/todo.md"}); got["content"] != "- one\n" {
+		t.Errorf("read_file over MCP = %v, want the file edit_file created", got)
+	}
+	if b, err := os.ReadFile(filepath.Join(root, "notes", "todo.md")); err != nil || string(b) != "- one\n" {
+		t.Errorf("file on disk = %q, %v", b, err)
 	}
 }

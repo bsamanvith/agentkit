@@ -21,6 +21,7 @@ go.work.sum
 # Env and local data
 .env
 .env.*
+.data/
 *.db
 *.sqlite
 *.sqlite3

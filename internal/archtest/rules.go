@@ -19,7 +19,15 @@ func ModuleRules() Rules {
 			"cmd/agentkit":         {"github.com/modelcontextprotocol/go-sdk/mcp", "github.com/jackc/pgx/v5"},
 			"examples/mcp-gateway": {"github.com/modelcontextprotocol/go-sdk/mcp"}, // its test uses the SDK client
 			"pkg/mcp/server":       {"github.com/modelcontextprotocol/go-sdk/jsonrpc", "github.com/modelcontextprotocol/go-sdk/mcp"},
-			"pkg/tool":             {"github.com/google/jsonschema-go/jsonschema"},
+			// MCP OAuth for external servers (T095): the SDK's metadata
+			// discovery and registration (oauthex, auth), x/oauth2 for PKCE,
+			// the code exchange and refresh. Its tests run the SDK's client
+			// and server against the fakes.
+			"pkg/mcp/oauth": {
+				"github.com/modelcontextprotocol/go-sdk/auth", "github.com/modelcontextprotocol/go-sdk/oauthex",
+				"golang.org/x/oauth2", "github.com/modelcontextprotocol/go-sdk/mcp",
+			},
+			"pkg/tool": {"github.com/google/jsonschema-go/jsonschema"},
 			// The SQLite store's driver: pure Go, so binaries stay static
 			// (T029). It also names the driver's error type, for SQLITE_BUSY.
 			"pkg/store/sqlite": {"modernc.org/sqlite"},
@@ -133,6 +141,10 @@ func ModuleRules() Rules {
 			// The built-in toolsets (math, files) are factories like the demo:
 			// the tool abstraction and the factory contract, nothing else.
 			"pkg/coretools": {"pkg/tool", "pkg/toolset"},
+			// MCP OAuth knows principals (to name a connection's owner) and
+			// the clock, never the server, a store backend or the harness: the
+			// vault backs its stores once T042 lands.
+			"pkg/mcp/oauth": {"pkg/auth", "pkg/tenancy", "pkg/clock", "pkg/clock/clocktest", "pkg/mcp/oauth/oauthtest"},
 			// Connectors are toolset factories over plain net/http: the tool
 			// abstraction, the factory contract and the clock, never the
 			// server, the harness or another connector (E10). Their tests

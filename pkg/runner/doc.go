@@ -90,6 +90,14 @@
 // so the checkpoint, holds a [StepOutput] (the answer and a reference into the
 // store) instead of the whole transcript.
 //
+// # Where agents run
+//
+// The runner asks its [AgentFactory] for the agent of every chat run it
+// starts or resumes, with the run's [Placement]: interactive or background,
+// new or resumed. Package [github.com/bsamanvith/agentkit/pkg/runner/pool]
+// routes that request to a pool (in process, a sandbox, a VM of its own);
+// whichever runs the agent, the runner keeps the run's persistence ([E20]).
+//
 // # Leases and cancellation
 //
 // Every execution holds its run's lease, renews it from the runner's clock and
@@ -106,5 +114,6 @@
 // run another process holds gives [store.ErrLeased].
 //
 // [E05]: https://github.com/bsamanvith/agentkit/blob/main/tasks/E05-store-runner.md
+// [E20]: https://github.com/bsamanvith/agentkit/blob/main/tasks/E20-runner-pools.md
 // [T100]: https://github.com/bsamanvith/agentkit/blob/main/tasks/T100-interactive-chat-runs.md
 package runner

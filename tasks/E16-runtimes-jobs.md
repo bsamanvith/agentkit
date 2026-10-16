@@ -23,3 +23,5 @@ Owner ideas (2026-10-12, [docs/PRODUCT.md](../docs/PRODUCT.md)): run an agent in
 - [ ] T079 Runtime contract and `agentkit job run` (Go harness), local container runner *(to plan)*
 - [ ] T080 Exported harness images (`agentkit export --image`) *(to plan)*
 - [ ] T081 pi harness adapter for the runtime contract *(to plan)*
+
+Related: [E20](E20-runner-pools.md)'s sandbox and VM pools (T106, T107) run agents on this runtime contract.

@@ -78,7 +78,7 @@ curl -s localhost:8080/v1/toolsets/demo/tools -H "Authorization: Bearer $AGENTKI
 curl -s localhost:8080/healthz; curl -s localhost:8080/readyz; curl -s localhost:8080/version
 ```
 
-Use the tools from Claude Code: `claude mcp add --transport http agentkit-demo http://localhost:8080/mcp/demo`.
+Use the tools from Claude Code: `claude mcp add --transport http agentkit-demo http://localhost:8080/mcp/demo --header "Authorization: Bearer $AGENTKIT_API_TOKEN"`. When `AGENTKIT_API_TOKEN` is set, `/mcp` needs it too.
 
 ### From the terminal: `agentkit chat`, `agentkit ask` and `agentkit create`
 
@@ -221,7 +221,7 @@ scripts/try-agent.sh --agent search     # uses search.json; AGENTKIT_CONFIG pick
 
 Then ask the `search` agent something current, e.g. `{"message":"What is the latest Go release? Cite the source.","agent":"search"}`: the run's events show a `tool_call` to one of the search tools, and the answer cites URLs. `GET /v1/toolsets` shows which search toolsets are ready, and for a skipped one the reason and the key variable it reads (never the key).
 
-Do not expose a toolset that holds a key on a public address yet: until per-route auth for `/mcp` lands (T040), anyone who can reach the server can spend the key's quota. Keep `AGENTKIT_ADDR` on loopback (the default).
+`/mcp` takes the agent API's bearer token, `AGENTKIT_API_TOKEN`: required off loopback, and checked whenever it is set. It is one static token for every toolset; per-key and per-toolset access is T040.
 
 ### Tavily
 
@@ -293,10 +293,10 @@ Two built-in toolset types need no account (`pkg/coretools`):
 ```sh
 scripts/try-agent.sh --agent workspace
 bin/agentkit ask -agent workspace "Create notes/todo.md with three items, then tell me the average of 4, 8 and 15."
-claude mcp add --transport http agentkit-files http://localhost:8080/mcp/files   # or use them from Claude Code
+claude mcp add --transport http agentkit-files http://localhost:8080/mcp/files --header "Authorization: Bearer $AGENTKIT_API_TOKEN"   # or use them from Claude Code
 ```
 
-`edit_file` is a write tool (kind `write`, risk `medium`); the rest are read-only. Until tool policies (T083) and `/mcp` auth (T040) land, give `files` a root you are happy for anyone who can reach the server to change, and keep the server on loopback.
+`edit_file` is a write tool (kind `write`, risk `medium`); the rest are read-only. Until tool policies (T083) land, anyone with the API token can change files under `files`' root: give it a root you are happy for them to change.
 
 ## Troubleshooting
 

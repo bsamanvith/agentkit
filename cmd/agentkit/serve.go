@@ -130,7 +130,7 @@ func (c cli) serve(ctx context.Context, args []string) error {
 		var m component.Mount
 		switch name {
 		case mcpServerName:
-			m, err = newMCPServer(ctx, cfg.MCP, built, problems, log)
+			m, err = newMCPServer(ctx, cfg.MCP, built, problems, c.env(envAPIToken), env.addr, log)
 		case agentapi.Name:
 			m, agents, err = c.newAgents(ctx, cfg, built, problems, env, st.Store, b, clk, log)
 		case web.Name:

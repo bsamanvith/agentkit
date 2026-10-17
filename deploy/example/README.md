@@ -4,7 +4,8 @@
 
 ```sh
 make image
-docker run --rm --stop-timeout 20 -p 8080:8080 \
+export AGENTKIT_API_TOKEN=$(openssl rand -hex 16)
+docker run --rm --stop-timeout 20 -p 8080:8080 -e AGENTKIT_API_TOKEN \
   -v "$PWD/deploy/example/config.json:/etc/agentkit/config.json:ro" \
   agentkit:latest
 ```
@@ -13,7 +14,7 @@ Then, from the host:
 
 ```sh
 curl localhost:8080/readyz
-curl -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+curl -H "Authorization: Bearer $AGENTKIT_API_TOKEN" -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
   localhost:8080/mcp/demo \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"calculate","arguments":{"op":"mul","a":6,"b":7}}}'
 ```

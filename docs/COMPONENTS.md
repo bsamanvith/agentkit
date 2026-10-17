@@ -44,6 +44,7 @@ a `pool.Pool` whose agents are `runnerrpc` clients.
 | `AGENTKIT_RUNNER_URL` | `agent` | Run the agents on the runner at this URL (`http://runner:8080`) instead of in process. The API then builds no model. |
 | `AGENTKIT_TOOLSETS_URL` | `agent`, `runner`, `mcp-server` | Take the toolsets from the toolsets component at this URL instead of building them. Every toolset the config names must be served there. |
 | `AGENTKIT_RPC_TOKEN` | all | The bearer token between components, 16 bytes or more. The runner and toolsets components require it on an address that is not loopback, and their callers send it. |
+| `AGENTKIT_API_TOKEN` | `agent`, `mcp-server` | The bearer token clients send to `/v1/` and `/mcp/`. Required on an address that is not loopback, and checked whenever it is set. |
 | `AGENTKIT_DEPENDENCY_WAIT` | `agent`, `runner` | How long startup waits for the toolsets component to answer (default `60s`): pods start in any order. |
 
 Every container gets the same config file: the agents and `mcp.toolsets`.
@@ -124,7 +125,7 @@ The runner bundled with the API, the toolsets apart:
 
 ```sh
 # toolsets container
-AGENTKIT_COMPONENTS=toolsets,mcp-server AGENTKIT_RPC_TOKEN=... agentkit serve
+AGENTKIT_COMPONENTS=toolsets,mcp-server AGENTKIT_RPC_TOKEN=... AGENTKIT_API_TOKEN=... agentkit serve
 # API and runner in one container
 AGENTKIT_COMPONENTS=agent,web AGENTKIT_TOOLSETS_URL=http://toolsets:8080 AGENTKIT_RPC_TOKEN=... agentkit serve
 ```
@@ -134,7 +135,7 @@ Three containers, one per component:
 ```sh
 docker network create agk
 docker run -d --name toolsets --network agk -v $PWD/config.json:/etc/agentkit/config.json:ro \
-  -e AGENTKIT_COMPONENTS=toolsets,mcp-server -e AGENTKIT_RPC_TOKEN=$RPC_TOKEN agentkit-toolsets
+  -e AGENTKIT_COMPONENTS=toolsets,mcp-server -e AGENTKIT_RPC_TOKEN=$RPC_TOKEN -e AGENTKIT_API_TOKEN=$API_TOKEN agentkit-toolsets
 docker run -d --name runner --network agk -v $PWD/config.json:/etc/agentkit/config.json:ro \
   -e AGENTKIT_COMPONENTS=runner -e AGENTKIT_RPC_TOKEN=$RPC_TOKEN \
   -e AGENTKIT_TOOLSETS_URL=http://toolsets:8080 -e ANTHROPIC_API_KEY agentkit-runner

@@ -380,6 +380,7 @@ var credentialEnv = map[string]string{
 	"exa":      "EXA_API_KEY",
 	"parallel": "PARALLEL_API_KEY",
 	"calendar": "GOOGLE_ACCESS_TOKEN",
+	"drive":    "GOOGLE_ACCESS_TOKEN",
 }
 
 // credentialOf says where a toolset's key comes from and whether it is set:

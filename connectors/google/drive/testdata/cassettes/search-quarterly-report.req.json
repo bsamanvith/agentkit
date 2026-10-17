@@ -1,0 +1,25 @@
+{
+  "method": "GET",
+  "path": "/drive/v3/files",
+  "query": {
+    "q": [
+      "trashed = false and (name contains 'quarterly report' or fullText contains 'quarterly report')"
+    ],
+    "orderBy": [
+      "modifiedTime desc"
+    ],
+    "pageSize": [
+      "2"
+    ],
+    "fields": [
+      "nextPageToken,files(id,name,mimeType,modifiedTime,size,parents,webViewLink,owners(displayName,emailAddress))"
+    ],
+    "supportsAllDrives": [
+      "true"
+    ],
+    "includeItemsFromAllDrives": [
+      "true"
+    ]
+  },
+  "synthetic": true
+}

@@ -1,0 +1,16 @@
+{
+  "method": "PATCH",
+  "path": "/drive/v3/files/1AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+  "query": {
+    "fields": [
+      "id,name,mimeType,modifiedTime,size,parents,webViewLink,owners(displayName,emailAddress)"
+    ],
+    "supportsAllDrives": [
+      "true"
+    ]
+  },
+  "body": {
+    "trashed": true
+  },
+  "synthetic": true
+}

@@ -1,0 +1,19 @@
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=UTF-8
+
+{
+  "id": "1NewDocId000111222333444555666777",
+  "name": "Meeting notes",
+  "mimeType": "application/vnd.google-apps.document",
+  "modifiedTime": "2026-10-16T16:20:00.000Z",
+  "parents": [
+    "0BfolderReports"
+  ],
+  "webViewLink": "https://docs.google.com/document/d/1NewDocId000111222333444555666777/edit?usp=drivesdk",
+  "owners": [
+    {
+      "displayName": "Ada Lovelace",
+      "emailAddress": "ada@example.com"
+    }
+  ]
+}

@@ -63,6 +63,12 @@ type Agent struct {
 	// "<toolset>__<tool>" ([MergeTools]); GET /v1/agents lists the names.
 	Toolsets        []string
 	PrefixToolNames bool
+	// RuntimeToolsets name toolsets added at run time ([WithToolsetAdmin])
+	// whose tools the harness has too, as "<toolset>__<tool>": the harness's
+	// registry resolves them in the run's tenant at each turn (package
+	// mcp/servers), so a tenant that has not added one gets none of its
+	// tools.
+	RuntimeToolsets []string
 	// Skills and Memory describe the agent's skills and long-term memory.
 	Skills []string
 	Memory bool
@@ -138,7 +144,16 @@ func NewAgents(agents []Agent, opts ...Option) (*Server, error) {
 				return nil, fmt.Errorf("%w: agent %q uses toolset %q, which WithToolsets does not give", ErrInvalidConfig, a.Name, name)
 			}
 		}
+		for _, name := range a.RuntimeToolsets {
+			switch {
+			case cfg.admin == nil:
+				return nil, fmt.Errorf("%w: agent %q uses toolsets added at run time, and there is no WithToolsetAdmin", ErrInvalidConfig, a.Name)
+			case !validName.MatchString(name) || sets[name] != nil:
+				return nil, fmt.Errorf("%w: agent %q: runtime toolset %q must match %s and not be a toolset of WithToolsets", ErrInvalidConfig, a.Name, name, validName)
+			}
+		}
 		a.Toolsets, a.Skills = slices.Clone(a.Toolsets), slices.Clone(a.Skills)
+		a.RuntimeToolsets = slices.Clone(a.RuntimeToolsets)
 		ag := &agent{Agent: a}
 		byName[a.Name] = ag
 		order = append(order, ag)
@@ -257,6 +272,16 @@ func (s *Server) agentView(r *http.Request, a *agent) (wire.Agent, error) {
 		}
 		v.Toolsets = append(v.Toolsets, at)
 	}
+	if len(a.RuntimeToolsets) > 0 {
+		ctx, err := s.tenantContext(r)
+		for _, name := range a.RuntimeToolsets {
+			at := wire.AgentToolset{Name: name, Status: wire.ToolsetNotAdded, Tools: []string{}}
+			if err == nil {
+				at = s.runtimeAgentToolset(ctx, name)
+			}
+			v.Toolsets = append(v.Toolsets, at)
+		}
+	}
 	return v, nil
 }
 
@@ -278,6 +303,18 @@ func (s *Server) listToolsets(w http.ResponseWriter, r *http.Request) {
 		}
 		out.Toolsets = append(out.Toolsets, v)
 	}
+	if s.cfg.admin != nil {
+		ctx, ok := s.scope(w, r)
+		if !ok {
+			return
+		}
+		more, err := s.runtimeToolsets(ctx, acc)
+		if err != nil {
+			s.internal(w, "listing the toolsets added at run time", err)
+			return
+		}
+		out.Toolsets = append(out.Toolsets, more...)
+	}
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -285,6 +322,9 @@ func (s *Server) listTools(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	ts := s.toolsets[name]
 	if ts == nil || !accessOf(r).toolset(name) {
+		if ts == nil && accessOf(r).toolset(name) && s.runtimeTools(w, r, name) {
+			return
+		}
 		writeError(w, http.StatusNotFound, &Error{Code: CodeNotFound, Message: "no toolset " + quote(name)})
 		return
 	}

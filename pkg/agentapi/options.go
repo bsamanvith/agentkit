@@ -41,6 +41,7 @@ const retryAfter = "2"
 type Option func(*config)
 
 type config struct {
+	admin          ToolsetAdmin
 	token          string
 	authn          auth.Authenticator
 	maxConcurrent  int

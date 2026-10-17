@@ -6,6 +6,7 @@
 //	agentkit chat [flags]                      talk to an agent on a server, interactively
 //	agentkit ask [flags] "<message>" | -       one run on a server, for scripts (-json: JSONL events)
 //	agentkit create [flags]                    create an empty conversation on a server; prints its ID
+//	agentkit toolsets <command> [flags]        list a server's toolsets; add, review and approve MCP servers
 //	agentkit migrate                           apply the Postgres store's migrations to $AGENTKIT_STORE
 //
 // Credentials come from the Anthropic SDK's chain: ANTHROPIC_API_KEY,
@@ -94,6 +95,7 @@ const usage = `usage:
   agentkit create [flags]                  create an empty conversation on a server; prints its ID for -conversation
   agentkit migrate                         apply the Postgres store's migrations to $AGENTKIT_STORE, then exit
   agentkit mcp-tools [flags] <url>         list an MCP server's tools with the fingerprints to pin them
+  agentkit toolsets <command> [flags]      list a server's toolsets; add, review and approve MCP servers on it
 
 Run "agentkit <command> -h" for flags.
 `
@@ -122,6 +124,8 @@ func (c cli) main(ctx context.Context, args []string) int {
 		return c.ask(ctx, args[1:])
 	case len(args) >= 1 && args[0] == "create":
 		return c.create(ctx, args[1:])
+	case len(args) >= 1 && args[0] == "toolsets":
+		return c.toolsetsCmd(ctx, args[1:])
 	default:
 		fmt.Fprint(c.stderr, usage)
 		return 2

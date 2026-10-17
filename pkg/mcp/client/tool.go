@@ -30,7 +30,7 @@ func (c *Client) Wrap(t *mcp.Tool) (tool.Tool, error) {
 	if t == nil {
 		return nil, fmt.Errorf("%w: nil tool", tool.ErrInvalidDefinition)
 	}
-	def, err := definition(t)
+	def, err := Definition(t)
 	if err != nil {
 		return nil, err
 	}
@@ -46,8 +46,10 @@ func (c *Client) Wrap(t *mcp.Tool) (tool.Tool, error) {
 	return &remote{c: c, def: def}, nil
 }
 
-// definition converts the server's definition into ours.
-func definition(t *mcp.Tool) (tool.Definition, error) {
+// Definition converts the server's definition into ours, as [Client.Wrap]
+// offers it to a model: the description sanitized, the annotations read as
+// claims that can raise the tool's class but not lower it.
+func Definition(t *mcp.Tool) (tool.Definition, error) {
 	in := json.RawMessage(`{"type":"object"}`)
 	if t.InputSchema != nil {
 		b, err := json.Marshal(t.InputSchema)

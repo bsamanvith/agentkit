@@ -350,6 +350,11 @@ const (
 	CodeInterrupted    = "conversation_interrupted" // no longer returned: a new message replaces an interrupted run
 	CodeOverCapacity   = "over_capacity"            // HTTP 503 with Retry-After: too many runs
 	CodeShuttingDown   = "shutting_down"            // HTTP 503: the server is draining
+	// Codes of the toolsets added at run time.
+	CodeToolsetExists     = "toolset_exists"     // HTTP 409: a toolset has that name
+	CodeConflict          = "conflict"           // HTTP 409: it changed since it was read; read it again
+	CodeAuthRequired      = "auth_required"      // HTTP 422: the MCP server wants a credential
+	CodeServerUnreachable = "server_unreachable" // HTTP 422: the MCP server could not be used
 	// CodeRunInterrupted: the run was stopped (POST /v1/runs/{id}/stop, or
 	// its client went away for longer than the reconnect grace). It stays
 	// interrupted: resume it, or send a new message.

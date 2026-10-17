@@ -179,10 +179,11 @@ func TestScopes(t *testing.T) {
 			path = "/v1/conversations/" + run.ConversationID
 		}
 		resp, body := r.do(method, path, `{"message":"x"}`, as(keyRead)...)
+		admin := strings.HasSuffix(rt, "/review") // agent:admin, even to read
 		switch {
-		case method == "GET" && resp.StatusCode == http.StatusForbidden:
+		case method == "GET" && !admin && resp.StatusCode == http.StatusForbidden:
 			t.Errorf("read-only %s = 403, want it served", rt)
-		case method != "GET" && (resp.StatusCode != http.StatusForbidden || apiCode(body) != agentapi.CodeForbidden):
+		case (method != "GET" || admin) && (resp.StatusCode != http.StatusForbidden || apiCode(body) != agentapi.CodeForbidden):
 			t.Errorf("read-only %s = %d %s, want 403 forbidden", rt, resp.StatusCode, body)
 		}
 	}

@@ -21,6 +21,9 @@ const (
 	// not be listed just now (the toolsets component is down, say); Reason
 	// says so. It has no tools until it answers again.
 	ToolsetUnavailable = "unavailable"
+	// ToolsetNotAdded: an agent names a toolset added at run time that its
+	// tenant has not added (or removed). It has no tools.
+	ToolsetNotAdded = "not_added"
 )
 
 // Credential statuses of a toolset. Values are never sent, only where they
@@ -129,6 +132,11 @@ type Toolset struct {
 	MCPPath    string     `json:"mcp_path,omitempty"`
 	ToolCount  int        `json:"tool_count"`
 	Credential Credential `json:"credential"`
+	// Runtime marks a toolset added at run time (POST /v1/toolsets), which
+	// admins review and change under /v1/toolsets/{name}. Its Status may
+	// also be ToolsetReviewNeeded or ToolsetDisabled, and ToolCount counts
+	// its approved tools.
+	Runtime bool `json:"runtime,omitempty"`
 }
 
 // Credential is where a toolset's credential comes from, and whether it is

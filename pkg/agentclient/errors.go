@@ -57,6 +57,19 @@ var (
 	// run_done or run_error event. The run's outcome is unknown to the
 	// client; [Client.GetRun] may tell.
 	ErrStreamTruncated = errors.New("event stream ended before the run did")
+	// ErrToolsetExists: a toolset has the name of the one being added
+	// (409).
+	ErrToolsetExists = errors.New("toolset exists")
+	// ErrConflict: what the request was based on changed since it was read,
+	// such as a tool approved while the server changed it (409). Read it
+	// again.
+	ErrConflict = errors.New("conflict")
+	// ErrServerUnreachable: an MCP server being added could not be reached
+	// or listed (422).
+	ErrServerUnreachable = errors.New("MCP server unreachable")
+	// ErrAuthRequired: an MCP server being added wants a credential the
+	// request did not give (422).
+	ErrAuthRequired = errors.New("MCP server requires a credential")
 	// ErrBadResponse: the server's response is not what the API defines (not
 	// an event stream or JSON, an event that is not a JSON object with a
 	// type, a body that does not decode).
@@ -78,6 +91,11 @@ var codeSentinels = map[string]error{
 	wire.CodeAgentMismatch:  ErrAgentMismatch,
 	wire.CodeOverCapacity:   ErrOverCapacity,
 	wire.CodeShuttingDown:   ErrShuttingDown,
+
+	wire.CodeToolsetExists:     ErrToolsetExists,
+	wire.CodeConflict:          ErrConflict,
+	wire.CodeServerUnreachable: ErrServerUnreachable,
+	wire.CodeAuthRequired:      ErrAuthRequired,
 
 	wire.CodeRunLeased:        ErrConversationBusy,
 	wire.CodeRunFinal:         ErrRunState,

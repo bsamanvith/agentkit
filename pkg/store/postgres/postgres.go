@@ -63,6 +63,7 @@ var (
 	_ store.EventLog          = (*Store)(nil)
 	_ store.CommandLog        = (*Store)(nil)
 	_ store.ConversationIndex = (*Store)(nil)
+	_ store.ToolsetStore      = (*Store)(nil)
 	_ flow.Checkpointer       = (*Store)(nil)
 	_ store.Admin             = admin{}
 )

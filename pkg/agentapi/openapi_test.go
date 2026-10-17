@@ -564,6 +564,33 @@ func TestOpenAPIResponses(t *testing.T) {
 	rec.probe(rb, "list_toolsets_unavailable", 200, "GET", "/v1/toolsets", "", "")
 	rec.probe(rb, "list_tools_unavailable", 200, "GET", "/v1/toolsets/down/tools", "", "")
 
+	// The toolsets added at run time.
+	ra, _, mcpURL := adminRig(t)
+	addBody := `{"type":"mcp","name":"linear","url":"` + mcpURL + `"}`
+	added := decodeAs[wire.ServerToolset](t, rec.probe(ra, "add_toolset", 201, "POST", "/v1/toolsets", addBody, ""))
+	rec.probe(ra, "add_toolset_invalid", 400, "POST", "/v1/toolsets", `{"type":"mcp","name":"x","url":"https://10.0.0.1/mcp"}`, "")
+	rec.probe(ra, "add_toolset_unauthorized", 401, "POST", "/v1/toolsets", addBody, "", bearer...)
+	rec.probe(ra, "add_toolset_exists", 409, "POST", "/v1/toolsets", addBody, "")
+	rec.probe(ra, "add_toolset_unreachable", 422, "POST", "/v1/toolsets", `{"type":"mcp","name":"x","url":"http://127.0.0.1:1/mcp"}`, "")
+	rec.probe(ra, "get_review", 200, "GET", "/v1/toolsets/linear/review", "", "")
+	rec.probe(ra, "get_review_unauthorized", 401, "GET", "/v1/toolsets/linear/review", "", "", bearer...)
+	rec.probe(ra, "get_review_not_found", 404, "GET", "/v1/toolsets/nope/review", "", "")
+	fp := added.Tools[slices.IndexFunc(added.Tools, func(rt wire.ReviewTool) bool { return rt.Name == "search" })].Fingerprint
+	decision := `{"tools":[{"name":"search","fingerprint":"` + fp + `","decision":"approve","kind":"read"}]}`
+	rec.probe(ra, "review_toolset", 200, "POST", "/v1/toolsets/linear/review", decision, "")
+	rec.probe(ra, "review_toolset_invalid", 400, "POST", "/v1/toolsets/linear/review", `{"tools":[]}`, "")
+	rec.probe(ra, "review_toolset_unauthorized", 401, "POST", "/v1/toolsets/linear/review", decision, "", bearer...)
+	rec.probe(ra, "review_toolset_not_found", 404, "POST", "/v1/toolsets/nope/review", decision, "")
+	rec.probe(ra, "review_toolset_conflict", 409, "POST", "/v1/toolsets/linear/review", strings.Replace(decision, fp, "sha256:"+strings.Repeat("0", 64), 1), "")
+	rec.probe(ra, "list_toolsets_runtime", 200, "GET", "/v1/toolsets", "", "")
+	rec.probe(ra, "update_toolset", 200, "PATCH", "/v1/toolsets/linear", `{"enabled":false}`, "")
+	rec.probe(ra, "update_toolset_invalid", 400, "PATCH", "/v1/toolsets/linear", `{}`, "")
+	rec.probe(ra, "update_toolset_unauthorized", 401, "PATCH", "/v1/toolsets/linear", `{"enabled":true}`, "", bearer...)
+	rec.probe(ra, "update_toolset_not_found", 404, "PATCH", "/v1/toolsets/nope", `{"enabled":true}`, "")
+	rec.probe(ra, "delete_toolset_unauthorized", 401, "DELETE", "/v1/toolsets/linear", "", "", bearer...)
+	rec.probe(ra, "delete_toolset", 204, "DELETE", "/v1/toolsets/linear", "", "")
+	rec.probe(ra, "delete_toolset_not_found", 404, "DELETE", "/v1/toolsets/linear", "", "")
+
 	// Keys without the scope an endpoint needs: 403 on every route. The
 	// rig's own requests read, with the read key.
 	tenant403, err := tenancy.NewTenant(agentapi.DefaultTenant)
@@ -584,7 +611,11 @@ func TestOpenAPIResponses(t *testing.T) {
 		if method == http.MethodGet {
 			rec.probe(rf, name, 403, method, target, "", "", "Authorization", "Bearer "+runKey)
 		} else {
-			body := map[string]string{"POST /v1/runs": `{"message":"hi"}`, "POST /v1/runs/{id}/decisions": `{"path":"f/ok","approved":true}`}[rt]
+			body := map[string]string{
+				"POST /v1/runs": `{"message":"hi"}`, "POST /v1/runs/{id}/decisions": `{"path":"f/ok","approved":true}`,
+				"POST /v1/toolsets": `{"type":"mcp","name":"x","url":"https://mcp.example.com/mcp"}`, "POST /v1/toolsets/{name}/review": `{"tools":[]}`,
+				"PATCH /v1/toolsets/{name}": `{"enabled":true}`,
+			}[rt]
 			rec.probe(rf, name, 403, method, target, body, "")
 		}
 	}

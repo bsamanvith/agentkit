@@ -77,6 +77,11 @@ func TestCommandLog(t *testing.T) {
 	storetest.RunCommandLog(t, func(t *testing.T, clk clock.Clock) storetest.CommandStore { return open(t, clk) })
 }
 
+func TestToolsetStore(t *testing.T) {
+	t.Parallel()
+	storetest.RunToolsetStore(t, func(t *testing.T, clk clock.Clock) store.ToolsetStore { return open(t, clk) })
+}
+
 // The suites again, with every call going to one of two Stores (two
 // connection pools, two writer connections) open on the same file, in turn.
 // The suites' races (sequence races, concurrent appends, claims and
@@ -112,6 +117,10 @@ func TestTwoHandles(t *testing.T) {
 	t.Run("CommandLog", func(t *testing.T) {
 		t.Parallel()
 		storetest.RunCommandLog(t, func(t *testing.T, clk clock.Clock) storetest.CommandStore { return openPair(t, clk) })
+	})
+	t.Run("ToolsetStore", func(t *testing.T) {
+		t.Parallel()
+		storetest.RunToolsetStore(t, func(t *testing.T, clk clock.Clock) store.ToolsetStore { return openPair(t, clk) })
 	})
 
 	t.Run("ConversationIndex", func(t *testing.T) {
@@ -241,6 +250,22 @@ func (p *pair) SetTitle(ctx context.Context, id, title string) (store.Conversati
 
 func (p *pair) DeleteConversation(ctx context.Context, id string) error {
 	return p.next().DeleteConversation(ctx, id)
+}
+
+func (p *pair) PutToolset(ctx context.Context, t store.ToolsetRecord, ifVersion int64) (store.ToolsetRecord, error) {
+	return p.next().PutToolset(ctx, t, ifVersion)
+}
+
+func (p *pair) GetToolset(ctx context.Context, name string) (store.ToolsetRecord, error) {
+	return p.next().GetToolset(ctx, name)
+}
+
+func (p *pair) ListToolsets(ctx context.Context) ([]store.ToolsetRecord, error) {
+	return p.next().ListToolsets(ctx)
+}
+
+func (p *pair) DeleteToolset(ctx context.Context, name string, ifVersion int64) error {
+	return p.next().DeleteToolset(ctx, name, ifVersion)
 }
 
 type pairAdmin struct{ p *pair }

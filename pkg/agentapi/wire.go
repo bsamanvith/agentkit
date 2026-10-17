@@ -51,7 +51,12 @@ const (
 	CodeInterrupted    = wire.CodeInterrupted
 	CodeOverCapacity   = wire.CodeOverCapacity
 	CodeShuttingDown   = wire.CodeShuttingDown
-	CodeAgentMismatch  = wire.CodeAgentMismatch
+
+	CodeToolsetExists     = wire.CodeToolsetExists
+	CodeConflict          = wire.CodeConflict
+	CodeAuthRequired      = wire.CodeAuthRequired
+	CodeServerUnreachable = wire.CodeServerUnreachable
+	CodeAgentMismatch     = wire.CodeAgentMismatch
 
 	CodeRunInterrupted   = wire.CodeRunInterrupted
 	CodeRunFailed        = wire.CodeRunFailed

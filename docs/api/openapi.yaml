@@ -1267,6 +1267,413 @@
             }
           }
         }
+      },
+      "post": {
+        "operationId": "addToolset",
+        "summary": "Add an MCP server as a toolset",
+        "description": "Admins only (agent:admin). The server is probed: agentkit connects (https to a public address, unless the operator allows the host), lists its tools and stores the toolset in the caller's tenant, enabled, with every tool new and off until reviewed (POST /v1/toolsets/{name}/review). Agents that name it in runtime_toolsets get its approved tools as <name>__<tool>.",
+        "requestBody": {
+          "required": true,
+          "description": "The server to add.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddToolsetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Added: the toolset and the review of its tools.",
+            "headers": {
+              "Location": {
+                "description": "/v1/toolsets/{name}/review",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerToolset"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: a bad name, URL, transport, scope, auth or header; an address the server may not connect to; too many toolsets.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:admin, or (adding) may not use a toolset of that name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "toolset_exists: a toolset (of the config, or added) has that name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "auth_required: the server refused agentkit for want of a credential; server_unreachable: it could not be reached or used.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/toolsets/{name}": {
+      "patch": {
+        "operationId": "updateToolset",
+        "summary": "Change a toolset added at run time",
+        "description": "Admins only. Turns it on or off, or replaces its headers (an empty object removes them).",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "The toolset's name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "What to change.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateToolsetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The toolset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerToolset"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: nothing to change, or a bad header.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:admin, or (adding) may not use a toolset of that name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no toolset of that name was added at run time that the credential may see, or the server does not add toolsets at run time.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteToolset",
+        "summary": "Remove a toolset added at run time",
+        "description": "Admins only. Its connection closes; agents get none of its tools from their next turn.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "The toolset's name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed."
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:admin, or (adding) may not use a toolset of that name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no toolset of that name was added at run time that the credential may see, or the server does not add toolsets at run time.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/toolsets/{name}/review": {
+      "get": {
+        "operationId": "getToolsetReview",
+        "summary": "Review a toolset's tools",
+        "description": "Admins only. Every tool the server lists now, and every approved one it no longer lists: new, approved, changed (with the approved definition and the fields that differ), removed or rejected, with the fingerprint to approve.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "The toolset's name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The toolset and its tools.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerToolset"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:admin, or (adding) may not use a toolset of that name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no toolset of that name was added at run time that the credential may see, or the server does not add toolsets at run time.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "reviewToolset",
+        "summary": "Approve or reject tools",
+        "description": "Admins only. Each decision names the fingerprint it is about, which must be the one the server lists now. An approved tool is offered to agents while the server lists it with that fingerprint.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "The toolset's name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The decisions.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The toolset and its tools.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerToolset"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: no decisions, an unknown tool, a bad decision, kind or risk.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:admin, or (adding) may not use a toolset of that name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no toolset of that name was added at run time that the credential may see, or the server does not add toolsets at run time.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "conflict: a tool changed since it was reviewed, or the toolset was changed meanwhile; review again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/v1/toolsets/{name}/tools": {
@@ -1342,7 +1749,7 @@
       "bearer": {
         "type": "http",
         "scheme": "bearer",
-        "description": "An API key (the config's auth.api_keys, or AGENTKIT_API_KEYS_FILE), or the server's token (AGENTKIT_API_TOKEN), when it has any. A key acts for one tenant, with scopes (agent:read for GET, agent:run for the rest) and the toolsets it may use: other toolsets, and agents that use them, are not found (404)."
+        "description": "An API key (the config's auth.api_keys, or AGENTKIT_API_KEYS_FILE), or the server's token (AGENTKIT_API_TOKEN), when it has any. A key acts for one tenant, with scopes (agent:read for GET, agent:run for the rest, agent:admin to add, review, change and remove toolsets) and the toolsets it may use: other toolsets, and agents that use them, are not found (404)."
       }
     },
     "schemas": {
@@ -1352,7 +1759,7 @@
         "properties": {
           "code": {
             "type": "string",
-            "description": "What went wrong, for programs: invalid_request (400), unauthorized (401), forbidden (403), not_found (404), too_large (413), conversation_busy, agent_mismatch, run_final, run_leased, awaiting_decision, not_pending, shape_changed (409), over_capacity, shutting_down (503), internal (500); a run's codes are interrupted, run_failed, suspended, rejected, budget_exceeded, max_tokens, refused, unexpected_stop, cancelled, timeout, shutdown, rate_limited, overloaded, model_auth, context_too_long, model_rejected and internal. conversation_interrupted is no longer returned. New codes may be added: treat an unknown one as internal."
+            "description": "What went wrong, for programs: invalid_request (400), unauthorized (401), forbidden (403), not_found (404), too_large (413), conversation_busy, agent_mismatch, run_final, run_leased, awaiting_decision, not_pending, shape_changed, toolset_exists, conflict (409), auth_required, server_unreachable (422), over_capacity, shutting_down (503), internal (500); a run's codes are interrupted, run_failed, suspended, rejected, budget_exceeded, max_tokens, refused, unexpected_stop, cancelled, timeout, shutdown, rate_limited, overloaded, model_auth, context_too_long, model_rejected and internal. conversation_interrupted is no longer returned. New codes may be added: treat an unknown one as internal."
           },
           "message": {
             "type": "string",
@@ -2009,7 +2416,8 @@
             "enum": [
               "ready",
               "skipped",
-              "unavailable"
+              "unavailable",
+              "not_added"
             ]
           },
           "tools": {
@@ -2201,7 +2609,9 @@
             "enum": [
               "ready",
               "skipped",
-              "unavailable"
+              "unavailable",
+              "review_needed",
+              "disabled"
             ]
           },
           "reason": {
@@ -2217,6 +2627,10 @@
           },
           "credential": {
             "$ref": "#/components/schemas/Credential"
+          },
+          "runtime": {
+            "type": "boolean",
+            "description": "A toolset added at run time (POST /v1/toolsets); its tool_count counts its approved tools."
           }
         },
         "required": [
@@ -2367,6 +2781,313 @@
           "status",
           "tools"
         ]
+      },
+      "AddToolsetRequest": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "const": "mcp"
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]{1,64}$",
+            "description": "Names the toolset and prefixes its tools (<name>__<tool>)."
+          },
+          "url": {
+            "type": "string",
+            "description": "The server's endpoint: https, on a public address unless the operator allows its host."
+          },
+          "transport": {
+            "enum": [
+              "auto",
+              "http",
+              "sse"
+            ],
+            "description": "auto (the default) tries Streamable HTTP, then HTTP+SSE."
+          },
+          "auth": {
+            "enum": [
+              "none",
+              "headers"
+            ],
+            "description": "none (the default) or headers; MCP OAuth is not supported for servers added at run time yet."
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "With auth headers: sent with every request. ${NAME} is the server's variable NAME, which the operator must allow (runtime_toolsets.header_env); a header that carries a secret must take it from one."
+          },
+          "scope": {
+            "const": "tenant",
+            "description": "One connection the tenant shares (the default)."
+          }
+        },
+        "required": [
+          "type",
+          "name",
+          "url"
+        ]
+      },
+      "UpdateToolsetRequest": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Replace the headers; an empty object removes them."
+          }
+        }
+      },
+      "ReviewRequest": {
+        "type": "object",
+        "properties": {
+          "tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolDecision"
+            }
+          }
+        },
+        "required": [
+          "tools"
+        ]
+      },
+      "ToolDecision": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string",
+            "description": "The definition decided on, as the review showed it. Empty only to reject (forget) a removed tool."
+          },
+          "decision": {
+            "enum": [
+              "approve",
+              "reject"
+            ]
+          },
+          "kind": {
+            "enum": [
+              "read",
+              "write",
+              "delete",
+              "send",
+              "execute"
+            ],
+            "description": "Classifies an approved tool; left out, its annotations decide (write when they claim nothing)."
+          },
+          "risk": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "decision"
+        ]
+      },
+      "ServerToolset": {
+        "type": "object",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "const": "mcp"
+          },
+          "url": {
+            "type": "string"
+          },
+          "transport": {
+            "enum": [
+              "auto",
+              "http",
+              "sse"
+            ]
+          },
+          "auth": {
+            "enum": [
+              "none",
+              "headers"
+            ]
+          },
+          "header_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The headers sent; never their values."
+          },
+          "scope": {
+            "const": "tenant"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "review_needed",
+              "disabled",
+              "unavailable"
+            ],
+            "description": "review_needed: a tool is new or changed, and off until reviewed. unavailable: the server cannot be reached just now (reason says why)."
+          },
+          "reason": {
+            "type": "string"
+          },
+          "server": {
+            "$ref": "#/components/schemas/ServerInfo"
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewTool"
+            }
+          },
+          "version": {
+            "type": "integer",
+            "description": "Changes on every write."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "v",
+          "name",
+          "type",
+          "url",
+          "transport",
+          "auth",
+          "scope",
+          "enabled",
+          "status",
+          "server",
+          "tools",
+          "version",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "ServerInfo": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "description": "What the MCP server says it is."
+      },
+      "ReviewTool": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The server's name for the tool; agents call it <toolset>__<name>."
+          },
+          "status": {
+            "enum": [
+              "approved",
+              "new",
+              "changed",
+              "removed",
+              "rejected"
+            ]
+          },
+          "fingerprint": {
+            "type": "string",
+            "description": "The definition the server lists now (absent for a removed tool)."
+          },
+          "description": {
+            "type": "string",
+            "description": "What the model is given: the description, sanitized."
+          },
+          "current": {
+            "$ref": "#/components/schemas/ToolDefinition"
+          },
+          "approved": {
+            "$ref": "#/components/schemas/ToolDefinition"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "name",
+                "title",
+                "description",
+                "inputSchema",
+                "outputSchema",
+                "annotations"
+              ]
+            }
+          },
+          "kind": {
+            "type": "string"
+          },
+          "risk": {
+            "type": "string"
+          },
+          "reviewed_by": {
+            "type": "string",
+            "description": "The key that last decided on the tool."
+          },
+          "reviewed_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "name",
+          "status",
+          "kind",
+          "risk"
+        ]
+      },
+      "ToolDefinition": {
+        "type": "object",
+        "description": "A tool's definition as its MCP server sends it, raw.",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "annotations": {
+            "type": "object"
+          }
+        }
       }
     }
   }

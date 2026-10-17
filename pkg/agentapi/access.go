@@ -4,13 +4,15 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/bsamanvith/agentkit/pkg/auth"
 )
 
 // The scopes a principal (package auth) needs: [ScopeRead] for the API's GET
-// endpoints, [ScopeRun] for the others. "*" grants both.
+// endpoints, [ScopeRun] for the others, but [ScopeAdmin] for those that
+// manage toolsets. "*" grants all three.
 const (
 	ScopeRead = "agent:read"
 	ScopeRun  = "agent:run"
@@ -48,10 +50,14 @@ func writeAuthError(w http.ResponseWriter, _ *http.Request, status int) {
 	writeError(w, status, &Error{Code: CodeInternal, Message: "authenticating the request failed; see the server log"})
 }
 
-// scopeOf is the scope an endpoint needs: reading for GET, running for the
-// rest.
+// scopeOf is the scope an endpoint needs: [ScopeAdmin] to add, review,
+// change or remove toolsets, else reading for GET and running for the rest.
 func scopeOf(pattern string) string {
-	if strings.HasPrefix(pattern, http.MethodGet+" ") {
+	switch {
+	case pattern == "POST /v1/toolsets" || strings.HasPrefix(pattern, "PATCH /v1/toolsets/") ||
+		strings.HasPrefix(pattern, "DELETE /v1/toolsets/") || strings.HasSuffix(pattern, "/v1/toolsets/{name}/review"):
+		return ScopeAdmin
+	case strings.HasPrefix(pattern, http.MethodGet+" "):
 		return ScopeRead
 	}
 	return ScopeRun
@@ -85,9 +91,10 @@ func accessOf(r *http.Request) access {
 func (a access) toolset(name string) bool { return !a.ok || a.p.AllowsToolset(name) }
 
 // agent reports whether the principal may use ag: whether it may use every
-// toolset of the agent, whose runs offer the model all of their tools.
+// toolset of the agent, those added at run time too, whose runs offer the
+// model all of their tools.
 func (a access) agent(ag *agent) bool {
-	for _, name := range ag.Toolsets {
+	for _, name := range slices.Concat(ag.Toolsets, ag.RuntimeToolsets) {
 		if !a.toolset(name) {
 			return false
 		}

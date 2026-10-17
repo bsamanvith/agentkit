@@ -91,7 +91,8 @@ func openURL(t testing.TB, url string, opts ...postgres.Option) *postgres.Store 
 // open returns a store over a new schema.
 func open(t testing.TB, clk clock.Clock) *postgres.Store {
 	t.Helper()
-	return openURL(t, schemaURL(t), postgres.WithClock(clk))
+	owner := schemaURL(t)
+	return openURL(t, appURL(t, owner), postgres.WithClock(clk), postgres.WithMigrate(false), postgres.WithAdminURL(owner))
 }
 
 func tenantCtx(t testing.TB, id string) context.Context {
@@ -197,10 +198,11 @@ type pair struct {
 }
 
 func openPair(t testing.TB, clk clock.Clock) *pair {
-	u := schemaURL(t)
+	owner := schemaURL(t)
+	u := appURL(t, owner)
 	p := &pair{}
 	for i := range p.s {
-		p.s[i] = openURL(t, u, postgres.WithClock(clk))
+		p.s[i] = openURL(t, u, postgres.WithClock(clk), postgres.WithMigrate(false), postgres.WithAdminURL(owner))
 	}
 	return p
 }

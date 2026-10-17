@@ -5,9 +5,13 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"io"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -60,4 +64,37 @@ func TestMigrateCommand(t *testing.T) {
 		t.Fatalf("Open(WithMigrate(false)) after agentkit migrate: %v", err)
 	}
 	s.Close()
+
+	// serve as a role under row-level security, with no admin URL for the
+	// recovery loop, fails startup and names AGENTKIT_STORE_ADMIN.
+	const role = "agentkit_cmd_test_app"
+	for _, sql := range []string{
+		`DO $$ BEGIN CREATE ROLE ` + role + ` LOGIN PASSWORD '` + role + `' NOSUPERUSER NOBYPASSRLS;
+			EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL; END $$`,
+		`GRANT USAGE ON SCHEMA ` + schema + ` TO ` + role,
+		`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ` + schema + ` TO ` + role,
+	} {
+		if _, err := conn.Exec(ctx, sql); err != nil {
+			t.Fatal(err)
+		}
+	}
+	u.User = url.UserPassword(role, role)
+	config := filepath.Join(t.TempDir(), "agentkit.json")
+	if err := os.WriteFile(config, []byte(`{"mcp":{"toolsets":[{"name":"demo","type":"demo"}]}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{
+		envComponents: "agent", envAddr: "127.0.0.1:0", envConfig: config,
+		envStore: u.String(), envStoreMigrate: "off",
+	}
+	var stderr strings.Builder
+	sctx, cancel := context.WithTimeout(ctx, 10*time.Second) // a broken check serves until then
+	defer cancel()
+	code := cli{getenv: func(k string) string { return env[k] }, stdout: io.Discard, stderr: &stderr}.main(sctx, []string{"serve"})
+	if code != 1 || !strings.Contains(stderr.String(), envStoreAdmin) {
+		t.Errorf("serve under RLS with no admin URL: exit %d, stderr %q", code, stderr.String())
+	}
+	if strings.Contains(stderr.String(), role+":"+role) {
+		t.Errorf("the error shows the store URL's password: %q", stderr.String())
+	}
 }

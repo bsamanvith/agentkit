@@ -24,7 +24,13 @@
 // several stores side by side.
 //
 // Every row has a tenant column, part of every primary key, and every query
-// filters by it except the one in [Admin]. Tenants and other ids are TEXT with
+// filters by it except the one in [Admin]. Postgres enforces the same rule
+// with row-level security (migration 0008): each connection taken from the
+// pool first sets app.tenant to the tenant in the context (a query without
+// one fails before it is sent), and a row is visible and writable only when
+// its tenant matches. Run the store as a role that is not a superuser and
+// lacks BYPASSRLS, so the policy holds; [Admin] needs one that has it
+// ([WithAdminURL]). Tenants and other ids are TEXT with
 // the "C" collation, so they compare as bytes, as in SQLite and in Go, and
 // cursors mean the same in every backend. Times are BIGINT Unix nanoseconds
 // (NULL for the zero time), read from the store's injected clock and never
@@ -70,6 +76,15 @@ type options struct {
 	// migrations limits the migrations applied or expected, for tests of
 	// upgrades; 0 means all of them.
 	migrations int
+	adminURL   string
+}
+
+// WithAdminURL connects [Admin] to its own database URL, as a role that
+// bypasses row-level security (BYPASSRLS, or a superuser). Without it Admin
+// uses the store's connections, which works only when the store's own role
+// bypasses it.
+func WithAdminURL(url string) Option {
+	return func(o *options) { o.adminURL = url }
 }
 
 // WithClock sets the clock that entry, event and run times and lease expiry
@@ -94,8 +109,9 @@ func WithMigrate(on bool) Option {
 // this process or others, may use the same database at the same time. Make
 // one with [Open] and [Store.Close] it when done.
 type Store struct {
-	clk  clock.Clock
-	pool *pgxpool.Pool
+	clk   clock.Clock
+	pool  *pgxpool.Pool
+	admin *pgxpool.Pool // Admin's; pool when no admin URL was given
 }
 
 // Open connects to the database at url (a postgres:// URL or a key=value
@@ -111,20 +127,62 @@ func Open(ctx context.Context, url string, opts ...Option) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("postgres: %w", err)
 	}
+	cfg.PrepareConn = setTenant
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: %w", err)
 	}
+	s := &Store{clk: o.clk, pool: pool, admin: pool}
+	if o.adminURL != "" {
+		acfg, err := pgxpool.ParseConfig(o.adminURL)
+		if err != nil {
+			pool.Close()
+			return nil, fmt.Errorf("postgres: admin URL: %w", err)
+		}
+		acfg.PrepareConn = setTenant
+		if s.admin, err = pgxpool.NewWithConfig(ctx, acfg); err != nil {
+			pool.Close()
+			return nil, fmt.Errorf("postgres: admin URL: %w", err)
+		}
+	}
+	uctx := unscoped(ctx)
 	if o.migrate {
-		err = migrate(ctx, pool, o.clk, o.migrations)
+		err = migrate(uctx, pool, o.clk, o.migrations)
 	} else {
-		err = checkSchema(ctx, pool, o.migrations)
+		err = checkSchema(uctx, pool, o.migrations)
 	}
 	if err != nil {
-		pool.Close()
+		s.Close()
 		return nil, fmt.Errorf("postgres: %w", err)
 	}
-	return &Store{clk: o.clk, pool: pool}, nil
+	return s, nil
+}
+
+// unscopedKey marks a context whose queries need no tenant: migrations and
+// Admin's. Only this package makes one.
+type unscopedKey struct{}
+
+func unscoped(ctx context.Context) context.Context {
+	return context.WithValue(ctx, unscopedKey{}, true)
+}
+
+// setTenant runs on every connection as it leaves the pool: it sets
+// app.tenant, which the row-level security policies compare each row's
+// tenant with, to the context's tenant, overwriting whatever the
+// connection's last user set. A context with no tenant fails here, before
+// its query is sent, unless it is unscoped (app.tenant is then ”, which no
+// row matches).
+func setTenant(ctx context.Context, c *pgx.Conn) (bool, error) {
+	tenant := ""
+	if t, ok := tenancy.From(ctx); ok {
+		tenant = t.ID()
+	} else if ctx.Value(unscopedKey{}) == nil {
+		return true, fmt.Errorf("postgres: %w", tenancy.ErrNoTenant)
+	}
+	if _, err := c.Exec(ctx, `SELECT set_config('app.tenant', $1, false)`, tenant); err != nil {
+		return false, fmt.Errorf("postgres: set tenant: %w", err)
+	}
+	return true, nil
 }
 
 // Migrate brings the schema of the database at url up to date and returns:
@@ -141,7 +199,12 @@ func Migrate(ctx context.Context, url string, opts ...Option) error {
 
 // Close closes the store's connections, waiting for those in use to be
 // returned. Calls after Close fail.
-func (s *Store) Close() { s.pool.Close() }
+func (s *Store) Close() {
+	s.pool.Close()
+	if s.admin != s.pool {
+		s.admin.Close()
+	}
+}
 
 // scope checks ctx and returns its tenant's id.
 func scope(ctx context.Context) (string, error) {

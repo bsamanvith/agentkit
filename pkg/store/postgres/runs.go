@@ -401,13 +401,20 @@ func (s *Store) Release(ctx context.Context, runID, owner string) error {
 }
 
 // Admin returns the cross-tenant view of s, for the runner's recovery loop
-// only. It reads the same database as s.
+// only. It reads the same database as s, on the admin URL's connections
+// ([WithAdminURL]) when there is one. Its role must bypass row-level
+// security; when it does not, ListResumableAll fails with [ErrAdminRole]
+// rather than silently finding nothing.
 //
 // It is a function, not a method, on purpose: *Store has no method that leads
 // to other tenants' runs, so code holding s as a [store.RunStore] cannot reach
 // them by a type assertion. It would have to assert to *Store, which means
 // importing this package; code that serves requests has no reason to.
 func Admin(s *Store) store.Admin { return admin{s} }
+
+// ErrAdminRole is returned by [Admin] when its role cannot read across
+// tenants under row-level security.
+var ErrAdminRole = errors.New("postgres: store.Admin's role must bypass row-level security (BYPASSRLS or superuser); give it its own URL (AGENTKIT_STORE_ADMIN)")
 
 // admin is the [store.Admin] view of a Store.
 type admin struct{ s *Store }
@@ -422,7 +429,15 @@ func (a admin) ListResumableAll(ctx context.Context, now time.Time, limit int) (
 	if err != nil {
 		return nil, err
 	}
-	rows, err := a.s.pool.Query(ctx, `SELECT tenant, `+runColumns+` FROM runs
+	ctx = unscoped(ctx)
+	var bypass bool
+	if err := a.s.admin.QueryRow(ctx, `SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user`).Scan(&bypass); err != nil {
+		return nil, fail("check the admin role", err)
+	}
+	if !bypass {
+		return nil, ErrAdminRole
+	}
+	rows, err := a.s.admin.Query(ctx, `SELECT tenant, `+runColumns+` FROM runs
 		WHERE status IN ('running', 'failed') AND `+resumable+`
 		ORDER BY created_at, tenant, id LIMIT $2`, argTime(now), n)
 	if err != nil {

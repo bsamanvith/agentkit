@@ -13,7 +13,11 @@ func postgresBackend() Backend {
 	return Backend{
 		Name: "Postgres", Prefixes: []string{"postgres://", "postgresql://"},
 		Open: func(ctx context.Context, url string, cfg Config) (Opened, error) {
-			s, err := postgres.Open(ctx, url, postgres.WithClock(cfg.Clock), postgres.WithMigrate(cfg.Migrate))
+			opts := []postgres.Option{postgres.WithClock(cfg.Clock), postgres.WithMigrate(cfg.Migrate)}
+			if cfg.AdminURL != "" {
+				opts = append(opts, postgres.WithAdminURL(cfg.AdminURL))
+			}
+			s, err := postgres.Open(ctx, url, opts...)
 			if err != nil {
 				return Opened{}, err
 			}

@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/bsamanvith/agentkit/pkg/tool"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
@@ -56,12 +58,18 @@ type factory struct {
 //	timeout          per call (default 60s)
 //	connect_timeout  connecting and listing tools (default 15s)
 //	max_result_bytes the largest result, as JSON (default 1 MiB, at most 16 MiB)
+//	pins             tool name -> fingerprint ("sha256:..."; agentkit mcp-tools
+//	                 prints them). When set, only these tools, with these exact
+//	                 definitions, are offered: a changed or new tool is left
+//	                 out with a warning.
 //
 // Building connects and lists the tools, so a server that does not answer
 // fails the toolset; with "optional": true it is skipped with the reason and
 // the agents that use other toolsets still run. Tools are fixed when the
-// toolset is built: when the server says its list changed, the change is
-// logged and takes effect on the next start. A tool whose definition cannot
+// toolset is built. When the server says its list changed, every tool whose
+// definition now differs from the one the model was given (or that is gone)
+// is disabled: a call fails saying so. New tools take effect on the next
+// start, if their pins allow. A tool whose definition cannot
 // be one of ours (an invalid name) is left out, with a warning.
 //
 // Two servers with a tool of the same name are two toolsets; an agent using
@@ -89,6 +97,7 @@ type settings struct {
 	Timeout        duration          `json:"timeout"`
 	ConnectTimeout duration          `json:"connect_timeout"`
 	MaxResultBytes int               `json:"max_result_bytes"`
+	Pins           map[string]string `json:"pins"`
 }
 
 const maxResultLimit = 16 << 20
@@ -98,6 +107,11 @@ func (f *factory) Build(ctx context.Context, raw json.RawMessage) ([]tool.Tool, 
 	if err != nil {
 		return nil, err
 	}
+	var s struct {
+		Pins map[string]string `json:"pins"`
+	}
+	_ = json.Unmarshal(raw, &s) // config has checked it
+	pins := s.Pins
 	c, err := Connect(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("MCP server %s: %w", where, err)
@@ -111,6 +125,10 @@ func (f *factory) Build(ctx context.Context, raw json.RawMessage) ([]tool.Tool, 
 	}
 	tools := make([]tool.Tool, 0, len(defs))
 	for _, d := range defs {
+		if err := checkPin(pins, d); err != nil {
+			f.log.Warn("mcp: tool left out", "server", where, "error", err)
+			continue
+		}
 		t, err := c.Wrap(d)
 		if err != nil {
 			f.log.Warn("mcp: tool left out", "server", where, "error", err)
@@ -127,7 +145,17 @@ func (f *factory) Build(ctx context.Context, raw json.RawMessage) ([]tool.Tool, 
 		for {
 			select {
 			case <-c.ToolsChanged():
-				f.log.Warn("mcp: the server's tools changed; restart to use the new list", "server", where)
+				rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), c.cfg.ConnectTimeout)
+				off, err := c.Recheck(rctx)
+				cancel()
+				switch {
+				case err != nil:
+					f.log.Warn("mcp: the server's tools changed and could not be listed", "server", where, "error", err)
+				case len(off) > 0:
+					f.log.Warn("mcp: the server changed tools; they are disabled until reviewed", "server", where, "disabled", off)
+				default:
+					f.log.Info("mcp: the server's tool list changed; new tools take effect on the next start", "server", where)
+				}
 			case <-c.Done():
 				return
 			}
@@ -137,10 +165,11 @@ func (f *factory) Build(ctx context.Context, raw json.RawMessage) ([]tool.Tool, 
 }
 
 var (
-	envNameRE    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-	envRefRE     = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
-	headerNameRE = regexp.MustCompile("^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
-	secretNameRE = regexp.MustCompile(`(?i)authorization|cookie|key|token|secret|auth|password`)
+	envNameRE     = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	envRefRE      = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
+	headerNameRE  = regexp.MustCompile("^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
+	secretNameRE  = regexp.MustCompile(`(?i)authorization|cookie|key|token|secret|auth|password`)
+	fingerprintRE = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 )
 
 // config validates settings and resolves their variables. where names the
@@ -163,6 +192,11 @@ func (f *factory) config(raw json.RawMessage) (Config, string, error) {
 	}
 	if s.MaxResultBytes < 0 || s.MaxResultBytes > maxResultLimit {
 		return bad("max_result_bytes must be between 1 and %d", maxResultLimit)
+	}
+	for name, fp := range s.Pins {
+		if !fingerprintRE.MatchString(fp) {
+			return bad("pins.%s: %q is not a fingerprint (sha256: and 64 hex digits)", name, fp)
+		}
 	}
 	var where string
 	switch s.Transport {
@@ -265,5 +299,21 @@ func (d *duration) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	*d = duration(v)
+	return nil
+}
+
+// checkPin returns a [PinError] when pins are set and d is not pinned, or
+// pinned with another fingerprint.
+func checkPin(pins map[string]string, d *mcp.Tool) error {
+	if len(pins) == 0 || d == nil {
+		return nil
+	}
+	got, err := Fingerprint(d)
+	if err != nil {
+		return err
+	}
+	if want := pins[d.Name]; want != got {
+		return &PinError{Tool: d.Name, Want: want, Got: got}
+	}
 	return nil
 }

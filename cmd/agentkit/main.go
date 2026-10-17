@@ -93,6 +93,7 @@ const usage = `usage:
   agentkit ask [flags] "<message>" | -     one run on a server, for scripts; -json prints the events as JSONL
   agentkit create [flags]                  create an empty conversation on a server; prints its ID for -conversation
   agentkit migrate                         apply the Postgres store's migrations to $AGENTKIT_STORE, then exit
+  agentkit mcp-tools [flags] <url>         list an MCP server's tools with the fingerprints to pin them
 
 Run "agentkit <command> -h" for flags.
 `
@@ -113,6 +114,8 @@ func (c cli) main(ctx context.Context, args []string) int {
 		err = c.healthcheck(ctx, args[1:])
 	case len(args) >= 1 && args[0] == "migrate":
 		err = c.migrate(ctx, args[1:])
+	case len(args) >= 1 && args[0] == "mcp-tools":
+		err = c.mcpTools(ctx, args[1:])
 	case len(args) >= 1 && args[0] == "chat":
 		return c.chat(ctx, args[1:])
 	case len(args) >= 1 && args[0] == "ask":

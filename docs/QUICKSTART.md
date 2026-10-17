@@ -333,7 +333,12 @@ A toolset of type `mcp` is another MCP server's tools, used by agents and served
 
 Settings: `url`; `transport` (`auto`, the default: Streamable HTTP, then the older HTTP+SSE; or `http`, `sse`, `stdio`); `command`, `args` and `env` for stdio (`env` names the variables the command gets; it gets `PATH` and `HOME` and nothing else); `headers` (`${NAME}` is replaced by the variable; a header carrying a secret must use one, and headers go only over https or to this machine); `timeout` per call (default `60s`); `connect_timeout` (default `15s`); `max_result_bytes` (default 1 MiB). `include` and `exclude` pick tools, as for any toolset. OAuth sign-in to a server is T095.
 
-The server is contacted at startup: one that does not answer fails startup, or with `"optional": true` is skipped and named in `/readyz`. Tools keep the server's names; an agent using two servers that both have a `search` sets `"prefix_tool_names": true` to get `linear__search` and `notion__search`. The server's descriptions are cleaned of hidden characters, its annotations can raise a tool's risk but not lower it, and its results are treated as third-party data. When the server changes its tool list, the log says so; restart to use the new list.
+The server is contacted at startup: one that does not answer fails startup, or with `"optional": true` is skipped and named in `/readyz`. Tools keep the server's names; an agent using two servers that both have a `search` sets `"prefix_tool_names": true` to get `linear__search` and `notion__search`. The server's descriptions are cleaned of hidden characters, its annotations can raise a tool's risk but not lower it, and its results are treated as third-party data.
+
+**Pinning.** A server can change a tool's description after you trusted it (a "rug pull"). Two guards:
+
+- While running, when the server says its tool list changed, every tool whose definition now differs from the one the agent was given is disabled: calls fail with "the MCP server changed this tool's definition", and the log names the tools. New tools appear only after a restart.
+- `pins` fixes which definitions are allowed at all, across restarts. Print the current ones with `agentkit mcp-tools <url>` (add `-header "Authorization: Bearer ..."` if the server needs it) and paste the `"pins"` block into the toolset's settings. A tool that is not pinned, or whose definition has changed since, is left out with a warning, so only definitions you have looked at reach the model.
 
 ## Troubleshooting
 

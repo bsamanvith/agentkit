@@ -93,3 +93,23 @@ func (e *RunError) result() Result {
 func invalidInput(format string, args ...any) error {
 	return fmt.Errorf("%w: %s", ErrInvalidInput, fmt.Sprintf(format, args...))
 }
+
+// NewRunError returns the error of a run that stopped with err, having done
+// what partial says (its Transcript, Usage, Turns and Record; Final is
+// derived from the transcript). It is for an agent that runs a harness
+// somewhere else and reports the failure here, such as a remote runner
+// (package runnerrpc): the caller sees the same [*RunError] as from a local
+// run.
+func NewRunError(err error, partial Result) *RunError {
+	return &RunError{
+		Err:        err,
+		transcript: partial.Transcript.Clone(),
+		usage:      partial.Usage,
+		turns:      partial.Turns,
+		record:     partial.Record.clone(),
+	}
+}
+
+// Partial returns what the run had done when it stopped, as a [Result]: the
+// form [NewRunError] takes back.
+func (e *RunError) Partial() Result { return e.result() }

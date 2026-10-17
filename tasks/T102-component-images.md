@@ -1,12 +1,43 @@
 ---
 id: T102
-title: An image per component, a migrate image, and the all-in-one image
+title: Split images (API, runner, toolsets) on a generic RPC, and the all-in-one image
 epic: E01
-status: todo
+status: review
 depends_on: [T037]
 ---
 
-# T102: An image per component, a migrate image, and the all-in-one image
+# T102: Split images (API, runner, toolsets) on a generic RPC, and the all-in-one image
+
+## Rescoped 2026-10-16
+
+The owner asked (2026-10-16) for three components, each runnable alone or
+bundled with the others: a light API image (agent API and console), a light
+runner image (the agents' turn loops, which can also run inside the API), and
+a toolsets image (the connectors, alone or bundled). Links between them are
+interfaces with an in-process and a wire implementation, on one generic
+transport that makes adding methods and services cheap.
+
+Done on `claude/t102-component-split-5azj34`:
+
+- `pkg/rpc`: JSON over HTTP, unary and streaming methods declared once as
+  typed values (`rpc.Unary`, `rpc.Stream`), errors that keep their identity
+  across the wire (`rpc.Code`), a bearer token, and `rpc.Pipe` in process.
+- `pkg/tool/toolrpc` (`tool.Registry` remote; the tool conformance suite
+  passes over it) and `pkg/runner/runnerrpc` (`runner.Agent` remote; same
+  events and errors as a local run, `*harness.RunError` partials included).
+- Components `runner` and `toolsets`; `AGENTKIT_RUNNER_URL`,
+  `AGENTKIT_TOOLSETS_URL`, `AGENTKIT_RPC_TOKEN`, `AGENTKIT_DEPENDENCY_WAIT`.
+- Tags `nomodels`, `noconnectors`, `nomcp`, `noweb`; images `agentkit-api`,
+  `agentkit-runner`, `agentkit-toolsets` (`make images-split`), a budget each,
+  `make deps-check` in `make check`.
+- docs/COMPONENTS.md, rows in docs/SIZES.md, `deploy/k8s/split.yaml`.
+
+Left from the original scope: the migrate image (an `agentkit-api migrate`
+job covers it for now) and a separate console image (the console stays in
+the API image, which serves `/v1` on the same origin). A `noapi` tag would
+take `pkg/agentapi` out of the runner and toolsets images.
+
+## Original scope (2026-10-14)
 
 ## Context
 

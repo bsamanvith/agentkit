@@ -12,7 +12,7 @@
 | M3 `llm`, Anthropic adapter, harness, `flow`, `agentstep`, `agentkit run` | [E04](E04-llm-harness-flow.md) | Done |
 | M4 Store, runner, compaction | [E05](E05-store-runner.md) | In progress: `pkg/store` (interfaces, memory store, suites, run lifecycle), the SQLite store (T029), the runner (T030) and the API on the runner (T037: store chosen by `AGENTKIT_STORE`, runs outlive `serve`) done; next compaction (T031). Postgres store (T088) and turn batching (T098) done; run start times and priority are T099 |
 | M5 Agent API, `agentkit serve`, image, Compose, smoke tests | [E09](E09-agent-api.md), [E01](E01-foundations.md) | In progress: `agentkit serve`, agent API v0 and the image done; **deployable** |
-| M6 Remote tools over ConnectRPC | E06 (to plan) | Planned |
+| M6 Remote tools and runners over `pkg/rpc` | E06 (to plan) | In progress: T102 puts toolsets and runners on the wire |
 | Credentials, auth, tenancy at the edge | [E07](E07-auth-credentials.md) | **In progress**: T039 done (`pkg/auth`, `f08e82e`); T040, T041 and T042 ready. Needed before any public deployment: `/mcp/` has no auth until T040 |
 | First connectors: Tavily, Exa, Parallel (search, extract) | [E10](E10-search-connectors.md) | **Tavily done** (live end to end with real Claude passed); Exa and Parallel on `main`, in review until keys exist; no auth work needed (Tavily keyless or keyed; Exa and Parallel keyed from env) |
 | Clients: admin console, CLI and headless, and the APIs behind them | [E11](E11-clients.md) | **In progress**: T053 (`pkg/agentclient`), T054 (`agentkit chat`, `agentkit ask --json`), T062 (agents, conversations, catalog API) T070 (console design, owner-approved), T078 (web workspace, embedded console shell) and T092 (`POST /v1/conversations`) done; T055 (console chat), T063 (agents over MCP), T061 (login), T055/T064 (console) next. UI plan: [docs/UI.md](../docs/UI.md) with a clickable mockup |
@@ -77,7 +77,7 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 | [T109](T109-connector-gmail.md), [T110](T110-connector-google-calendar.md), [T111](T111-connector-google-drive.md) | Gmail, Google Calendar and Google Drive connectors | T109 **Review** (PR #23); T110 and T111 **ready** to start on T108's branch |
 | [T094](T094-mcp-client-toolset.md) | `pkg/mcp/client` and the `mcp` toolset type: use external MCP servers' tools, pin fingerprints | **Ready** (E19); new package, tests against our own MCP server |
 | [T101](T101-ci-hardening.md) | CI hardening: actions pinned by SHA, no persisted credentials, workflow lint | **Ready**; small, from T078's review |
-| [T102](T102-component-images.md) | An image per component (agent, MCP, console), a migrate image, and the all-in-one image; a budget each | After T037 (rewrites `serve.go` and adds `store.go`); owner asked 2026-10-14 |
+| [T102](T102-component-images.md) | Split images: API, runner and toolsets on `pkg/rpc`, each alone or bundled; the all-in-one image stays | **Review** (rescoped by the owner 2026-10-16) |
 | [T006](T006-compose-and-dev-script.md) | Compose topologies and `scripts/dev.sh` | Image exists; repeatable local runs |
 | [T033](T033-harness-clock.md) | Harness on `pkg/clock` | Small, independent |
 | [T035](T035-rerecord-anthropic-fixtures.md) | Re-record Anthropic fixtures from the real API | A key is available |

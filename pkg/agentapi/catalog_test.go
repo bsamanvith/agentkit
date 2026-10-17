@@ -515,6 +515,7 @@ func TestNewAgentsRejectsBadConfig(t *testing.T) {
 	}{
 		"no agents":             {},
 		"nil harness":           {agents: []agentapi.Agent{{Name: "a"}}},
+		"harness and runner":    {agents: []agentapi.Agent{{Name: "a", Harness: h, Runner: h}}},
 		"empty name":            {agents: []agentapi.Agent{{Harness: h}}},
 		"name with a slash":     {agents: []agentapi.Agent{{Name: "a/b", Harness: h}}},
 		"name too long":         {agents: []agentapi.Agent{{Name: strings.Repeat("a", 65), Harness: h}}},

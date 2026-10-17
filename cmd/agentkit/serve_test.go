@@ -74,6 +74,17 @@ func TestServeRejectsBadSetup(t *testing.T) {
 		"agents: tool name clash":       {env: map[string]string{envComponents: "agent"}, config: `{"mcp":{"toolsets":[{"name":"a","type":"demo"},{"name":"b","type":"demo"}]},"agents":[{"name":"x","toolsets":["a","b"]}]}`, code: 1, says: "agents.x.toolsets"},
 		"agent_api: unknown field":      {env: map[string]string{envComponents: "agent"}, config: `{"agents":[{"name":"a"}],"agent_api":{"system":"x"}}`, code: 1, says: "system"},
 		"agent_api: no concurrent runs": {env: map[string]string{envComponents: "agent"}, config: `{"agents":[{"name":"a"}],"agent_api":{"max_concurrent_runs":0}}`, code: 1, says: "concurrent"},
+		// The split deployment (T102).
+		"runner: and its URL":           {env: map[string]string{envComponents: "agent,runner", envRunnerURL: "http://runner:8080"}, config: good, code: 1, says: envRunnerURL},
+		"toolsets: and their URL":       {env: map[string]string{envComponents: "toolsets", envToolsetsURL: "http://tools:8080"}, config: good, code: 1, says: envToolsetsURL},
+		"toolsets: no config file":      {env: map[string]string{envComponents: "toolsets"}, code: 1, says: "toolsets needs a config file"},
+		"runner: no token off loopback": {env: map[string]string{envComponents: "runner", envAddr: ":0"}, config: good, code: 1, says: envRPCToken},
+		"toolsets: no token off lo":     {env: map[string]string{envComponents: "toolsets", envAddr: ":0"}, config: good, code: 1, says: envRPCToken},
+		"rpc: short token":              {env: map[string]string{envComponents: "runner", envRPCToken: "short"}, config: good, code: 1, says: envRPCToken},
+		"runner: bad URL":               {env: map[string]string{envComponents: "agent", envRunnerURL: "runner:8080"}, config: good, code: 1, says: envRunnerURL},
+		"toolsets: bad URL":             {env: map[string]string{envComponents: "agent", envToolsetsURL: "tools"}, config: `{"mcp":{"toolsets":[{"name":"demo","type":"demo"}]},"agent":{"toolsets":["demo"]}}`, code: 1, says: envToolsetsURL},
+		"toolsets: unreachable":         {env: map[string]string{envComponents: "runner", envToolsetsURL: "http://127.0.0.1:1", envDependencyWait: "0s"}, config: `{"mcp":{"toolsets":[{"name":"demo","type":"demo"}]},"agent":{"toolsets":["demo"]}}`, code: 1, says: "unavailable"},
+		"bad dependency wait":           {env: map[string]string{envDependencyWait: "soon"}, config: good, code: 1, says: envDependencyWait},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

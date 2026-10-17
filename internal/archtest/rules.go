@@ -96,6 +96,9 @@ func ModuleRules() Rules {
 				"pkg/stream", "pkg/bus", "pkg/bus/memory",
 				"pkg/llm/llmtest", "pkg/clock/clocktest", "internal/testkit", "pkg/toolset/toolsettest",
 				"pkg/store/scoped",
+				// Its tests run agents on a remote runner over toolsets on
+				// the wire: the split topology (T102).
+				"pkg/rpc", "pkg/runner/runnerrpc", "pkg/tool/toolrpc", "pkg/tool/tooltest",
 			},
 			// The tenant-scoped view of a backend: the one package outside
 			// cmd/ and the runner that opens one, and it returns only the
@@ -129,6 +132,20 @@ func ModuleRules() Rules {
 			"pkg/stream": {
 				"pkg/bus", "pkg/store", "pkg/tenancy", "pkg/clock",
 				"pkg/bus/memory", "pkg/bus/redis", "pkg/store/memory", "pkg/clock/clocktest", "internal/testkit",
+			},
+			// The transport between components is net/http and JSON, and
+			// knows no other part of the module (T102): the services that use
+			// it (toolrpc, runnerrpc) know their interfaces.
+			"pkg/rpc": {},
+			// Toolsets on the wire: the tool abstraction over the transport.
+			// Its tests run the registry conformance suite through it.
+			"pkg/tool/toolrpc": {"pkg/tool", "pkg/rpc", "pkg/tool/tooltest"},
+			// Agents on the wire: the runner's Agent (a harness's events and
+			// errors) over the transport, never the store: the runner that
+			// keeps runs stays where the store is.
+			"pkg/runner/runnerrpc": {
+				"pkg/runner", "pkg/harness", "pkg/llm", "pkg/rpc",
+				"pkg/llm/llmtest", "pkg/tool", "pkg/tool/tooltest",
 			},
 			// The web component serves the embedded console build over
 			// net/http and nothing else: it is a component by shape, and

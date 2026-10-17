@@ -19,7 +19,7 @@ Build the product from the inside out. Add infrastructure when there is somethin
 | **M3** | `llm` + Anthropic adapter + harness + `pkg/flow` | [E04](../tasks/E04-llm-harness-flow.md) (T020-T025) | An agent loop and a multi-step flow run, with checkpoints and resume. **Current focus** |
 | **M4** | `store` (SQLite), `pkg/runner`, compaction, flow shape check | [E05](../tasks/E05-store-runner.md) (T019, T027-T032) | Runs and conversations persist, resume and compact |
 | **M5** | `pkg/component`, `agentkit serve` (done), agent API, `fakellm`, image, Compose, smoke tests, full CI | E01 (T003-T008), [E09](../tasks/E09-agent-api.md) (T036, T037) | Mix-and-match deployment; agents callable over HTTP |
-| **M6** | Tool protocol over ConnectRPC; remote registry | to plan | The `split` topology |
+| **M6** | Components on the wire (`pkg/rpc`): remote toolsets and runners, an image per component | [T102](../tasks/T102-component-images.md) | The `split` topology ([COMPONENTS.md](COMPONENTS.md)) |
 
 Skills ([E02](../tasks/E02-agent-skills.md)) grow alongside: the skill layout and review checklist come with M0/M1; each other skill is written right after the first piece of real code it describes.
 
@@ -102,7 +102,7 @@ Goal: any set of packages can run in one container, or be spread across containe
 ```go
 type Component interface {
     Name() string
-    Handler() http.Handler            // mounted under the shared server (ConnectRPC, MCP over HTTP, ...)
+    Handler() http.Handler            // mounted under the shared server (pkg/rpc, MCP over HTTP, ...)
     Ready(ctx context.Context) error  // feeds /readyz
     Shutdown(ctx context.Context) error
 }
@@ -147,26 +147,26 @@ mcp:
 ```
 
 - `local`: the harness gets the in-process `tool.Registry`. No network, no serialization.
-- `remote`: the harness gets a ConnectRPC client that implements the same `tool.Registry` interface.
+- `remote`: the harness gets a client (`pkg/tool/toolrpc`) that implements the same `tool.Registry` interface.
 - Each remote client is tested with the **same conformance suite** as the local implementation (§2.4), so swapping one for the other is safe by construction.
 
 **Communication between containers:**
 
 | Path | Protocol | Why |
 |---|---|---|
-| Component to component (ours) | ConnectRPC (gRPC protocol over HTTP/2) | Typed, streaming, one definition for Go and non-Go clients |
+| Component to component (ours) | `pkg/rpc`: typed methods, JSON over HTTP, streamed as newline-delimited frames | One declaration per method serves and calls it; the JSON forms of `llm` and `harness` types cross as they are; no code generator, no dependency |
 | To and from external agents and tools | MCP (stdio, Streamable HTTP) | Spec-compliant interop |
-| Browser / curl | ConnectRPC JSON over HTTP/1.1 | No gRPC tooling needed |
+| Browser / curl | The agent API: HTTP + JSON with SSE ([E09](../tasks/E09-agent-api.md)) | No tooling needed |
 
-We use only `connect-go`: one handler on a standard `net/http` server serves the gRPC, gRPC-Web and Connect protocols. No `grpc-go`, no second port.
+ConnectRPC was the first plan here. T102 chose `pkg/rpc` instead: the interfaces that cross (`tool.Registry`, `runner.Agent`) already have JSON forms, so protobuf definitions and generated code would only restate them. Adding a method is a few lines; adding an interface is a package next to it with a `Register` and a `Client` ([COMPONENTS.md](COMPONENTS.md#adding-a-method-or-a-service)).
 
-- Plain h2c locally; mTLS between containers in real deployments, with certificates from `pkg/credentials`.
-- Tenant and request scope travel in request metadata and are restored into `context.Context` by middleware on the receiving side.
+- Plain HTTP between containers on the cluster network, with a shared bearer token (`AGENTKIT_RPC_TOKEN`); mTLS when `pkg/credentials` lands.
+- Tenant and request scope are not carried yet: the runner and toolsets act for the agent API, which scopes everything it stores. They travel in request headers when a remote component needs them.
 - Addresses come from config (compose service names locally, Kubernetes Services in a cluster). No service-discovery system in v1.
 
 **Images:**
 
-- The default image is `agentkit` (everything in the core build) plus `fakellm` for dev and tests. Deployment shape is config, not image choice.
+- The default image is `agentkit` (everything in the core build) plus `fakellm` for dev and tests: it runs any shape by config. Per-component images (`agentkit-api`, `-runner`, `-toolsets`) are the same binary built with tags that leave out what the component does not run ([COMPONENTS.md](COMPONENTS.md#images)).
 - Heavy optional backends sit behind build tags (for example `-tags aws,vault`) so the default image stays small. `make image TAGS=...` builds a variant.
 - Size budget: measure the first real image (M5), then set the limit in CI. The pure-Go SQLite driver alone is several MB, so the earlier 10-20 MB target is a goal, not a promise. Every size change and its reason is logged in [SIZES.md](SIZES.md) (rule in [AGENTS.md](../AGENTS.md#sizes)); per-component images are T102.
 - If you need a truly custom bundle, write a 20-line `main` that imports the components you want. They are ordinary packages.
@@ -212,7 +212,7 @@ Write a test for:
 
 Do **not** write tests for:
 - getters, setters, constructors with no logic, option plumbing;
-- generated code (protobuf, ConnectRPC);
+- generated code (protobuf);
 - wiring in `cmd/` that the e2e smoke suite already covers;
 - the same behavior again at a higher tier. If a unit test proves it, the e2e test does not re-prove it.
 
@@ -390,7 +390,7 @@ How the planner and parallel sessions coordinate, and the lessons learned so far
 
 Decided:
 - Compose is the default local runtime; kind is opt-in and comes with credentials.
-- ConnectRPC only for our protocol; official MCP Go SDK; `google/jsonschema-go` for schemas.
+- `pkg/rpc` (net/http and JSON) for our protocol; official MCP Go SDK; `google/jsonschema-go` for schemas.
 - Go: `go 1.26.0` minimum, `toolchain go1.27.2`.
 - Our own harness and `pkg/flow` rather than an agent framework; native model adapters; ADK, Genkit and Eino are integrations through MCP ([PLAN.md decisions](PLAN.md#decisions)).
 - Golden files are rewritten with `make golden` (env `AGENTKIT_UPDATE_GOLDEN=1`), not a `-update` flag, so it works across `./...`.

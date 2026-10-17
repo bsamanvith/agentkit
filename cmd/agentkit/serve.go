@@ -39,7 +39,7 @@ const (
 )
 
 // knownComponents are the names AGENTKIT_COMPONENTS accepts.
-var knownComponents = []string{mcpServerName, agentapi.Name, web.Name}
+var knownComponents = []string{mcpServerName, agentapi.Name, web.Name, runnerName, toolsetsName}
 
 // serveConfig is the config file of agentkit serve, as loadServeConfig reads
 // it. The file is JSON; YAML (with the same keys) comes with pkg/config.
@@ -72,6 +72,10 @@ type serveEnv struct {
 	logLevel        slog.Level
 	shutdownTimeout time.Duration
 	runLease        time.Duration // 0 for the runner's default
+	// The split deployment (split.go): where the agents run and where the
+	// toolsets come from, empty for in process; the token between them.
+	runnerURL, toolsetsURL, rpcToken string
+	dependencyWait                   time.Duration
 }
 
 func (c cli) serve(ctx context.Context, args []string) error {
@@ -130,7 +134,11 @@ func (c cli) serve(ctx context.Context, args []string) error {
 		case agentapi.Name:
 			m, agents, err = c.newAgents(ctx, cfg, built, problems, env, st.Store, b, clk, log)
 		case web.Name:
-			m = newWeb()
+			m, err = newWeb()
+		case runnerName:
+			m, err = c.newRunner(ctx, cfg, built, env, clk, log)
+		case toolsetsName:
+			m, err = c.newToolsets(cfg, built, problems, env, log)
 		default: // in knownComponents but not wired here
 			err = errors.New("component not wired in cmd/agentkit")
 		}
@@ -188,31 +196,49 @@ func buildToolsets(ctx context.Context, env serveEnv, cfg serveConfig, configPat
 }
 
 // servedSpecs returns the toolsets the components use: every one in
-// mcp.toolsets when mcp-server runs, else those the agents name.
+// mcp.toolsets when mcp-server or toolsets runs, else those the agents name
+// (agent-api, runner).
 func servedSpecs(env serveEnv, cfg serveConfig) ([]toolset.Spec, error) {
 	var specs []toolset.Spec
-	if slices.Contains(env.components, agentapi.Name) {
-		s, err := agentToolsetSpecs(cfg)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", agentapi.Name, err)
+	for _, name := range []string{agentapi.Name, runnerName} {
+		if slices.Contains(env.components, name) {
+			s, err := agentToolsetSpecs(cfg)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", name, err)
+			}
+			specs = s
 		}
-		specs = s
 	}
-	if slices.Contains(env.components, mcpServerName) {
-		if len(cfg.MCP.Toolsets) == 0 {
-			return nil, fmt.Errorf("%s: no toolsets configured (mcp.toolsets in the config file)", mcpServerName)
+	for _, name := range []string{mcpServerName, toolsetsName} {
+		if slices.Contains(env.components, name) {
+			if len(cfg.MCP.Toolsets) == 0 {
+				return nil, fmt.Errorf("%s: no toolsets configured (mcp.toolsets in the config file)", name)
+			}
+			specs = cfg.MCP.Toolsets
 		}
-		specs = cfg.MCP.Toolsets
 	}
 	return specs, nil
 }
 
+// needsToolsetConfig names a component in env that serves every toolset of
+// the config file, so cannot run without one; empty if none does.
+func needsToolsetConfig(env serveEnv) string {
+	for _, name := range []string{mcpServerName, toolsetsName} {
+		if slices.Contains(env.components, name) {
+			return name
+		}
+	}
+	return ""
+}
+
 // buildToolsets builds, once, the toolsets the components use
-// (servedSpecs): both components then share the same instances. Optional
-// toolsets that fail are logged and returned as problems.
+// (servedSpecs): the components then share the same instances. Optional
+// toolsets that fail are logged and returned as problems. With
+// $AGENTKIT_TOOLSETS_URL they come from the toolsets component there
+// instead (remoteToolsets).
 func (c cli) buildToolsets(ctx context.Context, env serveEnv, cfg serveConfig, configPath string, log *slog.Logger) (map[string]tool.Registry, []toolset.Problem, error) {
-	if configPath == "" && slices.Contains(env.components, mcpServerName) {
-		return nil, nil, fmt.Errorf("%s needs a config file with its toolsets: -config or $%s", mcpServerName, envConfig)
+	if name := needsToolsetConfig(env); configPath == "" && name != "" {
+		return nil, nil, fmt.Errorf("%s needs a config file with its toolsets: -config or $%s", name, envConfig)
 	}
 	specs, err := servedSpecs(env, cfg)
 	if err != nil {
@@ -220,6 +246,9 @@ func (c cli) buildToolsets(ctx context.Context, env serveEnv, cfg serveConfig, c
 	}
 	if len(specs) == 0 {
 		return map[string]tool.Registry{}, nil, nil
+	}
+	if env.toolsetsURL != "" {
+		return c.remoteToolsets(ctx, env, specs, log)
 	}
 	catalog, err := c.toolsets()
 	if err != nil {
@@ -267,6 +296,23 @@ func (c cli) serveEnv() (serveEnv, error) {
 			return e, fmt.Errorf("%s: %q is not a positive duration", envShutdownTimeout, v)
 		}
 		e.shutdownTimeout = d
+	}
+	e.runnerURL, e.toolsetsURL, e.rpcToken = c.env(envRunnerURL), c.env(envToolsetsURL), c.env(envRPCToken)
+	switch {
+	case e.rpcToken != "" && len(e.rpcToken) < 16:
+		return e, fmt.Errorf("%s: the token must be at least 16 bytes", envRPCToken)
+	case e.runnerURL != "" && slices.Contains(e.components, runnerName):
+		return e, fmt.Errorf("%s runs the %s component here and names one at $%s; set one or the other", envComponents, runnerName, envRunnerURL)
+	case e.toolsetsURL != "" && slices.Contains(e.components, toolsetsName):
+		return e, fmt.Errorf("%s runs the %s component here and names one at $%s; set one or the other", envComponents, toolsetsName, envToolsetsURL)
+	}
+	e.dependencyWait = defaultDependencyWait
+	if v := c.env(envDependencyWait); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d < 0 {
+			return e, fmt.Errorf("%s: %q is not a duration", envDependencyWait, v)
+		}
+		e.dependencyWait = d
 	}
 	if v := c.env(envRunLease); v != "" {
 		d, err := time.ParseDuration(v)

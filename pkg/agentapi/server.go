@@ -186,8 +186,8 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 // errNoAgent means a conversation's agent is not one this server runs.
 var errNoAgent = errors.New("agent not served")
 
-// agentFor is the runner's agent factory: the harness of the conversation's
-// agent, from its record.
+// agentFor is the runner's agent factory: what runs the conversation's agent
+// (its harness, or its runner), from its record.
 func (s *Server) agentFor(ctx context.Context, conversationID string) (runner.Agent, error) {
 	c, err := s.store.GetConversation(ctx, conversationID)
 	if err != nil {
@@ -197,7 +197,7 @@ func (s *Server) agentFor(ctx context.Context, conversationID string) (runner.Ag
 	if a == nil {
 		return nil, fmt.Errorf("%w: conversation %q is of agent %q", errNoAgent, conversationID, c.Agent)
 	}
-	return a.Harness, nil
+	return a.run(), nil
 }
 
 // Routes returns the server's endpoints as "METHOD /path" patterns

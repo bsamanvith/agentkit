@@ -18,8 +18,9 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/component"
 	"github.com/bsamanvith/agentkit/pkg/harness"
-	"github.com/bsamanvith/agentkit/pkg/llm/anthropic"
+	"github.com/bsamanvith/agentkit/pkg/rpc"
 	"github.com/bsamanvith/agentkit/pkg/runner"
+	"github.com/bsamanvith/agentkit/pkg/runner/runnerrpc"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
@@ -87,7 +88,7 @@ type agentModelConfig struct {
 
 func defaultAgentDef() agentDef {
 	return agentDef{
-		Model:    agentModelConfig{Provider: "anthropic", ID: anthropic.DefaultModel},
+		Model:    agentModelConfig{Provider: "anthropic", ID: defaultModelID},
 		System:   "You are a helpful assistant. Use the tools when they help.",
 		MaxTurns: 25,
 	}
@@ -136,16 +137,44 @@ func agentToolsetSpecs(cfg serveConfig) ([]toolset.Spec, error) {
 	return specs, nil
 }
 
-// agentComponent is the agent API with the readiness of its toolsets.
+// agentComponent is the agent API with the readiness of its toolsets, or
+// of the runner its agents run on.
 type agentComponent struct {
 	*agentapi.Server
 	skipped []string
+	// runner runs the agents when they run elsewhere ($AGENTKIT_RUNNER_URL);
+	// agents are the names it must run.
+	runner    *runnerrpc.Client
+	runnerURL string
+	agents    []string
 }
 
-// Ready is degraded when optional toolsets the agents name were skipped.
+// runnerCheckTimeout bounds the call that checks the runner in /readyz.
+const runnerCheckTimeout = 2 * time.Second
+
+// Ready is degraded when optional toolsets the agents name were skipped, or
+// when the runner the agents run on cannot be reached or does not run them:
+// the API still serves conversations and runs that are stored.
 func (a *agentComponent) Ready(ctx context.Context) error {
 	if err := a.Server.Ready(ctx); err != nil {
 		return err
+	}
+	if a.runner != nil {
+		ctx, cancel := context.WithTimeout(ctx, runnerCheckTimeout)
+		defer cancel()
+		served, err := a.runner.Agents(ctx)
+		if err != nil {
+			return fmt.Errorf("%w: runner at %s: %w", component.ErrDegraded, a.runnerURL, err)
+		}
+		var missing []string
+		for _, n := range a.agents {
+			if !slices.Contains(served, n) {
+				missing = append(missing, n)
+			}
+		}
+		if len(missing) > 0 {
+			return fmt.Errorf("%w: the runner at %s does not run agents %s", component.ErrDegraded, a.runnerURL, strings.Join(missing, ", "))
+		}
 	}
 	if len(a.skipped) > 0 {
 		return fmt.Errorf("%w: toolsets skipped: %s", component.ErrDegraded, strings.Join(a.skipped, ", "))
@@ -167,51 +196,43 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 	if token == "" && !isLoopback(env.addr) {
 		return component.Mount{}, nil, fmt.Errorf("serving on %s, which is not a loopback address, needs a bearer token in $%s", env.addr, envAPIToken)
 	}
-	newModel := c.newModel
-	if newModel == nil {
-		newModel = newClaude
+	var remote *runnerrpc.Client
+	if env.runnerURL != "" {
+		conn, err := rpc.Dial(env.runnerURL, rpc.WithBearer(env.rpcToken))
+		if err != nil {
+			return component.Mount{}, nil, fmt.Errorf("%s: %w", envRunnerURL, err)
+		}
+		remote = runnerrpc.NewClient(conn)
 	}
 	var agents []agentapi.Agent
 	var skipped []string
 	for _, a := range cfg.Agents {
-		label := a.label(cfg.legacy)
-		if a.Model.Provider != "anthropic" {
-			return component.Mount{}, nil, fmt.Errorf("%s.model.provider %q: the only provider is \"anthropic\"", label, a.Model.Provider)
-		}
-		if a.MaxTotalTokens < 0 || a.Model.MaxTokens < 0 {
-			return component.Mount{}, nil, fmt.Errorf("%s: negative limit", label)
-		}
-		model, err := newModel(modelFlags{model: a.Model.ID, effort: a.Model.Effort})
-		if err != nil {
-			return component.Mount{}, nil, fmt.Errorf("%s.model: %w", label, err)
-		}
-		sets := map[string]tool.Registry{}
-		for _, name := range a.Toolsets {
-			if reg, ok := built[name]; ok {
-				sets[name] = reg
-			} else if !slices.Contains(skipped, name) {
-				skipped = append(skipped, name) // an optional toolset that failed to build
-			}
-		}
-		tools, err := agentapi.MergeTools(ctx, sets, a.PrefixToolNames)
-		if err != nil {
-			return component.Mount{}, nil, fmt.Errorf("%s.toolsets: %w", label, err)
-		}
-		h, err := harness.New(model, tools,
-			harness.WithSystem(a.System),
-			harness.WithRequest(harness.RequestOptions{MaxTokens: a.Model.MaxTokens}),
-			harness.WithMaxTurns(a.MaxTurns),
-			harness.WithMaxTotalTokens(a.MaxTotalTokens),
-			harness.WithNow(clk.Now),
-		)
-		if err != nil {
-			return component.Mount{}, nil, fmt.Errorf("%s: %w", label, err)
-		}
-		agents = append(agents, agentapi.Agent{
-			Name: a.Name, Description: a.Description, Harness: h, System: a.System,
+		def := agentapi.Agent{
+			Name: a.Name, Description: a.Description, System: a.System,
 			Model:    wire.Model{Provider: a.Model.Provider, ID: a.Model.ID, Effort: a.Model.Effort},
 			Toolsets: a.Toolsets, PrefixToolNames: a.PrefixToolNames,
-		})
+		}
+		if remote != nil {
+			// The runner builds the model and the tools: this process
+			// needs neither (the agentkit-api image has no model adapter).
+			if err := a.check(cfg.legacy); err != nil {
+				return component.Mount{}, nil, err
+			}
+			def.Runner = remote.Agent(a.Name)
+			for _, name := range a.Toolsets {
+				if slices.ContainsFunc(problems, func(p toolset.Problem) bool { return p.Toolset == name }) {
+					skipped = appendNew(skipped, name) // the runner skips it too
+				}
+			}
+		} else {
+			h, sk, err := c.newHarness(ctx, cfg, a, built, clk)
+			if err != nil {
+				return component.Mount{}, nil, err
+			}
+			def.Harness = h
+			skipped = appendNew(skipped, sk...)
+		}
+		agents = append(agents, def)
 	}
 	if cfg.API.RunTimeout < 0 {
 		return component.Mount{}, nil, errors.New("agent_api: negative limit")
@@ -241,7 +262,80 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 	if err != nil {
 		return component.Mount{}, nil, err
 	}
-	return component.Mount{Pattern: "/v1/", Component: &agentComponent{Server: srv, skipped: skipped}}, srv, nil
+	return component.Mount{Pattern: "/v1/", Component: &agentComponent{Server: srv, skipped: skipped, runner: remote, runnerURL: env.runnerURL, agents: agentNames(cfg)}}, srv, nil
+}
+
+// check validates what of an agent's config does not need its model built.
+func (d agentDef) check(legacy bool) error {
+	label := d.label(legacy)
+	if d.Model.Provider != "anthropic" {
+		return fmt.Errorf("%s.model.provider %q: the only provider is \"anthropic\"", label, d.Model.Provider)
+	}
+	if d.MaxTotalTokens < 0 || d.Model.MaxTokens < 0 {
+		return fmt.Errorf("%s: negative limit", label)
+	}
+	return nil
+}
+
+// newHarness builds an agent's harness: its model, its toolsets merged into
+// one registry, and its limits. It returns the toolsets the agent names that
+// were skipped (optional ones that failed to build).
+func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built map[string]tool.Registry, clk clock.Clock) (*harness.Harness, []string, error) {
+	label := a.label(cfg.legacy)
+	if err := a.check(cfg.legacy); err != nil {
+		return nil, nil, err
+	}
+	newModel := c.newModel
+	if newModel == nil {
+		newModel = newClaude
+	}
+	model, err := newModel(modelFlags{model: a.Model.ID, effort: a.Model.Effort})
+	if err != nil {
+		return nil, nil, fmt.Errorf("%s.model: %w", label, err)
+	}
+	sets := map[string]tool.Registry{}
+	var skipped []string
+	for _, name := range a.Toolsets {
+		if reg, ok := built[name]; ok {
+			sets[name] = reg
+		} else {
+			skipped = appendNew(skipped, name) // an optional toolset that failed to build
+		}
+	}
+	tools, err := agentapi.MergeTools(ctx, sets, a.PrefixToolNames)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%s.toolsets: %w", label, err)
+	}
+	h, err := harness.New(model, tools,
+		harness.WithSystem(a.System),
+		harness.WithRequest(harness.RequestOptions{MaxTokens: a.Model.MaxTokens}),
+		harness.WithMaxTurns(a.MaxTurns),
+		harness.WithMaxTotalTokens(a.MaxTotalTokens),
+		harness.WithNow(clk.Now),
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%s: %w", label, err)
+	}
+	return h, skipped, nil
+}
+
+// appendNew appends the names not already in list.
+func appendNew(list []string, names ...string) []string {
+	for _, n := range names {
+		if !slices.Contains(list, n) {
+			list = append(list, n)
+		}
+	}
+	return list
+}
+
+// agentNames are the names of the config's agents, in order.
+func agentNames(cfg serveConfig) []string {
+	names := make([]string, len(cfg.Agents))
+	for i, a := range cfg.Agents {
+		names[i] = a.Name
+	}
+	return names
 }
 
 // toolsetCatalog describes the toolsets served, for GET /v1/toolsets: each
@@ -252,7 +346,7 @@ func (c cli) toolsetCatalog(cfg serveConfig, specs []toolset.Spec, built map[str
 	var secrets []string
 	out := make([]agentapi.Toolset, 0, len(specs))
 	for _, s := range specs {
-		cred := credentialOf(s, c.env)
+		cred := c.credentialOfServed(s, built, problems)
 		if v := c.env(cred.Env); cred.Env != "" && v != "" {
 			secrets = append(secrets, v)
 		}

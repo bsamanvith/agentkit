@@ -1,0 +1,162 @@
+# The split deployment on Kubernetes (docs/COMPONENTS.md): the agent API with
+# the console, a runner and the toolsets, one Deployment each. For a local
+# cluster (kind, k3d), build the images and load them:
+#
+#   make images-split
+#   kind load docker-image agentkit-api:latest agentkit-runner:latest agentkit-toolsets:latest
+#   kubectl create namespace agentkit
+#   kubectl -n agentkit create secret generic agentkit \
+#     --from-literal=rpc-token="$(openssl rand -hex 24)" \
+#     --from-literal=api-token="$(openssl rand -hex 24)" \
+#     --from-literal=anthropic-api-key="$ANTHROPIC_API_KEY"
+#   kubectl -n agentkit apply -f deploy/k8s/split.yaml
+#   kubectl -n agentkit port-forward svc/api 8080:8080    # console at http://localhost:8080
+#
+# The store is in memory (one API replica, lost on restart); set
+# AGENTKIT_STORE to a postgres:// URL (and AGENTKIT_BUS to redis:// for more
+# replicas) to keep it. Every pod mounts the same config.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agentkit-config
+data:
+  config.json: |
+    {
+      "mcp": {"toolsets": [{"name": "demo", "type": "demo"}]},
+      "agents": [{
+        "name": "default",
+        "description": "A helpful assistant with the demo tools.",
+        "toolsets": ["demo"]
+      }]
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: toolsets
+  labels: {app.kubernetes.io/name: agentkit, app.kubernetes.io/component: toolsets}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: agentkit, app.kubernetes.io/component: toolsets}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: agentkit, app.kubernetes.io/component: toolsets}
+    spec:
+      terminationGracePeriodSeconds: 20
+      containers:
+        - name: toolsets
+          image: agentkit-toolsets:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: AGENTKIT_COMPONENTS, value: "toolsets,mcp-server"}
+            - name: AGENTKIT_RPC_TOKEN
+              valueFrom: {secretKeyRef: {name: agentkit, key: rpc-token}}
+            # Connector keys go here, and only here (TAVILY_API_KEY, ...).
+          ports: [{name: http, containerPort: 8080}]
+          readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 10}
+          securityContext:
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          volumeMounts: [{name: config, mountPath: /etc/agentkit, readOnly: true}]
+      volumes: [{name: config, configMap: {name: agentkit-config}}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: toolsets
+spec:
+  selector: {app.kubernetes.io/name: agentkit, app.kubernetes.io/component: toolsets}
+  ports: [{name: http, port: 8080, targetPort: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: runner
+  labels: {app.kubernetes.io/name: agentkit, app.kubernetes.io/component: runner}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: agentkit, app.kubernetes.io/component: runner}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: agentkit, app.kubernetes.io/component: runner}
+    spec:
+      terminationGracePeriodSeconds: 20
+      containers:
+        - name: runner
+          image: agentkit-runner:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: AGENTKIT_COMPONENTS, value: runner}
+            - {name: AGENTKIT_TOOLSETS_URL, value: "http://toolsets:8080"}
+            - name: AGENTKIT_RPC_TOKEN
+              valueFrom: {secretKeyRef: {name: agentkit, key: rpc-token}}
+            - name: ANTHROPIC_API_KEY
+              valueFrom: {secretKeyRef: {name: agentkit, key: anthropic-api-key}}
+          ports: [{name: http, containerPort: 8080}]
+          readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 10}
+          securityContext:
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          volumeMounts: [{name: config, mountPath: /etc/agentkit, readOnly: true}]
+      volumes: [{name: config, configMap: {name: agentkit-config}}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: runner
+spec:
+  selector: {app.kubernetes.io/name: agentkit, app.kubernetes.io/component: runner}
+  ports: [{name: http, port: 8080, targetPort: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  labels: {app.kubernetes.io/name: agentkit, app.kubernetes.io/component: api}
+spec:
+  replicas: 1 # the memory store: one replica
+  selector:
+    matchLabels: {app.kubernetes.io/name: agentkit, app.kubernetes.io/component: api}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: agentkit, app.kubernetes.io/component: api}
+    spec:
+      terminationGracePeriodSeconds: 20
+      containers:
+        - name: api
+          image: agentkit-api:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: AGENTKIT_COMPONENTS, value: "agent,web"}
+            - {name: AGENTKIT_RUNNER_URL, value: "http://runner:8080"}
+            - {name: AGENTKIT_TOOLSETS_URL, value: "http://toolsets:8080"}
+            - name: AGENTKIT_RPC_TOKEN
+              valueFrom: {secretKeyRef: {name: agentkit, key: rpc-token}}
+            - name: AGENTKIT_API_TOKEN
+              valueFrom: {secretKeyRef: {name: agentkit, key: api-token}}
+          ports: [{name: http, containerPort: 8080}]
+          readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 10}
+          securityContext:
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          volumeMounts: [{name: config, mountPath: /etc/agentkit, readOnly: true}]
+      volumes: [{name: config, configMap: {name: agentkit-config}}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+spec:
+  selector: {app.kubernetes.io/name: agentkit, app.kubernetes.io/component: api}
+  ports: [{name: http, port: 8080, targetPort: http}]

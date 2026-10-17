@@ -31,3 +31,6 @@ go.work.sum
 .vscode/
 *.swp
 .DS_Store
+
+# The binary `go build ./cmd/agentkit` leaves at the root
+/agentkit

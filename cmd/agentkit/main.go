@@ -17,6 +17,12 @@
 // AGENTKIT_SHUTDOWN_TIMEOUT (default 15s). It logs JSON to stderr, answers
 // /healthz, /readyz and /version, and shuts down gracefully on SIGINT or
 // SIGTERM.
+//
+// The components are agent (the agent API), web (the console), mcp-server,
+// runner and toolsets. Split across containers (docs/COMPONENTS.md), the
+// agent API runs its agents on the runner at AGENTKIT_RUNNER_URL, the runner
+// and the API take their toolsets from AGENTKIT_TOOLSETS_URL, and
+// AGENTKIT_RPC_TOKEN is the token between them.
 package main
 
 import (
@@ -30,7 +36,6 @@ import (
 	"syscall"
 
 	"github.com/bsamanvith/agentkit/pkg/llm"
-	"github.com/bsamanvith/agentkit/pkg/llm/anthropic"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
@@ -137,16 +142,9 @@ type modelFlags struct {
 }
 
 func (m *modelFlags) register(fs *flag.FlagSet) {
-	fs.StringVar(&m.model, "model", anthropic.DefaultModel, "Claude model ID")
+	fs.StringVar(&m.model, "model", defaultModelID, "Claude model ID")
 	fs.StringVar(&m.effort, "effort", "", "effort: low, medium, high, xhigh or max (default: the adapter's, medium)")
 	fs.IntVar(&m.maxTurns, "max-turns", 25, "maximum model calls per agent run")
-}
-
-func newClaude(f modelFlags) (llm.Model, error) {
-	return anthropic.New(
-		anthropic.WithModel(f.model),
-		anthropic.WithOptions(anthropic.Options{Effort: anthropic.Effort(f.effort)}),
-	)
 }
 
 // demoTools builds the built-in demo toolset (echo, current_time, calculate).

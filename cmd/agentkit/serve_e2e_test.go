@@ -56,11 +56,17 @@ type serveProcess struct {
 // env entries ("KEY=value") are added to, or replace, the defaults.
 func startServe(t *testing.T, config string, shutdownTimeout time.Duration, env ...string) *serveProcess {
 	t.Helper()
+	return startServeBin(t, binary(t), config, shutdownTimeout, env...)
+}
+
+// startServeBin is startServe with the binary at bin.
+func startServeBin(t *testing.T, bin, config string, shutdownTimeout time.Duration, env ...string) *serveProcess {
+	t.Helper()
 	path := filepath.Join(t.TempDir(), "agentkit.json")
 	if err := os.WriteFile(path, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	p := &serveProcess{cmd: exec.Command(binary(t), "serve", "-config", path), done: make(chan struct{})}
+	p := &serveProcess{cmd: exec.Command(bin, "serve", "-config", path), done: make(chan struct{})}
 	p.cmd.Env = []string{
 		"HOME=" + t.TempDir(),
 		"PATH=" + os.Getenv("PATH"),

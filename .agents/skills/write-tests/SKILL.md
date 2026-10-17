@@ -38,7 +38,7 @@ description: Write or review tests for agentkit Go code. Use when adding tests f
 
 ## Connectors
 
-A connector (anything under `connectors/`) is tested with the kit in `pkg/toolset/toolsettest`; follow [docs/CONNECTORS.md](../../../docs/CONNECTORS.md):
+A connector (anything under `connectors/`) is tested with the kit in `pkg/toolset/toolsettest`; follow [docs/CONNECTORS.md](../../../docs/CONNECTORS.md), and the `write-connector` skill for writing, auth and running one locally:
 
 - **The suite.** One `toolsettest.RunConnector` call, with semantic `Invalid` cases.
 - **Cassettes.** Recorded with `make record-cassettes`, with goldens from `make golden`.

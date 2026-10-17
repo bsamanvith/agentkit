@@ -1,0 +1,21 @@
+# The split deployment on Docker Desktop's Kubernetes, small enough for a
+# laptop: the base's three components, Postgres for the store, and the
+# console on http://localhost:30080. scripts/k8s-local.sh applies it (make
+# k8s-up) after creating the secret; see deploy/k8s/README.md.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: agentkit
+resources:
+  - ../base
+  - postgres.yaml
+patches:
+  # Small requests and limits: the whole stack asks for about 0.2 CPU and
+  # 300 MiB, and is held to 1.5 CPU and 768 MiB.
+  - target: {kind: Deployment}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests: {cpu: 20m, memory: 32Mi}
+          limits: {cpu: 500m, memory: 128Mi}
+  - path: api.yaml

@@ -11,7 +11,7 @@ FUZZTIME ?= 10s
 
 .PHONY: help
 help: ## Show this help
-	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 .PHONY: build
 build: ## Compile every package
@@ -197,3 +197,13 @@ image-size: ## Fail if the built image (BIN=..., VERSION=...) is over IMAGE_BUDG
 	budget=$$(( $(IMAGE_BUDGET_MB) * 1000 * 1000 )); \
 	echo "$(IMAGE):$(VERSION): $$size bytes uncompressed, budget $$budget ($(IMAGE_BUDGET_MB) MB)"; \
 	test $$size -gt 0 -a $$size -le $$budget || { echo "$(IMAGE):$(VERSION) is over its size budget" >&2; exit 1; }
+
+# The split deployment on Docker Desktop's Kubernetes (deploy/k8s/README.md).
+# scripts/k8s-local.sh never creates a cluster; KUBE_CONTEXT picks another.
+.PHONY: k8s-up k8s-status k8s-down
+k8s-up: ## Build the split images and deploy them, with Postgres, to Docker Desktop's Kubernetes; console on http://localhost:30080
+	scripts/k8s-local.sh up
+k8s-status: ## Show the local deployment's pods, services and console URL
+	scripts/k8s-local.sh status
+k8s-down: ## Delete the local deployment: its pods, secret and Postgres data
+	scripts/k8s-local.sh down

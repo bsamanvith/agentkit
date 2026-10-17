@@ -78,7 +78,7 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 | [T094](T094-mcp-client-toolset.md) | `pkg/mcp/client` and the `mcp` toolset type: use external MCP servers' tools, pin fingerprints | **Ready** (E19); new package, tests against our own MCP server |
 | [T101](T101-ci-hardening.md) | CI hardening: actions pinned by SHA, no persisted credentials, workflow lint | **Ready**; small, from T078's review |
 | [T102](T102-component-images.md) | Split images: API, runner and toolsets on `pkg/rpc`, each alone or bundled; the all-in-one image stays | **Review** (rescoped by the owner 2026-10-16) |
-| [T006](T006-compose-and-dev-script.md) | Compose topologies and `scripts/dev.sh` | Image exists; repeatable local runs |
+| [T006](T006-compose-and-dev-script.md) | Local deploy on Docker Desktop's Kubernetes: `make k8s-up` (rescoped from Compose 2026-10-17) | **Review** |
 | [T033](T033-harness-clock.md) | Harness on `pkg/clock` | Small, independent |
 | [T035](T035-rerecord-anthropic-fixtures.md) | Re-record Anthropic fixtures from the real API | A key is available |
 | [T010](T010-skills-layout.md) | `AGENTS.md`, `CLAUDE.md`, skills README, lint | Small, independent |

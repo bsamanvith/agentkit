@@ -94,7 +94,7 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 | [T096](T096-mcp-servers-api-console.md) Add MCP servers at runtime: API, console, SSRF guard | T094, T062 (done), T040, T082; screens from T087 |
 | [T097](T097-mcp-registry-search.md) MCP Registry search | T096 |
 | [T045](T045-connect-accounts.md) Connecting accounts (OAuth2 + PKCE) | T040, T043, T044 |
-| [T004](T004-fakellm.md) `fakellm`, [T007](T007-e2e-smoke-suite.md) smoke suite, [T008](T008-ci-pipeline.md) full CI | T006 |
+| [T004](T004-fakellm.md) `fakellm`, [T008](T008-ci-pipeline.md) full CI | T006. [T007](T007-e2e-smoke-suite.md) smoke suite **done** 2026-10-17 (`make smoke`, `make k8s-smoke`, on the console's fake model in place of `fakellm`) |
 
 ## Waiting on the owner
 

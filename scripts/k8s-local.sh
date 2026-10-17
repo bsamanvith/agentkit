@@ -8,6 +8,7 @@
 #   scripts/k8s-local.sh status    pods, services and the console's URL
 #   scripts/k8s-local.sh token     print the API token the console asks for
 #   scripts/k8s-local.sh logs [c]  follow a component's logs (api, runner, toolsets, postgres)
+#   scripts/k8s-local.sh smoke     run the smoke suite (test/e2e) against it
 #   scripts/k8s-local.sh down      delete the namespace: pods, secret and data
 #
 # Environment: KUBE_CONTEXT (default docker-desktop); ANTHROPIC_API_KEY (or
@@ -106,6 +107,10 @@ logs)
 	check_context
 	c="${2:-api}"
 	if [ "$c" = postgres ]; then kn logs -f statefulset/postgres; else kn logs -f "deployment/$c" --all-containers; fi
+	;;
+smoke)
+	check_context
+	AGENTKIT_URL="$url" AGENTKIT_API_TOKEN="$(secret_value api-token)" go test -tags e2e -count=1 ./test/e2e/
 	;;
 down)
 	check_context

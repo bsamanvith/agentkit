@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -563,5 +564,52 @@ func TestNonRetryableErrorFailsAnInteractiveRunAtOnce(t *testing.T) {
 	}
 	if got := len(w.model.requestsFor(prompt)); got != 1 || slices.ContainsFunc(evs, func(ev runner.Event) bool { return ev.Kind == runner.EventRetrying }) {
 		t.Errorf("%d requests, events %s; want one request and no retry", got, js(evs))
+	}
+}
+
+// unreachableOnce is an agent that fails its first run before it starts, as
+// a runner it cannot reach does (runnerrpc), and then runs the harness.
+type unreachableOnce struct {
+	runner.Agent
+	failed atomic.Bool
+}
+
+func (a *unreachableOnce) Run(ctx context.Context, in harness.Input) iter.Seq2[harness.Event, error] {
+	if a.failed.CompareAndSwap(false, true) {
+		return func(yield func(harness.Event, error) bool) {
+			yield(harness.Event{}, fmt.Errorf("%w: runner unreachable", llm.ErrOverloaded))
+		}
+	}
+	return a.Agent.Run(ctx, in)
+}
+
+// An agent that fails before its run starts, so the prompt was never stored,
+// is retried with the same message: the run answers it, and is not taken
+// for one whose model had answered.
+func TestRetryBeforeTheRunStartedSendsTheMessageAgain(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	h, err := harness.New(w.model, w.tools, harness.WithNow(w.clk.Now))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := &unreachableOnce{Agent: h}
+	w.agent = func(string) runner.Agent { return a }
+	p := w.process()
+	prompt := w.model.on("q", 1)
+	x, err := p.r.Run(w.ctx, "c", harness.UserText(prompt), runner.Interactive())
+	if err != nil {
+		t.Fatal(err)
+	}
+	evs, err := p.drain(x, w.retrying())
+	if err != nil {
+		t.Fatalf("run ended with %v, want it completed after the retry", err)
+	}
+	done := lastDone(t, evs)
+	if done.Run.Status != store.StatusCompleted || done.Result == nil || done.Result.Turns == 0 {
+		t.Errorf("run done = %+v, result %+v; want completed with the model's turns", done.Run, done.Result)
+	}
+	if got, want := w.transcript("c"), referenceTranscript(t, "q", 1); !sameJSON(got, want) {
+		t.Errorf("conversation %s, want the prompt and the answer: %s", js(got), js(want))
 	}
 }

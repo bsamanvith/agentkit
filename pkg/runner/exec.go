@@ -835,6 +835,11 @@ func (x *exec) chat(ctx context.Context, agent Agent, msg *llm.Message, flush in
 		if !emit(Event{Kind: EventRetrying, Attempt: attempt + 1, Delay: delay, Err: out.err}) || !r.wait(ctx, delay) {
 			return out
 		}
+		if msg != nil && !t.prompted {
+			// The agent failed before the run started (a runner it could
+			// not reach): nothing was stored, so send the message again.
+			continue
+		}
 		if !t.v.endsOnUser() {
 			// The model had answered: only the run's end failed.
 			return outcome{kind: outCompleted, usage: spent}
@@ -866,6 +871,8 @@ type turns struct {
 	pending []store.Entry
 	// failed is set when a write failed: nothing more is written.
 	failed bool
+	// prompted is set once the run's prompt is stored.
+	prompted bool
 }
 
 // run runs the agent, streaming its events. flush is recorded with the
@@ -898,7 +905,7 @@ func (t *turns) run(ctx context.Context, agent Agent, in harness.Input, flush in
 					t.failed = true
 					return outcome{kind: outAbort, err: err}
 				}
-				saved = true
+				saved, t.prompted = true, true
 			}
 		case harness.EventTurnDone:
 			if tr := ev.TurnRecord; tr != nil {

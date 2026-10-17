@@ -23,6 +23,8 @@ scripts/try-agent.sh            # build, start, run a short demo, keep serving (
 
 Variants: `scripts/try-agent.sh --demo` runs the demo and stops; `scripts/try-agent.sh --docker` does the same with the container image (`make image`). `PORT=9090` changes the port (default 8080).
 
+No key yet? `scripts/smoke.sh --keep` runs the split deployment (API and console, runner, toolsets) as processes on a fake model, checks it with the smoke suite, and keeps serving the console on http://127.0.0.1:18480 with the token it prints. Say "echo" to see a tool call.
+
 The demo shows:
 
 1. a streamed run where Claude uses the `calculate` tool (17 × 23 = 391), with its events: `run_start`, `tool_call`, `tool_result`, `turn_done`, `text_delta`, `turn_done`, `run_done`;

@@ -200,10 +200,23 @@ image-size: ## Fail if the built image (BIN=..., VERSION=...) is over IMAGE_BUDG
 
 # The split deployment on Docker Desktop's Kubernetes (deploy/k8s/README.md).
 # scripts/k8s-local.sh never creates a cluster; KUBE_CONTEXT picks another.
-.PHONY: k8s-up k8s-status k8s-down
+.PHONY: k8s-up k8s-status k8s-smoke k8s-down
 k8s-up: ## Build the split images and deploy them, with Postgres, to Docker Desktop's Kubernetes; console on http://localhost:30080
 	scripts/k8s-local.sh up
 k8s-status: ## Show the local deployment's pods, services and console URL
 	scripts/k8s-local.sh status
+k8s-smoke: ## Run the smoke suite (test/e2e) against the local deployment; one chat run calls the model
+	scripts/k8s-local.sh smoke
 k8s-down: ## Delete the local deployment: its pods, secret and Postgres data
 	scripts/k8s-local.sh down
+
+# The smoke suite (test/e2e, T007): a few black-box flows against a running
+# deployment. make smoke runs the split deployment as processes, on a fake
+# model; make k8s-smoke runs the suite against make k8s-up's.
+.PHONY: smoke
+smoke: ## Smoke suite against the split deployment run as local processes (fake model; no Docker, no key)
+	scripts/smoke.sh
+
+.PHONY: $(addprefix print-tags-,$(VARIANTS))
+$(addprefix print-tags-,$(VARIANTS)): print-tags-%:
+	@echo $(TAGS_$*)

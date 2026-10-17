@@ -1,6 +1,7 @@
 package agentapi
 
 import (
+	"bytes"
 	"context"
 	"crypto/subtle"
 	"encoding/json"
@@ -62,7 +63,8 @@ type Server struct {
 	toolsets     map[string]*Toolset
 
 	store  Store
-	runner *runner.Runner
+	runs   Runs
+	runner *runner.Runner // the default runs; nil with WithRuns
 	bus    bus.Bus
 	ownBus bool // the server made the bus, and closes it
 	pub    *stream.Publisher
@@ -135,15 +137,24 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 	if s.cmds, err = stream.NewCommands(s.store, s.bus, sopts...); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
 	}
-	ropts := append([]runner.Option{
-		runner.WithClock(cfg.clock),
-		runner.WithIDs(func() string { return cfg.newID("run_") }),
-	}, cfg.runnerOpts...)
-	rn, err := runner.New(s.store, s.agentFor, ropts...)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+	if cfg.runs != nil {
+		if s.runs, err = cfg.runs(s.store, s.agentFor); err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+		}
+		if s.runs == nil {
+			return nil, fmt.Errorf("%w: WithRuns made no runs", ErrInvalidConfig)
+		}
+	} else {
+		ropts := append([]runner.Option{
+			runner.WithClock(cfg.clock),
+			runner.WithIDs(func() string { return cfg.newID("run_") }),
+		}, cfg.runnerOpts...)
+		rn, err := runner.New(s.store, s.agentFor, ropts...)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+		}
+		s.runner, s.runs = rn, localRuns{rn}
 	}
-	s.runner = rn
 
 	mux := http.NewServeMux()
 	// Every endpoint is in this table, which [Server.Routes] lists, so the
@@ -205,7 +216,8 @@ func (s *Server) agentFor(ctx context.Context, conversationID string) (runner.Ag
 func (s *Server) Routes() []string { return slices.Clone(s.routes) }
 
 // Runner returns the runner the server runs its runs with, for the recovery
-// loop ([runner.NewRecovery]) of the process.
+// loop ([runner.NewRecovery]) of the process; nil when [WithRuns] gave
+// another orchestrator.
 func (s *Server) Runner() *runner.Runner { return s.runner }
 
 // Name implements [component.Component]: "agent".
@@ -229,7 +241,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	s.closeOnce.Do(func() { close(s.closed) })
 
 	var errs []error
-	if err := s.runner.Shutdown(ctx); err != nil {
+	if err := s.runs.Shutdown(ctx); err != nil {
 		errs = append(errs, fmt.Errorf("stopping the runs: %w", err))
 	}
 	done := make(chan struct{})
@@ -287,7 +299,7 @@ func (s *Server) drain(stop <-chan struct{}, after time.Duration) {
 			}
 			cancel()
 		}()
-		_ = s.runner.Shutdown(ctx) // Shutdown waits for what is left
+		_ = s.runs.Shutdown(ctx) // Shutdown waits for what is left
 		cancel()
 	case <-s.closed:
 	}
@@ -298,7 +310,20 @@ func (s *Server) auth(next http.Handler) http.Handler {
 	if s.cfg.token == "" {
 		return next
 	}
-	want := []byte(s.cfg.token)
+	return RequireToken(s.cfg.token)(next)
+}
+
+// RequireToken returns middleware that answers 401 unauthorized, in the
+// API's error format, to a request without token as its bearer token
+// (compared in constant time). It is the check [WithToken] puts in front of
+// the API, for other routes the same token guards, such as /mcp. token
+// must not be empty; [MinTokenLength] is the shortest the API accepts.
+func RequireToken(token string) func(http.Handler) http.Handler {
+	want := []byte(token)
+	return func(next http.Handler) http.Handler { return requireToken(want, next) }
+}
+
+func requireToken(want []byte, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		scheme, got, ok := strings.Cut(r.Header.Get("Authorization"), " ")
 		if !ok || !strings.EqualFold(scheme, "Bearer") || subtle.ConstantTimeCompare([]byte(got), want) != 1 {
@@ -388,7 +413,7 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 		created = true
 	}
 	execCtx, cancel := execContext(ctx)
-	x, err := s.runner.Run(execCtx, convID, harness.UserText(req.Message), runner.Interactive())
+	x, err := s.runs.Start(execCtx, convID, harness.UserText(req.Message))
 	if err != nil {
 		cancel(nil)
 		s.release()
@@ -436,7 +461,7 @@ func (s *Server) readBody(w http.ResponseWriter, r *http.Request) ([]byte, *Erro
 }
 
 func decodeStrict(body []byte, v any) error {
-	dec := json.NewDecoder(strings.NewReader(string(body)))
+	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {
 		return err
@@ -866,7 +891,7 @@ func (s *Server) leave(h *hub) {
 			return
 		}
 		s.log.Info("interrupting a run nobody follows", "run_id", h.runID, "grace", s.cfg.grace.String())
-		if _, err := s.runner.Interrupt(tenancy.With(context.Background(), h.tenant), h.runID); err != nil {
+		if _, err := s.runs.Interrupt(tenancy.With(context.Background(), h.tenant), h.runID); err != nil {
 			s.log.Warn("interrupting a run nobody follows", "run_id", h.runID, "err", err)
 		}
 	}()

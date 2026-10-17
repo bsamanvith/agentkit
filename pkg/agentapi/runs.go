@@ -451,7 +451,7 @@ func (s *Server) resume(ctx context.Context, w http.ResponseWriter, r *http.Requ
 		return
 	}
 	execCtx, cancel := execContext(ctx)
-	x, err := s.runner.Resume(execCtx, run.ID)
+	x, err := s.runs.Resume(execCtx, run.ID)
 	if err != nil {
 		cancel(nil)
 		s.release()
@@ -485,7 +485,7 @@ func (s *Server) stopRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
-	_, err := s.runner.Interrupt(ctx, id)
+	_, err := s.runs.Interrupt(ctx, id)
 	switch {
 	case errors.Is(err, store.ErrLeased) && !s.ownBus:
 		s.command(ctx, w, r, id, commandStop)
@@ -504,7 +504,7 @@ func (s *Server) cancelRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
-	if _, err := s.runner.Cancel(ctx, id); err != nil {
+	if _, err := s.runs.Cancel(ctx, id); err != nil {
 		if errors.Is(err, store.ErrLeased) && !s.ownBus {
 			s.command(ctx, w, r, id, commandCancel)
 			return
@@ -577,7 +577,7 @@ func (s *Server) decideRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	execCtx, cancel := execContext(ctx)
-	x, err := s.runner.Decide(execCtx, id, req.Path, flow.Decision{Approved: req.Approved, Reason: req.Reason})
+	x, err := s.runs.Decide(execCtx, id, req.Path, flow.Decision{Approved: req.Approved, Reason: req.Reason})
 	if err != nil {
 		cancel(nil)
 		s.release()

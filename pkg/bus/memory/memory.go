@@ -37,8 +37,14 @@ var _ bus.Bus = (*Bus)(nil)
 // Option configures a [Bus].
 type Option func(*Bus)
 
-// WithClock sets the clock that expires topics (default [clock.Real]).
-func WithClock(c clock.Clock) Option { return func(b *Bus) { b.clock = c } }
+// WithClock sets the clock that expires topics (default, also for nil, [clock.Real]).
+func WithClock(c clock.Clock) Option {
+	return func(b *Bus) {
+		if c != nil {
+			b.clock = c
+		}
+	}
+}
 
 // WithTrim sets the trim policy per topic (default [bus.DefaultTrim]).
 func WithTrim(trim func(bus.Topic) bus.Trim) Option { return func(b *Bus) { b.trim = trim } }

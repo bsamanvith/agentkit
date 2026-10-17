@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/bus"
+	"github.com/bsamanvith/agentkit/pkg/bus/busopen"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/store"
-	"github.com/bsamanvith/agentkit/pkg/store/memory"
+	"github.com/bsamanvith/agentkit/pkg/store/storeopen"
 )
 
 const (
@@ -31,46 +31,44 @@ type openedStore struct {
 	close func()
 }
 
-// openStore opens the store $AGENTKIT_STORE names; an unknown scheme, or a
-// backend this build leaves out (backends.go), is an error, which never
-// echoes the value (a connection string can carry a password).
+// openStore opens the store $AGENTKIT_STORE names (package storeopen); an
+// unknown spec, or a backend this build leaves out (backends.go), is an
+// error, which never echoes the value (a connection string can carry a
+// password).
 func (c cli) openStore(ctx context.Context, clk clock.Clock) (openedStore, error) {
-	spec := c.env(envStore)
-	switch {
-	case spec == "" || spec == "memory":
-		s := memory.New(memory.WithClock(clk))
-		return openedStore{Store: s, admin: memory.Admin(s), close: func() {}}, nil
-	case strings.HasPrefix(spec, "sqlite:"):
-		return c.openSQLite(ctx, strings.TrimPrefix(spec, "sqlite:"), clk)
-	case strings.HasPrefix(spec, "postgres://"), strings.HasPrefix(spec, "postgresql://"):
-		migrate := true
-		switch v := c.env(envStoreMigrate); v {
-		case "", "on":
-		case "off":
-			migrate = false
-		default:
-			return openedStore{}, fmt.Errorf("%s: %q is not on or off", envStoreMigrate, v)
-		}
-		return openPostgres(ctx, spec, clk, migrate)
+	migrate := true
+	switch v := c.env(envStoreMigrate); v {
+	case "", "on":
+	case "off":
+		migrate = false
+	default:
+		return openedStore{}, fmt.Errorf("%s: %q is not on or off", envStoreMigrate, v)
 	}
-	return openedStore{}, fmt.Errorf("%s: unknown store; want memory, sqlite:/path or postgres://…", envStore)
+	o, err := storeopen.Open(ctx, c.env(envStore), storeopen.WithClock(clk), storeopen.WithMigrate(migrate))
+	if err != nil {
+		return openedStore{}, fmt.Errorf("%s: %w", envStore, err)
+	}
+	return openedStore{Store: o.Store, admin: o.Admin, close: func() { _ = o.Close() }}, nil
 }
 
 // envBus names the bus that joins replicas of agentkit serve (E18): empty or
-// "memory" for one replica (the agent API keeps its own, in process), or a
-// redis:// or rediss:// URL. Every replica sharing a store must share it.
+// "memory" for one replica, or a redis:// or rediss:// URL. Every replica
+// sharing a store must share it.
 const envBus = "AGENTKIT_BUS"
 
-// openBus opens the bus $AGENTKIT_BUS names: nil for one replica, and the
-// function that closes it. An unknown value is an error, which never echoes
+// openBus opens the bus $AGENTKIT_BUS names (package busopen): nil for one
+// replica, and the function that closes it. An unknown value is an error, which never echoes
 // it (a URL can carry a password).
 func (c cli) openBus(ctx context.Context, clk clock.Clock, log *slog.Logger) (bus.Bus, func(), error) {
 	spec := c.env(envBus)
-	switch {
-	case spec == "" || spec == "memory":
+	if spec == "" || spec == "memory" {
+		// nil: the agent API makes its own, and knows that no other
+		// replica shares it (a held run is then this process's or nobody's).
 		return nil, func() {}, nil
-	case strings.HasPrefix(spec, "redis://"), strings.HasPrefix(spec, "rediss://"):
-		return openRedis(ctx, spec, clk, log)
 	}
-	return nil, nil, fmt.Errorf("%s: unknown bus; want memory or redis://…", envBus)
+	b, closeBus, err := busopen.Open(ctx, spec, busopen.WithClock(clk), busopen.WithLogger(log.With("component", "bus")))
+	if err != nil {
+		return nil, nil, fmt.Errorf("%s: %w", envBus, err)
+	}
+	return b, func() { _ = closeBus() }, nil
 }

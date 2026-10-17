@@ -58,6 +58,8 @@ var (
 	ErrInterrupted = errors.New("run interrupted")
 	// ErrIterated means [Execution.Events] was iterated a second time.
 	ErrIterated = errors.New("execution already iterated")
+	// ErrNoEvents ends an execution [NewExecution] made with no events.
+	ErrNoEvents = errors.New("execution has no events")
 	// ErrShutdown ends the events of an execution stopped by
 	// [Runner.Shutdown], and is what starting or resuming a run on a runner
 	// that was shut down gives.
@@ -203,6 +205,18 @@ type Execution struct {
 	Run    store.Run
 	events iter.Seq2[Event, error]
 	used   atomic.Bool
+}
+
+// NewExecution returns an execution of run whose events come from events,
+// for an orchestrator other than [Runner] that serves the same API (see
+// agentapi.WithRuns). events must follow the contract of [Execution.Events];
+// the returned execution enforces that it is iterated once. With nil events
+// it ends at once with [ErrNoEvents].
+func NewExecution(run store.Run, events iter.Seq2[Event, error]) *Execution {
+	if events == nil {
+		events = func(yield func(Event, error) bool) { yield(Event{}, ErrNoEvents) }
+	}
+	return &Execution{Run: run, events: events}
 }
 
 // Events runs the execution and streams its events. It ends with an

@@ -54,7 +54,7 @@ func main() {
 		sigs = sigs[1:] // chat takes Ctrl-C itself: it cancels a run, not the program
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), sigs...)
-	code := cli{stdout: os.Stdout, stderr: os.Stderr, getenv: os.Getenv, newModel: newClaude}.main(ctx, os.Args[1:])
+	code := cli{stdout: os.Stdout, stderr: os.Stderr, getenv: os.Getenv, newModel: buildModel}.main(ctx, os.Args[1:])
 	stop()
 	os.Exit(code)
 }
@@ -136,6 +136,7 @@ func (c cli) main(ctx context.Context, args []string) int {
 
 // modelFlags choose the model and how hard it works.
 type modelFlags struct {
+	provider string // empty for defaultProvider
 	model    string
 	effort   string
 	maxTurns int

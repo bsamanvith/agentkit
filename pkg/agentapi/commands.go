@@ -69,7 +69,7 @@ func (s *Server) command(ctx context.Context, w http.ResponseWriter, r *http.Req
 	if typ == commandCancel {
 		// The holder lets the run go, then cancels it: cancel it here too,
 		// so the answer is the run canceled (one of the two finds it final).
-		if _, err := s.runner.Cancel(ctx, id); err != nil && !errors.Is(err, store.ErrFinal) {
+		if _, err := s.runs.Cancel(ctx, id); err != nil && !errors.Is(err, store.ErrFinal) {
 			s.commandError(w, id, err)
 			return
 		}
@@ -177,9 +177,9 @@ func (s *Server) consume(in *stream.Inbox, h *hub) bool {
 	go func() {
 		var err error
 		if verb == commandCancel {
-			_, err = s.runner.Cancel(ctx, h.runID)
+			_, err = s.runs.Cancel(ctx, h.runID)
 		} else {
-			_, err = s.runner.Interrupt(ctx, h.runID)
+			_, err = s.runs.Interrupt(ctx, h.runID)
 		}
 		if err != nil {
 			s.log.Warn("acting on a run's command", "run_id", h.runID, "command", verb, "err", err)

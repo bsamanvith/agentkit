@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
+	"reflect"
 
 	"github.com/bsamanvith/agentkit/pkg/flow"
 	"github.com/bsamanvith/agentkit/pkg/harness"
@@ -11,13 +13,22 @@ import (
 )
 
 var (
-	// ErrInvalidConfig means [New] was given a missing name, harness, saver or
+	// ErrInvalidConfig means [New] was given a missing name, agent, saver or
 	// state key.
 	ErrInvalidConfig = errors.New("invalid agent step configuration")
 	// ErrNoRun means the step ran outside [flow.Run] and [flow.Resume], so it
 	// has no run id and path to save its transcript under.
 	ErrNoRun = errors.New("agent step must run under flow.Run or flow.Resume")
 )
+
+// Agent runs an agent's turns on an input: a [*harness.Harness], or anything
+// with the same Run, such as a runner.Agent (a remote runner or a pool's
+// agent), so that a step can run where the server's runs do.
+type Agent interface {
+	Run(ctx context.Context, in harness.Input) iter.Seq2[harness.Event, error]
+}
+
+var _ Agent = (*harness.Harness)(nil)
 
 // Keys are the state keys a [Step] reads and writes.
 type Keys struct {
@@ -49,22 +60,22 @@ func WithObserver(fn func(path string, ev harness.Event)) Option {
 // Step is a [flow.Step] that runs an agent. See the package documentation.
 type Step struct {
 	name    string
-	h       *harness.Harness
+	agent   Agent
 	saver   TranscriptSaver
 	keys    Keys
 	observe func(string, harness.Event)
 }
 
-// New returns a Step called name that runs h on the prompt under keys.Input,
+// New returns a Step called name that runs agent on the prompt under keys.Input,
 // saves its transcript through saver after every turn, and writes its
 // [Output] under keys.Output. It fails with [ErrInvalidConfig] for a missing
 // argument, an empty key, or the same key for input and output.
-func New(name string, h *harness.Harness, saver TranscriptSaver, keys Keys, opts ...Option) (*Step, error) {
+func New(name string, agent Agent, saver TranscriptSaver, keys Keys, opts ...Option) (*Step, error) {
 	switch {
 	case name == "":
 		return nil, fmt.Errorf("%w: empty name", ErrInvalidConfig)
-	case h == nil:
-		return nil, fmt.Errorf("%w: %s: nil harness", ErrInvalidConfig, name)
+	case isNil(agent):
+		return nil, fmt.Errorf("%w: %s: nil agent", ErrInvalidConfig, name)
 	case saver == nil:
 		return nil, fmt.Errorf("%w: %s: nil transcript saver", ErrInvalidConfig, name)
 	case keys.Input == "" || keys.Output == "":
@@ -72,7 +83,7 @@ func New(name string, h *harness.Harness, saver TranscriptSaver, keys Keys, opts
 	case keys.Input == keys.Output:
 		return nil, fmt.Errorf("%w: %s: input and output key are both %q", ErrInvalidConfig, name, keys.Input)
 	}
-	s := &Step{name: name, h: h, saver: saver, keys: keys}
+	s := &Step{name: name, agent: agent, saver: saver, keys: keys}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -114,7 +125,7 @@ func (s *Step) Run(ctx context.Context, st *flow.State) error {
 	}
 
 	var res *harness.Result
-	for ev, err := range s.h.Run(ctx, in) {
+	for ev, err := range s.agent.Run(ctx, in) {
 		if err != nil {
 			return err
 		}
@@ -150,4 +161,13 @@ func (s *Step) Run(ctx context.Context, st *flow.State) error {
 
 func (s *Step) write(st *flow.State, t harness.Transcript) error {
 	return flow.Set(st, s.keys.Output, Output{Answer: t[len(t)-1].Text(), Transcript: t})
+}
+
+// isNil reports whether a is nil, or a nil pointer in an interface.
+func isNil(a Agent) bool {
+	if a == nil {
+		return true
+	}
+	v := reflect.ValueOf(a)
+	return v.Kind() == reflect.Pointer && v.IsNil()
 }

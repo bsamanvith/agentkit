@@ -73,9 +73,13 @@ type options struct {
 }
 
 // WithClock sets the clock that entry, event and run times and lease expiry
-// are read from. The default is [clock.Real].
+// are read from. The default, also for nil, is [clock.Real].
 func WithClock(c clock.Clock) Option {
-	return func(o *options) { o.clk = c }
+	return func(o *options) {
+		if c != nil {
+			o.clk = c
+		}
+	}
 }
 
 // WithMigrate sets whether [Open] applies the migrations the database lacks

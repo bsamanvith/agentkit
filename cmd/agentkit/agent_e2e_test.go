@@ -225,8 +225,14 @@ func TestE2EServeAgent(t *testing.T) {
 		t.Errorf("Tools(demo-b) = %+v, %v; want calculate and echo (current_time excluded)", tools, err)
 	}
 
-	// The same process serves the toolsets over MCP.
-	cs := connectMCP(t, ac.MCPURL(sets[0]), nil)
+	// The same process serves the toolsets over MCP, behind the same token.
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, ac.MCPURL(sets[0]), nil)
+	if resp, err := http.DefaultClient.Do(req); err != nil {
+		t.Errorf("MCP without the token: %v", err)
+	} else if resp.Body.Close(); resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("MCP without the token = %s, want 401", resp.Status)
+	}
+	cs := connectMCP(t, ac.MCPURL(sets[0]), &http.Client{Transport: bearer{e2eToken, http.DefaultTransport}})
 	if text, err := echo(t, cs, "hi"); err != nil || text != "[a] hi" {
 		t.Errorf("MCP echo = %q %v", text, err)
 	}
@@ -268,4 +274,16 @@ func TestE2EServeAgent(t *testing.T) {
 	if !slices.ContainsFunc(c.all(), func(r request) bool { return strings.Contains(string(r.body), "demo-b__echo") }) {
 		t.Error("the model was not offered the prefixed tools")
 	}
+}
+
+// bearer sends its token on every request.
+type bearer struct {
+	token string
+	base  http.RoundTripper
+}
+
+func (b bearer) RoundTrip(r *http.Request) (*http.Response, error) {
+	r = r.Clone(r.Context())
+	r.Header.Set("Authorization", "Bearer "+b.token)
+	return b.base.RoundTrip(r)
 }

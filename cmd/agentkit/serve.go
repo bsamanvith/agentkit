@@ -130,7 +130,7 @@ func (c cli) serve(ctx context.Context, args []string) error {
 		var m component.Mount
 		switch name {
 		case mcpServerName:
-			m, err = newMCPServer(ctx, cfg.MCP, built, problems, log)
+			m, err = newMCPServer(ctx, cfg.MCP, built, problems, c.env(envAPIToken), env.addr, log)
 		case agentapi.Name:
 			m, agents, err = c.newAgents(ctx, cfg, built, problems, env, st.Store, b, clk, log)
 		case web.Name:
@@ -179,10 +179,6 @@ func (c cli) serve(ctx context.Context, args []string) error {
 				log.Info("recovery pass", "component", agentapi.Name, "resumed", r.Resumed, "skipped", r.Skipped)
 			}
 		})
-	}()
-	go func() { // the recovery loop stops as the shutdown begins
-		<-ctx.Done()
-		stopRecovery()
 	}()
 	err = rt.Serve(ctx, ln)
 	stopRecovery()

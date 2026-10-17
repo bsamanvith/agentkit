@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -334,7 +335,7 @@ func (f *files) readText(p string) (string, fs.FileInfo, error) {
 	if info.Size() > f.maxSize {
 		return "", nil, fmt.Errorf("%s is %d bytes, over the %d-byte limit: use search_files to find what you need", p, info.Size(), f.maxSize)
 	}
-	data, err := fs.ReadFile(f.fsys, p)
+	data, err := readAtMost(f.fsys, p, f.maxSize)
 	if err != nil {
 		return "", nil, err
 	}
@@ -428,8 +429,8 @@ func (f *files) search(ctx context.Context, in searchIn) (searchOut, error) {
 		if err != nil || info.Size() > f.maxSize {
 			return nil // vanished or too big: skipped, like a binary file
 		}
-		data, err := fs.ReadFile(f.fsys, name)
-		if err != nil || binary(data) {
+		data, err := readAtMost(f.fsys, name, f.maxSize)
+		if err != nil || int64(len(data)) > f.maxSize || binary(data) {
 			return nil
 		}
 		out.FilesSearched++
@@ -560,4 +561,16 @@ func (f *files) write(p, content string, perm fs.FileMode) error {
 		return err
 	}
 	return nil
+}
+
+// readAtMost reads the file name, but no more than limit+1 bytes: a file that
+// grew past limit since it was checked reads as longer than limit, without
+// reading all of it.
+func readAtMost(fsys fs.FS, name string, limit int64) ([]byte, error) {
+	f, err := fsys.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(io.LimitReader(f, limit+1))
 }

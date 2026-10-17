@@ -1151,16 +1151,6 @@
                 }
               }
             }
-          },
-          "500": {
-            "description": "internal: a toolset's tools could not be listed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
           }
         }
       }
@@ -1228,16 +1218,6 @@
                 }
               }
             }
-          },
-          "500": {
-            "description": "internal: a toolset's tools could not be listed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
           }
         }
       }
@@ -1246,7 +1226,7 @@
       "get": {
         "operationId": "listToolsets",
         "summary": "List the toolsets",
-        "description": "Every configured toolset: ready, or skipped with the reason; its credential's status and variable name, never its value.",
+        "description": "Every configured toolset: ready, skipped with the reason, or unavailable when its tools cannot be listed just now (the toolsets component is down); its credential's status and variable name, never its value.",
         "responses": {
           "200": {
             "description": "The toolsets.",
@@ -1278,16 +1258,6 @@
           },
           "403": {
             "description": "forbidden: the request's credential does not have the scope agent:read.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "internal: a toolset's tools could not be listed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1355,16 +1325,6 @@
           },
           "404": {
             "description": "not_found: no such toolset.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "internal: a toolset's tools could not be listed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2048,7 +2008,8 @@
           "status": {
             "enum": [
               "ready",
-              "skipped"
+              "skipped",
+              "unavailable"
             ]
           },
           "tools": {
@@ -2239,12 +2200,13 @@
           "status": {
             "enum": [
               "ready",
-              "skipped"
+              "skipped",
+              "unavailable"
             ]
           },
           "reason": {
             "type": "string",
-            "description": "Why a skipped toolset was skipped."
+            "description": "Why a skipped toolset was skipped, or why an unavailable one is (its tools could not be listed just now)."
           },
           "mcp_path": {
             "type": "string",
@@ -2387,7 +2349,8 @@
           "status": {
             "enum": [
               "ready",
-              "skipped"
+              "skipped",
+              "unavailable"
             ]
           },
           "tools": {

@@ -17,6 +17,10 @@ const (
 	// ToolsetSkipped: an optional toolset that failed to build (a missing
 	// key, say); Reason says why. It has no tools.
 	ToolsetSkipped = "skipped"
+	// ToolsetUnavailable: a toolset that was built, but whose tools could
+	// not be listed just now (the toolsets component is down, say); Reason
+	// says so. It has no tools until it answers again.
+	ToolsetUnavailable = "unavailable"
 )
 
 // Credential statuses of a toolset. Values are never sent, only where they
@@ -64,7 +68,8 @@ type Model struct {
 // AgentToolset is one toolset of an agent.
 type AgentToolset struct {
 	Name string `json:"name"`
-	// Status is ToolsetReady or ToolsetSkipped (then Tools is empty).
+	// Status is ToolsetReady, ToolsetSkipped or ToolsetUnavailable (then
+	// Tools is empty).
 	Status string `json:"status"`
 	// Tools are the tool names the agent's model sees (prefixed with the
 	// toolset's name when the agent prefixes them).
@@ -114,9 +119,10 @@ type Toolset struct {
 	Name string `json:"name"`
 	// Type is the connector ("demo", "tavily", ...).
 	Type string `json:"type"`
-	// Status is ToolsetReady or ToolsetSkipped.
+	// Status is ToolsetReady, ToolsetSkipped or ToolsetUnavailable.
 	Status string `json:"status"`
-	// Reason says why a skipped toolset was skipped.
+	// Reason says why a skipped toolset was skipped, or why an unavailable
+	// one is.
 	Reason string `json:"reason,omitempty"`
 	// MCPPath is where the server serves the toolset over MCP, relative to
 	// the server's base URL ("/mcp/demo"); empty when it is not served.

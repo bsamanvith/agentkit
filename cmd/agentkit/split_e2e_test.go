@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -87,6 +88,26 @@ func TestE2ESplitDeployment(t *testing.T) {
 		t.Errorf("runner without the token: %v %v, want 401", resp, err)
 	} else {
 		resp.Body.Close()
+	}
+
+	// With the toolsets component down, the API is degraded and lists its
+	// toolsets as unavailable, instead of answering 500.
+	_ = tools.cmd.Process.Kill()
+	<-tools.done
+	var down struct {
+		Components []struct{ Name, Status, Reason string }
+	}
+	code := front.getJSON(t, "/readyz", &down)
+	i := slices.IndexFunc(down.Components, func(c struct{ Name, Status, Reason string }) bool { return c.Name == "agent" })
+	if code != http.StatusOK || i < 0 || down.Components[i].Status != "degraded" || !strings.Contains(down.Components[i].Reason, "toolsets at") {
+		t.Errorf("API /readyz with the toolsets down = %d %+v, want the agent component degraded", code, down)
+	}
+	sets, err = a.client().Toolsets(t.Context())
+	if err != nil || len(sets) != 2 || sets[0].Status != "unavailable" || sets[0].Reason == "" {
+		t.Errorf("Toolsets with the toolsets down = %+v, %v; want both unavailable", sets, err)
+	}
+	if _, err := a.client().Agents(t.Context()); err != nil {
+		t.Errorf("Agents with the toolsets down: %v", err)
 	}
 }
 

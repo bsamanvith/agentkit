@@ -106,27 +106,27 @@ func RunConversationIndex(t *testing.T, newStore func(t *testing.T, clk clock.Cl
 		r := newIndexRig(t, newStore)
 		ctx := r.ctx(tenantA)
 		// Messages logged before the record exists are counted when it is
-		// created.
-		r.mustAppend(ctx, "c", promptAt(1, 1), turnAt(2, 1))
+		// created, but a compaction's.
+		r.mustAppend(ctx, "c", promptAt(1, 1), turnAt(2, 1), compactionAt(3, 1))
 		c := r.mustCreate(ctx, "c", "a", "")
 		if want := int64(len(promptMessages(1)) + len(turnMessages(1))); c.Messages != want {
-			t.Errorf("record over a logged prompt and turn counts %d messages, want %d", c.Messages, want)
+			t.Errorf("record over a logged prompt, turn and compaction counts %d messages, want %d", c.Messages, want)
 		}
 		r.clk.Advance(time.Second)
-		r.mustAppend(ctx, "c", promptAt(3, 2))
+		r.mustAppend(ctx, "c", promptAt(4, 2))
 		got := r.mustGet(ctx, "c")
 		if !got.UpdatedAt.Equal(r.clk.Now()) {
 			t.Errorf("UpdatedAt after an append = %v, want the clock's %v", got.UpdatedAt, r.clk.Now())
 		}
 		// An identical retry adds nothing; a conflicting one is refused and
 		// adds nothing.
-		r.mustAppend(ctx, "c", promptAt(3, 2))
-		if err := r.s.Append(ctx, "c", promptAt(3, 7)); !errors.Is(err, store.ErrConflict) {
+		r.mustAppend(ctx, "c", promptAt(4, 2))
+		if err := r.s.Append(ctx, "c", promptAt(4, 7)); !errors.Is(err, store.ErrConflict) {
 			t.Errorf("conflicting append = %v, want ErrConflict", err)
 		}
 		// A batch that retries its first entry and adds the rest.
-		r.mustBatch(ctx, "c", promptAt(3, 2), turnAt(4, 2), compactionAt(5, 3))
-		if err := r.s.AppendBatch(ctx, "c", []store.Entry{turnAt(6, 4), turnAt(8, 4)}); err == nil {
+		r.mustBatch(ctx, "c", promptAt(4, 2), turnAt(5, 2), compactionAt(6, 3))
+		if err := r.s.AppendBatch(ctx, "c", []store.Entry{turnAt(7, 4), turnAt(9, 4)}); err == nil {
 			t.Error("batch with a gap succeeded")
 		}
 		// A deleted-then-recreated conversation is checked by the invariants.
@@ -572,7 +572,9 @@ func (r *indexRig) check() {
 			}
 			var n int64
 			for _, e := range readAll(ctx, t, r.s, c.ID, store.Page{}) {
-				n += int64(len(e.Messages))
+				if e.Kind != store.KindCompaction {
+					n += int64(len(e.Messages))
+				}
 			}
 			if c.Messages != n {
 				t.Errorf("tenant %s record %q counts %d messages, its log holds %d", tenant, c.ID, c.Messages, n)

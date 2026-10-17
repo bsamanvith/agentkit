@@ -45,6 +45,8 @@ func New(model llm.Model, tools tool.Registry, opts ...Option) (*Harness, error)
 		return nil, fmt.Errorf("%w: max parallel tools must be at least 1, got %d", ErrInvalidConfig, cfg.maxParallel)
 	case cfg.now == nil:
 		return nil, fmt.Errorf("%w: clock is nil", ErrInvalidConfig)
+	case cfg.window.Tokens < 0 || cfg.window.Share < 0 || cfg.window.Share > 1:
+		return nil, fmt.Errorf("%w: context window %+v", ErrInvalidConfig, cfg.window)
 	}
 	for _, f := range cfg.before {
 		if f == nil {

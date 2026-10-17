@@ -12,6 +12,11 @@
 // be reached, or goes away mid-run, fails the run as [llm.ErrOverloaded]
 // (and [rpc.ErrUnavailable]), so it is retried. What a cut run had spent is
 // lost with the connection.
+//
+// A server's agent that can compact ([runner.Compactor], as a harness can)
+// does so for the client: a client's agent is a runner.Compactor whose
+// Compact calls the server, and whose ShouldCompact uses the context window
+// given to [Client.Agent], which the client must know itself.
 package runnerrpc
 
 import (
@@ -39,14 +44,20 @@ var ErrNoAgent = errors.New("agent not run here")
 
 // The service's methods.
 var (
-	agentsMethod = rpc.Unary[struct{}, agentsResp]{Name: Service + "/Agents"}
-	runMethod    = rpc.Stream[runReq, event]{Name: Service + "/Run", Errors: codes}
+	agentsMethod  = rpc.Unary[struct{}, agentsResp]{Name: Service + "/Agents"}
+	runMethod     = rpc.Stream[runReq, event]{Name: Service + "/Run", Errors: codes}
+	compactMethod = rpc.Unary[compactReq, harness.Summary]{Name: Service + "/Compact", Errors: codes}
 )
+
+// ErrCannotCompact means the server's agent cannot compact (it is not a
+// [runner.Compactor]).
+var ErrCannotCompact = errors.New("agent cannot compact")
 
 // codes are the errors a run's caller tells apart: the harness's, the
 // model's (retries depend on them) and this package's.
 var codes = []rpc.Code{
 	{Name: "runner.no_agent", Err: ErrNoAgent},
+	{Name: "runner.cannot_compact", Err: ErrCannotCompact},
 	{Name: "harness.invalid_input", Err: harness.ErrInvalidInput},
 	{Name: "harness.invalid_config", Err: harness.ErrInvalidConfig},
 	{Name: "harness.budget_exceeded", Err: harness.ErrBudgetExceeded},
@@ -58,6 +69,11 @@ var codes = []rpc.Code{
 	{Name: "llm.invalid_request", Err: llm.ErrInvalidRequest},
 	{Name: "llm.auth", Err: llm.ErrAuth},
 	{Name: "llm.context_too_long", Err: llm.ErrContextTooLong},
+}
+
+type compactReq struct {
+	Agent   string        `json:"agent"`
+	History []llm.Message `json:"history"`
 }
 
 type agentsResp struct {
@@ -111,7 +127,8 @@ type refusal struct {
 }
 
 // Register serves agents on s, by name. Each call of Run runs its agent's
-// Run on the request's input and streams the events back.
+// Run on the request's input and streams the events back; each call of
+// Compact its Compact, if it is a [runner.Compactor].
 func Register(s *rpc.Server, agents map[string]runner.Agent) error {
 	for name, a := range agents {
 		if a == nil {
@@ -122,6 +139,17 @@ func Register(s *rpc.Server, agents map[string]runner.Agent) error {
 	names := slices.Sorted(maps.Keys(agents))
 	agentsMethod.Handle(s, func(context.Context, struct{}) (agentsResp, error) {
 		return agentsResp{Agents: slices.Clone(names)}, nil
+	})
+	compactMethod.Handle(s, func(ctx context.Context, r compactReq) (harness.Summary, error) {
+		a := agents[r.Agent]
+		if a == nil {
+			return harness.Summary{}, fmt.Errorf("%w: %q", ErrNoAgent, r.Agent)
+		}
+		c, ok := a.(runner.Compactor)
+		if !ok {
+			return harness.Summary{}, fmt.Errorf("%w: %q", ErrCannotCompact, r.Agent)
+		}
+		return c.Compact(ctx, r.History)
 	})
 	runMethod.Handle(s, func(ctx context.Context, r runReq) iter.Seq2[event, error] {
 		return func(yield func(event, error) bool) {
@@ -165,16 +193,31 @@ func (c *Client) Agents(ctx context.Context) ([]string, error) {
 	return resp.Agents, err
 }
 
-// Agent returns the server's agent name. It does not call the server: an
-// agent it does not run fails each run with [ErrNoAgent].
-func (c *Client) Agent(name string) runner.Agent { return &agent{c: c, name: name} }
-
-type agent struct {
-	c    *Client
-	name string
+// Agent returns the server's agent name, compacted ahead of time per window
+// (the zero window: never). It does not call the server: an agent it does
+// not run fails each run with [ErrNoAgent], and one that cannot compact each
+// compaction with [ErrCannotCompact].
+func (c *Client) Agent(name string, window harness.ContextWindow) runner.Compactor {
+	return &agent{c: c, name: name, window: window}
 }
 
-var _ runner.Agent = (*agent)(nil)
+type agent struct {
+	c      *Client
+	name   string
+	window harness.ContextWindow
+}
+
+var _ runner.Compactor = (*agent)(nil)
+
+func (a *agent) Compact(ctx context.Context, history harness.Transcript) (harness.Summary, error) {
+	s, err := compactMethod.Call(ctx, a.c.conn, compactReq{Agent: a.name, History: history})
+	if err != nil {
+		return harness.Summary{}, transient(err)
+	}
+	return s, nil
+}
+
+func (a *agent) ShouldCompact(u llm.Usage) bool { return a.window.Full(u) }
 
 func (a *agent) Run(ctx context.Context, in harness.Input) iter.Seq2[harness.Event, error] {
 	return func(yield func(harness.Event, error) bool) {

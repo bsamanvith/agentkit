@@ -51,7 +51,7 @@ func remote(t *testing.T, a runner.Agent) runner.Agent {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return runnerrpc.NewClient(conn).Agent("default")
+	return runnerrpc.NewClient(conn).Agent("default", harness.ContextWindow{})
 }
 
 func collect(a runner.Agent, in harness.Input) ([]harness.Event, error) {
@@ -182,7 +182,7 @@ func TestUnknownAgent(t *testing.T) {
 	if err != nil || !slices.Equal(names, []string{"a", "b"}) {
 		t.Errorf("Agents = %v, %v; want [a b]", names, err)
 	}
-	_, err = collect(c.Agent("nope"), harness.Input{Message: llm.User(llm.Text{Text: "x"})})
+	_, err = collect(c.Agent("nope", harness.ContextWindow{}), harness.Input{Message: llm.User(llm.Text{Text: "x"})})
 	if !errors.Is(err, runnerrpc.ErrNoAgent) {
 		t.Errorf("err = %v, want ErrNoAgent", err)
 	}
@@ -236,7 +236,7 @@ func TestUnreachableRunnerIsRetryable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = collect(runnerrpc.NewClient(conn).Agent("default"), harness.Input{Message: llm.User(llm.Text{Text: "x"})})
+	_, err = collect(runnerrpc.NewClient(conn).Agent("default", harness.ContextWindow{}), harness.Input{Message: llm.User(llm.Text{Text: "x"})})
 	if !llm.IsRetryable(err) || !errors.Is(err, rpc.ErrUnavailable) {
 		t.Errorf("err = %v, want retryable and ErrUnavailable", err)
 	}
@@ -256,8 +256,38 @@ func TestRunnerShutdownIsRetryable(t *testing.T) {
 		t.Fatal(err)
 	}
 	go func() { <-started; s.Shutdown() }()
-	_, err := collect(runnerrpc.NewClient(rpc.Pipe(s)).Agent("default"), harness.Input{Message: llm.User(llm.Text{Text: "x"})})
+	_, err := collect(runnerrpc.NewClient(rpc.Pipe(s)).Agent("default", harness.ContextWindow{}), harness.Input{Message: llm.User(llm.Text{Text: "x"})})
 	if !llm.IsRetryable(err) || errors.Is(err, context.Canceled) {
 		t.Errorf("err = %v, want retryable, not canceled", err)
+	}
+}
+
+// A remote agent compacts on the server, and decides ahead of time by the
+// window it was given.
+func TestRemoteCompact(t *testing.T) {
+	t.Parallel()
+	s := rpc.NewServer()
+	h := newHarness(t, llmtest.Text("the summary").WithUsage(llm.Usage{InputTokens: 4}))
+	plain := agentFunc(func(context.Context, func(harness.Event, error) bool) {})
+	if err := runnerrpc.Register(s, map[string]runner.Agent{"h": h, "plain": plain}); err != nil {
+		t.Fatal(err)
+	}
+	c := runnerrpc.NewClient(rpc.Pipe(s))
+	a := c.Agent("h", harness.ContextWindow{Tokens: 10, Share: 0.5})
+	got, err := a.Compact(t.Context(), harness.Transcript{harness.UserText("hi"), llm.Assistant(llm.Text{Text: "hello"})})
+	if err != nil || !reflect.DeepEqual(got, harness.Summary{Text: "the summary", Usage: llm.Usage{InputTokens: 4}}) {
+		t.Errorf("Compact = %+v, %v", got, err)
+	}
+	if a.ShouldCompact(llm.Usage{InputTokens: 4}) || !a.ShouldCompact(llm.Usage{InputTokens: 5}) {
+		t.Errorf("ShouldCompact does not follow the window")
+	}
+	if _, err := c.Agent("plain", harness.ContextWindow{}).Compact(t.Context(), harness.Transcript{harness.UserText("hi")}); !errors.Is(err, runnerrpc.ErrCannotCompact) {
+		t.Errorf("Compact of an agent that cannot = %v, want %v", err, runnerrpc.ErrCannotCompact)
+	}
+	if _, err := c.Agent("nope", harness.ContextWindow{}).Compact(t.Context(), harness.Transcript{harness.UserText("hi")}); !errors.Is(err, runnerrpc.ErrNoAgent) {
+		t.Errorf("Compact of an unknown agent = %v, want %v", err, runnerrpc.ErrNoAgent)
+	}
+	if _, err := c.Agent("h", harness.ContextWindow{}).Compact(t.Context(), nil); !errors.Is(err, harness.ErrInvalidInput) {
+		t.Errorf("Compact of nothing = %v, want %v", err, harness.ErrInvalidInput)
 	}
 }

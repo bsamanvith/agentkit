@@ -174,6 +174,7 @@ Each entry of `agents`:
 | `model.id` | `claude-haiku-5-5` | Claude model |
 | `model.effort` | adapter default (medium) | `low` … `max` |
 | `model.max_tokens` | adapter default | output limit per model call |
+| `model.context_window`, `model.compact_at` | 200000, 0.8 | when a request fills this share of the window, the conversation is compacted (summarized) before its next run; a request that does not fit at all is compacted and retried once |
 | `system` | a short generic prompt | system prompt |
 | `toolsets` | none | names from `mcp.toolsets` the agent may use |
 | `prefix_tool_names` | false | name tools `<toolset>__<tool>` (needed when two toolsets share a tool name) |

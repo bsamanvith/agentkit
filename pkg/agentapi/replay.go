@@ -192,6 +192,8 @@ func held(run store.Run, now time.Time) bool {
 
 // conversationMessages reads a conversation's messages, each with when it
 // was written: the times the runner keeps in its records, else the entry's.
+// Compactions are left out: their messages stand in for earlier ones, for
+// the model.
 func (s *Server) conversationMessages(ctx context.Context, id string) ([]TimedMessage, error) {
 	out := []TimedMessage{}
 	p := store.Page{Order: store.Ascending, Limit: store.MaxPageLimit}
@@ -201,6 +203,9 @@ func (s *Server) conversationMessages(ctx context.Context, id string) ([]TimedMe
 			return nil, err
 		}
 		for _, e := range page.Entries {
+			if e.Kind == store.KindCompaction {
+				continue // it stands in for messages already listed, for the model
+			}
 			times := make([]time.Time, len(e.Messages))
 			for i := range times {
 				times[i] = e.CreatedAt

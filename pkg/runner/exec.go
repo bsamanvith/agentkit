@@ -778,6 +778,7 @@ func (x *exec) chat(ctx context.Context, agent Agent, msg *llm.Message, flush in
 	if err != nil {
 		return outcome{kind: outAbort, err: err}
 	}
+	compactor, _ := agent.(Compactor)
 	in := harness.Input{Transcript: v.tr}
 	if msg != nil {
 		if v.endsOnUser() {
@@ -786,8 +787,15 @@ func (x *exec) chat(ctx context.Context, agent Agent, msg *llm.Message, flush in
 			if err := r.appendMarker(ctx, conv, &v); err != nil {
 				return outcome{kind: outAbort, err: err}
 			}
-			in.Transcript = v.tr
 		}
+		if compactor != nil && compactor.ShouldCompact(v.last) {
+			// A failure leaves the log as it was: the run goes ahead, and
+			// is compacted if it does not fit.
+			if err := x.compact(ctx, compactor, &v, ReasonWindowFull, emit); err != nil && ctx.Err() != nil {
+				return outcome{kind: outAbort, err: err}
+			}
+		}
+		in.Transcript = v.tr
 		in.Message = *msg
 	} else {
 		switch {
@@ -806,6 +814,7 @@ func (x *exec) chat(ctx context.Context, agent Agent, msg *llm.Message, flush in
 		t.every = r.flush
 	}
 	var spent llm.Usage
+	compacted := false
 	for attempt := 1; ; attempt++ {
 		out := t.run(ctx, agent, in, flush)
 		if t.failed {
@@ -825,6 +834,24 @@ func (x *exec) chat(ctx context.Context, agent Agent, msg *llm.Message, flush in
 		}
 		spent = spent.Add(out.usage)
 		out.usage = spent
+		if out.kind == outFailed && errors.Is(out.err, llm.ErrContextTooLong) && compactor != nil && !compacted && ctx.Err() == nil {
+			// Compacted, then run again from the compacted context, once.
+			// This is not a retry: it does not count as an attempt.
+			compacted = true
+			if err := x.compact(ctx, compactor, t.v, ReasonContextTooLong, emit); err != nil {
+				// Not wrapped: the run fails as the model said, and is
+				// retried (or not) for that, not for the summary's error.
+				out.err = fmt.Errorf("%w (%s)", out.err, err.Error())
+				return out
+			}
+			attempt--
+			if msg != nil && !t.prompted {
+				in = harness.Input{Transcript: t.v.tr.Clone(), Message: *msg}
+				continue
+			}
+			in = harness.Input{Transcript: t.v.tr.Clone()}
+			continue
+		}
 		if out.kind != outFailed || !x.run.Interactive || !llm.IsRetryable(out.err) ||
 			attempt >= r.iretry.MaxAttempts || ctx.Err() != nil {
 			return out

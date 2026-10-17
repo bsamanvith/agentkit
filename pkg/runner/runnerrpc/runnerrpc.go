@@ -8,7 +8,10 @@
 // A remote agent streams the same events as the local one, and fails with
 // the same errors: a failed run is a [*harness.RunError] with what the run
 // had done, matching the same harness and llm errors (llm.IsRetryable
-// included), and a refusal is a [*harness.RefusalError].
+// included), and a refusal is a [*harness.RefusalError]. A runner that cannot
+// be reached, or goes away mid-run, fails the run as [llm.ErrOverloaded]
+// (and [rpc.ErrUnavailable]), so it is retried. What a cut run had spent is
+// lost with the connection.
 package runnerrpc
 
 import (
@@ -280,13 +283,23 @@ func encodeFailure(err error) error {
 	return rpc.WithData(err, f)
 }
 
+// transient makes a runner that could not be reached, or that went away
+// mid-run (a restart, a rollout), a failure the runner retries, as a local
+// model's dropped connection is (llm.ErrOverloaded).
+func transient(err error) error {
+	if errors.Is(err, rpc.ErrUnavailable) && !llm.IsRetryable(err) {
+		return fmt.Errorf("%w: %w", llm.ErrOverloaded, err)
+	}
+	return err
+}
+
 // decodeFailure turns the error of a remote run back into what the local
 // run would have returned.
 func decodeFailure(err error) error {
 	we, ok := errors.AsType[*rpc.Error](err)
 	var f failure
 	if !ok || !we.Data(&f) {
-		return err
+		return transient(err)
 	}
 	cause := err
 	if f.Refusal != nil {

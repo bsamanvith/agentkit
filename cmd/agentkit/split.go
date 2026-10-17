@@ -58,13 +58,20 @@ const defaultDependencyWait = time.Minute
 // rpcComponent serves an rpc.Server: the runner or the toolsets.
 type rpcComponent struct {
 	name    string
-	handler http.Handler
+	server  *rpc.Server
 	skipped []string // optional toolsets skipped, for /readyz
 }
 
-func (r *rpcComponent) Name() string                   { return r.name }
-func (r *rpcComponent) Handler() http.Handler          { return r.handler }
-func (r *rpcComponent) Shutdown(context.Context) error { return nil }
+func (r *rpcComponent) Name() string          { return r.name }
+func (r *rpcComponent) Handler() http.Handler { return r.server }
+
+// Shutdown cuts the calls in flight, a runner's runs included: their callers
+// get rpc.ErrUnavailable, which an agent API retries (runnerrpc), and the
+// HTTP server does not wait out its timeout on streams that would not end.
+func (r *rpcComponent) Shutdown(context.Context) error {
+	r.server.Shutdown()
+	return nil
+}
 
 // Ready is degraded when optional toolsets were skipped.
 func (r *rpcComponent) Ready(context.Context) error {
@@ -103,9 +110,13 @@ func (c cli) newRunner(ctx context.Context, cfg serveConfig, built map[string]to
 	if err := runnerrpc.Register(s, agents); err != nil {
 		return component.Mount{}, err
 	}
+	// As the agent API's drain (WithDrain): on SIGTERM, runs going on get
+	// most of the shutdown timeout to finish, then are cut so their agent
+	// API retries them elsewhere, before the HTTP server's deadline.
+	context.AfterFunc(ctx, func() { time.AfterFunc(env.shutdownTimeout*9/10, s.Shutdown) })
 	return component.Mount{
 		Pattern:   rpc.PathPrefix + runnerrpc.Service + "/",
-		Component: &rpcComponent{name: runnerName, handler: s, skipped: skipped},
+		Component: &rpcComponent{name: runnerName, server: s, skipped: skipped},
 	}, nil
 }
 
@@ -139,7 +150,7 @@ func (c cli) newToolsets(cfg serveConfig, built map[string]tool.Registry, proble
 	}
 	return component.Mount{
 		Pattern:   rpc.PathPrefix + toolrpc.Service + "/",
-		Component: &rpcComponent{name: toolsetsName, handler: s, skipped: skipped},
+		Component: &rpcComponent{name: toolsetsName, server: s, skipped: skipped},
 	}, nil
 }
 
@@ -194,7 +205,14 @@ func waitFor[T any](ctx context.Context, wait time.Duration, log *slog.Logger, w
 	deadline := time.Now().Add(wait)
 	delay := 250 * time.Millisecond
 	for logged := false; ; {
-		v, err := f(ctx)
+		// An attempt that hangs (a peer that takes the connection and never
+		// answers) must not outlast the wait.
+		actx, cancel := context.WithDeadline(ctx, deadline)
+		v, err := f(actx)
+		cancel()
+		if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+			err = fmt.Errorf("%w: no answer within %s: %w", rpc.ErrUnavailable, wait, err)
+		}
 		if err == nil || !errors.Is(err, rpc.ErrUnavailable) || time.Now().Add(delay).After(deadline) {
 			return v, err
 		}

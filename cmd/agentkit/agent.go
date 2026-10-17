@@ -219,6 +219,11 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 				return component.Mount{}, nil, err
 			}
 			def.Runner = remote.Agent(a.Name)
+			for _, name := range a.Toolsets {
+				if slices.ContainsFunc(problems, func(p toolset.Problem) bool { return p.Toolset == name }) {
+					skipped = appendNew(skipped, name) // the runner skips it too
+				}
+			}
 		} else {
 			h, sk, err := c.newHarness(ctx, cfg, a, built, clk)
 			if err != nil {

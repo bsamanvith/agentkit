@@ -224,3 +224,40 @@ type agentFunc func(ctx context.Context, yield func(harness.Event, error) bool)
 func (f agentFunc) Run(ctx context.Context, _ harness.Input) iter.Seq2[harness.Event, error] {
 	return func(yield func(harness.Event, error) bool) { f(ctx, yield) }
 }
+
+// A runner that cannot be reached fails the run as a retryable model error,
+// so the runner retries it as it would a dropped model connection.
+func TestUnreachableRunnerIsRetryable(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(rpc.NewServer())
+	url := srv.URL
+	srv.Close()
+	conn, err := rpc.Dial(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = collect(runnerrpc.NewClient(conn).Agent("default"), harness.Input{Message: llm.User(llm.Text{Text: "x"})})
+	if !llm.IsRetryable(err) || !errors.Is(err, rpc.ErrUnavailable) {
+		t.Errorf("err = %v, want retryable and ErrUnavailable", err)
+	}
+}
+
+// A runner shutting down cuts its runs; their callers retry them.
+func TestRunnerShutdownIsRetryable(t *testing.T) {
+	t.Parallel()
+	started := make(chan struct{})
+	a := agentFunc(func(ctx context.Context, yield func(harness.Event, error) bool) {
+		close(started)
+		<-ctx.Done()
+		yield(harness.Event{}, ctx.Err())
+	})
+	s := rpc.NewServer()
+	if err := runnerrpc.Register(s, map[string]runner.Agent{"default": a}); err != nil {
+		t.Fatal(err)
+	}
+	go func() { <-started; s.Shutdown() }()
+	_, err := collect(runnerrpc.NewClient(rpc.Pipe(s)).Agent("default"), harness.Input{Message: llm.User(llm.Text{Text: "x"})})
+	if !llm.IsRetryable(err) || errors.Is(err, context.Canceled) {
+		t.Errorf("err = %v, want retryable, not canceled", err)
+	}
+}

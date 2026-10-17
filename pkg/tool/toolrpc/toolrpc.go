@@ -88,7 +88,9 @@ type invokeReq struct {
 }
 
 type invokeResp struct {
-	Output json.RawMessage `json:"output"`
+	// Output is absent for a nil output, so the caller gets nil back, not
+	// the JSON null.
+	Output json.RawMessage `json:"output,omitempty"`
 }
 
 // Register serves toolsets on s: sets describes them, in the order
@@ -179,6 +181,12 @@ func (r *registry) List(ctx context.Context) ([]tool.Definition, error) {
 func (r *registry) Invoke(ctx context.Context, name string, input json.RawMessage) (json.RawMessage, error) {
 	resp, err := invokeMethod.Call(ctx, r.c.conn, invokeReq{Toolset: r.name, Tool: name, Input: input})
 	if err != nil {
+		// A toolsets component that went away, or no longer serves this
+		// toolset, is a failed call, as a local connector's dropped
+		// connection is: the model sees the error, the run goes on.
+		if (errors.Is(err, rpc.ErrUnavailable) || errors.Is(err, ErrNoToolset)) && !errors.Is(err, tool.ErrToolFailed) {
+			err = fmt.Errorf("%w: %w", tool.ErrToolFailed, err)
+		}
 		return nil, err
 	}
 	return resp.Output, nil

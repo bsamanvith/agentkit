@@ -33,6 +33,9 @@ const DefaultMaxRequestBytes = 32 << 20
 type Server struct {
 	methods map[string]*handler
 	cfg     serverConfig
+	// closing is canceled by [Server.Shutdown]: it ends calls in flight.
+	closing context.Context
+	shut    context.CancelFunc
 }
 
 type handler struct {
@@ -73,8 +76,18 @@ func NewServer(opts ...ServerOption) *Server {
 	if cfg.log == nil {
 		cfg.log = slog.New(slog.DiscardHandler)
 	}
-	return &Server{methods: map[string]*handler{}, cfg: cfg}
+	closing, shut := context.WithCancel(context.Background())
+	return &Server{methods: map[string]*handler{}, cfg: cfg, closing: closing, shut: shut}
 }
+
+// errShuttingDown is what calls cut by [Server.Shutdown] fail with.
+var errShuttingDown = fmt.Errorf("%w: the server is shutting down", ErrUnavailable)
+
+// Shutdown cancels the calls in flight, which fail with [ErrUnavailable] as
+// if the connection had dropped, and refuses new ones the same way: callers
+// retry on another replica. It does not wait for the handlers to return; the
+// HTTP server's own shutdown does.
+func (s *Server) Shutdown() { s.shut() }
 
 var validMethod = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
 
@@ -97,6 +110,10 @@ func (s *Server) Methods() []string {
 	return names
 }
 
+// maxTimeoutMillis bounds the timeout header, so it cannot overflow a
+// time.Duration: a year is as good as no deadline.
+const maxTimeoutMillis = int64(365 * 24 * time.Hour / time.Millisecond)
+
 // errStop means the caller stopped listening.
 var errStop = errors.New("rpc: caller stopped listening")
 
@@ -107,6 +124,19 @@ func (s *Server) dispatch(ctx context.Context, name string, req json.RawMessage,
 	if h == nil {
 		return encodeError(fmt.Errorf("%w %q", ErrUnknownMethod, name), nil)
 	}
+	if s.closing.Err() != nil {
+		return encodeError(errShuttingDown, nil)
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	defer context.AfterFunc(s.closing, cancel)()
+	defer func() {
+		// Whatever a cut handler returned (its context's error, say), the
+		// caller is told the server went away.
+		if werr != nil && s.closing.Err() != nil {
+			werr = encodeError(errShuttingDown, nil)
+		}
+	}()
 	defer func() {
 		if v := recover(); v != nil {
 			s.cfg.log.Error("rpc handler panicked", "method", name, "panic", v)
@@ -175,7 +205,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, time.Duration(ms)*time.Millisecond)
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(min(ms, maxTimeoutMillis))*time.Millisecond)
 		defer cancel()
 	}
 

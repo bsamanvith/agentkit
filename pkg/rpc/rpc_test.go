@@ -358,3 +358,48 @@ func TestMethodsListsWhatIsServed(t *testing.T) {
 		t.Errorf("Methods() = %v, want %v", got, want)
 	}
 }
+
+// Shutdown cuts the calls in flight as a dropped connection would, so the
+// caller retries elsewhere, and refuses new ones the same way.
+func TestShutdownCutsCallsAsUnavailable(t *testing.T) {
+	for name, overHTTP := range map[string]bool{"HTTP": true, "Pipe": false} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			s, svc := newServer()
+			conn := rpc.Pipe(s)
+			if overHTTP {
+				srv := httptest.NewServer(s)
+				t.Cleanup(srv.Close)
+				var err error
+				if conn, err = rpc.Dial(srv.URL); err != nil {
+					t.Fatal(err)
+				}
+			}
+			errc := make(chan error, 1)
+			go func() {
+				_, err := add.Call(t.Context(), conn, addReq{A: 1000}) // waits for its context
+				errc <- err
+			}()
+			<-svc.deadline // the handler is running
+			s.Shutdown()
+			if err := <-errc; !errors.Is(err, rpc.ErrUnavailable) || errors.Is(err, context.Canceled) {
+				t.Errorf("call in flight: err = %v, want ErrUnavailable only", err)
+			}
+			if _, err := add.Call(t.Context(), conn, addReq{A: 2, B: 2}); !errors.Is(err, rpc.ErrUnavailable) {
+				t.Errorf("call after shutdown: err = %v, want ErrUnavailable", err)
+			}
+		})
+	}
+}
+
+// A deadline too far off for a time.Duration in milliseconds is no deadline,
+// not one that has passed.
+func TestFarDeadline(t *testing.T) {
+	transports(t, func(t *testing.T, conn rpc.Conn, _ *service) {
+		ctx, cancel := context.WithDeadline(t.Context(), time.Date(3000, 1, 1, 0, 0, 0, 0, time.UTC))
+		defer cancel()
+		if got, err := add.Call(ctx, conn, addReq{A: 2, B: 3}); err != nil || got.Sum != 5 {
+			t.Errorf("Add = %+v, %v; want 5", got, err)
+		}
+	})
+}

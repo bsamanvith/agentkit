@@ -115,3 +115,40 @@ func TestRegisterRejectsInconsistentToolsets(t *testing.T) {
 		}
 	}
 }
+
+// A toolsets component that is down fails the call as a tool failure, which
+// the model sees, as a local connector's dropped connection is.
+func TestUnreachableIsAToolFailure(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(rpc.NewServer())
+	url := srv.URL
+	srv.Close()
+	conn, err := rpc.Dial(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = toolrpc.NewClient(conn).Registry("fx").Invoke(t.Context(), "echo", json.RawMessage(`{}`))
+	if !errors.Is(err, tool.ErrToolFailed) || !errors.Is(err, rpc.ErrUnavailable) {
+		t.Errorf("err = %v, want ErrToolFailed and ErrUnavailable", err)
+	}
+}
+
+// A nil output comes back nil, not as the JSON null.
+func TestNilOutput(t *testing.T) {
+	t.Parallel()
+	s := rpc.NewServer()
+	if err := toolrpc.Register(s, []toolrpc.Toolset{{Name: "nil", Type: "test"}}, map[string]tool.Registry{"nil": nilRegistry{}}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := toolrpc.NewClient(rpc.Pipe(s)).Registry("nil").Invoke(t.Context(), "x", nil)
+	if err != nil || out != nil {
+		t.Errorf("Invoke = %q, %v; want nil, nil", out, err)
+	}
+}
+
+type nilRegistry struct{}
+
+func (nilRegistry) List(context.Context) ([]tool.Definition, error) { return nil, nil }
+func (nilRegistry) Invoke(context.Context, string, json.RawMessage) (json.RawMessage, error) {
+	return nil, nil
+}

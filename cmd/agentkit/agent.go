@@ -87,6 +87,20 @@ type agentModelConfig struct {
 	Effort string `json:"effort"`
 	// MaxTokens limits each reply's output; 0 for the adapter's default.
 	MaxTokens int `json:"max_tokens"`
+	// ContextWindow is the model's context window in tokens (0:
+	// defaultContextWindow), and CompactAt the share of it a request may
+	// fill before the conversation is compacted ahead of its next run (0:
+	// harness.DefaultCompactShare).
+	ContextWindow int     `json:"context_window"`
+	CompactAt     float64 `json:"compact_at"`
+}
+
+// defaultContextWindow is the context window of Claude models.
+const defaultContextWindow = 200_000
+
+// window is the model's context window, for compaction.
+func (m agentModelConfig) window() harness.ContextWindow {
+	return harness.ContextWindow{Tokens: cmp.Or(m.ContextWindow, defaultContextWindow), Share: m.CompactAt}
 }
 
 func defaultAgentDef() agentDef {
@@ -233,7 +247,7 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 			if err := a.check(cfg.legacy); err != nil {
 				return component.Mount{}, nil, err
 			}
-			def.Runner = remote.Agent(a.Name)
+			def.Runner = remote.Agent(a.Name, a.Model.window())
 			for _, name := range a.Toolsets {
 				if slices.ContainsFunc(problems, func(p toolset.Problem) bool { return p.Toolset == name }) {
 					skipped = appendNew(skipped, name) // the runner skips it too
@@ -296,8 +310,11 @@ func (d agentDef) check(legacy bool) error {
 	if _, ok := modelProviders()[cmp.Or(d.Model.Provider, defaultProvider)]; !ok {
 		return fmt.Errorf("%s.model.provider %q: want %s", label, d.Model.Provider, providerNames())
 	}
-	if d.MaxTotalTokens < 0 || d.Model.MaxTokens < 0 {
+	if d.MaxTotalTokens < 0 || d.Model.MaxTokens < 0 || d.Model.ContextWindow < 0 {
 		return fmt.Errorf("%s: negative limit", label)
+	}
+	if d.Model.CompactAt < 0 || d.Model.CompactAt > 1 {
+		return fmt.Errorf("%s.model.compact_at %v: want a share above 0, at most 1", label, d.Model.CompactAt)
 	}
 	return nil
 }
@@ -336,6 +353,7 @@ func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built 
 		harness.WithRequest(harness.RequestOptions{MaxTokens: a.Model.MaxTokens}),
 		harness.WithMaxTurns(a.MaxTurns),
 		harness.WithMaxTotalTokens(a.MaxTotalTokens),
+		harness.WithContextWindow(a.Model.window()),
 		harness.WithNow(clk.Now),
 	)
 	if err != nil {

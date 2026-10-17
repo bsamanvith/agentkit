@@ -667,6 +667,11 @@ func (s *Server) drive(ctx context.Context, cancel context.CancelCauseFunc, x *r
 				V: WireVersion, Type: TypeRetrying, RunID: h.runID, At: s.cfg.clock.Now(),
 				Attempt: ev.Attempt, DelayMS: ms(ev.Delay), Error: s.classify(h.runID, ev.Err),
 			}, true)
+		case runner.EventCompacted:
+			// The harness runs again from the compacted context, numbering
+			// its turns from 1. The summary's tokens are in the compaction's
+			// record, not the run's usage.
+			baseTurns, baseUsage = turns, usage
 		case runner.EventDone:
 			e := ev
 			done = &e

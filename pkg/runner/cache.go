@@ -19,6 +19,9 @@ type view struct {
 	lastRun string
 	// flush is the FlushEvery of the last prompt entry's record.
 	flush int
+	// last is the usage of the last turn's request since the latest
+	// compaction, zero if there is none.
+	last llm.Usage
 }
 
 func (v view) clone() view {
@@ -28,17 +31,22 @@ func (v view) clone() view {
 
 func (v *view) apply(e store.Entry) {
 	if e.Kind == store.KindCompaction {
-		v.tr = nil
+		v.tr, v.last = nil, llm.Usage{}
 	}
 	for _, m := range e.Messages {
 		v.tr = append(v.tr, m.Clone())
 	}
 	v.seq = e.Seq
 	v.lastRun = e.RunID
-	if e.Kind == store.KindPrompt {
+	switch e.Kind {
+	case store.KindPrompt:
 		v.flush = 0
 		if rec, err := DecodeRecord(e); err == nil && rec.Prompt != nil {
 			v.flush = rec.Prompt.FlushEvery
+		}
+	case store.KindTurn:
+		if rec, err := DecodeRecord(e); err == nil && rec.Turn != nil {
+			v.last = rec.Turn.Usage
 		}
 	}
 }

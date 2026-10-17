@@ -1772,7 +1772,7 @@
       },
       "Conversation": {
         "type": "object",
-        "description": "A conversation and its messages.",
+        "description": "A conversation and its messages: every message of its history, oldest first. When a conversation outgrows the model's context window, the agent gets a summary in place of its oldest messages; the summary is not listed, and the messages it replaced stay.",
         "properties": {
           "v": {
             "const": 1,

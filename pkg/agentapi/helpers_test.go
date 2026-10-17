@@ -686,6 +686,14 @@ func (r *rig) check() {
 		if n := len(req.Messages); n == 0 || req.Messages[n-1].Role != llm.RoleUser {
 			t.Errorf("model request %d does not end with a user message", i+1)
 		}
+		if req.System == harness.CompactionPrompt || strings.HasPrefix(req.Messages[0].Text(), runner.SummaryPrefix) {
+			// A summary's request, or one that starts at a compaction,
+			// which a conversation's messages leave out.
+			if err := harness.Transcript(req.Messages).Validate(); err != nil {
+				t.Errorf("model request %d: %v", i+1, err)
+			}
+			continue
+		}
 		found := false
 		for _, msgs := range transcripts {
 			if len(req.Messages) <= len(msgs) && jsonEqual(req.Messages, msgs[:len(req.Messages)]) {

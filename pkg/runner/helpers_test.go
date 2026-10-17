@@ -41,7 +41,8 @@ const ttl = 30 * time.Second
 //  2. The stored context round-trips to the harness transcript: every
 //     conversation's context is a valid transcript, and a completed run's
 //     Result transcript is exactly the log up to its last entry.
-//  3. No turn is stored twice: no tool call ID appears twice in a log.
+//  3. No turn is stored twice: no tool call ID appears twice in a log, but
+//     for the copies a compaction keeps.
 //  4. Leases are released on every exit path: after an execution of a live
 //     process ends, it holds no lease, and when the test ends no live
 //     process does.
@@ -416,6 +417,9 @@ func (w *world) check() {
 		}
 		ids := map[string]bool{}
 		for _, e := range w.logIn(ctx, conv) {
+			if e.Kind == store.KindCompaction {
+				continue // its tail is a copy of the entries before it
+			}
 			for _, m := range e.Messages {
 				for _, b := range m.Content {
 					if u, ok := b.(llm.ToolUse); ok {

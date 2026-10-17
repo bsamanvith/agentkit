@@ -21,6 +21,8 @@ type Record struct {
 	// Canceled is set on the marker reply [Runner.Cancel] appends after a
 	// run canceled before the model answered.
 	Canceled *CanceledRecord `json:"canceled,omitempty"`
+	// Compaction is set on a compaction entry ([Compactor]).
+	Compaction *CompactionRecord `json:"compaction,omitempty"`
 }
 
 // PromptRecord is the record of a prompt entry.

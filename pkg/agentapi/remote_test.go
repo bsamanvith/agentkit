@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
+	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
 	"github.com/bsamanvith/agentkit/pkg/rpc"
@@ -44,7 +45,7 @@ func remoteAgents(t *testing.T, m *model) []agentapi.Agent {
 	if err := runnerrpc.Register(runners, map[string]runner.Agent{"remote": h}); err != nil {
 		t.Fatal(err)
 	}
-	return []agentapi.Agent{{Name: "remote", Runner: runnerrpc.NewClient(dial(t, runners)).Agent("remote")}}
+	return []agentapi.Agent{{Name: "remote", Runner: runnerrpc.NewClient(dial(t, runners)).Agent("remote", harness.ContextWindow{})}}
 }
 
 // TestAgentOnARemoteRunner: an agent whose turns run in a runner elsewhere

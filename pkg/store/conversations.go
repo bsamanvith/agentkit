@@ -22,8 +22,9 @@ type Conversation struct {
 	// ([ConversationIndex.SetTitle]).
 	Title string
 	// Messages counts the messages of the conversation's log: those already
-	// in it when the record was created, and every message appended since.
-	// The store keeps it, in the same write as each append.
+	// in it when the record was created, and every message appended since,
+	// except those of compactions, which stand in for messages already
+	// counted. The store keeps it, in the same write as each append.
 	Messages int64
 	// CreatedAt is set by the store when the record is created. UpdatedAt is
 	// set then, and again by every append to the log and every title set;

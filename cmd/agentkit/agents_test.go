@@ -18,8 +18,10 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/agentclient"
 	"github.com/bsamanvith/agentkit/pkg/clock"
+	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
+	"github.com/bsamanvith/agentkit/pkg/runner"
 	"github.com/bsamanvith/agentkit/pkg/store/scoped"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
@@ -343,5 +345,32 @@ func TestE2EServeCatalog(t *testing.T) {
 				t.Errorf("a response holds the key %s: %s", canary, body)
 			}
 		}
+	}
+}
+
+// TestServeCompactsByTheModelsWindow: an agent's conversation is compacted
+// once a request fills model.compact_at of model.context_window.
+func TestServeCompactsByTheModelsWindow(t *testing.T) {
+	t.Parallel()
+	const config = `{
+	  "mcp": {"toolsets": [{"name": "demo", "type": "demo"}]},
+	  "agents": [{"name": "a", "model": {"id": "m", "context_window": 100, "compact_at": 0.5}}]
+	}`
+	m := llmtest.NewFake(t,
+		llmtest.Text("first").WithUsage(llm.Usage{InputTokens: 50}),
+		llmtest.Text("the summary"),
+		llmtest.Text("second"),
+	)
+	c := serveAgents(t, config, map[string]*llmtest.Fake{"m": m})
+	first, err := c.Run(t.Context(), agentclient.RunRequest{Message: "hi", Agent: "a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run, err := c.Run(t.Context(), agentclient.RunRequest{Message: "more", ConversationID: first.ConversationID}); err != nil || run.Answer != "second" {
+		t.Fatalf("second run = %+v, %v", run, err)
+	}
+	reqs := m.Requests()
+	if len(reqs) != 3 || reqs[1].System != harness.CompactionPrompt || !strings.HasPrefix(reqs[2].Messages[0].Text(), runner.SummaryPrefix) {
+		t.Errorf("requests %+v, want the second to ask for a summary and the third to start with it", reqs)
 	}
 }

@@ -9,8 +9,9 @@ import (
 // ([llm.IsRetryable]) is tried again: a background run by the recovery loop
 // ([WithRetry]), an interactive one inline ([WithInteractiveRetry]). Other errors are never retried
 // automatically: [harness.ErrBudgetExceeded], [harness.ErrRefused],
-// [harness.ErrMaxTokens], [flow.ErrShapeChanged], invalid input, and, until
-// compaction exists (T031), [llm.ErrContextTooLong].
+// [harness.ErrMaxTokens], [flow.ErrShapeChanged], invalid input, and
+// [llm.ErrContextTooLong] (which a [Compactor] agent's run handles by
+// compacting its conversation, once, inline).
 //
 // After a run's n-th failure ([store.Run.Attempts], counted by the store), it
 // is tried again if n < MaxAttempts, after a delay d/2 + rand[0, d/2] where

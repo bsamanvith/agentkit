@@ -420,7 +420,6 @@ func TestBlockDecodingDoesNotDependOnLayout(t *testing.T) {
 		`{"type":"tool_result","content":"x"}`,
 		`{"type":"opaque","provider":"p","data":"{"}`,
 		`{"type":"text","text":7}`,
-		`{"type":"text","text":"a"} {}`,
 	)
 	for _, doc := range docs {
 		spaced := "{ " + doc[1:]

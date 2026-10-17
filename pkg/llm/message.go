@@ -3,7 +3,6 @@ package llm
 import (
 	"bytes"
 	"encoding/json"
-	"encoding/json/jsontext"
 	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
@@ -163,13 +162,10 @@ const (
 	typeOpaque     = "opaque"
 )
 
-func knownType(typ string) bool {
-	switch typ {
-	case typeText, typeToolUse, typeToolResult, typeOpaque:
-		return true
-	}
-	return false
-}
+// blockTypes are the types of the blocks this package knows.
+var blockTypes = []string{typeText, typeToolUse, typeToolResult, typeOpaque}
+
+func knownType(typ string) bool { return slices.Contains(blockTypes, typ) }
 
 type textWire struct {
 	Type string `json:"type"`
@@ -358,8 +354,8 @@ func UnmarshalMessageLenient(data []byte) (Message, error) {
 
 func unmarshalMessage(data []byte, lenient bool) (Message, error) {
 	var w struct {
-		Role    Role             `json:"role"`
-		Content []jsontext.Value `json:"content"`
+		Role    Role              `json:"role"`
+		Content []json.RawMessage `json:"content"`
 	}
 	if err := decodeJSON(data, &w, lenient); err != nil {
 		return Message{}, err
@@ -427,15 +423,10 @@ func leadingType(data []byte) (string, bool) {
 	if end < 0 {
 		return "", false
 	}
-	switch string(rest[:end]) {
-	case typeText:
-		return typeText, true
-	case typeToolUse:
-		return typeToolUse, true
-	case typeToolResult:
-		return typeToolResult, true
-	case typeOpaque:
-		return typeOpaque, true
+	for _, typ := range blockTypes {
+		if string(rest[:end]) == typ { // compared without a copy
+			return typ, true
+		}
 	}
 	return "", false
 }
@@ -466,7 +457,7 @@ func decodeBlock(typ string, data []byte, lenient bool) (Block, string, error) {
 			return nil, "", fmt.Errorf("%w: tool result needs a tool use ID", ErrInvalidMessage)
 		}
 		return ToolResult{ToolUseID: w.ToolUseID, Content: w.Content, IsError: w.IsError}, w.Type, nil
-	default: // typeOpaque
+	case typeOpaque:
 		var w opaqueWire
 		if err := decodeJSON(data, &w, lenient); err != nil {
 			return nil, "", err
@@ -476,6 +467,7 @@ func decodeBlock(typ string, data []byte, lenient bool) (Block, string, error) {
 		}
 		return Opaque{Provider: w.Provider, Data: json.RawMessage(w.Data)}, w.Type, nil
 	}
+	return nil, "", fmt.Errorf("%w: unknown block type %q", ErrInvalidMessage, typ)
 }
 
 // decodeToolUse puts Input in the form Marshal writes (compact, HTML

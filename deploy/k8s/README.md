@@ -27,6 +27,7 @@ printed (`scripts/k8s-local.sh token` prints it again).
 |---|---|
 | `make k8s-up` | Build, deploy, wait. Run it again after a code change: it rebuilds and restarts the pods |
 | `make k8s-status` | Pods, services, the console's URL |
+| `make k8s-smoke` | The smoke suite (test/e2e) against it: health, auth, console, toolsets, one chat run (calls the model) |
 | `scripts/k8s-local.sh logs api` | Follow a component's logs: `api` (with its migrate step), `runner`, `toolsets`, `postgres` |
 | `scripts/k8s-local.sh token` | The API token, for the console and `agentkit` CLI (`AGENTKIT_SERVER=http://localhost:30080`) |
 | `make k8s-down` | Delete the namespace: pods, secret and Postgres data |

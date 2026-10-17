@@ -94,6 +94,10 @@ jobs:
         run: |
           make image-local && make image-size-local
           make image-dev && make image-size-dev
+      - name: the split images make k8s-up deploys (make images-split)
+        run: |
+          make images-split
+          make image-size-api && make image-size-runner && make image-size-toolsets
 
   # The web workspace (web/): lint, typecheck, unit tests, audit, and a
   # rebuild that must match the committed pkg/web/dist; then the browser
@@ -118,6 +122,8 @@ jobs:
         run: make web-check
       - name: make web-smoke
         run: make web-smoke
+      - name: make smoke (the split deployment as processes, test/e2e)
+        run: make smoke
       - name: Upload the Playwright report
         if: failure()
         uses: actions/upload-artifact@v4

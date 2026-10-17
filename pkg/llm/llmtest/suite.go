@@ -43,6 +43,7 @@ type Option func(*config)
 
 type config struct {
 	opaque llm.Opaque
+	stall  time.Duration
 }
 
 // WithOpaque sets the opaque block the "opaque" scenario expects the model to
@@ -51,6 +52,14 @@ type config struct {
 // made-up provider whose data is not compact and contains <, & and non-ASCII
 // text.
 func WithOpaque(o llm.Opaque) Option { return func(c *config) { c.opaque = o } }
+
+// WithStallTimeout says that the model under test gives up on a stream
+// silent for d (its own idle timeout, or [llm.WithIdleTimeout]), and turns on
+// the "stall" scenario: a stream that goes quiet after its first event must
+// fail with [llm.ErrOverloaded], retryable, rather than wait for the caller's
+// context. d must be well under 10 s. An adapter should set it: without a
+// limit, a dropped connection holds a run until its deadline.
+func WithStallTimeout(d time.Duration) Option { return func(c *config) { c.stall = d } }
 
 // watchdog is how long the suite waits for a model that should have stopped.
 const watchdog = 10 * time.Second
@@ -182,6 +191,17 @@ func RunModel(t *testing.T, newModel func(t *testing.T, s Scenario) llm.Model, o
 		events, err := drainWith(t, m.Generate(t.Context(), userRequest("Hello.")), func(n int) bool { return n < 1 })
 		if err != nil || len(events) != 1 {
 			t.Errorf("got %d events and error %v, want exactly one event and no error", len(events), err)
+		}
+	})
+
+	run("stall", []Reply{{Response: textReply.Response, Stall: true}}, func(t *testing.T, m llm.Model) {
+		if cfg.stall <= 0 {
+			t.Skip("no stall timeout declared (llmtest.WithStallTimeout)")
+		}
+		start := time.Now()
+		checkFailure(t, m, llm.ErrOverloaded, true, true)
+		if d := time.Since(start); d < cfg.stall {
+			t.Errorf("the stream failed after %v, before the stall timeout %v", d, cfg.stall)
 		}
 	})
 

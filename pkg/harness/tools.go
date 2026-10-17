@@ -74,7 +74,10 @@ func (r *run) runTools(ctx context.Context, turn int, uses []llm.ToolUse) ([]too
 			select {
 			case sem <- struct{}{}:
 			case <-toolCtx.Done():
-				// The run ended while these calls waited: they never begin.
+			}
+			// A slot freed by the cancellation itself can win the select: a
+			// call never begins once the run has ended.
+			if toolCtx.Err() != nil {
 				for j := i; j < n; j++ {
 					calls[j].err = toolCtx.Err()
 					events <- toolEvent{skipped: true, ev: Event{Kind: EventToolDone}}

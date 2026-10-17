@@ -135,7 +135,9 @@ A new store backend: a package under `pkg/store` that passes the suites, a
 SDK in `internal/archtest/rules.go`, and a row in docs/SIZES.md. A bus
 backend is the same in `busopen`. A model provider is a package under
 `pkg/llm`, a `models_<name>.go` that builds it, and its line in
-`modelProviders`.
+`modelProviders`. It must give up on a silent stream: its own idle timeout
+if it can see the provider's keep-alives, else `llm.WithIdleTimeout`; its
+conformance test declares it with `llmtest.WithStallTimeout`.
 
 ## Topologies
 

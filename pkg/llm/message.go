@@ -3,9 +3,10 @@ package llm
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
-	"io"
 	"reflect"
 	"slices"
 	"unicode/utf8"
@@ -357,8 +358,8 @@ func UnmarshalMessageLenient(data []byte) (Message, error) {
 
 func unmarshalMessage(data []byte, lenient bool) (Message, error) {
 	var w struct {
-		Role    Role              `json:"role"`
-		Content []json.RawMessage `json:"content"`
+		Role    Role             `json:"role"`
+		Content []jsontext.Value `json:"content"`
 	}
 	if err := decodeJSON(data, &w, lenient); err != nil {
 		return Message{}, err
@@ -385,43 +386,25 @@ func UnmarshalBlock(data []byte) (Block, error) { return unmarshalBlock(data, fa
 // unmarshalBlock decodes a block; lenient, it ignores unknown fields and
 // returns a block of an unknown type as [Unknown].
 func unmarshalBlock(data []byte, lenient bool) (Block, error) {
+	// A block this package wrote starts with its type, so the type is read
+	// from there instead of decoding the block twice. The shortcut holds
+	// only if the block then decodes as that type: with a second "type"
+	// member, or any error, the block takes the general path, which gives
+	// the error, or reads the type as encoding/json does (the last one).
+	if typ, ok := leadingType(data); ok {
+		if b, decoded, err := decodeBlock(typ, data, lenient); err == nil && decoded == typ {
+			return b, nil
+		}
+	}
 	var head struct {
 		Type string `json:"type"`
 	}
-	if err := json.Unmarshal(data, &head); err != nil {
+	if err := jsonv2.Unmarshal(data, &head, lenientDecoding); err != nil {
 		return nil, fmt.Errorf("%w: block: %w", ErrInvalidMessage, err)
 	}
-	switch head.Type {
-	case typeText:
-		var w textWire
-		if err := decodeJSON(data, &w, lenient); err != nil {
-			return nil, err
-		}
-		return Text{Text: w.Text}, nil
-	case typeToolUse:
-		var w toolUseWire
-		if err := decodeJSON(data, &w, lenient); err != nil {
-			return nil, err
-		}
-		return decodeToolUse(w)
-	case typeToolResult:
-		var w toolResultWire
-		if err := decodeJSON(data, &w, lenient); err != nil {
-			return nil, err
-		}
-		if w.ToolUseID == "" {
-			return nil, fmt.Errorf("%w: tool result needs a tool use ID", ErrInvalidMessage)
-		}
-		return ToolResult{ToolUseID: w.ToolUseID, Content: w.Content, IsError: w.IsError}, nil
-	case typeOpaque:
-		var w opaqueWire
-		if err := decodeJSON(data, &w, lenient); err != nil {
-			return nil, err
-		}
-		if err := checkOpaque(w.Provider, []byte(w.Data)); err != nil {
-			return nil, err
-		}
-		return Opaque{Provider: w.Provider, Data: json.RawMessage(w.Data)}, nil
+	if knownType(head.Type) {
+		b, _, err := decodeBlock(head.Type, data, lenient)
+		return b, err
 	}
 	if !lenient {
 		return nil, fmt.Errorf("%w: unknown block type %q", ErrInvalidMessage, head.Type)
@@ -431,6 +414,68 @@ func unmarshalBlock(data []byte, lenient bool) (Block, error) {
 		return nil, err
 	}
 	return u, nil
+}
+
+// leadingType returns the type of a block that starts with {"type":"<t>", as
+// every block MarshalJSON writes does, if t is a known type.
+func leadingType(data []byte) (string, bool) {
+	rest, ok := bytes.CutPrefix(data, []byte(`{"type":"`))
+	if !ok {
+		return "", false
+	}
+	end := bytes.IndexByte(rest, '"')
+	if end < 0 {
+		return "", false
+	}
+	switch string(rest[:end]) {
+	case typeText:
+		return typeText, true
+	case typeToolUse:
+		return typeToolUse, true
+	case typeToolResult:
+		return typeToolResult, true
+	case typeOpaque:
+		return typeOpaque, true
+	}
+	return "", false
+}
+
+// decodeBlock decodes a block of the known type typ. It also returns the
+// "type" the decoding read, which differs from typ if the block has another.
+func decodeBlock(typ string, data []byte, lenient bool) (Block, string, error) {
+	switch typ {
+	case typeText:
+		var w textWire
+		if err := decodeJSON(data, &w, lenient); err != nil {
+			return nil, "", err
+		}
+		return Text{Text: w.Text}, w.Type, nil
+	case typeToolUse:
+		var w toolUseWire
+		if err := decodeJSON(data, &w, lenient); err != nil {
+			return nil, "", err
+		}
+		b, err := decodeToolUse(w)
+		return b, w.Type, err
+	case typeToolResult:
+		var w toolResultWire
+		if err := decodeJSON(data, &w, lenient); err != nil {
+			return nil, "", err
+		}
+		if w.ToolUseID == "" {
+			return nil, "", fmt.Errorf("%w: tool result needs a tool use ID", ErrInvalidMessage)
+		}
+		return ToolResult{ToolUseID: w.ToolUseID, Content: w.Content, IsError: w.IsError}, w.Type, nil
+	default: // typeOpaque
+		var w opaqueWire
+		if err := decodeJSON(data, &w, lenient); err != nil {
+			return nil, "", err
+		}
+		if err := checkOpaque(w.Provider, []byte(w.Data)); err != nil {
+			return nil, "", err
+		}
+		return Opaque{Provider: w.Provider, Data: json.RawMessage(w.Data)}, w.Type, nil
+	}
 }
 
 // decodeToolUse puts Input in the form Marshal writes (compact, HTML
@@ -452,18 +497,25 @@ func decodeToolUse(w toolUseWire) (Block, error) {
 	return ToolUse{ID: w.ID, Name: w.Name, Input: slices.Clone(escaped.Bytes())}, nil
 }
 
+// Messages are decoded with encoding/json/v2's Unmarshal, which takes the
+// strictness as an option and rejects trailing data by itself, instead of a
+// json.Decoder per block. Its options are encoding/json's own semantics
+// (names matched regardless of case, duplicate names allowed, invalid UTF-8
+// replaced by U+FFFD), so that what decodes, and to what, is unchanged.
+var (
+	lenientDecoding = json.DefaultOptionsV1()
+	strictDecoding  = jsonv2.JoinOptions(lenientDecoding, jsonv2.RejectUnknownMembers(true))
+)
+
 // decodeJSON decodes exactly one JSON value into v and rejects trailing data
 // and, unless lenient, unknown fields.
 func decodeJSON(data []byte, v any, lenient bool) error {
-	dec := json.NewDecoder(bytes.NewReader(data))
-	if !lenient {
-		dec.DisallowUnknownFields()
+	opts := strictDecoding
+	if lenient {
+		opts = lenientDecoding
 	}
-	if err := dec.Decode(v); err != nil {
+	if err := jsonv2.Unmarshal(data, v, opts); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalidMessage, err)
-	}
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
-		return fmt.Errorf("%w: trailing data after JSON value", ErrInvalidMessage)
 	}
 	return nil
 }

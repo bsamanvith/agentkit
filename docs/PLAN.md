@@ -189,7 +189,7 @@ Details: [ENGINEERING.md §1.5](ENGINEERING.md#15-components-mix-and-match-deplo
 | Protocols | ConnectRPC internally (speaks gRPC, gRPC-Web and JSON from one handler); spec MCP externally |
 | MCP library | Official Go SDK (`github.com/modelcontextprotocol/go-sdk`) |
 | JSON Schema | `github.com/google/jsonschema-go` (same library the MCP SDK uses): derive schemas from Go structs and validate input |
-| Go version | `go 1.26.0` minimum in `go.mod` (oldest supported release); `toolchain go1.27.2` for development |
+| Go version | `go 1.27.0` minimum in `go.mod`, for `encoding/json/v2` (messages are decoded with it, `pkg/llm`); `toolchain go1.27.2` for development |
 | Agent loop | Our own `pkg/harness`, not an agent framework (Google ADK, Genkit, Eino). Frameworks bring their own model, tool and session types; ADK Go has no Claude support and its model interface is built on Gemini types; Eino is pre-1.0 |
 | Agent memory | The harness holds no store: a run takes a `Transcript` and returns a grown one, and each turn is an event (messages plus a `Record`). Persistence, history, compaction and caching live in `store` and the component that runs agents |
 | Workflows | Our own `pkg/flow` (sequence, parallel, loop, route, approve) with a checkpoint at every step |

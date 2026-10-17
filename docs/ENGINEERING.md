@@ -391,7 +391,7 @@ How the planner and parallel sessions coordinate, and the lessons learned so far
 Decided:
 - Compose is the default local runtime; kind is opt-in and comes with credentials.
 - ConnectRPC only for our protocol; official MCP Go SDK; `google/jsonschema-go` for schemas.
-- Go: `go 1.26.0` minimum, `toolchain go1.27.2`.
+- Go: `go 1.27.0` minimum (for `encoding/json/v2`), `toolchain go1.27.2`.
 - Our own harness and `pkg/flow` rather than an agent framework; native model adapters; ADK, Genkit and Eino are integrations through MCP ([PLAN.md decisions](PLAN.md#decisions)).
 - Golden files are rewritten with `make golden` (env `AGENTKIT_UPDATE_GOLDEN=1`), not a `-update` flag, so it works across `./...`.
 - Work is committed straight to `main` after `make check`; CI runs it again on every push.

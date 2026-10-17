@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
+	"github.com/bsamanvith/agentkit/pkg/auth"
 	"github.com/bsamanvith/agentkit/pkg/bus"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/component"
@@ -54,6 +55,8 @@ type serveConfig struct {
 	// the file has an "agent" section or neither section.
 	Agents []agentDef
 	API    apiConfig
+	// Auth holds the API keys of the agent API and the MCP endpoints.
+	Auth   authConfig
 	legacy bool // Agents come from an "agent" section (or none)
 }
 
@@ -63,6 +66,7 @@ type serveFile struct {
 	Agent    json.RawMessage   `json:"agent"`
 	Agents   []json.RawMessage `json:"agents"`
 	AgentAPI json.RawMessage   `json:"agent_api"`
+	Auth     json.RawMessage   `json:"auth"`
 }
 
 // serveEnv is what agentkit serve reads from the environment.
@@ -124,15 +128,30 @@ func (c cli) serve(ctx context.Context, args []string) error {
 		defer closeBus()
 	}
 
+	// One authenticator for the agent API and the MCP endpoints, so both
+	// accept the same keys and see the same principals.
+	var authn auth.Authenticator
+	if slices.Contains(env.components, agentapi.Name) || slices.Contains(env.components, mcpServerName) {
+		if authn, err = c.authenticator(cfg); err != nil {
+			return err
+		}
+		if authn == nil {
+			if !isLoopback(env.addr) {
+				return needsCredentials(env.addr)
+			}
+			log.Warn("serving with no authentication: anyone who can reach " + env.addr + " can use the API and the toolsets")
+		}
+	}
+
 	// The wiring: one constructor per component, chosen by name.
 	var mounts []component.Mount
 	for _, name := range env.components {
 		var m component.Mount
 		switch name {
 		case mcpServerName:
-			m, err = newMCPServer(ctx, cfg.MCP, built, problems, c.env(envAPIToken), env.addr, log)
+			m, err = newMCPServer(ctx, cfg.MCP, built, problems, authn, env.addr, log)
 		case agentapi.Name:
-			m, agents, err = c.newAgents(ctx, cfg, built, problems, env, st.Store, b, clk, log)
+			m, agents, err = c.newAgents(ctx, cfg, built, problems, env, authn, st.Store, b, clk, log)
 		case web.Name:
 			m, err = newWeb()
 		case runnerName:
@@ -340,6 +359,9 @@ func loadServeConfig(path string) (serveConfig, error) {
 	}
 	if err := decodeSection(file.MCP, &cfg.MCP); err != nil {
 		return cfg, fmt.Errorf("config %s: mcp: %w", path, err)
+	}
+	if err := decodeSection(file.Auth, &cfg.Auth); err != nil {
+		return cfg, fmt.Errorf("config %s: auth: %w", path, err)
 	}
 	switch {
 	case file.Agent != nil && (file.Agents != nil || file.AgentAPI != nil):

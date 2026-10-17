@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -683,5 +684,63 @@ func TestToolsListPublishesAnnotations(t *testing.T) {
 	}
 	if listed["plain"] != nil {
 		t.Errorf("plain, unclassified, is listed with annotations %+v; want none", listed["plain"])
+	}
+}
+
+// A toolset WithAccess hides from a request is answered exactly as one that
+// does not exist, for every method, and the listing leaves it out; the access
+// check sees what the middleware put in the context.
+func TestAccess(t *testing.T) {
+	t.Parallel()
+	type allowKey struct{}
+	ts := start(t, twoToolsets(t),
+		server.WithMiddleware(func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), allowKey{}, r.Header.Get("X-Allow"))))
+			})
+		}),
+		server.WithAccess(func(ctx context.Context, toolset string) bool {
+			return ctx.Value(allowKey{}) == toolset
+		}),
+	)
+	hc := &http.Client{Transport: headerTransport{"X-Allow", "a"}}
+
+	if got := listNames(t, connect(t, ts.URL+"/mcp/a", hc)); !slices.Equal(got, []string{"echo", "fail"}) {
+		t.Errorf("/mcp/a tools = %v", got)
+	}
+	answer := func(method, path string) (int, string, string) {
+		t.Helper()
+		req, _ := http.NewRequestWithContext(t.Context(), method, ts.URL+path, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"shout","arguments":{"text":"x"}}}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		resp, err := hc.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		b, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, resp.Header.Get("Content-Type"), string(b)
+	}
+	for _, method := range []string{"GET", "POST", "DELETE"} {
+		hs, hct, hb := answer(method, "/mcp/b")
+		us, uct, ub := answer(method, "/mcp/nope")
+		if hs != 404 || hs != us || hct != uct || hb != ub {
+			t.Errorf("%s hidden /mcp/b = %d %q %q, unknown /mcp/nope = %d %q %q: want the same 404", method, hs, hct, hb, us, uct, ub)
+		}
+	}
+
+	resp, err := hc.Get(ts.URL + "/mcp/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var got struct {
+		Toolsets []server.ToolsetInfo `json:"toolsets"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if want := []server.ToolsetInfo{{Name: "a", Tools: 2}}; !slices.Equal(got.Toolsets, want) {
+		t.Errorf("listing = %v, want %v", got.Toolsets, want)
 	}
 }

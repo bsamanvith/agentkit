@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bsamanvith/agentkit/pkg/auth"
 	"github.com/bsamanvith/agentkit/pkg/bus"
 	memorybus "github.com/bsamanvith/agentkit/pkg/bus/memory"
 	"github.com/bsamanvith/agentkit/pkg/component"
@@ -53,6 +54,7 @@ var (
 type Server struct {
 	cfg     config
 	log     *slog.Logger
+	authn   auth.Authenticator // nil: open
 	handler http.Handler
 	slots   chan struct{}
 	routes  []string
@@ -101,8 +103,6 @@ func New(h *harness.Harness, opts ...Option) (*Server, error) {
 
 func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent, toolsets map[string]*Toolset) (*Server, error) {
 	switch {
-	case cfg.token != "" && len(cfg.token) < MinTokenLength:
-		return nil, fmt.Errorf("%w: the token must be at least %d bytes", ErrInvalidConfig, MinTokenLength)
 	case cfg.maxConcurrent < 1:
 		return nil, fmt.Errorf("%w: max concurrent runs must be at least 1", ErrInvalidConfig)
 	case cfg.runTimeout < 0, cfg.retention <= 0, cfg.keepAlive < 0, cfg.grace < 0, cfg.streamPoll < 0:
@@ -116,8 +116,12 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 	case cfg.drainRequested && (cfg.drainStop == nil || cfg.drainAfter < 0):
 		return nil, fmt.Errorf("%w: drain needs a stop channel and a time that is not negative", ErrInvalidConfig)
 	}
+	authn, err := authenticator(cfg)
+	if err != nil {
+		return nil, err
+	}
 	s := &Server{
-		cfg: cfg, log: cfg.logger,
+		cfg: cfg, log: cfg.logger, authn: authn,
 		agents: agents, agentOrder: order, defaultAgent: def, toolsets: toolsets,
 		slots:   make(chan struct{}, cfg.maxConcurrent),
 		closed:  make(chan struct{}),
@@ -130,7 +134,6 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 		s.bus, s.ownBus = memorybus.New(memorybus.WithClock(cfg.clock)), true
 	}
 	sopts := []stream.Option{stream.WithLogger(cfg.logger), stream.WithClock(cfg.clock), stream.WithPoll(cfg.streamPoll)}
-	var err error
 	if s.pub, err = stream.NewPublisher(s.store, s.bus, sopts...); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
 	}
@@ -180,7 +183,7 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 		{"GET /v1/toolsets", s.listToolsets},
 		{"GET /v1/toolsets/{name}/tools", s.listTools},
 	} {
-		mux.HandleFunc(rt.pattern, rt.handler)
+		mux.HandleFunc(rt.pattern, requireScope(scopeOf(rt.pattern), rt.handler))
 		s.routes = append(s.routes, rt.pattern)
 	}
 	mux.HandleFunc("/v1/", func(w http.ResponseWriter, r *http.Request) {
@@ -305,12 +308,12 @@ func (s *Server) drain(stop <-chan struct{}, after time.Duration) {
 	}
 }
 
-// auth checks the bearer token on every request, before routing.
+// auth authenticates every request, before routing.
 func (s *Server) auth(next http.Handler) http.Handler {
-	if s.cfg.token == "" {
+	if s.authn == nil {
 		return next
 	}
-	return RequireToken(s.cfg.token)(next)
+	return auth.Middleware(s.authn, auth.WithErrorWriter(writeAuthError), auth.WithLogger(s.log))(next)
 }
 
 // RequireToken returns middleware that answers 401 unauthorized, in the
@@ -384,6 +387,10 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, &Error{Code: CodeAgentMismatch, Message: "the conversation belongs to agent " + quote(c.Agent) + ", which this server no longer runs"})
 			return
 		}
+		if !accessOf(r).agent(ag) {
+			writeError(w, http.StatusNotFound, &Error{Code: CodeNotFound, Message: "no agent " + quote(c.Agent)})
+			return
+		}
 		if !hasMessage {
 			s.resumeConversation(ctx, w, r, convID)
 			return
@@ -393,7 +400,7 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "message is empty"})
 			return
 		}
-		if ag, apiErr, code = s.resolveAgent(req.Agent); apiErr != nil {
+		if ag, apiErr, code = s.resolveAgent(r, req.Agent); apiErr != nil {
 			writeError(w, code, apiErr)
 			return
 		}

@@ -190,7 +190,23 @@ Each entry of `agents`:
 
 The one-agent form still works: an `agent` section (instead of `agents` and `agent_api`) with the fields of both tables except `name` is served as the agent `default`.
 
-Environment: `AGENTKIT_COMPONENTS` (any of `agent`, `web`, `mcp-server`, comma-separated; `web` serves the console at `/`, a chat client of `agent` on the same address), `AGENTKIT_ADDR` (default `127.0.0.1:8080`), `AGENTKIT_API_TOKEN` (required off loopback), `AGENTKIT_CONFIG`, `AGENTKIT_LOG_LEVEL`, `AGENTKIT_SHUTDOWN_TIMEOUT`. The API's reference: [docs/api/openapi.yaml](api/openapi.yaml) (OpenAPI 3.1); the event format and error codes are also in [tasks/T036](../tasks/T036-agent-api-v0.md) Notes.
+Environment: `AGENTKIT_COMPONENTS` (any of `agent`, `web`, `mcp-server`, comma-separated; `web` serves the console at `/`, a chat client of `agent` on the same address), `AGENTKIT_ADDR` (default `127.0.0.1:8080`), `AGENTKIT_API_TOKEN` and `AGENTKIT_API_KEYS_FILE` (credentials, below; one of them, or `auth` in the config, is required off loopback), `AGENTKIT_CONFIG`, `AGENTKIT_LOG_LEVEL`, `AGENTKIT_SHUTDOWN_TIMEOUT`. The API's reference: [docs/api/openapi.yaml](api/openapi.yaml) (OpenAPI 3.1); the event format and error codes are also in [tasks/T036](../tasks/T036-agent-api-v0.md) Notes.
+
+### Credentials
+
+`/v1` and `/mcp` need a bearer credential whenever one is configured, and always off loopback (on loopback with none, the server logs a warning and stays open). `/healthz`, `/readyz` and `/version` are always open.
+
+- `AGENTKIT_API_TOKEN`: one key that may do everything (tenant `default`, every scope, every toolset). At least 16 bytes.
+- API keys, in the config's `auth` section or in a file named by `AGENTKIT_API_KEYS_FILE` (same JSON, so the hashes can live in a mounted secret). Only the key's hash is stored:
+
+```json
+{"auth": {"api_keys": [
+  {"id": "ci", "hash": "sha256:...", "tenant": "acme", "user": "ci-bot",
+   "scopes": ["agent:read"], "toolsets": ["demo", "search-*"]}
+]}}
+```
+
+Make a key and its hash with `key=$(openssl rand -hex 24); printf %s "$key" | shasum -a 256` (put `sha256:` before the hex). `scopes`: `agent:read` for the API's GETs, `agent:run` for everything else, `*` for both. `toolsets` are names or globs of `mcp.toolsets`; startup fails on one that matches none. A key sees only its tenant's runs and conversations, and only the toolsets it allows: others answer 404, as if they did not exist, over MCP and in the API. An agent is listed and runnable only for a key that allows all of its toolsets. Missing or wrong credentials are 401, a missing scope 403 `forbidden`. `mcp.stateful` cannot be combined with credentials yet.
 
 The store: `AGENTKIT_STORE` is `memory` (the default), `sqlite:/path/agentkit.db`, or `postgres://user:pass@host/db`; anything else fails startup. Postgres is migrated at startup unless `AGENTKIT_STORE_MIGRATE=off` (run `agentkit migrate` first then). `AGENTKIT_RUN_LEASE` (default `30s`, at least `1s`) is how long a run stays claimed by a process that stops renewing it: after a crash, a chat run reads as `interrupted` once its lease runs out, and `POST /v1/runs/{id}/resume` continues it.
 
@@ -223,7 +239,7 @@ scripts/try-agent.sh --agent search     # uses search.json; AGENTKIT_CONFIG pick
 
 Then ask the `search` agent something current, e.g. `{"message":"What is the latest Go release? Cite the source.","agent":"search"}`: the run's events show a `tool_call` to one of the search tools, and the answer cites URLs. `GET /v1/toolsets` shows which search toolsets are ready, and for a skipped one the reason and the key variable it reads (never the key).
 
-`/mcp` takes the agent API's bearer token, `AGENTKIT_API_TOKEN`: required off loopback, and checked whenever it is set. It is one static token for every toolset; per-key and per-toolset access is T040.
+`/mcp` takes the same credentials as the agent API: `AGENTKIT_API_TOKEN`, or the API keys of section 5's `auth` (a key limited to some toolsets sees only those).
 
 ### Tavily
 
@@ -303,6 +319,7 @@ claude mcp add --transport http agentkit-files http://localhost:8080/mcp/files -
 ## Troubleshooting
 
 - **`startup: AGENTKIT_API_TOKEN ...`**: set a token of at least 16 bytes when listening on a non-loopback address (always the case in Docker).
+- **401 from `/mcp/...` in Claude Code**: add the token with `--header "Authorization: Bearer $AGENTKIT_API_TOKEN"` (`claude mcp add`). A 404 for a toolset that exists means the key does not allow it.
 - **`run_error` with `model_auth`**: the API key is missing or wrong.
 - **Port in use**: `PORT=9090 scripts/try-agent.sh`.
 - **Logs**: JSON on stderr; the script writes them to `bin/try-agent.log`. `AGENTKIT_LOG_LEVEL=debug` for more.

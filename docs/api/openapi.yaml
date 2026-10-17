@@ -60,7 +60,7 @@
             }
           },
           "401": {
-            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
             "headers": {
               "WWW-Authenticate": {
                 "description": "Bearer realm=\"agentkit\"",
@@ -69,6 +69,16 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run.",
             "content": {
               "application/json": {
                 "schema": {
@@ -190,7 +200,7 @@
             }
           },
           "401": {
-            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
             "headers": {
               "WWW-Authenticate": {
                 "description": "Bearer realm=\"agentkit\"",
@@ -199,6 +209,16 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:read.",
             "content": {
               "application/json": {
                 "schema": {
@@ -247,7 +267,7 @@
             }
           },
           "401": {
-            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
             "headers": {
               "WWW-Authenticate": {
                 "description": "Bearer realm=\"agentkit\"",
@@ -256,6 +276,16 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:read.",
             "content": {
               "application/json": {
                 "schema": {
@@ -325,7 +355,7 @@
             }
           },
           "401": {
-            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
             "headers": {
               "WWW-Authenticate": {
                 "description": "Bearer realm=\"agentkit\"",
@@ -334,6 +364,16 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:read.",
             "content": {
               "application/json": {
                 "schema": {
@@ -389,7 +429,7 @@
             }
           },
           "401": {
-            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
             "headers": {
               "WWW-Authenticate": {
                 "description": "Bearer realm=\"agentkit\"",
@@ -398,6 +438,16 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run.",
             "content": {
               "application/json": {
                 "schema": {
@@ -475,7 +525,7 @@
             }
           },
           "401": {
-            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
             "headers": {
               "WWW-Authenticate": {
                 "description": "Bearer realm=\"agentkit\"",
@@ -484,6 +534,16 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run.",
             "content": {
               "application/json": {
                 "schema": {
@@ -543,7 +603,7 @@
             }
           },
           "401": {
-            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
             "headers": {
               "WWW-Authenticate": {
                 "description": "Bearer realm=\"agentkit\"",
@@ -552,6 +612,16 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run.",
             "content": {
               "application/json": {
                 "schema": {
@@ -637,7 +707,7 @@
             }
           },
           "401": {
-            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
             "headers": {
               "WWW-Authenticate": {
                 "description": "Bearer realm=\"agentkit\"",
@@ -646,6 +716,16 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run.",
             "content": {
               "application/json": {
                 "schema": {
@@ -750,7 +830,7 @@
             }
           },
           "401": {
-            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
             "headers": {
               "WWW-Authenticate": {
                 "description": "Bearer realm=\"agentkit\"",
@@ -759,6 +839,16 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run.",
             "content": {
               "application/json": {
                 "schema": {
@@ -844,7 +934,7 @@
             }
           },
           "401": {
-            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
             "headers": {
               "WWW-Authenticate": {
                 "description": "Bearer realm=\"agentkit\"",
@@ -853,6 +943,16 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:read.",
             "content": {
               "application/json": {
                 "schema": {
@@ -901,7 +1001,7 @@
             }
           },
           "401": {
-            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
             "headers": {
               "WWW-Authenticate": {
                 "description": "Bearer realm=\"agentkit\"",
@@ -910,6 +1010,16 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:read.",
             "content": {
               "application/json": {
                 "schema": {
@@ -949,7 +1059,7 @@
             "description": "Deleted."
           },
           "401": {
-            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
             "headers": {
               "WWW-Authenticate": {
                 "description": "Bearer realm=\"agentkit\"",
@@ -958,6 +1068,16 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1005,7 +1125,7 @@
             }
           },
           "401": {
-            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
             "headers": {
               "WWW-Authenticate": {
                 "description": "Bearer realm=\"agentkit\"",
@@ -1014,6 +1134,16 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:read.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1062,7 +1192,7 @@
             }
           },
           "401": {
-            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
             "headers": {
               "WWW-Authenticate": {
                 "description": "Bearer realm=\"agentkit\"",
@@ -1071,6 +1201,16 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:read.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1119,7 +1259,7 @@
             }
           },
           "401": {
-            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
             "headers": {
               "WWW-Authenticate": {
                 "description": "Bearer realm=\"agentkit\"",
@@ -1128,6 +1268,16 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:read.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1176,7 +1326,7 @@
             }
           },
           "401": {
-            "description": "unauthorized: the server has a token and the request's bearer token is missing or wrong.",
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
             "headers": {
               "WWW-Authenticate": {
                 "description": "Bearer realm=\"agentkit\"",
@@ -1185,6 +1335,16 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:read.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1222,7 +1382,7 @@
       "bearer": {
         "type": "http",
         "scheme": "bearer",
-        "description": "The server's token (AGENTKIT_API_TOKEN), when it has one."
+        "description": "An API key (the config's auth.api_keys, or AGENTKIT_API_KEYS_FILE), or the server's token (AGENTKIT_API_TOKEN), when it has any. A key acts for one tenant, with scopes (agent:read for GET, agent:run for the rest) and the toolsets it may use: other toolsets, and agents that use them, are not found (404)."
       }
     },
     "schemas": {
@@ -1232,7 +1392,7 @@
         "properties": {
           "code": {
             "type": "string",
-            "description": "What went wrong, for programs: invalid_request (400), unauthorized (401), not_found (404), too_large (413), conversation_busy, agent_mismatch, run_final, run_leased, awaiting_decision, not_pending, shape_changed (409), over_capacity, shutting_down (503), internal (500); a run's codes are interrupted, run_failed, suspended, rejected, budget_exceeded, max_tokens, refused, unexpected_stop, cancelled, timeout, shutdown, rate_limited, overloaded, model_auth, context_too_long, model_rejected and internal. conversation_interrupted is no longer returned. New codes may be added: treat an unknown one as internal."
+            "description": "What went wrong, for programs: invalid_request (400), unauthorized (401), forbidden (403), not_found (404), too_large (413), conversation_busy, agent_mismatch, run_final, run_leased, awaiting_decision, not_pending, shape_changed (409), over_capacity, shutting_down (503), internal (500); a run's codes are interrupted, run_failed, suspended, rejected, budget_exceeded, max_tokens, refused, unexpected_stop, cancelled, timeout, shutdown, rate_limited, overloaded, model_auth, context_too_long, model_rejected and internal. conversation_interrupted is no longer returned. New codes may be added: treat an unknown one as internal."
           },
           "message": {
             "type": "string",

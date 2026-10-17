@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/bsamanvith/agentkit/pkg/auth"
 )
 
 // agentClash gives the agent two toolsets with the same tools and no prefix.
@@ -15,6 +17,9 @@ const agentClash = `{"mcp":{"toolsets":[{"name":"a","type":"demo"},{"name":"b","
 
 // TestServeRejectsBadSetup: a mistake in the environment or the config fails
 // startup, before anything listens, with a message naming the mistake.
+// authHash is the hash of a key, for configs.
+var authHash = auth.HashKey("hunter2-hunter2-hunter2")
+
 func TestServeRejectsBadSetup(t *testing.T) {
 	t.Parallel()
 	const good = `{"mcp":{"toolsets":[{"name":"demo","type":"demo"}]}}`
@@ -84,7 +89,15 @@ func TestServeRejectsBadSetup(t *testing.T) {
 		"runner: bad URL":               {env: map[string]string{envComponents: "agent", envRunnerURL: "runner:8080"}, config: good, code: 1, says: envRunnerURL},
 		"toolsets: bad URL":             {env: map[string]string{envComponents: "agent", envToolsetsURL: "tools"}, config: `{"mcp":{"toolsets":[{"name":"demo","type":"demo"}]},"agent":{"toolsets":["demo"]}}`, code: 1, says: envToolsetsURL},
 		"toolsets: unreachable":         {env: map[string]string{envComponents: "runner", envToolsetsURL: "http://127.0.0.1:1", envDependencyWait: "0s"}, config: `{"mcp":{"toolsets":[{"name":"demo","type":"demo"}]},"agent":{"toolsets":["demo"]}}`, code: 1, says: "unavailable"},
-		"bad dependency wait":           {env: map[string]string{envDependencyWait: "soon"}, config: good, code: 1, says: envDependencyWait},
+		// Auth (T040).
+		"auth: no credentials off lo": {env: map[string]string{envComponents: "agent", envAddr: ":0"}, config: good, code: 1, says: envAPIKeysFile},
+		"mcp: no credentials off lo":  {env: map[string]string{envComponents: "mcp-server", envAddr: ":0"}, config: `{"mcp":{"toolsets":[{"name":"demo","type":"demo"}]}}`, code: 1, says: envAPIToken},
+		"auth: toolset typo":          {env: map[string]string{envComponents: "agent"}, config: `{"mcp":{"toolsets":[{"name":"demo","type":"demo"}]},"auth":{"api_keys":[{"id":"k","hash":"` + authHash + `","tenant":"t","toolsets":["dmeo"]}]}}`, code: 1, says: `toolset "dmeo" matches none`},
+		"auth: bad hash":              {env: map[string]string{envComponents: "agent"}, config: `{"auth":{"api_keys":[{"id":"k","hash":"hunter2","tenant":"t"}]}}`, code: 1, says: `API key "k"`},
+		"auth: unknown field":         {env: map[string]string{envComponents: "agent"}, config: `{"auth":{"api_keys":[{"id":"k","key":"hunter2"}]}}`, code: 1, says: "auth:"},
+		"auth: keys file missing":     {env: map[string]string{envComponents: "agent", envAPIKeysFile: "/nonexistent/keys.json"}, config: good, code: 1, says: envAPIKeysFile},
+		"auth: stateful mcp":          {env: map[string]string{envComponents: "mcp-server", envAPIToken: "a-token-0123456789abcdef"}, config: `{"mcp":{"stateful":true,"toolsets":[{"name":"demo","type":"demo"}]}}`, code: 1, says: "stateful"},
+		"bad dependency wait":         {env: map[string]string{envDependencyWait: "soon"}, config: good, code: 1, says: envDependencyWait},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

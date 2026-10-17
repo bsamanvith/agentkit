@@ -4,13 +4,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/bsamanvith/agentkit/pkg/agentapi"
+	"github.com/bsamanvith/agentkit/pkg/auth"
 	"github.com/bsamanvith/agentkit/pkg/component"
 	"github.com/bsamanvith/agentkit/pkg/mcp/server"
 	"github.com/bsamanvith/agentkit/pkg/tool"
@@ -28,15 +29,20 @@ type mcpServer struct {
 // required toolset that failed, or a mistake in the specs, has already failed
 // startup; an optional one that failed is skipped and shown in /readyz.
 //
-// Every request must carry token as a bearer token, the agent API's own
-// ($AGENTKIT_API_TOKEN). Like the agent API, it may be empty only on a
-// loopback addr: the toolsets call out with the server's keys and tokens.
-func newMCPServer(ctx context.Context, cfg mcpConfig, regs map[string]tool.Registry, problems []toolset.Problem, token, addr string, log *slog.Logger) (component.Mount, error) {
+// Every request must authenticate with authn, the agent API's own (the API
+// keys and $AGENTKIT_API_TOKEN), and sees only the toolsets its principal may
+// use: another answers 404, as one that does not exist. authn may be nil only
+// on a loopback addr: the toolsets call out with the server's keys and
+// tokens.
+func newMCPServer(ctx context.Context, cfg mcpConfig, regs map[string]tool.Registry, problems []toolset.Problem, authn auth.Authenticator, addr string, log *slog.Logger) (component.Mount, error) {
 	switch {
-	case token == "" && !isLoopback(addr):
-		return component.Mount{}, fmt.Errorf("serving on %s, which is not a loopback address, needs a bearer token in $%s", addr, envAPIToken)
-	case token != "" && len(token) < agentapi.MinTokenLength:
-		return component.Mount{}, fmt.Errorf("$%s must be at least %d bytes", envAPIToken, agentapi.MinTokenLength)
+	case authn == nil && !isLoopback(addr):
+		return component.Mount{}, needsCredentials(addr)
+	case authn != nil && cfg.Stateful:
+		// A session would outlive the request that authenticated it, and
+		// could be used by another principal: not until sessions are bound
+		// to one (T040 Notes).
+		return component.Mount{}, errors.New("mcp.stateful cannot be used with authentication yet: sessions are not bound to a principal")
 	}
 	// The MCP SDK logs every stateless request at info; keep that for debug.
 	srvLog := log
@@ -54,8 +60,14 @@ func newMCPServer(ctx context.Context, cfg mcpConfig, regs map[string]tool.Regis
 	if cfg.Stateful {
 		opts = append(opts, server.WithStateful())
 	}
-	if token != "" {
-		opts = append(opts, server.WithMiddleware(agentapi.RequireToken(token)))
+	if authn != nil {
+		opts = append(opts,
+			server.WithMiddleware(auth.Middleware(authn, auth.WithLogger(log.With("component", mcpServerName)))),
+			server.WithAccess(func(ctx context.Context, name string) bool {
+				p, ok := auth.From(ctx)
+				return ok && p.AllowsToolset(name)
+			}),
+		)
 	}
 	srv, err := server.New(regs, opts...)
 	if err != nil {

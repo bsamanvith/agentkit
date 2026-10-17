@@ -44,6 +44,7 @@ const (
 	CodeInternal       = wire.CodeInternal
 	CodeInvalidRequest = wire.CodeInvalidRequest
 	CodeUnauthorized   = wire.CodeUnauthorized
+	CodeForbidden      = wire.CodeForbidden
 	CodeNotFound       = wire.CodeNotFound
 	CodeTooLarge       = wire.CodeTooLarge
 	CodeBusy           = wire.CodeBusy

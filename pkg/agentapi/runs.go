@@ -437,6 +437,19 @@ func (s *Server) resumeConversation(ctx context.Context, w http.ResponseWriter, 
 // resume continues a run that is not final and not going on. busy is the
 // code of a run that is going on.
 func (s *Server) resume(ctx context.Context, w http.ResponseWriter, r *http.Request, run store.Run, busy string) {
+	if acc := accessOf(r); acc.ok {
+		// A resume runs the agent's tools: only for a request that may use
+		// them all.
+		c, err := s.store.GetConversation(ctx, run.ConversationID)
+		if err != nil {
+			s.internal(w, "reading conversation "+quote(run.ConversationID), err)
+			return
+		}
+		if a := s.agents[c.Agent]; a != nil && !acc.agent(a) {
+			writeError(w, http.StatusNotFound, &Error{Code: CodeNotFound, Message: "no agent " + quote(c.Agent)})
+			return
+		}
+	}
 	switch {
 	case s.isDraining():
 		s.unavailable(w, shuttingDown())

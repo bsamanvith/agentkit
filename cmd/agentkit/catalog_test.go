@@ -72,7 +72,7 @@ func TestServeMCPWithAFakeCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := newMCPServer(t.Context(), cfg.MCP, built, problems, "", "127.0.0.1:0", log)
+	m, err := newMCPServer(t.Context(), cfg.MCP, built, problems, nil, "127.0.0.1:0", log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestServeCoreToolsOverMCP(t *testing.T) {
 	if err != nil || len(problems) != 0 {
 		t.Fatalf("build: %v %v", err, problems)
 	}
-	m, err := newMCPServer(t.Context(), cfg.MCP, built, problems, "", "127.0.0.1:0", log)
+	m, err := newMCPServer(t.Context(), cfg.MCP, built, problems, nil, "127.0.0.1:0", log)
 	if err != nil {
 		t.Fatal(err)
 	}

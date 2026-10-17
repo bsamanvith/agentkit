@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
@@ -19,6 +20,7 @@ type config struct {
 	callTimeout  time.Duration
 	maxInFlight  int
 	sessionIdle  time.Duration
+	allow        func(ctx context.Context, toolset string) bool
 }
 
 func newConfig(opts []Option) *config {
@@ -50,6 +52,16 @@ func WithMaxBodyBytes(n int64) Option { return func(c *config) { c.maxBodyBytes 
 // rate limits and audit plug in. Given several times, the first is outermost.
 func WithMiddleware(mw func(http.Handler) http.Handler) Option {
 	return func(c *config) { c.middleware = append(c.middleware, mw) }
+}
+
+// WithAccess decides, for each request, which toolsets the caller may use. A
+// toolset allow reports false for is answered exactly as one that does not
+// exist (404), whatever the method, and the listing leaves it out. allow gets
+// the request's context, after the middleware ([WithMiddleware]), so it reads
+// what an authentication middleware put there. Without it every toolset is
+// served to every request.
+func WithAccess(allow func(ctx context.Context, toolset string) bool) Option {
+	return func(c *config) { c.allow = allow }
 }
 
 // WithLogger sets the logger for unexpected errors, such as a registry

@@ -13,7 +13,7 @@
 | M4 Store, runner, compaction | [E05](E05-store-runner.md) | In progress: `pkg/store` (interfaces, memory store, suites, run lifecycle), the SQLite store (T029), the runner (T030) and the API on the runner (T037: store chosen by `AGENTKIT_STORE`, runs outlive `serve`) done; next compaction (T031). Postgres store (T088) and turn batching (T098) done; run start times and priority are T099 |
 | M5 Agent API, `agentkit serve`, image, Compose, smoke tests | [E09](E09-agent-api.md), [E01](E01-foundations.md) | In progress: `agentkit serve`, agent API v0 and the image done; **deployable** |
 | M6 Remote tools and runners over `pkg/rpc` | E06 (to plan) | In progress: T102 puts toolsets and runners on the wire |
-| Credentials, auth, tenancy at the edge | [E07](E07-auth-credentials.md) | **In progress**: T039 done (`pkg/auth`, `f08e82e`); T040, T041 and T042 ready. Needed before any public deployment: `/mcp/` has no auth until T040 |
+| Credentials, auth, tenancy at the edge | [E07](E07-auth-credentials.md) | **In progress**: T039 (`pkg/auth`) and T040 (`serve` behind API keys, scopes and per-key toolsets on `/v1` and `/mcp`) done; T041 (JWT) and T042 (vault) ready |
 | First connectors: Tavily, Exa, Parallel (search, extract) | [E10](E10-search-connectors.md) | **Tavily done** (live end to end with real Claude passed); Exa and Parallel on `main`, in review until keys exist; no auth work needed (Tavily keyless or keyed; Exa and Parallel keyed from env) |
 | Clients: admin console, CLI and headless, and the APIs behind them | [E11](E11-clients.md) | **In progress**: T053 (`pkg/agentclient`), T054 (`agentkit chat`, `agentkit ask --json`), T062 (agents, conversations, catalog API) T070 (console design, owner-approved), T078 (web workspace, embedded console shell) and T092 (`POST /v1/conversations`) done; T055 (console chat), T063 (agents over MCP), T061 (login), T055/T064 (console) next. UI plan: [docs/UI.md](../docs/UI.md) with a clickable mockup |
 | Skills and memory (context store; search by keyword or embeddings, opt-in) | [E12](E12-skills-memory.md) | **Planned** (T057–T060); T057 and T058 can start now |
@@ -56,7 +56,8 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 | Task | What | Why now |
 |---|---|---|
 | [T039](T039-auth-principals-middleware.md) | `pkg/auth`: principals, API keys, edge middleware | **Done** (`f08e82e`, CI green): T040, T041 and T061 can start; read its "For T040", "For T041" and "For T061" Notes first |
-| [T040](T040-serve-auth-wiring.md), [T041](T041-auth-jwt-oidc.md) | `serve` behind auth; JWT/OIDC | **Ready** (T039 done) |
+| [T040](T040-serve-auth-wiring.md) | `serve` behind auth | **Done**: API keys (config or `AGENTKIT_API_KEYS_FILE`), scopes, per-key toolsets; see its Notes for the agent-visibility decision |
+| [T041](T041-auth-jwt-oidc.md) | JWT/OIDC | **Ready** (T039 done) |
 | [T063](T063-agents-over-mcp.md) | Agents over MCP for Claude Code | **Ready** (T062 done) |
 | [T055](T055-web-client.md), [T061](T061-local-users-login.md), [T064](T064-console-admin-pages.md) | Console shell and chat; local users and login; admin pages | **T055 ready** (T078, T062, T070 done; read T055's "From T078's handoff"); T061 ready; T064 after T055 |
 | [T057](T057-skills.md), [T058](T058-memory-context-store.md) | Skills (Agent Skills format, progressive disclosure); memory context store (Claude memory-tool shape) | Ready; new packages, parallel with everything |

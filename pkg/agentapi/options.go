@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bsamanvith/agentkit/pkg/auth"
 	"github.com/bsamanvith/agentkit/pkg/bus"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/runner"
@@ -41,6 +42,7 @@ type Option func(*config)
 
 type config struct {
 	token          string
+	authn          auth.Authenticator
 	maxConcurrent  int
 	runTimeout     time.Duration
 	maxRuns        int
@@ -98,9 +100,21 @@ func newConfig(opts []Option) config {
 }
 
 // WithToken requires every request to carry "Authorization: Bearer <token>".
-// The token must be at least [MinTokenLength] bytes. Without this option the
-// API is open: only serve it on a loopback address.
+// The token must be at least [MinTokenLength] bytes. It is one API key of
+// tenant [DefaultTenant] with every scope and toolset. Without it or
+// [WithAuthenticator] the API is open: only serve it on a loopback address.
 func WithToken(token string) Option { return func(c *config) { c.token = token } }
+
+// WithAuthenticator requires every request to authenticate with a, in place
+// of [WithToken] (give one or the other). The request's principal (package
+// auth) then decides:
+//   - its tenant: the conversations and runs it sees (unless [WithTenant]);
+//   - its scopes: [ScopeRead] for every GET, [ScopeRun] for every other
+//     method, else 403 forbidden;
+//   - its toolsets: the toolsets it is shown, and the agents it may use, those
+//     whose toolsets it may all use. A toolset or agent it may not use is 404,
+//     the same answer as one that does not exist.
+func WithAuthenticator(a auth.Authenticator) Option { return func(c *config) { c.authn = a } }
 
 // WithMaxConcurrentRuns caps the runs going on at once (default
 // [DefaultMaxConcurrentRuns]); past it a new run gets 503 with Retry-After.

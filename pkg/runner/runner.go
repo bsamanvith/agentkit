@@ -205,6 +205,14 @@ type Execution struct {
 	used   atomic.Bool
 }
 
+// NewExecution returns an execution of run whose events come from events,
+// for an orchestrator other than [Runner] that serves the same API (see
+// agentapi.WithRuns). events must follow the contract of [Execution.Events];
+// the returned execution enforces that it is iterated once.
+func NewExecution(run store.Run, events iter.Seq2[Event, error]) *Execution {
+	return &Execution{Run: run, events: events}
+}
+
 // Events runs the execution and streams its events. It ends with an
 // [EventDone] when the run completed, suspended or was rejected, and with an
 // error otherwise: a [*RunError] when the run failed (and was stored so), the

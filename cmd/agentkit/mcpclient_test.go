@@ -134,3 +134,36 @@ func TestE2EServeMCPClient(t *testing.T) {
 		t.Errorf("search through the binary = %s", got)
 	}
 }
+
+// mcp-tools prints the pins that, pasted into a toolset's settings, allow
+// exactly the server's current tools.
+func TestMCPToolsCommand(t *testing.T) {
+	t.Parallel()
+	ts := upstreams(t)
+	var out, errOut strings.Builder
+	if code := (cli{stdout: &out, stderr: &errOut}).main(t.Context(), []string{"mcp-tools", "-header", "X-Trace: 1", ts.URL + "/mcp/a"}); code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut.String())
+	}
+	_, block, ok := strings.Cut(out.String(), "settings:\n")
+	if !ok || !strings.Contains(out.String(), "search") || !strings.Contains(out.String(), "Search a.") {
+		t.Fatalf("output:\n%s", out.String())
+	}
+	var got struct {
+		Pins map[string]string `json:"pins"`
+	}
+	if err := json.Unmarshal([]byte(block), &got); err != nil || len(got.Pins) != 1 {
+		t.Fatalf("pins block %q: %v", block, err)
+	}
+	pins, _ := json.Marshal(got.Pins)
+	tools, err := client.Factory().Build(t.Context(), json.RawMessage(`{"url": "`+ts.URL+`/mcp/a", "pins": `+string(pins)+`}`))
+	if err != nil || len(tools) != 1 {
+		t.Fatalf("building with the printed pins: %d tools, %v", len(tools), err)
+	}
+	_ = tools[0].(interface{ Close() error }).Close()
+
+	for _, args := range [][]string{{"mcp-tools"}, {"mcp-tools", "-header", "nocolon", "x"}, {"mcp-tools", "http://127.0.0.1:1/mcp"}} {
+		if code := (cli{stdout: &out, stderr: &errOut}).main(t.Context(), args); code == 0 {
+			t.Errorf("%v: exit 0", args)
+		}
+	}
+}

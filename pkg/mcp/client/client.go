@@ -76,6 +76,8 @@ type Client struct {
 	changed chan struct{}
 	done    chan struct{} // closed by Close
 	once    sync.Once
+
+	pins pins // the wrapped tools' fingerprints, and which are disabled
 }
 
 // Connect connects to the server, so a server that does not answer fails

@@ -37,7 +37,10 @@
 // [Client.Tools] returns, for review) and metadata from the server's
 // annotations, which may raise a tool's risk but never lower it: a
 // readOnlyHint is kept as the tag [TagReadOnlyHint], not as kind read.
-// [Fingerprint] and [Diff] are what pinning a server's tools (T096) is built
-// on, and [Client.ToolsChanged] signals notifications/tools/list_changed.
-// Results are third-party data.
+// [Fingerprint] and [Diff] are what pinning a server's tools is built on.
+// [Client.Wrap] remembers each tool's fingerprint and [Client.Recheck]
+// disables a wrapped tool whose definition has since changed (a rug pull);
+// the toolset rechecks on notifications/tools/list_changed. The toolset's
+// "pins" setting allows only tools with the pinned fingerprints. Results are
+// third-party data.
 package client

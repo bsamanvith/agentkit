@@ -23,7 +23,7 @@ const TagReadOnlyHint = "mcp.read_only_hint"
 const maxMessageRunes = 300
 
 // Wrap returns t as a [tool.Tool] that calls it on the server, under the
-// same name. It fails with [tool.ErrInvalidDefinition] when the definition
+// same name, and remembers t's fingerprint for [Client.Recheck]. It fails with [tool.ErrInvalidDefinition] when the definition
 // cannot be one of ours (a name outside ^[a-zA-Z0-9_-]{1,64}$, an input
 // schema that is not an object).
 func (c *Client) Wrap(t *mcp.Tool) (tool.Tool, error) {
@@ -38,6 +38,11 @@ func (c *Client) Wrap(t *mcp.Tool) (tool.Tool, error) {
 	if _, err := tool.NewRegistry([]tool.Tool{&remote{def: def}}); err != nil {
 		return nil, err
 	}
+	fp, err := Fingerprint(t)
+	if err != nil {
+		return nil, fmt.Errorf("%w: tool %q: %w", tool.ErrInvalidDefinition, t.Name, err)
+	}
+	c.pins.set(t.Name, fp)
 	return &remote{c: c, def: def}, nil
 }
 
@@ -107,6 +112,9 @@ func (r *remote) Close() error { return r.c.Close() }
 func (r *remote) Invoke(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
 	if !isObject(input) {
 		return nil, &tool.Error{Tool: r.def.Name, Kind: tool.ErrInvalidInput, Err: errors.New("input must be a JSON object")}
+	}
+	if why := r.c.pins.why(r.def.Name); why != "" {
+		return nil, r.failed(why)
 	}
 	res, err := r.c.Call(ctx, r.def.Name, input)
 	if err != nil {

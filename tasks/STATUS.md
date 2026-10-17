@@ -23,7 +23,7 @@
 | Runtimes and jobs: temporary environments, exported harness images, results outside chat | [E16](E16-runtimes-jobs.md) | **Shaped**, tasks to plan after the console's first version |
 | Tool safety and control: tool kinds and risk, policies, interrupts and approvals, deferred loading, steering | [E17](E17-tool-safety-control.md) | **In progress**: T082 (tool metadata) done; T083–T086 next |
 | Streaming and the server backend: SSE + HTTP commands (WebSocket later), Postgres + Redis | [E18](E18-streaming-backend.md) | **In progress**: T088 (Postgres store, event log, `agentkit migrate`), T089 (`pkg/bus`, Redis Streams) and T098 (runner turn batching) done; T090 (stream API) and T093 (row-level security) ready |
-| External MCP servers: add any remote MCP server by URL, MCP OAuth, tool pinning | [E19](E19-external-mcp-servers.md) | **In progress**: T094 (the client, toolset type `mcp`) done; T095 core built; T096 (add servers at runtime) can start |
+| External MCP servers: add any remote MCP server by URL, MCP OAuth, tool pinning | [E19](E19-external-mcp-servers.md) | **In progress**: T094 (the client, toolset type `mcp`) done; T095 core built; T096 part 1 (SSRF guard `pkg/netguard`, tool pinning, `agentkit mcp-tools`) done, part 2 (runtime API) next |
 | Google connectors: Gmail, Calendar, Drive as toolsets, one package each, shared `common` | [E21](E21-google-connectors.md) | **In progress** (T108–T111): T108 (`connectors/google/common`) and T109 (Gmail, synthetic cassettes) in review (PR #23); T110 (Calendar) and T111 (Drive) start from T108 |
 | More model providers | [E08](E08-model-providers.md) | Later |
 | Agent skills | [E02](E02-agent-skills.md) | In progress: `write-tests` exists and was dry-run on `pkg/flow` |
@@ -92,7 +92,7 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 | [T043](T043-credentials-backends.md) credential backends, [T044](T044-credentials-in-tools.md) credentials in tools | T042 |
 | [T091](T091-websocket-binding.md) WebSocket binding | T090 |
 | [T095](T095-mcp-oauth-client.md) MCP OAuth for external servers | **In progress**: the core (`pkg/mcp/oauth`: discovery, CIMD/DCR, PKCE + resource, refresh, provider profiles) is built and tested on fakes. Wiring needs T094 (client), T042 (vault) and T096 (API, callback page) |
-| [T096](T096-mcp-servers-api-console.md) Add MCP servers at runtime: API, console, SSRF guard | T094, T062 (done), T040, T082; screens from T087 |
+| [T096](T096-mcp-servers-api-console.md) Add MCP servers at runtime: API, console, SSRF guard | **In progress**: part 1 (guards) done; part 2 (API) ready; part 3 (console) needs T087 |
 | [T097](T097-mcp-registry-search.md) MCP Registry search | T096 |
 | [T045](T045-connect-accounts.md) Connecting accounts (OAuth2 + PKCE) | T040, T043, T044 |
 | [T004](T004-fakellm.md) `fakellm`, [T008](T008-ci-pipeline.md) full CI | T006. [T007](T007-e2e-smoke-suite.md) smoke suite **done** 2026-10-17 (`make smoke`, `make k8s-smoke`, on the console's fake model in place of `fakellm`) |

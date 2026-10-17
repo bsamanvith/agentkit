@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net"
 	"os"
 	"slices"
@@ -149,13 +150,19 @@ type agentComponent struct {
 	runner    *runnerrpc.Client
 	runnerURL string
 	agents    []string
+	// toolsets is one of the toolsets served by the toolsets component
+	// ($AGENTKIT_TOOLSETS_URL), nil when they are built here: listing its
+	// tools checks the component.
+	toolsets    tool.Registry
+	toolsetsURL string
 }
 
 // runnerCheckTimeout bounds the call that checks the runner in /readyz.
 const runnerCheckTimeout = 2 * time.Second
 
-// Ready is degraded when optional toolsets the agents name were skipped, or
-// when the runner the agents run on cannot be reached or does not run them:
+// Ready is degraded when optional toolsets the agents name were skipped,
+// when the toolsets component cannot be reached, or when the runner the
+// agents run on cannot be reached or does not run them:
 // the API still serves conversations and runs that are stored.
 func (a *agentComponent) Ready(ctx context.Context) error {
 	if err := a.Server.Ready(ctx); err != nil {
@@ -176,6 +183,13 @@ func (a *agentComponent) Ready(ctx context.Context) error {
 		}
 		if len(missing) > 0 {
 			return fmt.Errorf("%w: the runner at %s does not run agents %s", component.ErrDegraded, a.runnerURL, strings.Join(missing, ", "))
+		}
+	}
+	if a.toolsets != nil {
+		ctx, cancel := context.WithTimeout(ctx, runnerCheckTimeout)
+		defer cancel()
+		if _, err := a.toolsets.List(ctx); err != nil {
+			return fmt.Errorf("%w: toolsets at %s: %w", component.ErrDegraded, a.toolsetsURL, err)
 		}
 	}
 	if len(a.skipped) > 0 {
@@ -266,7 +280,14 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 	if err != nil {
 		return component.Mount{}, nil, err
 	}
-	return component.Mount{Pattern: "/v1/", Component: &agentComponent{Server: srv, skipped: skipped, runner: remote, runnerURL: env.runnerURL, agents: agentNames(cfg)}}, srv, nil
+	ac := &agentComponent{Server: srv, skipped: skipped, runner: remote, runnerURL: env.runnerURL, agents: agentNames(cfg), toolsetsURL: env.toolsetsURL}
+	for _, name := range slices.Sorted(maps.Keys(built)) {
+		if r, ok := built[name].(remoteToolset); ok {
+			ac.toolsets = r
+			break
+		}
+	}
+	return component.Mount{Pattern: "/v1/", Component: ac}, srv, nil
 }
 
 // check validates what of an agent's config does not need its model built.

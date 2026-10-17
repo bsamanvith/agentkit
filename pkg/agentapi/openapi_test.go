@@ -555,13 +555,14 @@ func TestOpenAPIResponses(t *testing.T) {
 	rec.probe(r, "delete", 204, "DELETE", "/v1/conversations/"+conv, "", "")
 	rec.probe(r, "delete_not_found", 404, "DELETE", "/v1/conversations/"+conv, "", "")
 
-	// A toolset whose tools cannot be listed: the catalog answers 500.
+	// A toolset whose tools cannot be listed: the catalog lists it as
+	// unavailable.
 	broken := []agentapi.Agent{{Name: "solo", Toolsets: []string{"down"}, Harness: agentHarness(t, echo(t), registry(t))}}
-	rb := newRig(t, echo(t), rigConfig{agents: broken, api: []agentapi.Option{agentapi.WithToolsets(agentapi.Toolset{Name: "down", Type: "demo", Tools: failing{}})}})
-	rec.probe(rb, "list_agents_internal", 500, "GET", "/v1/agents", "", "")
-	rec.probe(rb, "get_agent_internal", 500, "GET", "/v1/agents/solo", "", "")
-	rec.probe(rb, "list_toolsets_internal", 500, "GET", "/v1/toolsets", "", "")
-	rec.probe(rb, "list_tools_internal", 500, "GET", "/v1/toolsets/down/tools", "", "")
+	rb := newRig(t, echo(t), rigConfig{agents: broken, api: []agentapi.Option{agentapi.WithToolsets(agentapi.Toolset{Name: "down", Type: "demo", Tools: failing{}, Credential: agentapi.Credential{Status: wire.CredentialNotNeeded}})}})
+	rec.probe(rb, "list_agents_unavailable", 200, "GET", "/v1/agents", "", "")
+	rec.probe(rb, "get_agent_unavailable", 200, "GET", "/v1/agents/solo", "", "")
+	rec.probe(rb, "list_toolsets_unavailable", 200, "GET", "/v1/toolsets", "", "")
+	rec.probe(rb, "list_tools_unavailable", 200, "GET", "/v1/toolsets/down/tools", "", "")
 
 	// Keys without the scope an endpoint needs: 403 on every route. The
 	// rig's own requests read, with the read key.

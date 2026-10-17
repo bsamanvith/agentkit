@@ -241,9 +241,11 @@ func (s *Server) agentView(r *http.Request, a *agent) (wire.Agent, error) {
 		ts := s.toolsets[name]
 		at := wire.AgentToolset{Name: name, Status: wire.ToolsetSkipped, Tools: []string{}}
 		if ts.Tools != nil {
-			defs, err := ts.Tools.List(r.Context())
+			defs, err := s.listToolset(r.Context(), name, ts.Tools)
 			if err != nil {
-				return v, fmt.Errorf("toolset %q: %w", name, err)
+				at.Status = wire.ToolsetUnavailable
+				v.Toolsets = append(v.Toolsets, at)
+				continue
 			}
 			at.Status = wire.ToolsetReady
 			for _, d := range defs {
@@ -267,12 +269,12 @@ func (s *Server) listToolsets(w http.ResponseWriter, r *http.Request) {
 		}
 		v := wire.Toolset{Name: ts.Name, Type: ts.Type, Status: wire.ToolsetSkipped, Reason: ts.Skipped, MCPPath: ts.MCPPath, Credential: ts.Credential}
 		if ts.Tools != nil {
-			defs, err := ts.Tools.List(r.Context())
+			defs, err := s.listToolset(r.Context(), ts.Name, ts.Tools)
 			if err != nil {
-				s.internal(w, "listing toolset "+ts.Name, err)
-				return
+				v.Status, v.Reason = wire.ToolsetUnavailable, unavailableReason
+			} else {
+				v.Status, v.ToolCount = wire.ToolsetReady, len(defs)
 			}
-			v.Status, v.ToolCount = wire.ToolsetReady, len(defs)
 		}
 		out.Toolsets = append(out.Toolsets, v)
 	}
@@ -288,9 +290,10 @@ func (s *Server) listTools(w http.ResponseWriter, r *http.Request) {
 	}
 	out := wire.ToolList{V: WireVersion, Toolset: name, Status: wire.ToolsetSkipped, Tools: []wire.Tool{}}
 	if ts.Tools != nil {
-		defs, err := ts.Tools.List(r.Context())
+		defs, err := s.listToolset(r.Context(), name, ts.Tools)
 		if err != nil {
-			s.internal(w, "listing toolset "+name, err)
+			out.Status = wire.ToolsetUnavailable
+			writeJSON(w, http.StatusOK, out)
 			return
 		}
 		out.Status = wire.ToolsetReady
@@ -299,6 +302,21 @@ func (s *Server) listTools(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// unavailableReason is a toolset's reason when its tools could not be
+// listed; the error itself goes to the log, not to callers.
+const unavailableReason = "its tools could not be listed just now (the toolsets component may be down); the server log has the error"
+
+// listToolset lists a built toolset's tools, logging a failure: a toolset
+// served by another component fails while that component is down, and the
+// catalog then shows it as unavailable instead of failing the request.
+func (s *Server) listToolset(ctx context.Context, name string, tools tool.Registry) ([]tool.Definition, error) {
+	defs, err := tools.List(ctx)
+	if err != nil && ctx.Err() == nil {
+		s.log.Warn("listing a toolset's tools", "toolset", name, "err", err)
+	}
+	return defs, err
 }
 
 // wireTool is a tool's definition as the API shows it.

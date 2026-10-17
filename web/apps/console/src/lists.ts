@@ -25,7 +25,9 @@ export function useLists(): Lists {
 
 /** A toolset's status as a tone and a word. */
 export function toolsetStatus(t: Toolset): { tone: StatusTone; text: string } {
-  return t.status === "ready" ? { tone: "ok", text: "Ready" } : { tone: "warn", text: "Skipped" };
+  if (t.status === "ready") return { tone: "ok", text: "Ready" };
+  if (t.status === "unavailable") return { tone: "bad", text: "Unavailable" };
+  return { tone: "warn", text: "Skipped" };
 }
 
 /** What a list row shows: the name, a muted line, and a status. */
@@ -41,6 +43,6 @@ export function toolsetRow(t: Toolset): RowInfo {
   const sub =
     s.tone === "ok"
       ? `${t.tool_count} ${t.tool_count === 1 ? "tool" : "tools"}`
-      : `Skipped${t.reason ? ` · ${t.reason}` : ""}`;
+      : `${s.text}${t.reason ? ` · ${t.reason}` : ""}`;
   return { name: t.name, sub, tone: s.tone, word: s.text };
 }

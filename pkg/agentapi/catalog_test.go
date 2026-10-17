@@ -503,6 +503,47 @@ func TestToolsetsCatalog(t *testing.T) {
 	}
 }
 
+// downRegistry is a toolset served by a component that is down.
+type downRegistry struct{ tool.Registry }
+
+func (downRegistry) List(context.Context) ([]tool.Definition, error) {
+	return nil, errors.New("rpc: unavailable: dial tcp 10.0.0.9:8080: connection refused")
+}
+
+// TestToolsetUnavailable: a toolset whose tools cannot be listed (its
+// component is down) is listed as unavailable, in the catalog, its tools and
+// its agent, instead of failing the request; the error stays in the log.
+func TestToolsetUnavailable(t *testing.T) {
+	t.Parallel()
+	sets := demoTools(t)
+	down := downRegistry{sets["a"]}
+	m := echo(t)
+	agents := []agentapi.Agent{{Name: "solo", Harness: agentHarness(t, m, sets["a"]), Toolsets: []string{"a"}}}
+	given := agentapi.Toolset{Name: "a", Type: "demo", Tools: down, Credential: agentapi.Credential{Status: wire.CredentialNotNeeded}}
+	r := newRig(t, m, rigConfig{agents: agents, api: []agentapi.Option{agentapi.WithToolsets(given)}})
+
+	var list wire.ToolsetList
+	if code := r.get("/v1/toolsets", &list); code != http.StatusOK || len(list.Toolsets) != 1 ||
+		list.Toolsets[0].Status != wire.ToolsetUnavailable || list.Toolsets[0].Reason == "" || list.Toolsets[0].ToolCount != 0 {
+		t.Fatalf("GET /v1/toolsets = %d %+v, want a unavailable with a reason", code, list.Toolsets)
+	}
+	if strings.Contains(list.Toolsets[0].Reason, "10.0.0.9") {
+		t.Errorf("the reason shows the internal error: %q", list.Toolsets[0].Reason)
+	}
+	var tools wire.ToolList
+	if code := r.get("/v1/toolsets/a/tools", &tools); code != http.StatusOK || tools.Status != wire.ToolsetUnavailable || tools.Tools == nil || len(tools.Tools) != 0 {
+		t.Errorf("GET /v1/toolsets/a/tools = %d %+v, want unavailable with no tools", code, tools)
+	}
+	var agent wire.Agent
+	if code := r.get("/v1/agents/solo", &agent); code != http.StatusOK || len(agent.Toolsets) != 1 || agent.Toolsets[0].Status != wire.ToolsetUnavailable {
+		t.Errorf("GET /v1/agents/solo = %d %+v, want its toolset unavailable", code, agent.Toolsets)
+	}
+	var agentList wire.AgentList
+	if code := r.get("/v1/agents", &agentList); code != http.StatusOK {
+		t.Errorf("GET /v1/agents = %d", code)
+	}
+}
+
 // TestNewAgentsRejectsBadConfig: what NewAgents cannot serve fails with
 // ErrInvalidConfig.
 func TestNewAgentsRejectsBadConfig(t *testing.T) {

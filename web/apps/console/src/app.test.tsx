@@ -8,6 +8,7 @@ import { tokenStorageKey } from "./api";
 import { listStorageKey } from "./layout";
 import { App } from "./app";
 import { Page } from "./pages/page";
+import { toolsetRow } from "./lists";
 import { readiness } from "./pages/readiness";
 import { inShell, routes } from "./routes";
 import { sectionOf } from "./sections";
@@ -94,6 +95,16 @@ describe("readiness", () => {
     [["ready", "failed", "pending"], "warn", "2 of 3 toolsets not ready"],
   ])("%j", (statuses, tone, text) => {
     expect(readiness(agent(statuses))).toEqual({ tone, text });
+  });
+});
+
+describe("toolsetRow", () => {
+  it.each([
+    [{ status: "ready", tool_count: 1 }, "ok", "Ready", "1 tool"],
+    [{ status: "skipped", reason: "no key", tool_count: 0 }, "warn", "Skipped", "Skipped · no key"],
+    [{ status: "unavailable", reason: "down", tool_count: 0 }, "bad", "Unavailable", "Unavailable · down"],
+  ])("%j", (t, tone, word, sub) => {
+    expect(toolsetRow({ name: "x", type: "mcp", ...t })).toEqual({ name: "x", sub, tone, word });
   });
 });
 

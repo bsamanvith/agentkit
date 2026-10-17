@@ -191,11 +191,9 @@ func (c *Client) Do(ctx context.Context, r Request) ([]byte, error) {
 			}
 		}
 	}
-	var reasons []string
-	if status >= 300 { // a success body can be megabytes, and is never an error
-		_, reasons = parseError(body)
-	}
-	if status >= 300 && isRateLimited(status, reasons) {
+	// A success body can be megabytes and is never an error: only an error's
+	// is parsed.
+	if status >= 300 && isRateLimited(status, errorReasons(body)) {
 		wait, ok := retryAfter(header)
 		// A context's deadline is in real time, whatever c.clock is.
 		if deadline, has := ctx.Deadline(); has && time.Until(deadline) < wait {

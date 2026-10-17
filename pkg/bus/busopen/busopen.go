@@ -18,7 +18,8 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
-	"strings"
+
+	"github.com/bsamanvith/agentkit/internal/specs"
 
 	"github.com/bsamanvith/agentkit/pkg/bus"
 	"github.com/bsamanvith/agentkit/pkg/bus/memory"
@@ -53,14 +54,7 @@ type Backend struct {
 	Open func(ctx context.Context, spec string, cfg Config) (bus.Bus, func() error, error)
 }
 
-func (b Backend) matches(spec string) bool {
-	for _, p := range b.Prefixes {
-		if spec == p || (strings.HasSuffix(p, ":") || strings.HasSuffix(p, "://")) && strings.HasPrefix(spec, p) {
-			return true
-		}
-	}
-	return false
-}
+func (b Backend) matches(spec string) bool { return specs.Match(b.Prefixes, spec) }
 
 // Option configures [Open].
 type Option func(*options)
@@ -112,13 +106,11 @@ func Open(ctx context.Context, spec string, opts ...Option) (bus.Bus, func() err
 			return b.Open(ctx, spec, o.cfg)
 		}
 	}
-	var names []string
-	for _, b := range all {
-		for _, p := range b.Prefixes {
-			names = append(names, p+"…")
-		}
+	prefixes := make([][]string, len(all))
+	for i, b := range all {
+		prefixes[i] = b.Prefixes
 	}
-	return nil, nil, fmt.Errorf("%w; want one of %s", ErrUnknownSpec, strings.Join(names, ", "))
+	return nil, nil, fmt.Errorf("%w; want one of %s", ErrUnknownSpec, specs.Want(prefixes...))
 }
 
 // memoryBackend is the bus of one process.

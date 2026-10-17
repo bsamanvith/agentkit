@@ -88,3 +88,12 @@ func TestWithRuns(t *testing.T) {
 		t.Error("Shutdown did not stop the orchestrator")
 	}
 }
+
+// TestNewExecutionWithoutEvents: an execution made with no events ends at
+// once with ErrNoEvents instead of panicking in whoever iterates it.
+func TestNewExecutionWithoutEvents(t *testing.T) {
+	t.Parallel()
+	if _, err := runner.NewExecution(store.Run{}, nil).Wait(); !errors.Is(err, runner.ErrNoEvents) {
+		t.Errorf("Wait = %v, want ErrNoEvents", err)
+	}
+}

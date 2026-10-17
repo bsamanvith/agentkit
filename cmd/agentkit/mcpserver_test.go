@@ -22,7 +22,7 @@ func TestMCPServerToken(t *testing.T) {
 	if _, err := newMCPServer(t.Context(), defaultMCPConfig(), regs, nil, "", ":8080", log); err == nil || !strings.Contains(err.Error(), envAPIToken) {
 		t.Errorf("no token on :8080: err = %v, want one naming $%s", err, envAPIToken)
 	}
-	m, err := newMCPServer(t.Context(), defaultMCPConfig(), regs, nil, "s3cret", ":8080", log)
+	m, err := newMCPServer(t.Context(), defaultMCPConfig(), regs, nil, "s3cret-0123456789abcdef", ":8080", log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,9 +34,9 @@ func TestMCPServerToken(t *testing.T) {
 	}{
 		{"", http.StatusUnauthorized},
 		{"Bearer wrong", http.StatusUnauthorized},
-		{"Basic s3cret", http.StatusUnauthorized},
-		{"Bearer s3cret", http.StatusOK},
-		{"bearer s3cret", http.StatusOK},
+		{"Basic s3cret-0123456789abcdef", http.StatusUnauthorized},
+		{"Bearer s3cret-0123456789abcdef", http.StatusOK},
+		{"bearer s3cret-0123456789abcdef", http.StatusOK},
 	} {
 		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, ts.URL+"/mcp/", nil)
 		if tc.auth != "" {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"iter"
+	"reflect"
 
 	"github.com/bsamanvith/agentkit/pkg/flow"
 	"github.com/bsamanvith/agentkit/pkg/harness"
@@ -70,11 +71,10 @@ type Step struct {
 // [Output] under keys.Output. It fails with [ErrInvalidConfig] for a missing
 // argument, an empty key, or the same key for input and output.
 func New(name string, agent Agent, saver TranscriptSaver, keys Keys, opts ...Option) (*Step, error) {
-	h, isHarness := agent.(*harness.Harness)
 	switch {
 	case name == "":
 		return nil, fmt.Errorf("%w: empty name", ErrInvalidConfig)
-	case agent == nil || isHarness && h == nil:
+	case isNil(agent):
 		return nil, fmt.Errorf("%w: %s: nil agent", ErrInvalidConfig, name)
 	case saver == nil:
 		return nil, fmt.Errorf("%w: %s: nil transcript saver", ErrInvalidConfig, name)
@@ -161,4 +161,13 @@ func (s *Step) Run(ctx context.Context, st *flow.State) error {
 
 func (s *Step) write(st *flow.State, t harness.Transcript) error {
 	return flow.Set(st, s.keys.Output, Output{Answer: t[len(t)-1].Text(), Transcript: t})
+}
+
+// isNil reports whether a is nil, or a nil pointer in an interface.
+func isNil(a Agent) bool {
+	if a == nil {
+		return true
+	}
+	v := reflect.ValueOf(a)
+	return v.Kind() == reflect.Pointer && v.IsNil()
 }

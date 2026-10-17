@@ -21,7 +21,8 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
+
+	"github.com/bsamanvith/agentkit/internal/specs"
 
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/flow"
@@ -87,14 +88,7 @@ type Backend struct {
 	Migrate func(ctx context.Context, spec string) error
 }
 
-func (b Backend) matches(spec string) bool {
-	for _, p := range b.Prefixes {
-		if spec == p || (strings.HasSuffix(p, ":") || strings.HasSuffix(p, "://")) && strings.HasPrefix(spec, p) {
-			return true
-		}
-	}
-	return false
-}
+func (b Backend) matches(spec string) bool { return specs.Match(b.Prefixes, spec) }
 
 // Option configures [Open] and [Migrate].
 type Option func(*options)
@@ -142,13 +136,11 @@ func find(spec string, o options) (Backend, error) {
 			return b, nil
 		}
 	}
-	var names []string
-	for _, b := range all {
-		for _, p := range b.Prefixes {
-			names = append(names, p+"…")
-		}
+	prefixes := make([][]string, len(all))
+	for i, b := range all {
+		prefixes[i] = b.Prefixes
 	}
-	return Backend{}, fmt.Errorf("%w; want one of %s", ErrUnknownSpec, strings.Join(names, ", "))
+	return Backend{}, fmt.Errorf("%w; want one of %s", ErrUnknownSpec, specs.Want(prefixes...))
 }
 
 // Open opens the store spec names; an empty spec is "memory".
@@ -167,6 +159,9 @@ func Open(ctx context.Context, spec string, opts ...Option) (Opened, error) {
 // Migrate applies the migrations of the store spec names, as a one-off job:
 // [ErrNoMigrations] for a backend that has none to run that way.
 func Migrate(ctx context.Context, spec string, opts ...Option) error {
+	if spec == "" {
+		spec = "memory"
+	}
 	b, err := find(spec, newOptions(opts))
 	if err != nil {
 		return err

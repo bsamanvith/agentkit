@@ -52,6 +52,9 @@ spec:
             - {name: AGENTKIT_COMPONENTS, value: "toolsets,mcp-server"}
             - name: AGENTKIT_RPC_TOKEN
               valueFrom: {secretKeyRef: {name: agentkit, key: rpc-token}}
+            # MCP clients send the API token to /mcp/<name>.
+            - name: AGENTKIT_API_TOKEN
+              valueFrom: {secretKeyRef: {name: agentkit, key: api-token}}
             # Connector keys go here, and only here (TAVILY_API_KEY, ...).
           ports: [{name: http, containerPort: 8080}]
           readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 5}

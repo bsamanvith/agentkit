@@ -310,7 +310,20 @@ func (s *Server) auth(next http.Handler) http.Handler {
 	if s.cfg.token == "" {
 		return next
 	}
-	want := []byte(s.cfg.token)
+	return RequireToken(s.cfg.token)(next)
+}
+
+// RequireToken returns middleware that answers 401 unauthorized, in the
+// API's error format, to a request without token as its bearer token
+// (compared in constant time). It is the check [WithToken] puts in front of
+// the API, for other routes the same token guards, such as /mcp. token
+// must not be empty; [MinTokenLength] is the shortest the API accepts.
+func RequireToken(token string) func(http.Handler) http.Handler {
+	want := []byte(token)
+	return func(next http.Handler) http.Handler { return requireToken(want, next) }
+}
+
+func requireToken(want []byte, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		scheme, got, ok := strings.Cut(r.Header.Get("Authorization"), " ")
 		if !ok || !strings.EqualFold(scheme, "Bearer") || subtle.ConstantTimeCompare([]byte(got), want) != 1 {

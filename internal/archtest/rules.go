@@ -111,10 +111,13 @@ func ModuleRules() Rules {
 			// tag). It returns the backend's Admin, so only cmd/ and scoped
 			// (which hides it) import it.
 			"pkg/store/storeopen": {
-				"pkg/store", "pkg/flow", "pkg/clock", "pkg/store/memory", "pkg/store/sqlite", "pkg/store/postgres",
+				"pkg/store", "pkg/flow", "pkg/clock", "pkg/store/memory", "pkg/store/sqlite", "pkg/store/postgres", "internal/specs",
 			},
 			// The table of bus backends, opened from a spec.
-			"pkg/bus/busopen": {"pkg/bus", "pkg/clock", "pkg/bus/memory", "pkg/bus/redis"},
+			"pkg/bus/busopen": {"pkg/bus", "pkg/clock", "pkg/bus/memory", "pkg/bus/redis", "internal/specs"},
+			// The rule for matching a backend's spec, shared by storeopen
+			// and busopen.
+			"internal/specs": {},
 			// Edge authentication knows tenants and nothing else: no server,
 			// no store, no harness (E07). Tenancy never imports it back.
 			"pkg/auth": {"pkg/tenancy"},

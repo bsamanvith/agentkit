@@ -221,9 +221,13 @@ func TestNewRejectsBadConfig(t *testing.T) {
 	for name, try := range map[string]func() (*agentstep.Step, error){
 		"no name":    func() (*agentstep.Step, error) { return agentstep.New("", h, saver, research) },
 		"no harness": func() (*agentstep.Step, error) { return agentstep.New("a", nil, saver, research) },
-		"no saver":   func() (*agentstep.Step, error) { return agentstep.New("a", h, nil, research) },
-		"no input":   func() (*agentstep.Step, error) { return agentstep.New("a", h, saver, agentstep.Keys{Output: "o"}) },
-		"no output":  func() (*agentstep.Step, error) { return agentstep.New("a", h, saver, agentstep.Keys{Input: "i"}) },
+		"nil harness": func() (*agentstep.Step, error) {
+			return agentstep.New("a", (*harness.Harness)(nil), saver, research)
+		},
+		"nil agent": func() (*agentstep.Step, error) { return agentstep.New("a", (*otherAgent)(nil), saver, research) },
+		"no saver":  func() (*agentstep.Step, error) { return agentstep.New("a", h, nil, research) },
+		"no input":  func() (*agentstep.Step, error) { return agentstep.New("a", h, saver, agentstep.Keys{Output: "o"}) },
+		"no output": func() (*agentstep.Step, error) { return agentstep.New("a", h, saver, agentstep.Keys{Input: "i"}) },
 		"same key": func() (*agentstep.Step, error) {
 			return agentstep.New("a", h, saver, agentstep.Keys{Input: "k", Output: "k"})
 		},
@@ -233,3 +237,6 @@ func TestNewRejectsBadConfig(t *testing.T) {
 		}
 	}
 }
+
+// otherAgent is an agent that is not a harness, as a remote runner is.
+type otherAgent struct{ *harness.Harness }

@@ -56,11 +56,17 @@ func (c cli) openStore(ctx context.Context, clk clock.Clock) (openedStore, error
 // sharing a store must share it.
 const envBus = "AGENTKIT_BUS"
 
-// openBus opens the bus $AGENTKIT_BUS names (package busopen), and the
-// function that closes it. An unknown value is an error, which never echoes
+// openBus opens the bus $AGENTKIT_BUS names (package busopen): nil for one
+// replica, and the function that closes it. An unknown value is an error, which never echoes
 // it (a URL can carry a password).
 func (c cli) openBus(ctx context.Context, clk clock.Clock, log *slog.Logger) (bus.Bus, func(), error) {
-	b, closeBus, err := busopen.Open(ctx, c.env(envBus), busopen.WithClock(clk), busopen.WithLogger(log.With("component", "bus")))
+	spec := c.env(envBus)
+	if spec == "" || spec == "memory" {
+		// nil: the agent API makes its own, and knows that no other
+		// replica shares it (a held run is then this process's or nobody's).
+		return nil, func() {}, nil
+	}
+	b, closeBus, err := busopen.Open(ctx, spec, busopen.WithClock(clk), busopen.WithLogger(log.With("component", "bus")))
 	if err != nil {
 		return nil, nil, fmt.Errorf("%s: %w", envBus, err)
 	}

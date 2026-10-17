@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -268,7 +269,7 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 // check validates what of an agent's config does not need its model built.
 func (d agentDef) check(legacy bool) error {
 	label := d.label(legacy)
-	if _, ok := modelProviders()[d.Model.Provider]; !ok {
+	if _, ok := modelProviders()[cmp.Or(d.Model.Provider, defaultProvider)]; !ok {
 		return fmt.Errorf("%s.model.provider %q: want %s", label, d.Model.Provider, providerNames())
 	}
 	if d.MaxTotalTokens < 0 || d.Model.MaxTokens < 0 {

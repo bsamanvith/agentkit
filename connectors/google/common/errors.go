@@ -58,6 +58,12 @@ var rateReasons = []string{
 	"quotaExceeded", "dailyLimitExceeded", "sharingRateLimitExceeded",
 }
 
+// errorReasons returns the reasons of an error body, as parseError does.
+func errorReasons(body []byte) []string {
+	_, reasons := parseError(body)
+	return reasons
+}
+
 func isRateLimited(status int, reasons []string) bool {
 	if status == http.StatusTooManyRequests {
 		return true

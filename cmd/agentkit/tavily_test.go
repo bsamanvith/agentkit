@@ -182,7 +182,7 @@ func TestMCPTavily(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := newMCPServer(t.Context(), defaultMCPConfig(), regs, nil, slog.New(slog.DiscardHandler))
+	m, err := newMCPServer(t.Context(), defaultMCPConfig(), regs, nil, "", "127.0.0.1:0", slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}

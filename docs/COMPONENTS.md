@@ -44,6 +44,7 @@ a `pool.Pool` whose agents are `runnerrpc` clients.
 | `AGENTKIT_RUNNER_URL` | `agent` | Run the agents on the runner at this URL (`http://runner:8080`) instead of in process. The API then builds no model. |
 | `AGENTKIT_TOOLSETS_URL` | `agent`, `runner`, `mcp-server` | Take the toolsets from the toolsets component at this URL instead of building them. Every toolset the config names must be served there. |
 | `AGENTKIT_RPC_TOKEN` | all | The bearer token between components, 16 bytes or more. The runner and toolsets components require it on an address that is not loopback, and their callers send it. |
+| `AGENTKIT_API_TOKEN` | `agent`, `mcp-server` | The bearer token clients send to `/v1/` and `/mcp/`. Required on an address that is not loopback, and checked whenever it is set. |
 | `AGENTKIT_DEPENDENCY_WAIT` | `agent`, `runner` | How long startup waits for the toolsets component to answer (default `60s`): pods start in any order. |
 
 Every container gets the same config file: the agents and `mcp.toolsets`.
@@ -110,7 +111,31 @@ To make it a named variant that CI keeps honest:
 3. docs/SIZES.md: a row with its measured size (AGENTS.md, Sizes).
 
 A new part to leave out is a file with `//go:build !notag` and a `_none.go`
-twin that returns `notBuilt` (`cmd/agentkit/backends.go` lists them).
+twin that returns `notBuilt` (`cmd/agentkit/backends.go` lists them). Store
+and bus backends are such files in `pkg/store/storeopen` and
+`pkg/bus/busopen`.
+
+## Plugging in another implementation
+
+Each seam is a small interface with a conformance suite; a new
+implementation passes the suite and is picked by a spec or config value.
+
+| Seam | Interface | Suite | Picked by |
+|---|---|---|---|
+| Store | `storeopen.Store` (one transactional store: conversations, runs, events, commands, checkpoints) | every `storetest.Run*` and `Simulate*` | `AGENTKIT_STORE` through `storeopen.Backends` (or `storeopen.WithBackends` in a program of your own) |
+| Bus | `bus.Bus`: an atomic conditional append with replay, not a work queue | `bustest.Run` | `AGENTKIT_BUS` through `busopen.Backends` |
+| Model | `llm.Model` | `llmtest` | `model.provider` through `modelProviders` (`cmd/agentkit/models.go`) |
+| Turn loop | `runner.Agent` | runner tests | `AGENTKIT_RUNNER_URL`, or an `agentapi.Agent`'s `Runner` (pools: E20) |
+| Run orchestration | `agentapi.Runs` (default `*runner.Runner`: in process, under leases) | agentapi tests | `agentapi.WithRuns` |
+| Tools | `tool.Registry` | `toolsettest` | the config's toolsets (`connectors/`, write-connector skill) |
+| Transport | `rpc.Conn` | rpc tests | `rpc.Dial` |
+
+A new store backend: a package under `pkg/store` that passes the suites, a
+`Backend` in `storeopen` behind a build tag with its `_none.go` twin, its
+SDK in `internal/archtest/rules.go`, and a row in docs/SIZES.md. A bus
+backend is the same in `busopen`. A model provider is a package under
+`pkg/llm`, a `models_<name>.go` that builds it, and its line in
+`modelProviders`.
 
 ## Topologies
 
@@ -124,7 +149,7 @@ The runner bundled with the API, the toolsets apart:
 
 ```sh
 # toolsets container
-AGENTKIT_COMPONENTS=toolsets,mcp-server AGENTKIT_RPC_TOKEN=... agentkit serve
+AGENTKIT_COMPONENTS=toolsets,mcp-server AGENTKIT_RPC_TOKEN=... AGENTKIT_API_TOKEN=... agentkit serve
 # API and runner in one container
 AGENTKIT_COMPONENTS=agent,web AGENTKIT_TOOLSETS_URL=http://toolsets:8080 AGENTKIT_RPC_TOKEN=... agentkit serve
 ```
@@ -134,7 +159,7 @@ Three containers, one per component:
 ```sh
 docker network create agk
 docker run -d --name toolsets --network agk -v $PWD/config.json:/etc/agentkit/config.json:ro \
-  -e AGENTKIT_COMPONENTS=toolsets,mcp-server -e AGENTKIT_RPC_TOKEN=$RPC_TOKEN agentkit-toolsets
+  -e AGENTKIT_COMPONENTS=toolsets,mcp-server -e AGENTKIT_RPC_TOKEN=$RPC_TOKEN -e AGENTKIT_API_TOKEN=$API_TOKEN agentkit-toolsets
 docker run -d --name runner --network agk -v $PWD/config.json:/etc/agentkit/config.json:ro \
   -e AGENTKIT_COMPONENTS=runner -e AGENTKIT_RPC_TOKEN=$RPC_TOKEN \
   -e AGENTKIT_TOOLSETS_URL=http://toolsets:8080 -e ANTHROPIC_API_KEY agentkit-runner

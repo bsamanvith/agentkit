@@ -37,9 +37,13 @@ var (
 type Option func(*Store)
 
 // WithClock sets the clock that entry, event and run times and lease expiry
-// are read from. The default is [clock.Real].
+// are read from. The default, also for nil, is [clock.Real].
 func WithClock(c clock.Clock) Option {
-	return func(s *Store) { s.clk = c }
+	return func(s *Store) {
+		if c != nil {
+			s.clk = c
+		}
+	}
 }
 
 // Store keeps conversations, runs, event logs and checkpoints in memory, per

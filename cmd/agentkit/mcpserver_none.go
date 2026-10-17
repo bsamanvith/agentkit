@@ -11,6 +11,6 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
-func newMCPServer(context.Context, mcpConfig, map[string]tool.Registry, []toolset.Problem, *slog.Logger) (component.Mount, error) {
+func newMCPServer(context.Context, mcpConfig, map[string]tool.Registry, []toolset.Problem, string, string, *slog.Logger) (component.Mount, error) {
 	return component.Mount{}, notBuilt(envComponents, "the MCP server", "nomcp")
 }

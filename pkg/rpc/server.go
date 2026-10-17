@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -101,13 +103,9 @@ func (s *Server) handle(name string, codes []Code, serve func(context.Context, j
 	s.methods[name] = &handler{codes: codes, serve: serve}
 }
 
-// Methods returns the names of the methods s serves.
+// Methods returns the names of the methods s serves, sorted.
 func (s *Server) Methods() []string {
-	names := make([]string, 0, len(s.methods))
-	for name := range s.methods {
-		names = append(names, name)
-	}
-	return names
+	return slices.Sorted(maps.Keys(s.methods))
 }
 
 // maxTimeoutMillis bounds the timeout header, so it cannot overflow a

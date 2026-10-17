@@ -115,11 +115,11 @@ type AgentStep struct {
 
 // NewAgentStep returns an agent step called name, as [agentstep.New] with
 // saver, whose output is a [StepOutput].
-func NewAgentStep(name string, h *harness.Harness, saver *Saver, keys agentstep.Keys, opts ...agentstep.Option) (*AgentStep, error) {
+func NewAgentStep(name string, agent agentstep.Agent, saver *Saver, keys agentstep.Keys, opts ...agentstep.Option) (*AgentStep, error) {
 	if saver == nil {
 		return nil, fmt.Errorf("%w: nil saver", agentstep.ErrInvalidConfig)
 	}
-	inner, err := agentstep.New(name, h, saver, keys, opts...)
+	inner, err := agentstep.New(name, agent, saver, keys, opts...)
 	if err != nil {
 		return nil, err
 	}

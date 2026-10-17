@@ -5,6 +5,14 @@ A Go kit for running Claude agents: one binary (`cmd/agentkit`), a web console
 [docs/ENGINEERING.md](docs/ENGINEERING.md) and [docs/WORKFLOW.md](docs/WORKFLOW.md).
 T010 fills in the rest of this file (commands, skills).
 
+## Seams
+
+Store, bus, model, turn loop, run orchestration, tools and transport are
+each an interface with a conformance suite and one place that picks the
+implementation ([docs/COMPONENTS.md](docs/COMPONENTS.md#plugging-in-another-implementation)).
+A new implementation passes the suite and adds a row to that table's
+picker; it never adds a switch elsewhere or an `init()` registration.
+
 ## Sizes
 
 Image size is tracked, and every change to it is explained.

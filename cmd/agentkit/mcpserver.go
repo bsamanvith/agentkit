@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/component"
 	"github.com/bsamanvith/agentkit/pkg/mcp/server"
 	"github.com/bsamanvith/agentkit/pkg/tool"
@@ -26,7 +27,17 @@ type mcpServer struct {
 // newMCPServer builds the MCP handler over the toolsets serve built: a
 // required toolset that failed, or a mistake in the specs, has already failed
 // startup; an optional one that failed is skipped and shown in /readyz.
-func newMCPServer(ctx context.Context, cfg mcpConfig, regs map[string]tool.Registry, problems []toolset.Problem, log *slog.Logger) (component.Mount, error) {
+//
+// Every request must carry token as a bearer token, the agent API's own
+// ($AGENTKIT_API_TOKEN). Like the agent API, it may be empty only on a
+// loopback addr: the toolsets call out with the server's keys and tokens.
+func newMCPServer(ctx context.Context, cfg mcpConfig, regs map[string]tool.Registry, problems []toolset.Problem, token, addr string, log *slog.Logger) (component.Mount, error) {
+	switch {
+	case token == "" && !isLoopback(addr):
+		return component.Mount{}, fmt.Errorf("serving on %s, which is not a loopback address, needs a bearer token in $%s", addr, envAPIToken)
+	case token != "" && len(token) < agentapi.MinTokenLength:
+		return component.Mount{}, fmt.Errorf("$%s must be at least %d bytes", envAPIToken, agentapi.MinTokenLength)
+	}
 	// The MCP SDK logs every stateless request at info; keep that for debug.
 	srvLog := log
 	if !log.Enabled(ctx, slog.LevelDebug) {
@@ -42,6 +53,9 @@ func newMCPServer(ctx context.Context, cfg mcpConfig, regs map[string]tool.Regis
 	}
 	if cfg.Stateful {
 		opts = append(opts, server.WithStateful())
+	}
+	if token != "" {
+		opts = append(opts, server.WithMiddleware(agentapi.RequireToken(token)))
 	}
 	srv, err := server.New(regs, opts...)
 	if err != nil {

@@ -65,7 +65,7 @@ pkg/store/
 | Accept interfaces, return concrete types. Keep interfaces small (1-4 methods). | Easy to fake, easy to implement. |
 | `New(required..., opts ...Option) (*T, error)`; validate in the constructor. | Invalid objects never exist; no `Init()` step. |
 | No `init()`, no package-level mutable state, no global registries. Registries are values, built once and read-only afterwards. | Parallel tests, multi-tenant safety, no locks. |
-| Optional backends behind build tags are registered in `cmd/agentkit` (one small file per tag), not by `init()` in the backend. Config naming a backend that was not compiled in fails at startup with a clear error. | Keeps the no-globals rule with build tags. |
+| Optional backends behind build tags are listed in one table per seam, one small file per tag with a `_none.go` twin, not registered by `init()` in the backend: store backends in `pkg/store/storeopen`, buses in `pkg/bus/busopen`, model providers in `cmd/agentkit/models.go`. A spec or config naming a backend that was not compiled in fails at startup with a clear error naming the tag. A program adds its own backends as values (`storeopen.WithBackends`). | Keeps the no-globals rule with build tags. |
 | `ctx context.Context` is the first parameter of anything that does IO or blocks. | Cancellation, deadlines, tenant scope. |
 | Exported sentinel errors / typed errors, wrapped with `%w`. Callers use `errors.Is` / `errors.As`. | Tests and callers branch on error identity, never message text. |
 | Inject time and randomness (`clock.Clock`, `io.Reader` for rand) where behavior depends on them. | Token refresh, rate limits, budgets and retries become deterministic to test. |
@@ -170,6 +170,8 @@ ConnectRPC was the first plan here. T102 chose `pkg/rpc` instead: the interfaces
 - Heavy optional backends sit behind build tags (for example `-tags aws,vault`) so the default image stays small. `make image TAGS=...` builds a variant.
 - Size budget: measure the first real image (M5), then set the limit in CI. The pure-Go SQLite driver alone is several MB, so the earlier 10-20 MB target is a goal, not a promise. Every size change and its reason is logged in [SIZES.md](SIZES.md) (rule in [AGENTS.md](../AGENTS.md#sizes)); per-component images are T102.
 - If you need a truly custom bundle, write a 20-line `main` that imports the components you want. They are ordinary packages.
+
+**Swapping an implementation.** Every seam (store, bus, model, turn loop, run orchestration, tools, transport) is an interface with a conformance suite and one place that picks the implementation; [COMPONENTS.md](COMPONENTS.md#plugging-in-another-implementation) lists them and what a new one takes. The agent API's run orchestration is `agentapi.Runs` (default: `*runner.Runner`, in process under leases; `agentapi.WithRuns` plugs in another, such as a queue of workers), and where a turn loop runs is `runner.Agent` (local harness, remote runner, or a pool, E20).
 
 ---
 

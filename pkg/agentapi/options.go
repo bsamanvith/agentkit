@@ -61,6 +61,7 @@ type config struct {
 	streamPoll     time.Duration
 	watchBuffer    int // events a viewer of a shared watch may be behind (T103)
 	runnerOpts     []runner.Option
+	runs           RunsFactory
 	grace          time.Duration
 	graceArmed     func(runID string) // tests: called when a run's grace starts
 }
@@ -182,7 +183,8 @@ func WithStreamPoll(d time.Duration) Option { return func(c *config) { c.streamP
 
 // WithRunnerOptions adds options to the runner the server builds over its
 // store, after its own: the clock ([WithClock]) and run IDs ([WithNewID]).
-// Pass [runner.WithFlows] to serve flow runs' decisions.
+// Pass [runner.WithFlows] to serve flow runs' decisions. They do not apply to
+// the [Runs] of [WithRuns].
 func WithRunnerOptions(opts ...runner.Option) Option {
 	return func(c *config) { c.runnerOpts = append(c.runnerOpts, opts...) }
 }

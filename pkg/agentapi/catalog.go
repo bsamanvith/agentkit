@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
+	"github.com/bsamanvith/agentkit/pkg/auth"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/runner"
@@ -94,7 +95,8 @@ func WithToolsets(sets ...Toolset) Option {
 // (default: every request is the same tenant). A conversation, and its runs,
 // are visible only to requests of the tenant that started it: to others they
 // do not exist (404), and GET /v1/conversations lists only the caller's.
-// Authentication middleware passes the tenant of the request's principal.
+// Without it, a request authenticated by [WithAuthenticator] or [WithToken]
+// acts for its principal's tenant; with it, f decides even then.
 func WithTenant(f func(*http.Request) string) Option { return func(c *config) { c.tenant = f } }
 
 // NewAgents returns the agent API for several agents. A run names its agent
@@ -164,32 +166,42 @@ func (a *agent) run() runner.Agent {
 	return a.Harness
 }
 
-// resolveAgent picks the agent of a new conversation.
-func (s *Server) resolveAgent(name string) (*agent, *Error, int) {
+// resolveAgent picks the agent of a new conversation, among those the
+// request may use: one it may not is no agent (404), and the default is none
+// if it may not use it.
+func (s *Server) resolveAgent(r *http.Request, name string) (*agent, *Error, int) {
+	acc := accessOf(r)
 	if name == "" {
-		if s.defaultAgent == nil {
-			return nil, &Error{Code: CodeInvalidRequest, Message: "name an agent (\"agent\"); this server runs " + strings.Join(s.agentNames(), ", ")}, http.StatusBadRequest
+		if s.defaultAgent == nil || !acc.agent(s.defaultAgent) {
+			return nil, &Error{Code: CodeInvalidRequest, Message: "name an agent (\"agent\"); this server runs " + strings.Join(s.agentNames(acc), ", ")}, http.StatusBadRequest
 		}
 		return s.defaultAgent, nil, 0
 	}
 	a := s.agents[name]
-	if a == nil {
-		return nil, &Error{Code: CodeNotFound, Message: "no agent " + quote(name) + "; this server runs " + strings.Join(s.agentNames(), ", ")}, http.StatusNotFound
+	if a == nil || !acc.agent(a) {
+		return nil, &Error{Code: CodeNotFound, Message: "no agent " + quote(name) + "; this server runs " + strings.Join(s.agentNames(acc), ", ")}, http.StatusNotFound
 	}
 	return a, nil, 0
 }
 
-func (s *Server) agentNames() []string {
-	names := make([]string, len(s.agentOrder))
-	for i, a := range s.agentOrder {
-		names[i] = a.Name
+// agentNames names the agents acc may use, in order.
+func (s *Server) agentNames(acc access) []string {
+	names := []string{}
+	for _, a := range s.agentOrder {
+		if acc.agent(a) {
+			names = append(names, a.Name)
+		}
 	}
 	return names
 }
 
 func (s *Server) listAgents(w http.ResponseWriter, r *http.Request) {
 	out := wire.AgentList{V: WireVersion, Agents: make([]wire.Agent, 0, len(s.agentOrder))}
+	acc := accessOf(r)
 	for _, a := range s.agentOrder {
+		if !acc.agent(a) {
+			continue
+		}
 		v, err := s.agentView(r, a)
 		if err != nil {
 			s.internal(w, "listing the agents' tools", err)
@@ -203,7 +215,7 @@ func (s *Server) listAgents(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getAgent(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	a := s.agents[name]
-	if a == nil {
+	if a == nil || !accessOf(r).agent(a) {
 		writeError(w, http.StatusNotFound, &Error{Code: CodeNotFound, Message: "no agent " + quote(name)})
 		return
 	}
@@ -248,7 +260,11 @@ func (s *Server) agentView(r *http.Request, a *agent) (wire.Agent, error) {
 
 func (s *Server) listToolsets(w http.ResponseWriter, r *http.Request) {
 	out := wire.ToolsetList{V: WireVersion, Toolsets: make([]wire.Toolset, 0, len(s.cfg.toolsets))}
+	acc := accessOf(r)
 	for _, ts := range s.cfg.toolsets {
+		if !acc.toolset(ts.Name) {
+			continue
+		}
 		v := wire.Toolset{Name: ts.Name, Type: ts.Type, Status: wire.ToolsetSkipped, Reason: ts.Skipped, MCPPath: ts.MCPPath, Credential: ts.Credential}
 		if ts.Tools != nil {
 			defs, err := ts.Tools.List(r.Context())
@@ -266,7 +282,7 @@ func (s *Server) listToolsets(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listTools(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	ts := s.toolsets[name]
-	if ts == nil {
+	if ts == nil || !accessOf(r).toolset(name) {
 		writeError(w, http.StatusNotFound, &Error{Code: CodeNotFound, Message: "no toolset " + quote(name)})
 		return
 	}
@@ -315,7 +331,7 @@ func (s *Server) createConversation(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	ag, apiErr, code := s.resolveAgent(req.Agent)
+	ag, apiErr, code := s.resolveAgent(r, req.Agent)
 	if apiErr != nil {
 		writeError(w, code, apiErr)
 		return
@@ -484,10 +500,13 @@ func (s *Server) deleteConversation(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) tenantOf(r *http.Request) string {
-	if s.cfg.tenant == nil {
-		return ""
+	if s.cfg.tenant != nil {
+		return s.cfg.tenant(r)
 	}
-	return s.cfg.tenant(r)
+	if p, ok := auth.From(r.Context()); ok {
+		return p.Tenant.ID()
+	}
+	return ""
 }
 
 // title is the start of a conversation's first message, on one line.

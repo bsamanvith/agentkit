@@ -343,6 +343,7 @@ const (
 	CodeInternal       = "internal"                 // anything else; see the server log
 	CodeInvalidRequest = "invalid_request"          // HTTP 400
 	CodeUnauthorized   = "unauthorized"             // HTTP 401
+	CodeForbidden      = "forbidden"                // HTTP 403: the credential lacks the scope
 	CodeNotFound       = "not_found"                // HTTP 404
 	CodeTooLarge       = "too_large"                // HTTP 413
 	CodeBusy           = "conversation_busy"        // HTTP 409: a run of this conversation is going on; RunID names it

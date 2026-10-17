@@ -99,6 +99,9 @@ func ModuleRules() Rules {
 				// Its tests run agents on a remote runner over toolsets on
 				// the wire: the split topology (T102).
 				"pkg/rpc", "pkg/runner/runnerrpc", "pkg/tool/toolrpc", "pkg/tool/tooltest",
+				// Edge authentication: API keys, scopes and the toolsets a
+				// credential may use (T040).
+				"pkg/auth", "pkg/auth/authtest",
 			},
 			// The tenant-scoped view of a backend: the one package outside
 			// cmd/ and the runner that opens one, and it returns only the

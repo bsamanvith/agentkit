@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bsamanvith/agentkit/pkg/auth"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 )
 
@@ -19,10 +20,10 @@ func TestMCPServerToken(t *testing.T) {
 	t.Parallel()
 	log := slog.New(slog.DiscardHandler)
 	regs := map[string]tool.Registry{}
-	if _, err := newMCPServer(t.Context(), defaultMCPConfig(), regs, nil, "", ":8080", log); err == nil || !strings.Contains(err.Error(), envAPIToken) {
+	if _, err := newMCPServer(t.Context(), defaultMCPConfig(), regs, nil, nil, ":8080", log); err == nil || !strings.Contains(err.Error(), envAPIToken) {
 		t.Errorf("no token on :8080: err = %v, want one naming $%s", err, envAPIToken)
 	}
-	m, err := newMCPServer(t.Context(), defaultMCPConfig(), regs, nil, "s3cret-0123456789abcdef", ":8080", log)
+	m, err := newMCPServer(t.Context(), defaultMCPConfig(), regs, nil, tokenAuth(t, "s3cret-0123456789abcdef"), ":8080", log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,4 +52,19 @@ func TestMCPServerToken(t *testing.T) {
 			t.Errorf("GET /mcp/ with %q = %d, want %d", tc.auth, resp.StatusCode, tc.want)
 		}
 	}
+}
+
+// tokenAuth is serve's authenticator with $AGENTKIT_API_TOKEN set to token.
+func tokenAuth(t *testing.T, token string) auth.Authenticator {
+	t.Helper()
+	a, err := cli{getenv: func(k string) string {
+		if k == envAPIToken {
+			return token
+		}
+		return ""
+	}}.authenticator(serveConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return a
 }

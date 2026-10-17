@@ -24,6 +24,8 @@ import (
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
+	"github.com/bsamanvith/agentkit/pkg/auth"
+	"github.com/bsamanvith/agentkit/pkg/auth/authtest"
 	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
 	"github.com/bsamanvith/agentkit/pkg/flow"
 	"github.com/bsamanvith/agentkit/pkg/harness"
@@ -560,6 +562,31 @@ func TestOpenAPIResponses(t *testing.T) {
 	rec.probe(rb, "get_agent_internal", 500, "GET", "/v1/agents/solo", "", "")
 	rec.probe(rb, "list_toolsets_internal", 500, "GET", "/v1/toolsets", "", "")
 	rec.probe(rb, "list_tools_internal", 500, "GET", "/v1/toolsets/down/tools", "", "")
+
+	// Keys without the scope an endpoint needs: 403 on every route. The
+	// rig's own requests read, with the read key.
+	tenant403, err := tenancy.NewTenant(agentapi.DefaultTenant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const readKey, runKey = "a-key-that-only-reads-0123", "a-key-that-only-runs-0123"
+	keys := authtest.NewFake(map[string]auth.Principal{
+		readKey: {Tenant: tenant403, Scopes: []string{agentapi.ScopeRead}, Toolsets: []string{"*"}},
+		runKey:  {Tenant: tenant403, Scopes: []string{agentapi.ScopeRun}, Toolsets: []string{"*"}},
+	})
+	rf := newRig(t, echo(t), rigConfig{api: []agentapi.Option{agentapi.WithAuthenticator(keys)}})
+	rf.token = readKey
+	for _, rt := range rf.srv.Routes() {
+		method, target, _ := strings.Cut(rt, " ")
+		target = strings.NewReplacer("{id}", "x", "{name}", "x").Replace(target)
+		name := strings.ToLower(method) + strings.NewReplacer("/v1/", "_", "/", "_", "{", "", "}", "").Replace(strings.TrimPrefix(rt, method+" ")) + "_forbidden"
+		if method == http.MethodGet {
+			rec.probe(rf, name, 403, method, target, "", "", "Authorization", "Bearer "+runKey)
+		} else {
+			body := map[string]string{"POST /v1/runs": `{"message":"hi"}`, "POST /v1/runs/{id}/decisions": `{"path":"f/ok","approved":true}`}[rt]
+			rec.probe(rf, name, 403, method, target, body, "")
+		}
+	}
 
 	var documented []string
 	for op, statuses := range rec.ops {

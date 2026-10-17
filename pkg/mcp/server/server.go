@@ -34,7 +34,8 @@ type Server struct {
 	listing  []ToolsetInfo // sorted by name
 	handler  http.Handler  // routes, wrapped in the middleware
 	listBody []byte
-	inFlight chan struct{} // nil: unlimited
+	inFlight chan struct{}                                  // nil: unlimited
+	allow    func(ctx context.Context, toolset string) bool // nil: all
 }
 
 var _ http.Handler = (*Server)(nil)
@@ -60,7 +61,7 @@ func New(toolsets map[string]tool.Registry, opts ...Option) (*Server, error) {
 	if c.maxInFlight < 0 || c.callTimeout < 0 || c.sessionIdle < 0 {
 		return nil, fmt.Errorf("%w: limits and timeouts must not be negative", ErrInvalidConfig)
 	}
-	s := &Server{base: base, toolsets: make(map[string]http.Handler, len(toolsets))}
+	s := &Server{base: base, toolsets: make(map[string]http.Handler, len(toolsets)), allow: c.allow}
 	if c.maxInFlight > 0 {
 		s.inFlight = make(chan struct{}, c.maxInFlight)
 	}
@@ -94,14 +95,7 @@ func New(toolsets map[string]tool.Registry, opts ...Option) (*Server, error) {
 		s.listing = append(s.listing, ToolsetInfo{Name: name, Tools: n})
 	}
 
-	body, err := json.Marshal(struct {
-		Toolsets []ToolsetInfo `json:"toolsets"`
-	}{append([]ToolsetInfo{}, s.listing...)})
-	if err != nil {
-		return nil, err
-	}
-	body = append(body, '\n')
-	s.listBody = body
+	s.listBody = listBody(s.listing)
 
 	var h http.Handler = http.HandlerFunc(s.route)
 	for i := len(c.middleware) - 1; i >= 0; i-- {
@@ -109,6 +103,17 @@ func New(toolsets map[string]tool.Registry, opts ...Option) (*Server, error) {
 	}
 	s.handler = h
 	return s, nil
+}
+
+// listBody is the listing's JSON: {"toolsets": [...]}, never null.
+func listBody(sets []ToolsetInfo) []byte {
+	if sets == nil {
+		sets = []ToolsetInfo{}
+	}
+	body, _ := json.Marshal(struct {
+		Toolsets []ToolsetInfo `json:"toolsets"`
+	}{sets})
+	return append(body, '\n')
 }
 
 func cleanBase(p string) (string, error) {
@@ -141,7 +146,7 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 	}
 	name := strings.TrimSuffix(rest, "/")
 	h, found := s.toolsets[name]
-	if !found {
+	if !found || s.allow != nil && !s.allow(r.Context(), name) {
 		http.NotFound(w, r)
 		return
 	}
@@ -164,8 +169,18 @@ func (s *Server) serveListing(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	body := s.listBody
+	if s.allow != nil {
+		var allowed []ToolsetInfo
+		for _, ts := range s.listing {
+			if s.allow(r.Context(), ts.Name) {
+				allowed = append(allowed, ts)
+			}
+		}
+		body = listBody(allowed)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method == http.MethodGet {
-		_, _ = w.Write(s.listBody)
+		_, _ = w.Write(body)
 	}
 }

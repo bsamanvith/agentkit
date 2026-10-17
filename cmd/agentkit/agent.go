@@ -15,6 +15,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
+	"github.com/bsamanvith/agentkit/pkg/auth"
 	"github.com/bsamanvith/agentkit/pkg/bus"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/component"
@@ -188,14 +189,13 @@ func (a *agentComponent) Ready(ctx context.Context) error {
 // served (specs, as built and skipped); and the API on top, mounted at /v1/,
 // on st and the clock clk. ctx is the signal context: when it is done, the
 // drain begins.
-func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]tool.Registry, problems []toolset.Problem, env serveEnv, st agentapi.Store, b bus.Bus, clk clock.Clock, log *slog.Logger) (component.Mount, *agentapi.Server, error) {
+func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]tool.Registry, problems []toolset.Problem, env serveEnv, authn auth.Authenticator, st agentapi.Store, b bus.Bus, clk clock.Clock, log *slog.Logger) (component.Mount, *agentapi.Server, error) {
 	specs, err := servedSpecs(env, cfg)
 	if err != nil {
 		return component.Mount{}, nil, err
 	}
-	token := c.env(envAPIToken)
-	if token == "" && !isLoopback(env.addr) {
-		return component.Mount{}, nil, fmt.Errorf("serving on %s, which is not a loopback address, needs a bearer token in $%s", env.addr, envAPIToken)
+	if authn == nil && !isLoopback(env.addr) {
+		return component.Mount{}, nil, needsCredentials(env.addr)
 	}
 	var remote *runnerrpc.Client
 	if env.runnerURL != "" {
@@ -244,12 +244,15 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 	if env.runLease > 0 {
 		runnerOpts = append(runnerOpts, runner.WithLease(env.runLease))
 	}
-	srv, err := agentapi.NewAgents(agents,
+	var authOpts []agentapi.Option
+	if authn != nil {
+		authOpts = append(authOpts, agentapi.WithAuthenticator(authn))
+	}
+	srv, err := agentapi.NewAgents(agents, append(authOpts,
 		agentapi.WithStore(st),
 		agentapi.WithBus(b),
 		agentapi.WithRunnerOptions(runnerOpts...),
 		agentapi.WithToolsets(c.toolsetCatalog(cfg, specs, built, problems, env)...),
-		agentapi.WithToken(token),
 		agentapi.WithMaxConcurrentRuns(cfg.API.MaxConcurrentRuns),
 		agentapi.WithRunTimeout(time.Duration(cfg.API.RunTimeout)),
 		agentapi.WithRetention(cfg.API.MaxRuns, cfg.API.MaxConversations, time.Duration(cfg.API.Retention)),
@@ -259,7 +262,7 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 		// Runs still going near the end of the shutdown get a run_error
 		// "shutdown" instead of a cut connection.
 		agentapi.WithDrain(ctx.Done(), env.shutdownTimeout*9/10),
-	)
+	)...)
 	if err != nil {
 		return component.Mount{}, nil, err
 	}

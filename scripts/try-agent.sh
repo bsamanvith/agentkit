@@ -140,7 +140,7 @@ curl -s "$base/v1/conversations?limit=5" -H "$auth" | grep -oE '"id":"[^"]*","ag
 
 echo
 echo "==> 4. the demo tools over MCP at /mcp/demo"
-curl -s "$base/mcp/demo" -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+curl -s "$base/mcp/demo" -H "$auth" -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
   | grep -oE '"name":"[a-z_]+"' | cut -d'"' -f4 | sed 's/^/   tool: /' | sort -u
 

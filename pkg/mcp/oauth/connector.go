@@ -155,19 +155,26 @@ type discovered struct {
 
 // discover finds srv's authorization server: the 401's resource_metadata,
 // else the well-known locations (RFC 9728), then the server's metadata
-// (RFC 8414 or OIDC). Results are cached for MetadataTTL; the challenge's
-// scopes are not, since they can change per request.
+// (RFC 8414 or OIDC). The metadata is cached for MetadataTTL; the server is
+// probed every time, since its challenge's scopes can change per request.
 func (c *Connector) discover(ctx context.Context, srv Server) (*discovered, error) {
+	challenges, err := c.probe(ctx, srv.URL)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrDiscovery, err)
+	}
+	withChallenge := func(d *discovered) *discovered {
+		cp := *d
+		if s := challengeParam(challenges, "scope"); s != "" {
+			cp.challengeScopes = strings.Fields(s)
+		}
+		return &cp
+	}
+
 	c.mu.Lock()
 	d, ok := c.cache[srv.URL]
 	c.mu.Unlock()
 	if ok && c.clk.Now().Before(d.expires) {
-		return d, nil
-	}
-
-	challenges, err := c.probe(ctx, srv.URL)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrDiscovery, err)
+		return withChallenge(d), nil
 	}
 	var prm *oauthex.ProtectedResourceMetadata
 	for _, cand := range prmURLs(challengeParam(challenges, "resource_metadata"), srv.URL) {
@@ -200,11 +207,7 @@ func (c *Connector) discover(ctx context.Context, srv Server) (*discovered, erro
 	c.mu.Lock()
 	c.cache[srv.URL] = d
 	c.mu.Unlock()
-	cp := *d
-	if s := challengeParam(challenges, "scope"); s != "" {
-		cp.challengeScopes = strings.Fields(s)
-	}
-	return &cp, nil
+	return withChallenge(d), nil
 }
 
 // probe sends srv an unauthenticated initialize and returns the

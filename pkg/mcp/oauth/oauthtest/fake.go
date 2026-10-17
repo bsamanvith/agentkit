@@ -332,8 +332,11 @@ type ResourceOptions struct {
 	// NoHeader leaves resource_metadata out of the 401, so clients must find
 	// the metadata at the well-known location.
 	NoHeader bool
-	// Scopes names scopes in the 401 challenge.
+	// Scopes names scopes in the 401 challenge, and in the protected
+	// resource metadata unless MetadataScopes is set.
 	Scopes []string
+	// MetadataScopes, if set, is the metadata's scopes_supported instead.
+	MetadataScopes []string
 	// RequireScope answers 403 insufficient_scope to a token without it.
 	RequireScope string
 }
@@ -344,11 +347,15 @@ type ResourceOptions struct {
 func Protect(t testing.TB, as *AuthServer, path string, next http.Handler, opts ResourceOptions) *httptest.Server {
 	var srv *httptest.Server
 	mux := http.NewServeMux()
+	metaScopes := opts.Scopes
+	if opts.MetadataScopes != nil {
+		metaScopes = opts.MetadataScopes
+	}
 	prm := func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"resource":              srv.URL + path,
 			"authorization_servers": []string{as.URL},
-			"scopes_supported":      opts.Scopes,
+			"scopes_supported":      metaScopes,
 		})
 	}
 	mux.HandleFunc("GET /.well-known/oauth-protected-resource"+path, prm)

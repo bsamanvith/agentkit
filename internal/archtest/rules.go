@@ -29,7 +29,12 @@ func ModuleRules() Rules {
 				"github.com/modelcontextprotocol/go-sdk/auth", "github.com/modelcontextprotocol/go-sdk/oauthex",
 				"golang.org/x/oauth2", "github.com/modelcontextprotocol/go-sdk/mcp",
 			},
-			"pkg/tool": {"github.com/google/jsonschema-go/jsonschema"},
+			// Its tests serve an SDK server to add at run time (T096).
+			"pkg/agentapi": {"github.com/modelcontextprotocol/go-sdk/mcp"},
+			// MCP servers added at run time (T096): the SDK's tool type
+			// for definitions; its tests run SDK servers as the fakes.
+			"pkg/mcp/servers": {"github.com/modelcontextprotocol/go-sdk/mcp"},
+			"pkg/tool":        {"github.com/google/jsonschema-go/jsonschema"},
 			// The SQLite store's driver: pure Go, so binaries stay static
 			// (T029). It also names the driver's error type, for SQLITE_BUSY.
 			"pkg/store/sqlite": {"modernc.org/sqlite"},
@@ -104,6 +109,9 @@ func ModuleRules() Rules {
 				// Edge authentication: API keys, scopes and the toolsets a
 				// credential may use (T040).
 				"pkg/auth", "pkg/auth/authtest",
+				// Its tests add MCP servers at run time (T096) through
+				// the manager, behind the SSRF guard.
+				"pkg/mcp/servers", "pkg/netguard",
 			},
 			// The tenant-scoped view of a backend: the one package outside
 			// cmd/ and the runner that opens one, and it returns only the
@@ -138,6 +146,9 @@ func ModuleRules() Rules {
 				"pkg/agentapi/wire", "pkg/llm",
 				"pkg/agentapi", "pkg/harness", "pkg/tool", "pkg/toolset", "pkg/llm/llmtest", "internal/testkit",
 				"pkg/store/scoped",
+				// The toolsets added at run time (T096), from agentkit's
+				// own MCP server.
+				"pkg/mcp/servers", "pkg/mcp/server", "pkg/netguard",
 			},
 			// The event bus knows tenants (for topic names) and the clock,
 			// nothing else: the store, the runner and the API build on it
@@ -181,6 +192,13 @@ func ModuleRules() Rules {
 			// the clock, never the server, a store backend or the harness: the
 			// vault backs its stores once T042 lands.
 			"pkg/mcp/oauth": {"pkg/auth", "pkg/tenancy", "pkg/clock", "pkg/clock/clocktest", "pkg/mcp/oauth/oauthtest"},
+			// MCP servers added at run time (T096): the API's admin
+			// contract, the MCP client, the SSRF guard and the store's
+			// toolset records, never a backend but in its tests.
+			"pkg/mcp/servers": {
+				"pkg/agentapi", "pkg/agentapi/wire", "pkg/clock", "pkg/mcp/client",
+				"pkg/netguard", "pkg/store", "pkg/tenancy", "pkg/tool", "pkg/store/memory",
+			},
 			// The SSRF guard is the standard library only.
 			"pkg/netguard": {},
 			// The credential vault (T042) knows tenants and nothing else:

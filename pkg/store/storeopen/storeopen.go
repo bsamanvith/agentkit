@@ -52,6 +52,7 @@ type Store interface {
 	store.RunStore
 	store.EventLog
 	store.CommandLog
+	store.ToolsetStore
 	flow.Checkpointer
 }
 

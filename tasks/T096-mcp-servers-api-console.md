@@ -44,21 +44,21 @@ The easy path the owner asked for: an admin pastes a URL, agentkit probes it, th
 
 ## Acceptance criteria
 
-- [ ] **Add by URL:** against a fake MCP server, `POST /v1/toolsets` probes it and returns its tools; after review, an agent using the toolset calls a tool.
-- [ ] **Rug pull:**
+- [x] **Add by URL:** against a fake MCP server, `POST /v1/toolsets` probes it and returns its tools; after review, an agent using the toolset calls a tool.
+- [x] **Rug pull:**
   - the fake server changes a tool's description;
   - the next connect disables that tool and the run no longer offers it;
   - the review shows the diff, and approval restores the tool.
-- [ ] **New tool:** a tool the server adds later starts disabled.
+- [x] **New tool:** a tool the server adds later starts disabled.
 - [x] **SSRF:** URLs resolving to `127.0.0.1`, `10.x`, `169.254.169.254`, `::1`, `::ffff:127.0.0.1`, and a DNS name that rebinds to a private address between check and connect are all refused; an allowlisted internal host is accepted.
-- [ ] **Scopes:**
+- [ ] **Scopes** (needs T095 and T044; part 2 refuses `scope: user`):
   - a `user`-scoped server uses each user's own connection;
   - a user who hasn't connected gets "not connected" as a tool error, never another user's token.
-- [ ] **Authorization:**
+- [x] **Authorization:**
   - non-admins get 403 on add, review and delete;
   - a toolset outside the principal's `Toolsets` is invisible (E07).
 - [ ] **Console:** the add → review → connect path passes the browser smoke test (`make web-smoke`).
-- [ ] **Mutation list** recorded.
+- [ ] **Mutation list** recorded (parts 1 and 2 below; part 3 to come).
 
 ## References
 
@@ -80,3 +80,13 @@ The easy path the owner asked for: an admin pastes a URL, agentkit probes it, th
   - **Redirects:** at most 5, each one through `CheckURL`, and every connection through the dialer.
   - **Pinning without the store:** each wrapped tool remembers the fingerprint the model was given. On `list_changed` the toolset rechecks, and a changed or removed tool fails its calls (`ErrToolFailed` with the reason) until its definition is back. New tools are never added at runtime. The `pins` setting (written by `agentkit mcp-tools <url>`) allows only pinned definitions at startup. Part 2 stores the approved fingerprints and passes them as `pins`.
 - Mutations (each failed the package's tests): netguard: no dial-time check, no unmapping, no redirect check, no redirect cap, proxy kept, no 6to4/NAT64, no special ranges, http to any host, user info allowed, IP literal not checked, wildcard matching the apex, zone ignored. Pinning: `Invoke` ignoring a disabled tool, `Recheck` ignoring changes, a removed tool not disabled, never re-enabled, `pins` ignored, unpinned tools allowed, no recheck on `list_changed`, pin format unchecked.
+- Part 2 decisions (2026-10-17):
+  - **Stored as tenant data:** `store.ToolsetStore` keeps one opaque JSON record per toolset with a version for compare-and-swap, in all three backends (Postgres under RLS). `pkg/mcp/servers` owns the record's shape: the server's URL, transport, auth and headers, and per tool the approved fingerprint and definition, or a rejection, with the class an admin set and who decided when.
+  - **Pinning:** a tool is offered only while the server lists it with the approved fingerprint. A new or changed tool is off and the toolset says `review_needed`; the review shows the approved definition next to the current one and the fields that differ. Approving sends the fingerprint the review showed, so a server that changes the tool in between gets `409 conflict`, never a silent approval of something unseen. A removed tool shows as `removed` without flagging a review, since nothing new would reach the model; rejecting it forgets it.
+  - **Live, per turn:** the harness's registry reads the toolsets at every turn in the run's tenant, so a review, a disable or a server change takes effect at the next turn, and each call checks again that its tool is still offered. One connection per tenant and toolset, made on first use, re-made when its settings change and retried 30s after a failure; `list_changed` relists.
+  - **Auth:** `none` or `headers` only. Header values are `${VAR}` references to variables the operator lists in `runtime_toolsets.header_env`; a header whose name looks like a secret must use one, so the store never holds a secret. `oauth` and `scope: user` are refused until T095 and T044 wire the flow and the vault; a server answering 401 is `422 auth_required`, naming OAuth when it advertises it.
+  - **Names:** tools are always `<toolset>__<tool>`; a runtime toolset may not take a config toolset's name. Agents opt in with `runtime_toolsets` in the config (T075 makes agents data).
+  - **Scope:** `agent:admin`, which `*` and `AGENTKIT_API_TOKEN` grant. Reading the review is admin too: it shows URLs and raw definitions.
+  - **CLI:** `agentkit toolsets add|review|approve|reject|enable|disable|delete|list` over `pkg/agentclient`, instead of the single `add-mcp` the scope named.
+  - **Not yet:** agents on a separate runner component (startup refuses `runtime_toolsets` there; the runner would need the store), OAuth and per-user connections (T095, T044), the console (part 3, after T087).
+- Part 2 mutations (each failed the tests): offering a tool whose fingerprint changed, offering a disabled toolset's tools, approving without matching the live fingerprint, no per-tenant cap, connections shared across tenants, a secret header without `${VAR}`, no URL check on add (the dial-time guard alone), DELETE without the admin scope, an agent's runtime toolsets left out of the key's toolset check, invoking a tool that is no longer offered, a disabled toolset shown as ready, and serve accepting a config toolset's name as a runtime one. Store: every `RunToolsetStore` mutation was killed except tenant scoping on Postgres, which RLS covers on its own.

@@ -48,6 +48,11 @@ func TestEventLog(t *testing.T) {
 	storetest.RunEventLog(t, newEvents)
 }
 
+func TestToolsetStore(t *testing.T) {
+	t.Parallel()
+	storetest.RunToolsetStore(t, func(_ *testing.T, clk clock.Clock) store.ToolsetStore { return memory.New(memory.WithClock(clk)) })
+}
+
 func TestCommandLog(t *testing.T) {
 	t.Parallel()
 	storetest.RunCommandLog(t, func(_ *testing.T, clk clock.Clock) storetest.CommandStore { return memory.New(memory.WithClock(clk)) })

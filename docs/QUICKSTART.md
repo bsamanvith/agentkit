@@ -178,6 +178,7 @@ Each entry of `agents`:
 | `system` | a short generic prompt | system prompt |
 | `toolsets` | none | names from `mcp.toolsets` the agent may use |
 | `prefix_tool_names` | false | name tools `<toolset>__<tool>` (needed when two toolsets share a tool name) |
+| `runtime_toolsets` | none | toolsets admins add while the server runs (section 8); the agent gets their approved tools as `<toolset>__<tool>` |
 | `max_turns`, `max_total_tokens` | 25, unlimited | budgets per run |
 
 `agent_api`:
@@ -207,7 +208,7 @@ Environment: `AGENTKIT_COMPONENTS` (any of `agent`, `web`, `mcp-server`, comma-s
 ]}}
 ```
 
-Make a key and its hash with `key=$(openssl rand -hex 24); printf %s "$key" | shasum -a 256` (put `sha256:` before the hex). `scopes`: `agent:read` for the API's GETs, `agent:run` for everything else, `*` for both. `toolsets` are names or globs of `mcp.toolsets`; startup fails on one that matches none. A key sees only its tenant's runs and conversations, and only the toolsets it allows: others answer 404, as if they did not exist, over MCP and in the API. An agent is listed and runnable only for a key that allows all of its toolsets. Missing or wrong credentials are 401, a missing scope 403 `forbidden`. `mcp.stateful` cannot be combined with credentials yet.
+Make a key and its hash with `key=$(openssl rand -hex 24); printf %s "$key" | shasum -a 256` (put `sha256:` before the hex). `scopes`: `agent:read` for the API's GETs, `agent:run` for everything else, `agent:admin` to add, review, change and remove toolsets at run time (section 8), `*` for all three. `toolsets` are names or globs of `mcp.toolsets`; startup fails on one that matches none. A key sees only its tenant's runs and conversations, and only the toolsets it allows: others answer 404, as if they did not exist, over MCP and in the API. An agent is listed and runnable only for a key that allows all of its toolsets. Missing or wrong credentials are 401, a missing scope 403 `forbidden`. `mcp.stateful` cannot be combined with credentials yet.
 
 The store: `AGENTKIT_STORE` is `memory` (the default), `sqlite:/path/agentkit.db`, or `postgres://user:pass@host/db`; anything else fails startup. Postgres is migrated at startup unless `AGENTKIT_STORE_MIGRATE=off` (run `agentkit migrate` first then). Postgres also enforces tenant isolation itself, with row-level security, but only for a role that is not a superuser and lacks `BYPASSRLS`. For that, run `agentkit migrate` as the owner and serve as an application role (`GRANT USAGE ON SCHEMA ...; GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ...`). Then set `AGENTKIT_STORE_ADMIN` to a URL whose role has `BYPASSRLS`, for the loop that resumes every tenant's runs; startup fails without it. `AGENTKIT_RUN_LEASE` (default `30s`, at least `1s`) is how long a run stays claimed by a process that stops renewing it: after a crash, a chat run reads as `interrupted` once its lease runs out, and `POST /v1/runs/{id}/resume` continues it.
 
@@ -340,6 +341,33 @@ The server is contacted at startup: one that does not answer fails startup, or w
 
 - While running, when the server says its tool list changed, every tool whose definition now differs from the one the agent was given is disabled: calls fail with "the MCP server changed this tool's definition", and the log names the tools. New tools appear only after a restart.
 - `pins` fixes which definitions are allowed at all, across restarts. Print the current ones with `agentkit mcp-tools <url>` (add `-header "Authorization: Bearer ..."` if the server needs it) and paste the `"pins"` block into the toolset's settings. A tool that is not pinned, or whose definition has changed since, is left out with a warning, so only definitions you have looked at reach the model.
+
+### Adding a server while the server runs
+
+An admin (a key with the scope `agent:admin`, or `AGENTKIT_API_TOKEN`) can add an MCP server without editing the config or restarting. The server is contacted, its tools are listed, and every tool is off until approved. Here the server's config has `"runtime_toolsets": {"header_env": ["LINEAR_API_KEY"]}` and the variable set; the single quotes keep `${LINEAR_API_KEY}` for the server to fill in:
+
+```sh
+agentkit toolsets add -name linear -header 'Authorization: Bearer ${LINEAR_API_KEY}' https://mcp.linear.app/mcp
+agentkit toolsets review linear           # each tool: new, changed (and how), approved, removed, rejected
+agentkit toolsets review -json linear     # the raw definitions, and the approved one next to a changed one
+agentkit toolsets approve linear          # every new and changed tool, as the review shows it; or name tools
+agentkit toolsets list                    # config toolsets and added ones, with their status
+agentkit toolsets disable linear          # or enable, or delete
+```
+
+An agent gets the approved tools of the toolsets in its `runtime_toolsets`, as `linear__search`, from its next turn on. A toolset belongs to the tenant that added it: another tenant's agent gets none of its tools. The approved definitions are stored, so the pinning holds across restarts: a tool the server changes or adds is off, and the toolset says `review_needed`, until an admin approves it again. The same calls are in the API (`POST /v1/toolsets`, `GET`/`POST /v1/toolsets/{name}/review`, `PATCH` and `DELETE /v1/toolsets/{name}`; [openapi.yaml](api/openapi.yaml)).
+
+The `runtime_toolsets` section of the config:
+
+| Field | Default | Meaning |
+|---|---|---|
+| `enabled` | true | false turns the API off |
+| `allow_hosts` | none | internal hosts a URL may name (`mcp.internal`, `*.corp.example.com`); they may resolve to private addresses and use http. Every other URL must be https to a public address, checked when connecting |
+| `header_env` | none | the variables a header may use as `${NAME}`. Headers carrying a secret must use one, so no secret is stored |
+| `max_toolsets` | 50 | per tenant |
+| `connect_timeout` | `10s` | connecting and listing tools |
+
+Not yet: OAuth sign-in to a server (T095) and per-user connections, agents on a separate runner component, and the console screens (T096 part 3).
 
 ## Troubleshooting
 

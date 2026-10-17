@@ -182,6 +182,11 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 		{"GET /v1/agents/{name}", s.getAgent},
 		{"GET /v1/toolsets", s.listToolsets},
 		{"GET /v1/toolsets/{name}/tools", s.listTools},
+		{"POST /v1/toolsets", s.addToolset},
+		{"GET /v1/toolsets/{name}/review", s.getReview},
+		{"POST /v1/toolsets/{name}/review", s.postReview},
+		{"PATCH /v1/toolsets/{name}", s.patchToolset},
+		{"DELETE /v1/toolsets/{name}", s.deleteToolset},
 	} {
 		mux.HandleFunc(rt.pattern, requireScope(scopeOf(rt.pattern), rt.handler))
 		s.routes = append(s.routes, rt.pattern)
@@ -341,16 +346,25 @@ func requireToken(want []byte, next http.Handler) http.Handler {
 // scope returns r's context with the request's tenant, which every store call
 // is scoped by. It answers 500 for a tenant the middleware got wrong.
 func (s *Server) scope(w http.ResponseWriter, r *http.Request) (context.Context, bool) {
+	ctx, err := s.tenantContext(r)
+	if err != nil {
+		s.internal(w, "reading the request's tenant", err)
+		return nil, false
+	}
+	return ctx, true
+}
+
+// tenantContext is the request's context with its tenant.
+func (s *Server) tenantContext(r *http.Request) (context.Context, error) {
 	id := s.tenantOf(r)
 	if id == "" {
 		id = DefaultTenant
 	}
 	t, err := tenancy.NewTenant(id)
 	if err != nil {
-		s.internal(w, "reading the request's tenant", err)
-		return nil, false
+		return nil, err
 	}
-	return tenancy.With(r.Context(), t), true
+	return tenancy.With(r.Context(), t), nil
 }
 
 func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {

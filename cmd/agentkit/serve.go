@@ -57,8 +57,10 @@ type serveConfig struct {
 	Agents []agentDef
 	API    apiConfig
 	// Auth holds the API keys of the agent API and the MCP endpoints.
-	Auth   authConfig
-	legacy bool // Agents come from an "agent" section (or none)
+	Auth authConfig
+	// Runtime is how admins add MCP servers as toolsets through the API.
+	Runtime runtimeConfig
+	legacy  bool // Agents come from an "agent" section (or none)
 }
 
 // serveFile is the top level of the config file.
@@ -68,6 +70,7 @@ type serveFile struct {
 	Agents   []json.RawMessage `json:"agents"`
 	AgentAPI json.RawMessage   `json:"agent_api"`
 	Auth     json.RawMessage   `json:"auth"`
+	Runtime  json.RawMessage   `json:"runtime_toolsets"`
 }
 
 // serveEnv is what agentkit serve reads from the environment.
@@ -365,7 +368,7 @@ const envCredentialsKey = "AGENTKIT_CREDENTIALS_KEY"
 // loadServeConfig reads the config file; an empty path gives the defaults.
 // Unknown fields are errors, so a typo cannot silently change what is served.
 func loadServeConfig(path string) (serveConfig, error) {
-	cfg := serveConfig{MCP: defaultMCPConfig(), API: defaultAPIConfig(), legacy: true}
+	cfg := serveConfig{MCP: defaultMCPConfig(), API: defaultAPIConfig(), Runtime: defaultRuntimeConfig(), legacy: true}
 	def := defaultAgentDef()
 	def.Name = agentapi.DefaultAgent
 	cfg.Agents = []agentDef{def}
@@ -382,6 +385,9 @@ func loadServeConfig(path string) (serveConfig, error) {
 	}
 	if err := decodeSection(file.MCP, &cfg.MCP); err != nil {
 		return cfg, fmt.Errorf("config %s: mcp: %w", path, err)
+	}
+	if err := decodeSection(file.Runtime, &cfg.Runtime); err != nil {
+		return cfg, fmt.Errorf("config %s: runtime_toolsets: %w", path, err)
 	}
 	if err := decodeSection(file.Auth, &cfg.Auth); err != nil {
 		return cfg, fmt.Errorf("config %s: auth: %w", path, err)

@@ -133,6 +133,20 @@ func Connect(ctx context.Context, cfg Config) (*Client, error) {
 	return c, nil
 }
 
+// ServerInfo reports the name and version the server gave when the client
+// last connected (empty when it gave none).
+func (c *Client) ServerInfo() (name, version string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.cs == nil {
+		return "", ""
+	}
+	if r := c.cs.InitializeResult(); r != nil && r.ServerInfo != nil {
+		return r.ServerInfo.Name, r.ServerInfo.Version
+	}
+	return "", ""
+}
+
 // Transport reports the transport that last connected: [TransportHTTP],
 // [TransportSSE] or [TransportStdio].
 func (c *Client) Transport() Transport {

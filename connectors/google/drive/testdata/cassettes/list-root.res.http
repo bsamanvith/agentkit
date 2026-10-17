@@ -1,0 +1,23 @@
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=UTF-8
+
+{
+  "files": [
+    {
+      "id": "0BfolderReports",
+      "name": "Reports",
+      "mimeType": "application/vnd.google-apps.folder",
+      "modifiedTime": "2026-10-12T14:03:22.114Z",
+      "parents": [
+        "0AMyDriveRoot"
+      ],
+      "webViewLink": "https://drive.google.com/drive/folders/0BfolderReports",
+      "owners": [
+        {
+          "displayName": "Ada Lovelace",
+          "emailAddress": "ada@example.com"
+        }
+      ]
+    }
+  ]
+}

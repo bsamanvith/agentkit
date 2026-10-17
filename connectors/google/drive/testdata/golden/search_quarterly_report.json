@@ -1,0 +1,32 @@
+{
+  "files": [
+    {
+      "id": "1AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+      "name": "Q3 report",
+      "mime_type": "application/vnd.google-apps.document",
+      "modified_time": "2026-10-12T14:03:22.114Z",
+      "owners": [
+        "Ada Lovelace \u003cada@example.com\u003e"
+      ],
+      "web_view_link": "https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/edit?usp=drivesdk",
+      "parents": [
+        "0BfolderReports"
+      ]
+    },
+    {
+      "id": "1QqWwEeRrTtYyUuIiOoPp987654321",
+      "name": "Q3 report data.csv",
+      "mime_type": "text/csv",
+      "modified_time": "2026-10-10T08:41:09.000Z",
+      "size": 20480,
+      "owners": [
+        "bob@example.com"
+      ],
+      "web_view_link": "https://drive.google.com/file/d/1QqWwEeRrTtYyUuIiOoPp987654321/view?usp=drivesdk",
+      "parents": [
+        "0BfolderReports"
+      ]
+    }
+  ],
+  "next_page_token": "~!!~AI9FV7QHg2"
+}

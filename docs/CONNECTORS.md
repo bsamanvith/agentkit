@@ -216,6 +216,9 @@ A new check rolls in, not crashes in. When a check would fail connectors that ex
 | `connectors/google/gmail` | `cassettes.openapi` | Google publishes Discovery documents for Gmail, not OpenAPI; the synthetic cassettes are checked against the API reference by hand until they are recorded |
 | `connectors/google/gmail` | `settings.honored` | the only behavioural setting, `max_body_chars`, changes the output and not the request; `TestBodyLimitSetting` covers it |
 | `connectors/google/gmail` | `limits.rune_boundary` | bodies are base64url in Gmail's responses, so the kit cannot put its multi-byte text there; `TestBodyIsCutAtARuneBoundaryAndSaysHowToGetMore` covers it |
+| `connectors/google/drive` | `cassettes.openapi` | Google publishes Discovery documents for Drive, not OpenAPI; the synthetic cassettes are checked against the v3 reference by hand until they are recorded |
+| `connectors/google/drive` | `settings.honored` | no setting changes a request: `read_only`, `allow_share` and `narrow_scopes` choose tools and scopes, the two limits cut output; `TestGatingFollowsSettings`, `TestScopes` and `TestReadFile` cover them |
+| `connectors/google/drive` | `limits.rune_boundary` | the text of `drive_read_file` is a raw response body, not a JSON field, so the kit cannot put its multi-byte text there; `TestReadCutsAtARuneBoundary` covers it |
 
 ### Every generic bug becomes a check
 

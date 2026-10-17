@@ -1,0 +1,40 @@
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=UTF-8
+
+{
+  "files": [
+    {
+      "id": "1AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+      "name": "Q3 report",
+      "mimeType": "application/vnd.google-apps.document",
+      "modifiedTime": "2026-10-12T14:03:22.114Z",
+      "parents": [
+        "0BfolderReports"
+      ],
+      "webViewLink": "https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/edit?usp=drivesdk",
+      "owners": [
+        {
+          "displayName": "Ada Lovelace",
+          "emailAddress": "ada@example.com"
+        }
+      ]
+    },
+    {
+      "id": "1QqWwEeRrTtYyUuIiOoPp987654321",
+      "name": "Q3 report data.csv",
+      "mimeType": "text/csv",
+      "modifiedTime": "2026-10-10T08:41:09.000Z",
+      "size": "20480",
+      "parents": [
+        "0BfolderReports"
+      ],
+      "webViewLink": "https://drive.google.com/file/d/1QqWwEeRrTtYyUuIiOoPp987654321/view?usp=drivesdk",
+      "owners": [
+        {
+          "emailAddress": "bob@example.com"
+        }
+      ]
+    }
+  ],
+  "nextPageToken": "~!!~AI9FV7QHg2"
+}

@@ -1,0 +1,10 @@
+{
+  "method": "GET",
+  "path": "/drive/v3/files/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/export",
+  "query": {
+    "mimeType": [
+      "text/markdown"
+    ]
+  },
+  "synthetic": true
+}

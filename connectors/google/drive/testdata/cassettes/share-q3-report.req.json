@@ -1,0 +1,21 @@
+{
+  "method": "POST",
+  "path": "/drive/v3/files/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/permissions",
+  "query": {
+    "fields": [
+      "id,type,role,emailAddress"
+    ],
+    "supportsAllDrives": [
+      "true"
+    ],
+    "sendNotificationEmail": [
+      "false"
+    ]
+  },
+  "body": {
+    "type": "user",
+    "role": "reader",
+    "emailAddress": "grace@example.com"
+  },
+  "synthetic": true
+}

@@ -1,0 +1,13 @@
+{
+  "id": "1NewDocId000111222333444555666777",
+  "name": "Meeting notes",
+  "mime_type": "application/vnd.google-apps.document",
+  "modified_time": "2026-10-16T16:20:00.000Z",
+  "owners": [
+    "Ada Lovelace \u003cada@example.com\u003e"
+  ],
+  "web_view_link": "https://docs.google.com/document/d/1NewDocId000111222333444555666777/edit?usp=drivesdk",
+  "parents": [
+    "0BfolderReports"
+  ]
+}

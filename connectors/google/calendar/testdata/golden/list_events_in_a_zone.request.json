@@ -1,0 +1,26 @@
+[
+  {
+    "method": "GET",
+    "path": "/calendars/primary/events",
+    "query": {
+      "maxResults": [
+        "20"
+      ],
+      "orderBy": [
+        "startTime"
+      ],
+      "singleEvents": [
+        "true"
+      ],
+      "timeMax": [
+        "2026-10-26T00:00:00+05:30"
+      ],
+      "timeMin": [
+        "2026-10-19T00:00:00+05:30"
+      ],
+      "timeZone": [
+        "Asia/Kolkata"
+      ]
+    }
+  }
+]

@@ -1,0 +1,31 @@
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=UTF-8
+
+{
+  "kind": "calendar#freeBusy",
+  "timeMin": "2026-10-18T18:30:00.000Z",
+  "timeMax": "2026-10-25T18:30:00.000Z",
+  "calendars": {
+    "asha@example.com": {
+      "busy": [
+        {
+          "start": "2026-10-20T08:30:00Z",
+          "end": "2026-10-20T09:30:00Z"
+        },
+        {
+          "start": "2026-10-21T04:30:00Z",
+          "end": "2026-10-21T04:45:00Z"
+        }
+      ]
+    },
+    "nobody@example.invalid": {
+      "errors": [
+        {
+          "domain": "global",
+          "reason": "notFound"
+        }
+      ],
+      "busy": []
+    }
+  }
+}

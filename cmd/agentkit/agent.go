@@ -379,6 +379,7 @@ var credentialEnv = map[string]string{
 	"tavily":   "TAVILY_API_KEY",
 	"exa":      "EXA_API_KEY",
 	"parallel": "PARALLEL_API_KEY",
+	"calendar": "GOOGLE_ACCESS_TOKEN",
 }
 
 // credentialOf says where a toolset's key comes from and whether it is set:
@@ -386,12 +387,17 @@ var credentialEnv = map[string]string{
 func credentialOf(s toolset.Spec, getenv func(string) string) agentapi.Credential {
 	var settings struct {
 		APIKeyEnv string `json:"api_key_env"`
-		Auth      string `json:"auth"` // tavily: auto, key or keyless
+		// The Google connectors name their variable access_token_env.
+		AccessTokenEnv string `json:"access_token_env"`
+		Auth           string `json:"auth"` // tavily: auto, key or keyless
 	}
 	_ = json.Unmarshal(s.Settings, &settings) // the factory validated them
 	env := credentialEnv[s.Type]
 	if settings.APIKeyEnv != "" {
 		env = settings.APIKeyEnv
+	}
+	if settings.AccessTokenEnv != "" {
+		env = settings.AccessTokenEnv
 	}
 	set := env != "" && getenv(env) != ""
 	switch {

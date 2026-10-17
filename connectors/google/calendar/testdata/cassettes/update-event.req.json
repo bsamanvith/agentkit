@@ -1,0 +1,31 @@
+{
+  "method": "PATCH",
+  "path": "/calendars/primary/events/n3wev3nt01",
+  "query": {
+    "sendUpdates": [
+      "none"
+    ],
+    "conferenceDataVersion": [
+      "1"
+    ]
+  },
+  "body": {
+    "summary": "Late lunch with Ravi",
+    "start": {
+      "dateTime": "2026-10-23T14:00:00+05:30"
+    },
+    "end": {
+      "dateTime": "2026-10-23T15:00:00+05:30"
+    },
+    "description": "Moved an hour later.",
+    "conferenceData": {
+      "createRequest": {
+        "requestId": "3ae2d9696f3b56798c4af81e",
+        "conferenceSolutionKey": {
+          "type": "hangoutsMeet"
+        }
+      }
+    }
+  },
+  "synthetic": true
+}

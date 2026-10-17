@@ -1,0 +1,23 @@
+{
+  "id": "7h2k9q0s1d",
+  "summary": "Design review",
+  "start": "2026-10-20T14:00:00+05:30",
+  "end": "2026-10-20T15:00:00+05:30",
+  "all_day": false,
+  "status": "confirmed",
+  "location": "Room 4",
+  "organizer": "asha@example.com",
+  "attendees": [
+    {
+      "email": "asha@example.com",
+      "status": "accepted"
+    },
+    {
+      "email": "ravi@example.com",
+      "status": "needsAction"
+    }
+  ],
+  "meet_link": "https://meet.google.com/abc-defg-hij",
+  "html_link": "https://www.google.com/calendar/event?eid=N2gyazlx",
+  "description": "Walk through the new onboarding flow."
+}

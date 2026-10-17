@@ -1,0 +1,22 @@
+[
+  {
+    "body": {
+      "end": {
+        "dateTime": "2026-10-23T14:00:00+05:30",
+        "timeZone": "Asia/Kolkata"
+      },
+      "start": {
+        "dateTime": "2026-10-23T13:00:00+05:30",
+        "timeZone": "Asia/Kolkata"
+      },
+      "summary": "Lunch"
+    },
+    "method": "POST",
+    "path": "/calendars/primary/events",
+    "query": {
+      "sendUpdates": [
+        "none"
+      ]
+    }
+  }
+]

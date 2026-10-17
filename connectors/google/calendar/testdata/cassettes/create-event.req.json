@@ -1,0 +1,37 @@
+{
+  "method": "POST",
+  "path": "/calendars/primary/events",
+  "query": {
+    "sendUpdates": [
+      "none"
+    ],
+    "conferenceDataVersion": [
+      "1"
+    ]
+  },
+  "body": {
+    "summary": "Lunch with Ravi",
+    "location": "Cafe",
+    "start": {
+      "dateTime": "2026-10-23T13:00:00+05:30"
+    },
+    "end": {
+      "dateTime": "2026-10-23T14:00:00+05:30"
+    },
+    "attendees": [
+      {
+        "email": "ravi@example.com"
+      }
+    ],
+    "description": "Catch up on the roadmap.",
+    "conferenceData": {
+      "createRequest": {
+        "requestId": "542246bc3b27d0acd51bdc83",
+        "conferenceSolutionKey": {
+          "type": "hangoutsMeet"
+        }
+      }
+    }
+  },
+  "synthetic": true
+}

@@ -1,0 +1,22 @@
+{
+  "method": "GET",
+  "path": "/calendars/primary/events",
+  "query": {
+    "timeMin": [
+      "2026-10-19T00:00:00+05:30"
+    ],
+    "timeMax": [
+      "2026-10-26T00:00:00+05:30"
+    ],
+    "maxResults": [
+      "20"
+    ],
+    "singleEvents": [
+      "true"
+    ],
+    "orderBy": [
+      "startTime"
+    ]
+  },
+  "synthetic": true
+}

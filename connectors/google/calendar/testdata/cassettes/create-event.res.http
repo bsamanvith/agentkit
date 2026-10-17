@@ -1,0 +1,31 @@
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=UTF-8
+
+{
+  "kind": "calendar#event",
+  "id": "n3wev3nt01",
+  "status": "confirmed",
+  "htmlLink": "https://www.google.com/calendar/event?eid=bjN3",
+  "summary": "Lunch with Ravi",
+  "location": "Cafe",
+  "start": {
+    "dateTime": "2026-10-23T13:00:00+05:30",
+    "timeZone": "Asia/Kolkata"
+  },
+  "end": {
+    "dateTime": "2026-10-23T14:00:00+05:30",
+    "timeZone": "Asia/Kolkata"
+  },
+  "organizer": {
+    "email": "asha@example.com",
+    "self": true
+  },
+  "attendees": [
+    {
+      "email": "ravi@example.com",
+      "responseStatus": "needsAction"
+    }
+  ],
+  "description": "Catch up on the roadmap.",
+  "hangoutLink": "https://meet.google.com/xyz-abcd-efg"
+}

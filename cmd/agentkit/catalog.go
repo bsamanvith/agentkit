@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/bsamanvith/agentkit/connectors/exa"
+	"github.com/bsamanvith/agentkit/connectors/google/calendar"
 	"github.com/bsamanvith/agentkit/connectors/google/drive"
 	"github.com/bsamanvith/agentkit/connectors/google/gmail"
 	"github.com/bsamanvith/agentkit/connectors/parallel"
@@ -30,5 +31,6 @@ func newCatalog() (*toolset.Catalog, error) {
 		gmail.Factory(gmail.WithLookupEnv(os.LookupEnv), gmail.WithLogger(logger)),
 		parallel.Factory(parallel.WithLookupEnv(os.LookupEnv), parallel.WithLogger(logger)),
 		drive.Factory(drive.WithLookupEnv(os.LookupEnv), drive.WithLogger(logger)),
+		calendar.Factory(calendar.WithLookupEnv(os.LookupEnv), calendar.WithLogger(logger)),
 	)
 }

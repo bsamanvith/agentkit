@@ -67,7 +67,7 @@ func IntegrationEnv(tb testing.TB, key string) string {
 	if os.Getenv(RequireIntegrationEnv) == "1" {
 		tb.Fatalf("%s is not set and %s=1", key, RequireIntegrationEnv)
 	}
-	tb.Skipf("%s is not set; start dependencies with scripts/dev.sh up deps", key)
+	tb.Skipf("%s is not set; make integration STORE=postgres starts them and runs these tests", key)
 	return ""
 }
 

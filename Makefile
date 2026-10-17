@@ -22,8 +22,16 @@ test: ## Unit tests (race detector, shuffled order)
 	$(GO) test $(TESTFLAGS) ./...
 
 .PHONY: test-integration
-test-integration: ## Unit + integration tests (needs: scripts/dev.sh up deps)
+test-integration: ## Unit + integration tests against your own deps (AGENTKIT_PG_URL, AGENTKIT_REDIS_URL; see make integration)
 	$(GO) test $(TESTFLAGS) -tags integration ./...
+
+# make integration runs the integration tests with no Docker (cloud sessions):
+# on SQLite by default, or STORE=postgres for CI's integration tier against a
+# throwaway Postgres and Redis run as processes. See scripts/integration.sh.
+STORE ?= sqlite
+.PHONY: integration
+integration: ## Integration tests, no Docker: STORE=sqlite (default, light) or postgres (CI's tier); live tests too if ANTHROPIC_API_KEY is set
+	STORE=$(STORE) scripts/integration.sh
 
 .PHONY: test-live
 test-live: ## Live tests against real model providers (ANTHROPIC_API_KEY, or ANTHROPIC_KEY as in Claude sessions)
@@ -78,6 +86,9 @@ tidy-check: ## Fail if go.mod/go.sum are not tidy
 
 .PHONY: check
 check: tidy-check fmt-check lint deps-check test ## Everything a change must pass
+
+.PHONY: tools
+tools: $(GOLANGCI) ## Install the pinned linter into bin/
 
 $(GOLANGCI):
 	@mkdir -p bin

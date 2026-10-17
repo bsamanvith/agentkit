@@ -190,7 +190,7 @@ A test should fail only when a **feature** breaks, not when code is refactored.
 | Tier | What | Where | Run with | Needs | Budget |
 |---|---|---|---|---|---|
 | **Unit** | Pure logic, fakes, `httptest` servers | next to code | `make test` | nothing | whole repo < 30 s |
-| **Integration** | Real backends: Postgres, Vault, LocalStack, real MCP servers | next to code, `//go:build integration` | `make test-integration` | `scripts/dev.sh up deps` | < 3 min |
+| **Integration** | Real backends: Postgres, Vault, LocalStack, real MCP servers | next to code, `//go:build integration` | `make test-integration` | `make integration STORE=postgres` starts Postgres and Redis as processes (no Docker; cloud sessions) | < 3 min |
 | **E2E / smoke** | Real binaries in containers, black-box over HTTP/gRPC/MCP | `test/e2e`, `//go:build e2e` | `scripts/dev.sh smoke <topology>` | running topology | < 2 min per topology |
 | **Replay E2E** | The real binary as separate processes, against a local server replaying recorded provider responses | next to the `cmd`, no tag (skips under `-short`) | `make test` | nothing | seconds |
 | **Live** | Real model providers (Anthropic, OpenAI-compatible) | next to adapter, `//go:build live` | `make test-live` | API keys | manual / nightly |

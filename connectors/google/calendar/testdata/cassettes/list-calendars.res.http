@@ -1,0 +1,26 @@
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=UTF-8
+
+{
+  "kind": "calendar#calendarList",
+  "etag": "\"p33\"",
+  "nextPageToken": "CgkIABAB",
+  "items": [
+    {
+      "kind": "calendar#calendarListEntry",
+      "id": "asha@example.com",
+      "summary": "asha@example.com",
+      "timeZone": "Asia/Kolkata",
+      "accessRole": "owner",
+      "primary": true,
+      "selected": true
+    },
+    {
+      "kind": "calendar#calendarListEntry",
+      "id": "team-ops@example.com",
+      "summary": "Team ops",
+      "timeZone": "Europe/London",
+      "accessRole": "reader"
+    }
+  ]
+}

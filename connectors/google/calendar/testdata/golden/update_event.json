@@ -1,0 +1,17 @@
+{
+  "id": "n3wev3nt01",
+  "summary": "Late lunch with Ravi",
+  "start": "2026-10-23T14:00:00+05:30",
+  "end": "2026-10-23T15:00:00+05:30",
+  "all_day": false,
+  "location": "Cafe",
+  "attendees": [
+    {
+      "email": "ravi@example.com",
+      "status": "needsAction"
+    }
+  ],
+  "meet_link": "https://meet.google.com/xyz-abcd-efg",
+  "html_link": "https://www.google.com/calendar/event?eid=bjN3",
+  "description": "Moved an hour later."
+}

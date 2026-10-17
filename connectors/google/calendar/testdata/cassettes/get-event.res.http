@@ -1,0 +1,37 @@
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=UTF-8
+
+{
+  "kind": "calendar#event",
+  "id": "7h2k9q0s1d",
+  "status": "confirmed",
+  "htmlLink": "https://www.google.com/calendar/event?eid=N2gyazlx",
+  "summary": "Design review",
+  "description": "Walk through the new onboarding flow.",
+  "location": "Room 4",
+  "start": {
+    "dateTime": "2026-10-20T14:00:00+05:30",
+    "timeZone": "Asia/Kolkata"
+  },
+  "end": {
+    "dateTime": "2026-10-20T15:00:00+05:30",
+    "timeZone": "Asia/Kolkata"
+  },
+  "organizer": {
+    "email": "asha@example.com",
+    "self": true
+  },
+  "attendees": [
+    {
+      "email": "asha@example.com",
+      "responseStatus": "accepted",
+      "self": true,
+      "organizer": true
+    },
+    {
+      "email": "ravi@example.com",
+      "responseStatus": "needsAction"
+    }
+  ],
+  "hangoutLink": "https://meet.google.com/abc-defg-hij"
+}

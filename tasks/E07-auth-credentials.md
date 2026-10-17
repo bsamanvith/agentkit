@@ -1,7 +1,7 @@
 ---
 id: E07
 title: Auth, tenants at the edge, and credentials for connectors
-status: todo
+status: in-progress
 ---
 
 # E07: Auth, tenants at the edge, and credentials
@@ -43,10 +43,10 @@ Testing: everything here is security code with hostile input, so ENGINEERING §2
 Two tracks that can start in parallel, and in parallel with E05: inbound (T039 → T040, T041) and credentials (T042 → T043, T044 → T045).
 
 - [x] [T039](T039-auth-principals-middleware.md) `pkg/auth`: principals, API-key authenticator, edge middleware (read its "For T040", "For T041" and "For T061" Notes first)
-- [ ] [T040](T040-serve-auth-wiring.md) `agentkit serve` behind auth: `/v1` and `/mcp/`, per-principal toolsets, no open MCP off loopback
+- [x] [T040](T040-serve-auth-wiring.md) `agentkit serve` behind auth: `/v1` and `/mcp/`, per-principal toolsets, no open MCP off loopback
 - [ ] [T061](T061-local-users-login.md) Local users and login sessions for the console (needs T039)
 - [ ] [T041](T041-auth-jwt-oidc.md) JWT/OIDC authenticator and MCP protected resource metadata
-- [ ] [T042](T042-credentials-core.md) `pkg/credentials`: secret values, sealer and key ring, vault interface, memory vault, conformance suite
+- [x] [T042](T042-credentials-core.md) `pkg/credentials`: secret values, sealer and key ring, vault interface, memory vault, conformance suite
 - [ ] [T043](T043-credentials-backends.md) Credential backends: encrypted file now, SQLite on T029
 - [ ] [T044](T044-credentials-in-tools.md) Credentials in tools: slots in toolset specs, scoped sources, OAuth2 refresh, the canary test end to end
 - [ ] [T045](T045-connect-accounts.md) Connecting accounts: credential API and the OAuth2 authorization code + PKCE flow

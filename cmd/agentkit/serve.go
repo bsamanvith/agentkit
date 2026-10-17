@@ -20,6 +20,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/bus"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/component"
+	"github.com/bsamanvith/agentkit/pkg/credentials"
 	"github.com/bsamanvith/agentkit/pkg/runner"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
@@ -80,6 +81,10 @@ type serveEnv struct {
 	// toolsets come from, empty for in process; the token between them.
 	runnerURL, toolsetsURL, rpcToken string
 	dependencyWait                   time.Duration
+	// credentialKeys seal the credential vault ($AGENTKIT_CREDENTIALS_KEY);
+	// nil when unset. Parsed at startup so a bad ring fails there; the
+	// vault that uses it comes with T044.
+	credentialKeys *credentials.KeyRing
 }
 
 func (c cli) serve(ctx context.Context, args []string) error {
@@ -336,8 +341,19 @@ func (c cli) serveEnv() (serveEnv, error) {
 		}
 		e.runLease = d
 	}
+	if v := c.env(envCredentialsKey); v != "" {
+		r, err := credentials.ParseKeyRing(v)
+		if err != nil {
+			return e, fmt.Errorf("$%s: %w", envCredentialsKey, err)
+		}
+		e.credentialKeys = r
+	}
 	return e, nil
 }
+
+// envCredentialsKey is the credential vault's key ring:
+// "<id>:<base64 of 32 bytes>[,<id>:<base64>...]", the first key sealing.
+const envCredentialsKey = "AGENTKIT_CREDENTIALS_KEY"
 
 // loadServeConfig reads the config file; an empty path gives the defaults.
 // Unknown fields are errors, so a typo cannot silently change what is served.

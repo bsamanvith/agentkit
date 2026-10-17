@@ -181,6 +181,11 @@ func ModuleRules() Rules {
 			// the clock, never the server, a store backend or the harness: the
 			// vault backs its stores once T042 lands.
 			"pkg/mcp/oauth": {"pkg/auth", "pkg/tenancy", "pkg/clock", "pkg/clock/clocktest", "pkg/mcp/oauth/oauthtest"},
+			// The credential vault (T042) knows tenants and nothing else:
+			// backends and the conformance suites add only the vault itself.
+			"pkg/credentials":                 {"pkg/tenancy", "pkg/credentials/credentialstest", "pkg/credentials/memory"},
+			"pkg/credentials/memory":          {"pkg/credentials", "pkg/tenancy", "pkg/credentials/credentialstest"},
+			"pkg/credentials/credentialstest": {"pkg/credentials", "pkg/tenancy"},
 			// Connectors are toolset factories over plain net/http: the tool
 			// abstraction, the factory contract and the clock, never the
 			// server, the harness or another connector (E10). Their tests

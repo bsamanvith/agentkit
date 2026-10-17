@@ -49,6 +49,7 @@ func TestServeRejectsBadSetup(t *testing.T) {
 		"short run lease":        {env: map[string]string{envRunLease: "10ms"}, config: good, code: 1, says: envRunLease},
 		"unusable address":       {env: map[string]string{envAddr: "127.0.0.1:not-a-port"}, config: good, code: 1, says: "not-a-port"},
 		"positional argument":    {config: good, args: []string{"extra"}, code: 2},
+		"bad credentials key":    {env: map[string]string{envCredentialsKey: "k1:aHVudGVyMg=="}, config: good, code: 1, says: envCredentialsKey + ": credentials: bad key ring: key \"k1\" is 7 bytes"},
 		// The agent component.
 		"agent: no token off loopback": {env: map[string]string{envComponents: "agent", envAddr: "0.0.0.0:0"}, config: good, code: 1, says: envAPIToken},
 		"agent: no token on all ifs":   {env: map[string]string{envComponents: "agent", envAddr: ":0"}, config: good, code: 1, says: envAPIToken},

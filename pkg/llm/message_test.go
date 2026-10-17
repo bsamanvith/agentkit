@@ -5,8 +5,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/bsamanvith/agentkit/internal/testkit"
@@ -367,6 +369,79 @@ func TestUnmarshalMessageLenient(t *testing.T) {
 	})
 }
 
+// TestUnmarshalKeepsEncodingJSONSemantics: messages are decoded as
+// encoding/json decodes them: names matched regardless of case, the last of
+// duplicate names wins, and invalid UTF-8 in a string becomes U+FFFD.
+func TestUnmarshalKeepsEncodingJSONSemantics(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name, doc string
+		want      llm.Message
+	}{
+		{"case", `{"Role":"user","CONTENT":[{"Type":"text","TEXT":"a"}]}`, llm.User(llm.Text{Text: "a"})},
+		{"duplicates", `{"role":"assistant","role":"user","content":[{"type":"text","text":"a","text":"b"}]}`, llm.User(llm.Text{Text: "b"})},
+		{"duplicate type", `{"role":"user","content":[{"type":"text","tool_use_id":"t","type":"tool_result"}]}`, llm.User(llm.ToolResult{ToolUseID: "t"})},
+		{"invalid UTF-8", "{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"a\xffb\"}]}", llm.User(llm.Text{Text: "a\uFFFDb"})},
+		{"lone surrogate", `{"role":"user","content":[{"type":"text","text":"\ud800"}]}`, llm.User(llm.Text{Text: "\uFFFD"})},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var strict llm.Message
+			if err := json.Unmarshal([]byte(tt.doc), &strict); err != nil {
+				t.Fatal(err)
+			}
+			lenient, err := llm.UnmarshalMessageLenient([]byte(tt.doc))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(strict, tt.want) || !reflect.DeepEqual(lenient, tt.want) {
+				t.Errorf("strict %#v, lenient %#v; want %#v", strict, lenient, tt.want)
+			}
+		})
+	}
+}
+
+// TestBlockDecodingDoesNotDependOnLayout: a block of a known type decodes to
+// the same block, or fails the same way, whether it starts with {"type":" as
+// the blocks this package writes do, or has the same members laid out
+// otherwise. (An Unknown block keeps its bytes, layout included.)
+func TestBlockDecodingDoesNotDependOnLayout(t *testing.T) {
+	t.Parallel()
+	var docs []string
+	for _, m := range sampleMessages() {
+		for _, b := range m.Content {
+			docs = append(docs, string(mustJSON(t, b)))
+		}
+	}
+	docs = append(docs,
+		`{"type":"text","text":"a","cache":true}`,
+		`{"type":"text","id":"t","name":"n","type":"tool_use","input":{}}`,
+		`{"type":"tool_use","name":"n","input":{}}`,
+		`{"type":"tool_result","content":"x"}`,
+		`{"type":"opaque","provider":"p","data":"{"}`,
+		`{"type":"text","text":7}`,
+	)
+	for _, doc := range docs {
+		spaced := "{ " + doc[1:]
+		for _, lenient := range []bool{false, true} {
+			decode := func(data string) (llm.Message, error) {
+				msg := `{"role":"user","content":[` + data + `]}`
+				if lenient {
+					return llm.UnmarshalMessageLenient([]byte(msg))
+				}
+				var m llm.Message
+				err := json.Unmarshal([]byte(msg), &m)
+				return m, err
+			}
+			got, gerr := decode(doc)
+			want, werr := decode(spaced)
+			if (gerr == nil) != (werr == nil) || !reflect.DeepEqual(got, want) {
+				t.Errorf("lenient=%v: %s gives %#v (%v), %s gives %#v (%v)", lenient, doc, got, gerr, spaced, want, werr)
+			}
+		}
+	}
+}
+
 func mustJSON(t *testing.T, v any) []byte {
 	t.Helper()
 	b, err := json.Marshal(v)
@@ -450,4 +525,34 @@ func FuzzMessageUnmarshal(f *testing.F) {
 			t.Fatalf("encoding is not stable:\n first %q\nsecond %q (%v)", out, out2, err)
 		}
 	})
+}
+
+// BenchmarkMessageUnmarshal decodes a transcript shaped like an agent run's,
+// the way a store reads one back: 300 messages of text, tool calls with
+// small inputs, and tool results of about 2 KB.
+func BenchmarkMessageUnmarshal(b *testing.B) {
+	var msgs []llm.Message
+	for i := range 100 {
+		id := fmt.Sprintf("toolu_%04d", i)
+		msgs = append(msgs,
+			llm.User(llm.Text{Text: fmt.Sprintf("step %d: look up the account and summarize the open tickets", i)}),
+			llm.Assistant(
+				llm.Text{Text: "I'll check the ticket system for that account."},
+				llm.ToolUse{ID: id, Name: "search_tickets", Input: json.RawMessage(`{"account":"acme-42","status":["open","pending"],"limit":25}`)},
+			),
+			llm.User(llm.ToolResult{ToolUseID: id, Content: strings.Repeat(`{"id":"T-1","title":"Login fails on SSO","priority":"high"} `, 35)}),
+		)
+	}
+	data, err := json.Marshal(msgs)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.SetBytes(int64(len(data)))
+	b.ReportAllocs()
+	for b.Loop() {
+		var got []llm.Message
+		if err := json.Unmarshal(data, &got); err != nil {
+			b.Fatal(err)
+		}
+	}
 }

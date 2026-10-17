@@ -47,6 +47,8 @@ A provider with several products is a **family**: a directory with one connector
 - **The body** is read through `io.LimitReader(body, limit+1)`, with a limit of 8 MiB unless the connector sets `MaxBodyBytes`.
 - **`ctx`** is honored in every request and wait.
 
+`connectors/internal/httpx` implements the body limit, the retry wait and redaction, and `connectors/internal/trunc` the truncation markers. Every connector uses them rather than its own copy.
+
 **Keyless mode** (Tavily's `auto`). Without a key, the connector sends a marker header (`KeylessMarker`) and no key.
 
 ## 3. The test file

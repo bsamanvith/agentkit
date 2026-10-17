@@ -11,19 +11,16 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/bsamanvith/agentkit/connectors/internal/httpx"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 )
 
 const (
 	// MaxBodyBytes is the largest response body the client reads.
-	MaxBodyBytes  = 8 << 20
-	maxRetryAfter = 10 * time.Second
-	defaultRetry  = time.Second
-	redacted      = "[redacted]"
+	MaxBodyBytes = httpx.MaxBody
 )
 
 // Env is what a Google connector's factory options set, and what it builds a
@@ -194,21 +191,13 @@ func (c *Client) Do(ctx context.Context, r Request) ([]byte, error) {
 	// A success body can be megabytes and is never an error: only an error's
 	// is parsed.
 	if status >= 300 && isRateLimited(status, errorReasons(body)) {
-		wait, ok := retryAfter(header)
-		// A context's deadline is in real time, whatever c.clock is.
-		if deadline, has := ctx.Deadline(); has && time.Until(deadline) < wait {
-			ok = false
-		}
+		wait, ok := httpx.RetryAfter(ctx, header.Get("Retry-After"), c.clock.Now())
 		if !ok {
 			return nil, c.statusError(status, body, token)
 		}
 		c.log.DebugContext(ctx, c.service+" rate limited, retrying", "path", r.Path, "wait", wait)
-		t := c.clock.NewTimer(wait)
-		select {
-		case <-ctx.Done():
-			t.Stop()
-			return nil, ctx.Err()
-		case <-t.C():
+		if err := httpx.Sleep(ctx, c.clock, wait); err != nil {
+			return nil, err
 		}
 		if status, _, body, err = c.attempt(ctx, r, payload, token); err != nil {
 			return nil, err
@@ -223,10 +212,7 @@ func (c *Client) Do(ctx context.Context, r Request) ([]byte, error) {
 // clean makes text taken from a response safe to show: the access token
 // replaced, then cut to limit characters.
 func clean(s, token string, limit int) string {
-	if token != "" {
-		s = strings.ReplaceAll(s, token, redacted)
-	}
-	return Truncate(s, limit)
+	return Truncate(httpx.Redact(s, token), limit)
 }
 
 func (c *Client) token(ctx context.Context) (string, error) {
@@ -283,12 +269,12 @@ func (c *Client) attempt(ctx context.Context, r Request, payload []byte, token s
 		return 0, nil, nil, c.transportError(ctx, actx, token, r.Path, err)
 	}
 	defer resp.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, MaxBodyBytes+1))
+	data, err := httpx.ReadBody(resp.Body, MaxBodyBytes)
 	switch {
+	case errors.Is(err, httpx.ErrTooLarge):
+		return 0, nil, nil, fmt.Errorf("response from %s is over the 8 MB limit", c.service)
 	case err != nil:
 		return 0, nil, nil, c.transportError(ctx, actx, token, r.Path, err)
-	case len(data) > MaxBodyBytes:
-		return 0, nil, nil, fmt.Errorf("response from %s is over the 8 MB limit", c.service)
 	}
 	c.log.DebugContext(ctx, c.service+" request", "method", method, "path", r.Path, "status", resp.StatusCode,
 		"bytes", len(data), "duration", time.Since(start))
@@ -300,7 +286,7 @@ func (c *Client) attempt(ctx context.Context, r Request, payload []byte, token s
 // model can act on. The caller's own cancellation is returned as such.
 func (c *Client) transportError(ctx, actx context.Context, token, path string, cause error) error {
 	if ctx.Err() == nil {
-		c.log.WarnContext(ctx, c.service+" request failed", "path", path, "err", strings.ReplaceAll(cause.Error(), token, redacted))
+		c.log.WarnContext(ctx, c.service+" request failed", "path", path, "err", httpx.Redact(cause.Error(), token))
 	}
 	switch {
 	case ctx.Err() != nil:
@@ -310,22 +296,4 @@ func (c *Client) transportError(ctx, actx context.Context, token, path string, c
 	default:
 		return fmt.Errorf("could not reach %s", c.service)
 	}
-}
-
-// retryAfter is how long a rate limit asks to wait (whole seconds, or an HTTP
-// date), and whether to retry at all: not when it asks for more than 10 s.
-func retryAfter(h http.Header) (time.Duration, bool) {
-	v := strings.TrimSpace(h.Get("Retry-After"))
-	if v == "" {
-		return defaultRetry, true
-	}
-	if n, err := strconv.Atoi(v); err == nil && n >= 0 {
-		d := time.Duration(n) * time.Second
-		return d, d <= maxRetryAfter
-	}
-	if t, err := http.ParseTime(v); err == nil {
-		d := max(time.Until(t), 0)
-		return d, d <= maxRetryAfter
-	}
-	return defaultRetry, true
 }

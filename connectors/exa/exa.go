@@ -1,12 +1,10 @@
 package exa
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -16,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bsamanvith/agentkit/connectors/internal/httpx"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
@@ -47,9 +46,7 @@ var (
 
 // Limits and defaults (E10).
 const (
-	maxResponseBytes      = 8 << 20
-	maxRetryWait          = 10 * time.Second
-	defaultRetryWait      = time.Second
+	maxResponseBytes      = httpx.MaxBody
 	maxErrorMessageChars  = 300
 	defaultTimeout        = 30 * time.Second
 	maxTimeout            = 5 * time.Minute
@@ -62,11 +59,9 @@ const (
 	maxMaxResults         = 20
 	maxExtractURLs        = 10
 	maxRequestURLChars    = 2048
-	truncationMarker      = "…[truncated]"
 	searchTruncationHint  = "call exa_extract on this URL for the full page"
 	extractTruncationHint = "call exa_extract again with a query to get the passages that matter"
 	highlightSeparator    = "\n…\n"
-	redactedMarker        = "[redacted]"
 	defaultAPIKeyEnv      = "EXA_API_KEY"
 	defaultSearchType     = "auto"
 	contentsHighlights    = "highlights"
@@ -376,17 +371,4 @@ func (c classified) Invoke(ctx context.Context, input json.RawMessage) (json.Raw
 		return out, &tool.Error{Tool: te.Tool, Kind: tool.ErrInvalidInput, Err: te.Err}
 	}
 	return out, err
-}
-
-// readBody reads at most maxResponseBytes of r.
-func readBody(r io.Reader) ([]byte, error) {
-	var buf bytes.Buffer
-	n, err := io.Copy(&buf, io.LimitReader(r, maxResponseBytes+1))
-	if err != nil {
-		return nil, err
-	}
-	if n > maxResponseBytes {
-		return nil, ErrResponseTooLarge
-	}
-	return buf.Bytes(), nil
 }

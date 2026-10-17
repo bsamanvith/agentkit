@@ -229,7 +229,7 @@ func TestRateLimit(t *testing.T) {
 		{"keyless, limited twice", `{"auth": "keyless"}`, "3", 3 * time.Second, reply{}, true},
 		{"keyless, then ok", `{"auth": "keyless"}`, "10", 10 * time.Second, reply{status: 200}, false},
 		{"no Retry-After", "", "", time.Second, reply{status: 200}, false},
-		{"unparseable Retry-After", "", "Wed, 21 Oct 2026 07:28:00 GMT", time.Second, reply{status: 200}, false},
+		{"unparseable Retry-After", "", "soon", time.Second, reply{status: 200}, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()

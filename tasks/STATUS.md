@@ -10,7 +10,7 @@
 | M1 `pkg/tool` | [E03](E03-tool-core-and-mcp.md) | Done |
 | M2 Toolsets from config; one MCP server, one path per toolset | [E03](E03-tool-core-and-mcp.md) | Done |
 | M3 `llm`, Anthropic adapter, harness, `flow`, `agentstep`, `agentkit run` | [E04](E04-llm-harness-flow.md) | Done |
-| M4 Store, runner, compaction | [E05](E05-store-runner.md) | In progress: `pkg/store` (interfaces, memory store, suites, run lifecycle), the SQLite store (T029), the runner (T030) and the API on the runner (T037: store chosen by `AGENTKIT_STORE`, runs outlive `serve`) done; next compaction (T031). Postgres store (T088) and turn batching (T098) done; run start times and priority are T099 |
+| M4 Store, runner, compaction | [E05](E05-store-runner.md) | In progress: `pkg/store` (interfaces, memory store, suites, run lifecycle), the SQLite store (T029), the runner (T030) and the API on the runner (T037: store chosen by `AGENTKIT_STORE`, runs outlive `serve`) done; compaction (T031) done. Postgres store (T088) and turn batching (T098) done; run start times and priority are T099 |
 | M5 Agent API, `agentkit serve`, image, Compose, smoke tests | [E09](E09-agent-api.md), [E01](E01-foundations.md) | In progress: `agentkit serve`, agent API v0 and the image done; **deployable** |
 | M6 Remote tools and runners over `pkg/rpc` | E06 (to plan) | In progress: T102 puts toolsets and runners on the wire |
 | Credentials, auth, tenancy at the edge | [E07](E07-auth-credentials.md) | **In progress**: T039 (`pkg/auth`) and T040 (`serve` behind API keys, scopes and per-key toolsets on `/v1` and `/mcp`) done; T042 (`pkg/credentials`: sealer, key ring, vault, memory backend) done; T041 (JWT), T043 and T044 ready |
@@ -72,7 +72,7 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 | [T093](T093-postgres-rls.md) | Postgres row-level security by tenant | **Done**: policies on every tenant table, tenant set per pooled connection, `Admin` on its own role (`AGENTKIT_STORE_ADMIN`) |
 | [T099](T099-run-queue-order.md) | Runs: start time, lane and priority, `ClaimNext` | After T100 (migration 0006; skips interactive runs) |
 | [T083](T083-tool-policy.md) | Tool policy: presets, rules, allow/flag/approve/deny | **Ready** (T082 done); T084 follows with T030 done |
-| [T031](T031-compaction.md) | Compaction | **Ready** (T030 done) |
+| [T031](T031-compaction.md) | Compaction | **Done**: reactive on `context_too_long` and proactive at `model.compact_at` of `model.context_window`; the harness summarizes, also through the runner component |
 | [T087](T087-console-ux-design-2.md) | Console UX design part 2: skills, agent builder, tool policies, interrupts and approvals, tasks with steering; mockup v4 | **Ready** (owner approved v3) |
 | [T108](T108-google-common.md) | `connectors/google/common`: the client, token sources, settings, paging and text limits the Google connectors share | **Review** (draft PR with Gmail); T110 and T111 build on it |
 | [T109](T109-connector-gmail.md), [T110](T110-connector-google-calendar.md), [T111](T111-connector-google-drive.md) | Gmail, Google Calendar and Google Drive connectors | T109 **Review** (PR #23); T110 and T111 **ready** to start on T108's branch |

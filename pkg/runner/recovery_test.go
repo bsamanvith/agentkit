@@ -354,6 +354,11 @@ func TestNonRetryableErrorsAreNeverRetried(t *testing.T) {
 			} else {
 				w.model.failing("q", 1, 1, fmt.Errorf("%w: scripted", c.err))
 			}
+			if c.name == "context too long" {
+				// An agent that can compact is compacted and run again
+				// (compact_test.go).
+				w.agent = func(string) runner.Agent { return noCompact{mustHarness(t, w)} }
+			}
 			p := w.process()
 			_, err := p.run("c", prompt)
 			if !errors.Is(err, c.err) {

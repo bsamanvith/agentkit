@@ -39,8 +39,12 @@ func (s Stored) Same(o Stored) bool {
 		bytes.Equal(s.Messages, o.Messages) && bytes.Equal(s.Record, o.Record)
 }
 
-// MessageCount returns how many messages s holds.
+// MessageCount returns how many messages s adds to its conversation's count
+// ([store.Conversation.Messages]): those it holds, none for a compaction.
 func (s Stored) MessageCount() int64 {
+	if s.Kind == store.KindCompaction {
+		return 0
+	}
 	var msgs []json.RawMessage
 	if err := json.Unmarshal(s.Messages, &msgs); err != nil {
 		return 0 // cannot happen: Messages is what CheckEntry marshaled

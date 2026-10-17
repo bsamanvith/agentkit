@@ -45,6 +45,7 @@ type config struct {
 	before      []BeforeToolFunc
 	after       []AfterToolFunc
 	now         func() time.Time
+	window      ContextWindow
 }
 
 // Option configures [New].

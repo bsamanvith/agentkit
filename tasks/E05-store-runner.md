@@ -42,7 +42,7 @@ From the groundwork handoff; details in those task files' "For T028/T030" Notes.
 - [x] [T038](T038-store-admin.md) `store.Admin`: the one cross-tenant read, for recovery (small; unblocks T029 and T030 in parallel)
 - [x] [T029](T029-store-sqlite.md) `pkg/store/sqlite`: schema, migrations, all suites
 - [x] [T030](T030-runner.md) `pkg/runner`: run agents with persistence (entries, context, cache, lease, resume)
-- [ ] [T031](T031-compaction.md) Compaction in the runner (reactive and proactive)
+- [x] [T031](T031-compaction.md) Compaction in the runner (reactive and proactive)
 - [x] [T032](T032-flow-shape-fingerprint.md) `flow`: detect a changed step tree on resume
 - [ ] [T033](T033-harness-clock.md) harness: use `pkg/clock` instead of `WithNow` (small; any time)
 - [x] [T098](T098-turn-buffer.md) runner: keep a run's turns and store them in batches (`AppendBatch`, `FlushEvery`, `Shutdown`)

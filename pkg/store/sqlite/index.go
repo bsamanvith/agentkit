@@ -45,7 +45,7 @@ func (s *Store) CreateConversation(ctx context.Context, c store.Conversation) (s
 		rec, err = scanConversation(tx.QueryRowContext(ctx, `INSERT INTO conversations
 			(tenant, id, agent, title, messages, created_at, updated_at)
 			VALUES (?1, ?2, ?3, ?4, (SELECT COALESCE(SUM(json_array_length(messages)), 0) FROM entries
-				WHERE tenant = ?1 AND conversation = ?2), ?5, ?5)
+				WHERE tenant = ?1 AND conversation = ?2 AND kind <> 'compaction'), ?5, ?5)
 			RETURNING `+conversationColumns, tenant, c.ID, c.Agent, c.Title, at))
 		if err != nil {
 			return fmt.Errorf("sqlite: create conversation: %w", err)

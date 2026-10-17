@@ -18,6 +18,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/flow"
 	"github.com/bsamanvith/agentkit/pkg/harness"
+	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/store"
 	"github.com/bsamanvith/agentkit/pkg/tenancy"
 )
@@ -159,6 +160,11 @@ const (
 	// retry). The turns done so far are stored first. See
 	// [WithInteractiveRetry].
 	EventRetrying
+	// EventCompacted says that the conversation was compacted ([Compactor])
+	// by a compaction entry at Event.Seq, stored before the event, whose
+	// summary request used Event.Usage. When the run had failed for want of
+	// room, the agent runs again next, from the compacted context.
+	EventCompacted
 )
 
 func (k EventKind) String() string {
@@ -173,6 +179,8 @@ func (k EventKind) String() string {
 		return "saved"
 	case EventRetrying:
 		return "retrying"
+	case EventCompacted:
+		return "compacted"
 	}
 	return "EventKind(" + strconv.Itoa(int(k)) + ")"
 }
@@ -194,6 +202,9 @@ type Event struct {
 	Attempt int
 	Delay   time.Duration
 	Err     error
+
+	// Usage is set on [EventCompacted].
+	Usage llm.Usage
 }
 
 // Execution is a run that has been created or claimed and is ready to run.

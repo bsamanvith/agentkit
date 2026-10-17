@@ -9,7 +9,8 @@ permissions:
   contents: read
 
 jobs:
-  # Tests, lint and the fuzz seed corpus (which go test runs like any test).
+  # Tests, lint and the fuzz seed corpus (which go test runs like any test;
+  # coverage-guided fuzzing is local only, make fuzz).
   check:
     runs-on: ubuntu-latest
     steps:
@@ -78,18 +79,6 @@ jobs:
         run: |
           AGENTAPI_TEST_STORE=sqlite go test -race -count=1 ./pkg/agentapi/...
           AGENTAPI_TEST_STORE="$AGENTKIT_PG_URL" go test -race -count=1 ./pkg/agentapi/...
-
-  # Coverage-guided fuzzing, in parallel with check so it never delays the
-  # test result. Still required: a fuzz failure turns the commit red.
-  fuzz:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - name: make fuzz
-        run: make fuzz FUZZTIME=10s
 
   # The image builds and stays within IMAGE_BUDGET_MB. A unit test can't see
   # a .dockerignore that leaves out a package cmd/ imports; this can.

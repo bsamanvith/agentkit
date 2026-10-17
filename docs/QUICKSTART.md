@@ -316,6 +316,25 @@ claude mcp add --transport http agentkit-files http://localhost:8080/mcp/files -
 
 `edit_file` is a write tool (kind `write`, risk `medium`); the rest are read-only. Until tool policies (T083) land, anyone with the API token can change files under `files`' root: give it a root you are happy for them to change.
 
+## 8. Other MCP servers' tools
+
+A toolset of type `mcp` is another MCP server's tools, used by agents and served again at `/mcp/<name>` like any connector:
+
+```json
+{"name": "linear", "type": "mcp", "optional": true, "settings": {
+  "url": "https://mcp.linear.app/mcp",
+  "headers": {"Authorization": "Bearer ${LINEAR_API_KEY}"}}}
+```
+
+```json
+{"name": "fs", "type": "mcp", "settings": {
+  "transport": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/srv/docs"]}}
+```
+
+Settings: `url`; `transport` (`auto`, the default: Streamable HTTP, then the older HTTP+SSE; or `http`, `sse`, `stdio`); `command`, `args` and `env` for stdio (`env` names the variables the command gets; it gets `PATH` and `HOME` and nothing else); `headers` (`${NAME}` is replaced by the variable; a header carrying a secret must use one, and headers go only over https or to this machine); `timeout` per call (default `60s`); `connect_timeout` (default `15s`); `max_result_bytes` (default 1 MiB). `include` and `exclude` pick tools, as for any toolset. OAuth sign-in to a server is T095.
+
+The server is contacted at startup: one that does not answer fails startup, or with `"optional": true` is skipped and named in `/readyz`. Tools keep the server's names; an agent using two servers that both have a `search` sets `"prefix_tool_names": true` to get `linear__search` and `notion__search`. The server's descriptions are cleaned of hidden characters, its annotations can raise a tool's risk but not lower it, and its results are treated as third-party data. When the server changes its tool list, the log says so; restart to use the new list.
+
 ## Troubleshooting
 
 - **`startup: AGENTKIT_API_TOKEN ...`**: set a token of at least 16 bytes when listening on a non-loopback address (always the case in Docker).

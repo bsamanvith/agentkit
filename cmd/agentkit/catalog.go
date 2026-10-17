@@ -24,7 +24,7 @@ func newCatalog() (*toolset.Catalog, error) {
 	// Connectors log their auth mode at startup. serve's own logger is not
 	// passed here yet (newCatalog takes none), hence a JSON logger on stderr.
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
-	return toolset.NewCatalog(
+	return toolset.NewCatalog(append([]toolset.Factory{
 		toolset.Demo(),
 		coretools.Math(),
 		coretools.Files(),
@@ -34,5 +34,5 @@ func newCatalog() (*toolset.Catalog, error) {
 		parallel.Factory(parallel.WithLookupEnv(os.LookupEnv), parallel.WithLogger(logger)),
 		drive.Factory(drive.WithLookupEnv(os.LookupEnv), drive.WithLogger(logger)),
 		calendar.Factory(calendar.WithLookupEnv(os.LookupEnv), calendar.WithLogger(logger)),
-	)
+	}, mcpClientFactories(logger)...)...)
 }

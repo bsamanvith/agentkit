@@ -19,6 +19,8 @@ func ModuleRules() Rules {
 			"cmd/agentkit":         {"github.com/modelcontextprotocol/go-sdk/mcp", "github.com/jackc/pgx/v5"},
 			"examples/mcp-gateway": {"github.com/modelcontextprotocol/go-sdk/mcp"}, // its test uses the SDK client
 			"pkg/mcp/server":       {"github.com/modelcontextprotocol/go-sdk/jsonrpc", "github.com/modelcontextprotocol/go-sdk/mcp"},
+			// Other MCP servers' tools (T094), on the SDK's client.
+			"pkg/mcp/client": {"github.com/modelcontextprotocol/go-sdk/jsonrpc", "github.com/modelcontextprotocol/go-sdk/mcp"},
 			// MCP OAuth for external servers (T095): the SDK's metadata
 			// discovery and registration (oauthex, auth), x/oauth2 for PKCE,
 			// the code exchange and refresh. Its tests run the SDK's client
@@ -170,6 +172,8 @@ func ModuleRules() Rules {
 			// The MCP server serves requests: tools only, never a store
 			// backend (and so never store.Admin; see pkg/agentapi above).
 			"pkg/mcp/server": {"pkg/tool", "pkg/tool/tooltest", "internal/testkit"},
+			// Its tests run against agentkit's own MCP server.
+			"pkg/mcp/client": {"pkg/tool", "pkg/toolset", "pkg/mcp/server", "internal/testkit"},
 			// The built-in toolsets (math, files) are factories like the demo:
 			// the tool abstraction and the factory contract, nothing else.
 			"pkg/coretools": {"pkg/tool", "pkg/toolset"},

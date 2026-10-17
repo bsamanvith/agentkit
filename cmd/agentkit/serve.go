@@ -180,10 +180,6 @@ func (c cli) serve(ctx context.Context, args []string) error {
 			}
 		})
 	}()
-	go func() { // the recovery loop stops as the shutdown begins
-		<-ctx.Done()
-		stopRecovery()
-	}()
 	err = rt.Serve(ctx, ln)
 	stopRecovery()
 	<-recovered

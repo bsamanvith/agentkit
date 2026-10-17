@@ -53,8 +53,14 @@ func WithMiddleware(mw func(http.Handler) http.Handler) Option {
 }
 
 // WithLogger sets the logger for unexpected errors, such as a registry
-// failing in a way that is not a tool error (default: discard).
-func WithLogger(l *slog.Logger) Option { return func(c *config) { c.logger = l } }
+// failing in a way that is not a tool error (default, also for nil: discard).
+func WithLogger(l *slog.Logger) Option {
+	return func(c *config) {
+		if l != nil {
+			c.logger = l
+		}
+	}
+}
 
 // WithCallTimeout limits every tool call to d (default: no limit). A call that
 // runs longer has its context cancelled and the client gets an isError result

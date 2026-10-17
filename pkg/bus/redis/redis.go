@@ -77,8 +77,14 @@ func WithPrefix(p string) Option { return func(b *Bus) { b.prefix = p } }
 func WithTrim(trim func(bus.Topic) bus.Trim) Option { return func(b *Bus) { b.trim = trim } }
 
 // WithClock sets the clock that times reconnect backoff and the retries of
-// unblocking a cancelled read (default [clock.Real]).
-func WithClock(c clock.Clock) Option { return func(b *Bus) { b.clock = c } }
+// unblocking a cancelled read (default, also for nil, [clock.Real]).
+func WithClock(c clock.Clock) Option {
+	return func(b *Bus) {
+		if c != nil {
+			b.clock = c
+		}
+	}
+}
 
 // WithBackoff sets the wait before reconnecting a subscription after Redis
 // failed: min at first, doubling up to max (default 50ms to 5s).

@@ -149,7 +149,8 @@ func (r *Runner) RunFlow(ctx context.Context, conversationID string, input *flow
 	if err := r.store.Save(ctx, x.run.ID, ckpt); err != nil {
 		// Without a checkpoint the run cannot start: cancel it so that the
 		// conversation is free again.
-		wctx := context.WithoutCancel(ctx)
+		wctx, cancel := x.r.detach(ctx)
+		defer cancel()
 		_ = x.transition(wctx, store.StatusCanceled, store.Details{Error: "first checkpoint not saved: " + err.Error()})
 		x.release(wctx)
 		return nil, fmt.Errorf("run %q: save first checkpoint: %w", x.run.ID, err)
@@ -332,7 +333,9 @@ func (r *Runner) resume(ctx context.Context, runID string, c resumeConfig) (*Exe
 	}
 	fail := func(err error) (*Execution, error) {
 		x.run.ID = runID
-		x.release(context.WithoutCancel(ctx))
+		wctx, cancel := r.detach(ctx)
+		defer cancel()
+		x.release(wctx)
 		return nil, err
 	}
 	// The run may have moved between the read above and the claim.
@@ -467,7 +470,11 @@ func (r *Runner) cancelRun(ctx context.Context, tenant tenancy.Tenant, runID str
 		return store.Run{}, fmt.Errorf("run %q: claim: %w", runID, err)
 	}
 	x.run.ID = runID
-	defer x.release(context.WithoutCancel(ctx))
+	defer func() {
+		wctx, cancel := r.detach(ctx)
+		defer cancel()
+		x.release(wctx)
+	}()
 	if x.run, err = r.store.Get(ctx, runID); err != nil {
 		return store.Run{}, fmt.Errorf("run %q: %w", runID, err)
 	}
@@ -580,11 +587,12 @@ func (x *exec) execution(ctx context.Context, body func(context.Context, func(Ev
 // drive runs body under the lease and stores how the run ended.
 func (x *exec) drive(ctx context.Context, body func(context.Context, func(Event) bool) outcome, yield func(Event, error) bool) {
 	r := x.r
-	wctx := context.WithoutCancel(ctx)
 	runCtx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 	live, err := r.register(x.tenant, x.run.ID, cancel)
 	if err != nil {
+		wctx, wcancel := r.detach(ctx)
+		defer wcancel()
 		x.release(wctx) // for another process, at once
 		yield(Event{}, fmt.Errorf("run %q: %w", x.run.ID, err))
 		return
@@ -617,6 +625,11 @@ func (x *exec) drive(ctx context.Context, body func(context.Context, func(Event)
 	out := body(runCtx, emit)
 	stopRenewing()
 
+	// The run's end is stored even if ctx is done, but within a deadline
+	// taken now, after the body, so that a hung store cannot hold the
+	// execution (and Shutdown) forever.
+	wctx, wcancel := r.detach(ctx)
+	defer wcancel()
 	ev, err := x.finish(wctx, runCtx, out)
 	if stopped {
 		return
@@ -705,6 +718,19 @@ func (x *exec) transition(ctx context.Context, to store.Status, d store.Details)
 	return err
 }
 
+// detach returns a context for the writes that record how a run ended: they
+// go out after ctx is done, so it keeps ctx's values but not its
+// cancellation, and has a deadline of its own so that a hung store cannot
+// block the execution, or Shutdown, forever. Past the lease's time to live
+// another owner may hold the run, so a later write would fail anyway; the
+// deadline is that, with a floor for short leases.
+func (r *Runner) detach(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), max(r.ttl, minCleanupTimeout))
+}
+
+// minCleanupTimeout is the shortest deadline [Runner.detach] gives.
+const minCleanupTimeout = 10 * time.Second
+
 // release gives the lease up. It fails only if another owner holds it, which
 // is no business of this execution any more.
 func (x *exec) release(ctx context.Context) {
@@ -791,7 +817,10 @@ func (x *exec) chat(ctx context.Context, agent Agent, msg *llm.Message, flush in
 		if _, lost := errors.AsType[leaseLost](context.Cause(ctx)); lost {
 			return out
 		}
-		if err := t.flush(context.WithoutCancel(ctx)); err != nil {
+		fctx, fcancel := r.detach(ctx)
+		err := t.flush(fctx)
+		fcancel()
+		if err != nil {
 			return outcome{kind: outAbort, err: err}
 		}
 		spent = spent.Add(out.usage)

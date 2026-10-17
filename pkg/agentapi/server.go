@@ -1,6 +1,7 @@
 package agentapi
 
 import (
+	"bytes"
 	"context"
 	"crypto/subtle"
 	"encoding/json"
@@ -436,7 +437,7 @@ func (s *Server) readBody(w http.ResponseWriter, r *http.Request) ([]byte, *Erro
 }
 
 func decodeStrict(body []byte, v any) error {
-	dec := json.NewDecoder(strings.NewReader(string(body)))
+	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {
 		return err

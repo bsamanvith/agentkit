@@ -1,0 +1,42 @@
+# The agent API on Postgres. Its init container applies the migrations
+# (agentkit migrate: idempotent, under an advisory lock) with the same image,
+# so serve starts with AGENTKIT_STORE_MIGRATE=off and no server changes the
+# schema. The console is on the node port: http://localhost:30080.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: migrate
+          image: agentkit-api:latest
+          imagePullPolicy: IfNotPresent
+          args: [migrate]
+          env:
+            - name: AGENTKIT_STORE
+              valueFrom: {secretKeyRef: {name: agentkit, key: store-url}}
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 200m, memory: 64Mi}
+          securityContext:
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+      containers:
+        - name: api
+          env:
+            - name: AGENTKIT_STORE
+              valueFrom: {secretKeyRef: {name: agentkit, key: store-url}}
+            - {name: AGENTKIT_STORE_MIGRATE, value: "off"}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+spec:
+  type: NodePort
+  ports:
+    - {name: http, port: 8080, targetPort: http, nodePort: 30080}

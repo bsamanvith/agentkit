@@ -314,7 +314,7 @@ scripts/dev.sh run [config]         go run agentkit on the host (no Docker), SQL
 
 - `up` waits on container healthchecks (`/readyz`), so when it returns, the stack is usable.
 - `run` is the fastest inner loop: `go run ./cmd/agentkit` with the `allinone` config, no image build at all.
-- `scripts/kind.sh up|down|load|apply <topology>` mirrors this for Kubernetes, using kustomize overlays in `deploy/k8s/overlays/<topology>`.
+- `scripts/k8s-local.sh up|status|down` (`make k8s-up`) deploys the split topology to Docker Desktop's Kubernetes with the kustomize overlay `deploy/k8s/local` (T006).
 - `Makefile` holds build, lint, and test targets and delegates environment work to the scripts.
 
 ### 3.4 Layout

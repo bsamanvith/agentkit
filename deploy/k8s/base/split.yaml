@@ -1,20 +1,13 @@
 # The split deployment on Kubernetes (docs/COMPONENTS.md): the agent API with
-# the console, a runner and the toolsets, one Deployment each. For a local
-# cluster (kind, k3d), build the images and load them:
+# the console, a runner and the toolsets, one Deployment each, with no
+# namespace and no store: an overlay adds those. deploy/k8s/local is the one
+# for Docker Desktop's cluster (make k8s-up, deploy/k8s/README.md).
 #
-#   make images-split
-#   kind load docker-image agentkit-api:latest agentkit-runner:latest agentkit-toolsets:latest
-#   kubectl create namespace agentkit
-#   kubectl -n agentkit create secret generic agentkit \
-#     --from-literal=rpc-token="$(openssl rand -hex 24)" \
-#     --from-literal=api-token="$(openssl rand -hex 24)" \
-#     --from-literal=anthropic-api-key="$ANTHROPIC_API_KEY"
-#   kubectl -n agentkit apply -f deploy/k8s/split.yaml
-#   kubectl -n agentkit port-forward svc/api 8080:8080    # console at http://localhost:8080
-#
-# The store is in memory (one API replica, lost on restart); set
-# AGENTKIT_STORE to a postgres:// URL (and AGENTKIT_BUS to redis:// for more
-# replicas) to keep it. Every pod mounts the same config.
+# Every pod reads the secret "agentkit": rpc-token, api-token and
+# anthropic-api-key. The store is in memory here (one API replica, lost on
+# restart); an overlay sets AGENTKIT_STORE to a postgres:// URL (and
+# AGENTKIT_BUS to redis:// for more replicas) to keep it. Every pod mounts
+# the same config.
 apiVersion: v1
 kind: ConfigMap
 metadata:

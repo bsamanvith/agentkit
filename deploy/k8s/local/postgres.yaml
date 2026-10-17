@@ -1,0 +1,52 @@
+# Postgres 17 for the agent API's store, for local use only: one pod, its data
+# on a 1 GiB volume of the cluster's default storage class (Docker Desktop:
+# hostpath), kept until make k8s-down. Tuned down to fit a laptop.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  labels: {app.kubernetes.io/name: agentkit, app.kubernetes.io/component: postgres}
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: agentkit, app.kubernetes.io/component: postgres}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: agentkit, app.kubernetes.io/component: postgres}
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          imagePullPolicy: IfNotPresent
+          args: ["-c", "shared_buffers=32MB", "-c", "max_connections=40"]
+          env:
+            - {name: POSTGRES_USER, value: agentkit}
+            - {name: POSTGRES_DB, value: agentkit}
+            - name: POSTGRES_PASSWORD
+              valueFrom: {secretKeyRef: {name: agentkit, key: postgres-password}}
+            # A subdirectory: the volume's root can hold lost+found.
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+          ports: [{name: postgres, containerPort: 5432}]
+          readinessProbe:
+            exec: {command: [pg_isready, -U, agentkit, -d, agentkit]}
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: "1", memory: 256Mi}
+          volumeMounts: [{name: data, mountPath: /var/lib/postgresql/data}]
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: {requests: {storage: 1Gi}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  labels: {app.kubernetes.io/name: agentkit, app.kubernetes.io/component: postgres}
+spec:
+  selector: {app.kubernetes.io/name: agentkit, app.kubernetes.io/component: postgres}
+  ports: [{name: postgres, port: 5432, targetPort: postgres}]

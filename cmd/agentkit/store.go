@@ -21,6 +21,10 @@ const (
 	// envStoreMigrate=off starts serve without migrating the Postgres store:
 	// agentkit migrate does it, as a job.
 	envStoreMigrate = "AGENTKIT_STORE_MIGRATE"
+	// envStoreAdmin is the Postgres URL the recovery loop reads every
+	// tenant's runs on, as a role that bypasses row-level security; unset,
+	// it uses $AGENTKIT_STORE, whose role must then bypass it.
+	envStoreAdmin = "AGENTKIT_STORE_ADMIN"
 )
 
 // openedStore is the store serve runs on: the tenant-scoped view the agent
@@ -44,7 +48,7 @@ func (c cli) openStore(ctx context.Context, clk clock.Clock) (openedStore, error
 	default:
 		return openedStore{}, fmt.Errorf("%s: %q is not on or off", envStoreMigrate, v)
 	}
-	o, err := storeopen.Open(ctx, c.env(envStore), storeopen.WithClock(clk), storeopen.WithMigrate(migrate))
+	o, err := storeopen.Open(ctx, c.env(envStore), storeopen.WithClock(clk), storeopen.WithMigrate(migrate), storeopen.WithAdminURL(c.env(envStoreAdmin)))
 	if err != nil {
 		return openedStore{}, fmt.Errorf("%s: %w", envStore, err)
 	}

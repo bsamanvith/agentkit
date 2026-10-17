@@ -191,6 +191,13 @@ func (c cli) serve(ctx context.Context, args []string) error {
 		ln.Close()
 		return err
 	}
+	// A recovery loop that cannot read across tenants (a Postgres role under
+	// row-level security, with no $AGENTKIT_STORE_ADMIN) fails startup
+	// rather than every pass.
+	if _, err := st.admin.ListResumableAll(ctx, time.Time{}, 1); err != nil {
+		ln.Close()
+		return fmt.Errorf("recovery: %w", err)
+	}
 	rctx, stopRecovery := context.WithCancel(ctx)
 	recovered := make(chan struct{})
 	go func() {

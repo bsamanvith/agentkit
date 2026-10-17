@@ -71,6 +71,10 @@ type Config struct {
 	// Migrate says whether to apply the migrations the database lacks (the
 	// default) or only check that it has them all.
 	Migrate bool
+	// AdminURL, if set, is where the backend's [store.Admin] connects, as a
+	// role that may read across tenants (Postgres: one that bypasses
+	// row-level security). Backends without such roles ignore it.
+	AdminURL string
 }
 
 // Backend opens the stores of the specs it matches.
@@ -110,6 +114,9 @@ func WithClock(c clock.Clock) Option {
 // WithMigrate sets whether opening a store applies the migrations its
 // database lacks (the default) or only checks that it has them all.
 func WithMigrate(on bool) Option { return func(o *options) { o.cfg.Migrate = on } }
+
+// WithAdminURL sets [Config.AdminURL].
+func WithAdminURL(url string) Option { return func(o *options) { o.cfg.AdminURL = url } }
 
 // WithBackends adds backends to the built-in ones, tried first: a program's
 // own store (DynamoDB, ...) opens from a spec like the others.

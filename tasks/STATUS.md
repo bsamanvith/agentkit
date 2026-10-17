@@ -22,7 +22,7 @@
 | Agent definitions as versioned data (agents, skills, toolsets) | [E15](E15-agent-definitions.md) | **Planned** (T075; T076, T077 to plan); T029 and T062 are done, so T075 can start |
 | Runtimes and jobs: temporary environments, exported harness images, results outside chat | [E16](E16-runtimes-jobs.md) | **Shaped**, tasks to plan after the console's first version |
 | Tool safety and control: tool kinds and risk, policies, interrupts and approvals, deferred loading, steering | [E17](E17-tool-safety-control.md) | **In progress**: T082 (tool metadata) done; T083–T086 next |
-| Streaming and the server backend: SSE + HTTP commands (WebSocket later), Postgres + Redis | [E18](E18-streaming-backend.md) | **In progress**: T088 (Postgres store, event log, `agentkit migrate`), T089 (`pkg/bus`, Redis Streams) and T098 (runner turn batching) done; T090 (stream API) and T093 (row-level security) ready |
+| Streaming and the server backend: SSE + HTTP commands (WebSocket later), Postgres + Redis | [E18](E18-streaming-backend.md) | **In progress**: T088 (Postgres store, event log, `agentkit migrate`), T089 (`pkg/bus`, Redis Streams) T098 (runner turn batching) and T093 (row-level security, `AGENTKIT_STORE_ADMIN`) done; T090 (stream API) mostly done |
 | External MCP servers: add any remote MCP server by URL, MCP OAuth, tool pinning | [E19](E19-external-mcp-servers.md) | **In progress**: T094 (the client, toolset type `mcp`) done; T095 core built; T096 part 1 (SSRF guard `pkg/netguard`, tool pinning, `agentkit mcp-tools`) done, part 2 (runtime API) next |
 | Google connectors: Gmail, Calendar, Drive as toolsets, one package each, shared `common` | [E21](E21-google-connectors.md) | **In progress** (T108–T111): T108 (`connectors/google/common`) and T109 (Gmail, synthetic cassettes) in review (PR #23); T110 (Calendar) and T111 (Drive) start from T108 |
 | More model providers | [E08](E08-model-providers.md) | Later |
@@ -69,7 +69,7 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 | [T100](T100-interactive-chat-runs.md) | Runner: interactive chat runs stop with their user (stop, closed tab), show `interrupted`, are never recovered in the background | **Start now** (T030, T088, T098 done): T037 and T099 wait on it |
 | [T090](T090-stream-api.md) | Stream API across replicas: replay from Postgres, tail Redis, commands to the lease holder | **Mostly done** (bsamanvith/agentkit#13, merged 2026-10-15): run streams and stop/cancel across replicas, local/dev image variants. Left: steering (needs T086), `GET /v1/events` (needs T040) |
 | [T103](T103-shared-run-watch.md) | One watch per run per replica, shared by its viewers: one Redis connection and one held-check per run, not per viewer | **Review**: bsamanvith/agentkit#18. The takeover criterion is tested in process, not in `TestE2EServeReplicas` (see its Notes) |
-| [T093](T093-postgres-rls.md) | Postgres row-level security by tenant | **Ready** (T088 done); small |
+| [T093](T093-postgres-rls.md) | Postgres row-level security by tenant | **Done**: policies on every tenant table, tenant set per pooled connection, `Admin` on its own role (`AGENTKIT_STORE_ADMIN`) |
 | [T099](T099-run-queue-order.md) | Runs: start time, lane and priority, `ClaimNext` | After T100 (migration 0006; skips interactive runs) |
 | [T083](T083-tool-policy.md) | Tool policy: presets, rules, allow/flag/approve/deny | **Ready** (T082 done); T084 follows with T030 done |
 | [T031](T031-compaction.md) | Compaction | **Ready** (T030 done) |

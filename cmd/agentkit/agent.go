@@ -75,7 +75,7 @@ type apiConfig struct {
 
 // agentModelConfig chooses the model.
 type agentModelConfig struct {
-	// Provider is "anthropic", the only one so far.
+	// Provider names the model adapter (modelProviders): "anthropic".
 	Provider string `json:"provider"`
 	// ID is the model ID.
 	ID string `json:"id"`
@@ -268,8 +268,8 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 // check validates what of an agent's config does not need its model built.
 func (d agentDef) check(legacy bool) error {
 	label := d.label(legacy)
-	if d.Model.Provider != "anthropic" {
-		return fmt.Errorf("%s.model.provider %q: the only provider is \"anthropic\"", label, d.Model.Provider)
+	if _, ok := modelProviders()[d.Model.Provider]; !ok {
+		return fmt.Errorf("%s.model.provider %q: want %s", label, d.Model.Provider, providerNames())
 	}
 	if d.MaxTotalTokens < 0 || d.Model.MaxTokens < 0 {
 		return fmt.Errorf("%s: negative limit", label)
@@ -287,9 +287,9 @@ func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built 
 	}
 	newModel := c.newModel
 	if newModel == nil {
-		newModel = newClaude
+		newModel = buildModel
 	}
-	model, err := newModel(modelFlags{model: a.Model.ID, effort: a.Model.Effort})
+	model, err := newModel(modelFlags{provider: a.Model.Provider, model: a.Model.ID, effort: a.Model.Effort})
 	if err != nil {
 		return nil, nil, fmt.Errorf("%s.model: %w", label, err)
 	}

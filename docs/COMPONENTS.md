@@ -111,7 +111,31 @@ To make it a named variant that CI keeps honest:
 3. docs/SIZES.md: a row with its measured size (AGENTS.md, Sizes).
 
 A new part to leave out is a file with `//go:build !notag` and a `_none.go`
-twin that returns `notBuilt` (`cmd/agentkit/backends.go` lists them).
+twin that returns `notBuilt` (`cmd/agentkit/backends.go` lists them). Store
+and bus backends are such files in `pkg/store/storeopen` and
+`pkg/bus/busopen`.
+
+## Plugging in another implementation
+
+Each seam is a small interface with a conformance suite; a new
+implementation passes the suite and is picked by a spec or config value.
+
+| Seam | Interface | Suite | Picked by |
+|---|---|---|---|
+| Store | `storeopen.Store` (one transactional store: conversations, runs, events, commands, checkpoints) | every `storetest.Run*` and `Simulate*` | `AGENTKIT_STORE` through `storeopen.Backends` (or `storeopen.WithBackends` in a program of your own) |
+| Bus | `bus.Bus`: an atomic conditional append with replay, not a work queue | `bustest.Run` | `AGENTKIT_BUS` through `busopen.Backends` |
+| Model | `llm.Model` | `llmtest` | `model.provider` through `modelProviders` (`cmd/agentkit/models.go`) |
+| Turn loop | `runner.Agent` | runner tests | `AGENTKIT_RUNNER_URL`, or an `agentapi.Agent`'s `Runner` (pools: E20) |
+| Run orchestration | `agentapi.Runs` (default `*runner.Runner`: in process, under leases) | agentapi tests | `agentapi.WithRuns` |
+| Tools | `tool.Registry` | `toolsettest` | the config's toolsets (`connectors/`, write-connector skill) |
+| Transport | `rpc.Conn` | rpc tests | `rpc.Dial` |
+
+A new store backend: a package under `pkg/store` that passes the suites, a
+`Backend` in `storeopen` behind a build tag with its `_none.go` twin, its
+SDK in `internal/archtest/rules.go`, and a row in docs/SIZES.md. A bus
+backend is the same in `busopen`. A model provider is a package under
+`pkg/llm`, a `models_<name>.go` that builds it, and its line in
+`modelProviders`.
 
 ## Topologies
 

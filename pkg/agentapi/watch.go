@@ -226,11 +226,40 @@ func (s *Server) stopWatches() {
 	}
 }
 
-// viewRun sends emit the events of a run another process holds, after the
-// ID after, through the run's shared watch, until the run's last event, the
-// watch's end, or ctx is done. It is what watchRun does for one reader, at
-// the cost of one watch per run.
-func (s *Server) viewRun(ctx context.Context, run store.Run, after bus.ID, emit func(Event)) {
+// watchView is a viewer joined to a run's shared watch that has not read
+// it yet.
+type watchView struct {
+	run   store.Run
+	after bus.ID
+	w     *sharedWatch
+	v     *viewer
+	start bus.ID
+	ring  []Event
+}
+
+// joinView joins a viewer from after the ID after to the run's shared watch,
+// starting the watch if the run has none going on. Join before the request
+// is answered or acted on: from then on the viewer keeps the watch going, so
+// the run cannot end, and its watch with it, before the viewer reads it,
+// which would have it start a new watch after the live events it missed.
+// Then read it ([Server.readView]), or leave it ([Server.leaveView]).
+func (s *Server) joinView(ctx context.Context, run store.Run, after bus.ID) *watchView {
+	w, v, start, ring := s.joinWatch(ctx, run, after)
+	return &watchView{run: run, after: after, w: w, v: v, start: start, ring: ring}
+}
+
+// leaveView leaves a view without reading it.
+func (s *Server) leaveView(jv *watchView) {
+	s.leaveWatch(jv.w, jv.v)
+}
+
+// readView sends emit the events of a run another process holds, after the
+// ID the view was joined from, through the run's shared watch, until the
+// run's last event, the watch's end, or ctx is done; then it leaves the
+// watch. It is what watchRun does for one reader, at the cost of one watch
+// per run.
+func (s *Server) readView(ctx context.Context, jv *watchView, emit func(Event)) {
+	run, after := jv.run, jv.after
 	ended := false
 	send := func(e Event) {
 		if ended || eventID(e).Compare(after) <= 0 {
@@ -240,34 +269,24 @@ func (s *Server) viewRun(ctx context.Context, run store.Run, after bus.ID, emit 
 		after = eventID(e)
 		ended = isTerminal(e.Type)
 	}
-	var prev *sharedWatch
-	var pv *viewer
+	w, v, start, ring := jv.w, jv.v, jv.start, jv.ring
 	for {
-		var w *sharedWatch
-		var v *viewer
-		var start bus.ID
-		var ring []Event
-		ok := false
-		if prev != nil {
-			// Back to the watch it fell behind on, which may have ended
-			// since, and left the map: its ring still has the run's end.
-			v, start, ring, ok = prev.join()
-			w = prev
-		}
-		if !ok {
-			w, v, start, ring = s.joinWatch(ctx, run, after)
-		}
-		if prev != nil {
-			// Left only now that the viewer is back: had it been the last,
-			// leaving first would stop the watch, and a new one would skip
-			// the live events before the stored ones it starts after.
-			s.leaveWatch(prev, pv)
-		}
 		if !s.view(ctx, w, v, start, ring, &after, &ended, send) {
 			s.leaveWatch(w, v)
 			return
 		}
-		prev, pv = w, v
+		// Back to the watch it fell behind on, which may have ended since,
+		// and left the map: its ring still has the run's end.
+		prev, pv := w, v
+		var ok bool
+		v, start, ring, ok = prev.join()
+		if !ok {
+			w, v, start, ring = s.joinWatch(ctx, run, after)
+		}
+		// Left only now that the viewer is back: had it been the last,
+		// leaving first would stop the watch, and a new one would skip the
+		// live events before the stored ones it starts after.
+		s.leaveWatch(prev, pv)
 	}
 }
 

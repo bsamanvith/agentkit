@@ -307,8 +307,10 @@ func TestSharedWatchCommands(t *testing.T) {
 			t.Errorf("viewer %d streamed %v %v, want the stored events %v and run_error interrupted", i, idsOf(got), types(got), want)
 		}
 	}
-	if n := cb.most.Load(); n != 1 {
-		t.Errorf("two viewers and a stop held %d bus subscriptions at once, want 1", n)
+	// total, not most: a stop that joined after the watch ended would start
+	// a second one, which most counts only if the first is not yet gone.
+	if n := cb.total.Load(); n != 1 {
+		t.Errorf("two viewers and a stop made %d bus subscriptions, want 1", n)
 	}
 }
 

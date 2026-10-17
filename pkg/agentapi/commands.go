@@ -42,7 +42,16 @@ func (s *Server) command(ctx context.Context, w http.ResponseWriter, r *http.Req
 	if key == "" {
 		key = s.cfg.newID("cmd_")
 	}
+	run, err := s.store.Get(ctx, id)
+	if err != nil {
+		s.commandError(w, id, err)
+		return
+	}
+	// Joined before the command goes, so the run's watch is still on when
+	// the run ends by it: the command waits on the watch its viewers share.
+	jv := s.joinView(ctx, run, bus.ID{Seq: uint64(max(lastStored(ctx, s.store, id), 0))})
 	if _, err := s.cmds.Send(ctx, id, store.Command{Key: key, Type: typ}); err != nil {
+		s.leaveView(jv)
 		if errors.Is(err, store.ErrFinal) && typ == commandCancel {
 			if run, gerr := s.store.Get(ctx, id); gerr == nil && run.Status == store.StatusCanceled {
 				s.afterCommand(ctx, w, r, id)
@@ -56,12 +65,7 @@ func (s *Server) command(ctx context.Context, w http.ResponseWriter, r *http.Req
 		s.commandError(w, id, err)
 		return
 	}
-	run, err := s.store.Get(ctx, id)
-	if err != nil {
-		s.commandError(w, id, err)
-		return
-	}
-	s.viewRun(ctx, run, bus.ID{Seq: uint64(max(lastStored(ctx, s.store, id), 0))}, func(Event) {})
+	s.readView(ctx, jv, func(Event) {})
 	s.awaitReleased(ctx, id)
 	if ctx.Err() != nil {
 		return

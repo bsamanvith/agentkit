@@ -232,11 +232,11 @@ func (s *Server) runEvents(w http.ResponseWriter, r *http.Request) {
 		s.follow(w, r, h, after)
 		return
 	}
-	out, stop := s.openStream(w, r, run, nil)
-	defer stop()
 	if !held(run, s.cfg.clock.Now()) || s.ownBus {
 		// Nobody runs it, or no bus joins this server to the one that
 		// does: what the store has is all there is.
+		out, stop := s.openStream(w, r, run, nil)
+		defer stop()
 		for _, e := range withText(evs, after) {
 			if eventID(e).Compare(after) > 0 {
 				out.event(e)
@@ -244,7 +244,12 @@ func (s *Server) runEvents(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	s.viewRun(ctx, run, after, out.event)
+	// Joined before the headers go: a client that has them gets the live
+	// events from then on as they come.
+	jv := s.joinView(ctx, run, after)
+	out, stop := s.openStream(w, r, run, nil)
+	defer stop()
+	s.readView(ctx, jv, out.event)
 }
 
 // openStream sends an event stream's headers; stop ends it.
@@ -278,7 +283,7 @@ var errReleased = errors.New("the run is no longer held")
 // lets the run go without that event reaching the bus (it crashed, or was
 // stopped), it ends with the run's stored events and the last event its
 // status says; when another process takes it over, it follows that one.
-// Readers share one per run through [Server.viewRun] (T103).
+// Readers share one per run through [Server.joinView] (T103).
 func (s *Server) watchRun(ctx context.Context, run store.Run, after bus.ID, emit func(Event)) {
 	poll := s.poll()
 	for {

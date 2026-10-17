@@ -1,10 +1,13 @@
 package rpc
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"iter"
 	"mime"
 	"net/http"
@@ -16,10 +19,23 @@ import (
 
 // Client is a [Conn] over HTTP to a server's base URL. Build it with [Dial].
 type Client struct {
-	base  string // without a trailing slash
-	http  *http.Client
-	token string
+	base     string // without a trailing slash
+	http     *http.Client
+	token    string
+	idle     time.Duration
+	maxFrame int
 }
+
+// Client defaults.
+const (
+	// DefaultIdleTimeout is how long a call may go without hearing from the
+	// server, pings included, before the client gives up on it
+	// ([WithIdleTimeout]): four of the server's [DefaultPingInterval].
+	DefaultIdleTimeout = 4 * DefaultPingInterval
+	// DefaultMaxFrameBytes is the largest frame a client reads
+	// ([WithMaxFrameBytes]): one message, such as a run's result.
+	DefaultMaxFrameBytes = 64 << 20
+)
 
 var _ Conn = (*Client)(nil)
 
@@ -33,6 +49,17 @@ func WithBearer(token string) DialOption { return func(c *Client) { c.token = to
 // WithHTTPClient sends calls with hc (default: a client with no timeout, so
 // streams last as long as their context).
 func WithHTTPClient(hc *http.Client) DialOption { return func(c *Client) { c.http = hc } }
+
+// WithIdleTimeout sets how long a call may go without receiving a byte from
+// the server, pings included, before it fails with [ErrUnavailable] (default
+// [DefaultIdleTimeout]; zero is the default, a negative value waits as long
+// as the context). It finds a server that hung or a connection that died
+// without closing. Time the caller spends handling a message does not count.
+func WithIdleTimeout(d time.Duration) DialOption { return func(c *Client) { c.idle = d } }
+
+// WithMaxFrameBytes limits the size of one frame of an answer (default
+// [DefaultMaxFrameBytes]); a larger one fails the call with [ErrUnavailable].
+func WithMaxFrameBytes(n int) DialOption { return func(c *Client) { c.maxFrame = n } }
 
 // Dial returns a client of the server at base, an http or https URL such as
 // "http://runner:8080": a method "svc/Name" is called at
@@ -52,19 +79,43 @@ func Dial(base string, opts ...DialOption) (*Client, error) {
 	if c.http == nil {
 		c.http = &http.Client{}
 	}
+	if c.idle == 0 {
+		c.idle = DefaultIdleTimeout
+	}
+	if c.maxFrame <= 0 {
+		c.maxFrame = DefaultMaxFrameBytes
+	}
 	return c, nil
 }
 
 // Call implements [Conn].
 func (c *Client) Call(ctx context.Context, method string, req json.RawMessage) iter.Seq2[json.RawMessage, error] {
 	return func(yield func(json.RawMessage, error) bool) {
-		ctx, cancel := context.WithCancel(ctx)
-		defer cancel()
+		parent := ctx
+		ctx, cancel := context.WithCancelCause(ctx)
+		defer cancel(nil)
 		fail := func(err error) {
 			if ctx.Err() != nil {
 				err = context.Cause(ctx)
 			}
 			yield(nil, err)
+		}
+		// The idle timer runs only while the client waits on the server: for
+		// the answer's headers, then in each read of its body.
+		idle := func() (stop func() bool) { return func() bool { return false } }
+		if c.idle > 0 {
+			stalled := fmt.Errorf("%w: %s sent nothing for %v", ErrUnavailable, c.base, c.idle)
+			t := time.AfterFunc(c.idle, func() {
+				if parent.Err() == nil {
+					cancel(stalled)
+				}
+			})
+			t.Stop()
+			defer t.Stop()
+			idle = func() func() bool {
+				t.Reset(c.idle)
+				return t.Stop
+			}
 		}
 		hreq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+PathPrefix+method, bytes.NewReader(req))
 		if err != nil {
@@ -80,7 +131,9 @@ func (c *Client) Call(ctx context.Context, method string, req json.RawMessage) i
 			ms := max(time.Until(d).Milliseconds(), 1)
 			hreq.Header.Set(TimeoutHeader, strconv.FormatInt(ms, 10))
 		}
+		stop := idle()
 		resp, err := c.http.Do(hreq)
+		stop()
 		if err != nil {
 			fail(fmt.Errorf("%w: %w", ErrUnavailable, err))
 			return
@@ -90,14 +143,28 @@ func (c *Client) Call(ctx context.Context, method string, req json.RawMessage) i
 			fail(fmt.Errorf("%w: %s answered %s (%s), not this protocol", ErrUnavailable, c.base, resp.Status, mt))
 			return
 		}
-		dec := json.NewDecoder(resp.Body)
+		lines := bufio.NewScanner(idleReader{resp.Body, idle})
+		lines.Buffer(make([]byte, 0, min(64<<10, c.maxFrame)), c.maxFrame)
 		for {
-			var f frame
-			if err := dec.Decode(&f); err != nil {
+			if !lines.Scan() {
+				err := lines.Err()
+				switch {
+				case err == nil:
+					err = io.ErrUnexpectedEOF
+				case errors.Is(err, bufio.ErrTooLong):
+					err = fmt.Errorf("frame over %d bytes", c.maxFrame)
+				}
 				fail(fmt.Errorf("%w: stream cut short: %w", ErrUnavailable, err))
 				return
 			}
+			var f frame
+			if err := json.Unmarshal(lines.Bytes(), &f); err != nil {
+				fail(fmt.Errorf("%w: bad frame: %w", ErrUnavailable, err))
+				return
+			}
 			switch {
+			case f.Ping:
+				continue
 			case f.Error != nil:
 				yield(nil, f.Error)
 				return
@@ -112,6 +179,19 @@ func (c *Client) Call(ctx context.Context, method string, req json.RawMessage) i
 			}
 		}
 	}
+}
+
+// idleReader runs the idle timer during each read: a large frame that
+// keeps arriving is not a stall.
+type idleReader struct {
+	r    io.Reader
+	idle func() (stop func() bool)
+}
+
+func (r idleReader) Read(p []byte) (int, error) {
+	stop := r.idle()
+	defer stop()
+	return r.r.Read(p)
 }
 
 // Pipe returns a [Conn] that calls s in process: no network, but requests,

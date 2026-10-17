@@ -42,6 +42,16 @@
 // header, so the handler stops when the caller gives up. With a token
 // ([WithToken], [WithBearer]) every call carries Authorization: Bearer.
 //
+// # Liveness
+//
+// A call may be silent for minutes while its handler works. The server
+// sends {"ping":true} after each [WithPingInterval] without a frame, which
+// the client skips, so proxies keep the connection and the client can tell
+// a slow handler from a dead one: a call that receives nothing, pings
+// included, for [WithIdleTimeout] fails with [ErrUnavailable] and its
+// handler is canceled. A caller that stops reading is cut off after
+// [WithWriteTimeout], and a frame over [WithMaxFrameBytes] fails the call.
+//
 // Components of one release talk to each other: messages are plain JSON, and
 // unknown fields are ignored, but nothing negotiates versions.
 package rpc

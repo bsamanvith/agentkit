@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -28,6 +29,18 @@ const (
 // DefaultMaxRequestBytes is the largest request a server reads, unless
 // [WithMaxRequestBytes] says otherwise: a run's request holds its transcript.
 const DefaultMaxRequestBytes = 32 << 20
+
+// Liveness defaults. A call can be silent for minutes (a model thinking, a
+// tool running): the server pings so that proxies and the client's idle
+// timeout ([DefaultIdleTimeout]) see the connection alive, and gives up on a
+// caller that stops reading.
+const (
+	// DefaultPingInterval is how long a call may go without a frame before
+	// the server sends a ping ([WithPingInterval]).
+	DefaultPingInterval = 15 * time.Second
+	// DefaultWriteTimeout bounds writing one frame ([WithWriteTimeout]).
+	DefaultWriteTimeout = 30 * time.Second
+)
 
 // Server serves methods ([Unary.Handle], [Stream.Handle]) over HTTP, as an
 // http.Handler, and in process through [Pipe]. Register every method before
@@ -49,9 +62,11 @@ type handler struct {
 type ServerOption func(*serverConfig)
 
 type serverConfig struct {
-	token    string
-	maxBytes int64
-	log      *slog.Logger
+	token        string
+	maxBytes     int64
+	log          *slog.Logger
+	ping         time.Duration
+	writeTimeout time.Duration
 }
 
 // WithToken makes the server refuse calls without "Authorization: Bearer
@@ -66,6 +81,19 @@ func WithMaxRequestBytes(n int64) ServerOption { return func(c *serverConfig) { 
 // (default: nothing is logged).
 func WithLogger(l *slog.Logger) ServerOption { return func(c *serverConfig) { c.log = l } }
 
+// WithPingInterval sets how long a call may go without a frame before the
+// server sends a ping (default [DefaultPingInterval]; zero is the default, a
+// negative value sends none). Keep it well under the clients' idle timeout.
+func WithPingInterval(d time.Duration) ServerOption { return func(c *serverConfig) { c.ping = d } }
+
+// WithWriteTimeout bounds writing one frame to a caller (default
+// [DefaultWriteTimeout]; zero is the default, a negative value is no
+// limit). A caller that stops reading for longer is cut off and its handler
+// canceled, rather than holding the handler forever.
+func WithWriteTimeout(d time.Duration) ServerOption {
+	return func(c *serverConfig) { c.writeTimeout = d }
+}
+
 // NewServer returns a server with no methods.
 func NewServer(opts ...ServerOption) *Server {
 	cfg := serverConfig{maxBytes: DefaultMaxRequestBytes, log: slog.New(slog.DiscardHandler)}
@@ -74,6 +102,12 @@ func NewServer(opts ...ServerOption) *Server {
 	}
 	if cfg.maxBytes <= 0 {
 		cfg.maxBytes = DefaultMaxRequestBytes
+	}
+	if cfg.ping == 0 {
+		cfg.ping = DefaultPingInterval
+	}
+	if cfg.writeTimeout == 0 {
+		cfg.writeTimeout = DefaultWriteTimeout
 	}
 	if cfg.log == nil {
 		cfg.log = slog.New(slog.DiscardHandler)
@@ -154,11 +188,13 @@ func (s *Server) dispatch(ctx context.Context, name string, req json.RawMessage,
 	return encodeError(err, h.codes)
 }
 
-// frame is one line of an answer: a message, the end, or an error.
+// frame is one line of an answer: a message, the end, an error, or a ping
+// that only says the call is alive.
 type frame struct {
 	Data  json.RawMessage `json:"data,omitempty"`
 	End   bool            `json:"end,omitempty"`
 	Error *Error          `json:"error,omitempty"`
+	Ping  bool            `json:"ping,omitempty"`
 }
 
 // ServeHTTP serves POST <anything>/<service>/<Method>.
@@ -207,24 +243,107 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 	}
 
-	rc := http.NewResponseController(w)
-	enc := json.NewEncoder(w)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	out := s.newFrameWriter(w, cancel)
 	w.WriteHeader(http.StatusOK)
-	write := func(f frame) error {
-		if err := enc.Encode(f); err != nil {
-			return errors.Join(errStop, err)
-		}
-		if err := rc.Flush(); err != nil && !errors.Is(err, http.ErrNotSupported) {
-			return errors.Join(errStop, err)
-		}
-		return nil
-	}
-	werr := s.dispatch(ctx, name, body, func(raw json.RawMessage) error { return write(frame{Data: raw}) })
+	stopPing := out.pingEvery(s.cfg.ping)
+	werr := s.dispatch(ctx, name, body, func(raw json.RawMessage) error { return out.write(frame{Data: raw}) })
+	stopPing()
 	if werr != nil {
-		_ = write(frame{Error: werr})
+		_ = out.write(frame{Error: werr})
 		return
 	}
-	_ = write(frame{End: true})
+	_ = out.write(frame{End: true})
+}
+
+// frameWriter writes an answer's frames: the handler's and the pings, one
+// at a time, each flushed and bounded by the write timeout.
+type frameWriter struct {
+	mu      sync.Mutex
+	rc      *http.ResponseController
+	enc     *json.Encoder
+	timeout time.Duration
+	wrote   bool // since the last ping check
+	failed  error
+	// stop cancels the handler once a write fails, so a silent handler
+	// whose caller is gone stops too, not only one that sends.
+	stop context.CancelFunc
+}
+
+func (s *Server) newFrameWriter(w http.ResponseWriter, stop context.CancelFunc) *frameWriter {
+	return &frameWriter{rc: http.NewResponseController(w), enc: json.NewEncoder(w), timeout: s.cfg.writeTimeout, stop: stop}
+}
+
+// write sends f. After a failed write every write fails: the caller is gone
+// and the handler stops ([errStop]).
+func (o *frameWriter) write(f frame) error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.failed != nil {
+		return o.failed
+	}
+	if err := o.send(f); err != nil {
+		o.failed = errors.Join(errStop, err)
+		o.stop()
+		return o.failed
+	}
+	o.wrote = true
+	return nil
+}
+
+func (o *frameWriter) send(f frame) error {
+	if o.timeout > 0 {
+		if err := o.rc.SetWriteDeadline(time.Now().Add(o.timeout)); err != nil && !errors.Is(err, http.ErrNotSupported) {
+			return err
+		}
+	}
+	if err := o.enc.Encode(f); err != nil {
+		return err
+	}
+	if err := o.rc.Flush(); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		return err
+	}
+	return nil
+}
+
+// pingEvery sends a ping each interval in which nothing else was written,
+// until the returned stop is called. A negative interval sends none.
+func (o *frameWriter) pingEvery(interval time.Duration) (stop func()) {
+	if interval < 0 {
+		return func() {}
+	}
+	done := make(chan struct{})
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		t := time.NewTicker(interval)
+		defer t.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-t.C:
+			}
+			o.mu.Lock()
+			idle := !o.wrote
+			o.wrote = false
+			o.mu.Unlock()
+			if !idle {
+				continue
+			}
+			if o.write(frame{Ping: true}) != nil {
+				return
+			}
+			o.mu.Lock()
+			o.wrote = false // a ping does not count as traffic
+			o.mu.Unlock()
+		}
+	}()
+	return func() {
+		close(done)
+		<-finished
+	}
 }
 
 // methodOf is the method a request path names: its last two segments.

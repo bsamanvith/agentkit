@@ -54,7 +54,7 @@ import (
 const canary = "pk-canary-3f9a7c1e5b2d8046"
 
 // truncated matches the marker that ends cut content.
-var truncated = regexp.MustCompile(`…\[truncated [0-9]{1,3}(,[0-9]{3})* characters; [^\]]+\]$`)
+var truncated = regexp.MustCompile(`…\[truncated [0-9]{1,3}(,[0-9]{3})* characters?; [^\]]+\]$`)
 
 // recorded is one request the upstream received.
 type recorded struct {

@@ -6,23 +6,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/bsamanvith/agentkit/connectors/internal/httpx"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 )
 
-const (
-	maxBodyBytes      = 8 << 20
-	maxRetryAfter     = 10 * time.Second
-	defaultRetryAfter = time.Second
-	maxMessageChars   = 300
-	redacted          = "[redacted]"
-)
+// maxMessageChars caps text taken from Tavily's error bodies.
+const maxMessageChars = 300
 
 // client sends requests to Tavily. It is shared by a toolset's tools and is
 // safe for concurrent use.
@@ -45,7 +39,7 @@ func invalid(format string, args ...any) error {
 	return &inputError{msg: fmt.Sprintf(format, args...)}
 }
 
-// errTooLarge is a response over maxBodyBytes.
+// errTooLarge is a response over httpx.MaxBody.
 var errTooLarge = errors.New("response from tavily is over the 8 MB limit")
 
 // post sends body to endpoint and returns the response body of a 2xx. A 429
@@ -60,21 +54,13 @@ func (c *client) post(ctx context.Context, endpoint string, body any, timeout ti
 		return nil, err
 	}
 	if status == http.StatusTooManyRequests {
-		wait, ok := retryAfter(header)
-		// A context's deadline is in real time, whatever c.clock is.
-		if deadline, has := ctx.Deadline(); has && time.Until(deadline) < wait {
-			ok = false
-		}
+		wait, ok := httpx.RetryAfter(ctx, header.Get("Retry-After"), c.clock.Now())
 		if !ok {
 			return nil, c.rateLimited()
 		}
 		c.log.DebugContext(ctx, "tavily rate limited, retrying", "endpoint", endpoint, "wait", wait)
-		t := c.clock.NewTimer(wait)
-		select {
-		case <-ctx.Done():
-			t.Stop()
-			return nil, ctx.Err()
-		case <-t.C():
+		if err := httpx.Sleep(ctx, c.clock, wait); err != nil {
+			return nil, err
 		}
 		if status, _, resp, err = c.attempt(ctx, endpoint, payload, timeout); err != nil {
 			return nil, err
@@ -106,12 +92,12 @@ func (c *client) attempt(ctx context.Context, endpoint string, payload []byte, t
 		return 0, nil, nil, c.transportError(ctx, actx, endpoint, timeout, err)
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes+1))
+	body, err := httpx.ReadBody(resp.Body, httpx.MaxBody)
 	switch {
+	case errors.Is(err, httpx.ErrTooLarge):
+		return 0, nil, nil, errTooLarge
 	case err != nil:
 		return 0, nil, nil, c.transportError(ctx, actx, endpoint, timeout, err)
-	case len(body) > maxBodyBytes:
-		return 0, nil, nil, errTooLarge
 	}
 	c.log.DebugContext(ctx, "tavily request", "endpoint", endpoint, "status", resp.StatusCode,
 		"bytes", len(body), "duration", time.Since(start))
@@ -176,27 +162,7 @@ func (c *client) cleanContent(s string, limit int, more string) string {
 	return truncateContent(c.redact(s), limit, more)
 }
 
-func (c *client) redact(s string) string {
-	if c.key == "" {
-		return s
-	}
-	return strings.ReplaceAll(s, c.key, redacted)
-}
-
-// retryAfter is how long a 429 asks to wait, and whether to retry at all:
-// not when it asks for more than maxRetryAfter.
-func retryAfter(h http.Header) (time.Duration, bool) {
-	v := strings.TrimSpace(h.Get("Retry-After"))
-	if v == "" {
-		return defaultRetryAfter, true
-	}
-	n, err := strconv.Atoi(v)
-	if err != nil || n < 0 {
-		return defaultRetryAfter, true
-	}
-	d := time.Duration(n) * time.Second
-	return d, d <= maxRetryAfter
-}
+func (c *client) redact(s string) string { return httpx.Redact(s, c.key) }
 
 // errorMessage extracts Tavily's message from an error body:
 // {"detail": {"error": "..."}} (400 and others), {"detail": [{"loc", "msg"}]}

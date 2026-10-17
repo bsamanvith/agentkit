@@ -12,6 +12,7 @@ Worked examples: `connectors/parallel` (smallest, keyed), `connectors/tavily` (k
 ## 0. Decide the shape
 
 - **One package per toolset.** Type `gmail` lives in `connectors/google/gmail`, its tools are `gmail_*`. A provider with one toolset is one package directly under `connectors/` (`tavily`).
+- **Every connector shares `connectors/internal`:** `httpx` (8 MiB `ReadBody`, `RetryAfter` and `Sleep` for the one 429 retry, `Redact`) and `trunc` (`Short`, `Content` and their markers). Use them; don't copy them.
 - **A family shares a `common` package** (`connectors/<provider>/common`): HTTP client, token source, settings, errors, paging, truncation. Toolsets import `common`, never each other, and nothing is copied between them. A new family lists its `common` in `ConnectorLibraries` in `internal/archtest/rules.go`; everything else under `connectors/` must pass the kit rules.
 - **Plain `net/http`, not the provider's SDK**, unless you measured it (AGENTS.md "Sizes": build with and without, log the row in [docs/SIZES.md](../../../docs/SIZES.md)). Google's Go client was rejected for size.
 - **Our own connector vs. the provider's hosted MCP server.** We write our own (E21 decision). A hosted MCP server is a `type: mcp` toolset through the MCP client (T094) and `pkg/mcp/oauth`, not a package here.

@@ -71,8 +71,9 @@
 // [tool.ErrToolFailed]: 401 and 403 ("tavily rejected the API key"), 429
 // ("rate limited", with a hint to set the key in keyless mode), other
 // statuses with the status only. A 429 is retried once, after its
-// Retry-After (whole seconds; 1 s when absent; no retry above 10 s or past
-// the context's deadline). Nothing else is retried: a paid call may have run.
+// Retry-After (whole seconds or an HTTP date; 1 s when absent; no retry
+// above 10 s or past the context's deadline). Nothing else is retried: a
+// paid call may have run.
 //
 // The key never leaves this package except in the Authorization header:
 // text taken from a response has it replaced with "[redacted]", and logs

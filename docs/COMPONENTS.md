@@ -78,6 +78,40 @@ out fails at startup with a message naming the tag. Migrations run with the
 image that has the store: `agentkit-api migrate` as a job, then serve with
 `AGENTKIT_STORE_MIGRATE=off`.
 
+### An image of your own
+
+An image is the one binary with a set of build tags, and each tag leaves one
+part out:
+
+| Tag | Leaves out | Then |
+|---|---|---|
+| `nosqlite` | the SQLite store | `AGENTKIT_STORE=sqlite` fails at startup |
+| `nopostgres` | the Postgres store and `migrate` | `AGENTKIT_STORE=postgres` fails |
+| `noredis` | the Redis bus | `AGENTKIT_BUS=redis` fails |
+| `nomodels` | the model SDK | the `agent` component needs `AGENTKIT_RUNNER_URL`; no `runner` |
+| `noconnectors` | every connector but the demo | the toolsets come from `AGENTKIT_TOOLSETS_URL` |
+| `nomcp` | the MCP server | no `mcp-server` component |
+| `noweb` | the console | no `web` component |
+
+A one-off build takes any mix, for example an API that runs its agents in
+process, with Postgres only and its toolsets from a toolsets pod:
+
+```sh
+make image IMAGE=agentkit-api-runner TAGS="noconnectors nomcp nosqlite"
+```
+
+To make it a named variant that CI keeps honest:
+
+1. Makefile: add the name to `VARIANTS`, its tags as `TAGS_<name>` and a
+   budget as `IMAGE_BUDGET_MB_<name>`. `make image-<name>` and
+   `make image-size-<name>` then exist.
+2. `scripts/check-deps.sh`: say what it must not link in `forbidden()`
+   (`make deps-check` refuses a variant it doesn't know).
+3. docs/SIZES.md: a row with its measured size (AGENTS.md, Sizes).
+
+A new part to leave out is a file with `//go:build !notag` and a `_none.go`
+twin that returns `notBuilt` (`cmd/agentkit/backends.go` lists them).
+
 ## Topologies
 
 All in one (today's default, plain function calls):

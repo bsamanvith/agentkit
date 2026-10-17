@@ -3,8 +3,10 @@ package anthropic_test
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/llm/anthropic"
 	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
 )
 
@@ -14,7 +16,12 @@ import (
 var conformanceAliases = map[string]string{
 	"cancelled_context": "text",
 	"stop_early":        "cancel",
+	"stall":             "cancel",
 }
+
+// conformanceIdle is the idle timeout of the models the suite runs, so the
+// "stall" scenario does not wait the default five minutes.
+const conformanceIdle = 100 * time.Millisecond
 
 // conformanceThinking is the thinking block of testdata/conformance/opaque.http
 // as the adapter returns it: the block's wire JSON with its deltas applied.
@@ -28,6 +35,7 @@ func TestConformance(t *testing.T) {
 			name = alias
 		}
 		_, srv := newReplay(t, fixtures(t, "conformance", name)...)
-		return newModel(t, srv)
-	}, llmtest.WithOpaque(llm.Opaque{Provider: "anthropic", Data: json.RawMessage(conformanceThinking)}))
+		return newModel(t, srv, anthropic.WithIdleTimeout(conformanceIdle))
+	}, llmtest.WithOpaque(llm.Opaque{Provider: "anthropic", Data: json.RawMessage(conformanceThinking)}),
+		llmtest.WithStallTimeout(conformanceIdle))
 }

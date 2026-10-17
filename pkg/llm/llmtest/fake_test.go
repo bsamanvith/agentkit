@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
@@ -16,6 +17,16 @@ func TestFakeConformance(t *testing.T) {
 	llmtest.RunModel(t, func(t *testing.T, s llmtest.Scenario) llm.Model {
 		return llmtest.NewFake(t, s.Replies...)
 	})
+}
+
+// The generic idle timeout passes the suite around any model, the stall
+// scenario included.
+func TestIdleTimeoutConformance(t *testing.T) {
+	t.Parallel()
+	const idle = 50 * time.Millisecond
+	llmtest.RunModel(t, func(t *testing.T, s llmtest.Scenario) llm.Model {
+		return llm.WithIdleTimeout(llmtest.NewFake(t, s.Replies...), idle)
+	}, llmtest.WithStallTimeout(idle))
 }
 
 func TestFake(t *testing.T) {

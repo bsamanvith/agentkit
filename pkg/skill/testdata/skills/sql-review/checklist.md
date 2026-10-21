@@ -1,0 +1,3 @@
+- Does any statement take a lock on a large table?
+- Can a column or table drop lose data?
+- Is there a way back (a down migration, or a plan)?

@@ -34,6 +34,13 @@ type Component interface {
 	Shutdown(ctx context.Context) error
 }
 
+// Reporter is a Component that shows what it loaded in its /readyz entry,
+// under "details" (for example the skills of its agents). Report is called
+// for every /readyz request, after Ready; its value is encoded as JSON.
+type Reporter interface {
+	Report() map[string]any
+}
+
 var (
 	// ErrDegraded marks a component that serves with reduced function (an
 	// optional part failed to start) when wrapped by an error from
@@ -226,6 +233,8 @@ type componentStatus struct {
 	Name   string `json:"name"`
 	Status string `json:"status"` // ready, degraded, not ready
 	Reason string `json:"reason,omitempty"`
+	// Details is what a Reporter reports.
+	Details map[string]any `json:"details,omitempty"`
 }
 
 // readyz asks every component at once and answers 200 only if all are ready
@@ -241,6 +250,9 @@ func (r *Runtime) readyz(w http.ResponseWriter, req *http.Request) {
 				if errors.Is(err, ErrDegraded) {
 					s.Status = "degraded"
 				}
+			}
+			if r, ok := m.Component.(Reporter); ok {
+				s.Details = r.Report()
 			}
 			statuses[i] = s
 		})

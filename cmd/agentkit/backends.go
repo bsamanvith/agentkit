@@ -10,7 +10,8 @@ import "fmt"
 //	nosqlite      no SQLite store (pkg/store/storeopen/sqlite.go)
 //	nopostgres    no Postgres store, and no agentkit migrate (pkg/store/storeopen/postgres.go)
 //	noredis       no Redis bus (pkg/bus/busopen/redis.go)
-//	nomodels      no model adapter (models_anthropic.go): agents run on a runner
+//	nomodels      no model adapter (models_anthropic.go) and no skills
+//	              (skills_load.go): agents run on a runner
 //	noconnectors  no connectors but the demo (catalog.go): toolsets come from
 //	              the toolsets component
 //	nomcp         no MCP server (mcpserver.go)

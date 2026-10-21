@@ -191,6 +191,9 @@ func ModuleRules() Rules {
 			// The built-in toolsets (math, files) are factories like the demo:
 			// the tool abstraction and the factory contract, nothing else.
 			"pkg/coretools": {"pkg/tool", "pkg/toolset"},
+			// Agent Skills (T057) are read through the tool abstraction and
+			// nothing else; its tests run a harness on the fake model.
+			"pkg/skill": {"pkg/tool", "pkg/harness", "pkg/llm", "pkg/llm/llmtest", "internal/testkit"},
 			// MCP OAuth knows principals (to name a connection's owner) and
 			// the clock, never the server, a store backend or the harness: the
 			// vault backs its stores once T042 lands.

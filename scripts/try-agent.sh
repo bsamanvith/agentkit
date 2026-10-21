@@ -71,8 +71,12 @@ if [ "$use_docker" = 1 ]; then
   echo "==> building the image (make image)"
   make image >/dev/null
   container="agentkit-try-$$"
+  # Skill folders sit next to the config, and its paths are relative to it.
+  skills=()
+  config_dir="$(cd "$(dirname "$config")" && pwd)"
+  [ ! -d "$config_dir/skills" ] || skills=(-v "$config_dir/skills:/etc/agentkit/skills:ro")
   echo "==> starting container $container on port $port"
-  docker run -d --rm --name "$container" --stop-timeout 20 -p "${port}:8080" \
+  docker run -d --rm --name "$container" --stop-timeout 20 -p "${port}:8080" ${skills[@]+"${skills[@]}"} \
     -e ANTHROPIC_API_KEY="$key" -e AGENTKIT_API_TOKEN="$token" \
     -e AGENTKIT_COMPONENTS=agent,web,mcp-server \
     -e TAVILY_API_KEY -e EXA_API_KEY -e PARALLEL_API_KEY \

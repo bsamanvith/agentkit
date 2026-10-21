@@ -431,6 +431,7 @@ func loadServeConfig(path string) (serveConfig, error) {
 			return cfg, fmt.Errorf("config %s: agent_api: %w", path, err)
 		}
 	}
+	resolveSkillPaths(cfg.Agents, path)
 	return cfg, nil
 }
 

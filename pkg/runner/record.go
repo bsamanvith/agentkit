@@ -156,7 +156,9 @@ func HarnessTurn(e store.Entry) (harness.TurnRecord, error) {
 func mustJSON(v any) json.RawMessage {
 	b, err := json.Marshal(v)
 	if err != nil {
-		// Records hold only times, numbers and strings.
+		// Records hold times, numbers and strings, and an interrupt
+		// record messages the log read back (an agent's new pending turn
+		// is encoded with its error checked instead).
 		panic(err)
 	}
 	return b

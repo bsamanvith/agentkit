@@ -4,6 +4,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/bsamanvith/agentkit/pkg/flow"
@@ -369,6 +370,18 @@ func TestSuspendSurvivesCrashes(t *testing.T) {
 			if n := len(w.model.requestsFor(prompt)); n != want {
 				t.Fatalf("%d model calls, want %d", n, want)
 			}
+			// Suspended, its lease is gone, and the dispatcher leaves it to
+			// its answer: it claims nothing and runs nothing.
+			w.expire()
+			if rep, err := w.recovery(w.process()).Recover(w.ctx); err != nil || rep != (runner.Report{}) {
+				t.Fatalf("Recover of a suspended run = %+v, %v", rep, err)
+			}
+			if got := runOf(t, p, run.ID); got.Status != store.StatusSuspended || got.Lease.Owner != "" {
+				t.Fatalf("run %+v after a dispatcher pass, want suspended with no lease", got)
+			}
+			if n := len(w.model.requestsFor(prompt)); n != want || w.writes(id) != 0 {
+				t.Fatalf("the dispatcher ran the suspended run: %d model calls, %d writes", n, w.writes(id))
+			}
 			if _, err := p.answer(run.ID, harness.Answer{ID: id, Approved: true}); err != nil {
 				t.Fatal(err)
 			}
@@ -482,5 +495,65 @@ func TestSuspendedChatRunGuards(t *testing.T) {
 	next := w.model.on("next", 0)
 	if _, err := p.run("c", next); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Two replicas answering at once: the answers of both are kept, the run
+// resumes once, and the approved call runs once. The one that does not
+// resume it is told the run goes on elsewhere (leased, or no longer
+// pending), never that its answer conflicts.
+func TestConcurrentAnswersResumeOnce(t *testing.T) {
+	t.Parallel()
+	for _, split := range []bool{false, true} {
+		t.Run(map[bool]string{false: "same", true: "split"}[split], func(t *testing.T) {
+			t.Parallel()
+			for i := range 10 {
+				w := newWorld(t)
+				w.interactions()
+				prompt := w.model.onCalls("cc"+string(rune('a'+i)), []string{"ask", "write"})
+				q, wr := prompt+"#0.0", prompt+"#0.1"
+				run := suspendRun(t, w.process(), "c", prompt, q, wr)
+				both := []harness.Answer{{ID: q, Text: "yes"}, {ID: wr, Approved: true}}
+				sets := [][]harness.Answer{both, both}
+				if split {
+					sets = [][]harness.Answer{both[:1], both[1:]}
+				}
+				procs := []*proc{w.process(), w.process()}
+				type res struct {
+					x   *runner.Execution
+					err error
+				}
+				out := make([]res, 2)
+				var wg sync.WaitGroup
+				for j := range 2 {
+					wg.Go(func() {
+						x, err := procs[j].r.Answer(w.ctx, run.ID, sets[j]...)
+						out[j] = res{x, err}
+					})
+				}
+				wg.Wait()
+				for j, o := range out {
+					switch {
+					case o.err == nil:
+						if _, err := procs[j].drain(o.x, nil); err != nil {
+							t.Fatal(err)
+						}
+					case errors.Is(o.err, store.ErrLeased),
+						errors.Is(o.err, runner.ErrNotPending) && !errors.Is(o.err, runner.ErrAnswered):
+					default:
+						t.Fatalf("answer %d: %v", j, o.err)
+					}
+				}
+				if got := runOf(t, procs[0], run.ID); got.Status != store.StatusCompleted {
+					t.Fatalf("run %+v, want completed", got)
+				}
+				if n := w.writes(wr); n != 1 {
+					t.Fatalf("wrote %d times", n)
+				}
+				if res := toolResults(w, prompt); len(res) != 2 || res[0].Content != "yes" || res[1].Content != `"wrote `+wr+`"` {
+					t.Fatalf("results %s", js(res))
+				}
+			}
+		})
 	}
 }

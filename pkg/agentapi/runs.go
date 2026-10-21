@@ -142,7 +142,7 @@ func (s *Server) runView(ctx context.Context, run store.Run) (Run, error) {
 }
 
 // runSummary is what a list shows of a run: its state as stored, without
-// reading its events.
+// reading its events (a suspended run's interrupts are its log's last entry).
 func (s *Server) runSummary(ctx context.Context, run store.Run) Run {
 	now := s.cfg.clock.Now()
 	v := Run{V: WireVersion, ID: run.ID, ConversationID: run.ConversationID, Status: runStatus(run, now), CreatedAt: run.CreatedAt, Usage: run.Usage}
@@ -173,17 +173,17 @@ func (s *Server) runSummary(ctx context.Context, run store.Run) Run {
 
 // interruptsOf returns what a suspended chat run waits for: the interrupts
 // of the pending turn its last entry holds, with the answers so far. A flow
-// run has none.
+// run has none. A suspended run is its conversation's one unfinished run, so
+// its pending turn is the conversation's last entry: only that is read.
 func (s *Server) interruptsOf(ctx context.Context, run store.Run) ([]Interrupt, error) {
-	entries, err := s.runEntries(ctx, run)
+	page, err := s.store.History(ctx, run.ConversationID, store.Page{Order: store.Descending, Limit: 1})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("reading the log of conversation %q: %w", run.ConversationID, err)
 	}
-	n := len(entries)
-	if n == 0 || entries[n-1].Kind != store.KindInterrupt {
+	if len(page.Entries) == 0 || page.Entries[0].RunID != run.ID || page.Entries[0].Kind != store.KindInterrupt {
 		return nil, nil
 	}
-	p, answers, err := runner.PendingTurn(entries[n-1])
+	p, answers, err := runner.PendingTurn(page.Entries[0])
 	if err != nil {
 		return nil, err
 	}

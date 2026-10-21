@@ -1190,12 +1190,18 @@ func (t *turns) run(ctx context.Context, agent Agent, in harness.Input, flush in
 				return outcome{kind: outAbort, err: err}
 			}
 			p := ev.Result.Pending.Clone()
+			// The agent's pending turn holds messages, which may not encode
+			// (mustJSON would panic): a turn the log cannot keep fails the run.
+			rec, merr := json.Marshal(Record{Interrupt: interruptRecord(p, nil)})
+			if merr != nil {
+				return outcome{kind: outFailed, err: fmt.Errorf("%w: the agent's pending turn: %w", harness.ErrUnexpectedStop, merr)}
+			}
 			msgs := []llm.Message{p.Reply()}
 			e.Seq, err = x.r.append(ctx, x.run.ConversationID, t.v, store.Entry{
 				Kind:     store.KindInterrupt,
 				Messages: msgs,
 				RunID:    x.run.ID,
-				Record:   mustJSON(Record{Interrupt: interruptRecord(p, nil)}),
+				Record:   rec,
 			})
 			if err != nil {
 				t.failed = true

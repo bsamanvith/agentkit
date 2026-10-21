@@ -109,6 +109,19 @@ func replay(run store.Run, entries []store.Entry) (replayed, error) {
 		reply := tr.Messages[0].Message
 		r.final = &reply
 	}
+	if n := len(entries); n > 0 && entries[n-1].Kind == store.KindInterrupt {
+		// The run waits on a pending turn: its calls that wait, as the
+		// stream announced them.
+		p, _, err := runner.PendingTurn(entries[n-1])
+		if err != nil {
+			return r, fmt.Errorf("entry %d of conversation %q: %w", entries[n-1].Seq, run.ConversationID, err)
+		}
+		for _, in := range p.Interrupts {
+			w := wireInterrupt(in, nil)
+			add(Event{Type: TypeInterrupt, Turn: r.turns + 1, At: p.Turn.DoneAt, Call: in.Call, ToolUseID: in.ID, Name: in.Name, Interrupt: &w})
+		}
+		r.interrupts = len(p.Interrupts) > 0
+	}
 	return r, nil
 }
 

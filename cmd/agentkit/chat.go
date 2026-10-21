@@ -300,7 +300,6 @@ func (s *chatSession) answer(ctx context.Context, line string) {
 		}
 		return
 	}
-	s.waiting = s.waiting[1:]
 	if run.Status == wire.StatusSuspended {
 		// Ask the next one the run still waits for.
 		s.waiting = slices.DeleteFunc(slices.Clone(run.Interrupts), func(in wire.Interrupt) bool { return in.Answer != nil })
@@ -310,13 +309,38 @@ func (s *chatSession) answer(ctx context.Context, line string) {
 		return
 	}
 	s.waiting = nil
-	stream, err := s.client.Events(ctx, s.run, s.last)
+	// The run goes on: Ctrl-C stops it on the server, as for a message.
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var cancelled atomic.Bool
+	runID := s.run
+	stop, exited := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(exited)
+		select {
+		case <-s.interrupts:
+			cancelled.Store(true)
+			stopped := make(chan struct{})
+			go func() {
+				defer close(stopped)
+				_, _ = s.client.Stop(ctx, runID)
+			}()
+			defer func() { <-stopped }()
+			cancel()
+		case <-stop:
+		}
+	}()
+	defer func() { close(stop); <-exited }()
+	stream, err := s.client.Events(runCtx, runID, s.last)
 	if err != nil {
+		if cancelled.Load() {
+			s.cancelled(ctx)
+			return
+		}
 		s.r.line(s.st.red("error: " + err.Error()))
 		return
 	}
 	defer stream.Close()
-	var cancelled atomic.Bool
 	s.follow(ctx, stream, &cancelled)
 }
 

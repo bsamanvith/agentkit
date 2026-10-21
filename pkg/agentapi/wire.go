@@ -194,6 +194,9 @@ func wireEvent(runID, convID string, turns int, ev harness.Event) (Event, bool) 
 		e.Action, e.Policy, e.Rule, e.Reason = string(d.Action), d.Policy, d.Rule, d.Reason
 		e.ToolKind, e.ToolRisk = string(d.Kind), string(d.Risk)
 	case harness.EventInterrupt:
+		if ev.Interrupt == nil { // from an agent that broke the contract
+			return Event{}, false
+		}
 		in := wireInterrupt(*ev.Interrupt, nil)
 		e.Type, e.Call, e.ToolUseID, e.Name, e.Interrupt = TypeInterrupt, ev.Call, ev.ToolUse.ID, ev.ToolUse.Name, &in
 	case harness.EventTurnDone:

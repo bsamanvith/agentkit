@@ -24,7 +24,18 @@ type Client struct {
 	token    string
 	idle     time.Duration
 	maxFrame int
+	// afterFunc makes the idle timer: time.AfterFunc, or a test's fake,
+	// which moves only when the test says.
+	afterFunc func(time.Duration, func()) idleTimer
 }
+
+// idleTimer is the part of *time.Timer the idle timeout uses.
+type idleTimer interface {
+	Reset(time.Duration) bool
+	Stop() bool
+}
+
+func realAfterFunc(d time.Duration, f func()) idleTimer { return time.AfterFunc(d, f) }
 
 // Client defaults.
 const (
@@ -72,7 +83,7 @@ func Dial(base string, opts ...DialOption) (*Client, error) {
 	if u.RawQuery != "" || u.Fragment != "" || u.User != nil {
 		return nil, fmt.Errorf("rpc: base URL %q: no query, fragment or user info", base)
 	}
-	c := &Client{base: strings.TrimSuffix(u.String(), "/"), http: &http.Client{}}
+	c := &Client{base: strings.TrimSuffix(u.String(), "/"), http: &http.Client{}, afterFunc: realAfterFunc}
 	for _, o := range opts {
 		o(c)
 	}
@@ -105,7 +116,7 @@ func (c *Client) Call(ctx context.Context, method string, req json.RawMessage) i
 		idle := func() (stop func() bool) { return func() bool { return false } }
 		if c.idle > 0 {
 			stalled := fmt.Errorf("%w: %s sent nothing for %v", ErrUnavailable, c.base, c.idle)
-			t := time.AfterFunc(c.idle, func() {
+			t := c.afterFunc(c.idle, func() {
 				if parent.Err() == nil {
 					cancel(stalled)
 				}

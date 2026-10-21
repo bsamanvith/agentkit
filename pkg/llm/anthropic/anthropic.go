@@ -11,6 +11,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 
+	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 )
 
@@ -34,6 +35,7 @@ type Model struct {
 	maxTokens int
 	defaults  Options
 	idle      time.Duration
+	clock     clock.Clock
 }
 
 var _ llm.Model = (*Model)(nil)
@@ -46,6 +48,7 @@ type config struct {
 	maxTokens  int
 	defaults   Options
 	idle       time.Duration
+	clock      clock.Clock
 	baseURL    string
 	httpClient *http.Client
 	sdk        []option.RequestOption
@@ -68,6 +71,10 @@ func WithOptions(o Options) Option { return func(c *config) { c.defaults = o } }
 // connection that stays open but stops sending (a half-open TCP connection)
 // holds the call until its context ends.
 func WithIdleTimeout(d time.Duration) Option { return func(c *config) { c.idle = d } }
+
+// WithClock sets the clock the idle timeout runs on; the default is the
+// machine's ([clock.Real]). Tests pass a fake one.
+func WithClock(clk clock.Clock) Option { return func(c *config) { c.clock = clk } }
 
 // WithBaseURL sends requests to url instead of the API (or
 // ANTHROPIC_BASE_URL), for example a replay server in tests.
@@ -98,6 +105,9 @@ func New(opts ...Option) (*Model, error) {
 	if c.maxTokens <= 0 {
 		return nil, fmt.Errorf("%w: max tokens %d is not positive", llm.ErrInvalidRequest, c.maxTokens)
 	}
+	if c.clock == nil {
+		c.clock = clock.Real()
+	}
 	if c.idle < 0 {
 		return nil, fmt.Errorf("%w: idle timeout %v is negative", llm.ErrInvalidRequest, c.idle)
 	}
@@ -119,6 +129,7 @@ func New(opts ...Option) (*Model, error) {
 		maxTokens: c.maxTokens,
 		defaults:  defaults,
 		idle:      c.idle,
+		clock:     c.clock,
 	}, nil
 }
 
@@ -143,9 +154,16 @@ func (m *Model) Generate(ctx context.Context, req llm.Request) iter.Seq2[llm.Eve
 		defer cancel(nil)
 		pauseIdle, resumeIdle := func() {}, func() {}
 		if m.idle > 0 {
-			watchdog := time.AfterFunc(m.idle, func() {
-				cancel(fmt.Errorf("%w: no event for %v", errStalled, m.idle))
-			})
+			watchdog := m.clock.NewTimer(m.idle)
+			done := make(chan struct{})
+			go func() {
+				select {
+				case <-watchdog.C():
+					cancel(fmt.Errorf("%w: no event for %v", errStalled, m.idle))
+				case <-done:
+				}
+			}()
+			defer close(done)
 			defer watchdog.Stop()
 			pauseIdle = func() { watchdog.Stop() }
 			resumeIdle = func() { watchdog.Reset(m.idle) }

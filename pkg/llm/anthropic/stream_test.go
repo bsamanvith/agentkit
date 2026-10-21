@@ -5,18 +5,21 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"iter"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 
+	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	anthropicllm "github.com/bsamanvith/agentkit/pkg/llm/anthropic"
 )
@@ -352,30 +355,62 @@ func TestCancelledStallIsCanceled(t *testing.T) {
 }
 
 // Events keep a stream alive: the timeout is between events, not for the
-// whole reply.
+// whole reply. The idle clock is a fake one the server moves: once each text
+// delta has reached the caller and the stream waits again, by just under the
+// timeout, so the reply takes three times as long as it.
 func TestIdleTimeoutIsBetweenEvents(t *testing.T) {
 	t.Parallel()
+	const idle = time.Second
+	clk := clocktest.NewFake(time.Time{})
+	seen := make(chan struct{})
+	events := []string{
+		`{"type":"message_start","message":{"id":"msg_idle","type":"message","role":"assistant","model":"claude-opus-5-5","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":1}}}`,
+		`{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
+		`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"One, "}}`,
+		`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"two, "}}`,
+		`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"three."}}`,
+		`{"type":"content_block_stop","index":0}`,
+		`{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":6}}`,
+		`{"type":"message_stop"}`,
+	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		data, err := os.ReadFile("testdata/interleaved.http")
-		if err != nil {
-			t.Error(err)
-			return
-		}
-		_, body, _ := bytes.Cut(data, []byte("\n\n"))
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
-		// Each of the 14 events arrives after a pause well under the
-		// timeout; all of them together take longer than it.
-		for _, ev := range bytes.SplitAfter(body, []byte("\n\n")) {
-			time.Sleep(100 * time.Millisecond)
-			_, _ = w.Write(ev)
+		for _, data := range events {
+			var ev struct{ Type string }
+			_ = json.Unmarshal([]byte(data), &ev)
+			_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.Type, data)
 			w.(http.Flusher).Flush()
+			if !strings.Contains(data, `"text_delta"`) {
+				continue
+			}
+			select {
+			case <-seen:
+			case <-r.Context().Done():
+				return
+			}
+			// The caller has the delta, and its time does not count: the
+			// timeout runs again once the stream waits for the next event.
+			if clk.WaitForTimers(r.Context(), 1) != nil {
+				return
+			}
+			clk.Advance(idle - time.Millisecond)
 		}
 	}))
 	t.Cleanup(srv.Close)
-	m := newModel(t, srv, anthropicllm.WithIdleTimeout(800*time.Millisecond))
-	if _, err := llm.Collect(m.Generate(t.Context(), userText("Hello."))); err != nil {
-		t.Fatalf("Generate: %v", err)
+	m := newModel(t, srv, anthropicllm.WithIdleTimeout(idle), anthropicllm.WithClock(clk))
+	deltas := 0
+	for ev, err := range m.Generate(t.Context(), userText("Hello.")) {
+		if err != nil {
+			t.Fatalf("Generate after %d text deltas: %v", deltas, err)
+		}
+		if ev.Kind == llm.EventTextDelta {
+			deltas++
+			seen <- struct{}{}
+		}
+	}
+	if deltas != 3 {
+		t.Errorf("got %d text deltas, want 3", deltas)
 	}
 }
 
@@ -395,16 +430,16 @@ func TestIdleTimeoutIgnoresTheConsumer(t *testing.T) {
 		_, _ = w.Write(body)
 	}))
 	t.Cleanup(srv.Close)
-	m := newModel(t, srv, anthropicllm.WithIdleTimeout(50*time.Millisecond))
-	slept := false
+	// The idle clock is a fake one that moves only while the caller has an
+	// event, and by more than the timeout each time.
+	const idle = time.Second
+	clk := clocktest.NewFake(time.Time{})
+	m := newModel(t, srv, anthropicllm.WithIdleTimeout(idle), anthropicllm.WithClock(clk))
 	for _, err := range m.Generate(t.Context(), userText("Hello.")) {
 		if err != nil {
 			t.Fatalf("Generate: %v", err)
 		}
-		if !slept {
-			slept = true
-			time.Sleep(200 * time.Millisecond)
-		}
+		clk.Advance(2 * idle)
 	}
 }
 

@@ -225,3 +225,75 @@ func (w *watcher) recover() error {
 	}
 	return nil
 }
+
+// Pending streams the messages run runID's topic on b has after the given
+// ID, up to its newest when Pending is called, live ones included: what a
+// watch that stops now has not delivered yet. A watch stopped because the
+// run was let go reads them here before it turns to the log, which has the
+// durable events but not the deltas (T090: a follower numbers a turn's text
+// as its holder did only from the bus).
+//
+// The sequence ends without an error at the topic's newest message, after
+// the first event terminal accepts, at a gap, or before a message that
+// would skip a durable event (the log has it); with an error when ctx is
+// done (it bounds the wait for a bus that is slow to deliver), on a bus
+// error, or with [ErrInvalid].
+func Pending(ctx context.Context, b bus.Bus, runID string, after bus.ID, terminal func(typ string) bool) iter.Seq2[Event, error] {
+	return func(yield func(Event, error) bool) {
+		if b == nil {
+			yield(Event{}, fmt.Errorf("%w: nil bus", ErrInvalid))
+			return
+		}
+		t, err := tenancy.Require(ctx)
+		if err != nil {
+			yield(Event{}, err)
+			return
+		}
+		topic, err := bus.RunTopic(t, runID)
+		if err != nil {
+			yield(Event{}, fmt.Errorf("%w: %w", ErrInvalid, err))
+			return
+		}
+		last, err := b.Last(ctx, topic)
+		if err != nil {
+			yield(Event{}, fmt.Errorf("stream: pending run %q: %w", runID, err))
+			return
+		}
+		if last.Compare(after) <= 0 {
+			return
+		}
+		sctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		sub, err := b.Subscribe(sctx, topic, after)
+		if err != nil {
+			yield(Event{}, fmt.Errorf("stream: pending run %q: %w", runID, err))
+			return
+		}
+		defer func() {
+			cancel()
+			for range sub.C() { // let the subscription stop
+			}
+		}()
+		w := &watcher{cursor: after}
+		for m := range sub.C() {
+			e, err := decode(m)
+			if err != nil {
+				yield(Event{}, err)
+				return
+			}
+			if w.skips(e.ID) {
+				return
+			}
+			w.cursor = e.ID
+			if !yield(e, nil) || (terminal != nil && terminal(e.Type)) || e.ID.Compare(last) >= 0 {
+				return
+			}
+		}
+		if err := sub.Err(); err != nil && !errors.Is(err, bus.ErrGap) {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				err = ctxErr
+			}
+			yield(Event{}, fmt.Errorf("stream: pending run %q: %w", runID, err))
+		}
+	}
+}

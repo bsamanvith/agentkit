@@ -323,6 +323,9 @@ func (s *Server) watchRun(ctx context.Context, run store.Run, after bus.ID, emit
 		if held(cur, s.cfg.clock.Now()) {
 			continue // taken over: follow its new process
 		}
+		if s.pending(ctx, run.ID, &after, emit) {
+			return
+		}
 		rp, err := s.storedEnding(ctx, cur, poll)
 		if err != nil {
 			s.log.Error("reading the events of a run let go", "run_id", run.ID, "err", err)
@@ -335,6 +338,36 @@ func (s *Server) watchRun(ctx context.Context, run store.Run, after bus.ID, emit
 		}
 		return
 	}
+}
+
+// pending sends emit what the bus has of a run let go after *after, which
+// the watch, stopped at once, may not have had yet, and moves *after past
+// it; it reports whether that ended the run. Without it the watch would take
+// the turns those events belong to from the log, and their text_delta
+// events would have the IDs of replayed text, not the ones the holder gave
+// them. It waits for the bus up to endingWait.
+func (s *Server) pending(ctx context.Context, runID string, after *bus.ID, emit func(Event)) bool {
+	ctx, cancel := context.WithTimeout(ctx, endingWait) // real time, as checkHeld's
+	defer cancel()
+	for se, err := range stream.Pending(ctx, s.bus, runID, *after, isTerminal) {
+		if err != nil {
+			if ctx.Err() == nil {
+				s.log.Error("reading what the bus has of a run let go", "run_id", runID, "err", err)
+			}
+			return false
+		}
+		e, err := decodeEvent(se.ID, se.Data)
+		if err != nil {
+			s.log.Error("decoding a run's event", "run_id", runID, "err", err)
+			continue
+		}
+		emit(e)
+		*after = se.ID
+		if isTerminal(e.Type) {
+			return true
+		}
+	}
+	return false
 }
 
 // endingWait is how long a watch waits for the stored last event of a run

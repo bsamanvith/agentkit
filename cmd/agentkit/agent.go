@@ -61,6 +61,11 @@ type agentDef struct {
 	// "<toolset>__<tool>" whatever PrefixToolNames says. A tenant that has
 	// not added one gets none of its tools.
 	RuntimeToolsets []string `json:"runtime_toolsets"`
+	// Skills are folders of Agent Skills (pkg/skill) the agent may load:
+	// their names and descriptions go in the system prompt, and the agent
+	// gets skill_load and skill_read. A relative path is relative to the
+	// config file's folder.
+	Skills []skillSource `json:"skills"`
 	// MaxTurns limits model calls per run; MaxTotalTokens tokens per run (0:
 	// no limit).
 	MaxTurns       int `json:"max_turns"`
@@ -182,6 +187,8 @@ type agentComponent struct {
 	admin toolsetAdmin
 	// closers close the agents' memory stores.
 	closers []func() error
+	// skillReport lists the agents' skills in /readyz (Report).
+	skillReport
 }
 
 // Shutdown drains the API, then closes the connections to the MCP servers
@@ -238,10 +245,23 @@ func (a *agentComponent) Ready(ctx context.Context) error {
 			return fmt.Errorf("%w: toolsets at %s: %w", component.ErrDegraded, a.toolsetsURL, err)
 		}
 	}
-	if len(a.skipped) > 0 {
-		return fmt.Errorf("%w: toolsets skipped: %s", component.ErrDegraded, strings.Join(a.skipped, ", "))
+	return degraded(a.skipped, a.skillReport)
+}
+
+// degraded is the Ready error of a component whose agents skipped optional
+// toolsets or skill folders: nil when none were skipped.
+func degraded(toolsets []string, skills skillReport) error {
+	var why []string
+	if len(toolsets) > 0 {
+		why = append(why, "toolsets skipped: "+strings.Join(toolsets, ", "))
 	}
-	return nil
+	if r := skills.reason(); r != "" {
+		why = append(why, r)
+	}
+	if len(why) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%w: %s", component.ErrDegraded, strings.Join(why, "; "))
 }
 
 // newAgents builds the agent component: per agent the model, its toolsets
@@ -270,8 +290,11 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 		return component.Mount{}, nil, err
 	}
 	var agents []agentapi.Agent
-	var skipped []string
-	var closers []func() error
+	var (
+		skipped []string
+		skills  skillReport
+		closers []func() error
+	)
 	fail := func(err error) (component.Mount, *agentapi.Server, error) {
 		if admin != nil {
 			_ = admin.Close()
@@ -322,12 +345,13 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 			if closeMem != nil {
 				closers = append(closers, closeMem)
 			}
-			h, sk, err := c.newHarness(ctx, cfg, a, built, admin, mem, clk)
+			h, sk, ks, err := c.newHarness(ctx, cfg, a, built, admin, mem, clk)
 			if err != nil {
 				return fail(err)
 			}
 			def.Harness = h
 			skipped = appendNew(skipped, sk...)
+			skills.add(a, ks)
 		}
 		agents = append(agents, def)
 	}
@@ -365,7 +389,7 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 	if err != nil {
 		return fail(err)
 	}
-	ac := &agentComponent{Server: srv, skipped: skipped, runner: remote, runnerURL: env.runnerURL, agents: agentNames(cfg), toolsetsURL: env.toolsetsURL, admin: admin, closers: closers}
+	ac := &agentComponent{Server: srv, skipped: skipped, skillReport: skills, runner: remote, runnerURL: env.runnerURL, agents: agentNames(cfg), toolsetsURL: env.toolsetsURL, admin: admin, closers: closers}
 	for _, name := range slices.Sorted(maps.Keys(built)) {
 		if r, ok := built[name].(remoteToolset); ok {
 			ac.toolsets = r
@@ -391,13 +415,14 @@ func (d agentDef) check(legacy bool) error {
 }
 
 // newHarness builds an agent's harness: its model, its toolsets merged into
-// one registry with its memory tool (mem, nil without memory), and its
-// limits. It returns the toolsets the agent names that were skipped
-// (optional ones that failed to build).
-func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built map[string]tool.Registry, admin toolsetAdmin, mem tool.Registry, clk clock.Clock) (*harness.Harness, []string, error) {
+// one registry with its memory tool (mem, nil without memory), its skills,
+// and its limits. It returns the toolsets the agent names that were skipped
+// (optional ones that failed to build) and the skills it loaded.
+func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built map[string]tool.Registry, admin toolsetAdmin, mem tool.Registry, clk clock.Clock) (*harness.Harness, []string, agentSkills, error) {
 	label := a.label(cfg.legacy)
+	fail := func(err error) (*harness.Harness, []string, agentSkills, error) { return nil, nil, agentSkills{}, err }
 	if err := a.check(cfg.legacy); err != nil {
-		return nil, nil, err
+		return fail(err)
 	}
 	newModel := c.newModel
 	if newModel == nil {
@@ -408,7 +433,7 @@ func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built 
 		nativeMemory: mem != nil && a.Memory != nil && a.Memory.NativeTool,
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("%s.model: %w", label, err)
+		return fail(fmt.Errorf("%s.model: %w", label, err))
 	}
 	sets := map[string]tool.Registry{}
 	var skipped []string
@@ -421,15 +446,19 @@ func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built 
 	}
 	tools, err := agentapi.MergeTools(ctx, sets, a.PrefixToolNames)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%s.toolsets: %w", label, err)
+		return fail(fmt.Errorf("%s.toolsets: %w", label, err))
+	}
+	system, tools, skills, err := addSkills(ctx, label, a.System, tools, a.Skills)
+	if err != nil {
+		return fail(err)
 	}
 	if mem != nil {
 		defs, err := tools.List(ctx)
 		if err != nil {
-			return nil, nil, fmt.Errorf("%s.toolsets: %w", label, err)
+			return fail(fmt.Errorf("%s.toolsets: %w", label, err))
 		}
 		if slices.ContainsFunc(defs, func(d tool.Definition) bool { return d.Name == memory.ToolName }) {
-			return nil, nil, fmt.Errorf("%s.memory: a toolset of the agent has a tool named %q, the memory tool's name", label, memory.ToolName)
+			return fail(fmt.Errorf("%s.memory: a toolset of the agent has a tool named %q, the memory tool's name", label, memory.ToolName))
 		}
 		tools = joinRegistries(mem, tools)
 	}
@@ -437,7 +466,7 @@ func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built 
 		tools = joinRegistries(tools, admin.Registry(a.RuntimeToolsets...))
 	}
 	h, err := harness.New(model, tools,
-		harness.WithSystem(a.System),
+		harness.WithSystem(system),
 		harness.WithRequest(harness.RequestOptions{MaxTokens: a.Model.MaxTokens}),
 		harness.WithMaxTurns(a.MaxTurns),
 		harness.WithMaxTotalTokens(a.MaxTotalTokens),
@@ -445,9 +474,9 @@ func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built 
 		harness.WithClock(clk),
 	)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%s: %w", label, err)
+		return fail(fmt.Errorf("%s: %w", label, err))
 	}
-	return h, skipped, nil
+	return h, skipped, skills, nil
 }
 
 // appendNew appends the names not already in list.

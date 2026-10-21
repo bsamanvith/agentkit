@@ -16,7 +16,8 @@
 //   - GET /readyz: 200 when every component's Ready returns nil or an error
 //     matching [ErrDegraded], else 503. The body says why, per component:
 //     {"status":"not ready","components":[{"name":"a","status":"not ready","reason":"..."}]}.
-//     A component status is "ready", "degraded" or "not ready".
+//     A component status is "ready", "degraded" or "not ready". A component
+//     that implements [Reporter] adds "details": what it loaded.
 //   - GET /version: the [BuildInfo], as JSON.
 //
 // The server speaks HTTP/1.1 and HTTP/2 over cleartext (h2c), for ConnectRPC.

@@ -250,7 +250,10 @@ func TestErrors(t *testing.T) {
 	t.Parallel()
 	f := newFake()
 	ts := f.streamable(t, nil)
-	tools := build(t, settingsFor(ts.URL, `"timeout": "300ms"`, `"max_result_bytes": 10000`))
+	tools := build(t, settingsFor(ts.URL, `"max_result_bytes": 10000`))
+	// Only the call meant to time out gets the short deadline: under load a
+	// 300ms deadline on the other calls would fail a correct client.
+	short := build(t, settingsFor(ts.URL, `"timeout": "300ms"`))
 	c, err := client.Connect(t.Context(), client.Config{URL: ts.URL})
 	if err != nil {
 		t.Fatal(err)
@@ -270,7 +273,7 @@ func TestErrors(t *testing.T) {
 	}{
 		{"isError", tools["fails"], `{}`, "quota exceeded"},
 		{"protocol error", missing, `{}`, "refused the call"},
-		{"timeout", tools["block"], `{}`, "did not answer within 300ms"},
+		{"timeout", short["block"], `{}`, "did not answer within 300ms"},
 		{"oversized", tools["big"], `{}`, "limit of 10000"},
 		{"oversized JSON", mid["big"], `{}`, "over this toolset's limit of 50000"},
 	} {

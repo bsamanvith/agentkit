@@ -7,7 +7,10 @@ GOLANGCI := bin/golangci-lint-$(GOLANGCI_VERSION)
 ACTIONLINT_VERSION := v1.7.12
 ACTIONLINT := bin/actionlint-$(ACTIONLINT_VERSION)
 ZIZMOR_VERSION := 1.30.1
-TESTFLAGS ?= -race -shuffle=on
+# Under -race the SQLite store's suites take about 11 minutes on 4 cores (most
+# of it the race build of modernc.org/sqlite, not fsync: synchronous=NORMAL
+# saved nothing), past go test's 10-minute default. A timeout is not a pass.
+TESTFLAGS ?= -race -shuffle=on -timeout 30m
 FUZZTIME ?= 10s
 
 .DEFAULT_GOAL := help

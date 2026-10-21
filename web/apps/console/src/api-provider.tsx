@@ -1,6 +1,6 @@
 import { AgentClient, type Me } from "@agentkit/agent-ui/api";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AuthContext, tokenStorageKey, type Auth } from "./api";
+import { AuthContext, tokenStorageKey, userStorageKey, type Auth } from "./api";
 
 /**
  * The token, in memory, and in sessionStorage once a request with it has
@@ -51,6 +51,23 @@ class TokenStore {
   }
 }
 
+function storedUser(): string | undefined {
+  try {
+    return sessionStorage.getItem(userStorageKey) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function storeUser(user: string | undefined) {
+  try {
+    if (user === undefined) sessionStorage.removeItem(userStorageKey);
+    else sessionStorage.setItem(userStorageKey, user);
+  } catch {
+    // Storage blocked: this page remembers it.
+  }
+}
+
 /** One AgentClient for the app, and how it signs in: the API token it sends, or a session. */
 export function ApiProvider({ children, client: given }: { children: ReactNode; client?: AgentClient }) {
   const [store] = useState(() => new TokenStore());
@@ -62,9 +79,11 @@ export function ApiProvider({ children, client: given }: { children: ReactNode; 
   const [cleared, setCleared] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   // Whether a session was signed in on this page (a later 401 means it
-  // ended), and whose: another user signing in gets a fresh start.
+  // ended), and whose the drafts are (kept across a reload): another user
+  // signing in gets a fresh start.
   const session = useRef(false);
   const lastUser = useRef<string | undefined>(undefined);
+  if (lastUser.current === undefined) lastUser.current = storedUser();
   const client = useMemo(() => given ?? new AgentClient({ token: () => store.get() }), [given, store]);
 
   // The card asks the server how to sign in, once, when it first opens.
@@ -81,10 +100,17 @@ export function ApiProvider({ children, client: given }: { children: ReactNode; 
     return () => ctl.abort();
   }, [asking, client]);
 
-  const known = useCallback((m: Me) => {
+  // known takes in who /v1/auth/me says is signed in. Drafts of another
+  // user are cleared, as are those of no known user on a sign-in (they may
+  // be anyone's, from before a reload).
+  const known = useCallback((m: Me, signedIn: boolean) => {
     setMe(m);
     if (m.credential === "session") session.current = true;
-    if (m.username) lastUser.current = m.username;
+    if (!m.username) return;
+    const last = lastUser.current;
+    if (last !== m.username && (last !== undefined || signedIn)) setCleared((c) => c + 1);
+    lastUser.current = m.username;
+    storeUser(m.username);
   }, []);
 
   const setToken = useCallback(
@@ -100,6 +126,8 @@ export function ApiProvider({ children, client: given }: { children: ReactNode; 
   );
   const forgetToken = useCallback(() => {
     store.set(undefined);
+    lastUser.current = undefined;
+    storeUser(undefined);
     setHasToken(false);
     setMe(null);
     setPrompt("needed");
@@ -115,9 +143,12 @@ export function ApiProvider({ children, client: given }: { children: ReactNode; 
   );
   const accepted = useCallback(() => store.proven(), [store]);
   const loadMe = useCallback(() => {
-    client.me().then(known, () => {
-      // Not signed in, or an older server: the menu just says less.
-    });
+    client.me().then(
+      (m) => known(m, false),
+      () => {
+        // Not signed in, or an older server: the menu just says less.
+      },
+    );
   }, [client, known]);
 
   const signIn = useCallback(
@@ -126,9 +157,7 @@ export function ApiProvider({ children, client: given }: { children: ReactNode; 
       // A token would win over the session cookie (the server prefers a bearer).
       store.set(undefined);
       setHasToken(false);
-      const m = await client.me();
-      if (lastUser.current !== undefined && lastUser.current !== m.username) setCleared((c) => c + 1);
-      known(m);
+      known(await client.me(), true);
       setNotice(null);
       setPrompt(null);
       setEpoch((e) => e + 1);
@@ -144,6 +173,7 @@ export function ApiProvider({ children, client: given }: { children: ReactNode; 
     }
     session.current = false;
     lastUser.current = undefined;
+    storeUser(undefined);
     store.set(undefined);
     setHasToken(false);
     setMe(null);

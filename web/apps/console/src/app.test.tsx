@@ -4,7 +4,7 @@ import type { Agent } from "@agentkit/agent-ui/api";
 import { lazy } from "react";
 import { createMemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
-import { tokenStorageKey } from "./api";
+import { tokenStorageKey, userStorageKey } from "./api";
 import { listStorageKey } from "./layout";
 import { App } from "./app";
 import { Page } from "./pages/page";
@@ -467,6 +467,39 @@ describe("signing in with a password", () => {
     await userEvent.click(await screen.findByRole("link", { name: "Chats" }));
     await userEvent.click((await screen.findAllByRole("link", { name: "New chat" }))[0]!);
     expect(await screen.findByRole("textbox", { name: "Message" })).toHaveValue("");
+  });
+
+  it("knows whose the drafts are after a reload: kept for that user, cleared for another or no one known", async () => {
+    const box = () => screen.getByRole("textbox", { name: "Message" });
+    const server = sessionServer();
+    let view = renderAt("/new");
+    await signInAs("ann", "secret-pw");
+    await waitFor(() => expect(box()).toBeEnabled());
+    await userEvent.type(box(), "ann's thought");
+    view.unmount(); // a reload, and the session ends meanwhile
+    server.session = undefined;
+
+    view = renderAt("/new");
+    await signInAs("ann", "secret-pw");
+    expect(await screen.findByRole("textbox", { name: "Message" })).toHaveValue("ann's thought");
+    view.unmount();
+    server.session = undefined;
+
+    view = renderAt("/new");
+    await signInAs("bob", "other-pw");
+    await waitFor(() => expect(box()).toBeEnabled());
+    expect(box()).toHaveValue("");
+    expect(sessionStorage.getItem(userStorageKey)).toBe("bob");
+    view.unmount();
+    server.session = undefined;
+
+    // A draft of no known user (from before a reload) is not handed to whoever signs in.
+    sessionStorage.removeItem(userStorageKey);
+    sessionStorage.setItem("agentkit.draft.new", "whose?");
+    renderAt("/new");
+    await signInAs("ann", "secret-pw");
+    await waitFor(() => expect(box()).toBeEnabled());
+    expect(box()).toHaveValue("");
   });
 });
 

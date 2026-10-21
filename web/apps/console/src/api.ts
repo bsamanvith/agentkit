@@ -15,6 +15,12 @@ import { createContext, useContext, useEffect, useEffectEvent, useState } from "
 /** The sessionStorage key of the API token. Never localStorage (T055's mutation list). */
 export const tokenStorageKey = "agentkit.token";
 
+/**
+ * The sessionStorage key of the user the drafts belong to, so that after a
+ * reload a different user signing in still gets a fresh start.
+ */
+export const userStorageKey = "agentkit.user";
+
 export type Auth = {
   client: AgentClient;
   /** Whether a token is set (its value never leaves the provider). */

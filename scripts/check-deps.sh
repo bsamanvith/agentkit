@@ -13,15 +13,16 @@ pgx='github.com/jackc/pgx'
 sqlite='modernc.org/sqlite'
 redis='github.com/redis/go-redis'
 connectors='github.com/bsamanvith/agentkit/connectors/'
+skill='github.com/bsamanvith/agentkit/pkg/skill'
 
 # What each variant must not link.
 forbidden() {
 	case "$1" in
 	local) echo "$pgx $redis" ;;
 	dev) echo "$sqlite" ;;
-	api) echo "$anthropic $mcp $sqlite $connectors" ;;
+	api) echo "$anthropic $mcp $sqlite $connectors $skill" ;;
 	runner) echo "$mcp $pgx $sqlite $redis $connectors" ;;
-	toolsets) echo "$anthropic $pgx $sqlite $redis" ;;
+	toolsets) echo "$anthropic $pgx $sqlite $redis $skill" ;;
 	*) echo "check-deps: unknown variant $1" >&2; exit 2 ;;
 	esac
 }

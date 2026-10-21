@@ -74,7 +74,7 @@ Skills are packaged know-how (instructions plus reference files) that the agent 
 
 ### Size
 
-+213 KB on the default binary, +205 to +258 KB on the variants (docs/SIZES.md row). Projected under every image budget; agentkit-toolsets is closest (about 16.8 of 17 MB) because serve's harness wiring, and so `pkg/skill`, is linked into every variant.
++213 KB on the default binary, +209 to +258 KB on the local, dev and runner variants, +8 KB on api and toolsets (docs/SIZES.md row). The `nomodels` builds (api, toolsets) run no harness, so skill loading is in `cmd/agentkit/skills_load.go` (`!nomodels`) and they leave `pkg/skill` out; `scripts/check-deps.sh` fails if they link it. Projected under every image budget (toolsets about 16.6 of 17 MB).
 
 ### Mutation list (each caught by a failing test)
 

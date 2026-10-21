@@ -1,3 +1,5 @@
+//go:build !nomodels
+
 package main
 
 import (

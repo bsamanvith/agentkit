@@ -413,11 +413,7 @@ func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built 
 	if err != nil {
 		return fail(fmt.Errorf("%s.toolsets: %w", label, err))
 	}
-	cat, skills, err := loadSkills(label, a.Skills)
-	if err != nil {
-		return fail(err)
-	}
-	system, tools, err := withSkills(ctx, label, a.System, tools, cat)
+	system, tools, skills, err := addSkills(ctx, label, a.System, tools, a.Skills)
 	if err != nil {
 		return fail(err)
 	}

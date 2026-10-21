@@ -107,10 +107,26 @@ type Agent interface {
 	Run(ctx context.Context, in harness.Input) iter.Seq2[harness.Event, error]
 }
 
-// AgentFactory returns the agent that runs a conversation. It is called once
-// per execution of a chat run, before the run is created or claimed, so a
-// failure leaves nothing behind.
-type AgentFactory func(ctx context.Context, conversationID string) (Agent, error)
+// Placement is what the runner knows about a chat run when it asks for its
+// agent, so that a factory can choose where the agent runs (a pool, see
+// package [github.com/bsamanvith/agentkit/pkg/runner/pool]).
+type Placement struct {
+	ConversationID string
+	// RunID is the run's ID on a resume; it is empty when [Runner.Run]
+	// starts a run, whose agent is asked for before the run exists.
+	RunID string
+	// Interactive says that a user waits on the run ([Interactive]); every
+	// other run is a background run.
+	Interactive bool
+	// Resume says that the run exists and is being resumed (by a client or
+	// by the recovery loop).
+	Resume bool
+}
+
+// AgentFactory returns the agent that runs a chat run of a conversation. It
+// is called once per execution of a chat run, before the run is created or
+// claimed, so a failure leaves nothing behind.
+type AgentFactory func(ctx context.Context, p Placement) (Agent, error)
 
 // FlowFactory returns the step tree of a conversation's flow runs. It is
 // called once per execution of a flow run; on resume it must return the tree

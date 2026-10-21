@@ -23,6 +23,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/runner"
+	"github.com/bsamanvith/agentkit/pkg/runner/pool"
 	"github.com/bsamanvith/agentkit/pkg/store"
 	"github.com/bsamanvith/agentkit/pkg/stream"
 	"github.com/bsamanvith/agentkit/pkg/tenancy"
@@ -65,6 +66,7 @@ type Server struct {
 	toolsets     map[string]*Toolset
 
 	store  Store
+	router *pool.Router // where runs' agents run; closed by Shutdown
 	runs   Runs
 	runner *runner.Runner // the default runs; nil with WithRuns
 	bus    bus.Bus
@@ -140,8 +142,13 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 	if s.cmds, err = stream.NewCommands(s.store, s.bus, sopts...); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
 	}
+	s.router = cfg.router
+	if s.router == nil {
+		s.router = pool.Default()
+	}
+	factory := s.router.Factory(s.describe)
 	if cfg.runs != nil {
-		if s.runs, err = cfg.runs(s.store, s.agentFor); err != nil {
+		if s.runs, err = cfg.runs(s.store, factory); err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
 		}
 		if s.runs == nil {
@@ -152,7 +159,7 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 			runner.WithClock(cfg.clock),
 			runner.WithIDs(func() string { return cfg.newID("run_") }),
 		}, cfg.runnerOpts...)
-		rn, err := runner.New(s.store, s.agentFor, ropts...)
+		rn, err := runner.New(s.store, factory, ropts...)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
 		}
@@ -205,18 +212,20 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 // errNoAgent means a conversation's agent is not one this server runs.
 var errNoAgent = errors.New("agent not served")
 
-// agentFor is the runner's agent factory: what runs the conversation's agent
-// (its harness, or its runner), from its record.
-func (s *Server) agentFor(ctx context.Context, conversationID string) (runner.Agent, error) {
-	c, err := s.store.GetConversation(ctx, conversationID)
+// describe tells the router about the agent of a run: the conversation's
+// agent, from its record, with the isolation it needs and what runs it as
+// built (its harness, or its runner), which a process pool runs. The
+// router's factory is the runner's agent factory.
+func (s *Server) describe(ctx context.Context, p runner.Placement) (pool.Request, error) {
+	c, err := s.store.GetConversation(ctx, p.ConversationID)
 	if err != nil {
-		return nil, err
+		return pool.Request{}, err
 	}
 	a := s.agents[c.Agent]
 	if a == nil {
-		return nil, fmt.Errorf("%w: conversation %q is of agent %q", errNoAgent, conversationID, c.Agent)
+		return pool.Request{}, fmt.Errorf("%w: conversation %q is of agent %q", errNoAgent, p.ConversationID, c.Agent)
 	}
-	return a.run(), nil
+	return pool.Request{Agent: a.Name, Isolation: a.Isolation, Built: a.run()}, nil
 }
 
 // Routes returns the server's endpoints as "METHOD /path" patterns
@@ -266,6 +275,11 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		errs = append(errs, fmt.Errorf("runs still ending: %w", ctx.Err()))
 	}
 	s.stopWatches()
+	// The runs are stopped (or ctx gave up on them): the agents the pools
+	// made go now.
+	if err := s.router.Close(); err != nil {
+		errs = append(errs, fmt.Errorf("closing the runner pools: %w", err))
+	}
 	s.mu.Lock()
 	cut := slices.Clone(s.cut)
 	s.mu.Unlock()
@@ -566,6 +580,8 @@ func (s *Server) startError(w http.ResponseWriter, err error, busy string) {
 		writeError(w, http.StatusConflict, &Error{Code: CodeNotPending, Message: err.Error()})
 	case errors.Is(err, flow.ErrShapeChanged):
 		writeError(w, http.StatusConflict, &Error{Code: CodeShapeChanged, Message: err.Error()})
+	case errors.Is(err, pool.ErrNoPool):
+		writeError(w, http.StatusConflict, &Error{Code: CodeInvalidRequest, Message: "this server has no pool isolated enough for the agent: " + err.Error()})
 	case errors.Is(err, runner.ErrNoFlows):
 		writeError(w, http.StatusConflict, &Error{Code: CodeInvalidRequest, Message: "this server runs no flows"})
 	case errors.Is(err, runner.ErrShutdown):

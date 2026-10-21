@@ -33,7 +33,7 @@ func (shout) Generate(_ context.Context, req llm.Request) iter.Seq2[llm.Event, e
 func Example() {
 	s := memory.New()
 	tools, _ := tool.NewRegistry(nil)
-	agents := func(context.Context, string) (runner.Agent, error) {
+	agents := func(context.Context, runner.Placement) (runner.Agent, error) {
 		return harness.New(shout{}, tools)
 	}
 	r, err := runner.New(s, agents)

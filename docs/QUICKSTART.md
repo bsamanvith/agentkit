@@ -181,6 +181,7 @@ Each entry of `agents`:
 | `runtime_toolsets` | none | toolsets admins add while the server runs (section 8); the agent gets their approved tools as `<toolset>__<tool>` |
 | `skills` | none | folders of Agent Skills (`"path"` or `{"path": ..., "optional": true}`), relative to the config file (section 7, "Skills") |
 | `max_turns`, `max_total_tokens` | 25, unlimited | budgets per run |
+| `tool_policy` | `all` | which tool calls the agent may make (below) |
 
 `agent_api`:
 
@@ -194,6 +195,31 @@ Each entry of `agents`:
 The one-agent form still works: an `agent` section (instead of `agents` and `agent_api`) with the fields of both tables except `name` is served as the agent `default`.
 
 Environment: `AGENTKIT_COMPONENTS` (any of `agent`, `web`, `mcp-server`, comma-separated; `web` serves the console at `/`, a chat client of `agent` on the same address), `AGENTKIT_ADDR` (default `127.0.0.1:8080`), `AGENTKIT_API_TOKEN` and `AGENTKIT_API_KEYS_FILE` (credentials, below; one of them, or `auth` in the config, is required off loopback), `AGENTKIT_CONFIG`, `AGENTKIT_LOG_LEVEL`, `AGENTKIT_SHUTDOWN_TIMEOUT`, `AGENTKIT_CREDENTIALS_KEY` (the credential vault's key ring, `<id>:<base64 of 32 random bytes>[,<id>:<base64>...]` with the first key sealing, e.g. `k1:$(openssl rand -base64 32)`; optional until connectors store credentials, but a malformed one fails startup). The API's reference: [docs/api/openapi.yaml](api/openapi.yaml) (OpenAPI 3.1); the event format and error codes are also in [tasks/T036](../tasks/T036-agent-api-v0.md) Notes.
+
+### Tool policies
+
+A tool policy decides each tool call by the tool's kind (`read`, `write`, `delete`, `send`, `execute`), risk (`low`, `medium`, `high`), tags, name and toolset: `allow`, `flag` (it runs, and the run's events say so), `approve` (a person must approve it; until approvals exist, the call is refused, saying so) or `deny` (the model is told "not allowed in this run: ..." and carries on). A tool that declares no kind or risk counts as `write`/`medium`.
+
+Give a preset's name, or rules (the first that matches decides; every field of `match` that is set must match; `tools` and `toolsets` are globs):
+
+```json
+"tool_policy": {"rules": [
+  {"match": {"toolsets": ["github"], "kinds": ["delete"]}, "action": "deny", "reason": "no deletes on GitHub"},
+  {"match": {"tags": ["billing"]}, "action": "flag"},
+  {"match": {"kinds": ["read"]}, "action": "allow"}
+], "default": "approve"}
+```
+
+| Preset | read | write low / medium / high | delete, send, execute |
+|---|---|---|---|
+| `read_only` | allow | deny | deny |
+| `low_risk_writes` | allow | allow / approve / deny | deny |
+| `approve_writes` | allow | approve | approve |
+| `all` (the default) | allow | allow | allow |
+
+A tool that declares `requires_approval` needs approval under every preset; a rule naming the tool exactly (no wildcard) overrides that.
+
+Policies only narrow. An agent's `tool_policy` is narrowed by the environment's (`"environment": {"tool_policy": "read_only"}` at the top of the config, for every agent) and by the run's (`{"message": "...", "tool_policy": "read_only"}` in `POST /v1/runs`, kept when the run is resumed): each call gets the strictest of their decisions. Every decision other than a plain allow is in the run's events (`tool_policy`, and `tool_flagged` for a flag), with the policy, rule and reason.
 
 ### Credentials
 
@@ -317,7 +343,7 @@ bin/agentkit ask -agent workspace "Create notes/todo.md with three items, then t
 claude mcp add --transport http agentkit-files http://localhost:8080/mcp/files --header "Authorization: Bearer $AGENTKIT_API_TOKEN"   # or use them from Claude Code
 ```
 
-`edit_file` is a write tool (kind `write`, risk `medium`); the rest are read-only. Until tool policies (T083) land, anyone with the API token can change files under `files`' root: give it a root you are happy for them to change.
+`edit_file` is a write tool (kind `write`, risk `medium`); the rest are read-only. An agent (or an environment, or a run) with the tool policy `read_only` cannot call it (section 5, "Tool policies"); without one, anyone with the API token can change files under `files`' root: give it a root you are happy for them to change.
 
 ### Skills
 

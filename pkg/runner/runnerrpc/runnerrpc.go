@@ -31,6 +31,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/policy"
 	"github.com/bsamanvith/agentkit/pkg/rpc"
 	"github.com/bsamanvith/agentkit/pkg/runner"
 )
@@ -86,6 +87,9 @@ type runReq struct {
 	Message    *llm.Message  `json:"message,omitempty"`
 	Transcript []llm.Message `json:"transcript,omitempty"`
 	At         time.Time     `json:"at,omitzero"`
+	// ToolPolicy narrows the agent's for this run. A runner older than it
+	// ignores it: update runners before the API that sends it.
+	ToolPolicy *policy.Policy `json:"tool_policy,omitempty"`
 }
 
 // event is a [harness.Event] on the wire: only the fields its kind sets.
@@ -102,6 +106,7 @@ type event struct {
 	Prompt     *harness.TimedMessage `json:"prompt,omitempty"`
 	TurnRecord *harness.TurnRecord   `json:"turn_record,omitempty"`
 	Result     *result               `json:"result,omitempty"`
+	Decision   *policy.Decision      `json:"decision,omitempty"`
 }
 
 // result is a [harness.Result] on the wire. Final is derived on the way back
@@ -158,7 +163,7 @@ func Register(s *rpc.Server, agents map[string]runner.Agent) error {
 				yield(event{}, fmt.Errorf("%w: %q", ErrNoAgent, r.Agent))
 				return
 			}
-			in := harness.Input{Transcript: r.Transcript, At: r.At}
+			in := harness.Input{Transcript: r.Transcript, At: r.At, ToolPolicy: r.ToolPolicy}
 			if r.Message != nil {
 				in.Message = *r.Message
 			}
@@ -221,7 +226,7 @@ func (a *agent) ShouldCompact(u llm.Usage) bool { return a.window.Full(u) }
 
 func (a *agent) Run(ctx context.Context, in harness.Input) iter.Seq2[harness.Event, error] {
 	return func(yield func(harness.Event, error) bool) {
-		req := runReq{Agent: a.name, Transcript: in.Transcript, At: in.At}
+		req := runReq{Agent: a.name, Transcript: in.Transcript, At: in.At, ToolPolicy: in.ToolPolicy}
 		if in.Message.Role != "" || len(in.Message.Content) > 0 {
 			m := in.Message
 			req.Message = &m
@@ -252,6 +257,10 @@ func toWire(ev harness.Event) (event, error) {
 	switch ev.Kind {
 	case harness.EventToolStart:
 		w.ToolUse, err = json.Marshal(ev.ToolUse)
+	case harness.EventToolPolicy, harness.EventToolFlagged:
+		w.ToolUse, err = json.Marshal(ev.ToolUse)
+		d := ev.Decision
+		w.Decision = &d
 	case harness.EventToolDone:
 		w.ToolResult, err = json.Marshal(ev.ToolResult)
 	case harness.EventRunDone:
@@ -287,6 +296,11 @@ func fromWire(w event) (harness.Event, error) {
 	if w.Result != nil {
 		r := w.Result.toResult()
 		ev.Result = &r
+	}
+	if w.Decision != nil {
+		ev.Decision = *w.Decision
+		// A decision's event names the call without its input.
+		ev.ToolUse = llm.ToolUse{ID: ev.ToolUse.ID, Name: ev.ToolUse.Name}
 	}
 	return ev, nil
 }

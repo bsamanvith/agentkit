@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/policy"
 )
 
 // Errors returned by this package, checked with [errors.Is]. Errors from a
@@ -88,6 +89,23 @@ func (e *RunError) result() Result {
 		res.Final = res.Transcript[n-1] // Transcript() is already a copy
 	}
 	return res
+}
+
+// PolicyError is why the run's tool policy refused a call ([WithToolPolicy]).
+// Its message is what the model is shown.
+type PolicyError struct {
+	Decision policy.Decision
+	// NeedsApproval is set when the policy asked for a person's approval,
+	// which a run cannot ask for yet (T084).
+	NeedsApproval bool
+}
+
+func (e *PolicyError) Error() string {
+	msg := "not allowed in this run: " + e.Decision.Reason
+	if e.NeedsApproval {
+		msg += "; the call needs a person's approval, which this run cannot ask for"
+	}
+	return msg
 }
 
 func invalidInput(format string, args ...any) error {

@@ -77,6 +77,8 @@ func ModuleRules() Rules {
 			// checked by its TestRunnerDoesNotImportABackend.
 			"pkg/runner": {
 				"pkg/harness", "pkg/store", "pkg/flow", "pkg/agentstep", "pkg/llm", "pkg/tool", "pkg/tenancy", "pkg/clock",
+				// A run's tool policy is stored with its prompt (T083).
+				"pkg/policy",
 				"pkg/store/memory", "pkg/llm/llmtest", "pkg/clock/clocktest", "pkg/agentstep/agentsteptest", "internal/testkit",
 				// Benchmarks measure the real backend; TestRunnerDoesNotImportABackend
 				// keeps it out of the package itself.
@@ -97,6 +99,9 @@ func ModuleRules() Rules {
 			"pkg/agentapi": {
 				"pkg/harness", "pkg/llm", "pkg/tool", "pkg/toolset", "pkg/component", "pkg/clock",
 				"pkg/runner", "pkg/runner/pool", "pkg/store", "pkg/tenancy", "pkg/flow",
+				// A run request's tool policy, and the decisions in the
+				// run's events (T083).
+				"pkg/policy",
 				// Runs' events and commands between replicas (T090): the
 				// stream over the store and a bus, in memory unless serve
 				// gives one.
@@ -175,7 +180,7 @@ func ModuleRules() Rules {
 			// errors) over the transport, never the store: the runner that
 			// keeps runs stays where the store is.
 			"pkg/runner/runnerrpc": {
-				"pkg/runner", "pkg/harness", "pkg/llm", "pkg/rpc",
+				"pkg/runner", "pkg/harness", "pkg/llm", "pkg/rpc", "pkg/policy",
 				"pkg/llm/llmtest", "pkg/tool", "pkg/tool/tooltest", "pkg/clock/clocktest",
 			},
 			// The web component serves the embedded console build over
@@ -205,6 +210,10 @@ func ModuleRules() Rules {
 				"pkg/agentapi", "pkg/agentapi/wire", "pkg/clock", "pkg/mcp/client",
 				"pkg/netguard", "pkg/store", "pkg/tenancy", "pkg/tool", "pkg/store/memory",
 			},
+			// Tool policies (T083) decide on a tool's metadata: the tool
+			// abstraction and nothing else, so the harness, the runner and
+			// the API can all share them.
+			"pkg/policy": {"pkg/tool"},
 			// The SSRF guard is the standard library only.
 			"pkg/netguard": {},
 			// The credential vault (T042) knows tenants and nothing else:

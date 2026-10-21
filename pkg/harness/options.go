@@ -5,6 +5,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/policy"
 )
 
 const (
@@ -42,6 +43,8 @@ type config struct {
 	maxTurns    int
 	maxTokens   int
 	maxParallel int
+	policy      *policy.Policy
+	toolsetOf   func(name string) string
 	before      []BeforeToolFunc
 	after       []AfterToolFunc
 	clock       clock.Clock
@@ -76,6 +79,30 @@ func WithMaxParallelTools(n int) Option { return func(c *config) { c.maxParallel
 // given; the first denial wins.
 func WithBeforeTool(f BeforeToolFunc) Option {
 	return func(c *config) { c.before = append(c.before, f) }
+}
+
+// WithToolPolicy decides every tool call by p before it runs, and before
+// the [WithBeforeTool] hooks. A run's [Input.ToolPolicy] narrows p. toolsetOf
+// names the toolset of a tool by the name the model calls it, for rules on
+// toolsets; nil, or "", means not known. It is called from the calls' own
+// goroutines, so it must be safe for concurrent use.
+//
+// A call p does not plainly allow gets an [EventToolPolicy] between its
+// EventToolStart and EventToolDone, and a flagged one an [EventToolFlagged]
+// after that, then runs. A denied call does not run: the model is shown "not
+// allowed in this run: " and the decision's reason as an error result, and
+// the run goes on. A call that needs approval is refused the same way, saying
+// so, until approvals exist (T084). The [WithAfterTool] hooks see a refusal
+// like any result.
+//
+// p must be valid ([policy.Policy.Validate]); New fails with
+// [ErrInvalidConfig] otherwise. Without this option, every call is allowed,
+// unless an Input.ToolPolicy says otherwise.
+func WithToolPolicy(p policy.Policy, toolsetOf func(name string) string) Option {
+	return func(c *config) {
+		p = p.Clone()
+		c.policy, c.toolsetOf = &p, toolsetOf
+	}
 }
 
 // WithAfterTool adds a hook that can replace tool results. Hooks run in the

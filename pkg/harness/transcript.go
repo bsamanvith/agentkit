@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/policy"
 )
 
 // Transcript is a run's memory: the messages the model sees, oldest first.
@@ -182,6 +183,11 @@ type Input struct {
 	// At is when the user sent Message. The zero value means the time the run
 	// started.
 	At time.Time
+	// ToolPolicy, when set, narrows the harness's tool policy for this run
+	// ([WithToolPolicy]): each call gets the stricter of the two decisions.
+	// Without a harness policy, it is the run's policy. It must be valid
+	// ([policy.Policy.Validate]), or the run fails with [ErrInvalidInput].
+	ToolPolicy *policy.Policy
 }
 
 // hasMessage reports whether m is set. The zero Message means "none".

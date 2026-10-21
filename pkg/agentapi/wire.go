@@ -16,15 +16,17 @@ const WireVersion = wire.Version
 
 // Event types, the "type" of an [Event] and the SSE event name.
 const (
-	TypeRunStart   = wire.TypeRunStart
-	TypeTextDelta  = wire.TypeTextDelta
-	TypeToolCall   = wire.TypeToolCall
-	TypeToolResult = wire.TypeToolResult
-	TypeTurnDone   = wire.TypeTurnDone
-	TypeRunDone    = wire.TypeRunDone
-	TypeRunError   = wire.TypeRunError
-	TypeRetrying   = wire.TypeRetrying
-	TypeRewind     = wire.TypeRewind
+	TypeRunStart    = wire.TypeRunStart
+	TypeTextDelta   = wire.TypeTextDelta
+	TypeToolCall    = wire.TypeToolCall
+	TypeToolResult  = wire.TypeToolResult
+	TypeToolPolicy  = wire.TypeToolPolicy
+	TypeToolFlagged = wire.TypeToolFlagged
+	TypeTurnDone    = wire.TypeTurnDone
+	TypeRunDone     = wire.TypeRunDone
+	TypeRunError    = wire.TypeRunError
+	TypeRetrying    = wire.TypeRetrying
+	TypeRewind      = wire.TypeRewind
 )
 
 // Error codes of a failed run, and of HTTP errors.
@@ -171,6 +173,15 @@ func wireEvent(runID, convID string, turns int, ev harness.Event) (Event, bool) 
 	case harness.EventToolDone:
 		e.Type, e.Call, e.ToolUseID = TypeToolResult, ev.Call, ev.ToolResult.ToolUseID
 		e.Content, e.IsError, e.DurationMS = ev.ToolResult.Content, ev.ToolResult.IsError, ms(ev.Duration)
+	case harness.EventToolPolicy, harness.EventToolFlagged:
+		e.Type = TypeToolPolicy
+		if ev.Kind == harness.EventToolFlagged {
+			e.Type = TypeToolFlagged
+		}
+		d := ev.Decision
+		e.Call, e.ToolUseID, e.Name = ev.Call, ev.ToolUse.ID, ev.ToolUse.Name
+		e.Action, e.Policy, e.Rule, e.Reason = string(d.Action), d.Policy, d.Rule, d.Reason
+		e.ToolKind, e.ToolRisk = string(d.Kind), string(d.Risk)
 	case harness.EventTurnDone:
 		r := turnRecord(*ev.TurnRecord)
 		r.Turn += turns

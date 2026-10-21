@@ -778,7 +778,8 @@ func checkStream(t *testing.T, events []agentapi.Event) {
 			if i != 0 {
 				t.Errorf("run_start at %d", i)
 			}
-		case agentapi.TypeTextDelta, agentapi.TypeToolCall, agentapi.TypeToolResult, agentapi.TypeTurnDone:
+		case agentapi.TypeTextDelta, agentapi.TypeToolCall, agentapi.TypeToolResult, agentapi.TypeTurnDone,
+			agentapi.TypeToolPolicy, agentapi.TypeToolFlagged:
 			if e.Turn != turn+1 {
 				t.Errorf("event %d (%s) of turn %d after turn %d was done", i, e.Type, e.Turn, turn)
 			}
@@ -818,8 +819,28 @@ func checkStream(t *testing.T, events []agentapi.Event) {
 				t.Errorf("tool_call %d/%d twice", e.Turn, e.Call)
 			}
 			calls[[2]int{e.Turn, e.Call}] = e.ToolUseID
+		case agentapi.TypeToolPolicy, agentapi.TypeToolFlagged:
+			// Between the call's tool_call and tool_result, a decision
+			// that is not a plain allow, and tool_flagged after a flag.
+			key := [2]int{e.Turn, e.Call}
+			want, flagged := strings.CutPrefix(calls[key], "flag:")
+			if flagged != (e.Type == agentapi.TypeToolFlagged) {
+				want = ""
+			}
+			if want == "" || want != e.ToolUseID || e.Name == "" || e.Rule == "" || e.Reason == "" || e.ToolKind == "" || e.ToolRisk == "" ||
+				!slices.Contains([]string{"flag", "approve", "deny"}, e.Action) || (e.Type == agentapi.TypeToolFlagged && e.Action != "flag") {
+				t.Errorf("event %d: %s %+v out of place or incomplete", i, e.Type, e)
+			}
+			if e.Type == agentapi.TypeToolPolicy && e.Action == "flag" {
+				calls[key] = "flag:" + e.ToolUseID
+			} else {
+				calls[key] = e.ToolUseID
+			}
 		case agentapi.TypeToolResult:
 			id, ok := calls[[2]int{e.Turn, e.Call}]
+			if strings.HasPrefix(id, "flag:") {
+				t.Errorf("tool_result %d/%d of a flagged call without tool_flagged", e.Turn, e.Call)
+			}
 			if !ok || id != e.ToolUseID {
 				t.Errorf("tool_result %d/%d without its tool_call", e.Turn, e.Call)
 			}

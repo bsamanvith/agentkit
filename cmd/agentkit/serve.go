@@ -21,6 +21,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/component"
 	"github.com/bsamanvith/agentkit/pkg/credentials"
+	"github.com/bsamanvith/agentkit/pkg/policy"
 	"github.com/bsamanvith/agentkit/pkg/runner"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
@@ -60,7 +61,16 @@ type serveConfig struct {
 	Auth authConfig
 	// Runtime is how admins add MCP servers as toolsets through the API.
 	Runtime runtimeConfig
-	legacy  bool // Agents come from an "agent" section (or none)
+	// Environment is what this deployment imposes on every agent.
+	Environment environmentConfig
+	legacy      bool // Agents come from an "agent" section (or none)
+}
+
+// environmentConfig is the "environment" section of the config file.
+type environmentConfig struct {
+	// ToolPolicy narrows every agent's tool policy: a preset's name (an
+	// ephemeral environment might say "read_only") or a policy.
+	ToolPolicy *policy.Policy `json:"tool_policy"`
 }
 
 // serveFile is the top level of the config file.
@@ -71,6 +81,7 @@ type serveFile struct {
 	AgentAPI json.RawMessage   `json:"agent_api"`
 	Auth     json.RawMessage   `json:"auth"`
 	Runtime  json.RawMessage   `json:"runtime_toolsets"`
+	Env      json.RawMessage   `json:"environment"`
 }
 
 // serveEnv is what agentkit serve reads from the environment.
@@ -391,6 +402,9 @@ func loadServeConfig(path string) (serveConfig, error) {
 	}
 	if err := decodeSection(file.Auth, &cfg.Auth); err != nil {
 		return cfg, fmt.Errorf("config %s: auth: %w", path, err)
+	}
+	if err := decodeSection(file.Env, &cfg.Environment); err != nil {
+		return cfg, fmt.Errorf("config %s: environment: %w", path, err)
 	}
 	switch {
 	case file.Agent != nil && (file.Agents != nil || file.AgentAPI != nil):

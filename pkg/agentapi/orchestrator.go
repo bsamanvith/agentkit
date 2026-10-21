@@ -5,6 +5,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/pkg/flow"
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/policy"
 	"github.com/bsamanvith/agentkit/pkg/runner"
 	"github.com/bsamanvith/agentkit/pkg/store"
 )
@@ -18,8 +19,9 @@ import (
 // events and their conversations there.
 type Runs interface {
 	// Start creates an interactive run of conversationID on msg, as
-	// [runner.Runner.Run] with [runner.Interactive].
-	Start(ctx context.Context, conversationID string, msg llm.Message) (*runner.Execution, error)
+	// [runner.Runner.Run] with [runner.Interactive] and the options in opts,
+	// which it must apply: a run must never run without its ToolPolicy.
+	Start(ctx context.Context, conversationID string, msg llm.Message, opts StartOptions) (*runner.Execution, error)
 	// Resume, Decide, Cancel, Interrupt and Shutdown are as on
 	// [runner.Runner].
 	Resume(ctx context.Context, runID string) (*runner.Execution, error)
@@ -27,6 +29,22 @@ type Runs interface {
 	Cancel(ctx context.Context, runID string) (store.Run, error)
 	Interrupt(ctx context.Context, runID string) (store.Run, error)
 	Shutdown(ctx context.Context) error
+}
+
+// StartOptions are the options of a run a request starts.
+type StartOptions struct {
+	// ToolPolicy narrows the agent's tool policy for the run and its
+	// resumes ([runner.ToolPolicy]); nil for none.
+	ToolPolicy *policy.Policy
+}
+
+// RunOptions are opts as the runner takes them.
+func (o StartOptions) RunOptions() []runner.RunOption {
+	var out []runner.RunOption
+	if o.ToolPolicy != nil {
+		out = append(out, runner.ToolPolicy(*o.ToolPolicy))
+	}
+	return out
 }
 
 // RunsFactory builds the [Runs] of a server over its store and the factory
@@ -41,8 +59,8 @@ func WithRuns(f RunsFactory) Option { return func(c *config) { c.runs = f } }
 // localRuns is the default [Runs]: a [*runner.Runner].
 type localRuns struct{ *runner.Runner }
 
-func (r localRuns) Start(ctx context.Context, conversationID string, msg llm.Message) (*runner.Execution, error) {
-	return r.Run(ctx, conversationID, msg, runner.Interactive())
+func (r localRuns) Start(ctx context.Context, conversationID string, msg llm.Message, opts StartOptions) (*runner.Execution, error) {
+	return r.Run(ctx, conversationID, msg, append(opts.RunOptions(), runner.Interactive())...)
 }
 
 func (r localRuns) Resume(ctx context.Context, runID string) (*runner.Execution, error) {

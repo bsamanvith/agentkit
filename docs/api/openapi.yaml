@@ -2240,10 +2240,143 @@
           "agent": {
             "type": "string",
             "description": "The agent of a new conversation (absent: the default agent). A conversation stays with its agent: naming another is 409 agent_mismatch."
+          },
+          "tool_policy": {
+            "$ref": "#/components/schemas/ToolPolicy"
           }
         },
         "required": [
           "message"
+        ],
+        "additionalProperties": false
+      },
+      "ToolPolicy": {
+        "description": "Narrows the agent's tool policy for this run, and every resume of it: each tool call gets the stricter of the two decisions (deny over approve over flag over allow), so a run can never widen what its agent may do. A preset's name, or a policy. Only with a message: a resumed run keeps the policy it started with. An invalid policy is 400 invalid_request.",
+        "oneOf": [
+          {
+            "enum": [
+              "read_only",
+              "low_risk_writes",
+              "approve_writes",
+              "all"
+            ],
+            "description": "read_only: read tools only. low_risk_writes: reads and low-risk writes; medium-risk writes need approval; high-risk tools, deletes, sends and executes are denied. approve_writes: reads; everything else needs approval. all: every call (a tool that requires approval still needs it)."
+          },
+          {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9_.-]{0,63}$",
+                "description": "Names the policy in decisions (absent: run)."
+              },
+              "rules": {
+                "type": "array",
+                "maxItems": 256,
+                "description": "Tried in order; the first that matches decides.",
+                "items": {
+                  "$ref": "#/components/schemas/ToolPolicyRule"
+                }
+              },
+              "default": {
+                "enum": [
+                  "allow",
+                  "flag",
+                  "approve",
+                  "deny"
+                ],
+                "description": "Decides a call no rule matches."
+              },
+              "narrowed_by": {
+                "type": "array",
+                "description": "Policies (or presets' names) that narrow this one.",
+                "items": {
+                  "$ref": "#/components/schemas/ToolPolicy"
+                }
+              }
+            },
+            "required": [
+              "default"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "ToolPolicyRule": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_.-]{0,63}$"
+          },
+          "match": {
+            "type": "object",
+            "description": "The calls the rule applies to: every field that is set must match; an empty match matches every call.",
+            "properties": {
+              "kinds": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "read",
+                    "write",
+                    "delete",
+                    "send",
+                    "execute"
+                  ]
+                },
+                "description": "The tool's kind is one of these (an unclassified tool is write)."
+              },
+              "risks": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high"
+                  ]
+                },
+                "description": "The tool's risk is one of these (an unclassified tool is medium)."
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "The tool has at least one of these tags."
+              },
+              "tools": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Globs over the tool's name, as the model sees it (github__create_issue) or within its toolset (create_issue). A rule that names a tool exactly overrides the tool's requires_approval."
+              },
+              "toolsets": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Globs over the tool's toolset."
+              }
+            },
+            "additionalProperties": false
+          },
+          "action": {
+            "enum": [
+              "allow",
+              "flag",
+              "approve",
+              "deny"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "What the events and, for a refused call, the model are told."
+          }
+        },
+        "required": [
+          "action"
         ],
         "additionalProperties": false
       },
@@ -2280,7 +2413,7 @@
       },
       "Event": {
         "type": "object",
-        "description": "One event of a run's stream: the JSON of an SSE data line, whose event name is its type. A run's events are one run_start; per turn its text_delta events, a tool_call and tool_result per tool call, and one turn_done; and last one run_done or run_error.",
+        "description": "One event of a run's stream: the JSON of an SSE data line, whose event name is its type. A run's events are one run_start; per turn its text_delta events, a tool_call and tool_result per tool call (with its tool_policy and tool_flagged, if any, in between), and one turn_done; and last one run_done or run_error.",
         "properties": {
           "v": {
             "const": 1,
@@ -2288,7 +2421,7 @@
           },
           "type": {
             "type": "string",
-            "description": "run_start, text_delta, tool_call, tool_result, turn_done, retrying, run_done or run_error; new types may be added: skip an unknown one."
+            "description": "run_start, text_delta, tool_call, tool_policy, tool_flagged, tool_result, turn_done, retrying, run_done or run_error; new types may be added: skip an unknown one. tool_policy says what the run's tool policy decided about a call it did not plainly allow (flag: the call runs; approve or deny: it does not, and its tool_result is the error the model was shown); tool_flagged follows the tool_policy of a flagged call, with the same fields."
           },
           "id": {
             "type": "string",
@@ -2326,14 +2459,43 @@
           },
           "call": {
             "type": "integer",
-            "description": "tool_call, tool_result: the call's index in its turn."
+            "description": "tool_call, tool_policy, tool_flagged, tool_result: the call's index in its turn."
           },
           "tool_use_id": {
             "type": "string"
           },
           "name": {
             "type": "string",
-            "description": "tool_call."
+            "description": "tool_call, tool_policy, tool_flagged: the tool."
+          },
+          "action": {
+            "enum": [
+              "allow",
+              "flag",
+              "approve",
+              "deny"
+            ],
+            "description": "tool_policy, tool_flagged: what the policy decided. Until approvals exist (T084), approve refuses the call like deny, saying so."
+          },
+          "policy": {
+            "type": "string",
+            "description": "tool_policy, tool_flagged: the policy that decided: a preset's name, agent, environment or run, or the name the policy gives itself."
+          },
+          "rule": {
+            "type": "string",
+            "description": "tool_policy, tool_flagged: the rule that decided: its name, rules[i] by position, or default."
+          },
+          "reason": {
+            "type": "string",
+            "description": "tool_policy, tool_flagged: why. A refused call's tool_result is \"not allowed in this run: \" and this reason."
+          },
+          "tool_kind": {
+            "type": "string",
+            "description": "tool_policy, tool_flagged: the tool's kind as the policy saw it (an unclassified tool is write)."
+          },
+          "tool_risk": {
+            "type": "string",
+            "description": "tool_policy, tool_flagged: the tool's risk as the policy saw it (an unclassified tool is medium)."
           },
           "input": {
             "description": "tool_call: the tool's input."
@@ -2705,7 +2867,7 @@
           },
           "requires_approval": {
             "type": "boolean",
-            "description": "The tool declares that a person should approve each call before it runs, unless a policy says otherwise. Not enforced yet. Omitted when false."
+            "description": "The tool declares that a person should approve each call before it runs, unless a policy rule names the tool. Until approvals exist (T084), such a call is refused, saying so. Omitted when false."
           },
           "tags": {
             "type": "array",

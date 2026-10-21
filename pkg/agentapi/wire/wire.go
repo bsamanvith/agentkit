@@ -42,6 +42,17 @@ const (
 	TypeToolCall = "tool_call"
 	// TypeToolResult says a tool call finished.
 	TypeToolResult = "tool_result"
+	// TypeToolPolicy says what the run's tool policy decided about a call,
+	// when it did not plainly allow it: Action flag (the call runs), approve
+	// or deny (it does not: its tool_result is the error the model was
+	// shown), with the policy, rule and reason. It comes between the call's
+	// tool_call and tool_result. Until approvals exist, approve refuses the
+	// call like deny, saying so.
+	TypeToolPolicy = "tool_policy"
+	// TypeToolFlagged says a call the policy flagged is about to run. It
+	// follows the call's tool_policy, with the same fields: a client that
+	// notifies on flagged calls listens for it alone.
+	TypeToolFlagged = "tool_flagged"
 	// TypeTurnDone says a turn (one model call and its tools) is complete and
 	// in the conversation; it carries the turn's record.
 	TypeTurnDone = "turn_done"
@@ -69,8 +80,9 @@ const (
 // Event works for every type and ignores unknown fields.
 //
 // A run's events are: one run_start; then per turn its text_delta events, a
-// tool_call and a tool_result per tool call (each call's tool_call first),
-// and one turn_done; and last exactly one run_done or run_error.
+// tool_call and a tool_result per tool call (each call's tool_call first,
+// and its tool_policy and tool_flagged, if any, in between), and one
+// turn_done; and last exactly one run_done or run_error.
 //
 // Every event but text_delta is stored: Seq numbers the stored events from 1
 // with no gaps, and such an event's ID is its Seq ("12"). A text_delta is
@@ -100,7 +112,8 @@ type Event struct {
 	// tool_call, tool_result: the index of the call in its turn, and its ID.
 	Call      int    `json:"call,omitempty"`
 	ToolUseID string `json:"tool_use_id,omitempty"`
-	// tool_call: the tool and its JSON input.
+	// tool_call, tool_policy, tool_flagged: the tool; tool_call: its JSON
+	// input.
 	Name  string          `json:"name,omitempty"`
 	Input json.RawMessage `json:"input,omitempty"`
 	// tool_result: what the model is shown, whether it is an error, and how
@@ -108,6 +121,17 @@ type Event struct {
 	Content    string  `json:"content,omitempty"`
 	IsError    bool    `json:"is_error,omitempty"`
 	DurationMS float64 `json:"duration_ms,omitempty"`
+
+	// tool_policy, tool_flagged: what the policy decided (allow, flag,
+	// approve or deny), which policy and rule decided ("default" for the
+	// policy's default), why, and the tool's class as the policy saw it
+	// (an unclassified tool is write/medium).
+	Action   string `json:"action,omitempty"`
+	Policy   string `json:"policy,omitempty"`
+	Rule     string `json:"rule,omitempty"`
+	Reason   string `json:"reason,omitempty"`
+	ToolKind string `json:"tool_kind,omitempty"`
+	ToolRisk string `json:"tool_risk,omitempty"`
 
 	// turn_done
 	Record *TurnRecord `json:"record,omitempty"`
@@ -201,6 +225,20 @@ func (e Event) MarshalJSON() ([]byte, error) {
 			IsError    bool    `json:"is_error"`
 			DurationMS float64 `json:"duration_ms"`
 		}{h, e.Turn, e.Call, e.ToolUseID, e.Content, e.IsError, e.DurationMS})
+	case TypeToolPolicy, TypeToolFlagged:
+		return json.Marshal(struct {
+			header
+			Turn      int    `json:"turn"`
+			Call      int    `json:"call"`
+			ToolUseID string `json:"tool_use_id"`
+			Name      string `json:"name"`
+			Action    string `json:"action"`
+			Policy    string `json:"policy"`
+			Rule      string `json:"rule"`
+			Reason    string `json:"reason"`
+			ToolKind  string `json:"tool_kind"`
+			ToolRisk  string `json:"tool_risk"`
+		}{h, e.Turn, e.Call, e.ToolUseID, e.Name, e.Action, e.Policy, e.Rule, e.Reason, e.ToolKind, e.ToolRisk})
 	case TypeTurnDone:
 		return json.Marshal(struct {
 			header
@@ -470,6 +508,12 @@ type RunRequest struct {
 	// agent). A conversation stays with its agent: continuing it with another
 	// is CodeAgentMismatch.
 	Agent string `json:"agent,omitempty"`
+	// ToolPolicy narrows the agent's tool policy for this run: a preset's
+	// name ("read_only", "low_risk_writes", "approve_writes", "all") or a
+	// policy object ({"rules": [...], "default": "deny"}). Each tool call
+	// gets the stricter of the two decisions, so it can only narrow. The run
+	// keeps it when it is resumed; a resume (no message) cannot set one.
+	ToolPolicy json.RawMessage `json:"tool_policy,omitempty"`
 }
 
 // ErrorResponse is the body of every HTTP error.

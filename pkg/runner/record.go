@@ -7,6 +7,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/policy"
 	"github.com/bsamanvith/agentkit/pkg/store"
 )
 
@@ -31,6 +32,9 @@ type PromptRecord struct {
 	// FlushEvery is the run's [FlushEvery], kept so that a resume stores
 	// its turns as the run started; 0 when the run took the runner's.
 	FlushEvery int `json:"flush_every,omitempty"`
+	// ToolPolicy is the run's [ToolPolicy], kept so that a resume narrows
+	// the agent's policy as the run started; nil when the run set none.
+	ToolPolicy *policy.Policy `json:"tool_policy,omitempty"`
 }
 
 // CanceledRecord is the record of a cancel marker.

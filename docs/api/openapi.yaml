@@ -785,6 +785,138 @@
         }
       }
     },
+    "/v1/runs/{id}/input": {
+      "post": {
+        "operationId": "answerRun",
+        "summary": "Answer what a run waits for",
+        "description": "Answers interrupts of a suspended chat run: a question a tool asks (text, one of its choices if it has any), or an approval the run's tool policy wants (approved, and a reason for a denial). Answers may come one request at a time; the same answer again is accepted (a retry is safe). Until every interrupt of the run's pending turn has its answer, the response is the run, still suspended, with the answers so far. With the last one, the run goes on in the background: an answer is its question's result, an approved call runs with exactly the input it was approved with, a denied call's result is the denial. The response is then the run as it is, or with Accept: text/event-stream its events from there on. Who answered is the request's authenticated user, never the body.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The run's ID.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InputRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "Server-Sent Events: each event's name is its type, its id the event's id, and its data the JSON of an Event (components.schemas.Event)."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: the body is not an InputRequest with at least one answer, each with an id; an interrupt is answered twice in it; or an answer does not fit its interrupt (text for an approval, none for a question, text that is not one of its choices).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such run, or one whose agent uses a toolset the credential may not.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "run_final: the run is done, canceled or rejected; not_pending: the run waits for no answer (it is not suspended, it resumed already, it is a flow run waiting for decisions, or no interrupt has that id) or the interrupt has a different answer already; run_leased: another process holds the run, retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "too_large: the body is over the server's limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "over_capacity: too many runs (retryable); shutting_down: the server is draining.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/conversations": {
       "post": {
         "operationId": "createConversation",
@@ -1759,7 +1891,7 @@
         "properties": {
           "code": {
             "type": "string",
-            "description": "What went wrong, for programs: invalid_request (400), unauthorized (401), forbidden (403), not_found (404), too_large (413), conversation_busy, agent_mismatch, run_final, run_leased, awaiting_decision, not_pending, shape_changed, toolset_exists, conflict (409), auth_required, server_unreachable (422), over_capacity, shutting_down (503), internal (500); a run's codes are interrupted, run_failed, suspended, rejected, budget_exceeded, max_tokens, refused, unexpected_stop, cancelled, timeout, shutdown, rate_limited, overloaded, model_auth, context_too_long, model_rejected and internal. conversation_interrupted is no longer returned. New codes may be added: treat an unknown one as internal."
+            "description": "What went wrong, for programs: invalid_request (400), unauthorized (401), forbidden (403), not_found (404), too_large (413), conversation_busy, agent_mismatch, run_final, run_leased, awaiting_decision, not_pending, shape_changed, toolset_exists, conflict (409), auth_required, server_unreachable (422), over_capacity, shutting_down (503), internal (500); a run's codes are interrupted, run_failed, suspended (a flow run waits for a decision, a chat run for input), rejected, budget_exceeded, max_tokens, refused, unexpected_stop, cancelled, timeout, shutdown, rate_limited, overloaded, model_auth, context_too_long, model_rejected and internal. conversation_interrupted is no longer returned. New codes may be added: treat an unknown one as internal."
           },
           "message": {
             "type": "string",
@@ -2114,7 +2246,7 @@
               "canceled",
               "rejected"
             ],
-            "description": "running: an execution is going on; interrupted: a chat run stopped with nobody running it (resume it, or post a new message); suspended: a flow run waits for a decision; then done, failed (it can still be resumed), canceled or rejected, which never change. New statuses may be added."
+            "description": "running: an execution is going on; interrupted: a chat run stopped with nobody running it (resume it, or post a new message); suspended: a flow run waits for a decision, or a chat run for input (its interrupts); then done, failed (it can still be resumed), canceled or rejected, which never change. New statuses may be added."
           },
           "created_at": {
             "type": "string",
@@ -2140,6 +2272,13 @@
           },
           "record": {
             "$ref": "#/components/schemas/Record"
+          },
+          "interrupts": {
+            "type": "array",
+            "description": "A suspended chat run's interrupts: the calls of its pending turn that wait for people, each with its answer once it has one (POST /v1/runs/{id}/input). The run resumes when they all have one.",
+            "items": {
+              "$ref": "#/components/schemas/Interrupt"
+            }
           }
         },
         "required": [
@@ -2243,6 +2382,14 @@
           },
           "tool_policy": {
             "$ref": "#/components/schemas/ToolPolicy"
+          },
+          "interaction": {
+            "enum": [
+              "interactive",
+              "supervised",
+              "autonomous"
+            ],
+            "description": "Narrows the agent's interaction mode for this run, and every resume of it: whether its tool calls may wait for people. interactive and supervised wait (a tool that asks, such as ask_user; a call the policy wants approved): the run is suspended until answered (POST /v1/runs/{id}/input). autonomous never waits: ask_user is not offered, and a call that wants an approval is refused, saying why. The stricter of the agent's mode and this one wins. Only with a message: a resumed run keeps its mode. An unknown mode is 400 invalid_request."
           }
         },
         "required": [
@@ -2400,6 +2547,104 @@
           "path"
         ]
       },
+      "InputRequest": {
+        "type": "object",
+        "description": "The body of POST /v1/runs/{id}/input: answers to interrupts of a suspended chat run. Unknown fields are refused.",
+        "properties": {
+          "answers": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/Answer"
+            }
+          }
+        },
+        "required": [
+          "answers"
+        ],
+        "additionalProperties": false
+      },
+      "Answer": {
+        "type": "object",
+        "description": "The answer to an interrupt: text for a question; approved, and a reason for a denial, for an approval.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The interrupt's id: the call's tool_use_id."
+          },
+          "text": {
+            "type": "string",
+            "description": "A question's answer: one of its choices, if it has any."
+          },
+          "approved": {
+            "type": "boolean",
+            "description": "An approval: whether the call runs."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why a call was denied: the model is shown \"denied by <who>: <reason>\"."
+          },
+          "by": {
+            "type": "string",
+            "description": "Who answered, as the server authenticated them (in a run). Ignored in a request."
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "Interrupt": {
+        "type": "object",
+        "description": "A tool call that waits for people.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The call's tool_use_id: what an answer names."
+          },
+          "kind": {
+            "enum": [
+              "question",
+              "approval"
+            ],
+            "description": "question: the tool asks (prompt, choices); approval: the run's tool policy wants the call (input) approved, prompt being the rule's reason. New kinds may be added."
+          },
+          "name": {
+            "type": "string",
+            "description": "The tool's name."
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "A question's choices, if it has any: the answer must be one of them."
+          },
+          "input": {
+            "description": "An approval: the call's JSON input, which runs as it is once approved."
+          },
+          "policy": {
+            "type": "string",
+            "description": "An approval: the policy that wants it."
+          },
+          "rule": {
+            "type": "string",
+            "description": "An approval: the rule that wants it."
+          },
+          "answer": {
+            "$ref": "#/components/schemas/Answer"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "prompt"
+        ]
+      },
       "CreateConversationRequest": {
         "type": "object",
         "description": "The body of POST /v1/conversations (optional: no body is {}). Unknown fields are refused.",
@@ -2413,7 +2658,7 @@
       },
       "Event": {
         "type": "object",
-        "description": "One event of a run's stream: the JSON of an SSE data line, whose event name is its type. A run's events are one run_start; per turn its text_delta events, a tool_call and tool_result per tool call (with its tool_policy and tool_flagged, if any, in between), and one turn_done; and last one run_done or run_error.",
+        "description": "One event of a run's stream: the JSON of an SSE data line, whose event name is its type. A run's events are one run_start; per turn its text_delta events, a tool_call and tool_result per tool call (with its tool_policy and tool_flagged, if any, in between), and one turn_done; and last one run_done or run_error. A call that waits for people has an interrupt where its tool_result would be, and the execution ends there (run_error suspended); once answered, the run's events go on in the same turn: the call's tool_call again, its tool_result, the turn's turn_done.",
         "properties": {
           "v": {
             "const": 1,
@@ -2421,7 +2666,7 @@
           },
           "type": {
             "type": "string",
-            "description": "run_start, text_delta, tool_call, tool_policy, tool_flagged, tool_result, turn_done, retrying, run_done or run_error; new types may be added: skip an unknown one. tool_policy says what the run's tool policy decided about a call it did not plainly allow (flag: the call runs; approve or deny: it does not, and its tool_result is the error the model was shown); tool_flagged follows the tool_policy of a flagged call, with the same fields."
+            "description": "run_start, text_delta, tool_call, tool_policy, tool_flagged, interrupt, tool_result, turn_done, retrying, run_done or run_error; new types may be added: skip an unknown one. tool_policy says what the run's tool policy decided about a call it did not plainly allow (flag: the call runs; approve: in a run that may wait for people, an interrupt follows, else like deny; deny: the call does not run, and its tool_result is the error the model was shown); tool_flagged follows the tool_policy of a flagged call, with the same fields. interrupt says a call waits for people (its interrupt)."
           },
           "id": {
             "type": "string",
@@ -2459,14 +2704,14 @@
           },
           "call": {
             "type": "integer",
-            "description": "tool_call, tool_policy, tool_flagged, tool_result: the call's index in its turn."
+            "description": "tool_call, tool_policy, tool_flagged, interrupt, tool_result: the call's index in its turn."
           },
           "tool_use_id": {
             "type": "string"
           },
           "name": {
             "type": "string",
-            "description": "tool_call, tool_policy, tool_flagged: the tool."
+            "description": "tool_call, tool_policy, tool_flagged, interrupt: the tool."
           },
           "action": {
             "enum": [
@@ -2475,7 +2720,7 @@
               "approve",
               "deny"
             ],
-            "description": "tool_policy, tool_flagged: what the policy decided. Until approvals exist (T084), approve refuses the call like deny, saying so."
+            "description": "tool_policy, tool_flagged: what the policy decided. approve: in a run that may wait for people the call waits for an approval (an interrupt event follows); in an autonomous run it is refused like deny, saying so."
           },
           "policy": {
             "type": "string",
@@ -2496,6 +2741,9 @@
           "tool_risk": {
             "type": "string",
             "description": "tool_policy, tool_flagged: the tool's risk as the policy saw it (an unclassified tool is medium)."
+          },
+          "interrupt": {
+            "$ref": "#/components/schemas/Interrupt"
           },
           "input": {
             "description": "tool_call: the tool's input."
@@ -2863,11 +3111,11 @@
           },
           "interrupts": {
             "type": "boolean",
-            "description": "The tool declares that it needs a person to answer (like ask_user). Nothing acts on it yet. Omitted when false."
+            "description": "The tool declares that it needs a person to answer (like ask_user): an autonomous run is not offered it. Omitted when false."
           },
           "requires_approval": {
             "type": "boolean",
-            "description": "The tool declares that a person should approve each call before it runs, unless a policy rule names the tool. Until approvals exist (T084), such a call is refused, saying so. Omitted when false."
+            "description": "The tool declares that a person should approve each call before it runs, unless a policy rule names the tool: a run that may wait for people suspends until the call is answered (POST /v1/runs/{id}/input), an autonomous one refuses it, saying so. Omitted when false."
           },
           "tags": {
             "type": "array",

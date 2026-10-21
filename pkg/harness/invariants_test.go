@@ -31,7 +31,7 @@ type limits struct{ maxTurns, maxTokens int }
 
 func (r *rig) check(tb testing.TB, o observation, from int) {
 	tb.Helper()
-	checkEvents(tb, o.events, o.complete && o.err == nil)
+	checkEvents(tb, o.events, o.complete && o.err == nil, o.in.Pending != nil)
 	sent, snap := r.rec.requests(from)
 
 	if errors.Is(o.err, harness.ErrInvalidInput) {
@@ -60,7 +60,13 @@ func (r *rig) check(tb testing.TB, o observation, from int) {
 	if res.Turns != len(snap) {
 		tb.Errorf("Turns = %d, the model was called %d times", res.Turns, len(snap))
 	}
-	if o.err == nil {
+	if o.in.Pending != nil && len(res.Record.Turns) > 0 && res.Record.Turns[0].Turn == 0 {
+		checkFinished(tb, o)
+	}
+	switch {
+	case o.suspended:
+		checkSuspended(tb, o, snap)
+	case o.err == nil:
 		checkSuccess(tb, o, snap)
 	}
 	checkRecord(tb, o)
@@ -148,20 +154,120 @@ func checkSuccess(tb testing.TB, o observation, snap []llm.Request) {
 		return
 	}
 	diff(tb, "Final is the last message", res.Transcript[n-1], res.Final)
-	var sum llm.Usage
-	for _, tr := range res.Record.Turns {
-		sum.InputTokens += tr.Usage.InputTokens
-		sum.OutputTokens += tr.Usage.OutputTokens
-		sum.CacheReadTokens += tr.Usage.CacheReadTokens
-		sum.CacheWriteTokens += tr.Usage.CacheWriteTokens
-	}
-	diff(tb, "total usage is the sum of the turns", sum, res.Usage)
-	if len(res.Record.Turns) != res.Turns || res.Turns != len(snap) {
-		tb.Errorf("%d turn records, Turns = %d, %d model calls", len(res.Record.Turns), res.Turns, len(snap))
-	}
+	checkUsage(tb, o, snap, nil)
 	if string(o.finalJSON) != string(mustMarshal(tb, res.Transcript)) && o.finalJSON != nil {
 		tb.Error("the transcript in EventRunDone changed while the consumer held it")
 	}
+}
+
+// checkUsage checks the run's usage is the sum of the turns whose model call
+// it made: its own (not a turn 0 it finished for an earlier run), and the
+// pending turn it suspended in, if any.
+func checkUsage(tb testing.TB, o observation, snap []llm.Request, pending *harness.Pending) {
+	tb.Helper()
+	res := o.res
+	var sum llm.Usage
+	turns := res.Record.Turns
+	if len(turns) > 0 && turns[0].Turn == 0 {
+		turns = turns[1:]
+	}
+	// The pending turn's model call is this run's unless the run suspended
+	// again on the turn it resumed, before finishing it.
+	resuspended := o.in.Pending != nil && (len(res.Record.Turns) == 0 || res.Record.Turns[0].Turn != 0)
+	if pending != nil && !resuspended {
+		turns = append(slices.Clone(turns), pending.Turn)
+	}
+	for _, tr := range turns {
+		sum = sum.Add(tr.Usage)
+	}
+	diff(tb, "total usage is the sum of the turns", sum, res.Usage)
+	if len(turns) != res.Turns || res.Turns != len(snap) {
+		tb.Errorf("%d turns with a model call, Turns = %d, %d model calls", len(turns), res.Turns, len(snap))
+	}
+}
+
+// checkSuspended checks what a run that suspended promises: a pending turn
+// whose reply follows the transcript, whose calls are each finished or
+// waiting (as the interrupt events said), and that survives a save and load.
+func checkSuspended(tb testing.TB, o observation, snap []llm.Request) {
+	tb.Helper()
+	p := o.res.Pending
+	if p == nil {
+		tb.Error("a suspended run has no pending turn")
+		return
+	}
+	if o.res.Final.Role != "" {
+		tb.Errorf("a suspended run has a final message %+v", o.res.Final)
+	}
+	checkUsage(tb, o, snap, p)
+	var waiting []string
+	for _, ev := range o.events {
+		switch ev.Kind {
+		case harness.EventInterrupt:
+			waiting = append(waiting, ev.Interrupt.ID)
+		case harness.EventTurnDone:
+			waiting = nil
+		}
+	}
+	var ids []string
+	for _, in := range p.Interrupts {
+		ids = append(ids, in.ID)
+	}
+	slices.Sort(waiting)
+	diff(tb, "the pending turn's interrupts and the interrupt events", waiting, slices.Sorted(slices.Values(ids)))
+	// The reply follows the transcript, and with every call answered the
+	// conversation is valid.
+	reply := p.Reply()
+	var results []llm.Block
+	done := map[string]llm.ToolResult{}
+	for _, b := range p.Done.Content {
+		r := b.(llm.ToolResult)
+		done[r.ToolUseID] = r
+	}
+	for _, b := range reply.Content {
+		if u, ok := b.(llm.ToolUse); ok {
+			r, ok := done[u.ID]
+			if !ok {
+				r = llm.ToolResult{ToolUseID: u.ID, Content: "answer"}
+				if !slices.Contains(ids, u.ID) {
+					tb.Errorf("call %q of the pending turn neither finished nor waits", u.ID)
+				}
+			}
+			results = append(results, r)
+		}
+	}
+	full := append(o.res.Transcript.Clone(), reply, llm.User(results...))
+	if err := full.Validate(); err != nil {
+		tb.Errorf("the pending turn does not follow the transcript: %v", err)
+	}
+	var back harness.Pending
+	if err := json.Unmarshal(mustMarshal(tb, p), &back); err != nil {
+		tb.Errorf("a saved pending turn does not load: %v", err)
+	} else if !bytes.Equal(mustMarshal(tb, back), mustMarshal(tb, p)) {
+		tb.Errorf("a pending turn changed by a save and load")
+	}
+}
+
+// checkFinished checks the turn 0 a run finished for an earlier run: the
+// pending reply, then a result for every call, the finished ones unchanged.
+func checkFinished(tb testing.TB, o observation) {
+	tb.Helper()
+	p, tr := o.in.Pending, o.res.Record.Turns[0]
+	if len(tr.Messages) != 2 {
+		tb.Errorf("turn 0 has %d messages, want the reply and its results", len(tr.Messages))
+		return
+	}
+	diff(tb, "turn 0's reply", p.Reply(), tr.Messages[0].Message)
+	got := map[string]llm.ToolResult{}
+	for _, b := range tr.Messages[1].Message.Content {
+		r := b.(llm.ToolResult)
+		got[r.ToolUseID] = r
+	}
+	for _, b := range p.Done.Content {
+		r := b.(llm.ToolResult)
+		diff(tb, "a result the suspended run had", r, got[r.ToolUseID])
+	}
+	diff(tb, "turn 0's usage", p.Turn.Usage, tr.Usage)
 }
 
 // checkRecord checks the record agrees with the events and the transcript, and
@@ -184,6 +290,13 @@ func checkRecord(tb testing.TB, o observation) {
 		diff(tb, "Prompt", o.in.Message, rec.Prompt.Message)
 	}
 	for _, tr := range rec.Turns {
+		if tr.Turn == 0 {
+			// Finished for an earlier run, which made its model call.
+			if n := len(tr.Messages); n != 2 || tr.Messages[1].At.Before(last) {
+				tb.Errorf("turn 0: %d messages, results stamped before the run started", n)
+			}
+			continue
+		}
 		for _, tm := range []time.Time{tr.RequestedAt, tr.FirstEventAt, tr.DoneAt} {
 			if tm.Before(last) {
 				tb.Errorf("turn %d: time %v is before %v", tr.Turn, tm, last)
@@ -237,10 +350,12 @@ func announcedMessages(events []harness.Event) []llm.Message {
 }
 
 // checkEvents checks the grammar of a run's events. A run that was stopped
-// halfway (not complete) is checked as far as it went.
+// halfway (not complete) is checked as far as it went. A run that resumed a
+// pending turn (resumed) starts with that turn, as turn 0.
 //
-//	RunStart  ( TextDelta* ToolStart/ToolDone (each call: start, [policy [flagged]], done) TurnDone )*  RunDone
-func checkEvents(tb testing.TB, events []harness.Event, finished bool) {
+//	RunStart  [turn 0]  ( TextDelta* calls TurnDone )*  ( RunDone | TextDelta* calls Suspended )
+//	calls: each call: start, [policy [flagged]], done or interrupt
+func checkEvents(tb testing.TB, events []harness.Event, finished, resumed bool) {
 	tb.Helper()
 	if len(events) == 0 {
 		return
@@ -249,8 +364,12 @@ func checkEvents(tb testing.TB, events []harness.Event, finished bool) {
 		tb.Errorf("the first event is %v, want run_start", events[0].Kind)
 	}
 	turn := 1
+	if resumed {
+		turn = 0
+	}
 	started := map[int]bool{}
 	done := map[int]bool{}
+	waits := map[int]bool{}
 	decided := map[int]policy.Action{} // by the tool policy: the action, then "flagged"
 	text := map[[2]int]string{}        // (turn, block) -> streamed text
 	toolsBegan := false
@@ -259,7 +378,7 @@ func checkEvents(tb testing.TB, events []harness.Event, finished bool) {
 		case harness.EventRunStart:
 			tb.Errorf("event %d: a second run_start", i+1)
 		case harness.EventTextDelta:
-			if toolsBegan {
+			if toolsBegan || turn == 0 {
 				tb.Errorf("event %d: text after the tools of turn %d began", i+1, turn)
 			}
 			if ev.Turn != turn {
@@ -274,7 +393,7 @@ func checkEvents(tb testing.TB, events []harness.Event, finished bool) {
 			}
 			started[ev.Call] = true
 		case harness.EventToolPolicy:
-			if ev.Turn != turn || !started[ev.Call] || done[ev.Call] || decided[ev.Call] != "" {
+			if ev.Turn != turn || turn == 0 || !started[ev.Call] || done[ev.Call] || decided[ev.Call] != "" {
 				tb.Errorf("event %d: tool_policy for turn %d call %d out of place", i+1, ev.Turn, ev.Call)
 			}
 			if ev.Decision.Action == policy.Allow || !slices.Contains(policy.Actions(), ev.Decision.Action) ||
@@ -287,44 +406,76 @@ func checkEvents(tb testing.TB, events []harness.Event, finished bool) {
 				tb.Errorf("event %d: tool_flagged for turn %d call %d without its tool_policy", i+1, ev.Turn, ev.Call)
 			}
 			decided[ev.Call] = "flagged"
-		case harness.EventToolDone:
+		case harness.EventToolDone, harness.EventInterrupt:
 			// (What a refused call's result says is for the tests: an
 			// AfterTool hook may replace it.)
 			if decided[ev.Call] == policy.Flag {
 				tb.Errorf("event %d: a flagged call ran without tool_flagged", i+1)
 			}
 			if ev.Turn != turn || !started[ev.Call] || done[ev.Call] {
-				tb.Errorf("event %d: tool_done for turn %d call %d without a matching start (turn %d, started %v, done %v)",
-					i+1, ev.Turn, ev.Call, turn, started[ev.Call], done[ev.Call])
+				tb.Errorf("event %d: %v for turn %d call %d without a matching start (turn %d, started %v, done %v)",
+					i+1, ev.Kind, ev.Turn, ev.Call, turn, started[ev.Call], done[ev.Call])
 			}
 			done[ev.Call] = true
+			if ev.Kind == harness.EventInterrupt {
+				waits[ev.Call] = true
+				in := ev.Interrupt
+				switch {
+				case in == nil || in.ID != ev.ToolUse.ID || in.Call != ev.Call || in.Name != ev.ToolUse.Name || ev.ToolUse.Input != nil:
+					tb.Errorf("event %d: interrupt %+v", i+1, ev)
+				case in.Kind == harness.InterruptApproval && (decided[ev.Call] != policy.Approve || in.Decision == nil || in.Decision.Action != policy.Approve):
+					tb.Errorf("event %d: an approval interrupt without the policy's approve: %+v", i+1, in)
+				case in.Kind == harness.InterruptQuestion && (decided[ev.Call] == policy.Approve || decided[ev.Call] == policy.Deny):
+					tb.Errorf("event %d: a question from a call the policy held or denied", i+1)
+				case in.Kind != harness.InterruptApproval && in.Kind != harness.InterruptQuestion:
+					tb.Errorf("event %d: interrupt kind %q", i+1, in.Kind)
+				}
+			}
 		case harness.EventTurnDone:
 			if ev.Turn != turn || ev.TurnRecord == nil || ev.TurnRecord.Turn != turn {
 				tb.Errorf("event %d: turn_done for turn %d during turn %d", i+1, ev.Turn, turn)
 				return
 			}
 			for c := range started {
-				if !done[c] {
+				if !done[c] || waits[c] {
 					tb.Errorf("event %d: turn %d ended with call %d unfinished", i+1, turn, c)
 				}
 			}
-			checkStreamedText(tb, ev.TurnRecord, text)
+			if turn > 0 {
+				checkStreamedText(tb, ev.TurnRecord, text)
+			}
 			turn++
-			started, done, toolsBegan = map[int]bool{}, map[int]bool{}, false
+			started, done, waits, toolsBegan = map[int]bool{}, map[int]bool{}, map[int]bool{}, false
 			decided = map[int]policy.Action{}
 		case harness.EventRunDone:
 			if i+2 != len(events) {
 				tb.Errorf("event %d: run_done is not the last event", i+1)
 			}
+		case harness.EventSuspended:
+			if i+2 != len(events) {
+				tb.Errorf("event %d: suspended is not the last event", i+1)
+			}
+			if len(waits) == 0 {
+				tb.Errorf("event %d: suspended with no call waiting in turn %d", i+1, turn)
+			}
+			for c := range started {
+				if !done[c] {
+					tb.Errorf("event %d: suspended with call %d of turn %d unfinished", i+1, c, turn)
+				}
+			}
+			if ev.Result == nil || ev.Result.Pending == nil {
+				tb.Errorf("event %d: suspended without a pending turn", i+1)
+			}
 		default:
 			tb.Errorf("event %d: unknown kind %v", i+1, ev.Kind)
 		}
 	}
-	if finished && events[len(events)-1].Kind != harness.EventRunDone {
-		tb.Errorf("a successful run does not end with run_done but with %v", events[len(events)-1].Kind)
+	last := events[len(events)-1].Kind
+	if finished && last != harness.EventRunDone && last != harness.EventSuspended {
+		tb.Errorf("a successful run does not end with run_done or suspended but with %v", last)
 	}
-	if !finished && len(events) > 0 && events[len(events)-1].Kind == harness.EventRunDone {
-		tb.Error("run_done in a run that did not succeed")
+	if !finished && len(events) > 0 && (last == harness.EventRunDone || last == harness.EventSuspended) {
+		tb.Errorf("%v in a run that did not succeed", last)
 	}
 }
 

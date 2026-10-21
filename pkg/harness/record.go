@@ -102,6 +102,11 @@ type Result struct {
 	Turns int
 	// Record is what the run did.
 	Record Record
+	// Pending is set when the run suspended ([EventSuspended]): the turn
+	// whose tool calls wait for people. Its model call is counted in Turns
+	// and Usage, but it is not in Record.Turns: the run that finishes it
+	// records it.
+	Pending *Pending
 }
 
 // totalTokens counts every token a turn paid for. InputTokens excludes cached

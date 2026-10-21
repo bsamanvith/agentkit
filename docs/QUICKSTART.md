@@ -228,6 +228,7 @@ Each entry of `agents`:
 | `skills` | none | folders of Agent Skills (`"path"` or `{"path": ..., "optional": true}`), relative to the config file (section 7, "Skills") |
 | `max_turns`, `max_total_tokens` | 25, unlimited | budgets per run |
 | `tool_policy` | `all` | which tool calls the agent may make (below) |
+| `interaction` | `autonomous` | whether its tool calls may wait for people: `interactive` or `supervised` (an `ask_user` question, or a call the policy wants approved, suspends the run until answered), or `autonomous` (never: `ask_user` is not offered, and such a call is refused) |
 | `memory` | none (no memory tool, nothing stored) | the agent's own notes across conversations: one tool, `memory`, with the commands of Claude's memory tool on files under `/memories`. `store.backend` is `memory` (in the process, lost on restart) or `sqlite` with `store.path` (a file; only in the local image, the others refuse it at startup); `store.scope` is `tenant` (default) or `user` (each user of a tenant apart: needs API keys with a `user`); `store.max_file_bytes`, `store.max_scope_bytes`, `store.max_files` default to 16 KiB, 1 MiB and 200. `native_tool: true` sends it to Claude as the native memory tool type. Not yet for agents on a runner component |
 
 `agent_api`:
@@ -245,7 +246,7 @@ Environment: `AGENTKIT_COMPONENTS` (any of `agent`, `web`, `mcp-server`, comma-s
 
 ### Tool policies
 
-A tool policy decides each tool call by the tool's kind (`read`, `write`, `delete`, `send`, `execute`), risk (`low`, `medium`, `high`), tags, name and toolset: `allow`, `flag` (it runs, and the run's events say so), `approve` (a person must approve it; until approvals exist, the call is refused, saying so) or `deny` (the model is told "not allowed in this run: ..." and carries on). A tool that declares no kind or risk counts as `write`/`medium`.
+A tool policy decides each tool call by the tool's kind (`read`, `write`, `delete`, `send`, `execute`), risk (`low`, `medium`, `high`), tags, name and toolset: `allow`, `flag` (it runs, and the run's events say so), `approve` (a person must approve it: an agent whose `interaction` is `interactive` or `supervised` suspends the run until someone answers, see below; an `autonomous` one refuses the call, saying so) or `deny` (the model is told "not allowed in this run: ..." and carries on). A tool that declares no kind or risk counts as `write`/`medium`.
 
 Give a preset's name, or rules (the first that matches decides; every field of `match` that is set must match; `tools` and `toolsets` are globs):
 
@@ -267,6 +268,17 @@ Give a preset's name, or rules (the first that matches decides; every field of `
 A tool that declares `requires_approval` needs approval under every preset; a rule naming the tool exactly (no wildcard) overrides that.
 
 Policies only narrow. An agent's `tool_policy` is narrowed by the environment's (`"environment": {"tool_policy": "read_only"}` at the top of the config, for every agent) and by the run's (`{"message": "...", "tool_policy": "read_only"}` in `POST /v1/runs`, kept when the run is resumed): each call gets the strictest of their decisions. Every decision other than a plain allow is in the run's events (`tool_policy`, and `tool_flagged` for a flag), with the policy, rule and reason.
+
+#### Questions and approvals
+
+An agent with `"interaction": "interactive"` can wait for people. A tool can ask a question (the `user` toolset's `ask_user`, added with `{"name": "user", "type": "user"}`), and the policy can hold a call with `approve`. The run's events then show an `interrupt` for each waiting call. Once the turn's other calls are done, the run is `suspended` until every interrupt has an answer. The run keeps its pending turn in the conversation's log, so a restart loses nothing. Answer with `POST /v1/runs/{id}/input`:
+
+```sh
+curl -s localhost:8080/v1/runs/$RUN/input -H "Authorization: Bearer $AGENTKIT_API_TOKEN" \
+  -d '{"answers": [{"id": "toolu_01", "approved": true}, {"id": "toolu_02", "text": "blue"}]}'
+```
+
+An approved call runs with exactly the input it was approved with. A denied call's result tells the model who denied it and why (`"approved": false, "reason": "..."`). Answers may come one at a time, and sending the same answer again is safe. A different answer to an interrupt that already has one gets 409. `agentkit chat` shows each interrupt; the next line answers it (`y`, or `n` and a reason, for an approval). A run may narrow the mode (`"interaction": "autonomous"` in `POST /v1/runs`): an autonomous run never waits, is not offered `ask_user`, and refuses a held call, saying why.
 
 ### Credentials
 

@@ -23,6 +23,7 @@
 //	POST   /v1/runs/{id}/resume          continue an interrupted or failed run: its events from there
 //	POST   /v1/runs/{id}/cancel          end it for good
 //	POST   /v1/runs/{id}/decisions       {"path", "approved", "reason"?}: answer a flow run's approval
+//	POST   /v1/runs/{id}/input           {"answers": [{"id", "text"} or {"id", "approved", "reason"?}]}: answer a chat run's interrupts
 //	POST   /v1/conversations             {"agent"?}: 201, an empty conversation
 //	GET    /v1/conversations             ?agent=&limit=&cursor=: the caller's conversations
 //	GET    /v1/conversations/{id}        a conversation's messages

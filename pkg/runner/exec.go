@@ -37,6 +37,7 @@ type RunOption func(*runConfig)
 type runConfig struct {
 	flush       int
 	policy      *policy.Policy
+	mode        harness.Interaction
 	interactive bool
 	lane        string
 	priority    int
@@ -125,6 +126,21 @@ func ToolPolicy(p policy.Policy) RunOption {
 	}
 }
 
+// Interaction narrows the interaction mode of the conversation's agent for
+// this run and every resume of it ([harness.Input.Interaction]): whether its
+// tool calls may wait for people. It is stored with the run's prompt, as
+// [ToolPolicy] is. A mode that is not one of [harness.Interactions] makes Run
+// give [ErrInvalidConfig].
+func Interaction(m harness.Interaction) RunOption {
+	return func(c *runConfig) {
+		if !m.Valid() {
+			c.err = fmt.Errorf("%w: interaction %q", ErrInvalidConfig, m)
+			return
+		}
+		c.mode = m
+	}
+}
+
 // Run starts a chat run: msg, a user message, on the conversation, run by the
 // conversation's agent. It creates the run and claims its lease before it
 // returns; iterate the execution's events to run it. A conversation with an
@@ -161,7 +177,7 @@ func (r *Runner) Run(ctx context.Context, conversationID string, msg llm.Message
 	}
 	msg = msg.Clone()
 	return x.execution(ctx, func(ctx context.Context, emit func(Event) bool) outcome {
-		return x.chat(ctx, agent, &msg, c.flush, c.policy, emit)
+		return x.chat(ctx, agent, &msg, runSettings{flush: c.flush, policy: c.policy, mode: c.mode}, emit)
 	}), nil
 }
 
@@ -358,6 +374,9 @@ type resumeConfig struct {
 	// claimed is the owner of the lease a dispatcher already took on the
 	// run ([store.Admin.ClaimNext]); the execution holds it as its own.
 	claimed string
+	// answered resumes a suspended chat run whose interrupts all have
+	// their answers ([Runner.Answer]).
+	answered bool
 }
 
 type decision struct {
@@ -429,6 +448,12 @@ func (r *Runner) resume(ctx context.Context, runID string, c resumeConfig) (*Exe
 		return nil, fmt.Errorf("run %q: load checkpoint: %w", runID, err)
 	}
 	var body func(x *exec) func(context.Context, func(Event) bool) outcome
+	switch {
+	case c.decision != nil && !isFlow:
+		return nil, fmt.Errorf("%w: run %q is a chat run: answer its interrupts", ErrNotPending, runID)
+	case c.answered && isFlow:
+		return nil, fmt.Errorf("%w: run %q is a flow run: decide it", ErrNotPending, runID)
+	}
 	if isFlow {
 		if r.flows == nil {
 			return nil, ErrNoFlows
@@ -457,7 +482,9 @@ func (r *Runner) resume(ctx context.Context, runID string, c resumeConfig) (*Exe
 			return nil, fmt.Errorf("agent of conversation %q: %w", run.ConversationID, err)
 		}
 		body = func(x *exec) func(context.Context, func(Event) bool) outcome {
-			return func(ctx context.Context, emit func(Event) bool) outcome { return x.chat(ctx, agent, nil, 0, nil, emit) }
+			return func(ctx context.Context, emit func(Event) bool) outcome {
+				return x.chat(ctx, agent, nil, runSettings{}, emit)
+			}
 		}
 	}
 
@@ -496,7 +523,9 @@ func checkResumable(run store.Run, c resumeConfig) error {
 		return fmt.Errorf("run %q is %s: %w", run.ID, run.Status, store.ErrFinal)
 	case c.decision != nil && (run.Status != store.StatusSuspended || !slices.Contains(run.Pending, c.decision.path)):
 		return fmt.Errorf("%w: run %q is %s, pending %v, not %q", ErrNotPending, run.ID, run.Status, run.Pending, c.decision.path)
-	case c.decision == nil && run.Status == store.StatusSuspended:
+	case c.answered && run.Status != store.StatusSuspended:
+		return fmt.Errorf("%w: run %q is %s", ErrNotPending, run.ID, run.Status)
+	case c.decision == nil && !c.answered && run.Status == store.StatusSuspended:
 		return fmt.Errorf("%w: run %q waits for %v", ErrAwaitingDecision, run.ID, run.Pending)
 	}
 	return nil
@@ -906,10 +935,50 @@ func (x *exec) keepLease(ctx context.Context, cancel context.CancelCauseFunc) (s
 	return func() { close(quit); <-done }
 }
 
+// runSettings are what a chat run is started with and keeps in its prompt
+// entry, for every resume: its FlushEvery (0 for the runner's), its
+// ToolPolicy and its Interaction.
+type runSettings struct {
+	flush  int
+	policy *policy.Policy
+	mode   harness.Interaction
+}
+
+// pendingInput makes in finish the run's pending turn, if the log ends with
+// one (an interrupt entry of the run): with its answers when they are all
+// there. ok is false when the run cannot go on: its turn waits for answers
+// still (the outcome suspends it again), or the entry cannot be read.
+func (x *exec) pendingInput(v *view, in *harness.Input) (outcome, bool) {
+	p := v.pending
+	if p == nil || p.run != x.run.ID {
+		return outcome{}, true
+	}
+	if p.err != nil {
+		return outcome{kind: outFailed, err: fmt.Errorf("reading the run's pending turn: %w", p.err)}, false
+	}
+	if !p.complete() {
+		return outcome{kind: outSuspended, pending: interruptIDs(p.turn)}, false
+	}
+	t := p.turn.Clone()
+	in.Pending, in.Answers = &t, slices.Clone(p.answers)
+	return outcome{}, true
+}
+
+// interruptIDs are the IDs of a pending turn's interrupts, sorted: a
+// suspended run's [store.Run.Pending].
+func interruptIDs(p harness.Pending) []string {
+	ids := make([]string, len(p.Interrupts))
+	for i, in := range p.Interrupts {
+		ids[i] = in.ID
+	}
+	slices.Sort(ids)
+	return ids
+}
+
 // chat runs a chat run's agent: a new run if msg is set, a resume otherwise.
-// flush is the run's FlushEvery, 0 for the runner's, and pol its ToolPolicy;
-// a resume reads them from the run's prompt entry.
-func (x *exec) chat(ctx context.Context, agent Agent, msg *llm.Message, flush int, pol *policy.Policy, emit func(Event) bool) outcome {
+// set are the run's settings; a resume reads them from the run's prompt
+// entry.
+func (x *exec) chat(ctx context.Context, agent Agent, msg *llm.Message, set runSettings, emit func(Event) bool) outcome {
 	r, conv := x.r, x.run.ConversationID
 	v, err := r.cache.load(ctx, r.store, conv)
 	if err != nil {
@@ -949,9 +1018,13 @@ func (x *exec) chat(ctx context.Context, agent Agent, msg *llm.Message, flush in
 			// run without it.
 			return outcome{kind: outFailed, err: fmt.Errorf("reading the run's tool policy: %w", v.policyErr)}
 		}
-		flush, pol = v.flush, v.policy
+		set = runSettings{flush: v.flush, policy: v.policy, mode: v.interaction}
+		if out, ok := x.pendingInput(&v, &in); !ok {
+			return out
+		}
 	}
-	t := &turns{x: x, v: &v, every: flush, policy: pol, emit: emit}
+	flush := set.flush
+	t := &turns{x: x, v: &v, every: flush, policy: set.policy, mode: set.mode, emit: emit}
 	if flush == 0 {
 		t.every = r.flush
 	}
@@ -992,6 +1065,9 @@ func (x *exec) chat(ctx context.Context, agent Agent, msg *llm.Message, flush in
 				continue
 			}
 			in = harness.Input{Transcript: t.v.tr.Clone()}
+			if out, ok := x.pendingInput(t.v, &in); !ok {
+				return out
+			}
 			continue
 		}
 		if out.kind != outFailed || !x.run.Interactive || !llm.IsRetryable(out.err) ||
@@ -1014,6 +1090,10 @@ func (x *exec) chat(ctx context.Context, agent Agent, msg *llm.Message, flush in
 			return outcome{kind: outCompleted, usage: spent}
 		}
 		in = harness.Input{Transcript: t.v.tr.Clone()}
+		// A failure while it finished its pending turn: finish it again.
+		if out, ok := x.pendingInput(t.v, &in); !ok {
+			return out
+		}
 	}
 }
 
@@ -1042,9 +1122,10 @@ type turns struct {
 	failed bool
 	// prompted is set once the run's prompt is stored.
 	prompted bool
-	// policy is the run's ToolPolicy, given to the agent on every attempt
-	// and stored with the prompt.
+	// policy is the run's ToolPolicy and mode its Interaction, given to the
+	// agent on every attempt and stored with the prompt.
 	policy *policy.Policy
+	mode   harness.Interaction
 }
 
 // run runs the agent, streaming its events. flush is recorded with the
@@ -1052,7 +1133,8 @@ type turns struct {
 func (t *turns) run(ctx context.Context, agent Agent, in harness.Input, flush int) outcome {
 	x := t.x
 	var result *harness.Result
-	in.ToolPolicy = t.policy
+	suspended := false
+	in.ToolPolicy, in.Interaction = t.policy, t.mode
 	for ev, err := range agent.Run(ctx, in) {
 		if err != nil {
 			out := outcome{kind: outFailed, err: err}
@@ -1072,7 +1154,7 @@ func (t *turns) run(ctx context.Context, agent Agent, in harness.Input, flush in
 					Kind:     store.KindPrompt,
 					Messages: []llm.Message{ev.Prompt.Message},
 					RunID:    x.run.ID,
-					Record:   mustJSON(Record{Prompt: &PromptRecord{At: ev.Prompt.At, FlushEvery: flush, ToolPolicy: t.policy}}),
+					Record:   mustJSON(Record{Prompt: &PromptRecord{At: ev.Prompt.At, FlushEvery: flush, ToolPolicy: t.policy, Interaction: t.mode}}),
 				})
 				if err != nil {
 					t.failed = true
@@ -1098,6 +1180,28 @@ func (t *turns) run(ctx context.Context, agent Agent, in harness.Input, flush in
 			}
 		case harness.EventRunDone:
 			result = ev.Result
+		case harness.EventSuspended:
+			// The turns before it are stored first, then the pending turn,
+			// before its event: a consumer that sees it can answer it.
+			if ev.Result == nil || ev.Result.Pending == nil {
+				return outcome{kind: outFailed, err: fmt.Errorf("%w: agent suspended without a pending turn", harness.ErrUnexpectedStop)}
+			}
+			if err := t.flush(ctx); err != nil {
+				return outcome{kind: outAbort, err: err}
+			}
+			p := ev.Result.Pending.Clone()
+			msgs := []llm.Message{p.Reply()}
+			e.Seq, err = x.r.append(ctx, x.run.ConversationID, t.v, store.Entry{
+				Kind:     store.KindInterrupt,
+				Messages: msgs,
+				RunID:    x.run.ID,
+				Record:   mustJSON(Record{Interrupt: interruptRecord(p, nil)}),
+			})
+			if err != nil {
+				t.failed = true
+				return outcome{kind: outAbort, err: err}
+			}
+			result, suspended, saved = ev.Result, true, true
 		}
 		if !t.emit(e) {
 			if result != nil {
@@ -1120,6 +1224,9 @@ func (t *turns) run(ctx context.Context, agent Agent, in harness.Input, flush in
 	}
 	if result == nil {
 		return outcome{kind: outFailed, err: fmt.Errorf("%w: agent ended without a result", harness.ErrUnexpectedStop)}
+	}
+	if suspended {
+		return outcome{kind: outSuspended, usage: result.Usage, pending: interruptIDs(*result.Pending)}
 	}
 	return outcome{kind: outCompleted, usage: result.Usage, result: result}
 }

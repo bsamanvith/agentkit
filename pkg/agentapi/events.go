@@ -145,7 +145,14 @@ func summarize(evs []Event) replayed {
 		reply llm.Message
 	}
 	var turns []turn
+	waiting := false
 	for _, e := range evs {
+		switch e.Type {
+		case TypeInterrupt:
+			waiting = true
+		case TypeTurnDone, TypeRewind:
+			waiting = false
+		}
 		switch {
 		case e.Type == TypeTurnDone && e.Record != nil:
 			var t turn
@@ -158,7 +165,7 @@ func summarize(evs []Event) replayed {
 			turns = turns[:max(e.Turns, 0)]
 		}
 	}
-	r := replayed{events: evs, turns: len(turns)}
+	r := replayed{events: evs, turns: len(turns), interrupts: waiting}
 	for _, t := range turns {
 		r.usage = r.usage.Add(t.usage)
 	}
@@ -191,11 +198,16 @@ func (s *Server) kept(ctx context.Context, run store.Run, rp *replayed) error {
 	partial := false // stored events of a turn not done
 	for _, e := range rp.events {
 		switch e.Type {
-		case TypeToolCall, TypeToolResult, TypeToolPolicy, TypeToolFlagged:
+		case TypeToolCall, TypeToolResult, TypeToolPolicy, TypeToolFlagged, TypeInterrupt:
 			partial = true
 		case TypeTurnDone, TypeRetrying, TypeRewind:
 			partial = false
 		}
+	}
+	if n := len(entries); n > 0 && entries[n-1].Kind == store.KindInterrupt {
+		// The turn not done is the pending turn the run kept: its events
+		// stand, and the resume finishes it.
+		partial = false
 	}
 	if rp.turns <= kept && !partial {
 		return nil

@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -21,6 +22,8 @@ const chatHelp = `  /new      start a new conversation
   /history  show the conversation so far
   /details  show the last tool call and its result in full
   /quit     quit (so does Ctrl-D)
+  When a tool asks you something, or a call needs your approval, the next
+  line answers it (y, or n and why, for an approval).
   Ctrl-C stops the answer that is coming; at the prompt it quits.
 `
 
@@ -69,6 +72,12 @@ type chatSession struct {
 
 	conv        string // the conversation; empty until the next message starts one
 	interrupted bool   // the conversation's last run may have stopped before answering
+
+	// waiting is what the last run waits for, in order: the next line
+	// answers the first. run is that run, and last its last event.
+	waiting []wire.Interrupt
+	run     string
+	last    string
 }
 
 func (s *chatSession) loop(ctx context.Context, in io.Reader, server string) int {
@@ -128,6 +137,8 @@ func (s *chatSession) loop(ctx context.Context, in io.Reader, server string) int
 			if s.command(ctx, trimmed) {
 				return exitDone
 			}
+		case len(s.waiting) > 0:
+			s.answer(ctx, trimmed)
 		default:
 			s.send(ctx, line)
 		}
@@ -145,7 +156,7 @@ func (s *chatSession) command(ctx context.Context, line string) bool {
 	case "/quit", "/exit":
 		return true
 	case "/new":
-		s.conv, s.interrupted = "", false
+		s.conv, s.interrupted, s.waiting = "", false, nil
 		s.say("new conversation: the next message starts it")
 	case "/conv":
 		if s.conv == "" {
@@ -235,7 +246,15 @@ func (s *chatSession) send(ctx context.Context, message string) {
 	}
 	defer stream.Close()
 	s.interrupted = false
+	s.follow(ctx, stream, &cancelled)
+}
+
+// follow shows a run's events as they stream, and remembers what the run
+// waits for when it ends waiting for input.
+func (s *chatSession) follow(ctx context.Context, stream *agentclient.Stream, cancelled *atomic.Bool) {
 	s.r.block = [2]int{}
+	s.run, s.waiting = stream.RunID(), nil
+	var waiting []wire.Interrupt
 	for {
 		e, err := stream.Next()
 		if errors.Is(err, io.EOF) {
@@ -256,8 +275,49 @@ func (s *chatSession) send(ctx context.Context, message string) {
 			s.cancelled(ctx) // the stop's end, not a failure
 			return
 		}
+		s.last = e.ID
+		switch {
+		case e.Type == wire.TypeInterrupt && e.Interrupt != nil:
+			waiting = append(waiting, *e.Interrupt)
+		case e.Type == wire.TypeTurnDone:
+			waiting = nil
+		case e.Type == wire.TypeRunError && e.Error != nil && e.Error.Code == wire.CodeSuspended:
+			s.waiting = waiting
+		}
 		s.r.event(e)
 	}
+}
+
+// answer sends line as the answer to the first interrupt the run waits for.
+// Once the run has all its answers, it goes on, and chat follows it.
+func (s *chatSession) answer(ctx context.Context, line string) {
+	in := s.waiting[0]
+	run, err := s.client.Answer(ctx, s.run, answerOf(in, line))
+	if err != nil {
+		s.r.line(s.st.red("error: " + err.Error()))
+		if errors.Is(err, agentclient.ErrRunState) {
+			s.waiting = nil // the run waits for nothing more
+		}
+		return
+	}
+	s.waiting = s.waiting[1:]
+	if run.Status == wire.StatusSuspended {
+		// Ask the next one the run still waits for.
+		s.waiting = slices.DeleteFunc(slices.Clone(run.Interrupts), func(in wire.Interrupt) bool { return in.Answer != nil })
+		if len(s.waiting) > 0 {
+			s.r.line(s.st.bold("  ? " + interruptLine(s.waiting[0])))
+		}
+		return
+	}
+	s.waiting = nil
+	stream, err := s.client.Events(ctx, s.run, s.last)
+	if err != nil {
+		s.r.line(s.st.red("error: " + err.Error()))
+		return
+	}
+	defer stream.Close()
+	var cancelled atomic.Bool
+	s.follow(ctx, stream, &cancelled)
 }
 
 // cancelled waits until the server has ended the cancelled run (so that the

@@ -68,6 +68,10 @@
 //     as failed and retryable with a backoff from the [RetryPolicy], and the
 //     recovery loop resumes it when it is due, up to the policy's attempts;
 //   - after an approval, [Runner.Decide] records the decision and resumes it;
+//   - a chat run whose tool calls wait for people (harness.Interrupt) is
+//     suspended with its pending turn in the log (an interrupt entry), and
+//     [Runner.Answer] stores the answers, as interrupt entries too, and
+//     resumes it once every interrupt has one;
 //   - and an operator can resume any failed run with [Runner.Resume].
 //
 // An interactive run continues only by [Runner.Resume], or is replaced by a

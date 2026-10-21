@@ -572,7 +572,7 @@ func (r *indexRig) check() {
 			}
 			var n int64
 			for _, e := range readAll(ctx, t, r.s, c.ID, store.Page{}) {
-				if e.Kind != store.KindCompaction {
+				if e.Kind != store.KindCompaction && e.Kind != store.KindInterrupt {
 					n += int64(len(e.Messages))
 				}
 			}

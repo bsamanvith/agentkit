@@ -40,9 +40,10 @@ func (s Stored) Same(o Stored) bool {
 }
 
 // MessageCount returns how many messages s adds to its conversation's count
-// ([store.Conversation.Messages]): those it holds, none for a compaction.
+// ([store.Conversation.Messages]): those it holds, none for a compaction or
+// an interrupt.
 func (s Stored) MessageCount() int64 {
-	if s.Kind == store.KindCompaction {
+	if s.Kind == store.KindCompaction || s.Kind == store.KindInterrupt {
 		return 0
 	}
 	var msgs []json.RawMessage
@@ -88,7 +89,7 @@ func CheckEntry(e store.Entry) (Stored, error) {
 		return Stored{}, fmt.Errorf("%w: entry seq %d is not positive", store.ErrInvalid, e.Seq)
 	}
 	switch e.Kind {
-	case store.KindPrompt, store.KindTurn:
+	case store.KindPrompt, store.KindTurn, store.KindInterrupt:
 		if e.Covers != 0 {
 			return Stored{}, fmt.Errorf("%w: a %s entry covers nothing, got covers %d", store.ErrInvalid, e.Kind, e.Covers)
 		}

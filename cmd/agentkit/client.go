@@ -213,14 +213,52 @@ func (r *renderer) event(e wire.Event) {
 		r.line(r.st.dim(fmt.Sprintf("  %s %s", mark, oneLine(e.Content, resultWidth))))
 	case wire.TypeRunDone:
 		r.line(r.st.dim("  · " + usageLine(e.Usage, e.Turns)))
+	case wire.TypeInterrupt:
+		if in := e.Interrupt; in != nil {
+			r.line(r.st.bold("  ? " + interruptLine(*in)))
+		}
 	case wire.TypeRunError:
 		code, msg := "internal", ""
 		if e.Error != nil {
 			code, msg = e.Error.Code, e.Error.Message
 		}
+		if code == wire.CodeSuspended {
+			r.line(r.st.dim("  · waiting for input"))
+			return
+		}
 		r.line(r.st.red("  ✗ run failed: " + code + ": " + msg))
 		r.line(r.st.dim("  · " + usageLine(e.Usage, e.Turns)))
 	}
+}
+
+// interruptLine says what an interrupt waits for, and how to answer it.
+func interruptLine(in wire.Interrupt) string {
+	if in.Kind == wire.InterruptApproval {
+		return in.Name + " " + oneLine(string(in.Input), inputWidth) + " needs your approval (" + in.Prompt + "): y, or n and why"
+	}
+	q := in.Name + " asks: " + in.Prompt
+	if len(in.Choices) > 0 {
+		q += " [" + strings.Join(in.Choices, " / ") + "]"
+	}
+	return q
+}
+
+// answerOf reads a typed line as the answer to in: for an approval, y or yes
+// approves, anything else denies, the words after a leading n or no its
+// reason.
+func answerOf(in wire.Interrupt, line string) wire.Answer {
+	line = strings.TrimSpace(line)
+	if in.Kind != wire.InterruptApproval {
+		return wire.Answer{ID: in.ID, Text: line}
+	}
+	word, rest, _ := strings.Cut(line, " ")
+	switch strings.ToLower(word) {
+	case "y", "yes":
+		return wire.Answer{ID: in.ID, Approved: true}
+	case "n", "no":
+		return wire.Answer{ID: in.ID, Reason: strings.TrimSpace(rest)}
+	}
+	return wire.Answer{ID: in.ID, Reason: line}
 }
 
 // usageLine is a run's turns and tokens: "2 turns · 1234 in, 900 cached · 56 out".

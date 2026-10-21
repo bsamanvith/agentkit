@@ -169,13 +169,14 @@ type Tool struct {
 	// Classified is false when the tool left its kind or risk unset, so Kind
 	// and Risk are partly or wholly the defaults.
 	Classified bool `json:"classified"`
-	// Interrupts marks a tool that needs a person to answer (ask_user). It is
-	// what the tool declares; nothing acts on it yet (T084).
+	// Interrupts marks a tool that needs a person to answer (ask_user): an
+	// autonomous run is not offered it.
 	Interrupts bool `json:"interrupts,omitempty"`
 	// RequiresApproval says the tool asks that a person approve each call.
 	// It is what the tool declares: a run's tool policy holds such a call
-	// unless a rule names the tool, and until approvals exist (T084), it
-	// refuses the call, saying so.
+	// unless a rule names the tool: a run that may wait for people suspends
+	// until the call is answered (POST /v1/runs/{id}/input), an autonomous
+	// one refuses it, saying so.
 	RequiresApproval bool `json:"requires_approval,omitempty"`
 	// Tags are labels policies match, such as "external".
 	Tags    []string     `json:"tags,omitempty"`

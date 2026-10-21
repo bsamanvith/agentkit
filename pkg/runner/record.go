@@ -24,6 +24,52 @@ type Record struct {
 	Canceled *CanceledRecord `json:"canceled,omitempty"`
 	// Compaction is set on a compaction entry ([Compactor]).
 	Compaction *CompactionRecord `json:"compaction,omitempty"`
+	// Interrupt is set on an interrupt entry ([store.KindInterrupt]): a turn
+	// that waits for people.
+	Interrupt *InterruptRecord `json:"interrupt,omitempty"`
+}
+
+// InterruptRecord is the record of an interrupt entry, whose one message is
+// the reply whose calls wait: with it, the [harness.Pending] turn, and the
+// answers given so far. The runner writes the entry when the run suspends,
+// and again, whole, with each new answer: the latest one of the run counts.
+type InterruptRecord struct {
+	// Turn is the turn so far; its MessageTimes holds the reply's time.
+	Turn *TurnRecord `json:"turn"`
+	// Done is the user message of the results of the calls that finished.
+	Done llm.Message `json:"done"`
+	// Interrupts are the calls that wait.
+	Interrupts []harness.Interrupt `json:"interrupts"`
+	// Answers are those given so far, in the order they came.
+	Answers []harness.Answer `json:"answers,omitempty"`
+}
+
+func interruptRecord(p harness.Pending, answers []harness.Answer) *InterruptRecord {
+	return &InterruptRecord{Turn: turnRecord(&p.Turn), Done: p.Done, Interrupts: p.Interrupts, Answers: answers}
+}
+
+// PendingTurn reads an interrupt entry: the pending turn and the answers
+// given so far.
+func PendingTurn(e store.Entry) (harness.Pending, []harness.Answer, error) {
+	r, err := DecodeRecord(e)
+	if err != nil {
+		return harness.Pending{}, nil, err
+	}
+	if e.Kind != store.KindInterrupt || r.Interrupt == nil || r.Interrupt.Turn == nil ||
+		len(e.Messages) != 1 || len(r.Interrupt.Turn.MessageTimes) != 1 {
+		return harness.Pending{}, nil, fmt.Errorf("entry %d is not an interrupt the runner wrote", e.Seq)
+	}
+	t, rec := r.Interrupt.Turn, r.Interrupt
+	p := harness.Pending{
+		Turn: harness.TurnRecord{
+			Turn: t.Turn, RequestedAt: t.RequestedAt, FirstEventAt: t.FirstEventAt, DoneAt: t.DoneAt,
+			Usage: t.Usage, Stop: t.Stop, Tools: t.Tools,
+			Messages: []harness.TimedMessage{{Message: e.Messages[0], At: t.MessageTimes[0]}},
+		},
+		Done:       rec.Done,
+		Interrupts: rec.Interrupts,
+	}
+	return p, rec.Answers, nil
 }
 
 // PromptRecord is the record of a prompt entry.
@@ -35,6 +81,9 @@ type PromptRecord struct {
 	// ToolPolicy is the run's [ToolPolicy], kept so that a resume narrows
 	// the agent's policy as the run started; nil when the run set none.
 	ToolPolicy *policy.Policy `json:"tool_policy,omitempty"`
+	// Interaction is the run's [Interaction], kept the same way; empty when
+	// the run set none.
+	Interaction harness.Interaction `json:"interaction,omitempty"`
 }
 
 // CanceledRecord is the record of a cancel marker.

@@ -19,6 +19,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -29,6 +30,8 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
 	"github.com/bsamanvith/agentkit/pkg/flow"
 	"github.com/bsamanvith/agentkit/pkg/harness"
+	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
 	"github.com/bsamanvith/agentkit/pkg/runner"
 	"github.com/bsamanvith/agentkit/pkg/store/scoped"
 	"github.com/bsamanvith/agentkit/pkg/tenancy"
@@ -399,6 +402,10 @@ func TestOpenAPIResponses(t *testing.T) {
 			Toolsets: []string{"a", "web"}, Harness: agentHarness(t, m, sets["a"], now),
 		},
 		{Name: "other", Harness: agentHarness(t, echo(t), registry(t), now)},
+		// An interactive agent whose run waits for input.
+		{Name: "asker", Harness: agentHarness(t, script(t,
+			llmtest.ToolCalls(llm.ToolUse{ID: "q1", Name: "ask", Input: json.RawMessage(`{}`)}), llmtest.Text("red it is"),
+		), interruptTools(t, new(atomic.Int64)), append(interactive(), now)...)},
 	}
 	// A flow with an approval, for the decisions; and a store the probes
 	// share with a second server, which holds no run of its own: it creates
@@ -503,6 +510,20 @@ func TestOpenAPIResponses(t *testing.T) {
 	rec.probe(r, "decide_not_pending", 409, "POST", decisions, `{"path":"f/nope","approved":true}`, "")
 	rec.probe(r, "decide_too_large", 413, "POST", decisions, `{"path":"`+strings.Repeat("x", 600)+`"}`, `{"path":"too long"}`)
 
+	// A chat run waiting for input.
+	var asked agentapi.Run
+	resp, body := r.do("POST", "/v1/runs", `{"message":"pick","agent":"asker"}`, "Accept", "application/json")
+	if err := json.Unmarshal(body, &asked); err != nil || resp.StatusCode != 200 || asked.Status != agentapi.StatusSuspended || len(asked.Interrupts) != 1 {
+		t.Fatalf("the asker's run = %d %s", resp.StatusCode, body)
+	}
+	input := "/v1/runs/" + asked.ID + "/input"
+	answer := `{"answers":[{"id":"q1","text":"red"}]}`
+	rec.probe(r, "input_bad_request", 400, "POST", input, `{"answers":[{"id":"q1","text":"green"}]}`, "")
+	rec.probe(r, "input_unauthorized", 401, "POST", input, answer, "", bearer...)
+	rec.probe(r, "input_not_found", 404, "POST", "/v1/runs/nope/input", answer, "")
+	rec.probe(r, "input_not_pending", 409, "POST", "/v1/runs/"+suspended+"/input", answer, "")
+	rec.probe(r, "input_too_large", 413, "POST", input, `{"answers":[{"id":"`+strings.Repeat("x", 600)+`"}]}`, `{"answers":[{"id":"too long"}]}`)
+
 	rec.probe(r, "list_conversations", 200, "GET", "/v1/conversations?limit=1", "", "")
 	rec.probe(r, "list_conversations_bad_limit", 400, "GET", "/v1/conversations?limit=0", "", "")
 	rec.probe(r, "list_conversations_unauthorized", 401, "GET", "/v1/conversations", "", "", bearer...)
@@ -542,6 +563,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	rec.probe(r, "run_over_capacity", 503, "POST", "/v1/runs", `{"message":"one more"}`, "", jsonAccept...)
 	rec.probe(r, "resume_over_capacity", 503, "POST", "/v1/runs/"+interrupted+"/resume", "", "")
 	rec.probe(r, "decide_over_capacity", 503, "POST", decisions, `{"path":"f/ok","approved":true}`, "")
+	rec.probe(r, "input_over_capacity", 503, "POST", input, answer, "")
 	rec.probe(r, "delete_busy", 409, "DELETE", "/v1/conversations/"+busy, "", "")
 	// The other server shares the store: the run is held by this one.
 	rec.probe(other, "stop_run_leased", 409, "POST", "/v1/runs/"+s2.runID()+"/stop", "", "")
@@ -550,6 +572,8 @@ func TestOpenAPIResponses(t *testing.T) {
 	rec.probe(r, "cancel_run", 200, "POST", "/v1/runs/"+interrupted+"/cancel", "", "")
 	rec.probe(r, "decide", 200, "POST", decisions, `{"path":"f/ok","approved":true}`, "")
 	r.waitEnded(suspended)
+	rec.probe(r, "input", 200, "POST", input, answer, "")
+	r.waitEnded(asked.ID)
 
 	rec.probe(r, "delete_unauthorized", 401, "DELETE", "/v1/conversations/"+conv, "", "", bearer...)
 	rec.probe(r, "delete", 204, "DELETE", "/v1/conversations/"+conv, "", "")
@@ -613,7 +637,8 @@ func TestOpenAPIResponses(t *testing.T) {
 		} else {
 			body := map[string]string{
 				"POST /v1/runs": `{"message":"hi"}`, "POST /v1/runs/{id}/decisions": `{"path":"f/ok","approved":true}`,
-				"POST /v1/toolsets": `{"type":"mcp","name":"x","url":"https://mcp.example.com/mcp"}`, "POST /v1/toolsets/{name}/review": `{"tools":[]}`,
+				"POST /v1/runs/{id}/input": `{"answers":[{"id":"q1","text":"red"}]}`,
+				"POST /v1/toolsets":        `{"type":"mcp","name":"x","url":"https://mcp.example.com/mcp"}`, "POST /v1/toolsets/{name}/review": `{"tools":[]}`,
 				"PATCH /v1/toolsets/{name}": `{"enabled":true}`,
 			}[rt]
 			rec.probe(rf, name, 403, method, target, body, "")

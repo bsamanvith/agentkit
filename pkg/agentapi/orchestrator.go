@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/bsamanvith/agentkit/pkg/flow"
+	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/policy"
 	"github.com/bsamanvith/agentkit/pkg/runner"
@@ -22,10 +23,11 @@ type Runs interface {
 	// [runner.Runner.Run] with [runner.Interactive] and the options in opts,
 	// which it must apply: a run must never run without its ToolPolicy.
 	Start(ctx context.Context, conversationID string, msg llm.Message, opts StartOptions) (*runner.Execution, error)
-	// Resume, Decide, Cancel, Interrupt and Shutdown are as on
+	// Resume, Decide, Answer, Cancel, Interrupt and Shutdown are as on
 	// [runner.Runner].
 	Resume(ctx context.Context, runID string) (*runner.Execution, error)
 	Decide(ctx context.Context, runID, path string, d flow.Decision) (*runner.Execution, error)
+	Answer(ctx context.Context, runID string, answers ...harness.Answer) (*runner.Execution, error)
 	Cancel(ctx context.Context, runID string) (store.Run, error)
 	Interrupt(ctx context.Context, runID string) (store.Run, error)
 	Shutdown(ctx context.Context) error
@@ -36,6 +38,9 @@ type StartOptions struct {
 	// ToolPolicy narrows the agent's tool policy for the run and its
 	// resumes ([runner.ToolPolicy]); nil for none.
 	ToolPolicy *policy.Policy
+	// Interaction narrows the agent's interaction mode for the run and its
+	// resumes ([runner.Interaction]); empty for the agent's.
+	Interaction harness.Interaction
 }
 
 // RunOptions are opts as the runner takes them.
@@ -43,6 +48,9 @@ func (o StartOptions) RunOptions() []runner.RunOption {
 	var out []runner.RunOption
 	if o.ToolPolicy != nil {
 		out = append(out, runner.ToolPolicy(*o.ToolPolicy))
+	}
+	if o.Interaction != "" {
+		out = append(out, runner.Interaction(o.Interaction))
 	}
 	return out
 }
@@ -65,6 +73,10 @@ func (r localRuns) Start(ctx context.Context, conversationID string, msg llm.Mes
 
 func (r localRuns) Resume(ctx context.Context, runID string) (*runner.Execution, error) {
 	return r.Runner.Resume(ctx, runID)
+}
+
+func (r localRuns) Answer(ctx context.Context, runID string, answers ...harness.Answer) (*runner.Execution, error) {
+	return r.Runner.Answer(ctx, runID, answers...)
 }
 
 func (r localRuns) Decide(ctx context.Context, runID, path string, d flow.Decision) (*runner.Execution, error) {

@@ -3,6 +3,7 @@ package runner
 import (
 	"container/list"
 	"context"
+	"slices"
 	"sync"
 
 	"github.com/bsamanvith/agentkit/pkg/harness"
@@ -21,16 +22,57 @@ type view struct {
 	// flush is the FlushEvery of the last prompt entry's record, and
 	// policy its ToolPolicy (as a later compaction carries it); policyErr
 	// says that record could not be read, so the run's policy is not known.
-	flush     int
-	policy    *policy.Policy
-	policyErr error
+	flush       int
+	policy      *policy.Policy
+	interaction harness.Interaction
+	policyErr   error
+	// pending is the turn the log's last entry, an interrupt, says waits
+	// for people; nil when the last entry is of another kind.
+	pending *pendingTurn
 	// last is the usage of the last turn's request since the latest
 	// compaction, zero if there is none.
 	last llm.Usage
 }
 
+// pendingTurn is a run's turn that waits for people, as its latest interrupt
+// entry holds it: the turn and the answers so far, or why the entry could
+// not be read.
+type pendingTurn struct {
+	run     string
+	seq     int64
+	turn    harness.Pending
+	answers []harness.Answer
+	err     error
+}
+
+// answered returns the answer to the interrupt id, if there is one.
+func (p *pendingTurn) answered(id string) (harness.Answer, bool) {
+	for _, a := range p.answers {
+		if a.ID == id {
+			return a, true
+		}
+	}
+	return harness.Answer{}, false
+}
+
+// complete reports whether every interrupt has its answer.
+func (p *pendingTurn) complete() bool {
+	for _, in := range p.turn.Interrupts {
+		if _, ok := p.answered(in.ID); !ok {
+			return false
+		}
+	}
+	return true
+}
+
 func (v view) clone() view {
 	v.tr = v.tr.Clone()
+	if v.pending != nil {
+		p := *v.pending
+		p.turn = p.turn.Clone()
+		p.answers = slices.Clone(p.answers)
+		v.pending = &p
+	}
 	return v
 }
 
@@ -38,19 +80,26 @@ func (v *view) apply(e store.Entry) {
 	if e.Kind == store.KindCompaction {
 		v.tr, v.last = nil, llm.Usage{}
 	}
+	v.seq = e.Seq
+	v.lastRun = e.RunID
+	v.pending = nil
+	if e.Kind == store.KindInterrupt {
+		// Not part of the context: the turn that finishes it is.
+		turn, answers, err := PendingTurn(e)
+		v.pending = &pendingTurn{run: e.RunID, seq: e.Seq, turn: turn, answers: answers, err: err}
+		return
+	}
 	for _, m := range e.Messages {
 		v.tr = append(v.tr, m.Clone())
 	}
-	v.seq = e.Seq
-	v.lastRun = e.RunID
 	switch e.Kind {
 	case store.KindPrompt:
-		v.flush, v.policy, v.policyErr = 0, nil, nil
+		v.flush, v.policy, v.interaction, v.policyErr = 0, nil, "", nil
 		rec, err := DecodeRecord(e)
 		if err != nil {
 			v.policyErr = err
 		} else if rec.Prompt != nil {
-			v.flush, v.policy = rec.Prompt.FlushEvery, rec.Prompt.ToolPolicy
+			v.flush, v.policy, v.interaction = rec.Prompt.FlushEvery, rec.Prompt.ToolPolicy, rec.Prompt.Interaction
 		}
 	case store.KindCompaction:
 		// A cold read starts here, without the prompt: the compaction
@@ -59,7 +108,7 @@ func (v *view) apply(e store.Entry) {
 		if err != nil {
 			v.policyErr = err
 		} else if rec.Compaction != nil {
-			v.policy = rec.Compaction.ToolPolicy
+			v.policy, v.interaction = rec.Compaction.ToolPolicy, rec.Compaction.Interaction
 		}
 	case store.KindTurn:
 		if rec, err := DecodeRecord(e); err == nil && rec.Turn != nil {

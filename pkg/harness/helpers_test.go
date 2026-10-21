@@ -141,7 +141,8 @@ type observation struct {
 	res       harness.Result // the partial result after a failure
 	err       error
 	finalJSON []byte // the transcript of EventRunDone as received, before the consumer touched it
-	complete  bool   // the run ended with EventRunDone or an error
+	complete  bool   // the run ended with EventRunDone, EventSuspended or an error
+	suspended bool   // the run ended with EventSuspended
 	stopped   bool   // the consumer stopped iterating
 	panicked  any    // what the consumer's code panicked with
 }
@@ -176,6 +177,11 @@ func (r *rig) drive(ctx context.Context, tb testing.TB, in harness.Input, each f
 			if ev.Kind == harness.EventRunDone {
 				o.finalJSON = mustMarshal(tb, ev.Result.Transcript)
 				o.res, o.complete = *ev.Result, true
+			}
+			if ev.Kind == harness.EventSuspended {
+				o.res, o.complete, o.suspended = *ev.Result, true, true
+				p := ev.Result.Pending.Clone()
+				o.res.Pending = &p // the consumer may scribble on the event's
 			}
 			if each != nil && each(ev) {
 				o.stopped = true
@@ -270,6 +276,11 @@ func diffString(want, got any) string {
 // cloneEvent copies the parts of an event that a consumer could write to.
 func cloneEvent(ev harness.Event) harness.Event {
 	ev.ToolUse.Input = append(json.RawMessage(nil), ev.ToolUse.Input...)
+	if ev.Interrupt != nil {
+		in := *ev.Interrupt
+		in.Choices = append([]string(nil), in.Choices...)
+		ev.Interrupt = &in
+	}
 	if ev.Prompt != nil {
 		p := harness.TimedMessage{Message: ev.Prompt.Message.Clone(), At: ev.Prompt.At}
 		ev.Prompt = &p

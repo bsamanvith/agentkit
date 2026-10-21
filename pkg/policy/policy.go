@@ -29,8 +29,10 @@ const (
 	Allow Action = "allow"
 	// Flag lets the call run, and the run records that it was flagged.
 	Flag Action = "flag"
-	// Approve holds the call until a person approves it. Until approvals
-	// exist (T084), the harness refuses such a call, saying why.
+	// Approve holds the call until a person approves it: in a run that may
+	// wait for people (harness.Interactive or Supervised), the run suspends
+	// until the call is approved or denied; in an autonomous run, the
+	// harness refuses the call, saying why.
 	Approve Action = "approve"
 	// Deny refuses the call: the model gets an error saying why.
 	Deny Action = "deny"

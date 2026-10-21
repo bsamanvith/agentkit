@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -54,6 +55,10 @@ type scenario struct {
 	beh       behavior
 	k         int
 	scribbler bool
+	// mode is the harness's interaction; seed drives the answers to a run
+	// that suspends.
+	mode harness.Interaction
+	seed uint64
 }
 
 type simInput struct {
@@ -160,7 +165,17 @@ func genScenario(seed uint64, scribbler bool) scenario {
 	}
 
 	// What the conversation starts from.
-	defer func() { sc.in.ToolPolicy = narrow }()
+	// Interrupts: the mode decides whether "ask" and the policy's approvals
+	// wait, and the input may narrow it.
+	sc.seed = seed
+	modes := harness.Interactions()
+	sc.mode = modes[rng.IntN(len(modes))]
+	sc.opts = append(sc.opts, harness.WithInteraction(sc.mode))
+	var inMode harness.Interaction
+	if rng.IntN(4) == 0 {
+		inMode = modes[rng.IntN(len(modes))]
+	}
+	defer func() { sc.in.ToolPolicy, sc.in.Interaction = narrow, inMode }()
 	q := harness.UserText("question")
 	earlier := harness.Transcript{q, llm.Assistant(simOpaque, llm.Text{Text: "earlier answer"})}
 	switch rng.IntN(4) {
@@ -195,6 +210,10 @@ func genCalls(rng *rand.Rand, turn int, allowBlock bool) []llm.Block {
 	}
 	for i := range 1 + rng.IntN(5) {
 		id := fmt.Sprintf("t%dc%d", turn, i)
+		if rng.IntN(8) == 0 {
+			blocks = append(blocks, use(id, "ask", fmt.Sprintf(`{"n":%d}`, rng.IntN(3))))
+			continue
+		}
 		switch x := rng.IntN(10); {
 		case x < 5:
 			blocks = append(blocks, use(id, "ok", fmt.Sprintf(`{"n":%d}`, rng.IntN(100))))
@@ -282,8 +301,16 @@ func simTools(t testing.TB, running *atomic.Int32) []tool.Tool {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// ask asks with n choices (none: any text).
+	ask, err := tool.Func("ask", "Ask the user.", func(_ context.Context, in simInput) (string, error) {
+		defer count()()
+		return "", tool.Interrupt("which?", []string{"a", "b"}[:min(max(in.N, 0), 2)]...)
+	}, tool.WithMetadata(tool.Metadata{Interrupts: true}))
+	if err != nil {
+		t.Fatal(err)
+	}
 	return []tool.Tool{
-		ok,
+		ok, ask,
 		fn(t, "fail", func(context.Context) (string, error) { defer count()(); return "", errors.New("sim failure") }),
 		fn(t, "boom", func(context.Context) (string, error) { defer count()(); panic("sim panic") }),
 		fn(t, "block", func(ctx context.Context) (string, error) {
@@ -339,6 +366,7 @@ type simResult struct {
 	class    string
 	usage    llm.Usage
 	endState []byte // the transcript as the run ended, to compare runs
+	resumes  int    // runs that finished a pending turn
 }
 
 func classify(err error) string {
@@ -435,7 +463,49 @@ func simulate(t *testing.T, seed uint64, scribbler bool) simResult {
 		t.Errorf("seed %d: unexpected panic %v", seed, o.panicked)
 	}
 
-	res := simResult{o: o, class: classify(o.err), usage: o.res.Usage}
+	// A run that suspended is answered and resumed, from its saved pending
+	// turn, until it ends otherwise; a bad answer comes first now and then,
+	// and is refused without a call.
+	arng := rand.New(rand.NewPCG(seed, 7))
+	resumes := 0
+	for ; o.suspended && resumes < 8; resumes++ {
+		p := saved(t, o.res.Pending)
+		var answers []harness.Answer
+		for _, in := range p.Interrupts {
+			a := harness.Answer{ID: in.ID}
+			switch {
+			case in.Kind == harness.InterruptApproval:
+				a.Approved, a.Reason, a.By = arng.IntN(2) == 0, "sim", "tester"
+			case len(in.Choices) > 0:
+				a.Text = in.Choices[arng.IntN(len(in.Choices))]
+			default:
+				a.Text = fmt.Sprintf("free text %d", arng.IntN(10))
+			}
+			answers = append(answers, a)
+		}
+		in := harness.Input{Transcript: o.res.Transcript, Pending: p, Answers: answers, ToolPolicy: sc.in.ToolPolicy, Interaction: sc.in.Interaction}
+		if arng.IntN(4) == 0 {
+			bad := in
+			bad.Answers = append(slices.Clone(answers), answers[0]) // answered twice
+			if bo := h.drive(ctx, t, bad, nil); !errors.Is(bo.err, harness.ErrInvalidInput) {
+				t.Errorf("seed %d: a doubled answer gave %v", seed, bo.err)
+			}
+		}
+		o = h.drive(ctx, t, in, func(ev harness.Event) bool {
+			if scribbler && ev.Kind != harness.EventRunDone && ev.Kind != harness.EventSuspended {
+				scribbleEvent(ev)
+			}
+			return false
+		})
+		if n := running.Load(); n != 0 {
+			t.Errorf("seed %d: %d tool calls still running after a resumed run returned", seed, n)
+		}
+	}
+
+	res := simResult{o: o, class: classify(o.err), usage: o.res.Usage, resumes: resumes}
+	if o.suspended {
+		res.class = "suspended"
+	}
 	_, res.snap = h.rec.requests(0)
 	if o.complete {
 		res.endState = mustMarshal(t, o.res.Transcript)
@@ -471,11 +541,11 @@ func checkNoAliasing(t *testing.T, seed uint64, o observation) {
 	}
 }
 
-func simulateSeed(t *testing.T, seed uint64) {
+func simulateSeed(t *testing.T, seed uint64) (resumes int) {
 	t.Helper()
 	clean := simulate(t, seed, false)
 	if sc := genScenario(seed, false); sc.beh != bNormal {
-		return // where the run stops depends on the order tools finish in
+		return clean.resumes // where the run stops depends on the order tools finish in
 	}
 	// The same run with a consumer, hooks and registry that scribble.
 	messy := simulate(t, seed, true)
@@ -484,13 +554,24 @@ func simulateSeed(t *testing.T, seed uint64) {
 			seed, clean.class, messy.class)
 	}
 	diff(t, fmt.Sprintf("seed %d: requests with and without scribbling", seed), clean.snap, messy.snap)
+	return clean.resumes
 }
 
 func TestSimulatedRuns(t *testing.T) {
 	leakcheck(t)
+	resumed := 0
 	for seed := uint64(1); seed <= 250; seed++ {
-		t.Run(fmt.Sprintf("seed=%d", seed), func(t *testing.T) { simulateSeed(t, seed) })
+		t.Run(fmt.Sprintf("seed=%d", seed), func(t *testing.T) {
+			if simulateSeed(t, seed) > 0 {
+				resumed++
+			}
+		})
 	}
+	// The simulation must keep covering interrupts.
+	if resumed < 10 {
+		t.Errorf("only %d of 250 seeds suspended and resumed", resumed)
+	}
+	t.Logf("%d seeds suspended and resumed", resumed)
 }
 
 func FuzzSimulatedRun(f *testing.F) {

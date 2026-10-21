@@ -46,13 +46,24 @@ const (
 	// when it did not plainly allow it: Action flag (the call runs), approve
 	// or deny (it does not: its tool_result is the error the model was
 	// shown), with the policy, rule and reason. It comes between the call's
-	// tool_call and tool_result. Until approvals exist, approve refuses the
-	// call like deny, saying so.
+	// tool_call and tool_result. An approve in a run that can wait for people
+	// (interaction interactive or supervised) is followed by the call's
+	// interrupt; in an autonomous run, it refuses the call like deny, saying
+	// so.
 	TypeToolPolicy = "tool_policy"
 	// TypeToolFlagged says a call the policy flagged is about to run. It
 	// follows the call's tool_policy, with the same fields: a client that
 	// notifies on flagged calls listens for it alone.
 	TypeToolFlagged = "tool_flagged"
+	// TypeInterrupt says a tool call waits for people: a question the tool
+	// asks, or an approval the run's tool policy wants (Interrupt.Kind). It
+	// comes after the call's tool_call (and tool_policy), in place of its
+	// tool_result. Once the turn's calls are done, the run is suspended
+	// (run_error with CodeSuspended) until every interrupt of the turn has
+	// its answer (POST /v1/runs/{id}/input). Then the run resumes, and the
+	// turn's remaining events (the answered calls' tool_call and
+	// tool_result, turn_done) follow, as part of the same turn.
+	TypeInterrupt = "interrupt"
 	// TypeTurnDone says a turn (one model call and its tools) is complete and
 	// in the conversation; it carries the turn's record.
 	TypeTurnDone = "turn_done"
@@ -82,7 +93,9 @@ const (
 // A run's events are: one run_start; then per turn its text_delta events, a
 // tool_call and a tool_result per tool call (each call's tool_call first,
 // and its tool_policy and tool_flagged, if any, in between), and one
-// turn_done; and last exactly one run_done or run_error.
+// turn_done; and last exactly one run_done or run_error. A call that waits
+// for people has an interrupt where its tool_result would be; the execution
+// ends there, suspended, and the run's events go on from it once answered.
 //
 // Every event but text_delta is stored: Seq numbers the stored events from 1
 // with no gaps, and such an event's ID is its Seq ("12"). A text_delta is
@@ -132,6 +145,9 @@ type Event struct {
 	Reason   string `json:"reason,omitempty"`
 	ToolKind string `json:"tool_kind,omitempty"`
 	ToolRisk string `json:"tool_risk,omitempty"`
+
+	// interrupt: what the call waits for.
+	Interrupt *Interrupt `json:"interrupt,omitempty"`
 
 	// turn_done
 	Record *TurnRecord `json:"record,omitempty"`
@@ -239,6 +255,15 @@ func (e Event) MarshalJSON() ([]byte, error) {
 			ToolKind  string `json:"tool_kind"`
 			ToolRisk  string `json:"tool_risk"`
 		}{h, e.Turn, e.Call, e.ToolUseID, e.Name, e.Action, e.Policy, e.Rule, e.Reason, e.ToolKind, e.ToolRisk})
+	case TypeInterrupt:
+		return json.Marshal(struct {
+			header
+			Turn      int        `json:"turn"`
+			Call      int        `json:"call"`
+			ToolUseID string     `json:"tool_use_id"`
+			Name      string     `json:"name"`
+			Interrupt *Interrupt `json:"interrupt"`
+		}{h, e.Turn, e.Call, e.ToolUseID, e.Name, e.Interrupt})
 	case TypeTurnDone:
 		return json.Marshal(struct {
 			header
@@ -402,7 +427,8 @@ const (
 	CodeRunFailed = "run_failed"
 	// CodeRejected: an approval of the run was rejected (a flow run).
 	CodeRejected = "rejected"
-	// CodeSuspended: the run waits for a decision (a flow run).
+	// CodeSuspended: the run waits for a decision (a flow run) or for input
+	// (a chat run whose tool calls wait for people: see [TypeInterrupt]).
 	CodeSuspended = "suspended"
 	// CodeRunFinal ("run_final", HTTP 409): the run is completed, rejected
 	// or canceled, and cannot be resumed or decided.
@@ -410,10 +436,12 @@ const (
 	// CodeRunLeased ("run_leased", HTTP 409): another process runs the run.
 	CodeRunLeased = "run_leased"
 	// CodeAwaitingDecision ("awaiting_decision", HTTP 409): the run waits for
-	// POST /v1/runs/{id}/decisions, not a resume.
+	// POST /v1/runs/{id}/decisions (a flow run) or POST /v1/runs/{id}/input
+	// (a chat run), not a resume.
 	CodeAwaitingDecision = "awaiting_decision"
 	// CodeNotPending ("not_pending", HTTP 409): the run waits for no
-	// decision at that path.
+	// decision at that path, or for no answer to that interrupt (it has a
+	// different answer already, or the run is no longer suspended).
 	CodeNotPending = "not_pending"
 	// CodeShapeChanged ("shape_changed", HTTP 409): the flow's steps
 	// changed since the run started; an operator decides.
@@ -432,7 +460,8 @@ const (
 	StatusCanceled = "canceled"
 	// StatusRejected: a flow run whose approval was rejected.
 	StatusRejected = "rejected"
-	// StatusSuspended: a flow run waiting for a decision.
+	// StatusSuspended: a flow run waiting for a decision, or a chat run
+	// waiting for input (its Interrupts).
 	StatusSuspended = "suspended"
 	// StatusInterrupted (shared with conversations): stopped, with nobody
 	// running it; resume it or send a new message.
@@ -466,6 +495,58 @@ type Run struct {
 	Turns      int        `json:"turns"` // model calls so far
 	Error      *Error     `json:"error,omitempty"`
 	Record     *Record    `json:"record,omitempty"`
+	// Interrupts are what a suspended chat run waits for: the interrupts of
+	// its pending turn, each with its answer once it has one. The run
+	// resumes when they all have one.
+	Interrupts []Interrupt `json:"interrupts,omitempty"`
+}
+
+// Interrupt kinds.
+const (
+	// InterruptQuestion: the tool asks people a question (Prompt), whose
+	// answer is text, one of Choices if it has any.
+	InterruptQuestion = "question"
+	// InterruptApproval: the run's tool policy wants people to approve the
+	// call (Input) before it runs; Prompt is the rule's reason.
+	InterruptApproval = "approval"
+)
+
+// Interrupt is a tool call that waits for people.
+type Interrupt struct {
+	// ID is the call's tool_use_id: what an [Answer] names.
+	ID   string `json:"id"`
+	Kind string `json:"kind"`
+	// Name is the tool's name.
+	Name    string   `json:"name"`
+	Prompt  string   `json:"prompt"`
+	Choices []string `json:"choices,omitempty"`
+	// Input is an approval's call input: exactly what runs once approved.
+	Input json.RawMessage `json:"input,omitempty"`
+	// Policy and Rule are what wants an approval.
+	Policy string `json:"policy,omitempty"`
+	Rule   string `json:"rule,omitempty"`
+	// Answer is the answer given so far, in a run's Interrupts.
+	Answer *Answer `json:"answer,omitempty"`
+}
+
+// Answer answers an [Interrupt]: Text for a question; Approved, and a Reason
+// for a denial, for an approval.
+type Answer struct {
+	ID       string `json:"id"`
+	Text     string `json:"text,omitempty"`
+	Approved bool   `json:"approved,omitempty"`
+	Reason   string `json:"reason,omitempty"`
+	// By is who answered, as the server authenticated them. The server
+	// ignores it in a request.
+	By string `json:"by,omitempty"`
+}
+
+// InputRequest is the body of POST /v1/runs/{id}/input: answers to
+// interrupts of a suspended chat run. Answers may come one request at a
+// time. The same answer again is accepted (a retry is safe); a different
+// answer to an interrupt that has one is CodeNotPending.
+type InputRequest struct {
+	Answers []Answer `json:"answers"`
 }
 
 // Conversation is a conversation as GET /v1/conversations/{id} returns it.
@@ -514,6 +595,13 @@ type RunRequest struct {
 	// gets the stricter of the two decisions, so it can only narrow. The run
 	// keeps it when it is resumed; a resume (no message) cannot set one.
 	ToolPolicy json.RawMessage `json:"tool_policy,omitempty"`
+	// Interaction narrows the agent's interaction mode for this run: whether
+	// its tool calls may wait for people. "interactive" and "supervised"
+	// wait (an ask_user call, a call the policy wants approved); "autonomous"
+	// never does: ask_user is not offered, and a call that wants an approval
+	// is refused. The stricter of the agent's mode and the run's wins. The
+	// run keeps it when it is resumed.
+	Interaction string `json:"interaction,omitempty"`
 }
 
 // ErrorResponse is the body of every HTTP error.

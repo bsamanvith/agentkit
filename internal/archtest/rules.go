@@ -178,6 +178,8 @@ func ModuleRules() Rules {
 				// The toolsets added at run time (T096), from agentkit's
 				// own MCP server.
 				"pkg/mcp/servers", "pkg/mcp/server", "pkg/netguard",
+				// A tool policy that holds a call for approval (T084).
+				"pkg/policy",
 			},
 			// The event bus knows tenants (for topic names) and the clock,
 			// nothing else: the store, the runner and the API build on it

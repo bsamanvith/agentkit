@@ -8,6 +8,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/flow"
+	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
 	"github.com/bsamanvith/agentkit/pkg/runner"
@@ -46,6 +47,10 @@ func (c *countingRuns) Shutdown(ctx context.Context) error {
 }
 
 func (c *countingRuns) Decide(context.Context, string, string, flow.Decision) (*runner.Execution, error) {
+	return nil, errors.ErrUnsupported
+}
+
+func (c *countingRuns) Answer(context.Context, string, ...harness.Answer) (*runner.Execution, error) {
 	return nil, errors.ErrUnsupported
 }
 

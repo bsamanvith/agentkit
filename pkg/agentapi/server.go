@@ -180,6 +180,7 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 		{"POST /v1/runs/{id}/stop", s.stopRun},
 		{"POST /v1/runs/{id}/cancel", s.cancelRun},
 		{"POST /v1/runs/{id}/decisions", s.decideRun},
+		{"POST /v1/runs/{id}/input", s.inputRun},
 		{"POST /v1/conversations", s.createConversation},
 		{"GET /v1/conversations", s.listConversations},
 		{"GET /v1/conversations/{id}", s.getConversation},
@@ -418,6 +419,18 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		start.ToolPolicy = &p
+	}
+	if req.Interaction != "" {
+		m := harness.Interaction(req.Interaction)
+		switch {
+		case !hasMessage:
+			writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "interaction needs a message: a resumed run keeps the mode it started with"})
+			return
+		case !m.Valid():
+			writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "interaction " + quote(req.Interaction) + " is not one of interactive, supervised, autonomous"})
+			return
+		}
+		start.Interaction = m
 	}
 	convID := req.ConversationID
 	var ag *agent
@@ -700,6 +713,7 @@ func (s *Server) drive(ctx context.Context, cancel context.CancelCauseFunc, x *r
 	// which numbers its turns from 1.
 	baseTurns, baseUsage := seed.turns, seed.usage
 	turns, usage, final := seed.turns, seed.usage, seed.final
+	waiting := seed.interrupts // the last turn's calls wait for input
 	started := len(seed.events) > 0
 	if seed.rewind != nil {
 		em.emit(ctx, *seed.rewind, true)
@@ -723,13 +737,21 @@ func (s *Server) drive(ctx context.Context, cancel context.CancelCauseFunc, x *r
 					continue
 				}
 				started = true
+			case harness.EventInterrupt:
+				waiting = true
 			case harness.EventTurnDone:
+				waiting = false
 				turns, usage = turns+1, usage.Add(ev.Harness.TurnRecord.Usage)
 				reply := ev.Harness.TurnRecord.Messages[0].Message
 				final = &reply
 			}
 			if e, ok := wireEvent(h.runID, h.convID, baseTurns, ev.Harness); ok {
 				em.emit(ctx, e, !streamedOnly(e.Type))
+			}
+			if ev.Harness.Kind == harness.EventTurnDone && ev.Harness.Turn == 0 {
+				// The pending turn a resume finished: the harness numbers
+				// its next turns from 1, and does not count this one.
+				baseTurns, baseUsage = turns, usage
 			}
 		case runner.EventRetrying:
 			baseTurns, baseUsage = turns, usage
@@ -765,7 +787,7 @@ func (s *Server) drive(ctx context.Context, cancel context.CancelCauseFunc, x *r
 		}
 		end.Usage, end.Turns = &usage, turns
 	case done != nil:
-		end = *ending(done.Run, replayed{turns: turns, usage: usage, final: final}, now)
+		end = *ending(done.Run, replayed{turns: turns, usage: usage, final: final, interrupts: waiting}, now)
 	default:
 		var hre *harness.RunError
 		if errors.As(runErr, &hre) {

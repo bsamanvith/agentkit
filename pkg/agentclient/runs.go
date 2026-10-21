@@ -89,6 +89,17 @@ func (c *Client) Decide(ctx context.Context, id string, d wire.DecisionRequest) 
 	return c.command(ctx, id, "decisions", d)
 }
 
+// Answer answers interrupts of a chat run waiting for input
+// (POST /v1/runs/{id}/input): a question's text, or an approval's approved
+// and reason. It returns the run as the answers left it: still suspended,
+// with the answers so far in its Interrupts, until the last one; then going
+// on. Follow the run with [Client.Events]. The same answer again is accepted;
+// a different answer to an interrupt that has one, or an answer to a run
+// that waits for none, matches [ErrRunState].
+func (c *Client) Answer(ctx context.Context, id string, answers ...wire.Answer) (wire.Run, error) {
+	return c.command(ctx, id, "input", wire.InputRequest{Answers: answers})
+}
+
 func (c *Client) command(ctx context.Context, id, verb string, body any) (wire.Run, error) {
 	var run wire.Run
 	path := "/v1/runs/" + url.PathEscape(id) + "/" + verb

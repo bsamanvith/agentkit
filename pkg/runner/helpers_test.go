@@ -19,6 +19,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
+	"github.com/bsamanvith/agentkit/pkg/policy"
 	"github.com/bsamanvith/agentkit/pkg/runner"
 	"github.com/bsamanvith/agentkit/pkg/store"
 	"github.com/bsamanvith/agentkit/pkg/store/memory"
@@ -62,6 +63,10 @@ type world struct {
 	flows func(p *proc, conv string) (flow.Step, error)
 	// agent, if set, replaces the harness of every process.
 	agent func(conv string) runner.Agent
+	// hopts are options of every process's harness.
+	hopts []harness.Option
+	// written counts the calls of the write tool, by input.
+	written map[string]int
 
 	mu sync.Mutex
 	// placements is every placement any process asked its factory for.
@@ -128,9 +133,53 @@ func (w *world) setTools(opts ...tool.FuncOption) {
 	if err != nil {
 		w.t.Fatal(err)
 	}
-	if w.tools, err = tool.NewRegistry([]tool.Tool{echo}); err != nil {
+	// ask asks "yes or no?"; write writes s, and counts its calls.
+	ask, err := tool.Func("ask", "Ask the user.", func(context.Context, struct {
+		S string `json:"s"`
+	},
+	) (string, error) {
+		return "", tool.Interrupt("yes or no?", "yes", "no")
+	}, tool.WithMetadata(tool.Metadata{Kind: tool.KindRead, Risk: tool.RiskLow, Interrupts: true}))
+	if err != nil {
 		w.t.Fatal(err)
 	}
+	write, err := tool.Func("write", "Write s.", func(_ context.Context, in struct {
+		S string `json:"s"`
+	},
+	) (string, error) {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		if w.written == nil {
+			w.written = map[string]int{}
+		}
+		w.written[in.S]++
+		return "wrote " + in.S, nil
+	}, tool.WithMetadata(tool.Metadata{Kind: tool.KindWrite, Risk: tool.RiskMedium}))
+	if err != nil {
+		w.t.Fatal(err)
+	}
+	if w.tools, err = tool.NewRegistry([]tool.Tool{echo, ask, write}); err != nil {
+		w.t.Fatal(err)
+	}
+}
+
+// interactions makes every process's harness interactive, with a policy that
+// holds every call of the write tool for an approval. Call it before
+// starting processes.
+func (w *world) interactions() {
+	w.hopts = []harness.Option{
+		harness.WithInteraction(harness.Interactive),
+		harness.WithToolPolicy(policy.Policy{Rules: []policy.Rule{
+			{Name: "hold-writes", Match: policy.Match{Tools: []string{"write"}}, Action: policy.Approve, Reason: "writes need a yes"},
+		}, Default: policy.Allow}, nil),
+	}
+}
+
+// writes returns how many times the write tool ran with s.
+func (w *world) writes(s string) int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.written[s]
 }
 
 // process starts a runner process on the world's store.
@@ -148,7 +197,7 @@ func (w *world) process(opts ...runner.Option) *proc {
 		if w.agent != nil {
 			return w.agent(conv), nil
 		}
-		return harness.New(w.model, w.tools, harness.WithClock(w.clk))
+		return harness.New(w.model, w.tools, append([]harness.Option{harness.WithClock(w.clk)}, w.hopts...)...)
 	}
 	base := []runner.Option{
 		runner.WithClock(w.clk), runner.WithOwner(p.owner), runner.WithLease(ttl),
@@ -262,8 +311,8 @@ func (p *proc) resume(runID string, opts ...runner.ResumeOption) ([]runner.Event
 func (w *world) checkLeaseFree(claimed store.Run) {
 	w.t.Helper()
 	if claimed.Lease.Owner == "" {
-		if claimed.Status.Final() {
-			return // a final run is returned without a claim
+		if claimed.Status.Final() || claimed.Status == store.StatusSuspended {
+			return // a final run, or an answer that resumes nothing, is returned without a claim
 		}
 		w.t.Errorf("invariant 4: execution of run %q does not name its lease", claimed.ID)
 		return
@@ -401,6 +450,11 @@ func (w *world) check() {
 				if err != nil || !sameJSON(got, *ev.Harness.TurnRecord) || e.RunID != ev.RunID {
 					t.Errorf("invariant 1: turn entry %d of %q = %s (%v), event %s", ev.Seq, s.conv, js(got), err, js(ev.Harness.TurnRecord))
 				}
+			case harness.EventSuspended:
+				got, answers, err := runner.PendingTurn(e)
+				if err != nil || !sameJSON(got, *ev.Harness.Result.Pending) || len(answers) != 0 || e.RunID != ev.RunID {
+					t.Errorf("invariant 1: interrupt entry %d of %q = %s (%v), event %s", ev.Seq, s.conv, js(got), err, js(ev.Harness.Result.Pending))
+				}
 			default:
 				t.Errorf("invariant 1: %s event has a Seq", ev.Harness.Kind)
 			}
@@ -422,9 +476,10 @@ func (w *world) check() {
 			}
 		}
 		ids := map[string]bool{}
+		w.checkInterrupts(ctx, conv)
 		for _, e := range w.logIn(ctx, conv) {
-			if e.Kind == store.KindCompaction {
-				continue // its tail is a copy of the entries before it
+			if e.Kind == store.KindCompaction || e.Kind == store.KindInterrupt {
+				continue // its tail is a copy of the entries before it; the reply is the next turn's
 			}
 			for _, m := range e.Messages {
 				for _, b := range m.Content {
@@ -467,6 +522,9 @@ func (w *world) check() {
 func messagesOf(es []store.Entry) harness.Transcript {
 	var tr harness.Transcript
 	for _, e := range es {
+		if e.Kind == store.KindInterrupt {
+			continue // not part of the context
+		}
 		if e.Kind == store.KindCompaction {
 			tr = nil
 		}
@@ -505,6 +563,9 @@ type scriptModel struct {
 
 type script struct {
 	tools int
+	// calls, if set, replaces tools: calls[turn] are the names of the
+	// tools turn calls, with IDs prompt#turn.k and inputs prompt/turn.k.
+	calls [][]string
 	// fail[turn] is how many times that turn fails with err first.
 	fail map[int]int
 	err  error
@@ -519,6 +580,15 @@ func (m *scriptModel) on(name string, tools int) string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.scripts["q:"+name] = &script{tools: tools, fail: map[int]int{}}
+	return "q:" + name
+}
+
+// onCalls scripts the prompt "q:"+name to call, at each turn, the tools
+// named, then answer.
+func (m *scriptModel) onCalls(name string, turns ...[]string) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.scripts["q:"+name] = &script{calls: turns, fail: map[int]int{}}
 	return "q:" + name
 }
 
@@ -582,6 +652,13 @@ func (m *scriptModel) Generate(ctx context.Context, req llm.Request) iter.Seq2[l
 	case s.fail[turn] > 0:
 		s.fail[turn]--
 		reply = llmtest.Fail(s.err)
+	case turn < len(s.calls):
+		var uses []llm.ToolUse
+		for k, name := range s.calls[turn] {
+			id := fmt.Sprintf("%s#%d.%d", prompt, turn, k)
+			uses = append(uses, llm.ToolUse{ID: id, Name: name, Input: json.RawMessage(fmt.Sprintf(`{"s":%q}`, id))})
+		}
+		reply = llmtest.ToolCalls(uses...).WithUsage(usage)
 	case turn < s.tools:
 		reply = llmtest.ToolCalls(llm.ToolUse{
 			ID: fmt.Sprintf("%s#%d", prompt, turn), Name: "echo",

@@ -28,6 +28,7 @@ func newCatalog() (*toolset.Catalog, error) {
 		toolset.Demo(),
 		coretools.Math(),
 		coretools.Files(),
+		coretools.User(),
 		tavily.Factory(tavily.WithLookupEnv(os.LookupEnv), tavily.WithLogger(logger)),
 		exa.Factory(exa.WithLookupEnv(os.LookupEnv)),
 		gmail.Factory(gmail.WithLookupEnv(os.LookupEnv), gmail.WithLogger(logger)),

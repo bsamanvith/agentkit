@@ -19,6 +19,10 @@ import (
 // provider is the llm.Opaque provider name of this adapter's blocks.
 const provider = "anthropic"
 
+// memoryToolName is the name of Claude's memory tool, which
+// [Options.NativeMemory] sends as its native type.
+const memoryToolName = "memory"
+
 // build returns the SDK parameters of req and the request body to send. The
 // body is the parameters marshaled by the SDK, with each Opaque block's data
 // spliced in byte for byte.
@@ -52,11 +56,20 @@ func (m *Model) build(req llm.Request) (anthropic.BetaMessageNewParams, []byte, 
 		p.System = []anthropic.BetaTextBlockParam{sys}
 	}
 	for i, d := range req.Tools {
+		last := cache[CacheTools] && i == len(req.Tools)-1
+		if o.NativeMemory && d.Name == memoryToolName {
+			mt := anthropic.BetaMemoryTool20250818Param{}
+			if last {
+				mt.CacheControl = anthropic.NewBetaCacheControlEphemeralParam()
+			}
+			p.Tools = append(p.Tools, anthropic.BetaToolUnionParam{OfMemoryTool20250818: &mt})
+			continue
+		}
 		t := anthropic.BetaToolParam{Name: d.Name, InputSchema: inputSchema(d.InputSchema)}
 		if d.Description != "" {
 			t.Description = param.NewOpt(d.Description)
 		}
-		if cache[CacheTools] && i == len(req.Tools)-1 {
+		if last {
 			t.CacheControl = anthropic.NewBetaCacheControlEphemeralParam()
 		}
 		p.Tools = append(p.Tools, anthropic.BetaToolUnionParam{OfTool: &t})

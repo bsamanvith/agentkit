@@ -38,6 +38,8 @@ func ModuleRules() Rules {
 			// The SQLite store's driver: pure Go, so binaries stay static
 			// (T029). It also names the driver's error type, for SQLITE_BUSY.
 			"pkg/store/sqlite": {"modernc.org/sqlite"},
+			// The memory context store on SQLite (T058): the same driver.
+			"pkg/memory/sqlite": {"modernc.org/sqlite"},
 			// The Postgres store's driver and pool (T088). pgconn names the
 			// server's error type, for SQLSTATEs.
 			"pkg/store/postgres": {"github.com/jackc/pgx/v5", "github.com/jackc/pgx/v5/pgconn", "github.com/jackc/pgx/v5/pgxpool"},
@@ -205,6 +207,11 @@ func ModuleRules() Rules {
 				"pkg/agentapi", "pkg/agentapi/wire", "pkg/clock", "pkg/mcp/client",
 				"pkg/netguard", "pkg/store", "pkg/tenancy", "pkg/tool", "pkg/store/memory",
 			},
+			// The memory context store (E12, T058) knows tenants and the tool
+			// abstraction, never the harness, a model or the store: memory
+			// reaches the model as a tool. Its live test runs it with the
+			// harness on Claude.
+			"pkg/memory": {"pkg/tenancy", "pkg/tool", "pkg/harness", "pkg/llm", "pkg/llm/anthropic"},
 			// The SSRF guard is the standard library only.
 			"pkg/netguard": {},
 			// The credential vault (T042) knows tenants and nothing else:

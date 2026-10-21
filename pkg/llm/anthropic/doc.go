@@ -35,7 +35,9 @@
 //
 // [Options], set as a request's Provider (as a value or a pointer) or as the
 // model's defaults with [WithOptions], choose the effort, the thinking display,
-// prompt-cache breakpoints, extra beta headers and the refusal fallback.
+// prompt-cache breakpoints, extra beta headers and the refusal fallback, and
+// whether a tool named "memory" goes as Claude's native memory tool type
+// (NativeMemory; pkg/memory's tool has its input).
 //
 // # Errors
 //

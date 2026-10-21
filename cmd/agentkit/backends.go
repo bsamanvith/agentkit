@@ -7,7 +7,8 @@ import "fmt"
 // only what it runs (see the Makefile's image variants). The store and bus
 // backends are in packages storeopen and busopen:
 //
-//	nosqlite      no SQLite store (pkg/store/storeopen/sqlite.go)
+//	nosqlite      no SQLite store (pkg/store/storeopen/sqlite.go) and no SQLite
+//	              memory backend (memory_sqlite.go): SQLite is for local images
 //	nopostgres    no Postgres store, and no agentkit migrate (pkg/store/storeopen/postgres.go)
 //	noredis       no Redis bus (pkg/bus/busopen/redis.go)
 //	nomodels      no model adapter (models_anthropic.go) and no skills

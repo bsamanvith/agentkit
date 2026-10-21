@@ -146,6 +146,55 @@ func TestOptions(t *testing.T) {
 	}
 }
 
+// TestNativeMemory: with NativeMemory, a tool named "memory" goes as the
+// memory_20250818 type (with the tools' cache breakpoint when it is last)
+// and every other tool as its definition; without it, as its definition.
+func TestNativeMemory(t *testing.T) {
+	t.Parallel()
+	req := llm.Request{
+		Messages: []llm.Message{llm.User(llm.Text{Text: "Hello."})},
+		Tools: []tool.Definition{
+			{Name: "now", InputSchema: json.RawMessage(`{"type":"object"}`)},
+			{Name: "memory", Description: "Our memory.", InputSchema: json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}}}`)},
+		},
+	}
+	for _, c := range []struct {
+		name   string
+		model  []anthropic.Option
+		opts   any
+		native bool
+	}{
+		{name: "off"},
+		{name: "request option", opts: anthropic.Options{NativeMemory: true, Cache: []anthropic.CachePoint{anthropic.CacheTools}}, native: true},
+		{name: "model default", model: []anthropic.Option{anthropic.WithOptions(anthropic.Options{NativeMemory: true})}, opts: &anthropic.Options{}, native: true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			r := req
+			r.Provider = c.opts
+			got, _ := body(t, r, c.model...)
+			tools := got["tools"].([]any)
+			now, mem := tools[0].(map[string]any), tools[1].(map[string]any)
+			if now["name"] != "now" || now["input_schema"] == nil {
+				t.Errorf("tool 0 = %v, want now as its definition", now)
+			}
+			if !c.native {
+				if mem["type"] != nil || mem["input_schema"] == nil || mem["description"] != "Our memory." {
+					t.Errorf("memory without NativeMemory = %v, want its definition", mem)
+				}
+				return
+			}
+			if mem["type"] != "memory_20250818" || mem["name"] != "memory" || mem["input_schema"] != nil || mem["description"] != nil {
+				t.Errorf("memory with NativeMemory = %v, want the memory_20250818 type alone", mem)
+			}
+			_, cached := mem["cache_control"]
+			if wantCache := c.name == "request option"; cached != wantCache {
+				t.Errorf("memory cache_control = %v, want cached %v", mem["cache_control"], wantCache)
+			}
+		})
+	}
+}
+
 func TestInvalidRequests(t *testing.T) {
 	t.Parallel()
 	hello := []llm.Message{llm.User(llm.Text{Text: "Hello."})}

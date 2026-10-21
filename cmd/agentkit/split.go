@@ -105,7 +105,12 @@ func (c cli) newRunner(ctx context.Context, cfg serveConfig, built map[string]to
 			// TODO(T096): read them from the store here too.
 			return component.Mount{}, fmt.Errorf("%s.runtime_toolsets: the %s component cannot use toolsets added at run time yet; run the agent in the agent API's process", a.label(cfg.legacy), runnerName)
 		}
-		h, sk, ks, err := c.newHarness(ctx, cfg, a, built, nil, clk)
+		if a.Memory != nil {
+			// TODO(T058 follow-up): the tenant does not cross to the runner
+			// yet, so every memory call would be refused.
+			return component.Mount{}, fmt.Errorf("%s.memory: the %s component cannot give an agent memory yet; run the agent in the agent API's process", a.label(cfg.legacy), runnerName)
+		}
+		h, sk, ks, err := c.newHarness(ctx, cfg, a, built, nil, nil, clk)
 		if err != nil {
 			return component.Mount{}, err
 		}

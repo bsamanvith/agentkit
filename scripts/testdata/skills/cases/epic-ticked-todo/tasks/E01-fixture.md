@@ -9,3 +9,5 @@ status: todo
 - [x] [T001](T001-first.md) First, done
 - [x] [T002](T002-second.md) Second, todo but ticked
 - [x] [T003](T003-third.md) Third, in review: either box
+- [ ] [T004](T004-moved.md) Moved to E02, so checked only there
+- [ ] T006 Not planned yet, no file

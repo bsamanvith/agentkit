@@ -21,7 +21,8 @@
 #   link.anchor        and every #anchor into a Markdown file is a heading there
 #   task.id            task and epic ids are unique and match the file name
 #   task.status        status is todo, in-progress, review, done or blocked
-#   task.depends       every depends_on names an existing task
+#   task.depends       every depends_on names an existing task, or one an
+#                      epic lists as planned ("- [ ] T079 ...", no file yet)
 #   epic.checklist     an epic's box for its own task is ticked when the task
 #                      is done, and empty when it is todo, in-progress or
 #                      blocked (either while it is in review)
@@ -292,6 +293,14 @@ if [ -d tasks ]; then
 			next
 		}
 		FNR == 1 { e = byfile[FILENAME] }
+		# A task planned in an epic but not written yet ("- [ ] T079 ...",
+		# no link) may already be depended on.
+		/^[ \t]*- \[[ xX]\] T[0-9]+[ \t]/ {
+			t = $0
+			sub(/^[ \t]*- \[[ xX]\] /, "", t)
+			sub(/[ \t].*/, "", t)
+			planned[t] = 1
+		}
 		/^[ \t]*- \[[ xX]\] \[T[0-9]+\]\([^)]*\)/ {
 			box = substr($0, index($0, "[") + 1, 1)
 			t = substr($0, index($0, "](") + 2)
@@ -317,7 +326,7 @@ if [ -d tasks ]; then
 					print "task.status|" file[i] "|status is \"" st[i] "\", want todo, in-progress, review, done or blocked"
 				m = split(dep[i], d, " ")
 				for (j = 1; j <= m; j++)
-					if (!count[d[j]])
+					if (!count[d[j]] && !planned[d[j]])
 						print "task.depends|" file[i] "|depends on " d[j] ", which has no task file"
 			}
 		}

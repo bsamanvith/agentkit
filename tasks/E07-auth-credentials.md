@@ -45,7 +45,7 @@ Two tracks that can start in parallel, and in parallel with E05: inbound (T039 â
 - [x] [T039](T039-auth-principals-middleware.md) `pkg/auth`: principals, API-key authenticator, edge middleware (read its "For T040", "For T041" and "For T061" Notes first)
 - [x] [T040](T040-serve-auth-wiring.md) `agentkit serve` behind auth: `/v1` and `/mcp/`, per-principal toolsets, no open MCP off loopback
 - [ ] [T061](T061-local-users-login.md) Local users and login sessions for the console (needs T039)
-- [ ] [T041](T041-auth-jwt-oidc.md) JWT/OIDC authenticator and MCP protected resource metadata
+- [x] [T041](T041-auth-jwt-oidc.md) JWT/OIDC authenticator and MCP protected resource metadata
 - [x] [T042](T042-credentials-core.md) `pkg/credentials`: secret values, sealer and key ring, vault interface, memory vault, conformance suite
 - [ ] [T043](T043-credentials-backends.md) Credential backends: encrypted file now, SQLite on T029
 - [ ] [T044](T044-credentials-in-tools.md) Credentials in tools: slots in toolset specs, scoped sources, OAuth2 refresh, the canary test end to end

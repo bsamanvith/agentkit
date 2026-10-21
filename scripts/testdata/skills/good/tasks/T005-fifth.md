@@ -3,7 +3,7 @@ id: T005
 title: Fifth
 epic: E02
 status: review
-depends_on: [T004]
+depends_on: [T004, T006]
 ---
 
 # T005: Fifth

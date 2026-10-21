@@ -142,6 +142,7 @@ func TestNewRouterRejects(t *testing.T) {
 		{"two pools of one name", []pool.Pool{p, fake{"p", pool.VM}}, nil, "p"},
 		{"a pool with no name", []pool.Pool{p, fake{"", pool.VM}}, nil, "p"},
 		{"a nil pool", []pool.Pool{p, nil}, nil, "p"},
+		{"a nil pointer pool", []pool.Pool{p, (*spawner)(nil)}, nil, "p"},
 	} {
 		if _, err := pool.NewRouter(c.pools, c.rules, c.def); !errors.Is(err, pool.ErrInvalidConfig) {
 			t.Errorf("%s: NewRouter = %v, want ErrInvalidConfig", c.name, err)

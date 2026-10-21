@@ -214,7 +214,8 @@ func WithRunnerOptions(opts ...runner.Option) Option {
 // ([pool.Default]): the runner as it ran before pools.
 //
 // The server owns the router: [Server.Shutdown] closes it, and so the agents
-// its pools made, once the runs have stopped.
+// its pools made, once the runs have stopped; [NewAgents] closes it when it
+// fails to make the server.
 //
 // [E20]: https://github.com/bsamanvith/agentkit/blob/main/tasks/E20-runner-pools.md
 func WithRouter(rt *pool.Router) Option { return func(c *config) { c.router = rt } }

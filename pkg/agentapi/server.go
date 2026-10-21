@@ -95,11 +95,9 @@ var _ component.Component = (*Server)(nil)
 
 // New returns the agent API for h, the one agent, named [DefaultAgent]. It
 // fails with [ErrInvalidConfig] for a nil harness or an option with an
-// unusable value.
+// unusable value; like [NewAgents], it then closes the router of [WithRouter].
 func New(h *harness.Harness, opts ...Option) (*Server, error) {
-	if h == nil {
-		return nil, fmt.Errorf("%w: nil harness", ErrInvalidConfig)
-	}
+	// NewAgents refuses the nil harness, and closes the router as it does.
 	return NewAgents([]Agent{{Name: DefaultAgent, Harness: h}}, opts...)
 }
 

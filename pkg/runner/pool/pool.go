@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"reflect"
 	"slices"
 	"strconv"
 	"sync"
@@ -96,7 +97,10 @@ type Pool interface {
 	Isolation() Isolation
 	// Agent returns the agent that runs the request. Like a
 	// [runner.AgentFactory], it is called before the run is created or
-	// claimed. After Close it fails with [ErrClosed].
+	// claimed. After Close it fails with [ErrClosed]. The runner compacts
+	// only the conversations of an agent that is a [runner.Compactor]: a
+	// pool that wraps [Request.Built] keeps its Compact method, or its runs
+	// are never compacted.
 	Agent(ctx context.Context, r Request) (runner.Agent, error)
 	// Close closes the agents the pool made that are still open and frees
 	// what it holds. Call it once the runs using its agents have stopped;
@@ -240,7 +244,7 @@ type Router struct {
 func NewRouter(pools []Pool, rules []Rule, def string) (*Router, error) {
 	rt := &Router{pools: slices.Clone(pools), named: map[string]Pool{}, rules: slices.Clone(rules)}
 	for _, p := range pools {
-		if p == nil || p.Name() == "" {
+		if isNil(p) || p.Name() == "" {
 			return nil, fmt.Errorf("%w: a pool with no name", ErrInvalidConfig)
 		}
 		if _, ok := rt.named[p.Name()]; ok {
@@ -258,6 +262,15 @@ func NewRouter(pools []Pool, rules []Rule, def string) (*Router, error) {
 		return nil, fmt.Errorf("%w: default pool %q is not one of the pools", ErrInvalidConfig, def)
 	}
 	return rt, nil
+}
+
+// isNil reports whether p is nil, or a nil pointer in an interface.
+func isNil(p Pool) bool {
+	if p == nil {
+		return true
+	}
+	v := reflect.ValueOf(p)
+	return v.Kind() == reflect.Pointer && v.IsNil()
 }
 
 // DefaultName names the pool of [Default].

@@ -2,6 +2,7 @@ package agentapi_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"slices"
 	"sync"
@@ -97,6 +98,40 @@ func TestRunsRouteThroughPools(t *testing.T) {
 	wantError(t, "a run of an agent no pool may run", resp, body, http.StatusConflict, agentapi.CodeInvalidRequest)
 	if n := len(locked.requests()); n != 0 {
 		t.Errorf("the agent that needs a VM ran in process: its model got %d requests", n)
+	}
+}
+
+// TestFailedNewClosesRouter: the server owns the router it is given, so a
+// server that is never made closes it, rather than leave its pools open.
+func TestFailedNewClosesRouter(t *testing.T) {
+	t.Parallel()
+	only := &recording{name: "only"}
+	rt, err := pool.NewRouter([]pool.Pool{only}, nil, "only")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := agentapi.NewAgents(nil, agentapi.WithRouter(rt)); !errors.Is(err, agentapi.ErrInvalidConfig) {
+		t.Fatalf("NewAgents with no agents = %v, want ErrInvalidConfig", err)
+	}
+	only.mu.Lock()
+	closed := only.closed
+	only.mu.Unlock()
+	if !closed {
+		t.Error("a failed NewAgents left the router's pool open")
+	}
+
+	other := &recording{name: "other"}
+	rt, err = pool.NewRouter([]pool.Pool{other}, nil, "other")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := agentapi.New(nil, agentapi.WithRouter(rt)); !errors.Is(err, agentapi.ErrInvalidConfig) {
+		t.Fatalf("New(nil) = %v, want ErrInvalidConfig", err)
+	}
+	other.mu.Lock()
+	defer other.mu.Unlock()
+	if !other.closed {
+		t.Error("a failed New left the router's pool open")
 	}
 }
 

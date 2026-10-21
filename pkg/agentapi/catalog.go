@@ -114,9 +114,19 @@ func WithTenant(f func(*http.Request) string) Option { return func(c *config) { 
 // (POST /v1/runs "agent"), or gets the default one: the only agent, else the
 // one named [DefaultAgent]. It fails with [ErrInvalidConfig] for no agents,
 // an agent with neither or both of a harness and a runner, an invalid or duplicate name, an agent naming a toolset
-// [WithToolsets] does not give, or an option with an unusable value.
+// [WithToolsets] does not give, an unknown [Agent.Isolation], or an option
+// with an unusable value. When it fails it closes the router of [WithRouter].
 func NewAgents(agents []Agent, opts ...Option) (*Server, error) {
 	cfg := newConfig(opts)
+	s, err := newAgents(cfg, agents)
+	if err != nil && cfg.router != nil {
+		// The router was the server's to own: with no server, close it here.
+		err = errors.Join(err, cfg.router.Close())
+	}
+	return s, err
+}
+
+func newAgents(cfg config, agents []Agent) (*Server, error) {
 	if len(agents) == 0 {
 		return nil, fmt.Errorf("%w: no agents", ErrInvalidConfig)
 	}
@@ -143,6 +153,8 @@ func NewAgents(agents []Agent, opts ...Option) (*Server, error) {
 			return nil, fmt.Errorf("%w: agent name %q must match %s", ErrInvalidConfig, a.Name, validName)
 		case byName[a.Name] != nil:
 			return nil, fmt.Errorf("%w: two agents named %q", ErrInvalidConfig, a.Name)
+		case a.Isolation > pool.VM:
+			return nil, fmt.Errorf("%w: agent %q: unknown isolation %s", ErrInvalidConfig, a.Name, a.Isolation)
 		}
 		for _, name := range a.Toolsets {
 			if sets[name] == nil {

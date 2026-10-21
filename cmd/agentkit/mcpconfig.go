@@ -26,6 +26,10 @@ type mcpConfig struct {
 	MaxBodyBytes int64 `json:"max_body_bytes"`
 	// Toolsets are built by toolset.Build from the compiled-in catalog.
 	Toolsets []toolset.Spec `json:"toolsets"`
+
+	// protected is auth.jwt when it is configured: the endpoints' 401s then
+	// point at their protected resource metadata (T041). Serve sets it.
+	protected *jwtConfig
 }
 
 // defaultMCPConfig is what an omitted field means.

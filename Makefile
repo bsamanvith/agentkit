@@ -175,11 +175,11 @@ TAGS_dev := nosqlite
 TAGS_api := nomodels noconnectors nomcp nosqlite
 TAGS_runner := noconnectors nomcp noweb nosqlite nopostgres noredis
 TAGS_toolsets := nomodels noweb nosqlite nopostgres noredis
-IMAGE_BUDGET_MB_local ?= 27
+IMAGE_BUDGET_MB_local ?= 28
 IMAGE_BUDGET_MB_dev ?= 30
 IMAGE_BUDGET_MB_api ?= 22
 IMAGE_BUDGET_MB_runner ?= 20
-IMAGE_BUDGET_MB_toolsets ?= 17
+IMAGE_BUDGET_MB_toolsets ?= 18
 # Binaries that get an image; fakellm joins when cmd/fakellm exists (T004).
 IMAGE_BINS := $(notdir $(wildcard $(addprefix cmd/,agentkit fakellm)))
 # An extra CA for the module download, behind a TLS-intercepting proxy.

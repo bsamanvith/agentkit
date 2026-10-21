@@ -62,7 +62,7 @@ func tokenAuth(t *testing.T, token string) auth.Authenticator {
 			return token
 		}
 		return ""
-	}}.authenticator(serveConfig{})
+	}}.authenticator(t.Context(), serveConfig{}, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}

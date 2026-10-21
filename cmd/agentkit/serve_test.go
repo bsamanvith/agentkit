@@ -106,7 +106,13 @@ func TestServeRejectsBadSetup(t *testing.T) {
 		"auth: unknown field":         {env: map[string]string{envComponents: "agent"}, config: `{"auth":{"api_keys":[{"id":"k","key":"hunter2"}]}}`, code: 1, says: "auth:"},
 		"auth: keys file missing":     {env: map[string]string{envComponents: "agent", envAPIKeysFile: "/nonexistent/keys.json"}, config: good, code: 1, says: envAPIKeysFile},
 		"auth: stateful mcp":          {env: map[string]string{envComponents: "mcp-server", envAPIToken: "a-token-0123456789abcdef"}, config: `{"mcp":{"stateful":true,"toolsets":[{"name":"demo","type":"demo"}]}}`, code: 1, says: "stateful"},
-		"bad dependency wait":         {env: map[string]string{envDependencyWait: "soon"}, config: good, code: 1, says: envDependencyWait},
+		// Identity provider tokens (T041).
+		"auth.jwt: HMAC":                   {env: map[string]string{envComponents: "agent"}, config: `{"auth":{"jwt":{"issuer":"https://id.example","audience":"https://a.example","algorithms":["HS256"]}}}`, code: 1, says: "HS256"},
+		"auth.jwt: unknown field":          {env: map[string]string{envComponents: "agent"}, config: `{"auth":{"jwt":{"issuer":"https://id.example","audience":"https://a.example","secret":"x"}}}`, code: 1, says: "secret"},
+		"auth.jwt: bad leeway":             {env: map[string]string{envComponents: "agent"}, config: `{"auth":{"jwt":{"issuer":"https://id.example","audience":"https://a.example","leeway":"soon"}}}`, code: 1, says: "auth"},
+		"auth.jwt: http issuer":            {env: map[string]string{envComponents: "agent"}, config: `{"auth":{"jwt":{"issuer":"http://id.example","audience":"https://a.example"}}}`, code: 1, says: "auth.jwt"},
+		"auth.jwt: MCP audience no origin": {env: map[string]string{envComponents: "mcp-server"}, config: `{"mcp":{"toolsets":[{"name":"demo","type":"demo"}]},"auth":{"jwt":{"issuer":"http://127.0.0.1:1","audience":"api://agentkit"}}}`, code: 1, says: "origin"},
+		"bad dependency wait":              {env: map[string]string{envDependencyWait: "soon"}, config: good, code: 1, says: envDependencyWait},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

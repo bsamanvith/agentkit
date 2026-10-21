@@ -1,14 +1,18 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path"
 	"slices"
+	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/auth"
+	"github.com/bsamanvith/agentkit/pkg/auth/jwt"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
@@ -25,15 +29,73 @@ type authConfig struct {
 	// the hash of a key (auth.HashKey; never the key) and the tenant,
 	// scopes and toolsets it grants.
 	APIKeys []auth.APIKey `json:"api_keys"`
+	// JWT accepts an identity provider's tokens beside the keys (T041).
+	JWT *jwtConfig `json:"jwt"`
+}
+
+// jwtConfig is the "auth.jwt" section: jwt.Config, with durations written
+// as strings, and what the MCP endpoints' protected resource metadata says.
+type jwtConfig struct {
+	jwt.Config
+	Leeway             duration `json:"leeway"`
+	MinRefreshInterval duration `json:"min_refresh_interval"`
+	MaxCacheAge        duration `json:"max_cache_age"`
+	// AuthorizationServers are the issuers the metadata names (default: the
+	// issuer).
+	AuthorizationServers []string `json:"authorization_servers"`
+	// ScopesSupported are the scopes the metadata names, if any.
+	ScopesSupported []string `json:"scopes_supported"`
+}
+
+func (j jwtConfig) config() jwt.Config {
+	c := j.Config
+	c.Leeway, c.MinRefreshInterval, c.MaxCacheAge = time.Duration(j.Leeway), time.Duration(j.MinRefreshInterval), time.Duration(j.MaxCacheAge)
+	return c
+}
+
+// authorizationServers are those the metadata names.
+func (j jwtConfig) authorizationServers() []string {
+	if len(j.AuthorizationServers) > 0 {
+		return j.AuthorizationServers
+	}
+	return []string{j.Issuer}
 }
 
 // authenticator is what the agent API and the MCP endpoints authenticate
-// requests with: the config's keys, those of $AGENTKIT_API_KEYS_FILE, and
+// requests with: the identity provider's tokens of auth.jwt, then the API
+// keys (auth.Chain: a bearer token that is not a JWT goes on to the keys).
+// It is nil when nothing is configured: the server is open, which only a
+// loopback address allows. The provider's keys are fetched once at startup,
+// and a failure only logged: the next token tries again.
+func (c cli) authenticator(ctx context.Context, cfg serveConfig, log *slog.Logger) (auth.Authenticator, error) {
+	keys, err := c.apiKeys(cfg)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.Auth.JWT == nil {
+		if keys == nil {
+			return nil, nil
+		}
+		return keys, nil
+	}
+	tokens, err := jwt.New(cfg.Auth.JWT.config(), jwt.WithLogger(log.With("component", "auth")))
+	if err != nil {
+		return nil, fmt.Errorf("auth.jwt: %w", err)
+	}
+	if err := tokens.Refresh(ctx); err != nil {
+		log.Warn("auth.jwt: the identity provider's keys could not be fetched; its tokens fail until they are", "issuer", cfg.Auth.JWT.Issuer, "error", err)
+	}
+	if keys == nil {
+		return tokens, nil
+	}
+	return auth.Chain(tokens, keys), nil
+}
+
+// apiKeys are the config's keys, those of $AGENTKIT_API_KEYS_FILE, and
 // $AGENTKIT_API_TOKEN as one key of the default tenant with every scope and
-// toolset. It is nil when none gives a key: the server is open, which only a
-// loopback address allows. A key's toolset pattern that matches none of the
-// config's toolsets is an error: a typo would otherwise hide a toolset.
-func (c cli) authenticator(cfg serveConfig) (auth.Authenticator, error) {
+// toolset; nil when there are none. A key's toolset pattern that matches none
+// of the config's toolsets is an error: a typo would otherwise hide a toolset.
+func (c cli) apiKeys(cfg serveConfig) (auth.Authenticator, error) {
 	keys := slices.Clone(cfg.Auth.APIKeys)
 	if p := c.env(envAPIKeysFile); p != "" {
 		raw, err := os.ReadFile(p)
@@ -76,5 +138,5 @@ func (c cli) authenticator(cfg serveConfig) (auth.Authenticator, error) {
 // needsCredentials is the error of a component that would serve addr, which
 // is not loopback, with no authenticator.
 func needsCredentials(addr string) error {
-	return fmt.Errorf("serving on %s, which is not a loopback address, needs credentials: a token in $%s, or API keys (auth.api_keys in the config, or $%s)", addr, envAPIToken, envAPIKeysFile)
+	return fmt.Errorf("serving on %s, which is not a loopback address, needs credentials: a token in $%s, API keys (auth.api_keys in the config, or $%s), or an identity provider (auth.jwt)", addr, envAPIToken, envAPIKeysFile)
 }

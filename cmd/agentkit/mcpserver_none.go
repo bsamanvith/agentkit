@@ -15,3 +15,6 @@ import (
 func newMCPServer(context.Context, mcpConfig, map[string]tool.Registry, []toolset.Problem, auth.Authenticator, string, *slog.Logger) (component.Mount, error) {
 	return component.Mount{}, notBuilt(envComponents, "the MCP server", "nomcp")
 }
+
+// newResourceMetadata serves nothing: there are no MCP endpoints to describe.
+func newResourceMetadata(mcpConfig) ([]component.Mount, error) { return nil, nil }

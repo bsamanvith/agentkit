@@ -29,6 +29,15 @@ func ModuleRules() Rules {
 				"github.com/modelcontextprotocol/go-sdk/auth", "github.com/modelcontextprotocol/go-sdk/oauthex",
 				"golang.org/x/oauth2", "github.com/modelcontextprotocol/go-sdk/mcp",
 			},
+			// JWT bearer tokens (T041): go-jose for JWS and JWK sets, in
+			// this package only (E07's decision). Its fake provider signs
+			// with it.
+			"pkg/auth/jwt":         {"github.com/go-jose/go-jose/v4"},
+			"pkg/auth/jwt/jwttest": {"github.com/go-jose/go-jose/v4"},
+			// Protected resource metadata (RFC 9728) on the SDK's handler
+			// and types; apart from auth/jwt so that only what serves MCP
+			// links the SDK.
+			"pkg/auth/resourcemeta": {"github.com/modelcontextprotocol/go-sdk/auth", "github.com/modelcontextprotocol/go-sdk/oauthex"},
 			// Its tests serve an SDK server to add at run time (T096).
 			"pkg/agentapi": {"github.com/modelcontextprotocol/go-sdk/mcp"},
 			// MCP servers added at run time (T096): the SDK's tool type
@@ -141,6 +150,11 @@ func ModuleRules() Rules {
 			// Edge authentication knows tenants and nothing else: no server,
 			// no store, no harness (E07). Tenancy never imports it back.
 			"pkg/auth": {"pkg/tenancy"},
+			// JWT tokens (T041) add the clock for token times and the key
+			// cache; their tests the shared suite and the fake clock.
+			"pkg/auth/jwt": {"pkg/auth", "pkg/tenancy", "pkg/clock", "pkg/clock/clocktest", "pkg/auth/authtest"},
+			// The metadata wraps auth's middleware; its tests use the fake.
+			"pkg/auth/resourcemeta": {"pkg/auth", "pkg/tenancy", "pkg/auth/authtest"},
 			// The wire format, shared by the server and its clients: messages
 			// and usage, nothing else (E11).
 			"pkg/agentapi/wire": {"pkg/llm"},

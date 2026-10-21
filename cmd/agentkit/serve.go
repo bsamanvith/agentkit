@@ -151,7 +151,7 @@ func (c cli) serve(ctx context.Context, args []string) error {
 	// accept the same keys and see the same principals.
 	var authn auth.Authenticator
 	if slices.Contains(env.components, agentapi.Name) || slices.Contains(env.components, mcpServerName) {
-		if authn, err = c.authenticator(cfg); err != nil {
+		if authn, err = c.authenticator(ctx, cfg, log); err != nil {
 			return err
 		}
 		if authn == nil {
@@ -168,7 +168,15 @@ func (c cli) serve(ctx context.Context, args []string) error {
 		var m component.Mount
 		switch name {
 		case mcpServerName:
-			m, err = newMCPServer(ctx, cfg.MCP, built, problems, authn, env.addr, log)
+			mcp := cfg.MCP
+			mcp.protected = cfg.Auth.JWT
+			m, err = newMCPServer(ctx, mcp, built, problems, authn, env.addr, log)
+			if err == nil {
+				var meta []component.Mount
+				if meta, err = newResourceMetadata(mcp); err == nil {
+					mounts = append(mounts, meta...)
+				}
+			}
 		case agentapi.Name:
 			m, agents, err = c.newAgents(ctx, cfg, built, problems, env, authn, st.Store, b, clk, log)
 		case web.Name:

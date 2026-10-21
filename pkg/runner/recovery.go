@@ -119,7 +119,8 @@ type Report struct {
 	Resumed int
 	// Skipped runs were claimed but not run: final by then, or claimed a
 	// second time in the pass (its execution ended at once, leaving the
-	// run due), which ends the pass.
+	// run due). Such a run keeps the second claim's lease, so it is tried
+	// again one lease time later and never holds up the runs behind it.
 	Skipped int
 	// Errors are runs that could not be resumed (the error is joined into
 	// Recover's). Each keeps the lease the pass took until it expires, so
@@ -175,13 +176,12 @@ func (rc *Recovery) Recover(ctx context.Context) (Report, error) {
 		k := liveKey{tr.Tenant.ID(), tr.Run.ID}
 		if seen[k] {
 			// Its execution ended at once and left it due: it would be
-			// claimed again and again. The next pass tries it.
+			// claimed again and again, ahead of the runs behind it. It
+			// keeps this claim's lease, so it is tried again one lease
+			// time later, and the pass goes on to the next run.
 			<-sem
-			wctx, cancel := rc.r.detach(tctx)
-			_ = rc.r.store.Release(wctx, tr.Run.ID, owner)
-			cancel()
 			count(&rep.Skipped, nil)
-			break
+			continue
 		}
 		seen[k] = true
 		wg.Go(func() {

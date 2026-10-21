@@ -176,17 +176,21 @@ var ownerOnce sync.Once
 func TestRunsFromBeforeTheQueueAreQueued(t *testing.T) {
 	t.Parallel()
 	u := schemaURL(t)
+	// With a password, as appRole: CI's Postgres authenticates TCP
+	// connections by password (scram), unlike scripts/integration.sh's trust.
 	ownerOnce.Do(func() {
 		exec(t, u, `DO $$ BEGIN
-			CREATE ROLE `+ownerRole+` LOGIN NOSUPERUSER NOBYPASSRLS;
+			CREATE ROLE `+ownerRole+` LOGIN PASSWORD '`+ownerRole+`' NOSUPERUSER NOBYPASSRLS;
 		EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL; END $$`)
+		// A role an older run of this test made has no password.
+		exec(t, u, `ALTER ROLE `+ownerRole+` PASSWORD '`+ownerRole+`'`)
 	})
 	parsed, err := url.Parse(u)
 	if err != nil {
 		t.Fatal(err)
 	}
 	exec(t, u, `GRANT ALL ON SCHEMA `+parsed.Query().Get("search_path")+` TO `+ownerRole)
-	parsed.User = url.User(ownerRole)
+	parsed.User = url.UserPassword(ownerRole, ownerRole)
 	owner := parsed.String()
 
 	openURL(t, owner, postgres.WithMigrations(9)).Close()

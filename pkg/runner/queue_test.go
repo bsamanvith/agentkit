@@ -263,7 +263,8 @@ func TestDispatcherBacksOffARunItCannotResume(t *testing.T) {
 
 // A run whose execution ends at once and leaves it due (here, an execute
 // that stops reading at the first event) is run once per pass: claimed
-// again, it ends the pass instead of being run over and over.
+// again, it keeps that claim's lease as a backoff and the pass goes on to
+// the runs behind it, which it would otherwise hold up pass after pass.
 func TestDispatcherRunsARunOncePerPass(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
@@ -273,16 +274,31 @@ func TestDispatcherRunsARunOncePerPass(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	var (
+		mu  sync.Mutex
+		ran []string
+	)
 	rc := w.recovery(p, runner.WithWorkers(1), runner.WithExecute(func(_ context.Context, x *runner.Execution) {
+		mu.Lock()
+		ran = append(ran, x.Run.ID)
+		mu.Unlock()
 		for range x.Events() {
 			break
 		}
 	}))
 	rep, err := rc.Recover(w.ctx)
-	if err != nil || rep.Resumed != 1 || rep.Skipped != 1 {
-		t.Errorf("Recover = %+v, %v; want the first run run once, then the pass ended at it", rep, err)
+	if err != nil || rep.Resumed != 3 || rep.Skipped != 3 || len(ran) != 3 {
+		t.Errorf("Recover = %+v, %v, ran %v; want each run run once, then skipped once", rep, err, ran)
 	}
-	if run := w.get("run1"); run.Status != store.StatusRunning || run.Lease != (store.Lease{}) {
-		t.Errorf("run1 = %+v, want it running and released, for the next pass", run)
+	if run := w.get("run1"); run.Status != store.StatusRunning || run.Lease == (store.Lease{}) {
+		t.Errorf("run1 = %+v, want it running and leased until its backoff ends", run)
 	}
+	if rep, err := rc.Recover(w.ctx); err != nil || rep != (runner.Report{}) {
+		t.Errorf("a pass within the backoff = %+v, %v; want nothing claimed", rep, err)
+	}
+	w.expire()
+	if rep, err := rc.Recover(w.ctx); err != nil || rep.Resumed != 3 {
+		t.Errorf("a pass after the backoff = %+v, %v; want the runs run again", rep, err)
+	}
+	w.expire() // the invariants want no lease held at the end
 }

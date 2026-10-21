@@ -308,7 +308,8 @@ export class AgentClient {
     if (!resp.ok) {
       const err = await errorFrom(resp);
       // A stale or missing CSRF token: read /me for the session's, and try once more.
-      if (err.status === 403 && err.code === "csrf_failed" && unsafe && !retried) {
+      // A sign-in sends no token, so its refusal (another Origin) is final.
+      if (err.status === 403 && err.code === "csrf_failed" && unsafe && !retried && path !== "/v1/auth/login") {
         await this.me({ signal });
         if (this.#csrf) return this.#send(method, path, body, accept, signal, true);
       }

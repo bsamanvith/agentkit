@@ -42,12 +42,17 @@ type Store interface {
 
 // MemoryStore is a [Store] in memory: sessions end with the process. It
 // holds at most a fixed number of sessions, forgetting the least recently
-// seen to make room.
+// seen to make room, and at most [MaxSessionsPerUser] of one user's, so one
+// user signing in again and again cannot sign everyone else out.
 type MemoryStore struct {
 	mu       sync.Mutex
 	max      int
 	sessions map[string]Session
 }
+
+// MaxSessionsPerUser is how many sessions of one user a [MemoryStore]
+// keeps; a new one forgets that user's least recently seen.
+const MaxSessionsPerUser = 100
 
 // NewMemoryStore returns an empty [MemoryStore] of at most max sessions
 // (10,000 if max <= 0).
@@ -62,14 +67,25 @@ func NewMemoryStore(max int) *MemoryStore {
 func (m *MemoryStore) Create(_ context.Context, key string, s Session) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if _, ok := m.sessions[key]; !ok && len(m.sessions) >= m.max {
-		oldest := ""
+	if _, ok := m.sessions[key]; !ok {
+		oldest, mine, n := "", "", 0
 		for k, v := range m.sessions {
 			if oldest == "" || v.LastSeen.Before(m.sessions[oldest].LastSeen) {
 				oldest = k
 			}
+			if v.Username == s.Username {
+				n++
+				if mine == "" || v.LastSeen.Before(m.sessions[mine].LastSeen) {
+					mine = k
+				}
+			}
 		}
-		delete(m.sessions, oldest)
+		switch {
+		case n >= MaxSessionsPerUser:
+			delete(m.sessions, mine)
+		case len(m.sessions) >= m.max:
+			delete(m.sessions, oldest)
+		}
 	}
 	m.sessions[key] = s
 	return nil

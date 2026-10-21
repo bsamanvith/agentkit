@@ -299,9 +299,11 @@ function sessionServer(server: { csrf: string }, seen: Request[]): typeof fetch 
     if (path === "/v1/auth/me") {
       return Response.json({ v: 1, username: "ann", tenant: "acme", roles: ["user"], scopes: [], csrf: server.csrf });
     }
-    if (req.method !== "GET" && req.headers.get(csrfHeader) !== server.csrf) {
+    // A sign-in needs no token, as on the server (only a same-site Origin).
+    if (path !== "/v1/auth/login" && req.method !== "GET" && req.headers.get(csrfHeader) !== server.csrf) {
       return Response.json({ v: 1, error: { code: "csrf_failed", message: "no" } }, { status: 403 });
     }
+    if (path === "/v1/auth/login") return new Response(null, { status: 204 });
     if (path === "/v1/conversations") return Response.json({ v: 1, id: "conv_1", agent: "a" }, { status: 201 });
     return Response.json({ v: 1, agents: [] });
   }) as typeof fetch;
@@ -351,6 +353,20 @@ describe("sign-in", () => {
     const err = await new AgentClient({ fetch }).createConversation("a").catch((e: unknown) => e);
     expect(err).toMatchObject({ status: 403, code: "csrf_failed" });
     expect(seen).toHaveLength(3);
+  });
+
+  it("does not retry a sign-in refused as cross-site, which no token fixes", async () => {
+    const seen: Request[] = [];
+    const fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      seen.push(new Request(new URL(String(input), "http://test.invalid"), init));
+      if (String(input).endsWith("/v1/auth/me")) {
+        return Response.json({ v: 1, error: { code: "unauthenticated", message: "no" } }, { status: 401 });
+      }
+      return Response.json({ v: 1, error: { code: "csrf_failed", message: "no" } }, { status: 403 });
+    }) as typeof globalThis.fetch;
+    const err = await new AgentClient({ fetch }).login("ann", "pw").catch((e: unknown) => e);
+    expect(err).toMatchObject({ status: 403, code: "csrf_failed" });
+    expect(seen).toHaveLength(1);
   });
 
   it("posts the username and password, and forgets the token at logout", async () => {

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"slices"
 	"strings"
 
@@ -20,19 +19,11 @@ const envUsersFile = "AGENTKIT_USERS_FILE"
 
 // users are the config's local users and those of $AGENTKIT_USERS_FILE.
 func (c cli) users(cfg serveConfig) ([]login.User, error) {
-	users := slices.Clone(cfg.Auth.Users)
-	if p := c.env(envUsersFile); p != "" {
-		raw, err := os.ReadFile(p)
-		if err != nil {
-			return nil, fmt.Errorf("$%s: %w", envUsersFile, err)
-		}
-		var f authConfig
-		if err := decodeStrict(raw, &f); err != nil {
-			return nil, fmt.Errorf("$%s: %w", envUsersFile, err)
-		}
-		users = append(users, f.Users...)
+	f, err := c.authFile(envUsersFile)
+	if err != nil {
+		return nil, err
 	}
-	return users, nil
+	return slices.Concat(cfg.Auth.Users, f.Users), nil
 }
 
 // usersCmd is `agentkit users`: hash-password, for the config's

@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
-	"path"
 	"slices"
 	"strings"
 	"time"
@@ -403,10 +402,8 @@ func (c cli) login(cfg serveConfig, env serveEnv, log *slog.Logger) (*login.Logi
 		return nil, err
 	}
 	for _, u := range users {
-		for _, pat := range u.Toolsets {
-			if pat != "*" && !slices.ContainsFunc(cfg.MCP.Toolsets, func(s toolset.Spec) bool { ok, _ := path.Match(pat, s.Name); return ok }) {
-				return nil, fmt.Errorf("auth: user %q: toolset %q matches none of mcp.toolsets", u.Username, pat)
-			}
+		if err := checkToolsets(cfg, fmt.Sprintf("user %q", u.Username), u.Toolsets); err != nil {
+			return nil, err
 		}
 	}
 	var proxies []netip.Prefix

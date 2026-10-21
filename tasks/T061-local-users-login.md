@@ -61,13 +61,13 @@ Tests per criterion: login and logout `TestSignInAndOut`, `TestSignIn` (agentapi
 
 - **A subpackage**, `pkg/auth/login`, so only it imports `golang.org/x/crypto/argon2` (archtest allowlists it there, not for all of `pkg/auth`).
 - **argon2id parameters:** OWASP's minimum (m=19 MiB, t=2, p=1, 16-byte salt, 32-byte key). Hashes with other parameters verify; the dummy hash for an unknown user costs what the costliest configured one does. At most 4 hashes run at once, so a burst of sign-ins cannot take the server's memory.
-- **Throttling:** 10 failures per username, 100 per address (an office behind one NAT signs in together), then 1 s doubling to 15 min; forgotten after 1 h without a failure; a success resets the username. A throttled attempt is not checked (429 before hashing). Unknown names are counted like known ones. At most 10,000 keys are kept.
+- **Throttling:** 10 failures per username, 100 per address (an office behind one NAT signs in together), then 1 s doubling to 15 min; forgotten after 1 h without a failure; a success resets the username. A throttled attempt is not checked (429 before hashing). Unknown names are counted like known ones. At most 10,000 keys are kept; a full table drops the key with the fewest failures, so a spray of new names cannot push out the one being guessed. An IPv6 client counts by its /64. Attempts still checking a password count toward the threshold, so a burst cannot all pass at once.
 - **Bearer before cookie:** `auth.Chain(bearer, login)`. A request with both acts as the bearer and needs no CSRF token.
 - **Sessions only on `/v1`**, never `/mcp`: MCP clients are not browsers. Hence serve off loopback with users alone refuses `mcp-server`.
 - **Roles:** `admin` also gets `agent:admin`, so an admin can manage toolsets at run time (T096) from the console; users' `toolsets` default to `*`.
 - **Login CSRF:** a sign-in carrying an `Origin` must be same-origin (403 `csrf_failed`); one without (curl) is allowed.
 - **Empty username or password is 400**, not 401: the console checks first, and it is not a failed attempt.
-- **Store:** in memory (`MemoryStore`, 10,000 sessions, least recently seen evicted), keyed by the SHA-256 of the session id so a store dump cannot be replayed. Sessions do not survive a restart or reach other replicas yet.
+- **Store:** in memory (`MemoryStore`, 10,000 sessions and 100 per user, least recently seen evicted; a sign-in ends the session the browser already had), keyed by the SHA-256 of the session id so a store dump cannot be replayed. Sessions do not survive a restart or reach other replicas yet.
 - **Plain HTTP off loopback** logs a warning at startup (the cookie cannot be `Secure`) rather than failing: a TLS proxy may terminate in front without being listed.
 - **Secure cookie** is `__Host-agentkit_session`; over plain HTTP (loopback dev) it is `agentkit_session`.
 

@@ -174,8 +174,8 @@ func (l *Login) SignIn(r *http.Request, username, password string) (*http.Cookie
 	}
 	now := l.clock.Now()
 	addr := l.clientAddr(r)
-	userKey, addrKey := "user:"+username, "addr:"+addr
-	if d := max(l.wait(userKey, userThreshold, now), l.wait(addrKey, addrThreshold, now)); d > 0 {
+	userKey, addrKey := "user:"+username, "addr:"+throttleAddr(addr)
+	if d := l.attempt(now, limit{userKey, userThreshold}, limit{addrKey, addrThreshold}); d > 0 {
 		l.log.LogAttrs(r.Context(), slog.LevelWarn, "login: throttled", l.who(username), slog.String("addr", addr), slog.Duration("retry_after", d))
 		return nil, &ThrottledError{RetryAfter: d}
 	}
@@ -187,15 +187,24 @@ func (l *Login) SignIn(r *http.Request, username, password string) (*http.Cookie
 	}
 	ok, err := l.check(r.Context(), h, password)
 	if err != nil {
+		l.finish(now, false, userKey, addrKey)
 		return nil, err
 	}
 	if !ok || !known || len(password) > MaxPasswordLength {
-		l.fail(now, userKey, addrKey)
+		l.finish(now, true, userKey, addrKey)
 		l.log.LogAttrs(r.Context(), slog.LevelInfo, "login: failed", l.who(username), slog.String("addr", addr))
 		return nil, ErrBadLogin
 	}
+	l.finish(now, false, userKey, addrKey)
 	l.forget(userKey)
 
+	// A session the browser already had (another user's, or one planted in
+	// it) ends here: the new one replaces it, so the old must not live on.
+	if old, err := l.sessionID(r); err == nil {
+		if err := l.store.Delete(r.Context(), key(old)); err != nil {
+			return nil, fmt.Errorf("login: ending the previous session: %w", err)
+		}
+	}
 	id, csrf := random(), random()
 	s := Session{Username: u.name, CSRF: csrf, Created: now, LastSeen: now}
 	l.expire(r.Context(), now)
@@ -415,6 +424,17 @@ func (l *Login) clientAddr(r *http.Request) string {
 		}
 	}
 	return peer
+}
+
+// throttleAddr is the address a client's failures are counted under: an
+// IPv6 client's /64, since one host is commonly given a whole /64 and could
+// otherwise rotate through it.
+func throttleAddr(addr string) string {
+	a, err := netip.ParseAddr(addr)
+	if err != nil || !a.Is6() || a.Is4In6() {
+		return addr
+	}
+	return netip.PrefixFrom(a, 64).Masked().String()
 }
 
 func (l *Login) fromProxy(remote string) bool {

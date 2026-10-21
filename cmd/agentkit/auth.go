@@ -106,18 +106,11 @@ func (c cli) authenticator(ctx context.Context, cfg serveConfig, log *slog.Logge
 // toolset; nil when there are none. A key's toolset pattern that matches none
 // of the config's toolsets is an error: a typo would otherwise hide a toolset.
 func (c cli) apiKeys(cfg serveConfig) (auth.Authenticator, error) {
-	keys := slices.Clone(cfg.Auth.APIKeys)
-	if p := c.env(envAPIKeysFile); p != "" {
-		raw, err := os.ReadFile(p)
-		if err != nil {
-			return nil, fmt.Errorf("$%s: %w", envAPIKeysFile, err)
-		}
-		var f authConfig
-		if err := decodeStrict(raw, &f); err != nil {
-			return nil, fmt.Errorf("$%s: %w", envAPIKeysFile, err)
-		}
-		keys = append(keys, f.APIKeys...)
+	f, err := c.authFile(envAPIKeysFile)
+	if err != nil {
+		return nil, err
 	}
+	keys := slices.Concat(cfg.Auth.APIKeys, f.APIKeys)
 	if token := c.env(envAPIToken); token != "" {
 		if len(token) < auth.MinKeyLength {
 			return nil, fmt.Errorf("$%s: the token must be at least %d bytes", envAPIToken, auth.MinKeyLength)
@@ -132,10 +125,8 @@ func (c cli) apiKeys(cfg serveConfig) (auth.Authenticator, error) {
 		return nil, nil
 	}
 	for _, k := range keys {
-		for _, pat := range k.Toolsets {
-			if pat != "*" && !slices.ContainsFunc(cfg.MCP.Toolsets, func(s toolset.Spec) bool { ok, _ := path.Match(pat, s.Name); return ok }) {
-				return nil, fmt.Errorf("auth: API key %q: toolset %q matches none of mcp.toolsets", k.ID, pat)
-			}
+		if err := checkToolsets(cfg, fmt.Sprintf("API key %q", k.ID), k.Toolsets); err != nil {
+			return nil, err
 		}
 	}
 	a, err := auth.NewAPIKeys(keys)
@@ -143,6 +134,36 @@ func (c cli) apiKeys(cfg serveConfig) (auth.Authenticator, error) {
 		return nil, err
 	}
 	return a, nil
+}
+
+// authFile reads the file $name names, in the form of the config's "auth"
+// section; nothing when the variable is unset.
+func (c cli) authFile(name string) (authConfig, error) {
+	var f authConfig
+	p := c.env(name)
+	if p == "" {
+		return f, nil
+	}
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		return f, fmt.Errorf("$%s: %w", name, err)
+	}
+	if err := decodeStrict(raw, &f); err != nil {
+		return f, fmt.Errorf("$%s: %w", name, err)
+	}
+	return f, nil
+}
+
+// checkToolsets refuses a credential's toolset pattern that matches none of
+// the config's toolsets: a typo would otherwise hide a toolset. who names
+// the credential in the error.
+func checkToolsets(cfg serveConfig, who string, patterns []string) error {
+	for _, pat := range patterns {
+		if pat != "*" && !slices.ContainsFunc(cfg.MCP.Toolsets, func(s toolset.Spec) bool { ok, _ := path.Match(pat, s.Name); return ok }) {
+			return fmt.Errorf("auth: %s: toolset %q matches none of mcp.toolsets", who, pat)
+		}
+	}
+	return nil
 }
 
 // needsCredentials is the error of a component that would serve addr, which

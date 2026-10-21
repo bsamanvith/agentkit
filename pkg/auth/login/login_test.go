@@ -348,6 +348,55 @@ func TestCheckCSRF(t *testing.T) {
 	}
 }
 
+// Attempts sent at once are throttled too: no more than the threshold's
+// worth check a password before the first of them fails, so a burst does
+// not get past the limit.
+func TestThrottlingBurst(t *testing.T) {
+	t.Parallel()
+	counting := &logintest.Hasher{}
+	gate := make(chan struct{})
+	blocking := func(password, salt []byte, tm, m uint32, p uint8, n uint32) []byte {
+		<-gate
+		return counting.Hash(password, salt, tm, m, p, n)
+	}
+	l, err := login.New(testUsers((&logintest.Hasher{}).Hash), login.WithClock(clocktest.NewFake(start)), login.WithHasher(blocking))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const burst = 50
+	errs := make(chan error, burst)
+	for range burst {
+		go func() {
+			_, err := l.SignIn(req(http.MethodPost, addr1), "alice", "wrong-password")
+			errs <- err
+		}()
+	}
+	var throttled, failed int
+	deadline := time.After(10 * time.Second)
+	for throttled < burst-10 {
+		select {
+		case err := <-errs:
+			var th *login.ThrottledError
+			if !errors.As(err, &th) {
+				t.Fatalf("an attempt of the burst returned before any password was checked: %v", err)
+			}
+			throttled++
+		case <-deadline:
+			t.Fatalf("%d of %d attempts throttled, want %d: the burst got past the limit", throttled, burst, burst-10)
+		}
+	}
+	close(gate)
+	for range burst - throttled {
+		if err := <-errs; !errors.Is(err, login.ErrBadLogin) {
+			t.Errorf("a checked attempt: %v, want ErrBadLogin", err)
+		}
+		failed++
+	}
+	if counting.Calls() != 10 || failed != 10 {
+		t.Errorf("%d passwords checked, %d failed; want 10", counting.Calls(), failed)
+	}
+}
+
 // Throttling: after 10 failures for a username the next attempt waits, even
 // with the right password, and the wait doubles with each further failure;
 // other users are not affected. An address is held back after 100.
@@ -598,5 +647,89 @@ func TestExpiredSessionsAreSwept(t *testing.T) {
 	sum := sha256Hex(old.Value)
 	if _, err := st.Get(t.Context(), sum); !errors.Is(err, login.ErrNoSession) {
 		t.Errorf("an expired session is still stored: %v", err)
+	}
+}
+
+// Signing in again from a browser that has a session ends that session: it
+// does not live on beside the new one.
+func TestSignInEndsThePreviousSession(t *testing.T) {
+	t.Parallel()
+	r := newRig(t)
+	old := r.session("alice", alicePassword)
+	q := req(http.MethodPost, addr1)
+	q.AddCookie(&http.Cookie{Name: old.Name, Value: old.Value})
+	c, err := r.signInReq(q, "bob", bobPassword)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.authenticate(with(old, http.MethodGet)); !errors.Is(err, auth.ErrInvalidCredentials) {
+		t.Errorf("alice's session after bob signed in on the same browser: %v, want ErrInvalidCredentials", err)
+	}
+	if p, err := r.authenticate(with(c, http.MethodGet)); err != nil || p.User != "bob" {
+		t.Errorf("bob's new session: %+v, %v", p, err)
+	}
+}
+
+// Failures sprayed over thousands of new names and addresses do not push
+// out the count of a name being guessed at.
+func TestThrottleKeepsTheGuessedName(t *testing.T) {
+	t.Parallel()
+	r := newRig(t)
+	for range 10 {
+		_, _ = r.signIn("alice", "wrong-password", addr1)
+	}
+	// Each attempt adds two keys (name and address): just past the 10,000
+	// kept, so the oldest key, alice's, is the first a full table drops.
+	for i := range 5_010 {
+		r.clk.Advance(time.Microsecond)
+		a := fmt.Sprintf("10.%d.%d.%d:1", i>>16&255, i>>8&255, i&255)
+		_, _ = r.signIn(fmt.Sprintf("spray%d", i), "wrong-password", a)
+	}
+	var th *login.ThrottledError
+	if _, err := r.signIn("alice", alicePassword, addr2); !errors.As(err, &th) {
+		t.Errorf("alice after a spray of 5,010 other names and addresses: %v, want still throttled", err)
+	}
+}
+
+// An IPv6 client's failures count against its /64, so it cannot rotate
+// through the addresses of its own network.
+func TestThrottleIPv6Prefix(t *testing.T) {
+	t.Parallel()
+	r := newRig(t)
+	for i := range 100 {
+		_, _ = r.signIn(fmt.Sprintf("u%d", i), "wrong-password", fmt.Sprintf("[2001:db8:1:2::%x]:1", i+1))
+	}
+	var th *login.ThrottledError
+	if _, err := r.signIn("bob", bobPassword, "[2001:db8:1:2:ffff::1]:1"); !errors.As(err, &th) {
+		t.Errorf("another address of the same /64: %v, want throttled", err)
+	}
+	if _, err := r.signIn("bob", bobPassword, "[2001:db8:1:3::1]:1"); err != nil {
+		t.Errorf("another /64: %v", err)
+	}
+}
+
+// One user's sessions are capped, so signing in again and again forgets
+// that user's oldest session, never another user's.
+func TestMemoryStorePerUser(t *testing.T) {
+	t.Parallel()
+	s := login.NewMemoryStore(login.MaxSessionsPerUser + 1)
+	ctx := t.Context()
+	if err := s.Create(ctx, "other", login.Session{Username: "bob", Created: start, LastSeen: start}); err != nil {
+		t.Fatal(err)
+	}
+	for i := range login.MaxSessionsPerUser + 5 {
+		at := start.Add(time.Duration(i+1) * time.Second)
+		if err := s.Create(ctx, fmt.Sprint("a", i), login.Session{Username: "alice", Created: at, LastSeen: at}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.Get(ctx, "other"); err != nil {
+		t.Errorf("bob's session after alice signed in %d times: %v", login.MaxSessionsPerUser+5, err)
+	}
+	if _, err := s.Get(ctx, "a0"); !errors.Is(err, login.ErrNoSession) {
+		t.Errorf("alice's oldest session was kept: %v", err)
+	}
+	if _, err := s.Get(ctx, fmt.Sprint("a", login.MaxSessionsPerUser+4)); err != nil {
+		t.Errorf("alice's newest session: %v", err)
 	}
 }

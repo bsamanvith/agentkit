@@ -44,19 +44,69 @@ type failures struct {
 	last time.Time
 }
 
-// throttle counts failed sign-ins by key ("user:<name>", "addr:<ip>").
+// throttle counts failed sign-ins by key ("user:<name>", "addr:<ip>"), and
+// the attempts still checking a password, so that attempts sent at once
+// cannot all pass before the first of them fails.
 type throttle struct {
-	mu   sync.Mutex
-	keys map[string]failures
+	mu       sync.Mutex
+	keys     map[string]failures
+	inflight map[string]int
+}
+
+// limit is a key and the failures it may have before it is held back.
+type limit struct {
+	key       string
+	threshold int
+}
+
+// attempt returns how long the attempt must wait, the longest of its keys';
+// when it is 0 the attempt is let through and counted as running until
+// [throttle.finish].
+func (t *throttle) attempt(now time.Time, limits ...limit) time.Duration {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	var d time.Duration
+	for _, l := range limits {
+		d = max(d, t.wait(l.key, l.threshold, now))
+	}
+	if d > 0 {
+		return d
+	}
+	if t.inflight == nil {
+		t.inflight = map[string]int{}
+	}
+	for _, l := range limits {
+		t.inflight[l.key]++
+	}
+	return 0
+}
+
+// finish ends an attempt [throttle.attempt] let through, counting a failure
+// of each key if failed.
+func (t *throttle) finish(now time.Time, failed bool, keys ...string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for _, k := range keys {
+		if t.inflight[k]--; t.inflight[k] <= 0 {
+			delete(t.inflight, k)
+		}
+	}
+	if failed {
+		t.fail(now, keys...)
+	}
 }
 
 // wait returns how long key must wait before its next attempt, 0 if none.
+// Once its failures and running attempts reach the threshold, attempts run
+// one at a time. t.mu is held.
 func (t *throttle) wait(key string, threshold int, now time.Time) time.Duration {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	f, ok := t.keys[key]
-	if !ok || f.n < threshold {
+	f := t.keys[key]
+	running := t.inflight[key]
+	switch {
+	case f.n+running < threshold:
 		return 0
+	case running > 0:
+		return backoff(max(f.n-threshold, 0))
 	}
 	until := f.last.Add(backoff(f.n - threshold))
 	if !now.Before(until) {
@@ -74,10 +124,8 @@ func backoff(k int) time.Duration {
 	return min(backoffBase<<k, backoffMax)
 }
 
-// fail counts a failure of each key.
+// fail counts a failure of each key. t.mu is held.
 func (t *throttle) fail(now time.Time, keys ...string) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
 	if t.keys == nil {
 		t.keys = map[string]failures{}
 	}
@@ -101,19 +149,21 @@ func (t *throttle) forget(key string) {
 }
 
 // sweep makes room: it drops the counts not failed for forgetAfter, and if
-// none was, the oldest.
+// none was, the one with the fewest failures (the oldest of those), so that
+// failures sprayed over many new names or addresses cannot push out the
+// count of one being guessed at.
 func (t *throttle) sweep(now time.Time) {
-	oldest := ""
+	victim := ""
 	for k, f := range t.keys {
 		if now.Sub(f.last) >= forgetAfter {
 			delete(t.keys, k)
 			continue
 		}
-		if oldest == "" || f.last.Before(t.keys[oldest].last) {
-			oldest = k
+		if v, ok := t.keys[victim]; !ok || f.n < v.n || f.n == v.n && f.last.Before(v.last) {
+			victim = k
 		}
 	}
 	if len(t.keys) >= maxThrottled {
-		delete(t.keys, oldest)
+		delete(t.keys, victim)
 	}
 }

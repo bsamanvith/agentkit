@@ -73,7 +73,7 @@ Each of these happened. The rule it led to is in bold.
 - **Never discard a gate's output.** One local `make check` failed with its output sent to `/dev/null`; eight later runs passed, so the failing test is unknown. **Keep the log of every gate run (`make check > log 2>&1`) until it passes.**
 - **Credentials differ by environment.** The key is in `ANTHROPIC_KEY` in Claude sessions, not `ANTHROPIC_API_KEY`, and the owner keeps it out of GitHub. **`make test-live` maps it; code never reads `ANTHROPIC_KEY`. Live tests run in sessions, never in CI.**
 - **CI must build what we ship.** A `.dockerignore` allowlist left out `connectors/`, so `make image` was broken on `main` for three tasks while CI stayed green: no job built the image. **CI now builds the image and checks its size (`image` job); a new top-level Go directory goes into `.dockerignore` in the same commit.**
-- **The race gate outgrows Go's default timeout.** `go test -race -count=20` on the SQLite store takes about 12 minutes, past the 10-minute default. **Run it with `-timeout 30m`; a timeout is not a pass.**
+- **The race gate outgrows Go's default timeout.** `go test -race -count=20` on the SQLite store takes about 12 minutes, past the 10-minute default. **Run it with `-timeout 30m`; a timeout is not a pass.** Even one `-race` run of it took 11 minutes on 4 cores, so `TESTFLAGS` carries `-timeout 30m`. Measured: fsync is not the cost (`synchronous=NORMAL` saved nothing, so the store keeps SQLite's durable default); the race build of modernc.org/sqlite is, with checkptr about two thirds of it.
 
 ## 5. Where things are
 

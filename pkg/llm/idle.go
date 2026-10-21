@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"iter"
 	"time"
+
+	"github.com/bsamanvith/agentkit/pkg/clock"
 )
 
 // WithIdleTimeout returns m with a limit on how long a reply's stream may go
@@ -20,15 +22,20 @@ import (
 // this wrapper, seeing only events, cannot: give it a d longer than the
 // model's longest pause between events.
 func WithIdleTimeout(m Model, d time.Duration) Model {
+	return withIdleTimeout(m, d, clock.Real())
+}
+
+func withIdleTimeout(m Model, d time.Duration, clk clock.Clock) Model {
 	if d <= 0 {
 		return m
 	}
-	return idleModel{m, d}
+	return idleModel{m, d, clk}
 }
 
 type idleModel struct {
 	inner Model
 	d     time.Duration
+	clock clock.Clock
 }
 
 // errStalled is the cause of a stream given up by [WithIdleTimeout].
@@ -39,10 +46,17 @@ func (m idleModel) Generate(ctx context.Context, req Request) iter.Seq2[Event, e
 		parent := ctx
 		ctx, cancel := context.WithCancelCause(ctx)
 		defer cancel(nil)
-		watchdog := time.AfterFunc(m.d, func() {
-			cancel(fmt.Errorf("%w: no event for %v", errStalled, m.d))
-		})
+		watchdog := m.clock.NewTimer(m.d)
 		defer watchdog.Stop()
+		done := make(chan struct{})
+		defer close(done)
+		go func() {
+			select {
+			case <-watchdog.C():
+				cancel(fmt.Errorf("%w: no event for %v", errStalled, m.d))
+			case <-done:
+			}
+		}()
 		for ev, err := range m.inner.Generate(ctx, req) {
 			watchdog.Stop()
 			if err != nil && parent.Err() == nil {

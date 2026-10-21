@@ -1,6 +1,6 @@
 // Package sqlite is a [credentials.BlobStore] in the SQLite store's file
 // (package store/sqlite): a credential_blobs table that the store's
-// migration 0009 creates, on the store's connections. It is for one machine
+// migration 0010 creates, on the store's connections. It is for one machine
 // and local images, as the SQLite store is; several processes may share the
 // file. Replicas on several machines use package credentials/postgres.
 //

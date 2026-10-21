@@ -261,3 +261,34 @@ func blob(data string) credentials.Blob {
 		Data: []byte(data),
 	}
 }
+
+// TestFailedSyncAfterRename: when the rename has replaced the file but the
+// directory's sync fails, the write is reported, and the store keeps
+// answering what its file holds, so a reopen and the open store agree and
+// the version is never handed out twice. Not parallel: it replaces syncDir.
+func TestFailedSyncAfterRename(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "credentials.json")
+	s := open(t, path)
+	c := ctx(t, "a")
+	if _, err := s.Put(c, "", "crm", blob("one"), 0); err != nil {
+		t.Fatal(err)
+	}
+	file.SetSyncDir(t, func(string) error { return errors.New("EIO") })
+	if _, err := s.Put(c, "", "crm", blob("two"), 1); err == nil {
+		t.Fatal("Put with a failing directory sync succeeded")
+	}
+	b, err := s.Get(c, "", "crm")
+	if err != nil || string(b.Data) != "two" || b.Version != 2 {
+		t.Fatalf("after the failed sync Get = %q v%d, %v; want what the file holds, two v2", b.Data, b.Version, err)
+	}
+	if _, err := s.Put(c, "", "crm", blob("again"), 1); !errors.Is(err, credentials.ErrConflict) {
+		t.Errorf("Put if 1 over the file's version 2: %v, want ErrConflict", err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s = open(t, path)
+	if b, err := s.Get(c, "", "crm"); err != nil || string(b.Data) != "two" || b.Version != 2 {
+		t.Errorf("reopened Get = %q v%d, %v; want two v2", b.Data, b.Version, err)
+	}
+}

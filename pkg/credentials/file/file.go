@@ -209,7 +209,8 @@ func crashPoint(point string) {
 }
 
 // save writes the entries to the file atomically: temp file, fsync, rename,
-// fsync of the directory.
+// fsync of the directory. An error after the rename is errSynced's: the file
+// holds the new entries, only the directory's sync failed.
 func (s *Store) save() error {
 	d := fileData{Format: format, Credentials: []record{}}
 	for k, e := range s.entries {
@@ -238,9 +239,22 @@ func (s *Store) save() error {
 	}
 	crashPoint("after-rename")
 	if err := syncDir(filepath.Dir(s.path)); err != nil {
-		return fmt.Errorf("credentials file: sync %s: %w", filepath.Dir(s.path), err)
+		return fmt.Errorf("%w: sync %s: %w", errSynced, filepath.Dir(s.path), err)
 	}
 	return nil
+}
+
+// errSynced marks a save whose rename took effect but whose directory sync
+// failed: the file holds the new entries, so they stay.
+var errSynced = errors.New("credentials file: written, but not synced")
+
+// syncDir syncs the directory dir; a variable for tests.
+var syncDir = func(dir string) error {
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	return errors.Join(d.Sync(), d.Close())
 }
 
 // writeTemp writes body to the temp file, mode 0600, and syncs it.
@@ -262,14 +276,6 @@ func (s *Store) writeTemp(body []byte) error {
 		err = f.Sync()
 	}
 	return errors.Join(err, f.Close())
-}
-
-func syncDir(dir string) error {
-	d, err := os.Open(dir)
-	if err != nil {
-		return err
-	}
-	return errors.Join(d.Sync(), d.Close())
 }
 
 // Close releases the file's lock. Calls after Close fail with [ErrClosed].
@@ -299,11 +305,18 @@ func (s *Store) begin(ctx context.Context, user, slot string) (key, error) {
 	return key{t.ID(), user, slot}, nil
 }
 
-// commit sets k to e and saves; if the save fails, k is as it was.
+// commit sets k to e and saves; if the save fails before the file is
+// replaced, k is as it was. Once the file holds e, so does the store, even
+// if the directory's sync then fails (the error is still returned): rolling
+// back would leave the store answering other than its file, and hand out
+// e's version again over a file that already has it.
 func (s *Store) commit(k key, e entry) error {
 	old, had := s.entries[k]
 	s.entries[k] = e
 	if err := s.save(); err != nil {
+		if errors.Is(err, errSynced) {
+			return err
+		}
 		if had {
 			s.entries[k] = old
 		} else {

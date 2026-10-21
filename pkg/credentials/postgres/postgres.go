@@ -1,6 +1,6 @@
 // Package postgres is a [credentials.BlobStore] in the Postgres store's
 // database (package store/postgres): a credential_blobs table that the
-// store's migration 0010 creates, on the store's connection pool. It is the
+// store's migration 0011 creates, on the store's connection pool. It is the
 // backend for replicas: every process sharing the database shares the
 // credentials.
 //

@@ -47,7 +47,7 @@ Two tracks that can start in parallel, and in parallel with E05: inbound (T039 â
 - [ ] [T061](T061-local-users-login.md) Local users and login sessions for the console (needs T039)
 - [x] [T041](T041-auth-jwt-oidc.md) JWT/OIDC authenticator and MCP protected resource metadata
 - [x] [T042](T042-credentials-core.md) `pkg/credentials`: secret values, sealer and key ring, vault interface, memory vault, conformance suite
-- [ ] [T043](T043-credentials-backends.md) Credential backends: encrypted file now, SQLite on T029
+- [x] [T043](T043-credentials-backends.md) Credential backends: encrypted file now, SQLite on T029
 - [ ] [T044](T044-credentials-in-tools.md) Credentials in tools: slots in toolset specs, scoped sources, OAuth2 refresh, the canary test end to end
 - [ ] [T045](T045-connect-accounts.md) Connecting accounts: credential API and the OAuth2 authorization code + PKCE flow
 - [ ] [T009](T009-kind-cluster.md) kind cluster and the k8s secrets backend (waits for the owner's deploy decision)

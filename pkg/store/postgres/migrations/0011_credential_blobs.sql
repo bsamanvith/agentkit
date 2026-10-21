@@ -1,5 +1,5 @@
 -- The credential vault's sealed blobs (T043, pkg/credentials/postgres), as in
--- SQLite's migration 0009. blob is ciphertext only: the vault seals before it
+-- SQLite's migration 0010. blob is ciphertext only: the vault seals before it
 -- stores. user_id is '' for a tenant's shared credential ("user" is a
 -- reserved word). version is 1 on the first write of a key and one more on
 -- each write after; writes compare it in the UPDATE's WHERE. A deleted

@@ -7,10 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/bsamanvith/agentkit/pkg/agentapi"
+	"github.com/bsamanvith/agentkit/pkg/agenttools"
 	"github.com/bsamanvith/agentkit/pkg/auth"
 	"github.com/bsamanvith/agentkit/pkg/auth/resourcemeta"
 	"github.com/bsamanvith/agentkit/pkg/component"
@@ -24,6 +28,9 @@ import (
 type mcpServer struct {
 	handler  http.Handler
 	problems []toolset.Problem
+	// agentTools builds the agentkit toolsets, nil when there are none: its
+	// Close stops following the runs their agent_run left going.
+	agentTools *agenttools.Factory
 }
 
 // newMCPServer builds the MCP handler over the toolsets serve built: a
@@ -35,7 +42,12 @@ type mcpServer struct {
 // use: another answers 404, as one that does not exist. authn may be nil only
 // on a loopback addr: the toolsets call out with the server's keys and
 // tokens.
-func newMCPServer(ctx context.Context, cfg mcpConfig, regs map[string]tool.Registry, problems []toolset.Problem, authn auth.Authenticator, addr string, log *slog.Logger) (component.Mount, error) {
+//
+// The agentkit toolsets (agents over MCP) are built here: they call
+// agentAPI, the agent API of this process, unless their settings name a URL
+// (agentAPI is nil when the agent component runs elsewhere). Each call
+// carries its caller's credential to the API, which checks it again.
+func newMCPServer(ctx context.Context, cfg mcpConfig, regs map[string]tool.Registry, problems []toolset.Problem, authn auth.Authenticator, agentAPI http.Handler, addr string, log *slog.Logger) (component.Mount, error) {
 	switch {
 	case authn == nil && !isLoopback(addr):
 		return component.Mount{}, needsCredentials(addr)
@@ -61,12 +73,34 @@ func newMCPServer(ctx context.Context, cfg mcpConfig, regs map[string]tool.Regis
 	if cfg.Stateful {
 		opts = append(opts, server.WithStateful())
 	}
+	_, specs, err := splitAgentTools(cfg.Toolsets)
+	if err != nil {
+		return component.Mount{}, err
+	}
+	var agentTools *agenttools.Factory
+	if len(specs) > 0 {
+		var aregs map[string]tool.Registry
+		var aprobs []toolset.Problem
+		agentTools, aregs, aprobs, err = buildAgentTools(ctx, cfg, specs, agentAPI, log)
+		if err != nil {
+			return component.Mount{}, err
+		}
+		regs, problems = maps.Clone(regs), slices.Clone(problems)
+		maps.Copy(regs, aregs)
+		problems = append(problems, aprobs...)
+	}
 	if authn != nil {
 		mw := auth.Middleware(authn, auth.WithLogger(log.With("component", mcpServerName)))
 		if cfg.protected != nil {
 			// A 401 names the metadata of the endpoint asked for, whose
 			// resource is that endpoint's URL, as MCP clients check.
 			mw = resourcemeta.Middleware(authn, cfg.protected.Audience, []string{mcpPrefix(cfg)}, auth.WithLogger(log.With("component", mcpServerName)))
+		}
+		if agentTools != nil {
+			// Outside the authentication, which removes the header: the
+			// agentkit tools send the caller's credential on to the API.
+			authenticate := mw
+			mw = func(h http.Handler) http.Handler { return agenttools.ForwardCredentials(authenticate(h)) }
 		}
 		opts = append(opts,
 			server.WithMiddleware(mw),
@@ -78,10 +112,47 @@ func newMCPServer(ctx context.Context, cfg mcpConfig, regs map[string]tool.Regis
 	}
 	srv, err := server.New(regs, opts...)
 	if err != nil {
+		if agentTools != nil {
+			_ = agentTools.Close()
+		}
 		return component.Mount{}, err
 	}
 	// Mounted without http.StripPrefix: the server routes on the full path.
-	return component.Mount{Pattern: mcpPrefix(cfg), Component: &mcpServer{handler: srv, problems: problems}}, nil
+	return component.Mount{Pattern: mcpPrefix(cfg), Component: &mcpServer{handler: srv, problems: problems, agentTools: agentTools}}, nil
+}
+
+// buildAgentTools builds the agentkit toolsets of specs: in process over
+// agentAPI, or over the URL their settings give. agent_run returns before
+// the MCP call timeout cuts it off.
+func buildAgentTools(ctx context.Context, cfg mcpConfig, specs []toolset.Spec, agentAPI http.Handler, log *slog.Logger) (*agenttools.Factory, map[string]tool.Registry, []toolset.Problem, error) {
+	opts := []agenttools.Option{
+		agenttools.WithCallTimeout(time.Duration(cfg.CallTimeout)),
+		agenttools.WithLogger(log.With("component", mcpServerName)),
+	}
+	if agentAPI != nil {
+		opts = append(opts, agenttools.WithHandler(agentAPI))
+	}
+	f, err := agenttools.New(opts...)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	catalog, err := toolset.NewCatalog(f)
+	if err != nil {
+		_ = f.Close()
+		return nil, nil, nil, err
+	}
+	regs, problems, err := toolset.Build(ctx, catalog, specs)
+	if err != nil {
+		_ = f.Close()
+		if agentAPI == nil && errors.Is(err, toolset.ErrInvalidSettings) {
+			err = fmt.Errorf("%w (the %s component does not run in this process: give the toolset the agent API's URL in settings.url, or run both)", err, agentapi.Name)
+		}
+		return nil, nil, nil, err
+	}
+	for _, p := range problems {
+		log.Warn("optional toolset skipped", "toolset", p.Toolset, "type", p.Type, "err", p.Err)
+	}
+	return f, regs, problems, nil
 }
 
 // mcpPrefix is the path prefix of the toolsets' endpoints: "/mcp/".
@@ -145,9 +216,15 @@ func (m *mcpServer) Ready(context.Context) error {
 	return fmt.Errorf("%w: %s", component.ErrDegraded, strings.Join(reasons, "; "))
 }
 
-// Shutdown has nothing to release: the runtime has already drained the
+// Shutdown stops following the runs the agentkit toolsets' agent_run left
+// going; nothing else to release: the runtime has already drained the
 // requests, and stateless endpoints keep no sessions.
-func (m *mcpServer) Shutdown(context.Context) error { return nil }
+func (m *mcpServer) Shutdown(context.Context) error {
+	if m.agentTools != nil {
+		return m.agentTools.Close()
+	}
+	return nil
+}
 
 // levelFloor drops records below min.
 type levelFloor struct {

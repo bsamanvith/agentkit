@@ -145,7 +145,7 @@ func TestFuncEmptyInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, in := range []json.RawMessage{nil, json.RawMessage(""), json.RawMessage("  \n")} {
+	for _, in := range []json.RawMessage{nil, json.RawMessage(""), json.RawMessage("  \n"), json.RawMessage("null"), json.RawMessage(" null\n")} {
 		called = false
 		out, err := nt.Invoke(t.Context(), in)
 		if err != nil || !called || string(out) != `"ok"` {
@@ -159,7 +159,7 @@ func TestFuncInvalidInput(t *testing.T) {
 	inputs := map[string]string{
 		"malformed JSON":         `{"query":`,
 		"not an object":          `["agents"]`,
-		"null":                   `null`,
+		"null, missing required": `null`,
 		"missing required field": `{"limit":3}`,
 		"wrong type":             `{"query":7}`,
 		"wrong nested type":      `{"query":"x","filters":{"lang":1}}`,

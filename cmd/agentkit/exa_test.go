@@ -52,7 +52,7 @@ func TestServeExaOverMCP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := newMCPServer(t.Context(), defaultMCPConfig(), regs, problems, nil, "127.0.0.1:0", slog.New(slog.DiscardHandler))
+	m, err := newMCPServer(t.Context(), defaultMCPConfig(), regs, problems, nil, nil, "127.0.0.1:0", slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestServeExaWithoutKeyIsDegraded(t *testing.T) {
 	if len(problems) != 1 || !errors.Is(problems[0].Err, exa.ErrMissingKey) || !strings.Contains(problems[0].Error(), unset) {
 		t.Fatalf("problems = %v, want the exa toolset skipped naming %s", problems, unset)
 	}
-	m, err := newMCPServer(t.Context(), cfg.MCP, regs, problems, nil, "127.0.0.1:0", log)
+	m, err := newMCPServer(t.Context(), cfg.MCP, regs, problems, nil, nil, "127.0.0.1:0", log)
 	if err != nil {
 		t.Fatal(err)
 	}

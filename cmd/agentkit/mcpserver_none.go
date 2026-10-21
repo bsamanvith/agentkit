@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net/http"
 
 	"github.com/bsamanvith/agentkit/pkg/auth"
 	"github.com/bsamanvith/agentkit/pkg/component"
@@ -12,7 +13,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
-func newMCPServer(context.Context, mcpConfig, map[string]tool.Registry, []toolset.Problem, auth.Authenticator, string, *slog.Logger) (component.Mount, error) {
+func newMCPServer(context.Context, mcpConfig, map[string]tool.Registry, []toolset.Problem, auth.Authenticator, http.Handler, string, *slog.Logger) (component.Mount, error) {
 	return component.Mount{}, notBuilt(envComponents, "the MCP server", "nomcp")
 }
 

@@ -20,10 +20,10 @@ func TestMCPServerToken(t *testing.T) {
 	t.Parallel()
 	log := slog.New(slog.DiscardHandler)
 	regs := map[string]tool.Registry{}
-	if _, err := newMCPServer(t.Context(), defaultMCPConfig(), regs, nil, nil, ":8080", log); err == nil || !strings.Contains(err.Error(), envAPIToken) {
+	if _, err := newMCPServer(t.Context(), defaultMCPConfig(), regs, nil, nil, nil, ":8080", log); err == nil || !strings.Contains(err.Error(), envAPIToken) {
 		t.Errorf("no token on :8080: err = %v, want one naming $%s", err, envAPIToken)
 	}
-	m, err := newMCPServer(t.Context(), defaultMCPConfig(), regs, nil, tokenAuth(t, "s3cret-0123456789abcdef"), ":8080", log)
+	m, err := newMCPServer(t.Context(), defaultMCPConfig(), regs, nil, tokenAuth(t, "s3cret-0123456789abcdef"), nil, ":8080", log)
 	if err != nil {
 		t.Fatal(err)
 	}

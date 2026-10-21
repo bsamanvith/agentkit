@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"regexp"
 	"slices"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
+	"github.com/bsamanvith/agentkit/pkg/agenttools"
 	"github.com/bsamanvith/agentkit/pkg/auth"
 	"github.com/bsamanvith/agentkit/pkg/bus"
 	"github.com/bsamanvith/agentkit/pkg/clock"
@@ -162,21 +164,16 @@ func (c cli) serve(ctx context.Context, args []string) error {
 		}
 	}
 
-	// The wiring: one constructor per component, chosen by name.
+	// The wiring: one constructor per component, chosen by name. The MCP
+	// server comes last, at its place in the list: its agentkit toolsets
+	// call the agent API built here.
 	var mounts []component.Mount
+	mcpAt := -1
 	for _, name := range env.components {
 		var m component.Mount
 		switch name {
 		case mcpServerName:
-			mcp := cfg.MCP
-			mcp.protected = cfg.Auth.JWT
-			m, err = newMCPServer(ctx, mcp, built, problems, authn, env.addr, log)
-			if err == nil {
-				var meta []component.Mount
-				if meta, err = newResourceMetadata(mcp); err == nil {
-					mounts = append(mounts, meta...)
-				}
-			}
+			mcpAt = len(mounts)
 		case agentapi.Name:
 			m, agents, err = c.newAgents(ctx, cfg, built, problems, env, authn, st.Store, b, clk, log)
 		case web.Name:
@@ -192,6 +189,25 @@ func (c cli) serve(ctx context.Context, args []string) error {
 			return fmt.Errorf("%s: %w", name, err)
 		}
 		mounts = append(mounts, m)
+	}
+	if mcpAt >= 0 {
+		mcp := cfg.MCP
+		mcp.protected = cfg.Auth.JWT
+		var agentAPI http.Handler // the agentkit toolsets call it in process
+		if agents != nil {
+			agentAPI = agents.Handler()
+		}
+		m, err := newMCPServer(ctx, mcp, built, problems, authn, agentAPI, env.addr, log)
+		if err != nil {
+			return fmt.Errorf("%s: %w", mcpServerName, err)
+		}
+		mounts[mcpAt] = m
+		meta, err := newResourceMetadata(mcp)
+		if err != nil {
+			_ = m.Component.Shutdown(ctx)
+			return fmt.Errorf("%s: %w", mcpServerName, err)
+		}
+		mounts = append(mounts, meta...)
 	}
 	rt, err := component.New(mounts,
 		component.WithLogger(log),
@@ -263,10 +279,40 @@ func servedSpecs(env serveEnv, cfg serveConfig) ([]toolset.Spec, error) {
 			if len(cfg.MCP.Toolsets) == 0 {
 				return nil, fmt.Errorf("%s: no toolsets configured (mcp.toolsets in the config file)", name)
 			}
-			specs = cfg.MCP.Toolsets
+			rest, _, err := splitAgentTools(cfg.MCP.Toolsets)
+			if err != nil {
+				return nil, err
+			}
+			specs = rest
 		}
 	}
 	return specs, nil
+}
+
+// splitAgentTools splits the agentkit toolsets (the agents over MCP) from
+// the others. Only the mcp-server component builds them, once the agent API
+// they call exists (newMCPServer); no agent uses them. A name may not be
+// used twice across both.
+func splitAgentTools(specs []toolset.Spec) (rest, agentTools []toolset.Spec, err error) {
+	for _, s := range specs {
+		if s.Type == agenttools.Type {
+			agentTools = append(agentTools, s)
+		} else {
+			rest = append(rest, s)
+		}
+	}
+	for _, a := range agentTools {
+		n := 0
+		for _, s := range specs {
+			if s.Name == a.Name {
+				n++
+			}
+		}
+		if n > 1 {
+			return nil, nil, &toolset.Error{Toolset: a.Name, Type: a.Type, Err: toolset.ErrDuplicateName}
+		}
+	}
+	return rest, agentTools, nil
 }
 
 // needsToolsetConfig names a component in env that serves every toolset of

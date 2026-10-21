@@ -187,6 +187,7 @@ Chat in the browser: open $base and paste the token ($token).
   curl -s  $base/v1/agents -H "Authorization: Bearer \$AGENTKIT_API_TOKEN"        # the agents; a run picks one with "agent"
   curl -s  $base/v1/toolsets -H "Authorization: Bearer \$AGENTKIT_API_TOKEN"      # the toolsets: ready or skipped, and why
   claude mcp add --transport http agentkit-demo $base/mcp/demo     # use the tools from Claude Code
+  claude mcp add --transport http agentkit $base/mcp/agentkit --header "Authorization: Bearer \$AGENTKIT_API_TOKEN"   # drive the agents from Claude Code
 
 INFO
 if [ -n "$pid" ]; then wait "$pid"; else docker wait "$container" >/dev/null; fi

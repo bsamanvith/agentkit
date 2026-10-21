@@ -16,6 +16,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
+	"github.com/bsamanvith/agentkit/pkg/agenttools"
 	"github.com/bsamanvith/agentkit/pkg/auth"
 	"github.com/bsamanvith/agentkit/pkg/bus"
 	"github.com/bsamanvith/agentkit/pkg/clock"
@@ -198,6 +199,10 @@ func agentToolsetSpecs(cfg serveConfig) ([]toolset.Spec, error) {
 			i := slices.IndexFunc(cfg.MCP.Toolsets, func(s toolset.Spec) bool { return s.Name == name })
 			if i < 0 {
 				return nil, fmt.Errorf("%s.toolsets names %q, which is not in mcp.toolsets", a.label(cfg.legacy), name)
+			}
+			if cfg.MCP.Toolsets[i].Type == agenttools.Type {
+				// Agents calling agents is a flow's job, not this path's.
+				return nil, fmt.Errorf("%s.toolsets names %q, of type %s: that toolset serves the agents to MCP clients, and agents cannot use it (to have agents call agents, use a flow)", a.label(cfg.legacy), name, agenttools.Type)
 			}
 			if !slices.ContainsFunc(specs, func(s toolset.Spec) bool { return s.Name == name }) {
 				specs = append(specs, cfg.MCP.Toolsets[i])

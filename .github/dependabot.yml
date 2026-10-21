@@ -1,0 +1,16 @@
+# Update PRs for the actions pinned by SHA in .github/workflows (T101). Bot
+# PRs are reviewed and merged by the owner; they keep the tag comment next
+# to each SHA in step.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # A week's wait before proposing a release, so a compromised one has
+    # time to be found and pulled.
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]

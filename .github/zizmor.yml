@@ -1,0 +1,8 @@
+# zizmor's policy (scripts/zizmor.sh, make workflow-lint). Every action is
+# pinned to a full commit SHA, ours included (T101); Dependabot proposes
+# updates to the pins (.github/dependabot.yml).
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        "*": hash-pin

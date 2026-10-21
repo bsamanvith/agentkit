@@ -7,6 +7,7 @@ import (
 	"iter"
 	"time"
 
+	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 )
@@ -30,7 +31,7 @@ func New(model llm.Model, tools tool.Registry, opts ...Option) (*Harness, error)
 	if tools == nil {
 		return nil, fmt.Errorf("%w: tool registry is nil", ErrInvalidConfig)
 	}
-	cfg := config{maxTurns: defaultMaxTurns, maxParallel: defaultMaxParallel, now: time.Now}
+	cfg := config{maxTurns: defaultMaxTurns, maxParallel: defaultMaxParallel, clock: clock.Real()}
 	for _, o := range opts {
 		o(&cfg)
 	}
@@ -43,7 +44,7 @@ func New(model llm.Model, tools tool.Registry, opts ...Option) (*Harness, error)
 		return nil, fmt.Errorf("%w: output token limit must not be negative, got %d", ErrInvalidConfig, cfg.request.MaxTokens)
 	case cfg.maxParallel < 1:
 		return nil, fmt.Errorf("%w: max parallel tools must be at least 1, got %d", ErrInvalidConfig, cfg.maxParallel)
-	case cfg.now == nil:
+	case cfg.clock == nil:
 		return nil, fmt.Errorf("%w: clock is nil", ErrInvalidConfig)
 	case cfg.window.Tokens < 0 || cfg.window.Share < 0 || cfg.window.Share > 1:
 		return nil, fmt.Errorf("%w: context window %+v", ErrInvalidConfig, cfg.window)
@@ -120,7 +121,7 @@ func (r *run) kindOf(name string) tool.Kind {
 	return k
 }
 
-func (r *run) now() time.Time { return r.h.cfg.now() }
+func (r *run) now() time.Time { return r.h.cfg.clock.Now() }
 
 // emit delivers an event. It returns false once the consumer has stopped, and
 // never calls yield again after that.

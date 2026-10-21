@@ -173,7 +173,7 @@ func ModuleRules() Rules {
 			// keeps runs stays where the store is.
 			"pkg/runner/runnerrpc": {
 				"pkg/runner", "pkg/harness", "pkg/llm", "pkg/rpc",
-				"pkg/llm/llmtest", "pkg/tool", "pkg/tool/tooltest",
+				"pkg/llm/llmtest", "pkg/tool", "pkg/tool/tooltest", "pkg/clock/clocktest",
 			},
 			// The web component serves the embedded console build over
 			// net/http and nothing else: it is a component by shape, and

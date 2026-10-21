@@ -589,7 +589,7 @@ func (a *unreachableOnce) Run(ctx context.Context, in harness.Input) iter.Seq2[h
 func TestRetryBeforeTheRunStartedSendsTheMessageAgain(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	h, err := harness.New(w.model, w.tools, harness.WithNow(w.clk.Now))
+	h, err := harness.New(w.model, w.tools, harness.WithClock(w.clk))
 	if err != nil {
 		t.Fatal(err)
 	}

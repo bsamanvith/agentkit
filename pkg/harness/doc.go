@@ -37,7 +37,7 @@
 // turn by turn without holding the whole transcript.
 //
 // The harness itself stores nothing and reads no clock but the one given by
-// [WithNow].
+// [WithClock].
 //
 // # Turns, budgets and stopping
 //

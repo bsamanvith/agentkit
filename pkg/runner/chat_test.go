@@ -466,7 +466,7 @@ func (a unknownKindAgent) Run(ctx context.Context, in harness.Input) iter.Seq2[h
 
 func mustHarness(t *testing.T, w *world) *harness.Harness {
 	t.Helper()
-	h, err := harness.New(w.model, w.tools, harness.WithNow(w.clk.Now))
+	h, err := harness.New(w.model, w.tools, harness.WithClock(w.clk))
 	if err != nil {
 		t.Fatal(err)
 	}

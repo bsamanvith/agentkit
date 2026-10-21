@@ -1,0 +1,11 @@
+# fakellm's default script: one line per entry, first match wins, the entry
+# without "match" answers everything else. The format is documented in
+# internal/fakellm (go doc ./internal/fakellm).
+#
+# "multiply" asks the math toolset's calculate tool for 6 x 7; its result
+# comes back in a tool_result and is answered by the first line.
+{"match": "{\"result\":42}", "response": {"text": "6 times 7 is 42."}}
+{"match": "multiply", "response": {"text": "I will use the calculator.", "tool_calls": [{"name": "calculate", "input": {"op": "mul", "a": 6, "b": 7}}]}}
+# A recorded answer of the real API, served as recorded.
+{"match": "recorded", "fixture": "recorded.http"}
+{"response": {"text": "Hello from fakellm. Ask me to multiply, or say recorded."}}

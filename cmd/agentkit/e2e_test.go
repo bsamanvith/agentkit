@@ -16,7 +16,6 @@ package main
 // event stream, never account headers.
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -31,6 +30,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/bsamanvith/agentkit/internal/fakellm"
 )
 
 const (
@@ -195,17 +196,9 @@ func (c *replayAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `{"type":"error","error":{"type":"invalid_request_error","message":"no fixture"}}`)
 		return
 	}
-	resp, err := http.ReadResponse(bufio.NewReader(bytes.NewReader(raw)), r)
-	if err != nil {
+	if err := fakellm.ServeFixture(w, r, raw); err != nil {
 		c.t.Errorf("fixture %s: %v", file, err)
-		return
 	}
-	defer resp.Body.Close()
-	for k, vs := range resp.Header {
-		w.Header()[k] = vs
-	}
-	w.WriteHeader(resp.StatusCode)
-	_, _ = io.Copy(w, resp.Body)
 }
 
 // forward sends the request to the real API with the real key and returns

@@ -16,7 +16,9 @@ func ModuleRules() Rules {
 			},
 			// Its serve e2e test uses the SDK client; its migrate integration
 			// test makes a schema to migrate with pgx.
-			"cmd/agentkit":         {"github.com/modelcontextprotocol/go-sdk/mcp", "github.com/jackc/pgx/v5"},
+			"cmd/agentkit": {"github.com/modelcontextprotocol/go-sdk/mcp", "github.com/jackc/pgx/v5"},
+			// fakellm's test proves the official SDK can talk to it (T004).
+			"internal/fakellm":     {"github.com/anthropics/anthropic-sdk-go", "github.com/anthropics/anthropic-sdk-go/option"},
 			"examples/mcp-gateway": {"github.com/modelcontextprotocol/go-sdk/mcp"}, // its test uses the SDK client
 			"pkg/mcp/server":       {"github.com/modelcontextprotocol/go-sdk/jsonrpc", "github.com/modelcontextprotocol/go-sdk/mcp"},
 			// Other MCP servers' tools (T094), on the SDK's client.
@@ -150,6 +152,9 @@ func ModuleRules() Rules {
 			// The rule for matching a backend's spec, shared by storeopen
 			// and busopen.
 			"internal/specs": {},
+			// fakellm stands alone: it speaks the Anthropic wire format
+			// from its own types, so no model or harness change moves it.
+			"internal/fakellm": {"internal/testkit"},
 			// Edge authentication knows tenants and nothing else: no server,
 			// no store, no harness (E07). Tenancy never imports it back.
 			"pkg/auth": {"pkg/tenancy"},

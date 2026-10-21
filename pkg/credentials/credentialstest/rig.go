@@ -24,11 +24,16 @@ var users = []string{"", user1}
 
 func ctxFor(t *testing.T, tenant string) context.Context {
 	t.Helper()
+	return tenantCtx(t.Context(), t, tenant)
+}
+
+func tenantCtx(parent context.Context, t *testing.T, tenant string) context.Context {
+	t.Helper()
 	tn, err := tenancy.NewTenant(tenant)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return tenancy.With(t.Context(), tn)
+	return tenancy.With(parent, tn)
 }
 
 // rig is one test's store, and the vault over it when the test has one. At
@@ -61,7 +66,9 @@ func (r *rig) checkInvariants() {
 		return
 	}
 	for tenant := range r.touched {
-		ctx := ctxFor(t, tenant)
+		// Not t.Context: cleanup runs after it is canceled, and a backend
+		// that honors the context (a database) would fail every check.
+		ctx := tenantCtx(context.WithoutCancel(t.Context()), t, tenant)
 		for _, user := range users {
 			metas, err := r.store.List(ctx, user)
 			if err != nil {

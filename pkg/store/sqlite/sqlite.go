@@ -194,6 +194,13 @@ func busy(err error) bool {
 // sqliteBusy is SQLITE_BUSY's primary result code.
 const sqliteBusy = 5
 
+// DB returns the store's connections: the one writer connection, whose
+// transactions begin IMMEDIATE, and the read-only pool. They are for tables
+// kept beside the store's in the same file, such as credential_blobs
+// (pkg/credentials/sqlite, T043), whose queries filter by tenant themselves.
+// Closing the store closes them.
+func (s *Store) DB() (writer, reader *sql.DB) { return s.w, s.r }
+
 // Close closes the store's connections. Calls after Close fail.
 func (s *Store) Close() error {
 	return errors.Join(s.r.Close(), s.w.Close())

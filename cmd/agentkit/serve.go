@@ -65,6 +65,8 @@ type serveConfig struct {
 	Runtime runtimeConfig
 	// Environment is what this deployment imposes on every agent.
 	Environment environmentConfig
+	// Credentials is where the credential vault keeps its sealed blobs.
+	Credentials credentialsConfig
 	legacy      bool // Agents come from an "agent" section (or none)
 }
 
@@ -84,6 +86,8 @@ type serveFile struct {
 	Auth     json.RawMessage   `json:"auth"`
 	Runtime  json.RawMessage   `json:"runtime_toolsets"`
 	Env      json.RawMessage   `json:"environment"`
+	// Credentials is the credential vault's backend (credentials.go).
+	Credentials json.RawMessage `json:"credentials"`
 }
 
 // serveEnv is what agentkit serve reads from the environment.
@@ -98,9 +102,12 @@ type serveEnv struct {
 	runnerURL, toolsetsURL, rpcToken string
 	dependencyWait                   time.Duration
 	// credentialKeys seal the credential vault ($AGENTKIT_CREDENTIALS_KEY);
-	// nil when unset. Parsed at startup so a bad ring fails there; the
-	// vault that uses it comes with T044.
+	// nil when unset. Parsed at startup so a bad ring fails there.
 	credentialKeys *credentials.KeyRing
+	// vault is the credential vault over the config's credentials backend
+	// (credentials.go), opened at startup: nil without a key ring. The
+	// toolsets that use it come with T044.
+	vault credentials.Vault
 }
 
 func (c cli) serve(ctx context.Context, args []string) error {
@@ -121,6 +128,12 @@ func (c cli) serve(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	vault, closeVault, err := c.openVault(ctx, cfg.Credentials, env.credentialKeys)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = closeVault() }()
+	env.vault = vault
 	log := slog.New(slog.NewJSONHandler(c.stderr, &slog.HandlerOptions{Level: env.logLevel}))
 	built, problems, err := c.buildToolsets(ctx, env, cfg, *configPath, log)
 	if err != nil {
@@ -459,6 +472,9 @@ func loadServeConfig(path string) (serveConfig, error) {
 	}
 	if err := decodeSection(file.Env, &cfg.Environment); err != nil {
 		return cfg, fmt.Errorf("config %s: environment: %w", path, err)
+	}
+	if err := decodeSection(file.Credentials, &cfg.Credentials); err != nil {
+		return cfg, fmt.Errorf("config %s: credentials: %w", path, err)
 	}
 	switch {
 	case file.Agent != nil && (file.Agents != nil || file.AgentAPI != nil):

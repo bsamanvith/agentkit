@@ -211,6 +211,14 @@ func (s *Store) Close() {
 	}
 }
 
+// Pool returns the store's connection pool, for tables kept beside the
+// store's in the same schema, such as credential_blobs (pkg/credentials/postgres,
+// T043). Each connection sets app.tenant from the context as it leaves the
+// pool, as for the store's own queries, so row-level security applies, and a
+// context with no tenant fails with tenancy.ErrNoTenant. Closing the store
+// closes it.
+func (s *Store) Pool() *pgxpool.Pool { return s.pool }
+
 // scope checks ctx and returns its tenant's id.
 func scope(ctx context.Context) (string, error) {
 	if err := ctx.Err(); err != nil {

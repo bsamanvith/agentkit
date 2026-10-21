@@ -9,8 +9,9 @@
 #        store is memory)
 #   STORE=postgres          what CI's integration job runs (check.yml), against
 #                           a throwaway Postgres and Redis run as processes
-#     1. go test -tags integration: pkg/bus, pkg/store, pkg/stream, and
-#        cmd/agentkit's migrate and replica tests
+#     1. go test -tags integration: pkg/bus, pkg/store, pkg/stream,
+#        pkg/credentials, and cmd/agentkit's migrate, replica and
+#        credential vault tests
 #     2. the agent API's suite on SQLite and on Postgres
 #     3. the smoke suite on Postgres: the api binary migrates an empty
 #        database, and a second run has nothing to do
@@ -120,8 +121,10 @@ mkdir "$dir/pg"
 [ ${#as_pg[@]} -gt 0 ] && chown postgres: "$dir/pg"
 "${as_pg[@]}" "$pgbin/initdb" -D "$dir/pg" -U agentkit --auth=trust -E UTF8 --locale=C >"$dir/initdb.log" 2>&1 ||
 	{ cat "$dir/initdb.log" >&2; die "initdb failed"; }
+# max_connections is postgres:17's default, as CI's service runs it: the
+# packages' tests share it at once, and more here would hide an overrun there.
 "${as_pg[@]}" "$pgbin/pg_ctl" -D "$dir/pg" -l "$dir/pg/server.log" -w \
-	-o "-p $pgport -k $dir/pg -c listen_addresses=127.0.0.1 -c fsync=off -c max_connections=200" start >/dev/null ||
+	-o "-p $pgport -k $dir/pg -c listen_addresses=127.0.0.1 -c fsync=off -c max_connections=100" start >/dev/null ||
 	{ cat "$dir/pg/server.log" >&2; die "Postgres did not start on port $pgport"; }
 "${as_pg[@]}" "$pgbin/createdb" -h 127.0.0.1 -p "$pgport" -U agentkit agentkit_test ||
 	die "createdb failed"
@@ -150,10 +153,10 @@ if [ -n "$deps_only" ]; then
 	while :; do sleep 3600; done
 fi
 
-step "integration: bus, store, stream" \
-	go test -race -shuffle=on -count=1 -tags integration ./pkg/bus/... ./pkg/store/... ./pkg/stream/...
-step "integration: migrate and replicas" \
-	go test -race -count=1 -tags integration -run '^(TestMigrate|TestE2EServeReplicas)' ./cmd/agentkit/
+step "integration: bus, store, stream, credentials" \
+	go test -race -shuffle=on -count=1 -tags integration ./pkg/bus/... ./pkg/store/... ./pkg/stream/... ./pkg/credentials/...
+step "integration: migrate, replicas and credentials" \
+	go test -race -count=1 -tags integration -run '^(TestMigrate|TestE2EServeReplicas|TestCredentials)' ./cmd/agentkit/
 step "agent API suite on SQLite" \
 	env AGENTAPI_TEST_STORE=sqlite go test -race -count=1 ./pkg/agentapi/...
 step "agent API suite on Postgres" \

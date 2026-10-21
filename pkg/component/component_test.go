@@ -301,6 +301,37 @@ func TestReadyz(t *testing.T) {
 	check(t, 503, "not ready", comp{"a", "not ready", "lost the store"}, comp{"b", "ready", ""})
 }
 
+// reporter is a fake that reports what it loaded.
+type reporter struct {
+	*fake
+	details map[string]any
+}
+
+func (r reporter) Report() map[string]any { return r.details }
+
+// TestReadyzDetails: a Reporter's details appear in its /readyz entry, and
+// only in its own.
+func TestReadyzDetails(t *testing.T) {
+	t.Parallel()
+	ev := &events{}
+	a := reporter{newFake("a", ev), map[string]any{"skills": []string{"pdf"}}}
+	ts := httptest.NewServer(newRuntime(t, []component.Mount{{Pattern: "/a/", Component: a}, {Pattern: "/b/", Component: newFake("b", ev)}}).Handler())
+	t.Cleanup(ts.Close)
+	_, body := get(t, ts.Client(), ts.URL+"/readyz")
+	var r struct {
+		Components []struct {
+			Name    string
+			Details map[string][]string
+		}
+	}
+	if err := json.Unmarshal([]byte(body), &r); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Components) != 2 || !slices.Equal(r.Components[0].Details["skills"], []string{"pdf"}) || r.Components[1].Details != nil {
+		t.Errorf("/readyz = %s, want the details of a only", body)
+	}
+}
+
 func TestVersion(t *testing.T) {
 	t.Parallel()
 	ev := &events{}

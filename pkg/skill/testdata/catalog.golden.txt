@@ -1,0 +1,7 @@
+<skills>
+Skills hold instructions for particular kinds of tasks. When a task matches a skill's description, call skill_load with its name before you start, and follow what it says; call skill_read for a file it refers to. Skill scripts cannot be run here.
+
+- alpha-notes: Two lines of description.
+- release-notes: Write release notes from a list of merged changes. Use when asked for release notes, a changelog entry or a summary of what shipped.
+- sql-review: Review a SQL migration for locking, data loss and rollback. Use when a change adds or edits a migration file.
+</skills>

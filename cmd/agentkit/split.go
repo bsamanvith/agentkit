@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
@@ -60,6 +59,8 @@ type rpcComponent struct {
 	name    string
 	server  *rpc.Server
 	skipped []string // optional toolsets skipped, for /readyz
+	// skillReport lists a runner's agents' skills in /readyz (Report).
+	skillReport
 }
 
 func (r *rpcComponent) Name() string          { return r.name }
@@ -73,12 +74,9 @@ func (r *rpcComponent) Shutdown(context.Context) error {
 	return nil
 }
 
-// Ready is degraded when optional toolsets were skipped.
+// Ready is degraded when optional toolsets or skill folders were skipped.
 func (r *rpcComponent) Ready(context.Context) error {
-	if len(r.skipped) > 0 {
-		return fmt.Errorf("%w: toolsets skipped: %s", component.ErrDegraded, strings.Join(r.skipped, ", "))
-	}
-	return nil
+	return degraded(r.skipped, r.skillReport)
 }
 
 // newRPCServer is the server of a runner or toolsets component, refusing an
@@ -98,18 +96,22 @@ func (c cli) newRunner(ctx context.Context, cfg serveConfig, built map[string]to
 		return component.Mount{}, err
 	}
 	agents := map[string]runner.Agent{}
-	var skipped []string
+	var (
+		skipped []string
+		skills  skillReport
+	)
 	for _, a := range cfg.Agents {
 		if len(a.RuntimeToolsets) > 0 {
 			// TODO(T096): read them from the store here too.
 			return component.Mount{}, fmt.Errorf("%s.runtime_toolsets: the %s component cannot use toolsets added at run time yet; run the agent in the agent API's process", a.label(cfg.legacy), runnerName)
 		}
-		h, sk, err := c.newHarness(ctx, cfg, a, built, nil, clk)
+		h, sk, ks, err := c.newHarness(ctx, cfg, a, built, nil, clk)
 		if err != nil {
 			return component.Mount{}, err
 		}
 		agents[a.Name] = h
 		skipped = appendNew(skipped, sk...)
+		skills.add(a, ks)
 	}
 	if err := runnerrpc.Register(s, agents); err != nil {
 		return component.Mount{}, err
@@ -120,7 +122,7 @@ func (c cli) newRunner(ctx context.Context, cfg serveConfig, built map[string]to
 	context.AfterFunc(ctx, func() { time.AfterFunc(env.shutdownTimeout*9/10, s.Shutdown) })
 	return component.Mount{
 		Pattern:   rpc.PathPrefix + runnerrpc.Service + "/",
-		Component: &rpcComponent{name: runnerName, server: s, skipped: skipped},
+		Component: &rpcComponent{name: runnerName, server: s, skipped: skipped, skillReport: skills},
 	}, nil
 }
 

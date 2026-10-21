@@ -179,6 +179,7 @@ Each entry of `agents`:
 | `toolsets` | none | names from `mcp.toolsets` the agent may use |
 | `prefix_tool_names` | false | name tools `<toolset>__<tool>` (needed when two toolsets share a tool name) |
 | `runtime_toolsets` | none | toolsets admins add while the server runs (section 8); the agent gets their approved tools as `<toolset>__<tool>` |
+| `skills` | none | folders of Agent Skills (`"path"` or `{"path": ..., "optional": true}`), relative to the config file (section 7, "Skills") |
 | `max_turns`, `max_total_tokens` | 25, unlimited | budgets per run |
 
 `agent_api`:
@@ -317,6 +318,16 @@ claude mcp add --transport http agentkit-files http://localhost:8080/mcp/files -
 ```
 
 `edit_file` is a write tool (kind `write`, risk `medium`); the rest are read-only. Until tool policies (T083) land, anyone with the API token can change files under `files`' root: give it a root you are happy for them to change.
+
+### Skills
+
+An agent's `skills` names folders of [Agent Skills](https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills) (`pkg/skill`): each folder under one is a skill, with a `SKILL.md` (YAML front matter `name` and `description`, then instructions) and any reference files. The same folders Claude Code uses work as they are. Only each skill's name and description go into the system prompt; the agent gets `skill_load` (a skill's instructions and its list of files) and `skill_read` (one of its text files) to read the rest when a task needs it. Reads stay inside the skill's folder (no `..`, absolute paths or symlinks out). Scripts in a skill are never run.
+
+```json
+{"name": "search", "toolsets": ["tavily"], "skills": [{"path": "skills"}, {"path": "/srv/team-skills", "optional": true}]}
+```
+
+A skill that breaks a rule fails startup with its folder and the rule: no front matter, a `name` that is not `^[a-zA-Z0-9_-]{1,64}$`, an empty or over-1,024-character `description`, a `SKILL.md` over 64 KB, another file over 1 MB, more than 200 files, two skills with one name, or a symlink out of the folder. An `optional` folder that fails is skipped and named in `/readyz`, which also lists each agent's skills under `details.skills`. `search.json`'s `search` agent has a demo skill, `research-brief`, in `deploy/local/agent/skills/`.
 
 ## 8. Other MCP servers' tools
 

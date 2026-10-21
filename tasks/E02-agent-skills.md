@@ -29,5 +29,5 @@ Skills are not Go code, so "one test per criterion" becomes:
 - [ ] [T013](T013-skill-write-tests.md) `write-tests` skill (after T017, using its tests as examples; first version in, dry runs pending)
 - [ ] [T012](T012-skill-design-module.md) `design-module` skill (after T017, using `pkg/tool` as the example)
 - [ ] [T014](T014-skill-implement-task.md) `implement-task` skill (after T012, T013)
-- [ ] [T011](T011-skill-plan.md) `plan` skill (when planning E04)
+- [x] [T011](T011-skill-plan.md) `plan` skill (when planning E04)
 - [ ] [T016](T016-skill-local-env.md) `local-env` skill (after T006)

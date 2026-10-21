@@ -50,7 +50,7 @@ The agent's own notes: preferences, project facts, progress across conversations
 - `pkg/memory/inmem`: the reference store (one lock). `pkg/memory/sqlite`: one table keyed by tenant, user and path; each command one IMMEDIATE transaction on a single writer connection, views on read-only connections; schema version in `PRAGMA user_version`, a newer one refused.
 - `pkg/memory/memorytest`: `RunStore` (commands, directories, isolation, path rules, limits, cancel, a seeded simulation, a concurrent run), `Step` (apply, check the invariants, check the outcome against a model of the files before), `CheckState`, `Snapshot`, `Simulate` (also a fuzz target in `inmem`).
 - `pkg/llm/anthropic`: `Options.NativeMemory` sends a tool named `memory` as the `memory_20250818` type.
-- `cmd/agentkit`: an agent's `memory` section (`store.backend` `memory` or `sqlite`, `store.path`, `store.scope`, the three limits, `native_tool`), the backend table `memoryBackends` (`memory_sqlite.go` behind `!nosqlite`), the tool joined ahead of the agent's toolsets, stores closed on shutdown.
+- `cmd/agentkit`: an agent's `memory` section (`store.backend` `memory` or `sqlite`, `store.path`, `store.scope`, the three limits, `native_tool`), the backend table `memoryBackends` (`memory_sqlite.go` behind `!nosqlite`: only the local image links it, checked with `go list -deps` per variant; the others refuse `sqlite` at startup naming the tag, `TestMemorySQLiteNotBuilt` with `-tags nosqlite`), the tool joined ahead of the agent's toolsets, stores closed on shutdown.
 
 ### Decisions
 
@@ -126,4 +126,5 @@ One mutant survives and is equivalent: committing the SQLite transaction of a fa
 - Keep the user on runs resumed by recovery and by commands from another replica (the store's run records have no user today).
 - `GET /v1/agents` does not list the memory tool (it lists toolsets); the console's "memories" panel (E12) needs an API to view and delete a scope's files.
 - With `native_tool`, the result could go to Claude as plain text instead of a JSON string.
-- T088 (Postgres): a `pkg/memory/postgres` backend through `fileops`, if memories should live in the server's database.
+- A Postgres memory backend for the dev and cloud images (`pkg/memory/postgres` through `fileops`). Owner decision (review): SQLite is only for local images, so today those images have only `memory` (lost on restart). Not small enough for this PR: it needs a migration in `pkg/store/postgres` with the tenant RLS policy (0008's pattern), per-scope serialization so the limits hold across replicas (an advisory lock per tenant and user), a config that reuses the server store's URL rather than a second secret, and `-tags integration` tests.
+- The gate's 10-minute test timeout is tight for `pkg/store/sqlite` on a loaded machine (seen while gating this task); left as is here.

@@ -182,6 +182,7 @@ Each entry of `agents`:
 | `skills` | none | folders of Agent Skills (`"path"` or `{"path": ..., "optional": true}`), relative to the config file (section 7, "Skills") |
 | `max_turns`, `max_total_tokens` | 25, unlimited | budgets per run |
 | `tool_policy` | `all` | which tool calls the agent may make (below) |
+| `memory` | none (no memory tool, nothing stored) | the agent's own notes across conversations: one tool, `memory`, with the commands of Claude's memory tool on files under `/memories`. `store.backend` is `memory` (in the process, lost on restart) or `sqlite` with `store.path` (a file; only in the local image, the others refuse it at startup); `store.scope` is `tenant` (default) or `user` (each user of a tenant apart: needs API keys with a `user`); `store.max_file_bytes`, `store.max_scope_bytes`, `store.max_files` default to 16 KiB, 1 MiB and 200. `native_tool: true` sends it to Claude as the native memory tool type. Not yet for agents on a runner component |
 
 `agent_api`:
 

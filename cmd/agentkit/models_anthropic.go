@@ -10,6 +10,6 @@ import (
 func newClaude(f modelFlags) (llm.Model, error) {
 	return anthropic.New(
 		anthropic.WithModel(f.model),
-		anthropic.WithOptions(anthropic.Options{Effort: anthropic.Effort(f.effort)}),
+		anthropic.WithOptions(anthropic.Options{Effort: anthropic.Effort(f.effort), NativeMemory: f.nativeMemory}),
 	)
 }

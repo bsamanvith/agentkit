@@ -73,6 +73,9 @@ const (
 	CodeAwaitingDecision = wire.CodeAwaitingDecision
 	CodeNotPending       = wire.CodeNotPending
 	CodeShapeChanged     = wire.CodeShapeChanged
+
+	CodeTooManyBackgroundRuns = wire.CodeTooManyBackgroundRuns
+	CodeWallClockLimit        = wire.CodeWallClockLimit
 )
 
 // Run statuses.
@@ -133,6 +136,8 @@ type (
 	// lists) are used from package wire: [Agent] and [Toolset] here are what
 	// the server is given, not what it writes.
 	Credential = wire.Credential
+	// TaskRequest is [wire.TaskRequest]: the body of POST /v1/tasks.
+	TaskRequest = wire.TaskRequest
 )
 
 // The conversions from harness types.

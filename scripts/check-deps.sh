@@ -16,6 +16,7 @@ connectors='github.com/bsamanvith/agentkit/connectors/'
 skill='github.com/bsamanvith/agentkit/pkg/skill'
 # The A2A server (T067): only the images that run the agent API serve it.
 a2a='github.com/bsamanvith/agentkit/pkg/a2a'
+webhook='github.com/bsamanvith/agentkit/pkg/webhook'
 openai='github.com/bsamanvith/agentkit/pkg/llm/openaicompat'
 # The credential vault's SQL backends (T043), named on their own so that a
 # backend wired without its store's build tag fails here even before it
@@ -39,8 +40,8 @@ forbidden() {
 	local) echo "$pgx $redis $credpg" ;;
 	dev) echo "$sqlite $credsqlite" ;;
 	api) echo "$anthropic $openai $mcp $sqlite $connectors $skill $credsqlite" ;;
-	runner) echo "$mcp $pgx $sqlite $redis $connectors $a2a $credsqlite $credpg $agent" ;;
-	toolsets) echo "$anthropic $openai $pgx $sqlite $redis $skill $a2a $credsqlite $credpg $agent" ;;
+	runner) echo "$mcp $pgx $sqlite $redis $connectors $a2a $webhook $credsqlite $credpg $agent" ;;
+	toolsets) echo "$anthropic $openai $pgx $sqlite $redis $skill $a2a $webhook $credsqlite $credpg $agent" ;;
 	*) echo "check-deps: unknown variant $1" >&2; exit 2 ;;
 	esac
 }

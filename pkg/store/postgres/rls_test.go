@@ -68,6 +68,9 @@ func rlsRig(t *testing.T, opts ...postgres.Option) (owner, app string, s *postgr
 			_, err = s.SendCommand(ctx, run, store.Command{Key: "k", Type: "t"})
 		}
 		if err == nil {
+			_, err = s.CreateNotification(ctx, run, "https://hooks.example/"+tn)
+		}
+		if err == nil {
 			_, err = s.PutToolset(ctx, store.ToolsetRecord{Name: "ts", Data: json.RawMessage(`{}`)}, 0)
 		}
 		if err == nil {
@@ -90,7 +93,7 @@ func TestRowLevelSecurity(t *testing.T) {
 	owner, _, s := rlsRig(t)
 	pool := postgres.Pool(s)
 	ctx := tenantCtx(t, "a")
-	for _, table := range []string{"runs", "entries", "events", "checkpoints", "conversations", "commands", "toolsets"} {
+	for _, table := range []string{"runs", "entries", "events", "checkpoints", "conversations", "commands", "toolsets", "notifications"} {
 		var others int
 		if err := pool.QueryRow(ctx, `SELECT count(*) FROM `+table+` WHERE tenant <> 'a'`).Scan(&others); err != nil {
 			t.Fatalf("%s: %v", table, err)

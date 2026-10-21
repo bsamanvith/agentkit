@@ -150,6 +150,19 @@ func TestCommandLog(t *testing.T) {
 	storetest.RunCommandLog(t, func(t *testing.T, clk clock.Clock) storetest.CommandStore { return open(t, clk) })
 }
 
+func TestRunIndex(t *testing.T) {
+	t.Parallel()
+	storetest.RunRunIndex(t, func(t *testing.T, clk clock.Clock) storetest.RunIndexStore { return open(t, clk) })
+}
+
+func TestNotifications(t *testing.T) {
+	t.Parallel()
+	storetest.RunNotifications(t, func(t *testing.T, clk clock.Clock) (storetest.NotificationStore, store.Admin) {
+		s := open(t, clk)
+		return s, postgres.Admin(s)
+	})
+}
+
 func TestToolsetStore(t *testing.T) {
 	t.Parallel()
 	storetest.RunToolsetStore(t, func(t *testing.T, clk clock.Clock) store.ToolsetStore { return open(t, clk) })
@@ -197,6 +210,17 @@ func TestTwoPools(t *testing.T) {
 	t.Run("ConversationIndex", func(t *testing.T) {
 		t.Parallel()
 		storetest.RunConversationIndex(t, func(t *testing.T, clk clock.Clock) storetest.IndexStore { return openPair(t, clk) })
+	})
+	t.Run("RunIndex", func(t *testing.T) {
+		t.Parallel()
+		storetest.RunRunIndex(t, func(t *testing.T, clk clock.Clock) storetest.RunIndexStore { return openPair(t, clk) })
+	})
+	t.Run("Notifications", func(t *testing.T) {
+		t.Parallel()
+		storetest.RunNotifications(t, func(t *testing.T, clk clock.Clock) (storetest.NotificationStore, store.Admin) {
+			p := openPair(t, clk)
+			return p, pairAdmin{p}
+		})
 	})
 }
 
@@ -340,7 +364,27 @@ func (p *pair) DeleteToolset(ctx context.Context, name string, ifVersion int64) 
 	return p.next().DeleteToolset(ctx, name, ifVersion)
 }
 
+func (p *pair) ListRuns(ctx context.Context, f store.RunFilter, pg store.Page) (store.RunPage, error) {
+	return p.next().ListRuns(ctx, f, pg)
+}
+
+func (p *pair) CreateNotification(ctx context.Context, runID, url string) (store.Notification, error) {
+	return p.next().CreateNotification(ctx, runID, url)
+}
+
+func (p *pair) GetNotification(ctx context.Context, runID string) (store.Notification, error) {
+	return p.next().GetNotification(ctx, runID)
+}
+
 type pairAdmin struct{ p *pair }
+
+func (a pairAdmin) ClaimNotification(ctx context.Context, owner string, ttl time.Duration) (store.TenantNotification, error) {
+	return postgres.Admin(a.p.next()).ClaimNotification(ctx, owner, ttl)
+}
+
+func (a pairAdmin) RecordDelivery(ctx context.Context, tenant tenancy.Tenant, runID, owner string, d store.Delivery) (store.Notification, error) {
+	return postgres.Admin(a.p.next()).RecordDelivery(ctx, tenant, runID, owner, d)
+}
 
 func (a pairAdmin) ListResumableAll(ctx context.Context, now time.Time, limit int) ([]store.TenantRun, error) {
 	return postgres.Admin(a.p.next()).ListResumableAll(ctx, now, limit)

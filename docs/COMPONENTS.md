@@ -133,7 +133,7 @@ implementation passes the suite and is picked by a spec or config value.
 
 | Seam | Interface | Suite | Picked by |
 |---|---|---|---|
-| Store | `storeopen.Store` (one transactional store: conversations, runs, events, commands, checkpoints) | every `storetest.Run*` and `Simulate*` | `AGENTKIT_STORE` through `storeopen.Backends` (or `storeopen.WithBackends` in a program of your own) |
+| Store | `storeopen.Store` (one transactional store: conversations, runs, events, commands, checkpoints, the run index and runs' webhooks) | every `storetest.Run*` and `Simulate*` | `AGENTKIT_STORE` through `storeopen.Backends` (or `storeopen.WithBackends` in a program of your own) |
 | Bus | `bus.Bus`: an atomic conditional append with replay, not a work queue | `bustest.Run` | `AGENTKIT_BUS` through `busopen.Backends` |
 | Model | `llm.Model` | `llmtest` | `model.provider` through `modelProviders` (`cmd/agentkit/models.go`) |
 | Turn loop | `runner.Agent` | runner tests | `AGENTKIT_RUNNER_URL`, or an `agentapi.Agent`'s `Runner` |

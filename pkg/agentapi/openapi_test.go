@@ -428,6 +428,9 @@ func TestOpenAPIResponses(t *testing.T) {
 	st := scoped.Memory(clk)
 	r := newRig(t, m, rigConfig{agents: agents, token: token, clock: clk, store: st, api: []agentapi.Option{
 		toolsets, agentapi.WithMaxConcurrentRuns(1), agentapi.WithMaxBodyBytes(512), agentapi.WithRunnerOptions(flows),
+		agentapi.WithMaxBackgroundRuns(1), agentapi.WithWebhooks(agentapi.Webhooks{
+			Secret: func(tenancy.Tenant) (string, error) { return "whsec_c2VjcmV0", nil },
+		}),
 	}})
 	other := newRig(t, echo(t), rigConfig{token: token, clock: clk, store: st})
 	// The probes post raw requests the rig does not track, and delete a
@@ -473,7 +476,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	rec.probe(r, "get_run_not_found", 404, "GET", "/v1/runs/nope", "", "")
 
 	rec.probe(r, "list_runs", 200, "GET", "/v1/runs?conversation_id="+conv+"&limit=1", "", "")
-	rec.probe(r, "list_runs_bad_request", 400, "GET", "/v1/runs", "", "")
+	rec.probe(r, "list_runs_bad_request", 400, "GET", "/v1/runs?background=maybe", "", "")
 	rec.probe(r, "list_runs_unauthorized", 401, "GET", "/v1/runs?conversation_id="+conv, "", "", bearer...)
 	rec.probe(r, "list_runs_not_found", 404, "GET", "/v1/runs?conversation_id=nope", "", "")
 	rec.stream(r, "run_events", "GET", "/v1/runs/"+run.ID+"/events")
@@ -586,6 +589,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	rec.probe(r, "decide_over_capacity", 503, "POST", decisions, `{"path":"f/ok","approved":true}`, "")
 	rec.probe(r, "input_over_capacity", 503, "POST", input, answer, "")
 	rec.probe(r, "delete_busy", 409, "DELETE", "/v1/conversations/"+busy, "", "")
+	rec.probe(r, "task_over_capacity", 503, "POST", "/v1/tasks", `{"input":"one more"}`, "")
 	// The other server shares the store: the run is held by this one.
 	rec.probe(other, "stop_run_leased", 409, "POST", "/v1/runs/"+s2.runID()+"/stop", "", "")
 	m.gate <- struct{}{}
@@ -631,6 +635,20 @@ func TestOpenAPIResponses(t *testing.T) {
 	}
 	rec.probe(ra, "input_pool_full", 429, "POST", "/v1/runs/"+pending+"/input", `{"answers":[{"id":"q1","text":"red"}]}`, "")
 	asks.Slots("chat").Release()
+	// A task, waiting at the model's gate: the tenant's one background run.
+	task := decodeAs[agentapi.Run](t, rec.probe(r, "task", 202, "POST", "/v1/tasks", `{"input":"in the background","notify":{"url":"https://hooks.example/done"}}`, ""))
+	rec.probe(r, "task_too_many", 429, "POST", "/v1/tasks", `{"input":"one more"}`, "")
+	rec.probe(r, "list_tasks", 200, "GET", "/v1/runs?background=true&status=running&agent=default", "", "")
+	rec.probe(r, "get_task", 200, "GET", "/v1/runs/"+task.ID, "", "")
+	rec.probe(r, "task_bad_request", 400, "POST", "/v1/tasks", `{"input":" "}`, "")
+	rec.probe(r, "task_unauthorized", 401, "POST", "/v1/tasks", `{"input":"hi"}`, "", bearer...)
+	rec.probe(r, "task_no_agent", 404, "POST", "/v1/tasks", `{"input":"hi","agent":"nobody"}`, "")
+	rec.probe(r, "task_too_large", 413, "POST", "/v1/tasks", `{"input":"`+strings.Repeat("x", 600)+`"}`, `{"input":"too long"}`)
+	m.gate <- struct{}{}
+	r.waitEnded(task.ID)
+	rec.probe(r, "webhook_secret", 200, "GET", "/v1/webhooks/secret", "", "")
+	rec.probe(r, "webhook_secret_unauthorized", 401, "GET", "/v1/webhooks/secret", "", "", bearer...)
+	rec.probe(other, "webhook_secret_none", 404, "GET", "/v1/webhooks/secret", "", "")
 
 	rec.probe(r, "delete_unauthorized", 401, "DELETE", "/v1/conversations/"+conv, "", "", bearer...)
 	rec.probe(r, "delete", 204, "DELETE", "/v1/conversations/"+conv, "", "")
@@ -721,6 +739,7 @@ func TestOpenAPIResponses(t *testing.T) {
 				"POST /v1/runs/{id}/input": `{"answers":[{"id":"q1","text":"red"}]}`,
 				"POST /v1/toolsets":        `{"type":"mcp","name":"x","url":"https://mcp.example.com/mcp"}`, "POST /v1/toolsets/{name}/review": `{"tools":[]}`,
 				"PATCH /v1/toolsets/{name}": `{"enabled":true}`,
+				"POST /v1/tasks":            `{"input":"hi"}`,
 			}[rt]
 			rec.probe(rf, name, 403, method, target, body, "")
 		}

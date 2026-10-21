@@ -26,7 +26,7 @@ type countingRuns struct {
 
 func (c *countingRuns) Start(ctx context.Context, conv string, msg llm.Message, opts agentapi.StartOptions) (*runner.Execution, error) {
 	c.started.Add(1)
-	return rewrap(c.rn.Run(ctx, conv, msg, append(opts.RunOptions(), runner.Interactive())...))
+	return rewrap(c.rn.Run(ctx, conv, msg, opts.RunOptions()...))
 }
 
 func (c *countingRuns) Resume(ctx context.Context, id string) (*runner.Execution, error) {

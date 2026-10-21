@@ -189,7 +189,7 @@ func TestScopes(t *testing.T) {
 			path = "/v1/conversations/" + run.ConversationID
 		}
 		resp, body := r.do(method, path, `{"message":"x"}`, as(keyRead)...)
-		admin := strings.HasSuffix(rt, "/review") // agent:admin, even to read
+		admin := strings.HasSuffix(rt, "/review") || rt == "GET /v1/webhooks/secret" // agent:admin, even to read
 		switch {
 		case strings.Contains(rt, " /v1/auth/"): // any credential
 			if resp.StatusCode == http.StatusForbidden {

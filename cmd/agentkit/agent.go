@@ -64,6 +64,9 @@ type agentDef struct {
 	// no limit).
 	MaxTurns       int `json:"max_turns"`
 	MaxTotalTokens int `json:"max_total_tokens"`
+	// Notify is the webhook told when a task of the agent ends, unless the
+	// task names one: {"url": ...}. It needs $AGENTKIT_WEBHOOK_SECRET.
+	Notify *notifyConfig `json:"notify"`
 	// ToolPolicy decides the agent's tool calls: a preset's name or a
 	// policy (package policy). Absent: "all". The environment's policy and a
 	// run's narrow it.
@@ -104,6 +107,10 @@ type apiConfig struct {
 	Retention        duration `json:"retention"`
 	// MaxBodyBytes limits the body of POST /v1/runs.
 	MaxBodyBytes int64 `json:"max_body_bytes"`
+	// MaxBackgroundRuns caps a tenant's tasks going on at once (429 past
+	// it); TaskTimeLimit fails a task that runs longer, "0s" for no limit.
+	MaxBackgroundRuns int      `json:"max_background_runs"`
+	TaskTimeLimit     duration `json:"task_time_limit"`
 }
 
 // agentModelConfig chooses the model.
@@ -183,6 +190,8 @@ func defaultAPIConfig() apiConfig {
 		MaxConversations:  agentapi.DefaultMaxConversations,
 		Retention:         duration(agentapi.DefaultRetention),
 		MaxBodyBytes:      agentapi.DefaultMaxBodyBytes,
+		MaxBackgroundRuns: agentapi.DefaultMaxBackgroundRuns,
+		TaskTimeLimit:     duration(agentapi.DefaultTaskTimeLimit),
 	}
 }
 

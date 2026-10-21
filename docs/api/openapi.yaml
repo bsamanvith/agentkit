@@ -161,12 +161,12 @@
       "get": {
         "operationId": "listRuns",
         "summary": "List runs",
-        "description": "A conversation's runs, newest first; or, with status=suspended and no conversation, every run waiting for a decision.",
+        "description": "The tenant's runs, newest first, or a conversation's (conversation_id); status, background and agent filter them.",
         "parameters": [
           {
             "name": "conversation_id",
             "in": "query",
-            "description": "The conversation whose runs to list; required unless status is suspended.",
+            "description": "Only the runs of this conversation.",
             "schema": {
               "type": "string"
             }
@@ -177,6 +177,22 @@
             "description": "Only runs of this status.",
             "schema": {
               "$ref": "#/components/schemas/Run/properties/status"
+            }
+          },
+          {
+            "name": "background",
+            "in": "query",
+            "description": "true: only background runs (tasks, POST /v1/tasks); false: only chat runs.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "agent",
+            "in": "query",
+            "description": "Only the runs of this agent's conversations.",
+            "schema": {
+              "type": "string"
             }
           },
           {
@@ -211,7 +227,7 @@
             }
           },
           "400": {
-            "description": "invalid_request: no conversation_id (and status is not suspended), an unknown status, a bad limit or cursor.",
+            "description": "invalid_request: an unknown status, a background that is not true or false, an agent that is not a name, a bad limit or cursor.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2140,6 +2156,206 @@
           }
         }
       }
+    },
+    "/v1/tasks": {
+      "post": {
+        "operationId": "createTask",
+        "summary": "Start a task: a background run",
+        "description": "Starts a run of an agent on an input, in a conversation of its own, and answers at once. The run goes on whoever watches it (GET /v1/runs/{id}/events, from any replica, resumable with Last-Event-ID) until it ends or is canceled (POST /v1/runs/{id}/cancel); a server that stops mid-run leaves it to be resumed. It fails with wall_clock_limit past the server's limit (2h by default), and with budget_exceeded past the agent's budgets. With notify (or the agent's default), its end is posted to a webhook (WebhookEvent).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "The run, started.",
+            "headers": {
+              "Location": {
+                "description": "/v1/runs/{id}",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Agentkit-Run-Id": {
+                "description": "The run's ID.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Agentkit-Conversation-Id": {
+                "description": "The ID of the task's conversation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: the body is not a TaskRequest, the input is empty, an interaction that is not served, a bad policy, or a webhook URL the server does not post to (or webhooks it does not send).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such agent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "too_large: the body is over the server's limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "too_many_background_runs: the tenant has as many background runs going on as the server allows (retryable); over_capacity: the runner pool the task is placed in is running as many runs as its limit (retryable).",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "over_capacity: too many runs (retryable); shutting_down: the server is draining.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/webhooks/secret": {
+      "get": {
+        "operationId": "getWebhookSecret",
+        "summary": "Read the webhook secret",
+        "description": "The secret the tenant's webhooks are signed with, to verify their Agentkit-Signature.",
+        "responses": {
+          "200": {
+            "description": "The secret.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookSecret"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: the server sends no webhooks.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2163,7 +2379,7 @@
         "properties": {
           "code": {
             "type": "string",
-            "description": "What went wrong, for programs: invalid_request (400), unauthorized (401), forbidden, csrf_failed (403), not_found (404), too_large (413), too_many_attempts (429), conversation_busy, agent_mismatch, run_final, run_leased, awaiting_decision, not_pending, shape_changed, toolset_exists, conflict (409), auth_required, server_unreachable (422), over_capacity, shutting_down (503), internal (500); a run's codes are interrupted, run_failed, suspended (a flow run waits for a decision, a chat run for input), rejected, budget_exceeded, max_tokens, refused, unexpected_stop, cancelled, timeout, shutdown, rate_limited, overloaded, model_auth, context_too_long, model_rejected and internal. conversation_interrupted is no longer returned. New codes may be added: treat an unknown one as internal."
+            "description": "What went wrong, for programs: invalid_request (400), unauthorized (401), forbidden, csrf_failed (403), not_found (404), too_large (413), too_many_attempts, too_many_background_runs (429), conversation_busy, agent_mismatch, run_final, run_leased, awaiting_decision, not_pending, shape_changed, toolset_exists, conflict (409), auth_required, server_unreachable (422), over_capacity, shutting_down (503), internal (500); a run's codes are interrupted, run_failed, suspended (a flow run waits for a decision, a chat run for input), rejected, budget_exceeded, max_tokens, refused, unexpected_stop, cancelled, timeout, wall_clock_limit (a background run passed its wall-clock limit, and failed), shutdown, rate_limited, overloaded, model_auth, context_too_long, model_rejected and internal. conversation_interrupted is no longer returned. New codes may be added: treat an unknown one as internal."
           },
           "message": {
             "type": "string",
@@ -2522,7 +2738,7 @@
               "canceled",
               "rejected"
             ],
-            "description": "running: an execution is going on; interrupted: a chat run stopped with nobody running it (resume it, or post a new message); suspended: a flow run waits for a decision, or a chat run for input (its interrupts); then done, failed (it can still be resumed), canceled or rejected, which never change. New statuses may be added."
+            "description": "running: an execution is going on; interrupted: a chat run stopped (a background run whose process stopped stays running until the server resumes it) with nobody running it (resume it, or post a new message); suspended: a flow run waits for a decision, or a chat run for input (its interrupts); then done, failed (it can still be resumed), canceled or rejected, which never change. New statuses may be added."
           },
           "created_at": {
             "type": "string",
@@ -2555,6 +2771,13 @@
             "items": {
               "$ref": "#/components/schemas/Interrupt"
             }
+          },
+          "background": {
+            "type": "boolean",
+            "description": "Set for a task (POST /v1/tasks): a background run, which goes on whoever watches it until it ends or is canceled."
+          },
+          "notify": {
+            "$ref": "#/components/schemas/Notification"
           }
         },
         "required": [
@@ -3907,6 +4130,140 @@
           "tenant",
           "roles",
           "scopes"
+        ]
+      },
+      "TaskRequest": {
+        "type": "object",
+        "description": "The body of POST /v1/tasks. Unknown fields are refused.",
+        "properties": {
+          "agent": {
+            "type": "string",
+            "description": "The agent (absent: the default agent)."
+          },
+          "input": {
+            "type": "string",
+            "description": "The task: the user message the run starts from, in a conversation of its own."
+          },
+          "interaction": {
+            "enum": [
+              "autonomous"
+            ],
+            "description": "How the task treats a tool that needs a person: autonomous (the default, and the only mode served) never waits for one."
+          },
+          "policy": {
+            "$ref": "#/components/schemas/ToolPolicy"
+          },
+          "notify": {
+            "type": "object",
+            "description": "The webhook told when the run ends (absent: the agent's default, if any). It is posted a signed WebhookEvent.",
+            "properties": {
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "An http or https URL the server may post to."
+              }
+            },
+            "required": [
+              "url"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "input"
+        ],
+        "additionalProperties": false
+      },
+      "Notification": {
+        "type": "object",
+        "description": "A run's webhook and its delivery so far.",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "delivered",
+              "failed"
+            ],
+            "description": "pending: not delivered yet (tried when the run ends, and again after a failure, for a day); delivered: an attempt was answered with a 2xx; failed: given up on."
+          },
+          "attempts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeliveryAttempt"
+            },
+            "description": "The attempts so far, oldest first."
+          },
+          "next_attempt_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When a pending notification is tried again."
+          }
+        },
+        "required": [
+          "url",
+          "state",
+          "attempts"
+        ]
+      },
+      "DeliveryAttempt": {
+        "type": "object",
+        "description": "One post of a run's end to its webhook.",
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "integer",
+            "description": "The HTTP status of the answer; absent when none came."
+          },
+          "error": {
+            "type": "string",
+            "description": "Why the attempt failed; absent for one that succeeded."
+          }
+        },
+        "required": [
+          "at"
+        ]
+      },
+      "WebhookEvent": {
+        "type": "object",
+        "description": "The body posted to a run's webhook when it ends, with the headers Agentkit-Webhook-Id (the run's ID, the same on every attempt: keep the first), Agentkit-Webhook-Attempt (1, 2, ...) and Agentkit-Signature (t=<unix seconds>,v1=<hex HMAC-SHA256 of \"<t>.<body>\" under the tenant's secret, GET /v1/webhooks/secret>).",
+        "properties": {
+          "v": {
+            "const": 1
+          },
+          "type": {
+            "const": "run.ended"
+          },
+          "run": {
+            "$ref": "#/components/schemas/Run"
+          }
+        },
+        "required": [
+          "v",
+          "type",
+          "run"
+        ]
+      },
+      "WebhookSecret": {
+        "type": "object",
+        "description": "The secret the tenant's webhooks are signed with.",
+        "properties": {
+          "v": {
+            "const": 1
+          },
+          "secret": {
+            "type": "string",
+            "description": "whsec_ and the secret's unpadded base64url: the HMAC key is the decoded bytes."
+          }
+        },
+        "required": [
+          "v",
+          "secret"
         ]
       }
     }

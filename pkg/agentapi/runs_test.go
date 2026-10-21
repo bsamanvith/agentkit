@@ -85,7 +85,8 @@ func TestListRuns(t *testing.T) {
 		status int
 		code   string
 	}{
-		"":                                      {http.StatusBadRequest, agentapi.CodeInvalidRequest},
+		"background=maybe":                      {http.StatusBadRequest, agentapi.CodeInvalidRequest},
+		"agent=no/such":                         {http.StatusBadRequest, agentapi.CodeInvalidRequest},
 		"conversation_id=" + conv + "&status=x": {http.StatusBadRequest, agentapi.CodeInvalidRequest},
 		"conversation_id=" + conv + "&limit=0":  {http.StatusBadRequest, agentapi.CodeInvalidRequest},
 		"conversation_id=" + conv + "&cursor=x": {http.StatusBadRequest, agentapi.CodeInvalidRequest},

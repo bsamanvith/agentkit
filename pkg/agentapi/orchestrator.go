@@ -19,10 +19,12 @@ import (
 // in the server's store, under the same rules: the server reads them, their
 // events and their conversations there.
 type Runs interface {
-	// Start creates an interactive run of conversationID on msg, as
-	// [runner.Runner.Run] with [runner.Interactive] and the options in opts,
-	// which it must apply: a run must never run without its ToolPolicy, and
-	// it runs in the Pool the server took a slot of.
+	// Start creates a run of conversationID on msg, as [runner.Runner.Run]
+	// with the options in opts, which it must apply: a run must never run
+	// without its ToolPolicy, and it runs in the Pool the server took a slot
+	// of. The run is interactive ([runner.Interactive]) unless
+	// opts.Background: a background run (a task) is the orchestrator's to
+	// finish, resuming it after a crash, whoever watches.
 	Start(ctx context.Context, conversationID string, msg llm.Message, opts StartOptions) (*runner.Execution, error)
 	// Resume, Decide, Answer, Cancel, Interrupt and Shutdown are as on
 	// [runner.Runner].
@@ -45,9 +47,13 @@ type StartOptions struct {
 	// Pool is the runner pool the server placed the run in, and took a slot
 	// of ([runner.InPool]); "" for none.
 	Pool string
+	// Background starts a background run (POST /v1/tasks) instead of an
+	// interactive one.
+	Background bool
 }
 
-// RunOptions are opts as the runner takes them.
+// RunOptions are opts as the runner takes them, [runner.Interactive]
+// included unless Background.
 func (o StartOptions) RunOptions() []runner.RunOption {
 	var out []runner.RunOption
 	if o.ToolPolicy != nil {
@@ -58,6 +64,14 @@ func (o StartOptions) RunOptions() []runner.RunOption {
 	}
 	if o.Pool != "" {
 		out = append(out, runner.InPool(o.Pool))
+		if o.Background {
+			// In the pool's lane: its dispatcher resumes it after a crash
+			// ([Server.Dispatcher]).
+			out = append(out, runner.Lane(o.Pool))
+		}
+	}
+	if !o.Background {
+		out = append(out, runner.Interactive())
 	}
 	return out
 }
@@ -75,7 +89,7 @@ func WithRuns(f RunsFactory) Option { return func(c *config) { c.runs = f } }
 type localRuns struct{ *runner.Runner }
 
 func (r localRuns) Start(ctx context.Context, conversationID string, msg llm.Message, opts StartOptions) (*runner.Execution, error) {
-	return r.Run(ctx, conversationID, msg, append(opts.RunOptions(), runner.Interactive())...)
+	return r.Run(ctx, conversationID, msg, opts.RunOptions()...)
 }
 
 func (r localRuns) Resume(ctx context.Context, runID string) (*runner.Execution, error) {

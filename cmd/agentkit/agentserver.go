@@ -50,6 +50,7 @@ type agentWiring struct {
 	b        bus.Bus
 	closeBus func()
 	srv      *agentapi.Server
+	env      serveEnv // for the recovery loop and the webhooks
 }
 
 // openAgents opens the agent API's store and bus.
@@ -75,7 +76,7 @@ func (w *agentWiring) close() {
 // buildAgents is newAgents on w's store and bus.
 func (c cli) buildAgents(ctx context.Context, w *agentWiring, cfg serveConfig, built map[string]tool.Registry, problems []toolset.Problem, env serveEnv, authn auth.Authenticator, clk clock.Clock, log *slog.Logger) (component.Mount, error) {
 	m, srv, err := c.newAgents(ctx, cfg, built, problems, env, authn, w.st.Store, w.b, clk, log)
-	w.srv = srv
+	w.srv, w.env = srv, env
 	return m, err
 }
 
@@ -106,13 +107,17 @@ func (w *agentWiring) serve(ctx context.Context, rt *component.Runtime, ln net.L
 	if w == nil || w.srv == nil {
 		return rt.Serve(ctx, ln)
 	}
-	agents, st := w.srv, w.st
+	agents, st, env := w.srv, w.st, w.env
+	var recoveryOpts []runner.RecoveryOption
+	if env.recoveryInterval > 0 {
+		recoveryOpts = append(recoveryOpts, runner.WithInterval(env.recoveryInterval))
+	}
 	// A dispatcher per pool that takes background runs: each claims its
 	// pool's lane while the pool has a free slot.
 	var dispatchers []*runner.Recovery
 	dispatched := runners.dispatched()
 	for _, name := range dispatched {
-		rc, err := agents.Dispatcher(st.admin, name)
+		rc, err := agents.Dispatcher(st.admin, name, recoveryOpts...)
 		if err != nil {
 			ln.Close()
 			return fmt.Errorf("runners: dispatcher of pool %q: %w", name, err)
@@ -127,6 +132,15 @@ func (w *agentWiring) serve(ctx context.Context, rt *component.Runtime, ln net.L
 		return fmt.Errorf("recovery: %w", err)
 	}
 	rctx, stopRecovery := context.WithCancel(ctx)
+	// The completion webhooks of every tenant's runs, until the recovery
+	// stops: one notifier per process, sharing the work through leases.
+	notified := make(chan struct{})
+	go func() {
+		defer close(notified)
+		if err := runNotifier(rctx, env, st.admin, agents, log.With("component", agentapi.Name)); err != nil {
+			log.Error("webhooks stopped", "component", agentapi.Name, "err", err)
+		}
+	}()
 	var recovered sync.WaitGroup
 	for i, rc := range dispatchers {
 		name := dispatched[i]
@@ -144,6 +158,7 @@ func (w *agentWiring) serve(ctx context.Context, rt *component.Runtime, ln net.L
 	err := rt.Serve(ctx, ln)
 	stopRecovery()
 	recovered.Wait()
+	<-notified
 	return err
 }
 
@@ -319,6 +334,12 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 			Isolation: iso,
 			UI:        a.UI,
 		}
+		if a.Notify != nil {
+			if a.Notify.URL == "" {
+				return fail(fmt.Errorf("%s.notify: no url", a.label(cfg.legacy)))
+			}
+			def.Notify = a.Notify.URL
+		}
 		if len(a.RuntimeToolsets) > 0 && admin == nil {
 			return fail(fmt.Errorf("%s.runtime_toolsets: toolsets added at run time are off (runtime_toolsets.enabled)", a.label(cfg.legacy)))
 		}
@@ -366,8 +387,12 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 		}
 		agents = append(agents, def)
 	}
-	if cfg.API.RunTimeout < 0 {
+	if cfg.API.RunTimeout < 0 || cfg.API.TaskTimeLimit < 0 {
 		return fail(errors.New("agent_api: negative limit"))
+	}
+	hooks, _, err := webhooks(env)
+	if err != nil {
+		return fail(err)
 	}
 	host, _ := os.Hostname()
 	// The lease owner names this process in the store, for operators.
@@ -376,6 +401,9 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 		runnerOpts = append(runnerOpts, runner.WithLease(env.runLease))
 	}
 	var authOpts []agentapi.Option
+	if hooks != nil {
+		authOpts = append(authOpts, agentapi.WithWebhooks(*hooks))
+	}
 	if authn != nil {
 		authOpts = append(authOpts, agentapi.WithAuthenticator(authn))
 	}
@@ -401,6 +429,8 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 		agentapi.WithRunTimeout(time.Duration(cfg.API.RunTimeout)),
 		agentapi.WithRetention(cfg.API.MaxRuns, cfg.API.MaxConversations, time.Duration(cfg.API.Retention)),
 		agentapi.WithMaxBodyBytes(cfg.API.MaxBodyBytes),
+		agentapi.WithMaxBackgroundRuns(cfg.API.MaxBackgroundRuns),
+		agentapi.WithTaskTimeLimit(time.Duration(cfg.API.TaskTimeLimit)),
 		agentapi.WithClock(clk),
 		agentapi.WithLogger(log.With("component", agentapi.Name)),
 		// Runs still going near the end of the shutdown get a run_error

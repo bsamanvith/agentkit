@@ -83,6 +83,10 @@ type Agent struct {
 	// router ([WithRouter]) never runs them in a weaker pool. The zero value
 	// is [pool.Process]: the agent may run as built (Harness or Runner).
 	Isolation pool.Isolation
+	// Notify is the webhook told when a task (POST /v1/tasks) of the agent
+	// ends, unless the task names its own; "" for none. It needs
+	// [WithWebhooks].
+	Notify string
 }
 
 // Toolset is a toolset of the server, as GET /v1/toolsets lists it.
@@ -163,6 +167,12 @@ func newAgents(cfg config, agents []Agent) (*Server, error) {
 			return nil, fmt.Errorf("%w: agent %q: unknown isolation %s", ErrInvalidConfig, a.Name, a.Isolation)
 		case a.UI != "" && a.UI != a2ui.UIMode:
 			return nil, fmt.Errorf("%w: agent %q: ui %q: want %q or none", ErrInvalidConfig, a.Name, a.UI, a2ui.UIMode)
+		}
+		if a.Notify != "" {
+			probe := Server{cfg: cfg}
+			if err := probe.checkWebhook(a.Notify); err != nil {
+				return nil, fmt.Errorf("%w: agent %q: notify: %w", ErrInvalidConfig, a.Name, err)
+			}
 		}
 		for _, name := range a.Toolsets {
 			if sets[name] == nil {

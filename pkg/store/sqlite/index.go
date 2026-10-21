@@ -211,6 +211,7 @@ func (s *Store) DeleteConversation(ctx context.Context, id string) error {
 		for _, q := range []string{
 			`DELETE FROM events WHERE tenant = ?1 AND run_id IN (SELECT id FROM runs WHERE tenant = ?1 AND conversation = ?2)`,
 			`DELETE FROM checkpoints WHERE tenant = ?1 AND run_id IN (SELECT id FROM runs WHERE tenant = ?1 AND conversation = ?2)`,
+			`DELETE FROM notifications WHERE tenant = ?1 AND run_id IN (SELECT id FROM runs WHERE tenant = ?1 AND conversation = ?2)`,
 			`DELETE FROM runs WHERE tenant = ?1 AND conversation = ?2`,
 			`DELETE FROM entries WHERE tenant = ?1 AND conversation = ?2`,
 		} {

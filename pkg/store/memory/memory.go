@@ -30,6 +30,8 @@ var (
 	_ store.CommandLog        = (*Store)(nil)
 	_ store.ConversationIndex = (*Store)(nil)
 	_ store.ToolsetStore      = (*Store)(nil)
+	_ store.RunIndex          = (*Store)(nil)
+	_ store.NotificationLog   = (*Store)(nil)
 	_ flow.Checkpointer       = (*Store)(nil)
 	_ store.Admin             = admin{}
 )
@@ -61,6 +63,8 @@ type Store struct {
 	consumed    map[key]int64           // by run id: the last consumed command
 	checkpoints map[key]flow.Checkpoint
 	toolsets    map[key]store.ToolsetRecord // by name
+
+	notifications map[key]store.Notification // by run id
 }
 
 // key scopes an id by tenant: the same id in two tenants is two things.
@@ -86,6 +90,8 @@ func New(opts ...Option) *Store {
 		consumed:    map[key]int64{},
 		checkpoints: map[key]flow.Checkpoint{},
 		toolsets:    map[key]store.ToolsetRecord{},
+
+		notifications: map[key]store.Notification{},
 	}
 	for _, o := range opts {
 		o(s)

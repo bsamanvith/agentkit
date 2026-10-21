@@ -113,6 +113,9 @@ func (s *Server) runView(ctx context.Context, run store.Run) (Run, error) {
 		evs = withEnding(run, summarize(evs), s.cfg.clock.Now())
 	}
 	v := s.runSummary(ctx, run)
+	if v.Notify, err = s.notification(ctx, run.ID); err != nil {
+		return Run{}, err
+	}
 	if len(evs) == 0 { // a run whose execution has not announced it yet
 		evs = []Event{{Type: TypeRunStart, At: run.CreatedAt}}
 	}
@@ -152,7 +155,7 @@ func (s *Server) runView(ctx context.Context, run store.Run) (Run, error) {
 // reading its events (a suspended run's interrupts are its log's last entry).
 func (s *Server) runSummary(ctx context.Context, run store.Run) Run {
 	now := s.cfg.clock.Now()
-	v := Run{V: WireVersion, ID: run.ID, ConversationID: run.ConversationID, Pool: run.Pool, Status: runStatus(run, now), CreatedAt: run.CreatedAt, Usage: run.Usage}
+	v := Run{V: WireVersion, ID: run.ID, ConversationID: run.ConversationID, Pool: run.Pool, Status: runStatus(run, now), CreatedAt: run.CreatedAt, Usage: run.Usage, Background: !run.Interactive}
 	if c, err := s.store.GetConversation(ctx, run.ConversationID); err == nil {
 		v.Agent = c.Agent
 	}
@@ -162,7 +165,7 @@ func (s *Server) runSummary(ctx context.Context, run store.Run) Run {
 	}
 	switch v.Status {
 	case StatusFailed:
-		v.Error = &Error{Code: CodeRunFailed, Message: run.Error, Retryable: run.Retryable}
+		v.Error = failedError(run)
 	case StatusRejected:
 		v.Error = &Error{Code: CodeRejected, Message: run.Error}
 	case StatusInterrupted:
@@ -275,6 +278,18 @@ func (s *Server) runEvents(w http.ResponseWriter, r *http.Request) {
 		s.follow(w, r, h, after)
 		return
 	}
+	if awaitsPickup(run, s.cfg.clock.Now()) || s.ownBus && !run.Interactive && run.Status == store.StatusRunning {
+		// A task nobody runs, or one run by a process no bus joins this
+		// server to (gone, or about to be: this server's recovery takes the
+		// task up once its lease expires): wait for the run to be taken up
+		// here, or to end.
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		out, stop := s.openStream(w, r, run, cancel)
+		defer stop()
+		s.pickup(ctx, out, run, evs, after)
+		return
+	}
 	if !held(run, s.cfg.clock.Now()) || s.ownBus {
 		// Nobody runs it, or no bus joins this server to the one that
 		// does: what the store has is all there is.
@@ -318,6 +333,27 @@ func (s *Server) openStream(w http.ResponseWriter, r *http.Request, run store.Ru
 	}
 }
 
+// terminalOf is the terminal function of a watch of run: a background
+// run's watch stops at its run_done, or where its reader stops it, since
+// an execution of it that stopped is not its end (goesOn).
+func terminalOf(run store.Run) func(string) bool {
+	if run.Interactive {
+		return isTerminal
+	}
+	return func(typ string) bool { return typ == TypeRunDone }
+}
+
+// goesOn reports whether e, the last event of an execution of run, leaves
+// the run going on: a background run whose process stopped running it (it
+// shut down, or lost the run's lease), which another takes up. Such an
+// ending is streamed, never stored; a watcher passes over it.
+func goesOn(run store.Run, e Event) bool {
+	if run.Interactive || e.Type != TypeRunError || e.Error == nil || eventID(e).N == 0 {
+		return false
+	}
+	return e.Error.Code == CodeShutdown || e.Error.Code == CodeRunInterrupted
+}
+
 // errReleased means the process running a run let it go.
 var errReleased = errors.New("the run is no longer held")
 
@@ -336,7 +372,7 @@ func (s *Server) watchRun(ctx context.Context, run store.Run, after bus.ID, emit
 		wctx, cancel := context.WithCancelCause(ctx)
 		tl := &tail{after: after, cancel: cancel}
 		stopCheck := s.checkHeld(wctx, tl, run.ID, poll)
-		for se, err := range stream.Watch(wctx, s.store, s.bus, run.ID, after, isTerminal, stream.WithClock(s.cfg.clock), stream.WithPoll(poll)) {
+		for se, err := range stream.Watch(wctx, s.store, s.bus, run.ID, after, terminalOf(run), stream.WithClock(s.cfg.clock), stream.WithPoll(poll)) {
 			if err != nil {
 				if !errors.Is(context.Cause(wctx), errReleased) && ctx.Err() == nil {
 					s.log.Error("following a run's events", "run_id", run.ID, "err", err)
@@ -346,6 +382,12 @@ func (s *Server) watchRun(ctx context.Context, run store.Run, after bus.ID, emit
 			e, err := decodeEvent(se.ID, se.Data)
 			if err != nil {
 				s.log.Error("decoding a run's event", "run_id", run.ID, "err", err)
+				continue
+			}
+			if goesOn(run, e) {
+				// Another process takes the task up: follow it. Its first
+				// event replaces this one, at its seq, so after stays.
+				tl.emitted(se.ID)
 				continue
 			}
 			emit(e)
@@ -371,7 +413,15 @@ func (s *Server) watchRun(ctx context.Context, run store.Run, after bus.ID, emit
 		if held(cur, s.cfg.clock.Now()) {
 			continue // taken over: follow its new process
 		}
-		if tl.short() && s.pending(ctx, run.ID, &after, emit) {
+		if awaitsPickup(cur, s.cfg.clock.Now()) {
+			// A task whose process stopped: wait for the one that takes it
+			// up, and follow that.
+			if _, ok := s.awaitHeld(ctx, run.ID, nil); !ok {
+				return
+			}
+			continue
+		}
+		if tl.short() && s.pending(ctx, cur, &after, emit) {
 			return
 		}
 		rp, err := s.storedEnding(ctx, cur, poll)
@@ -394,10 +444,11 @@ func (s *Server) watchRun(ctx context.Context, run store.Run, after bus.ID, emit
 // the turns those events belong to from the log, and their text_delta
 // events would have the IDs of replayed text, not the ones the holder gave
 // them. It waits for the bus up to endingWait.
-func (s *Server) pending(ctx context.Context, runID string, after *bus.ID, emit func(Event)) bool {
+func (s *Server) pending(ctx context.Context, run store.Run, after *bus.ID, emit func(Event)) bool {
+	runID := run.ID
 	ctx, cancel := context.WithTimeout(ctx, endingWait) // real time, as checkHeld's
 	defer cancel()
-	for se, err := range stream.Pending(ctx, s.bus, runID, *after, isTerminal) {
+	for se, err := range stream.Pending(ctx, s.bus, runID, *after, terminalOf(run)) {
 		if err != nil {
 			if ctx.Err() == nil {
 				s.log.Error("reading what the bus has of a run let go", "run_id", runID, "err", err)
@@ -407,6 +458,9 @@ func (s *Server) pending(ctx context.Context, runID string, after *bus.ID, emit 
 		e, err := decodeEvent(se.ID, se.Data)
 		if err != nil {
 			s.log.Error("decoding a run's event", "run_id", runID, "err", err)
+			continue
+		}
+		if goesOn(run, e) {
 			continue
 		}
 		emit(e)
@@ -933,9 +987,10 @@ func (s *Server) inputRun(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// listRuns serves GET /v1/runs: the runs of a conversation
-// (conversation_id), newest first, or with status=suspended those of every
-// conversation waiting for a decision. status filters the runs.
+// listRuns serves GET /v1/runs: the tenant's runs, newest first, or a
+// conversation's (conversation_id). status (suspended: the runs waiting
+// for a decision or input), background (true or false) and agent filter
+// them.
 func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	limit, ok := listLimit(w, q.Get("limit"))
@@ -947,11 +1002,24 @@ func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "no run status " + quote(status)})
 		return
 	}
-	convID := q.Get("conversation_id")
-	if convID == "" && status != StatusSuspended {
-		writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "name a conversation (conversation_id), or list status=suspended"})
+	var f store.RunFilter
+	f.Status = storeStatus[status]
+	switch q.Get("background") {
+	case "":
+	case "true":
+		f.Kind = store.BackgroundRuns
+	case "false":
+		f.Kind = store.InteractiveRuns
+	default:
+		writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "background must be true or false"})
 		return
 	}
+	f.Agent = q.Get("agent")
+	if f.Agent != "" && !validName.MatchString(f.Agent) {
+		writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "no agent " + quote(f.Agent)})
+		return
+	}
+	convID := q.Get("conversation_id")
 	var after *runKey
 	if v := q.Get("cursor"); v != "" {
 		k, ok := decodeRunCursor(v)
@@ -965,13 +1033,20 @@ func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	convAgent := ""
 	if convID != "" {
-		if _, err := s.store.GetConversation(ctx, convID); err != nil {
+		c, err := s.store.GetConversation(ctx, convID)
+		if err != nil {
 			if errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrInvalid) {
 				writeError(w, http.StatusNotFound, notFoundConversation(convID))
 			} else {
 				s.internal(w, "reading conversation "+quote(convID), err)
 			}
+			return
+		}
+		convAgent = c.Agent
+		if f.Agent != "" && f.Agent != convAgent {
+			writeJSON(w, http.StatusOK, RunList{V: WireVersion, Runs: []Run{}})
 			return
 		}
 	}
@@ -987,7 +1062,7 @@ func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
 		if convID != "" {
 			page, err = s.store.List(ctx, convID, p)
 		} else {
-			page, err = s.store.ListSuspended(ctx, p)
+			page, err = s.store.ListRuns(ctx, f, p)
 		}
 		if err != nil {
 			s.internal(w, "listing runs", err)
@@ -995,10 +1070,11 @@ func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, run := range page.Runs {
 			k := runKey{run.CreatedAt, run.ID}
-			if after != nil && !k.before(*after) {
-				continue
-			}
-			if status != "" && runStatus(run, now) != status {
+			switch {
+			case after != nil && !k.before(*after),
+				status != "" && runStatus(run, now) != status,
+				f.Kind == store.BackgroundRuns && run.Interactive,
+				f.Kind == store.InteractiveRuns && !run.Interactive:
 				continue
 			}
 			if len(out.Runs) == limit {
@@ -1014,6 +1090,18 @@ func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
 		p = store.Page{Order: store.Descending, Limit: store.MaxPageLimit, Cursor: page.Next}
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// storeStatus is the store status of the runs with a wire status: running
+// and interrupted runs are both running in the store.
+var storeStatus = map[string]store.Status{
+	StatusRunning:     store.StatusRunning,
+	StatusInterrupted: store.StatusRunning,
+	StatusDone:        store.StatusCompleted,
+	StatusFailed:      store.StatusFailed,
+	StatusCanceled:    store.StatusCanceled,
+	StatusRejected:    store.StatusRejected,
+	StatusSuspended:   store.StatusSuspended,
 }
 
 // listLimit reads ?limit=; it answers 400 and returns false for a bad one.

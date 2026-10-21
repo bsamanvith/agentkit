@@ -108,6 +108,13 @@ type serveEnv struct {
 	// (credentials.go), opened at startup: nil without a key ring. The
 	// toolsets whose spec names a credential slot get sources over it.
 	vault credentials.Vault
+	// webhookSecret is the master secret of completion webhooks, nil when
+	// they are off; webhookAllow the private hosts they may reach
+	// (webhooks.go).
+	webhookSecret []byte
+	webhookAllow  []string
+	// recoveryInterval is the recovery loop's; 0 for its default.
+	recoveryInterval time.Duration
 }
 
 func (c cli) serve(ctx context.Context, args []string) error {
@@ -410,6 +417,9 @@ func (c cli) serveEnv() (serveEnv, error) {
 			return e, fmt.Errorf("$%s: %w", envCredentialsKey, err)
 		}
 		e.credentialKeys = r
+	}
+	if err := c.webhookEnv(&e); err != nil {
+		return e, err
 	}
 	return e, nil
 }

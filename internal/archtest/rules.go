@@ -208,6 +208,8 @@ func ModuleRules() Rules {
 				"pkg/mcp/servers", "pkg/mcp/server", "pkg/netguard",
 				// A tool policy that holds a call for approval (T084).
 				"pkg/policy",
+				// The webhook secret of a task's tenant (T071).
+				"pkg/tenancy",
 			},
 			// The A2A server (T067) reaches runs through the agent API's
 			// client, in process, so the API applies its own auth; it
@@ -289,6 +291,10 @@ func ModuleRules() Rules {
 				"pkg/tenancy", "pkg/tool", "pkg/harness", "pkg/llm", "pkg/llm/anthropic", "pkg/clock",
 				"pkg/clock/clocktest", "pkg/llm/llmtest", "internal/testkit",
 			},
+			// Completion webhooks (T071): signing, and delivering the
+			// store's notifications through its Admin, never a backend but
+			// in its tests.
+			"pkg/webhook": {"pkg/store", "pkg/tenancy", "pkg/clock", "pkg/store/memory", "pkg/clock/clocktest"},
 			// The SSRF guard is the standard library only.
 			"pkg/netguard": {},
 			// The credential vault (T042) knows tenants and nothing else:

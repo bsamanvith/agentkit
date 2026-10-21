@@ -2,7 +2,7 @@
 id: T071
 title: "Tasks: detached runs, stored event log, resumable event stream, completion webhooks"
 epic: E14
-status: todo
+status: done
 depends_on: [T030, T029, T037, T090]
 ---
 
@@ -39,9 +39,57 @@ Runs that outlive the request that started them. Decisions: [E14](E14-background
 
 ## Acceptance criteria
 
-- [ ] **Detached:** a background run continues after the starting client disconnects, and finishes. Two watchers attached at different times both see every event in order, with no gaps or duplicates (`Last-Event-ID` resume tested mid-stream).
-- [ ] **Restart:** killing the process mid-run and restarting it resumes the run (T030 recovery), and watchers reconnecting with `Last-Event-ID` continue seamlessly (replay e2e with the real binary).
-- [ ] **Cancel:** cancel works and is idempotent. A foreground chat run is still stopped by a disconnect: it is interrupted, not canceled, after T037's reconnect grace (T100), so the user can continue it.
-- [ ] **Webhook delivery:** signed and verified by a test receiver; retried after a 500 (fake clock); never sent twice for one completion (idempotency key).
-- [ ] **Limits:** the concurrent-background limit gives 429; the wall-clock limit ends the run `failed` with a clear code.
-- [ ] **Mutation list** recorded.
+- [x] **Detached:** a background run continues after the starting client disconnects, and finishes. Two watchers attached at different times both see every event in order, with no gaps or duplicates (`Last-Event-ID` resume tested mid-stream).
+- [x] **Restart:** killing the process mid-run and restarting it resumes the run (T030 recovery), and watchers reconnecting with `Last-Event-ID` continue seamlessly (replay e2e with the real binary).
+- [x] **Cancel:** cancel works and is idempotent. A foreground chat run is still stopped by a disconnect: it is interrupted, not canceled, after T037's reconnect grace (T100), so the user can continue it.
+- [x] **Webhook delivery:** signed and verified by a test receiver; retried after a 500 (fake clock); never sent twice for one completion (idempotency key).
+- [x] **Limits:** the concurrent-background limit gives 429; the wall-clock limit ends the run `failed` with a clear code.
+- [x] **Mutation list** recorded.
+
+## Notes
+
+### What was built
+
+- `POST /v1/tasks` (`pkg/agentapi/tasks.go`): a background run (no `runner.Interactive()`) in a conversation of its own, `202` with the run, `Location` and the run headers. `interaction` accepts only `autonomous` (or none), and every task runs with T084's `autonomous` mode whatever its agent's, so it never suspends; `policy` is the run's tool policy as for chats.
+- Watching: `GET /v1/runs/{id}/events` on a task replays the stored log after `Last-Event-ID` and follows the bus; a task's streamed `shutdown`/`interrupted` ending (its process stopped) is skipped (`goesOn`), and the watcher waits for the process that takes the run up (`awaitsPickup`, `pickup`, `awaitHeld`), so a watch of a task ends only at `run_done` or a stored final error. No reconnect grace applies to tasks; the run timeout is for chats only.
+- Store: `store.RunIndex` (`ListRuns` with status, kind and agent filters, cursor pages) and `store.NotificationLog` (one notification per run, its attempts, lease-claimed delivery) in memory, SQLite (migration 0011) and Postgres (0012, with RLS), in `storetest`.
+- Listing: `GET /v1/runs` without `conversation_id` lists the tenant's runs (`status`, `background`, `agent`); the run gains `background` and `notify`.
+- Limits: `WithMaxBackgroundRuns` (default 10, `429 too_many_background_runs`, `Retry-After: 30`), `WithTaskTimeLimit` (default 2h, `runner.WithTimeLimit`, from the run's start across resumes, `failed` with `wall_clock_limit`, not retryable).
+- `pkg/webhook`: `Sign`/`Verify` (`Agentkit-Signature: t=,v1=`, HMAC-SHA256 of `t.body`), `DeriveSecret` per tenant, the notifier (claims due notifications, posts through `pkg/netguard`, `Agentkit-Webhook-Id` = run ID, retries 5s doubling to 1h for 24h, redirects are failures). `GET /v1/webhooks/secret` (admin) gives the tenant's secret.
+- serve: `AGENTKIT_WEBHOOK_SECRET` (32+ bytes), `AGENTKIT_WEBHOOK_ALLOW_HOSTS`, `AGENTKIT_RECOVERY_INTERVAL`; the notifier runs beside recovery as agent-component wiring (`webhooks_agent.go`, behind `!noagent`; `make deps-check` keeps `pkg/webhook` out of the runner and toolsets images); agents' `notify` and `agent_api.max_background_runs`/`task_time_limit` config. `agentclient`: `StartTask`, `WebhookSecret`, `RunsQuery.Background`/`Agent`, `ErrTooManyBackgroundRuns`. OpenAPI updated.
+
+### Decisions
+
+- Migrations are SQLite 0011 and Postgres 0012, after T043's credential blobs (SQLite needs dense numbers).
+- A task's per-run budget is its agent's harness budgets (`budget_exceeded`) plus the wall-clock limit; per-request budget overrides are left to the owner (below).
+- The background limit is counted in the store under a per-server lock: exact on one replica, best-effort across replicas (two replicas may each admit the last place at once).
+- A watcher that follows a task across a hand-over may miss `text_delta` events the new process streamed before it followed; the `turn_done` has the text. Every other event arrives once, in order.
+- `supervised` tasks (T084's unticked "Supervised" criterion) are not served: a suspended task needs a "waiting for input" state its watchers end on and a notification when it suspends (T084's hook: the runner's suspended outcome, `store.Run.Pending`), and an input endpoint (`Runner.Answer`). Left to E14 notifications.
+- Size: +172 KB on agentkit, api and default; local and dev +143 and +147 KB; runner 0 and toolsets +8 KB (`noagent`). Under every budget (docs/SIZES.md).
+- Webhooks are configured by environment (secret, allowed private hosts), not per agent file, so the secret stays out of config.
+
+### Tests per criterion
+
+- Detached: `TestTaskRunsDetached` (grace 0, two watchers, `Last-Event-ID` mid-stream), `TestTaskFinishesUnwatched`.
+- Restart: `TestE2ETaskSurvivesARestart` (real binary, replay model, kill, restart, reconnect with `Last-Event-ID`, one signed delivery), `TestTaskWatchedAcrossARestart` (replicas, shared bus).
+- Cancel: `TestTaskCancel`; the foreground disconnect: `TestClientDisconnect` (unchanged, still interrupted after the grace).
+- Webhooks: `pkg/webhook` `TestDeliveryIsSignedAndVerified`, `TestRetriedAfterA500` (fake clock), `TestNeverSentTwice`, `TestGivesUpAfterTheWindow`, `TestWaitsForTheRunToEnd`; storetest `TestNotifications`; `TestTaskNotify`.
+- Limits: `TestTaskLimit` (9 at once, limit 3, other tenant), `TestTaskLimitCountsTasksOnly`, `TestTaskWallClockLimit`, `TestTaskLimitsLeaveChats`, runner `timelimit_test.go`. Listing: `TestListTasks`, agentclient `TestTasks`.
+
+### Mutation list
+
+Caught: the run timeout applied to tasks (TestTaskLimitsLeaveChats hangs to the suite timeout); the reconnect grace applied to tasks (TestTaskRunsDetached, also by hang); no `goesOn` skip in the watch (TestTaskWatchedAcrossARestart); limit `>` for `>=` (TestTaskLimit); no `wall_clock_limit` classification, live or stored (TestTaskWallClockLimit); the limit counting chats (TestTaskLimitCountsTasksOnly, added for it); a wrong signature (three webhook tests); notifications not idempotent, delivery ignoring the lease (storetest TestNotifications).
+
+Survived (40 and 20 runs): no lock around count-and-start (the window is microseconds on the memory store; a deterministic test needs a store hook); `WebhookPayload` not waiting for the stored ending (the race the wait covers is rare in-process); the `goesOn` skip in `pending` (reached only when a release is seen before the bus event). Kept as defense; follow-up below.
+
+### Owner questions
+
+- Supervised tasks: a `waiting_for_input` status (or `suspended` with a task's `interrupts`) and `POST /v1/runs/{id}/input` for tasks, in T072/T074 or a T071 follow-up?
+
+- Per-request budgets on `POST /v1/tasks` (tokens, tool calls), or only the agent's?
+- Should the background limit be exact across replicas (a store-side counter)?
+
+### For T072/T073/T074
+
+- Start background work with `StartOptions{Background: true}` through `Runs.Start`; it gets recovery, the wall-clock limit and webhooks for free. `Server.WebhookPayload` is the body for any run-ended hook.
+- Follow-ups: a store hook to test the limit race; a test of `WebhookPayload` against a run whose ending is stored late.

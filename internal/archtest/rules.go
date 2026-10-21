@@ -40,6 +40,9 @@ func ModuleRules() Rules {
 			"pkg/auth/resourcemeta": {"github.com/modelcontextprotocol/go-sdk/auth", "github.com/modelcontextprotocol/go-sdk/oauthex"},
 			// Its tests serve an SDK server to add at run time (T096).
 			"pkg/agentapi": {"github.com/modelcontextprotocol/go-sdk/mcp"},
+			// Its tests drive the agents over MCP through the SDK's client
+			// (T063); the package itself uses agentclient only.
+			"pkg/agenttools": {"github.com/modelcontextprotocol/go-sdk/mcp"},
 			// MCP servers added at run time (T096): the SDK's tool type
 			// for definitions; its tests run SDK servers as the fakes.
 			"pkg/mcp/servers": {"github.com/modelcontextprotocol/go-sdk/mcp"},

@@ -1,8 +1,10 @@
 {
   "mcp": {
     "base_path": "/mcp",
+    "call_timeout": "5m30s",
     "toolsets": [
-      {"name": "demo", "type": "demo"}
+      {"name": "demo", "type": "demo"},
+      {"name": "agentkit", "type": "agentkit", "settings": {"timeout": "5m"}}
     ]
   },
   "agent": {

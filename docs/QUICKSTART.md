@@ -82,6 +82,42 @@ curl -s localhost:8080/healthz; curl -s localhost:8080/readyz; curl -s localhost
 
 Use the tools from Claude Code: `claude mcp add --transport http agentkit-demo http://localhost:8080/mcp/demo --header "Authorization: Bearer $AGENTKIT_API_TOKEN"`. When `AGENTKIT_API_TOKEN` is set, `/mcp` needs it too.
 
+### From Claude Code: the agents over MCP
+
+The toolset of type `agentkit` serves the agents themselves as MCP tools, so Claude Code (or any MCP client) can run and test them. `config.json` and `search.json` serve it at `/mcp/agentkit`:
+
+```sh
+claude mcp add --transport http agentkit http://localhost:8080/mcp/agentkit --header "Authorization: Bearer $AGENTKIT_API_TOKEN"
+```
+
+| Tool | Does |
+|---|---|
+| `agents_list` | the agents you may run: name, description, default, toolsets |
+| `agent_run(agent?, message, conversation_id?)` | runs an agent and waits for it: `answer`, `run_id`, `conversation_id`, `status`, `tool_calls` (name, short input, ok or error) and `usage`; `conversation_id` continues a conversation |
+| `run_get(run_id)` | a run, as `agent_run` returns it |
+| `conversations_list(agent?, limit?, cursor?)` | your conversations, newest first |
+| `conversation_get(conversation_id)` | a conversation's messages, with their tool calls and results |
+
+An example session in Claude Code:
+
+```text
+> Use the agentkit tools: ask the search agent what the latest Go release is, then ask it for the release date in the same conversation.
+
+● agentkit - agent_run (MCP)(agent: "search", message: "What is the latest stable Go release?")
+  ⎿ {"run_id": "run_…", "conversation_id": "conv_…", "agent": "search", "status": "done",
+     "answer": "Go 1.27.2 … (https://go.dev/doc/devel/release)",
+     "tool_calls": [{"name": "tavily_search", "input": "{\"query\":\"latest Go release\"}", "ok": true}],
+     "usage": {"input_tokens": 2310, "output_tokens": 96}, "turns": 2}
+
+● agentkit - agent_run (MCP)(message: "When was it released?", conversation_id: "conv_…")
+  ⎿ {"status": "done", "answer": "It was released on …", …}
+```
+
+- **Waiting.** `agent_run` waits up to the toolset's `timeout` setting (default `5m`), and stops a little before `mcp.call_timeout` (default `30s`; the local configs set `5m30s`). A run still going then is not stopped: the result has `"status": "running"` and its IDs, and `run_get` shows it end.
+- **Who you are.** Each call goes to the agent API with your own key, so you see what the API shows that key: your tenant's conversations, and only the agents whose toolsets the key allows all of. The key must also allow the toolset `agentkit` itself, and needs the scope `agent:run` to run agents (`agent:read` to only list and read).
+- **Not for agents.** An agent that lists an `agentkit` toolset fails startup; agents calling agents is what flows are for.
+- **Split deployment.** When `mcp-server` runs without the `agent` component, give the toolset the agent API's URL: `{"name": "agentkit", "type": "agentkit", "settings": {"url": "http://agent:8080"}}`. Each caller's `Authorization` header is sent on to that URL, so both must accept the same keys.
+
 ### From the terminal: `agentkit chat`, `agentkit ask` and `agentkit create`
 
 The same binary is a client of the agent API. It reads the server from `-server` or `AGENTKIT_SERVER` (default `http://127.0.0.1:8080`) and the token from `AGENTKIT_API_TOKEN`, and never prints the token.

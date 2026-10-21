@@ -1,14 +1,15 @@
 {
   "mcp": {
     "base_path": "/mcp",
-    "call_timeout": "75s",
+    "call_timeout": "5m30s",
     "toolsets": [
       {"name": "demo", "type": "demo"},
       {"name": "math", "type": "math"},
       {"name": "files", "type": "files", "settings": {"root": ".data/workspace", "create_root": true}, "optional": true},
       {"name": "tavily", "type": "tavily", "settings": {"auth": "auto"}, "optional": true},
       {"name": "exa", "type": "exa", "optional": true},
-      {"name": "parallel", "type": "parallel", "optional": true}
+      {"name": "parallel", "type": "parallel", "optional": true},
+      {"name": "agentkit", "type": "agentkit", "settings": {"timeout": "5m"}}
     ]
   },
   "agent_api": {

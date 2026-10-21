@@ -148,7 +148,7 @@ func (w *world) process(opts ...runner.Option) *proc {
 		if w.agent != nil {
 			return w.agent(conv), nil
 		}
-		return harness.New(w.model, w.tools, harness.WithNow(w.clk.Now))
+		return harness.New(w.model, w.tools, harness.WithClock(w.clk))
 	}
 	base := []runner.Option{
 		runner.WithClock(w.clk), runner.WithOwner(p.owner), runner.WithLease(ttl),

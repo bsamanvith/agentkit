@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
@@ -30,7 +31,7 @@ func newHarness(t *testing.T, replies ...llmtest.Reply) *harness.Harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := harness.New(llmtest.NewFake(t, replies...), tools, harness.WithNow(func() time.Time { return now }),
+	h, err := harness.New(llmtest.NewFake(t, replies...), tools, harness.WithClock(clocktest.NewFake(now)),
 		harness.WithMaxParallelTools(1)) // tool events in one order, to compare runs
 	if err != nil {
 		t.Fatal(err)

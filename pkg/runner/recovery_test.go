@@ -345,7 +345,7 @@ func TestNonRetryableErrorsAreNeverRetried(t *testing.T) {
 			prompt := w.model.on("q", 2)
 			if c.name == "budget" {
 				w.agent = func(string) runner.Agent {
-					h, err := harness.New(w.model, w.tools, harness.WithNow(w.clk.Now), harness.WithMaxTurns(1))
+					h, err := harness.New(w.model, w.tools, harness.WithClock(w.clk), harness.WithMaxTurns(1))
 					if err != nil {
 						t.Fatal(err)
 					}

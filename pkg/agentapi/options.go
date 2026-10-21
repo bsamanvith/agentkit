@@ -149,8 +149,8 @@ func WithMaxBodyBytes(n int64) Option { return func(c *config) { c.maxBodyBytes 
 func WithKeepAlive(d time.Duration) Option { return func(c *config) { c.keepAlive = d } }
 
 // WithClock sets the clock for retention, the run timeout, the keep-alive and
-// the drain (default [clock.Real]). Give the harness the same clock's Now
-// (harness.WithNow) so that the times in events and resources agree.
+// the drain (default [clock.Real]). Give the harness the same clock
+// (harness.WithClock) so that the times in events and resources agree.
 func WithClock(clk clock.Clock) Option { return func(c *config) { c.clock = clk } }
 
 // WithLogger sets the logger (default: discard). It logs each run's start and

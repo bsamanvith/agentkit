@@ -15,6 +15,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/bsamanvith/agentkit/internal/testkit"
+	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
@@ -37,11 +38,16 @@ func leakcheck(t testing.TB) {
 
 // fakeClock returns times that advance by a millisecond on every call, so
 // timestamps are deterministic and strictly increasing, from any goroutine.
-type fakeClock struct{ n atomic.Int64 }
+// The harness reads only Now; the embedded real clock supplies the timers the
+// interface also asks for.
+type fakeClock struct {
+	clock.Clock
+	n atomic.Int64
+}
 
 var clockStart = time.Date(2026, 10, 11, 9, 0, 0, 0, time.UTC)
 
-func (c *fakeClock) now() time.Time {
+func (c *fakeClock) Now() time.Time {
 	return clockStart.Add(time.Duration(c.n.Add(1)) * time.Millisecond)
 }
 
@@ -96,7 +102,7 @@ type rig struct {
 
 func newHarness(tb testing.TB, model llm.Model, reg tool.Registry, opts ...harness.Option) *rig {
 	tb.Helper()
-	opts = append([]harness.Option{harness.WithNow((&fakeClock{}).now)}, opts...)
+	opts = append([]harness.Option{harness.WithClock(&fakeClock{Clock: clock.Real()})}, opts...)
 	rec := &recorder{inner: model}
 	h, err := harness.New(rec, reg, opts...)
 	if err != nil {

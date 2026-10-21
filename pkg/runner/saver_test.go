@@ -59,7 +59,7 @@ func (s tenantStore) Context(ctx context.Context, id string) (store.ContextView,
 // the state key "prompt", saved through the process's store.
 func (w *world) agentFlow() {
 	w.flows = func(p *proc, _ string) (flow.Step, error) {
-		h, err := harness.New(w.model, w.tools, harness.WithNow(w.clk.Now))
+		h, err := harness.New(w.model, w.tools, harness.WithClock(w.clk))
 		if err != nil {
 			return nil, err
 		}
@@ -85,7 +85,7 @@ func agentReference(t *testing.T, name string, tools int) (agentstep.Output, []l
 	t.Helper()
 	w := newWorld(t)
 	prompt := w.model.on(name, tools)
-	h, err := harness.New(w.model, w.tools, harness.WithNow(w.clk.Now))
+	h, err := harness.New(w.model, w.tools, harness.WithClock(w.clk))
 	if err != nil {
 		t.Fatal(err)
 	}

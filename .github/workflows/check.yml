@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+# Every job reads the repository and nothing else; a job that needs more
+# says so in its own permissions block, with the reason (none does). Actions
+# are pinned to a full commit SHA with the release in a comment (T101), and
+# checkout keeps no token: make workflow-lint (actionlint, zizmor) enforces it.
 permissions:
   contents: read
 
@@ -14,12 +18,21 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: the checkout left no credentials in .git/config
+        run: scripts/check-no-git-credentials.sh
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
+      # make check runs zizmor when it is installed (scripts/zizmor.sh).
+      - name: install zizmor for make workflow-lint
+        run: pipx install "zizmor==$(make -s print-zizmor-version)"
       - name: make check
         run: make check
+        env:
+          ZIZMOR_REQUIRED: "1"
 
   # The integration tier, required like every job here: tests built with
   # -tags integration against real dependencies. pkg/bus (T089) runs against
@@ -59,8 +72,12 @@ jobs:
       AGENTKIT_REDIS_SERVER: /usr/bin/redis-server
       AGENTKIT_PG_URL: postgres://agentkit:agentkit@localhost:5432/agentkit_test?sslmode=disable
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: the checkout left no credentials in .git/config
+        run: scripts/check-no-git-credentials.sh
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
       - name: Install redis-server for TestRestart, without starting it
@@ -88,7 +105,11 @@ jobs:
   image:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: the checkout left no credentials in .git/config
+        run: scripts/check-no-git-credentials.sh
       - name: make image
         run: make image BIN=agentkit
       - name: make image-size
@@ -109,14 +130,18 @@ jobs:
   web:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: the checkout left no credentials in .git/config
+        run: scripts/check-no-git-credentials.sh
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           package_json_file: web/package.json
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: web/.nvmrc
           cache: pnpm
@@ -129,7 +154,7 @@ jobs:
         run: make smoke
       - name: Upload the Playwright report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: playwright-report
           path: web/apps/console/playwright-report

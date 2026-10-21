@@ -4,6 +4,9 @@
 GO ?= go
 GOLANGCI_VERSION := v2.14.0
 GOLANGCI := bin/golangci-lint-$(GOLANGCI_VERSION)
+ACTIONLINT_VERSION := v1.7.12
+ACTIONLINT := bin/actionlint-$(ACTIONLINT_VERSION)
+ZIZMOR_VERSION := 1.30.1
 TESTFLAGS ?= -race -shuffle=on
 FUZZTIME ?= 10s
 
@@ -85,7 +88,21 @@ tidy-check: ## Fail if go.mod/go.sum are not tidy
 	$(GO) mod tidy -diff
 
 .PHONY: check
-check: tidy-check fmt-check lint deps-check test ## Everything a change must pass
+check: tidy-check fmt-check lint workflow-lint deps-check test ## Everything a change must pass
+
+.PHONY: workflow-lint
+workflow-lint: $(ACTIONLINT) ## Lint .github/: actionlint, and zizmor when it or uv is installed (CI installs it)
+	$(ACTIONLINT)
+	@ZIZMOR_VERSION=$(ZIZMOR_VERSION) scripts/zizmor.sh
+
+.PHONY: print-zizmor-version
+print-zizmor-version:
+	@echo $(ZIZMOR_VERSION)
+
+$(ACTIONLINT):
+	@mkdir -p bin
+	GOBIN=$(CURDIR)/bin GOTOOLCHAIN=$$($(GO) env GOVERSION) $(GO) install github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION)
+	mv bin/actionlint $@
 
 .PHONY: tools
 tools: $(GOLANGCI) ## Install the pinned linter into bin/

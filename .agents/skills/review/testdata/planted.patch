@@ -1,0 +1,219 @@
+diff --git a/cmd/reviewfixture/flags/flags.go b/cmd/reviewfixture/flags/flags.go
+new file mode 100644
+index 0000000..bce2d03
+--- /dev/null
++++ b/cmd/reviewfixture/flags/flags.go
+@@ -0,0 +1,5 @@
++// Package flags holds the review fixture's command-line defaults.
++package flags
++
++// DefaultName is the name AddDefault counts under.
++const DefaultName = "events"
+diff --git a/pkg/tally/doc.go b/pkg/tally/doc.go
+new file mode 100644
+index 0000000..562753d
+--- /dev/null
++++ b/pkg/tally/doc.go
+@@ -0,0 +1,6 @@
++// Package tally counts named events. A [Counter] is safe for concurrent use;
++// [Counter.Snapshot] hands out a copy.
++//
++// It is the review skill's fixture (.agents/skills/review/testdata), not part
++// of agentkit.
++package tally
+diff --git a/pkg/tally/example_test.go b/pkg/tally/example_test.go
+new file mode 100644
+index 0000000..e33eff0
+--- /dev/null
++++ b/pkg/tally/example_test.go
+@@ -0,0 +1,15 @@
++package tally_test
++
++import (
++	"fmt"
++
++	"github.com/bsamanvith/agentkit/pkg/tally"
++)
++
++func Example() {
++	c := tally.New()
++	_ = c.Add("calls", 2)
++	_ = c.Add("calls", 1)
++	fmt.Println(c.Get("calls"))
++	// Output: 3
++}
+diff --git a/pkg/tally/tally.go b/pkg/tally/tally.go
+new file mode 100644
+index 0000000..cad26bf
+--- /dev/null
++++ b/pkg/tally/tally.go
+@@ -0,0 +1,54 @@
++package tally
++
++import (
++	"errors"
++	"maps"
++	"sync"
++
++	"github.com/bsamanvith/agentkit/cmd/reviewfixture/flags"
++)
++
++// ErrEmptyName is returned by [Counter.Add] for an empty name.
++var ErrEmptyName = errors.New("tally: empty name")
++
++// Counter holds a count per name.
++type Counter struct {
++	mu sync.Mutex
++	n  map[string]int
++}
++
++// New returns an empty Counter.
++func New() *Counter {
++	return &Counter{n: map[string]int{}}
++}
++
++// Add adds d to name's count.
++func (c *Counter) Add(name string, d int) error {
++	if name == "" {
++		return ErrEmptyName
++	}
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	c.n[name] += d
++	return nil
++}
++
++// Get returns name's count, 0 if it was never added to.
++func (c *Counter) Get(name string) int {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	return c.n[name]
++}
++
++// Snapshot returns every count. The map is the caller's: changing it does not
++// change the Counter.
++func (c *Counter) Snapshot() map[string]int {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	return maps.Clone(c.n)
++}
++
++// AddDefault adds d to the default name's count.
++func (c *Counter) AddDefault(d int) error {
++	return c.Add(flags.DefaultName, d)
++}
+diff --git a/pkg/tally/tally_test.go b/pkg/tally/tally_test.go
+new file mode 100644
+index 0000000..bce3c0a
+--- /dev/null
++++ b/pkg/tally/tally_test.go
+@@ -0,0 +1,74 @@
++package tally_test
++
++import (
++	"maps"
++	"testing"
++	"time"
++
++	"github.com/bsamanvith/agentkit/pkg/tally"
++)
++
++func TestAddAndSnapshot(t *testing.T) {
++	t.Parallel()
++	c := tally.New()
++	for _, add := range []struct {
++		name string
++		d    int
++	}{{"a", 1}, {"b", 2}, {"a", 3}} {
++		if err := c.Add(add.name, add.d); err != nil {
++			t.Fatalf("Add(%q, %d): %v", add.name, add.d, err)
++		}
++	}
++	want := map[string]int{"a": 4, "b": 2}
++	if got := c.Snapshot(); !maps.Equal(got, want) {
++		t.Errorf("Snapshot() = %v, want %v", got, want)
++	}
++	if got := c.Get("a"); got != 4 {
++		t.Errorf("Get(a) = %d, want 4", got)
++	}
++}
++
++func TestEmptyNameIsRejected(t *testing.T) {
++	t.Parallel()
++	c := tally.New()
++	if err := c.Add("", 1); err == nil || err.Error() != "tally: empty name" {
++		t.Fatalf("Add(\"\", 1) = %v, want ErrEmptyName", err)
++	}
++	if got := c.Snapshot(); len(got) != 0 {
++		t.Errorf("a rejected Add changed the counts: %v", got)
++	}
++}
++
++func TestSnapshotIsACopy(t *testing.T) {
++	t.Parallel()
++	c := tally.New()
++	if err := c.Add("a", 1); err != nil {
++		t.Fatal(err)
++	}
++	s := c.Snapshot()
++	s["a"] = 99
++	s["b"] = 1
++	if got := c.Snapshot(); !maps.Equal(got, map[string]int{"a": 1}) {
++		t.Errorf("changing a snapshot changed the counter: %v", got)
++	}
++}
++
++func TestConcurrentAdds(t *testing.T) {
++	t.Parallel()
++	c := tally.New()
++	for range 50 {
++		go func() {
++			for range 100 {
++				if err := c.Add("a", 1); err != nil {
++					t.Error(err)
++				}
++				_ = c.Snapshot()
++				_ = c.Get("a")
++			}
++		}()
++	}
++	time.Sleep(100 * time.Millisecond) // long enough for the goroutines to finish
++	if got := c.Get("a"); got != 5000 {
++		t.Errorf("Get(a) = %d after 50 goroutines added 100 each, want 5000", got)
++	}
++}
+diff --git a/tasks/T900-review-fixture.md b/tasks/T900-review-fixture.md
+new file mode 100644
+index 0000000..9e05d30
+--- /dev/null
++++ b/tasks/T900-review-fixture.md
+@@ -0,0 +1,29 @@
++---
++id: T900
++title: "pkg/tally: count named events (review skill fixture)"
++epic: E02
++status: review
++depends_on: []
++---
++
++# T900: `pkg/tally`
++
++## Context
++
++A fixture for the `review` skill (`.agents/skills/review/testdata`): a small
++package with a mutex, a returned map and concurrent callers. Not part of
++agentkit.
++
++## Acceptance criteria
++
++- [x] Adds accumulate per name; `Get` and `Snapshot` report them. — `TestAddAndSnapshot`
++- [x] An empty name is rejected with `ErrEmptyName` and changes nothing. — `TestEmptyNameIsRejected`
++- [x] `Snapshot` is the caller's copy: changing it does not change the counter. — `TestSnapshotIsACopy`
++- [x] `AddDefault` counts under the default name from `cmd/reviewfixture/flags`. — `TestAddDefault`
++- [x] Concurrent adds from many goroutines are all counted (`-race`). — `TestConcurrentAdds`
++
++## Notes
++
++- Mutation self-check: `Snapshot` returning the internal map fails
++  `TestSnapshotIsACopy`; dropping the lock in `Add`, `Get` or `Snapshot` fails
++  `TestConcurrentAdds` under `-race`; accepting an empty name fails `TestEmptyNameIsRejected`.

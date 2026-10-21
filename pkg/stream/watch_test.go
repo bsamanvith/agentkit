@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -334,5 +335,76 @@ func TestReopenContinuesLiveIDs(t *testing.T) {
 			t.Errorf("after the reopen a live event has ID %s, want 1.3", e.ID)
 		}
 		r.durable("run_done")
+	})
+}
+
+// Pending brings what the bus has after an ID, deltas included, up to the
+// topic's newest when it is called, and ends there: nothing published later
+// is waited for. It ends before a message that would skip a durable event.
+func TestPendingUpToTheNewest(t *testing.T) {
+	t.Parallel()
+	forEachBus(t, roomy, func(t *testing.T, b backend) {
+		ctx := tenantCtx(t, "acme")
+		log := memory.New()
+		p, _ := stream.NewPublisher(log, b.bus, quiet)
+		r := newRun(ctx, t, p, log, "run")
+		start := r.durable("run_start")
+		r.delta()
+		r.delta()
+		r.durable("turn_done")
+		pending := func(after bus.ID) []string {
+			t.Helper()
+			var got []stream.Event
+			for e, err := range stream.Pending(ctx, b.bus, "run", after, isDone) {
+				if err != nil {
+					t.Fatalf("after %s: err = %v", after, err)
+				}
+				got = append(got, e)
+			}
+			return ids(got)
+		}
+		if g := pending(start.ID); !slices.Equal(g, []string{"1.1", "1.2", "2"}) {
+			t.Errorf("after run_start got %v, want 1.1 1.2 2", g)
+		}
+		if g := pending(r.events[len(r.events)-1].ID); len(g) != 0 {
+			t.Errorf("after the newest got %v, want nothing", g)
+		}
+		r.durable("run_done")
+		r.durable("after_the_end")
+		if g := pending(start.ID); !slices.Equal(g, []string{"1.1", "1.2", "2", "3"}) {
+			t.Errorf("after run_start got %v, want up to run_done", g)
+		}
+		if g := pending(bus.ID{Seq: 1, N: 1}); !slices.Equal(g, []string{"1.2", "2", "3"}) {
+			t.Errorf("after 1.1 got %v, want 1.2 2 3", g)
+		}
+	})
+}
+
+// Pending ends before a message that would skip a durable event the bus
+// never had: the log has it.
+func TestPendingStopsAtAHole(t *testing.T) {
+	t.Parallel()
+	forEachBus(t, roomy, func(t *testing.T, b backend) {
+		ctx := tenantCtx(t, "acme")
+		log := memory.New()
+		f := &faulty{Bus: b.bus}
+		p, _ := stream.NewPublisher(log, f, quiet)
+		r := newRun(ctx, t, p, log, "run")
+		start := r.durable("run_start")
+		r.delta()
+		f.dropNext(1)
+		r.durable("turn_done") // stored, never published
+		r.delta()
+		r.durable("run_done")
+		var got []stream.Event
+		for e, err := range stream.Pending(ctx, b.bus, "run", start.ID, isDone) {
+			if err != nil {
+				t.Fatal(err)
+			}
+			got = append(got, e)
+		}
+		if g := ids(got); !slices.Equal(g, []string{"1.1"}) {
+			t.Errorf("got %v, want 1.1 then the end before the hole", g)
+		}
 	})
 }

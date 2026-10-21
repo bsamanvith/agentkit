@@ -1,8 +1,10 @@
 package agentapi_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -131,3 +133,73 @@ func TestStopAndCancelAcrossReplicas(t *testing.T) {
 		}
 	}
 }
+
+// TestFollowWhenTheBusLagsTheRelease: a follower whose bus has not brought
+// a turn's text when the holder lets the run go still streams that text with
+// the IDs the holder gave it, from the bus, not as text replayed from the
+// store with other IDs.
+func TestFollowWhenTheBusLagsTheRelease(t *testing.T) {
+	t.Parallel()
+	m := echo(t)
+	m.gate = make(chan struct{}, 1)
+	lag := &laggingBus{}
+	a, b := replicasWith(t, m, replicaConfig{busB: func(bb bus.Bus) bus.Bus { lag.Bus = bb; return lag }})
+	s := a.start(t.Context(), "hi", "")
+	start := s.until(agentapi.TypeRunStart, 0)
+	// b's watch has read the store: the turn reaches it by the bus only.
+	whole := b.follow(start.RunID, "")
+	whole.until(agentapi.TypeRunStart, 0)
+	tail := b.follow(start.RunID, start.ID)
+	m.gate <- struct{}{}
+	got, rest := s.all(), tail.all()
+	whole.all()
+	if !jsonEqual(rest, got[1:]) {
+		t.Errorf("from after run_start b streamed\n%s\nwant the holder's\n%s", jsonOf(rest), jsonOf(got[1:]))
+	}
+}
+
+// laggingBus is a bus whose first subscription to a run's topic brings no
+// live event: it holds the first one, and the rest behind it, until the
+// subscriber gives up (it saw the run let go). Later subscriptions are
+// served as usual.
+type laggingBus struct {
+	bus.Bus
+	once sync.Once
+}
+
+func (b *laggingBus) Subscribe(ctx context.Context, topic bus.Topic, after bus.ID) (bus.Subscription, error) {
+	sub, err := b.Bus.Subscribe(ctx, topic, after)
+	first := false
+	if err == nil && topic.Kind() == bus.KindRun {
+		b.once.Do(func() { first = true })
+	}
+	if !first {
+		return sub, err
+	}
+	l := &laggingSub{Subscription: sub, c: make(chan bus.Message)}
+	go func() {
+		defer close(l.c)
+		for m := range sub.C() {
+			if m.ID.N != 0 {
+				<-ctx.Done()
+			}
+			if ctx.Err() != nil { // given up on: what it held is lost
+				for range sub.C() {
+				}
+				return
+			}
+			select {
+			case l.c <- m:
+			case <-ctx.Done():
+			}
+		}
+	}()
+	return l, nil
+}
+
+type laggingSub struct {
+	bus.Subscription
+	c chan bus.Message
+}
+
+func (s *laggingSub) C() <-chan bus.Message { return s.c }

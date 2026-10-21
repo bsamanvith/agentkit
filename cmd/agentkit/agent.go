@@ -78,6 +78,11 @@ type agentDef struct {
 	// Memory gives the agent a context store and the "memory" tool over it
 	// (memory.go); nil gives it neither.
 	Memory *memoryConfig `json:"memory"`
+	// Isolation is the least isolation the agent's runs need: "process"
+	// (the default), "sandbox" or "vm". A run goes only to a pool of
+	// runners at least that isolated (runners.go); startup fails when no
+	// pool is.
+	Isolation string `json:"isolation"`
 }
 
 // apiConfig is the "agent_api" section of the serve config file: limits of

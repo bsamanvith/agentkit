@@ -152,7 +152,7 @@ func (s *Server) runView(ctx context.Context, run store.Run) (Run, error) {
 // reading its events (a suspended run's interrupts are its log's last entry).
 func (s *Server) runSummary(ctx context.Context, run store.Run) Run {
 	now := s.cfg.clock.Now()
-	v := Run{V: WireVersion, ID: run.ID, ConversationID: run.ConversationID, Status: runStatus(run, now), CreatedAt: run.CreatedAt, Usage: run.Usage}
+	v := Run{V: WireVersion, ID: run.ID, ConversationID: run.ConversationID, Pool: run.Pool, Status: runStatus(run, now), CreatedAt: run.CreatedAt, Usage: run.Usage}
 	if c, err := s.store.GetConversation(ctx, run.ConversationID); err == nil {
 		v.Agent = c.Agent
 	}
@@ -612,18 +612,17 @@ func (s *Server) resumeConversation(ctx context.Context, w http.ResponseWriter, 
 // resume continues a run that is not final and not going on. busy is the
 // code of a run that is going on.
 func (s *Server) resume(ctx context.Context, w http.ResponseWriter, r *http.Request, run store.Run, busy string) {
-	if acc := accessOf(r); acc.ok {
-		// A resume runs the agent's tools: only for a request that may use
-		// them all.
-		c, err := s.store.GetConversation(ctx, run.ConversationID)
-		if err != nil {
-			s.internal(w, "reading conversation "+quote(run.ConversationID), err)
-			return
-		}
-		if a := s.agents[c.Agent]; a != nil && !acc.agent(a) {
-			writeError(w, http.StatusNotFound, &Error{Code: CodeNotFound, Message: "no agent " + quote(c.Agent)})
-			return
-		}
+	c, err := s.store.GetConversation(ctx, run.ConversationID)
+	if err != nil {
+		s.internal(w, "reading conversation "+quote(run.ConversationID), err)
+		return
+	}
+	a := s.agents[c.Agent]
+	// A resume runs the agent's tools: only for a request that may use them
+	// all.
+	if acc := accessOf(r); acc.ok && a != nil && !acc.agent(a) {
+		writeError(w, http.StatusNotFound, &Error{Code: CodeNotFound, Message: "no agent " + quote(c.Agent)})
+		return
 	}
 	switch {
 	case s.isDraining():
@@ -643,11 +642,27 @@ func (s *Server) resume(ctx context.Context, w http.ResponseWriter, r *http.Requ
 		s.unavailable(w, apiErr)
 		return
 	}
+	freePool := func() {}
+	if a != nil { // else the runner refuses the run: its agent is not served
+		var (
+			status int
+			apiErr *Error
+		)
+		_, freePool, status, apiErr = s.admitPool(a, runner.Placement{
+			ConversationID: run.ConversationID, RunID: run.ID, Interactive: run.Interactive, Resume: true, Pool: run.Pool,
+		})
+		if apiErr != nil {
+			s.release()
+			s.refuse(w, status, apiErr)
+			return
+		}
+	}
 	execCtx, cancel := execContext(ctx)
 	x, err := s.runs.Resume(execCtx, run.ID)
 	if err != nil {
 		cancel(nil)
 		s.release()
+		freePool()
 		s.startError(w, err, busy)
 		return
 	}
@@ -657,8 +672,8 @@ func (s *Server) resume(ctx context.Context, w http.ResponseWriter, r *http.Requ
 		// own, rather than leave the run claimed.
 		s.log.Error("reading a resumed run's events", "run_id", run.ID, "err", err)
 	}
-	s.log.Info("run resumed", "run_id", run.ID, "conversation_id", run.ConversationID, "turns", seed.turns)
-	h := s.launch(execCtx, cancel, x, seed)
+	s.log.Info("run resumed", "run_id", run.ID, "conversation_id", run.ConversationID, "pool", x.Run.Pool, "turns", seed.turns)
+	h := s.launch(execCtx, cancel, x, seed, freePool)
 	s.respond(w, r, h, lastID(seed.events))
 }
 
@@ -786,7 +801,8 @@ func (s *Server) decideRun(w http.ResponseWriter, r *http.Request) {
 		s.log.Error("reading a decided run's events", "run_id", id, "err", err)
 	}
 	s.log.Info("run decided", "run_id", id, "path", req.Path, "approved", req.Approved)
-	h := s.launch(execCtx, cancel, x, seed)
+	// A flow run: in no pool, its agent steps run with it (E20, T105).
+	h := s.launch(execCtx, cancel, x, seed, nil)
 	if strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
 		s.follow(w, r, h, lastID(seed.events))
 		return
@@ -881,7 +897,7 @@ func (s *Server) inputRun(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.log.Error("reading an answered run's events", "run_id", id, "err", err)
 	}
-	h := s.launch(execCtx, cancel, x, seed)
+	h := s.launch(execCtx, cancel, x, seed, nil)
 	if strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
 		s.follow(w, r, h, lastID(seed.events))
 		return

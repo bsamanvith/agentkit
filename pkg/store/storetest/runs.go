@@ -580,24 +580,26 @@ func RunRunStore(t *testing.T, newStore func(t *testing.T, clk clock.Clock) stor
 			opts []store.CreateOption
 		}{
 			{"plain", nil},
-			{"queued", []store.CreateOption{store.WithLane("batch é"), store.WithPriority(-3), store.WithStartAt(later)}},
+			{"queued", []store.CreateOption{store.WithLane("batch é"), store.WithPriority(-3), store.WithStartAt(later), store.WithPool("background é")}},
 			{"extremes", []store.CreateOption{store.WithPriority(store.MaxPriority), store.WithStartAt(r.clk.Now().Add(-time.Hour))}},
 			{"lowest", []store.CreateOption{store.WithPriority(store.MinPriority), store.Interactive()}},
 		} {
 			run := r.mustCreate(ctx, c.id, "c-"+c.id, c.opts...) // the rig checks what comes back
-			if c.id == "plain" && (!run.StartAt.Equal(run.CreatedAt) || run.Lane != "" || run.Priority != 0) {
-				t.Errorf("a plain run has lane %q, priority %d, start %v; want the default lane, 0 and its creation %v",
-					run.Lane, run.Priority, run.StartAt, run.CreatedAt)
+			if c.id == "plain" && (!run.StartAt.Equal(run.CreatedAt) || run.Lane != "" || run.Priority != 0 || run.Pool != "") {
+				t.Errorf("a plain run has lane %q, priority %d, start %v, pool %q; want the default lane, 0, its creation %v and no pool",
+					run.Lane, run.Priority, run.StartAt, run.Pool, run.CreatedAt)
 			}
 		}
-		again := r.mustCreate(ctx, "queued", "c-queued", store.WithLane("other"), store.WithPriority(9))
-		if again.Lane != "batch é" || again.Priority != -3 || !again.StartAt.Equal(later) {
-			t.Errorf("Create again = lane %q, priority %d, start %v; want the run as first stored", again.Lane, again.Priority, again.StartAt)
+		again := r.mustCreate(ctx, "queued", "c-queued", store.WithLane("other"), store.WithPriority(9), store.WithPool("other"))
+		if again.Lane != "batch é" || again.Priority != -3 || !again.StartAt.Equal(later) || again.Pool != "background é" {
+			t.Errorf("Create again = lane %q, priority %d, start %v, pool %q; want the run as first stored", again.Lane, again.Priority, again.StartAt, again.Pool)
 		}
 
 		for name, opt := range map[string]store.CreateOption{
 			"a lane that is not UTF-8":     store.WithLane("a\xffb"),
 			"a lane with a NUL":            store.WithLane("a\x00b"),
+			"a pool that is not UTF-8":     store.WithPool("a\xffb"),
+			"a pool with a NUL":            store.WithPool("a\x00b"),
 			"a priority above the maximum": store.WithPriority(store.MaxPriority + 1),
 			"a priority below the minimum": store.WithPriority(store.MinPriority - 1),
 			"a start in the year 3000":     store.WithStartAt(farFuture),

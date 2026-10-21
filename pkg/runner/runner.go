@@ -121,6 +121,10 @@ type Placement struct {
 	// Resume says that the run exists and is being resumed (by a client or
 	// by the recovery loop).
 	Resume bool
+	// Pool is the pool the run is placed in: the one [InPool] named for a
+	// new run, or the run's stored [store.Run.Pool] on a resume; "" when
+	// nobody placed it. A router sends the run back there (package pool).
+	Pool string
 }
 
 // AgentFactory returns the agent that runs a chat run of a conversation. It

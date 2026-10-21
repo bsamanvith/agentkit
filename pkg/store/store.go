@@ -284,6 +284,10 @@ type Run struct {
 	// claimed: a run scheduled for later. It is set by [WithStartAt], to
 	// CreatedAt by default, and never changes.
 	StartAt time.Time
+	// Pool names the runner pool the run was placed in (package
+	// runner/pool): where its agent runs. It is set by [WithPool], "" for a
+	// run nobody placed, and never changes.
+	Pool string
 }
 
 // Due returns the time from which a background run that is running, or
@@ -322,6 +326,8 @@ type CreateOptions struct {
 	Lane     string
 	Priority int
 	StartAt  time.Time
+	// Pool is set by [WithPool].
+	Pool string
 	// LeaseOwner and LeaseTTL are set by [WithLease]; an empty owner means
 	// the run is created unclaimed.
 	LeaseOwner string
@@ -358,6 +364,12 @@ func Interactive() CreateOption {
 // in the package documentation); "" is the default lane.
 func WithLane(lane string) CreateOption {
 	return func(o *CreateOptions) { o.Lane = lane }
+}
+
+// WithPool records the runner pool the run is placed in ([Run.Pool]). The
+// name is text (see Text in the package documentation).
+func WithPool(pool string) CreateOption {
+	return func(o *CreateOptions) { o.Pool = pool }
 }
 
 // WithPriority creates the run with priority p ([Run.Priority]): of the due
@@ -451,7 +463,8 @@ type RunStore interface {
 	// unfinished run: creating another while one is not final is
 	// [ErrUnfinished]. opts set properties stored with the run
 	// ([Interactive], [WithLane], [WithPriority], [WithStartAt],
-	// [WithLease]; a lane that is not text, a priority out of range, a
+	// [WithPool], [WithLease]; a lane or pool that is not text, a priority
+	// out of range, a
 	// start time the store cannot keep or a lease Claim would refuse is
 	// [ErrInvalid]); a retry returns the run as first stored, whatever its
 	// opts.

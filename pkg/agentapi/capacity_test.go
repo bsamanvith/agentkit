@@ -1,0 +1,228 @@
+package agentapi_test
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"slices"
+	"testing"
+	"time"
+
+	"github.com/bsamanvith/agentkit/pkg/agentapi"
+	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
+	"github.com/bsamanvith/agentkit/pkg/harness"
+	"github.com/bsamanvith/agentkit/pkg/runner"
+	"github.com/bsamanvith/agentkit/pkg/runner/pool"
+	"github.com/bsamanvith/agentkit/pkg/store"
+	"github.com/bsamanvith/agentkit/pkg/store/scoped"
+	"github.com/bsamanvith/agentkit/pkg/tenancy"
+)
+
+// tenantQueue stands in for the dispatcher's store.Admin over one tenant:
+// the agent API's tests never hold a store backend, the only way to a real
+// Admin (archtest). It claims the resumable runs of the lanes, oldest first,
+// as ClaimNext does when they share a priority.
+type tenantQueue struct {
+	st     agentapi.Store
+	tenant tenancy.Tenant
+	clk    *clocktest.Fake
+}
+
+func (q tenantQueue) ListResumableAll(context.Context, time.Time, int) ([]store.TenantRun, error) {
+	return nil, store.ErrInvalid // the dispatcher only claims
+}
+
+func (q tenantQueue) ClaimNext(ctx context.Context, lanes []string, owner string, ttl time.Duration) (store.TenantRun, error) {
+	ctx = tenancy.With(ctx, q.tenant)
+	runs, err := q.st.ListResumable(ctx, q.clk.Now(), 0)
+	if err != nil {
+		return store.TenantRun{}, err
+	}
+	for _, r := range runs {
+		if !slices.Contains(lanes, r.Lane) {
+			continue
+		}
+		if _, err := q.st.Claim(ctx, r.ID, owner, ttl); err != nil {
+			continue
+		}
+		claimed, err := q.st.Get(ctx, r.ID)
+		if err != nil {
+			return store.TenantRun{}, err
+		}
+		return store.TenantRun{Tenant: q.tenant, Run: claimed}, nil
+	}
+	return store.TenantRun{}, store.ErrNotFound
+}
+
+// poolsRig is a server with a chat pool and a background pool of one slot
+// each, chats routed to the first and everything else to the second; the
+// agent "worker" answers when the test lets its model go, "talk" at once.
+type poolsRig struct {
+	*rig
+	work  *model
+	mem   agentapi.Store
+	ctx   context.Context // the rig's tenant
+	queue *runner.Recovery
+}
+
+func newPoolsRig(t *testing.T) *poolsRig {
+	t.Helper()
+	work, talk := echo(t), echo(t)
+	work.gate = make(chan struct{}, 8)
+	rt, err := pool.NewRouter([]pool.Pool{pool.NewProcess("chat"), pool.NewProcess("background")},
+		[]pool.Rule{{Pool: "chat", When: pool.Chats()}}, "background",
+		pool.WithLimit("chat", 1), pool.WithLimit("background", 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	clk := clocktest.NewFake(time.Time{})
+	mem := scoped.Memory(clk)
+	tools := registry(t)
+	r := newRig(t, talk, rigConfig{
+		clock: clk, store: mem,
+		agents: []agentapi.Agent{
+			{Name: "worker", Harness: agentHarness(t, work, tools, harness.WithClock(clk))},
+			{Name: "talk", Harness: agentHarness(t, talk, tools, harness.WithClock(clk))},
+		},
+		api: []agentapi.Option{agentapi.WithRouter(rt), agentapi.WithTenant(func(*http.Request) string { return "acme" })},
+	})
+	acme, err := tenancy.NewTenant("acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	queue, err := r.srv.Dispatcher(tenantQueue{st: mem, tenant: acme, clk: clk}, "background")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &poolsRig{rig: r, work: work, mem: mem, ctx: tenancy.With(t.Context(), acme), queue: queue}
+}
+
+// enqueue queues a background run of the worker on a new conversation.
+func (p *poolsRig) enqueue(prompt string) store.Run {
+	p.t.Helper()
+	conv := p.create(`{"agent":"worker"}`)
+	run, err := p.srv.Enqueue(p.ctx, conv.ID, harness.UserText(prompt))
+	if err != nil {
+		p.t.Fatalf("Enqueue: %v", err)
+	}
+	return run
+}
+
+func (p *poolsRig) stored(id string) store.Run {
+	p.t.Helper()
+	run, err := p.mem.Get(p.ctx, id)
+	if err != nil {
+		p.t.Fatal(err)
+	}
+	return run
+}
+
+// eventually waits for cond, for up to ten seconds.
+func eventually(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	for deadline := time.Now().Add(10 * time.Second); !cond(); time.Sleep(time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("never: %s", what)
+		}
+	}
+}
+
+// T105: a background pool that is full never delays a chat. The worker's
+// two queued runs: the background pool's dispatcher starts one, which takes
+// the pool's one slot, and the other waits in the store, unclaimed. A chat
+// meanwhile starts and finishes in the chat pool; the waiting run starts
+// only when the first ends.
+func TestFullBackgroundPoolNeverDelaysAChat(t *testing.T) {
+	t.Parallel()
+	p := newPoolsRig(t)
+	first, second := p.enqueue("job 1"), p.enqueue("job 2")
+	passed := make(chan runner.Report, 1)
+	go func() {
+		rep, err := p.queue.Recover(p.ctx)
+		if err != nil {
+			t.Error(err)
+		}
+		passed <- rep
+	}()
+	eventually(t, "the first job at its model", func() bool { return len(p.work.requests()) == 1 })
+	if got := p.stored(second.ID); got.Lease != (store.Lease{}) || got.Status != store.StatusRunning {
+		t.Fatalf("with the background pool full, the second job is %+v; want it waiting in the store, unclaimed", got)
+	}
+
+	chat := p.startAgent(t.Context(), "hello", "", "talk").all()
+	if end := chat[len(chat)-1]; end.Type != agentapi.TypeRunDone || end.Answer != "echo: hello" {
+		t.Fatalf("the chat ended with %+v while the background pool was full, want it done", end)
+	}
+	if run := p.getRun(chat[0].RunID); run.Pool != "chat" {
+		t.Errorf("the chat ran in pool %q, want chat", run.Pool)
+	}
+	if got := p.stored(second.ID); got.Lease != (store.Lease{}) || len(p.work.requests()) != 1 {
+		t.Errorf("the chat let the second job start (%+v, %d model requests)", got, len(p.work.requests()))
+	}
+
+	p.work.gate <- struct{}{}
+	p.work.gate <- struct{}{}
+	if rep := <-passed; rep.Resumed != 2 {
+		t.Fatalf("the dispatcher's pass = %+v, want both jobs run", rep)
+	}
+	for _, run := range []store.Run{first, second} {
+		if got := p.stored(run.ID); got.Status != store.StatusCompleted || got.Pool != "background" || got.Lane != "background" {
+			t.Errorf("job %s = %+v, want completed in the background pool and its lane", run.ID, got)
+		}
+	}
+}
+
+// T105: a chat whose pool is full is refused at the request, 429 with
+// Retry-After, whether it starts a run or resumes one; it leaves nothing
+// behind, and the server's other slots are not taken.
+func TestFullChatPoolRefusesAChat(t *testing.T) {
+	t.Parallel()
+	p := newPoolsRig(t)
+	p.work.gate <- struct{}{} // the worker's first answer
+	conv := p.startAgent(t.Context(), "first", "", "worker").all()[0].ConversationID
+	held := p.startAgent(t.Context(), "hold on", conv, "worker")
+	held.until(agentapi.TypeRunStart, 0)
+
+	resp, body := p.do("POST", "/v1/runs", jsonRun("hello", "", "talk"), "Accept", "application/json")
+	wantError(t, "a chat with its pool full", resp, body, http.StatusTooManyRequests, agentapi.CodeOverCapacity)
+	if resp.Header.Get("Retry-After") == "" {
+		t.Error("the 429 has no Retry-After")
+	}
+	page, err := p.mem.ListConversations(p.ctx, "talk", store.Page{})
+	if err != nil || len(page.Conversations) != 0 {
+		t.Errorf("the refused chat left conversations %+v (%v), want none", page.Conversations, err)
+	}
+
+	p.work.gate <- struct{}{}
+	held.all()
+	// The slot is back: the next chat runs.
+	if end := p.startAgent(t.Context(), "hello", "", "talk").all(); end[len(end)-1].Type != agentapi.TypeRunDone {
+		t.Errorf("a chat once the pool has a slot again ended with %+v", end[len(end)-1])
+	}
+}
+
+// T105: a run's pool is stored with it and GET /v1/runs/{id} and the list
+// return it: a chat's, and a queued background run's.
+func TestRunPoolIsStoredAndReturned(t *testing.T) {
+	t.Parallel()
+	p := newPoolsRig(t)
+	chat := p.startAgent(t.Context(), "hello", "", "talk").all()
+	id := chat[0].RunID
+	if got := p.stored(id); got.Pool != "chat" {
+		t.Errorf("the chat's stored pool is %q, want chat", got.Pool)
+	}
+	if got := p.getRun(id); got.Pool != "chat" {
+		t.Errorf("GET /v1/runs/%s gives pool %q, want chat", id, got.Pool)
+	}
+	var list agentapi.RunList
+	if code := p.get(fmt.Sprintf("/v1/runs?conversation_id=%s", chat[0].ConversationID), &list); code != http.StatusOK || len(list.Runs) != 1 || list.Runs[0].Pool != "chat" {
+		t.Errorf("GET /v1/runs = %d %+v, want the run in pool chat", code, list)
+	}
+	queued := p.enqueue("job")
+	if queued.Pool != "background" || queued.Lane != "background" {
+		t.Errorf("a queued run's pool %q, lane %q; want background, background", queued.Pool, queued.Lane)
+	}
+	if got := p.getRun(queued.ID); got.Pool != "background" {
+		t.Errorf("GET /v1/runs/%s gives pool %q, want background", queued.ID, got.Pool)
+	}
+}

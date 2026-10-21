@@ -64,7 +64,9 @@ type serveConfig struct {
 	Environment environmentConfig
 	// Credentials is where the credential vault keeps its sealed blobs.
 	Credentials credentialsConfig
-	legacy      bool // Agents come from an "agent" section (or none)
+	// Runners are the runner pools the agents run in (runners.go).
+	Runners runnersConfig
+	legacy  bool // Agents come from an "agent" section (or none)
 }
 
 // environmentConfig is the "environment" section of the config file.
@@ -85,6 +87,7 @@ type serveFile struct {
 	Env      json.RawMessage   `json:"environment"`
 	// Credentials is the credential vault's backend (credentials.go).
 	Credentials json.RawMessage `json:"credentials"`
+	Runners     json.RawMessage `json:"runners"`
 }
 
 // serveEnv is what agentkit serve reads from the environment.
@@ -227,7 +230,7 @@ func (c cli) serve(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	return ag.serve(ctx, rt, ln, log)
+	return ag.serve(ctx, rt, ln, cfg.Runners, log)
 }
 
 // buildToolsets is cli.buildToolsets with the compiled-in catalog.
@@ -441,6 +444,9 @@ func loadServeConfig(path string) (serveConfig, error) {
 	}
 	if err := decodeSection(file.Credentials, &cfg.Credentials); err != nil {
 		return cfg, fmt.Errorf("config %s: credentials: %w", path, err)
+	}
+	if err := decodeSection(file.Runners, &cfg.Runners); err != nil {
+		return cfg, fmt.Errorf("config %s: runners: %w", path, err)
 	}
 	switch {
 	case file.Agent != nil && (file.Agents != nil || file.AgentAPI != nil):

@@ -137,7 +137,7 @@ implementation passes the suite and is picked by a spec or config value.
 | Bus | `bus.Bus`: an atomic conditional append with replay, not a work queue | `bustest.Run` | `AGENTKIT_BUS` through `busopen.Backends` |
 | Model | `llm.Model` | `llmtest` | `model.provider` through `modelProviders` (`cmd/agentkit/models.go`) |
 | Turn loop | `runner.Agent` | runner tests | `AGENTKIT_RUNNER_URL`, or an `agentapi.Agent`'s `Runner` |
-| Where a run's turn loop runs | `pool.Pool` (default: one `process` pool running the agent as built) | `pkg/runner/pool` tests | `agentapi.WithRouter` (a `pool.Router`: rules, then the default pool, never a pool weaker than `agentapi.Agent.Isolation`; E20) |
+| Where a run's turn loop runs | `pool.Pool` (default: one `process` pool running the agent as built) | `pkg/runner/pool` tests | `agentapi.WithRouter` (a `pool.Router`: rules, then the default pool, never a pool weaker than `agentapi.Agent.Isolation`, each pool with its limit; E20), built from the serve config's `runners` section (`cmd/agentkit/runners.go`) |
 | Run orchestration | `agentapi.Runs` (default `*runner.Runner`: in process, under leases) | agentapi tests | `agentapi.WithRuns` |
 | Tools | `tool.Registry` | `toolsettest` | the config's toolsets (`connectors/`, write-connector skill) |
 | Transport | `rpc.Conn` | rpc tests | `rpc.Dial` |

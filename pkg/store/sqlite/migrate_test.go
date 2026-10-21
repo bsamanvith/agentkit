@@ -150,8 +150,8 @@ func TestRunsFromBeforeTheQueueAreQueued(t *testing.T) {
 	s := openPath(t, path)
 	for _, id := range []string{"interrupted", "due", "chat"} {
 		r, err := s.Get(ctx, id)
-		if err != nil || r.Lane != "" || r.Priority != 0 || !r.StartAt.Equal(r.CreatedAt) {
-			t.Errorf("old run %q after the upgrade = %+v, %v; want the default lane, priority 0, starting at its creation", id, r, err)
+		if err != nil || r.Lane != "" || r.Priority != 0 || !r.StartAt.Equal(r.CreatedAt) || r.Pool != "" {
+			t.Errorf("old run %q after the upgrade = %+v, %v; want the default lane, priority 0, starting at its creation, in no pool (0011)", id, r, err)
 		}
 	}
 	runs, err := s.ListResumable(ctx, time.Unix(0, 3), 0)

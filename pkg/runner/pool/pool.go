@@ -231,18 +231,41 @@ type Router struct {
 	named map[string]Pool
 	rules []Rule
 	def   Pool
+	slots map[string]*Slots // the pools with a limit
 
 	closeOnce sync.Once
 	closed    atomic.Bool
 	closeErr  error
 }
 
+// RouterOption configures [NewRouter].
+type RouterOption func(*Router) error
+
+// WithLimit gives the named pool a limit of n runs going on at once: its
+// [Slots] ([Router.Slots]). Whoever runs the pool's runs takes one of them
+// for each: a server for a chat, which it refuses when none is free, and
+// the pool's dispatcher for a background run, which waits in the store
+// until one is (runner.WithSlots). Without it a pool has no limit of its
+// own.
+func WithLimit(pool string, n int) RouterOption {
+	return func(rt *Router) error {
+		if _, ok := rt.named[pool]; !ok {
+			return fmt.Errorf("%w: a limit for pool %q, which is not one of the pools", ErrInvalidConfig, pool)
+		}
+		if n < 1 {
+			return fmt.Errorf("%w: pool %q: limit %d, want 1 or more", ErrInvalidConfig, pool, n)
+		}
+		rt.slots[pool] = NewSlots(n)
+		return nil
+	}
+}
+
 // NewRouter returns a router over pools, which it owns from then on
 // ([Router.Close] closes them): it tries rules in order, then the pool named
 // def. Pool names must be unique and non-empty, and every rule and def must
 // name one of them.
-func NewRouter(pools []Pool, rules []Rule, def string) (*Router, error) {
-	rt := &Router{pools: slices.Clone(pools), named: map[string]Pool{}, rules: slices.Clone(rules)}
+func NewRouter(pools []Pool, rules []Rule, def string, opts ...RouterOption) (*Router, error) {
+	rt := &Router{pools: slices.Clone(pools), named: map[string]Pool{}, rules: slices.Clone(rules), slots: map[string]*Slots{}}
 	for _, p := range pools {
 		if isNil(p) || p.Name() == "" {
 			return nil, fmt.Errorf("%w: a pool with no name", ErrInvalidConfig)
@@ -261,8 +284,23 @@ func NewRouter(pools []Pool, rules []Rule, def string) (*Router, error) {
 	if rt.def == nil {
 		return nil, fmt.Errorf("%w: default pool %q is not one of the pools", ErrInvalidConfig, def)
 	}
+	for _, opt := range opts {
+		if err := opt(rt); err != nil {
+			return nil, err
+		}
+	}
 	return rt, nil
 }
+
+// Pools returns the router's pools, in the order given to [NewRouter].
+func (rt *Router) Pools() []Pool { return slices.Clone(rt.pools) }
+
+// DefaultPool returns the pool that takes what no rule does.
+func (rt *Router) DefaultPool() Pool { return rt.def }
+
+// Slots returns the slots of the named pool ([WithLimit]), or nil for a
+// pool with no limit (or no such pool).
+func (rt *Router) Slots(pool string) *Slots { return rt.slots[pool] }
 
 // isNil reports whether p is nil, or a nil pointer in an interface.
 func isNil(p Pool) bool {
@@ -284,10 +322,16 @@ func Default() *Router {
 	return rt
 }
 
-// Route returns the pool that runs r: of the pools of the rules that match r,
-// in order, then the default pool, the first whose isolation is at least
+// Route returns the pool that runs r. A request placed already
+// ([runner.Placement.Pool]: a run whose pool is stored, or one the server
+// placed before starting it) goes back to that pool while the router has it
+// and it is isolated enough. Otherwise, of the pools of the rules that match
+// r, in order, then the default pool, the first whose isolation is at least
 // r.Isolation. It returns an error matching [ErrNoPool] when there is none.
 func (rt *Router) Route(r Request) (Pool, error) {
+	if p := rt.named[r.Pool]; p != nil && p.Isolation() >= r.Isolation {
+		return p, nil
+	}
 	for _, rule := range rt.rules {
 		if rule.When != nil && !rule.When(r) {
 			continue

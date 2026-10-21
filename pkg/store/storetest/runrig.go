@@ -38,7 +38,8 @@ import (
 //     runs whose lease is not held and the background retryable failed runs
 //     that are due, in order, of those whose StartAt has come: never an
 //     interactive run. A run keeps whether it is interactive, its lane, its
-//     priority and its StartAt (CreatedAt unless WithStartAt set it), and
+//     priority, its StartAt (CreatedAt unless WithStartAt set it) and its
+//     pool, and
 //     Interrupted reports exactly the interactive running runs whose lease
 //     is not held.
 //  7. With an Admin (RunAdmin), ListResumableAll at the clock's time, with no
@@ -62,6 +63,7 @@ type runModel struct {
 	conv        string
 	interactive bool
 	lane        string
+	pool        string
 	priority    int
 	start       time.Time
 	status      store.Status
@@ -126,13 +128,13 @@ func (r *runRig) create(ctx context.Context, id, conv string, opts ...store.Crea
 		if start.IsZero() {
 			start = run.CreatedAt
 		}
-		r.runs[k] = &runModel{conv: conv, status: store.StatusRunning, interactive: o.Interactive, lane: o.Lane, priority: o.Priority, start: start}
+		r.runs[k] = &runModel{conv: conv, status: store.StatusRunning, interactive: o.Interactive, lane: o.Lane, pool: o.Pool, priority: o.Priority, start: start}
 	case m.conv != conv:
 		r.t.Errorf("Create moved run %q from conversation %q to %q", id, m.conv, conv)
 	}
-	if m := r.runs[k]; run.Interactive != m.interactive || run.Lane != m.lane || run.Priority != m.priority || !run.StartAt.Equal(m.start) {
-		r.t.Errorf("Create of run %q returned interactive %v, lane %q, priority %d, start %v; want %v, %q, %d, %v as first created",
-			id, run.Interactive, run.Lane, run.Priority, run.StartAt, m.interactive, m.lane, m.priority, m.start)
+	if m := r.runs[k]; run.Interactive != m.interactive || run.Lane != m.lane || run.Priority != m.priority || !run.StartAt.Equal(m.start) || run.Pool != m.pool {
+		r.t.Errorf("Create of run %q returned interactive %v, lane %q, priority %d, start %v, pool %q; want %v, %q, %d, %v, %q as first created",
+			id, run.Interactive, run.Lane, run.Priority, run.StartAt, run.Pool, m.interactive, m.lane, m.priority, m.start, m.pool)
 	}
 	return run, err
 }
@@ -338,9 +340,9 @@ func (r *runRig) checkTenant(tenant string) {
 		case run.ID != id || run.ConversationID != m.conv || run.Interactive != m.interactive:
 			t.Errorf("tenant %s: run %q reads back as %q in conversation %q, interactive %v; want conversation %q, interactive %v",
 				tenant, id, run.ID, run.ConversationID, run.Interactive, m.conv, m.interactive)
-		case run.Lane != m.lane || run.Priority != m.priority || !run.StartAt.Equal(m.start):
-			t.Errorf("tenant %s: run %q reads back in lane %q at priority %d starting %v; want %q, %d, %v as created",
-				tenant, id, run.Lane, run.Priority, run.StartAt, m.lane, m.priority, m.start)
+		case run.Lane != m.lane || run.Priority != m.priority || !run.StartAt.Equal(m.start) || run.Pool != m.pool:
+			t.Errorf("tenant %s: run %q reads back in lane %q at priority %d starting %v in pool %q; want %q, %d, %v, %q as created",
+				tenant, id, run.Lane, run.Priority, run.StartAt, run.Pool, m.lane, m.priority, m.start, m.pool)
 		case !run.Due().Equal(due(run)):
 			t.Errorf("tenant %s: run %+v Due = %v, want %v", tenant, run, run.Due(), due(run))
 		case run.Interrupted(r.clk.Now()) != interrupted(run, r.clk.Now()):
@@ -422,7 +424,8 @@ func sameRun(a, b store.Run) bool {
 		a.Usage == b.Usage && a.Error == b.Error && a.Retryable == b.Retryable &&
 		a.NextAttemptAt.Equal(b.NextAttemptAt) && a.Attempts == b.Attempts && slices.Equal(a.Pending, b.Pending) &&
 		a.CreatedAt.Equal(b.CreatedAt) && a.FinishedAt.Equal(b.FinishedAt) && sameLease(a.Lease, b.Lease) &&
-		a.Interactive == b.Interactive && a.Lane == b.Lane && a.Priority == b.Priority && a.StartAt.Equal(b.StartAt)
+		a.Interactive == b.Interactive && a.Lane == b.Lane && a.Priority == b.Priority && a.StartAt.Equal(b.StartAt) &&
+		a.Pool == b.Pool
 }
 
 func sameLease(a, b store.Lease) bool {

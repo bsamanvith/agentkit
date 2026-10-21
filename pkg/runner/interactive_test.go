@@ -54,10 +54,10 @@ func (w *world) holdAt(prompt string, k int) <-chan struct{} {
 
 // interrupted starts an interactive run of prompt in conv on p, interrupts it
 // while the model works on turn k, and returns its ID.
-func (w *world) interrupted(p *proc, conv, prompt string, k int) string {
+func (w *world) interrupted(p *proc, conv, prompt string, k int, opts ...runner.RunOption) string {
 	w.t.Helper()
 	held := w.holdAt(prompt, k)
-	x, err := p.r.Run(w.ctx, conv, harness.UserText(prompt), runner.Interactive())
+	x, err := p.r.Run(w.ctx, conv, harness.UserText(prompt), append(opts, runner.Interactive())...)
 	if err != nil {
 		w.t.Fatal(err)
 	}

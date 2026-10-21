@@ -13,6 +13,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
@@ -24,6 +25,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/component"
 	"github.com/bsamanvith/agentkit/pkg/rpc"
 	"github.com/bsamanvith/agentkit/pkg/runner"
+	"github.com/bsamanvith/agentkit/pkg/runner/pool"
 	"github.com/bsamanvith/agentkit/pkg/runner/runnerrpc"
 	"github.com/bsamanvith/agentkit/pkg/store"
 	"github.com/bsamanvith/agentkit/pkg/store/storeopen"
@@ -93,19 +95,26 @@ func (w *agentWiring) server() *agentapi.Server {
 	return w.srv
 }
 
-// serve serves rt on ln with the recovery loop over the store, which
-// resumes the background runs a process left (chat runs stay interrupted
-// for their user). It stops first, then the server drains, then the store
-// closes (serve's defers).
-func (w *agentWiring) serve(ctx context.Context, rt *component.Runtime, ln net.Listener, log *slog.Logger) error {
+// serve serves rt on ln with a recovery loop over the store per pool that
+// takes background runs (runners.dispatched), which resumes the background
+// runs a process left (chat runs stay interrupted for their user) and
+// claims its pool's lane while the pool has a free slot. They stop first,
+// then the server drains, then the store closes (serve's defers).
+func (w *agentWiring) serve(ctx context.Context, rt *component.Runtime, ln net.Listener, runners runnersConfig, log *slog.Logger) error {
 	if w == nil || w.srv == nil {
 		return rt.Serve(ctx, ln)
 	}
 	agents, st := w.srv, w.st
-	rc, err := runner.NewRecovery(agents.Runner(), st.admin, runner.WithExecute(agents.RunRecovered))
-	if err != nil {
-		ln.Close()
-		return err
+	// A dispatcher per pool that takes background runs: each claims its
+	// pool's lane while the pool has a free slot.
+	var dispatchers []*runner.Recovery
+	for _, name := range runners.dispatched() {
+		rc, err := agents.Dispatcher(st.admin, name)
+		if err != nil {
+			ln.Close()
+			return fmt.Errorf("runners: dispatcher of pool %q: %w", name, err)
+		}
+		dispatchers = append(dispatchers, rc)
 	}
 	// A recovery loop that cannot read across tenants (a Postgres role under
 	// row-level security, with no $AGENTKIT_STORE_ADMIN) fails startup
@@ -115,21 +124,23 @@ func (w *agentWiring) serve(ctx context.Context, rt *component.Runtime, ln net.L
 		return fmt.Errorf("recovery: %w", err)
 	}
 	rctx, stopRecovery := context.WithCancel(ctx)
-	recovered := make(chan struct{})
-	go func() {
-		defer close(recovered)
-		_ = rc.Run(rctx, func(r runner.Report, err error) {
-			switch {
-			case err != nil:
-				log.Error("recovery pass", "component", agentapi.Name, "resumed", r.Resumed, "skipped", r.Skipped, "errors", r.Errors, "err", err)
-			case r.Resumed > 0:
-				log.Info("recovery pass", "component", agentapi.Name, "resumed", r.Resumed, "skipped", r.Skipped)
-			}
+	var recovered sync.WaitGroup
+	for i, rc := range dispatchers {
+		name := runners.dispatched()[i]
+		recovered.Go(func() {
+			_ = rc.Run(rctx, func(r runner.Report, err error) {
+				switch {
+				case err != nil:
+					log.Error("recovery pass", "component", agentapi.Name, "pool", name, "resumed", r.Resumed, "skipped", r.Skipped, "errors", r.Errors, "err", err)
+				case r.Resumed > 0:
+					log.Info("recovery pass", "component", agentapi.Name, "pool", name, "resumed", r.Resumed, "skipped", r.Skipped)
+				}
+			})
 		})
-	}()
-	err = rt.Serve(ctx, ln)
+	}
+	err := rt.Serve(ctx, ln)
 	stopRecovery()
-	<-recovered
+	recovered.Wait()
 	return err
 }
 
@@ -287,11 +298,18 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 		_ = closeAll(closers)
 		return component.Mount{}, nil, err
 	}
+	isolations := map[string]pool.Isolation{}
 	for _, a := range cfg.Agents {
+		iso, err := pool.ParseIsolation(a.Isolation)
+		if err != nil {
+			return fail(fmt.Errorf("%s.isolation: %w", a.label(cfg.legacy), err))
+		}
+		isolations[a.Name] = iso
 		def := agentapi.Agent{
 			Name: a.Name, Description: a.Description, System: a.System,
 			Model:    wire.Model{Provider: a.Model.Provider, ID: a.Model.id(), Effort: a.Model.Effort},
 			Toolsets: a.Toolsets, PrefixToolNames: a.PrefixToolNames, RuntimeToolsets: a.RuntimeToolsets,
+			Isolation: iso,
 		}
 		if len(a.RuntimeToolsets) > 0 && admin == nil {
 			return fail(fmt.Errorf("%s.runtime_toolsets: toolsets added at run time are off (runtime_toolsets.enabled)", a.label(cfg.legacy)))
@@ -355,6 +373,13 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 	}
 	if admin != nil {
 		authOpts = append(authOpts, agentapi.WithToolsetAdmin(admin))
+	}
+	rt, err := cfg.Runners.router(cfg.Agents, isolations)
+	if err != nil {
+		return fail(err)
+	}
+	if rt != nil { // NewAgents owns it from here, and closes it if it fails
+		authOpts = append(authOpts, agentapi.WithRouter(rt))
 	}
 	srv, err := agentapi.NewAgents(agents, append(authOpts,
 		agentapi.WithStore(st),

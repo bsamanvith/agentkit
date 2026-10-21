@@ -117,6 +117,24 @@
               }
             }
           },
+          "429": {
+            "description": "over_capacity: the run's runner pool is running as many runs as its limit (retryable).",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "503": {
             "description": "over_capacity: too many runs (retryable); shutting_down: the server is draining.",
             "headers": {
@@ -468,6 +486,24 @@
           },
           "409": {
             "description": "run_final: the run is done, canceled or rejected; awaiting_decision: it waits for a decision; run_leased: it is going on (retryable). run_id names the run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "over_capacity: the run's runner pool is running as many runs as its limit (retryable).",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -2235,6 +2271,10 @@
           "agent": {
             "type": "string",
             "description": "The conversation's agent."
+          },
+          "pool": {
+            "type": "string",
+            "description": "The runner pool the run was placed in: where its agent runs (the server's runners configuration). Absent for a run nobody placed: one from before pools, or a flow run."
           },
           "status": {
             "enum": [

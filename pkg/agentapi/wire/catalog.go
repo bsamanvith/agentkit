@@ -173,7 +173,9 @@ type Tool struct {
 	// what the tool declares; nothing acts on it yet (T084).
 	Interrupts bool `json:"interrupts,omitempty"`
 	// RequiresApproval says the tool asks that a person approve each call.
-	// It is what the tool declares; nothing enforces it yet (T083, T084).
+	// It is what the tool declares: a run's tool policy holds such a call
+	// unless a rule names the tool, and until approvals exist (T084), it
+	// refuses the call, saying so.
 	RequiresApproval bool `json:"requires_approval,omitempty"`
 	// Tags are labels policies match, such as "external".
 	Tags    []string     `json:"tags,omitempty"`

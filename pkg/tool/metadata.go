@@ -68,8 +68,9 @@ type Metadata struct {
 	// acts on it yet: the interaction modes (T084) will.
 	Interrupts bool `json:"interrupts,omitempty"`
 	// RequiresApproval asks that a person approve each call before it runs,
-	// unless a policy says otherwise. Nothing enforces it yet: the policy
-	// engine (T083) and approval holds (T084) will.
+	// unless a policy rule names the tool (package policy). Only a run with a
+	// tool policy enforces it (agentkit serve gives every agent one); until
+	// approval holds exist (T084), such a run refuses the call, saying so.
 	RequiresApproval bool `json:"requiresApproval,omitempty"`
 	// Tags are free-form labels policies can match, such as "external",
 	// "billing" or "pii". Each matches ^[a-z0-9][a-z0-9_.-]{0,63}$; no

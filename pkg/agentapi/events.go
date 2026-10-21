@@ -191,7 +191,7 @@ func (s *Server) kept(ctx context.Context, run store.Run, rp *replayed) error {
 	partial := false // stored events of a turn not done
 	for _, e := range rp.events {
 		switch e.Type {
-		case TypeToolCall, TypeToolResult:
+		case TypeToolCall, TypeToolResult, TypeToolPolicy, TypeToolFlagged:
 			partial = true
 		case TypeTurnDone, TypeRetrying, TypeRewind:
 			partial = false

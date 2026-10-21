@@ -22,6 +22,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/flow"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/policy"
 	"github.com/bsamanvith/agentkit/pkg/runner"
 	"github.com/bsamanvith/agentkit/pkg/runner/pool"
 	"github.com/bsamanvith/agentkit/pkg/store"
@@ -405,6 +406,19 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hasMessage := strings.TrimSpace(req.Message) != ""
+	var start StartOptions
+	if len(req.ToolPolicy) > 0 {
+		if !hasMessage {
+			writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "tool_policy needs a message: a resumed run keeps the policy it started with"})
+			return
+		}
+		p, err := runPolicy(req.ToolPolicy)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "tool_policy: " + err.Error()})
+			return
+		}
+		start.ToolPolicy = &p
+	}
 	convID := req.ConversationID
 	var ag *agent
 	if convID != "" {
@@ -457,7 +471,7 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 		created = true
 	}
 	execCtx, cancel := execContext(ctx)
-	x, err := s.runs.Start(execCtx, convID, harness.UserText(req.Message))
+	x, err := s.runs.Start(execCtx, convID, harness.UserText(req.Message), start)
 	if err != nil {
 		cancel(nil)
 		s.release()
@@ -475,6 +489,19 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 	s.log.Info("run started", "run_id", x.Run.ID, "conversation_id", convID, "agent", ag.Name)
 	h := s.launch(execCtx, cancel, x, replayed{})
 	s.respond(w, r, h, bus.ID{})
+}
+
+// runPolicy reads a run request's tool policy, named "run" unless it names
+// itself (a preset has its name).
+func runPolicy(raw json.RawMessage) (policy.Policy, error) {
+	var p policy.Policy
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return policy.Policy{}, err
+	}
+	if p.Name == "" {
+		p.Name = "run"
+	}
+	return p, nil
 }
 
 // decode reads and checks the body of POST /v1/runs. Unknown fields and

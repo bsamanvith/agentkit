@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/policy"
 )
 
 // The invariants of a run. They hold for every run, whatever the model said,
@@ -237,7 +239,7 @@ func announcedMessages(events []harness.Event) []llm.Message {
 // checkEvents checks the grammar of a run's events. A run that was stopped
 // halfway (not complete) is checked as far as it went.
 //
-//	RunStart  ( TextDelta* ToolStart/ToolDone (each call: start, then done) TurnDone )*  RunDone
+//	RunStart  ( TextDelta* ToolStart/ToolDone (each call: start, [policy [flagged]], done) TurnDone )*  RunDone
 func checkEvents(tb testing.TB, events []harness.Event, finished bool) {
 	tb.Helper()
 	if len(events) == 0 {
@@ -249,7 +251,8 @@ func checkEvents(tb testing.TB, events []harness.Event, finished bool) {
 	turn := 1
 	started := map[int]bool{}
 	done := map[int]bool{}
-	text := map[[2]int]string{} // (turn, block) -> streamed text
+	decided := map[int]policy.Action{} // by the tool policy: the action, then "flagged"
+	text := map[[2]int]string{}        // (turn, block) -> streamed text
 	toolsBegan := false
 	for i, ev := range events[1:] {
 		switch ev.Kind {
@@ -270,7 +273,26 @@ func checkEvents(tb testing.TB, events []harness.Event, finished bool) {
 					i+1, ev.Turn, ev.Call, turn, started[ev.Call], done[ev.Call])
 			}
 			started[ev.Call] = true
+		case harness.EventToolPolicy:
+			if ev.Turn != turn || !started[ev.Call] || done[ev.Call] || decided[ev.Call] != "" {
+				tb.Errorf("event %d: tool_policy for turn %d call %d out of place", i+1, ev.Turn, ev.Call)
+			}
+			if ev.Decision.Action == policy.Allow || !slices.Contains(policy.Actions(), ev.Decision.Action) ||
+				ev.Decision.Reason == "" || ev.Decision.Rule == "" || ev.ToolUse.ID == "" || ev.ToolUse.Input != nil {
+				tb.Errorf("event %d: tool_policy %+v", i+1, ev)
+			}
+			decided[ev.Call] = ev.Decision.Action
+		case harness.EventToolFlagged:
+			if ev.Turn != turn || done[ev.Call] || decided[ev.Call] != policy.Flag || ev.Decision.Action != policy.Flag {
+				tb.Errorf("event %d: tool_flagged for turn %d call %d without its tool_policy", i+1, ev.Turn, ev.Call)
+			}
+			decided[ev.Call] = "flagged"
 		case harness.EventToolDone:
+			// (What a refused call's result says is for the tests: an
+			// AfterTool hook may replace it.)
+			if decided[ev.Call] == policy.Flag {
+				tb.Errorf("event %d: a flagged call ran without tool_flagged", i+1)
+			}
 			if ev.Turn != turn || !started[ev.Call] || done[ev.Call] {
 				tb.Errorf("event %d: tool_done for turn %d call %d without a matching start (turn %d, started %v, done %v)",
 					i+1, ev.Turn, ev.Call, turn, started[ev.Call], done[ev.Call])
@@ -289,6 +311,7 @@ func checkEvents(tb testing.TB, events []harness.Event, finished bool) {
 			checkStreamedText(tb, ev.TurnRecord, text)
 			turn++
 			started, done, toolsBegan = map[int]bool{}, map[int]bool{}, false
+			decided = map[int]policy.Action{}
 		case harness.EventRunDone:
 			if i+2 != len(events) {
 				tb.Errorf("event %d: run_done is not the last event", i+1)

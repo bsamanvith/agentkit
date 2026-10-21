@@ -22,6 +22,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/component"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/memory"
+	"github.com/bsamanvith/agentkit/pkg/policy"
 	"github.com/bsamanvith/agentkit/pkg/rpc"
 	"github.com/bsamanvith/agentkit/pkg/runner"
 	"github.com/bsamanvith/agentkit/pkg/runner/runnerrpc"
@@ -70,6 +71,10 @@ type agentDef struct {
 	// no limit).
 	MaxTurns       int `json:"max_turns"`
 	MaxTotalTokens int `json:"max_total_tokens"`
+	// ToolPolicy decides the agent's tool calls: a preset's name or a
+	// policy (package policy). Absent: "all". The environment's policy and a
+	// run's narrow it.
+	ToolPolicy *policy.Policy `json:"tool_policy"`
 	// Memory gives the agent a context store and the "memory" tool over it
 	// (memory.go); nil gives it neither.
 	Memory *memoryConfig `json:"memory"`
@@ -465,7 +470,12 @@ func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built 
 	if len(a.RuntimeToolsets) > 0 {
 		tools = joinRegistries(tools, admin.Registry(a.RuntimeToolsets...))
 	}
+	toolsetOf, err := toolsetsOf(ctx, sets, a)
+	if err != nil {
+		return fail(fmt.Errorf("%s.toolsets: %w", label, err))
+	}
 	h, err := harness.New(model, tools,
+		harness.WithToolPolicy(a.toolPolicy(cfg.Environment.ToolPolicy), toolsetOf),
 		harness.WithSystem(system),
 		harness.WithRequest(harness.RequestOptions{MaxTokens: a.Model.MaxTokens}),
 		harness.WithMaxTurns(a.MaxTurns),
@@ -477,6 +487,61 @@ func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built 
 		return fail(fmt.Errorf("%s: %w", label, err))
 	}
 	return h, skipped, skills, nil
+}
+
+// toolPolicy is the agent's tool policy narrowed by the environment's (nil
+// for none). An agent without one gets "all": a tool that declares it
+// requires approval still needs it.
+func (d agentDef) toolPolicy(env *policy.Policy) policy.Policy {
+	p := policy.MustPreset(policy.All)
+	if d.ToolPolicy != nil {
+		p = d.ToolPolicy.Clone()
+		if p.Name == "" {
+			p.Name = "agent"
+		}
+	}
+	if env != nil {
+		e := env.Clone()
+		if e.Name == "" {
+			e.Name = "environment"
+		}
+		p = policy.Narrow(p, e)
+	}
+	return p
+}
+
+// toolsetsOf names the toolset of each of an agent's tools, by the name the
+// model calls it, for the rules of tool policies on toolsets. Prefixed
+// names ("<toolset>__<tool>", which runtime toolsets always have) carry it;
+// the others are looked up in the toolsets' lists.
+func toolsetsOf(ctx context.Context, sets map[string]tool.Registry, a agentDef) (func(string) string, error) {
+	owner := map[string]string{}
+	if !a.PrefixToolNames {
+		for name, reg := range sets {
+			defs, err := reg.List(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("toolset %q: list tools: %w", name, err)
+			}
+			for _, d := range defs {
+				owner[d.Name] = name
+			}
+		}
+	}
+	// A toolset's name may itself contain the separator ("my__tools"): the
+	// longest name that prefixes the tool's is its toolset.
+	prefixed := slices.Concat(slices.Collect(maps.Keys(sets)), a.RuntimeToolsets)
+	slices.SortFunc(prefixed, func(x, y string) int { return cmp.Compare(len(y), len(x)) })
+	return func(tool string) string {
+		if set, ok := owner[tool]; ok {
+			return set
+		}
+		for _, set := range prefixed {
+			if strings.HasPrefix(tool, set+agentapi.ToolPrefixSeparator) {
+				return set
+			}
+		}
+		return ""
+	}, nil
 }
 
 // appendNew appends the names not already in list.

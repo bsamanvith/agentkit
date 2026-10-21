@@ -201,6 +201,8 @@ func (r *renderer) event(e wire.Event) {
 		call := e
 		r.lastCall, r.lastResult = &call, nil
 		r.line(r.st.dim("  → " + e.Name + " " + oneLine(string(e.Input), inputWidth)))
+	case wire.TypeToolFlagged:
+		r.line(r.st.dim("  ⚑ " + e.Name + " flagged: " + oneLine(e.Reason, resultWidth)))
 	case wire.TypeToolResult:
 		res := e
 		r.lastResult = &res

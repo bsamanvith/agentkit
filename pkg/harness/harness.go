@@ -9,6 +9,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/policy"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 )
 
@@ -48,6 +49,11 @@ func New(model llm.Model, tools tool.Registry, opts ...Option) (*Harness, error)
 		return nil, fmt.Errorf("%w: clock is nil", ErrInvalidConfig)
 	case cfg.window.Tokens < 0 || cfg.window.Share < 0 || cfg.window.Share > 1:
 		return nil, fmt.Errorf("%w: context window %+v", ErrInvalidConfig, cfg.window)
+	}
+	if cfg.policy != nil {
+		if err := cfg.policy.Validate(); err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+		}
 	}
 	for _, f := range cfg.before {
 		if f == nil {
@@ -109,16 +115,19 @@ type run struct {
 	usage      llm.Usage
 	turns      int
 	rec        Record
-	kinds      map[string]tool.Kind // of the listed tools, by name
+	defs       map[string]tool.Definition // the listed tools, by name
+	// policy decides the run's tool calls: the harness's, narrowed by the
+	// input's; nil when neither has one.
+	policy *policy.Policy
 }
 
-// kindOf returns the kind of the named tool, as [ToolRecord.Kind] says.
-func (r *run) kindOf(name string) tool.Kind {
-	if k, ok := r.kinds[name]; ok {
-		return k
+// toolDef returns the definition of the named tool; for a tool that was not
+// listed, an unclassified one.
+func (r *run) toolDef(name string) tool.Definition {
+	if d, ok := r.defs[name]; ok {
+		return d
 	}
-	k, _ := tool.Metadata{}.Class()
-	return k
+	return tool.Definition{Name: name}
 }
 
 func (r *run) now() time.Time { return r.h.cfg.clock.Now() }
@@ -200,9 +209,9 @@ func (r *run) exec(ctx context.Context, in Input) {
 		r.fail(ctxOr(ctx, fmt.Errorf("list tools: %w", err)))
 		return
 	}
-	r.kinds = make(map[string]tool.Kind, len(defs))
+	r.defs = make(map[string]tool.Definition, len(defs))
 	for _, d := range defs {
-		r.kinds[d.Name], _ = d.Class()
+		r.defs[d.Name] = d.Clone()
 	}
 
 	for {
@@ -229,8 +238,19 @@ func (r *run) exec(ctx context.Context, in Input) {
 	}
 }
 
-// begin validates the input and sets up the transcript.
+// begin validates the input and sets up the transcript and the policy.
 func (r *run) begin(in Input) error {
+	r.policy = r.h.cfg.policy
+	if p := in.ToolPolicy; p != nil {
+		if err := p.Validate(); err != nil {
+			return invalidInput("tool policy: %v", err)
+		}
+		narrowed := p.Clone()
+		if r.policy != nil {
+			narrowed = policy.Narrow(*r.policy, *p)
+		}
+		r.policy = &narrowed
+	}
 	t := in.Transcript.Clone()
 	if err := t.Validate(); err != nil {
 		return err

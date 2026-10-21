@@ -567,6 +567,115 @@ func RunRunStore(t *testing.T, newStore func(t *testing.T, clk clock.Clock) stor
 		}
 	})
 
+	// A run's lane, priority and start time are stored with it as Create
+	// was given them, and a retry returns them as first stored. Without a
+	// start time the run starts when it is created.
+	t.Run("QueueOptionsAreStored", func(t *testing.T) {
+		t.Parallel()
+		r := newRunRig(t, newStore)
+		ctx := r.ctx(tenantA)
+		later := r.clk.Now().Add(time.Hour)
+		for _, c := range []struct {
+			id   string
+			opts []store.CreateOption
+		}{
+			{"plain", nil},
+			{"queued", []store.CreateOption{store.WithLane("batch é"), store.WithPriority(-3), store.WithStartAt(later)}},
+			{"extremes", []store.CreateOption{store.WithPriority(store.MaxPriority), store.WithStartAt(r.clk.Now().Add(-time.Hour))}},
+			{"lowest", []store.CreateOption{store.WithPriority(store.MinPriority), store.Interactive()}},
+		} {
+			run := r.mustCreate(ctx, c.id, "c-"+c.id, c.opts...) // the rig checks what comes back
+			if c.id == "plain" && (!run.StartAt.Equal(run.CreatedAt) || run.Lane != "" || run.Priority != 0) {
+				t.Errorf("a plain run has lane %q, priority %d, start %v; want the default lane, 0 and its creation %v",
+					run.Lane, run.Priority, run.StartAt, run.CreatedAt)
+			}
+		}
+		again := r.mustCreate(ctx, "queued", "c-queued", store.WithLane("other"), store.WithPriority(9))
+		if again.Lane != "batch é" || again.Priority != -3 || !again.StartAt.Equal(later) {
+			t.Errorf("Create again = lane %q, priority %d, start %v; want the run as first stored", again.Lane, again.Priority, again.StartAt)
+		}
+
+		for name, opt := range map[string]store.CreateOption{
+			"a lane that is not UTF-8":     store.WithLane("a\xffb"),
+			"a lane with a NUL":            store.WithLane("a\x00b"),
+			"a priority above the maximum": store.WithPriority(store.MaxPriority + 1),
+			"a priority below the minimum": store.WithPriority(store.MinPriority - 1),
+			"a start in the year 3000":     store.WithStartAt(farFuture),
+			"a start in the year 1":        store.WithStartAt(farPast),
+			"a lease with no owner":        store.WithLease("", time.Minute),
+			"a lease owner with a NUL":     store.WithLease("a\x00b", time.Minute),
+			"a lease with no time to live": store.WithLease("w", 0),
+			"a lease for 292 years":        store.WithLease("w", time.Duration(math.MaxInt64)),
+		} {
+			if _, err := r.create(ctx, "bad", "c-bad", opt); !errors.Is(err, store.ErrInvalid) {
+				t.Errorf("Create with %s = %v, want ErrInvalid", name, err)
+			}
+		}
+		if _, err := r.s.Get(ctx, "bad"); !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("Get of the refused run = %v, want ErrNotFound", err)
+		}
+	})
+
+	// A run created with a lease is held from its creation, as if claimed
+	// in the same write; a retry of the Create claims nothing.
+	t.Run("CreateWithALease", func(t *testing.T) {
+		t.Parallel()
+		r := newRunRig(t, newStore)
+		ctx := r.ctx(tenantA)
+		const ttl = time.Minute
+		run := r.mustCreate(ctx, "r", "c", store.WithLease("creator", ttl))
+		want := store.Lease{Owner: "creator", Expires: r.clk.Now().Add(ttl)}
+		if !sameLease(run.Lease, want) || !sameLease(r.mustGet(ctx, "r").Lease, want) {
+			t.Errorf("Create returned lease %+v, and Get %+v; want %+v", run.Lease, r.mustGet(ctx, "r").Lease, want)
+		}
+		if _, err := r.s.Claim(ctx, "r", "other", ttl); !errors.Is(err, store.ErrLeased) {
+			t.Errorf("Claim by another owner = %v, want ErrLeased", err)
+		}
+		if runs, err := r.s.ListResumable(ctx, r.clk.Now(), 0); err != nil || len(runs) != 0 {
+			t.Errorf("ListResumable = %v, %v; want the held run left out", runIDs(runs), err)
+		}
+		r.clk.Advance(ttl / 2)
+		if _, err := r.s.Renew(ctx, "r", "creator", ttl); err != nil {
+			t.Errorf("Renew by the creator: %v", err)
+		}
+		if err := r.s.Release(ctx, "r", "creator"); err != nil {
+			t.Fatalf("Release: %v", err)
+		}
+		again := r.mustCreate(ctx, "r", "c", store.WithLease("other", ttl))
+		if again.Lease != (store.Lease{}) || r.mustGet(ctx, "r").Lease != (store.Lease{}) {
+			t.Errorf("a retried Create with another lease = %+v, stored %+v; want the run as stored, unclaimed", again.Lease, r.mustGet(ctx, "r").Lease)
+		}
+	})
+
+	// A run is not resumable before its start time, running or failed;
+	// from then on it is, by the usual rules.
+	t.Run("ListResumableWaitsForTheStartTime", func(t *testing.T) {
+		t.Parallel()
+		r := newRunRig(t, newStore)
+		ctx := r.ctx(tenantA)
+		t0 := r.clk.Now()
+		r.mustCreate(ctx, "now", "c1")
+		r.mustCreate(ctx, "in-a-minute", "c2", store.WithStartAt(t0.Add(time.Minute)))
+		r.mustCreate(ctx, "failed", "c3", store.WithStartAt(t0.Add(2*time.Minute)))
+		r.mustMove(ctx, "failed", store.StatusRunning, store.StatusFailed, store.Details{Error: "boom", Retryable: true, NextAttemptAt: t0})
+		r.mustCreate(ctx, "chat", "c4", store.Interactive(), store.WithStartAt(t0.Add(-time.Minute)))
+		for _, c := range []struct {
+			at   time.Duration
+			want []string
+		}{
+			{0, []string{"now"}},
+			{time.Minute - time.Nanosecond, []string{"now"}},
+			{time.Minute, []string{"in-a-minute", "now"}}, // all created at t0: by ID
+			{2 * time.Minute, []string{"failed", "in-a-minute", "now"}},
+		} {
+			runs, err := r.s.ListResumable(ctx, t0.Add(c.at), 0)
+			if err != nil || !slices.Equal(runIDs(runs), c.want) {
+				t.Errorf("ListResumable at t0+%v = %v, %v; want %v", c.at, runIDs(runs), err, c.want)
+			}
+		}
+		r.clk.Advance(2 * time.Minute) // the rig's check reads at the clock's time
+	})
+
 	// A time the caller asks the store to keep (a next attempt time, a
 	// lease's expiry) outside 1678 to 2262 is ErrInvalid and changes nothing.
 	// A time a read only compares with (now, a seek) may be anything.
@@ -597,7 +706,7 @@ func RunRunStore(t *testing.T, newStore func(t *testing.T, clk clock.Clock) stor
 			want []string
 		}{
 			{farFuture, []string{"r", "f"}},
-			{farPast, []string{"r"}}, // unclaimed; f is not due yet
+			{farPast, nil}, // before any run could start (T099: StartAt)
 		} {
 			runs, err := r.s.ListResumable(ctx, c.now, 0)
 			if err != nil || !slices.Equal(runIDs(runs), c.want) {

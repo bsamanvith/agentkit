@@ -121,6 +121,55 @@ func TestRunsFromBeforeInteractiveStayBackgroundRuns(t *testing.T) {
 	}
 }
 
+// Migration 0009 (T099) puts the runs a binary from before it wrote in the
+// default lane at priority 0, starting when they were created: they read
+// back so, are resumable as before, and ClaimNext takes them in due order.
+func TestRunsFromBeforeTheQueueAreQueued(t *testing.T) {
+	t.Parallel()
+	ctx := tenantCtx(t, "acme")
+	path := filepath.Join(t.TempDir(), "agentkit.db")
+	old, err := sqlite.Open(ctx, path, sqlite.WithMigrations(8))
+	if err != nil {
+		t.Fatalf("Open at version 8: %v", err)
+	}
+	for _, q := range []string{
+		`INSERT INTO runs (tenant, id, conversation, status, created_at) VALUES ('acme', 'interrupted', 'c1', 'running', 1)`,
+		`INSERT INTO runs (tenant, id, conversation, status, retryable, attempts, error, created_at)
+			VALUES ('acme', 'due', 'c2', 'failed', 1, 1, 'overloaded', 2)`,
+		`INSERT INTO runs (tenant, id, conversation, status, created_at, interactive) VALUES ('acme', 'chat', 'c3', 'running', 3, 1)`,
+		`INSERT INTO runs (tenant, id, conversation, status, created_at, finished_at) VALUES ('globex', 'done', 'c4', 'completed', 4, 5)`,
+	} {
+		if err := sqlite.Exec(old, q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	if err := old.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	s := openPath(t, path)
+	for _, id := range []string{"interrupted", "due", "chat"} {
+		r, err := s.Get(ctx, id)
+		if err != nil || r.Lane != "" || r.Priority != 0 || !r.StartAt.Equal(r.CreatedAt) {
+			t.Errorf("old run %q after the upgrade = %+v, %v; want the default lane, priority 0, starting at its creation", id, r, err)
+		}
+	}
+	runs, err := s.ListResumable(ctx, time.Unix(0, 3), 0)
+	if err != nil || len(runs) != 2 || runs[0].ID != "interrupted" || runs[1].ID != "due" {
+		t.Fatalf("ListResumable after the upgrade = %+v, %v; want both old background runs", runs, err)
+	}
+	admin := sqlite.Admin(s)
+	for _, want := range []string{"interrupted", "due"} {
+		tr, err := admin.ClaimNext(context.Background(), []string{""}, "worker", time.Minute)
+		if err != nil || tr.Run.ID != want {
+			t.Fatalf("ClaimNext after the upgrade = %+v, %v; want %q", tr.Run, err, want)
+		}
+	}
+	if tr, err := admin.ClaimNext(context.Background(), []string{""}, "worker", time.Minute); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("ClaimNext once both are claimed = %+v, %v; want ErrNotFound", tr.Run, err)
+	}
+}
+
 // A binary refuses a file that a newer binary has migrated past what it
 // knows, and leaves the file as it was.
 func TestOpenRefusesANewerSchema(t *testing.T) {

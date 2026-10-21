@@ -1,9 +1,11 @@
 package storetest
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -34,9 +36,11 @@ import (
 //  5. ListSuspended, paged, gives exactly the suspended runs, in order.
 //  6. ListResumable at the clock's time gives exactly the background running
 //     runs whose lease is not held and the background retryable failed runs
-//     that are due, in order: never an interactive run. A run keeps whether
-//     it is interactive, and Interrupted reports exactly the interactive
-//     running runs whose lease is not held.
+//     that are due, in order, of those whose StartAt has come: never an
+//     interactive run. A run keeps whether it is interactive, its lane, its
+//     priority and its StartAt (CreatedAt unless WithStartAt set it), and
+//     Interrupted reports exactly the interactive running runs whose lease
+//     is not held.
 //  7. With an Admin (RunAdmin), ListResumableAll at the clock's time, with no
 //     tenant in ctx, is the union of every tenant's ListResumable, each run
 //     with its tenant, ordered by CreatedAt, tenant and ID.
@@ -57,6 +61,9 @@ type runRig struct {
 type runModel struct {
 	conv        string
 	interactive bool
+	lane        string
+	priority    int
+	start       time.Time
 	status      store.Status
 	usage       llm.Usage
 	err         string
@@ -114,12 +121,18 @@ func (r *runRig) create(ctx context.Context, id, conv string, opts ...store.Crea
 	k := logKey{tn.ID(), id}
 	switch m, ok := r.runs[k]; {
 	case !ok:
-		r.runs[k] = &runModel{conv: conv, status: store.StatusRunning, interactive: store.NewCreateOptions(opts...).Interactive}
+		o := store.NewCreateOptions(opts...)
+		start := o.StartAt
+		if start.IsZero() {
+			start = run.CreatedAt
+		}
+		r.runs[k] = &runModel{conv: conv, status: store.StatusRunning, interactive: o.Interactive, lane: o.Lane, priority: o.Priority, start: start}
 	case m.conv != conv:
 		r.t.Errorf("Create moved run %q from conversation %q to %q", id, m.conv, conv)
 	}
-	if m := r.runs[k]; run.Interactive != m.interactive {
-		r.t.Errorf("Create of run %q returned interactive %v, want %v as first created", id, run.Interactive, m.interactive)
+	if m := r.runs[k]; run.Interactive != m.interactive || run.Lane != m.lane || run.Priority != m.priority || !run.StartAt.Equal(m.start) {
+		r.t.Errorf("Create of run %q returned interactive %v, lane %q, priority %d, start %v; want %v, %q, %d, %v as first created",
+			id, run.Interactive, run.Lane, run.Priority, run.StartAt, m.interactive, m.lane, m.priority, m.start)
 	}
 	return run, err
 }
@@ -249,7 +262,7 @@ func interrupted(r store.Run, now time.Time) bool {
 
 // resumable restates which runs ListResumable returns.
 func resumable(r store.Run, now time.Time) bool {
-	if r.Interactive {
+	if r.Interactive || now.Before(r.StartAt) {
 		return false
 	}
 	switch r.Status {
@@ -259,6 +272,37 @@ func resumable(r store.Run, now time.Time) bool {
 		return r.Retryable && !now.Before(r.NextAttemptAt)
 	}
 	return false
+}
+
+// due restates [store.Run.Due]: the latest of StartAt, the lease's expiry
+// and NextAttemptAt.
+func due(r store.Run) time.Time {
+	latest := r.StartAt
+	if r.Lease.Expires.After(latest) {
+		latest = r.Lease.Expires
+	}
+	if r.NextAttemptAt.After(latest) {
+		latest = r.NextAttemptAt
+	}
+	return latest
+}
+
+// claimable restates which runs ClaimNext may take at now: background runs,
+// running or failed and retryable, due at or before now.
+func claimable(r store.Run, now time.Time) bool {
+	queued := r.Status == store.StatusRunning || (r.Status == store.StatusFailed && r.Retryable)
+	return !r.Interactive && queued && !now.Before(due(r))
+}
+
+// claimOrder restates the order ClaimNext takes runs in: highest priority,
+// earliest due, then tenant id and run ID.
+func claimOrder(a, b store.TenantRun) int {
+	return cmp.Or(
+		cmp.Compare(b.Run.Priority, a.Run.Priority),
+		due(a.Run).Compare(due(b.Run)),
+		strings.Compare(a.Tenant.ID(), b.Tenant.ID()),
+		strings.Compare(a.Run.ID, b.Run.ID),
+	)
 }
 
 func (r *runRig) check() {
@@ -294,6 +338,11 @@ func (r *runRig) checkTenant(tenant string) {
 		case run.ID != id || run.ConversationID != m.conv || run.Interactive != m.interactive:
 			t.Errorf("tenant %s: run %q reads back as %q in conversation %q, interactive %v; want conversation %q, interactive %v",
 				tenant, id, run.ID, run.ConversationID, run.Interactive, m.conv, m.interactive)
+		case run.Lane != m.lane || run.Priority != m.priority || !run.StartAt.Equal(m.start):
+			t.Errorf("tenant %s: run %q reads back in lane %q at priority %d starting %v; want %q, %d, %v as created",
+				tenant, id, run.Lane, run.Priority, run.StartAt, m.lane, m.priority, m.start)
+		case !run.Due().Equal(due(run)):
+			t.Errorf("tenant %s: run %+v Due = %v, want %v", tenant, run, run.Due(), due(run))
 		case run.Interrupted(r.clk.Now()) != interrupted(run, r.clk.Now()):
 			t.Errorf("tenant %s: run %+v Interrupted = %v at %v", tenant, run, run.Interrupted(r.clk.Now()), r.clk.Now())
 		case run.Status != m.status || run.Usage != m.usage || run.Error != m.err || run.Retryable != m.retry ||
@@ -373,7 +422,7 @@ func sameRun(a, b store.Run) bool {
 		a.Usage == b.Usage && a.Error == b.Error && a.Retryable == b.Retryable &&
 		a.NextAttemptAt.Equal(b.NextAttemptAt) && a.Attempts == b.Attempts && slices.Equal(a.Pending, b.Pending) &&
 		a.CreatedAt.Equal(b.CreatedAt) && a.FinishedAt.Equal(b.FinishedAt) && sameLease(a.Lease, b.Lease) &&
-		a.Interactive == b.Interactive
+		a.Interactive == b.Interactive && a.Lane == b.Lane && a.Priority == b.Priority && a.StartAt.Equal(b.StartAt)
 }
 
 func sameLease(a, b store.Lease) bool {

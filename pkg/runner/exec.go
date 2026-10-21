@@ -38,7 +38,46 @@ type runConfig struct {
 	flush       int
 	policy      *policy.Policy
 	interactive bool
+	lane        string
+	priority    int
+	startAt     time.Time
 	err         error
+}
+
+// createOptions are the store options of a run with c.
+func (c runConfig) createOptions() []store.CreateOption {
+	opts := []store.CreateOption{store.WithLane(c.lane), store.WithPriority(c.priority)}
+	if c.interactive {
+		opts = append(opts, store.Interactive())
+	}
+	if !c.startAt.IsZero() {
+		opts = append(opts, store.WithStartAt(c.startAt))
+	}
+	return opts
+}
+
+// Lane puts the run in the named lane of the run queue ([store.Run.Lane];
+// default "", the default lane). The dispatchers ([Recovery]) serving that
+// lane are the ones that start it when it was enqueued ([Runner.Enqueue]),
+// and that resume it when its execution stops. The name is text; one the
+// store cannot keep gives [store.ErrInvalid].
+func Lane(name string) RunOption {
+	return func(c *runConfig) { c.lane = name }
+}
+
+// Priority sets the run's priority in its lane ([store.Run.Priority];
+// default 0): of the due runs of a lane, a dispatcher takes the highest
+// first. Outside [store.MinPriority] to [store.MaxPriority] it gives
+// [store.ErrInvalid].
+func Priority(p int) RunOption {
+	return func(c *runConfig) { c.priority = p }
+}
+
+// StartAt makes an enqueued run ([Runner.Enqueue]) wait until t: no
+// dispatcher starts it before. It is for Enqueue only; [Runner.Run], which
+// starts its run at once, gives [ErrInvalidConfig] for it.
+func StartAt(t time.Time) RunOption {
+	return func(c *runConfig) { c.startAt = t }
 }
 
 // Interactive starts the run as an interactive chat run: one with a user on
@@ -102,11 +141,11 @@ func (r *Runner) Run(ctx context.Context, conversationID string, msg llm.Message
 	if c.err != nil {
 		return nil, c.err
 	}
-	if msg.Role != llm.RoleUser {
-		return nil, fmt.Errorf("%w: role %q, want user", ErrInvalidInput, msg.Role)
+	if !c.startAt.IsZero() {
+		return nil, fmt.Errorf("%w: StartAt is for Enqueue; Run starts its run now", ErrInvalidConfig)
 	}
-	if err := (harness.Transcript{msg}).Validate(); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidInput, err)
+	if err := checkMessage(msg); err != nil {
+		return nil, err
 	}
 	tenant, err := tenancy.Require(ctx)
 	if err != nil {
@@ -116,11 +155,7 @@ func (r *Runner) Run(ctx context.Context, conversationID string, msg llm.Message
 	if err != nil {
 		return nil, fmt.Errorf("agent of conversation %q: %w", conversationID, err)
 	}
-	var create []store.CreateOption
-	if c.interactive {
-		create = append(create, store.Interactive())
-	}
-	x, err := r.start(ctx, tenant, conversationID, true, create...)
+	x, err := r.start(ctx, tenant, conversationID, true, c.createOptions()...)
 	if err != nil {
 		return nil, err
 	}
@@ -128,6 +163,88 @@ func (r *Runner) Run(ctx context.Context, conversationID string, msg llm.Message
 	return x.execution(ctx, func(ctx context.Context, emit func(Event) bool) outcome {
 		return x.chat(ctx, agent, &msg, c.flush, c.policy, emit)
 	}), nil
+}
+
+// checkMessage refuses a message that cannot start a run.
+func checkMessage(msg llm.Message) error {
+	if msg.Role != llm.RoleUser {
+		return fmt.Errorf("%w: role %q, want user", ErrInvalidInput, msg.Role)
+	}
+	if err := (harness.Transcript{msg}).Validate(); err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidInput, err)
+	}
+	return nil
+}
+
+// Enqueue creates a chat run of msg, a user message, on the conversation
+// without running it, and returns the run as stored. It stores msg as the
+// run's prompt, once, and leaves the run in the queue: the dispatcher
+// ([Recovery]) serving the run's [Lane] starts it at its [StartAt] (default
+// now), the highest [Priority] of the lane first, as it resumes any run whose
+// prompt is stored. The conversation's agent is asked for then, not now.
+//
+// It takes Run's options except [Interactive], which gives [ErrInvalidConfig]:
+// an interactive run is never dispatched. A conversation with an unfinished
+// run gives an [*UnfinishedError], whatever that run is. If the prompt
+// cannot be stored, the run is canceled and the error returned.
+func (r *Runner) Enqueue(ctx context.Context, conversationID string, msg llm.Message, opts ...RunOption) (store.Run, error) {
+	var c runConfig
+	for _, opt := range opts {
+		opt(&c)
+	}
+	if c.err != nil {
+		return store.Run{}, c.err
+	}
+	if c.interactive {
+		return store.Run{}, fmt.Errorf("%w: an interactive run is never enqueued", ErrInvalidConfig)
+	}
+	if err := checkMessage(msg); err != nil {
+		return store.Run{}, err
+	}
+	tenant, err := tenancy.Require(ctx)
+	if err != nil {
+		return store.Run{}, err
+	}
+	// Created held by this call, so that no dispatcher takes the run before
+	// its prompt is stored; released once it is.
+	x, err := r.start(ctx, tenant, conversationID, false, c.createOptions()...)
+	if err != nil {
+		return store.Run{}, err
+	}
+	wctx, cancel := r.detach(ctx)
+	defer cancel()
+	defer x.release(wctx)
+	if err := x.prompt(ctx, msg.Clone(), c.flush); err != nil {
+		_ = x.transition(wctx, store.StatusCanceled, store.Details{Error: "prompt not stored: " + err.Error()})
+		return store.Run{}, fmt.Errorf("run %q: store its prompt: %w", x.run.ID, err)
+	}
+	run := x.run
+	run.Lease = store.Lease{}
+	return run, nil
+}
+
+// prompt stores msg as the prompt of the execution's run, as a chat run
+// stores the prompt its agent starts with, recording flush (0 for the
+// runner's). A conversation that ends on a user message (a run canceled
+// before its marker reply was stored) gets the marker first.
+func (x *exec) prompt(ctx context.Context, msg llm.Message, flush int) error {
+	r, conv := x.r, x.run.ConversationID
+	v, err := r.cache.load(ctx, r.store, conv)
+	if err != nil {
+		return err
+	}
+	if v.endsOnUser() {
+		if err := r.appendMarker(ctx, conv, &v); err != nil {
+			return err
+		}
+	}
+	_, err = r.append(ctx, conv, &v, store.Entry{
+		Kind:     store.KindPrompt,
+		Messages: []llm.Message{msg},
+		RunID:    x.run.ID,
+		Record:   mustJSON(Record{Prompt: &PromptRecord{At: r.clk.Now(), FlushEvery: flush}}),
+	})
+	return err
 }
 
 // RunFlow starts a flow run on the conversation with the step tree of the
@@ -179,14 +296,17 @@ func (r *Runner) RunFlow(ctx context.Context, conversationID string, input *flow
 	}), nil
 }
 
-// start creates a run on the conversation and claims it. For a chat run
-// (chat), an interactive unfinished run that nobody runs is canceled first.
+// start creates a run on the conversation, claimed in the same write
+// ([store.WithLease]), so that no dispatcher takes it from its creator. For
+// a chat run (chat), an interactive unfinished run that nobody runs is
+// canceled first.
 func (r *Runner) start(ctx context.Context, tenant tenancy.Tenant, conv string, chat bool, opts ...store.CreateOption) (*exec, error) {
 	if r.isClosed() {
 		return nil, ErrShutdown
 	}
 	for replaced := false; ; replaced = true {
-		run, err := r.store.Create(ctx, r.newID(), conv, opts...)
+		owner := r.nextOwner()
+		run, err := r.store.Create(ctx, r.newID(), conv, append(slices.Clip(opts), store.WithLease(owner, r.ttl))...)
 		if errors.Is(err, store.ErrUnfinished) {
 			u, uerr := r.store.Unfinished(ctx, conv)
 			if uerr != nil {
@@ -210,18 +330,10 @@ func (r *Runner) start(ctx context.Context, tenant tenancy.Tenant, conv string, 
 		if err != nil {
 			return nil, fmt.Errorf("create run: %w", err)
 		}
-		x := &exec{r: r, tenant: tenant, run: run, owner: r.nextOwner()}
-		if x.run.Lease, err = r.store.Claim(ctx, run.ID, x.owner, r.ttl); err != nil {
-			if errors.Is(err, store.ErrFinal) {
-				// Canceled before it was claimed, by another new message
-				// that took its place.
-				if u, uerr := r.store.Unfinished(ctx, conv); uerr == nil {
-					return nil, &UnfinishedError{ConversationID: conv, RunID: u.ID}
-				}
-			}
-			return nil, fmt.Errorf("run %q: claim: %w", run.ID, err)
+		if run.Lease.Owner != owner {
+			return nil, fmt.Errorf("run %q: created with lease %+v, not %q's: %w", run.ID, run.Lease, owner, store.ErrLeaseLost)
 		}
-		return x, nil
+		return &exec{r: r, tenant: tenant, run: run, owner: owner}, nil
 	}
 }
 
@@ -243,6 +355,9 @@ type ResumeOption func(*resumeConfig)
 type resumeConfig struct {
 	allowShape bool
 	decision   *decision
+	// claimed is the owner of the lease a dispatcher already took on the
+	// run ([store.Admin.ClaimNext]); the execution holds it as its own.
+	claimed string
 }
 
 type decision struct {
@@ -346,9 +461,12 @@ func (r *Runner) resume(ctx context.Context, runID string, c resumeConfig) (*Exe
 		}
 	}
 
-	x := &exec{r: r, tenant: tenant, owner: r.nextOwner()}
-	if _, err := r.store.Claim(ctx, runID, x.owner, r.ttl); err != nil {
-		return nil, fmt.Errorf("run %q: claim: %w", runID, err)
+	x := &exec{r: r, tenant: tenant, owner: c.claimed}
+	if x.owner == "" {
+		x.owner = r.nextOwner()
+		if _, err := r.store.Claim(ctx, runID, x.owner, r.ttl); err != nil {
+			return nil, fmt.Errorf("run %q: claim: %w", runID, err)
+		}
 	}
 	fail := func(err error) (*Execution, error) {
 		x.run.ID = runID

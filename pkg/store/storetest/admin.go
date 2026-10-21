@@ -22,8 +22,10 @@ import (
 //
 // Every test goes through the helper of [RunRunStore], which checks its
 // invariants when the test ends and, with an Admin, one more: ListResumableAll
-// is the union of every tenant's ListResumable, re-sorted. The suite ends with
-// seeded simulations ([SimulateAdmin]) through the same helper.
+// is the union of every tenant's ListResumable, re-sorted. ClaimNext is tested
+// for the queue's order, lanes, runs that are not due, the lease it takes,
+// its arguments, and claimers racing. The suite ends with seeded simulations
+// ([SimulateAdmin], which claims too) through the same helper.
 func RunAdmin(t *testing.T, newStore func(t *testing.T, clk clock.Clock) (store.RunStore, store.Admin)) {
 	t.Helper()
 
@@ -282,8 +284,8 @@ func RunAdmin(t *testing.T, newStore func(t *testing.T, clk clock.Clock) (store.
 	})
 
 	// The rules of ListResumable hold across tenants too: a retryable
-	// failure with no next attempt time is due at once, and now may be any
-	// time, even one no store could keep.
+	// failure with no next attempt time is due as soon as it has started,
+	// and now may be any time, even one no store could keep.
 	t.Run("RetryableFailureWithNoNextAttemptAndAnyNow", func(t *testing.T) {
 		t.Parallel()
 		r := newAdminRig(t, newStore)
@@ -298,7 +300,8 @@ func RunAdmin(t *testing.T, newStore func(t *testing.T, clk clock.Clock) (store.
 		}{
 			{r.clk.Now(), []string{"f", "r"}},
 			{farFuture, []string{"f", "r"}},
-			{farPast, []string{"f", "r"}}, // f is due at any time
+			{r.clk.Now().Add(-time.Millisecond), []string{"f"}}, // r has not started
+			{farPast, nil}, // before any run could start (T099: StartAt)
 		} {
 			got, err := r.admin.ListResumableAll(context.Background(), c.now, 0)
 			var ids []string
@@ -358,6 +361,8 @@ func RunAdmin(t *testing.T, newStore func(t *testing.T, clk clock.Clock) (store.
 			t.Errorf("ListResumableAll = %v, %v; want %v", tenantRunIDs(got), err, want)
 		}
 	})
+
+	runClaimNext(t, newStore)
 
 	t.Run("Simulation", func(t *testing.T) {
 		t.Parallel()

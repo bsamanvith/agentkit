@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -19,14 +20,23 @@ import (
 const runColumns = `id, conversation, status,
 	input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
 	error, retryable, next_attempt_at, attempts, pending,
-	created_at, finished_at, lease_owner, lease_expires, interactive`
+	created_at, finished_at, lease_owner, lease_expires, interactive,
+	lane, priority, start_at`
 
 // final is the SQL list of final statuses (store.Status.Final).
 const final = `('completed', 'rejected', 'canceled')`
 
 // resumable is backend.Resumable in SQL, with now as $1.
-const resumable = `(NOT interactive AND ((status = 'running' AND (lease_owner = '' OR lease_expires <= $1))
+const resumable = `(NOT interactive AND start_at <= $1 AND ((status = 'running' AND (lease_owner = '' OR lease_expires <= $1))
 	OR (status = 'failed' AND retryable AND (next_attempt_at IS NULL OR next_attempt_at <= $1))))`
+
+// queued is backend.Queued in SQL, and due is store.Run.Due: the predicate
+// and the expression of the runs_queue index (migration 0010), which a query
+// repeats so that the planner uses it.
+const (
+	queued = `NOT interactive AND (status = 'running' OR (status = 'failed' AND retryable))`
+	due    = `GREATEST(start_at, lease_expires, next_attempt_at)`
+)
 
 // Create implements [store.RunStore].
 //
@@ -53,10 +63,20 @@ func (s *Store) Create(ctx context.Context, id, conversationID string, opts ...s
 		if err != nil {
 			return fmt.Errorf("postgres: create run: the clock reads %w", err)
 		}
-		_, insertErr := s.pool.Exec(ctx, `INSERT INTO runs (tenant, id, conversation, status, created_at, interactive)
-			VALUES ($1, $2, $3, $4, $5, $6)`, tenant, id, conversationID, string(store.StatusRunning), at, o.Interactive)
+		c, err := backend.CheckCreate(o, now)
+		if err != nil {
+			return err
+		}
+		expires, _ := storeTime(c.Lease.Expires) // checked by CheckCreate
+		_, insertErr := s.pool.Exec(ctx, `INSERT INTO runs (tenant, id, conversation, status, created_at, interactive,
+			lane, priority, start_at, lease_owner, lease_expires)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`, tenant, id, conversationID, string(store.StatusRunning), at, o.Interactive,
+			o.Lane, o.Priority, c.Start.UnixNano(), c.Lease.Owner, expires)
 		if insertErr == nil {
-			run = store.Run{ID: id, ConversationID: conversationID, Status: store.StatusRunning, CreatedAt: now, Interactive: o.Interactive}
+			run = store.Run{
+				ID: id, ConversationID: conversationID, Status: store.StatusRunning, CreatedAt: now,
+				Interactive: o.Interactive, Lane: o.Lane, Priority: o.Priority, StartAt: c.Start, Lease: c.Lease,
+			}
 			return nil
 		}
 		switch code, constraint := sqlState(insertErr); {
@@ -430,12 +450,8 @@ func (a admin) ListResumableAll(ctx context.Context, now time.Time, limit int) (
 		return nil, err
 	}
 	ctx = unscoped(ctx)
-	var bypass bool
-	if err := a.s.admin.QueryRow(ctx, `SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user`).Scan(&bypass); err != nil {
-		return nil, fail("check the admin role", err)
-	}
-	if !bypass {
-		return nil, ErrAdminRole
+	if err := a.checkRole(ctx); err != nil {
+		return nil, err
 	}
 	rows, err := a.s.admin.Query(ctx, `SELECT tenant, `+runColumns+` FROM runs
 		WHERE status IN ('running', 'failed') AND `+resumable+`
@@ -459,24 +475,103 @@ func (a admin) ListResumableAll(ctx context.Context, now time.Time, limit int) (
 	return out, nil
 }
 
+// checkRole fails with [ErrAdminRole] unless Admin's role bypasses row-level
+// security. A role found to bypass it is not asked again by this Store.
+func (a admin) checkRole(ctx context.Context) error {
+	if a.s.bypass.Load() {
+		return nil
+	}
+	var bypass bool
+	if err := a.s.admin.QueryRow(ctx, `SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user`).Scan(&bypass); err != nil {
+		return fail("check the admin role", err)
+	}
+	if !bypass {
+		return ErrAdminRole
+	}
+	a.s.bypass.Store(true)
+	return nil
+}
+
+// claimNext is ClaimNext's statement. For each lane ($1), the LATERAL
+// subquery walks the runs_queue index in claim order to the first due run
+// whose row no other claimer has locked (FOR UPDATE SKIP LOCKED, so claimers
+// never wait on each other's choice); of those the best is leased to $3
+// until $4. $2 is now. The subquery's columns are renamed so that RETURNING
+// names the runs table's alone.
+const claimNext = `WITH next AS (
+	SELECT c.t, c.i FROM unnest($1::text[]) AS l(lane)
+	CROSS JOIN LATERAL (
+		SELECT tenant AS t, id AS i, priority AS p, ` + due + ` AS d FROM runs
+		WHERE runs.lane = l.lane AND ` + queued + ` AND ` + due + ` <= $2
+		ORDER BY priority DESC, ` + due + `, tenant, id
+		LIMIT 1 FOR UPDATE SKIP LOCKED
+	) c
+	ORDER BY c.p DESC, c.d, c.t, c.i
+	LIMIT 1
+)
+UPDATE runs SET lease_owner = $3, lease_expires = $4
+FROM next WHERE runs.tenant = next.t AND runs.id = next.i
+RETURNING tenant, ` + runColumns
+
+// ClaimNext implements [store.Admin], in one statement (claimNext).
+func (a admin) ClaimNext(ctx context.Context, lanes []string, owner string, ttl time.Duration) (store.TenantRun, error) {
+	if err := ctx.Err(); err != nil {
+		return store.TenantRun{}, err
+	}
+	if err := backend.CheckClaimNext(lanes, owner, ttl); err != nil {
+		return store.TenantRun{}, err
+	}
+	ctx = unscoped(ctx)
+	if err := a.checkRole(ctx); err != nil {
+		return store.TenantRun{}, err
+	}
+	lanes = slices.Compact(slices.Sorted(slices.Values(lanes)))
+	var out store.TenantRun
+	err := retry(ctx, func() error {
+		now := a.s.now()
+		expires, err := storeTime(now.Add(ttl))
+		if err != nil {
+			return err
+		}
+		var tenant string
+		r, err := scanRun(a.s.admin.QueryRow(ctx, claimNext, lanes, argTime(now), owner, expires), &tenant)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: no run of lanes %q is due", store.ErrNotFound, lanes)
+		}
+		if err != nil {
+			return fail("claim next run", err)
+		}
+		t, err := tenancy.NewTenant(tenant)
+		if err != nil {
+			return fmt.Errorf("postgres: run %q has a bad tenant: %w", r.ID, err)
+		}
+		out = store.TenantRun{Tenant: t, Run: r}
+		return nil
+	})
+	return out, err
+}
+
 // scanRun reads one row of runColumns, after the columns in pre.
 func scanRun(row pgx.Row, pre ...any) (store.Run, error) {
 	var (
 		r                       store.Run
 		status, pending         string
 		next, created, finished *int64
-		expires                 *int64
+		expires, start          *int64
+		priority                int32
 	)
 	err := row.Scan(append(pre, &r.ID, &r.ConversationID, &status,
 		&r.Usage.InputTokens, &r.Usage.OutputTokens, &r.Usage.CacheReadTokens, &r.Usage.CacheWriteTokens,
 		&r.Error, &r.Retryable, &next, &r.Attempts, &pending,
-		&created, &finished, &r.Lease.Owner, &expires, &r.Interactive)...)
+		&created, &finished, &r.Lease.Owner, &expires, &r.Interactive,
+		&r.Lane, &priority, &start)...)
 	if err != nil {
 		return store.Run{}, err
 	}
 	r.Status = store.Status(status)
+	r.Priority = int(priority)
 	r.NextAttemptAt, r.CreatedAt, r.FinishedAt = loadTime(next), loadTime(created), loadTime(finished)
-	r.Lease.Expires = loadTime(expires)
+	r.Lease.Expires, r.StartAt = loadTime(expires), loadTime(start)
 	if pending != "" {
 		if err := json.Unmarshal([]byte(pending), &r.Pending); err != nil {
 			return store.Run{}, fmt.Errorf("pending of run %q: %w", r.ID, err)

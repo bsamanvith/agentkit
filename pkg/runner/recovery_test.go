@@ -420,16 +420,19 @@ func TestRecoveryLoopRunsEveryInterval(t *testing.T) {
 	}
 }
 
-// Recovery leaves a new run, between its creation and its creator's claim,
-// to its creator.
+// Recovery leaves a new run to its creator: the run is leased as it is
+// created (T099), so even before its prompt is stored the dispatcher does
+// not claim it.
 func TestRecoveryLeavesANewRunToItsCreator(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
 	p := w.process()
 	rc := w.recovery(w.process())
 	var rep runner.Report
+	ran := false
 	p.store.before = func(op string, n int) {
-		if op == "Claim" && n == 1 {
+		if op == "Append" && n == 1 {
+			ran = true
 			var err error
 			if rep, err = rc.Recover(w.ctx); err != nil {
 				t.Error(err)
@@ -440,8 +443,8 @@ func TestRecoveryLeavesANewRunToItsCreator(t *testing.T) {
 	if err != nil {
 		t.Fatalf("creator's run = %v", err)
 	}
-	if lastDone(t, evs).Run.Status != store.StatusCompleted || rep.Resumed != 0 || rep.Skipped != 1 {
-		t.Errorf("creator's run %+v; recovery %+v, want the run skipped", lastDone(t, evs).Run, rep)
+	if !ran || lastDone(t, evs).Run.Status != store.StatusCompleted || rep != (runner.Report{}) {
+		t.Errorf("creator's run %+v; recovery %+v (ran %v), want the run left alone", lastDone(t, evs).Run, rep, ran)
 	}
 }
 

@@ -40,16 +40,17 @@ func TestReadOnlyTurnsAreStoredTogether(t *testing.T) {
 		saves  []int64
 		writes map[string]int
 	}{
+		// The run is created leased: no Claim (T099).
 		{
 			"default", nil,
 			[]int64{1, 5},
-			map[string]int{"Create": 1, "Claim": 1, "Append": 1, "AppendBatch": 1, "Transition": 1, "Release": 1},
+			map[string]int{"Create": 1, "Append": 1, "AppendBatch": 1, "Transition": 1, "Release": 1},
 		},
 		{
 			"every turn",
 			[]runner.RunOption{runner.FlushEvery(1)},
 			[]int64{1, 2, 3, 4, 5},
-			map[string]int{"Create": 1, "Claim": 1, "Append": 5, "Transition": 1, "Release": 1},
+			map[string]int{"Create": 1, "Append": 5, "Transition": 1, "Release": 1},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

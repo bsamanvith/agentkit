@@ -46,6 +46,20 @@
 // expired) it is interrupted ([Run.Interrupted]), and stays so until its
 // user continues it or starts another. Every other run is a background run.
 //
+// # The run queue
+//
+// The store is also the queue that runners take background runs from. A
+// run is created in a lane ([WithLane], "" by default) with a priority
+// ([WithPriority], 0 by default) and a start time ([WithStartAt], its
+// creation by default), none of which ever changes. A background run that is
+// running, or failed and retryable, is due at [Run.Due]: its start time, or
+// later its lease's expiry or its next attempt. [Admin.ClaimNext] claims the
+// next due run of the lanes a runner serves: within a lane the highest
+// priority first, then the earliest due. Nothing is resumable or claimed
+// before its start time. A run created with [WithLease] is claimed by its
+// creator in the same write, so the queue never hands it to anyone else
+// first.
+//
 // # Checkpoints
 //
 // Backends store flow checkpoints by implementing [flow.Checkpointer]
@@ -78,7 +92,7 @@
 //
 // Backends keep times as int64 Unix nanoseconds, which hold 1678 to 2262. A
 // time the caller asks a store to keep outside that range (a
-// [Details.NextAttemptAt], a lease's expiry) is [ErrInvalid] in every backend,
+// [Details.NextAttemptAt], a lease's expiry, a start time) is [ErrInvalid] in every backend,
 // and changes nothing. A time a read only compares with (the now of
 // [RunStore.ListResumable], a [Page.FromTime]) may be anything.
 //
@@ -98,11 +112,12 @@
 // same conversation or run id in two tenants names two unrelated things.
 //
 // The one exception is [Admin]: [Admin.ListResumableAll] lists the resumable
-// runs of every tenant, each with its tenant. It is the only method that
-// ignores the tenant in its context, and it is only for the runner's recovery
-// loop, which starts with no tenant. A backend hands it out as a separate
-// value, from a function rather than a method, so a tenant-scoped store cannot
-// be turned into it by a type assertion.
+// runs of every tenant, and [Admin.ClaimNext] claims the next due run of any
+// tenant, each with its tenant. They are the only methods that ignore the
+// tenant in their context, and they are only for the runner's dispatcher (its
+// recovery loop), which starts with no tenant. A backend hands Admin out as a
+// separate value, from a function rather than a method, so a tenant-scoped
+// store cannot be turned into it by a type assertion.
 //
 // The store never imports the harness: package runner turns harness events
 // into entries and a stored context back into a transcript.

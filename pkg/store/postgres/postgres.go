@@ -44,6 +44,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync/atomic"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -113,6 +114,9 @@ type Store struct {
 	clk   clock.Clock
 	pool  *pgxpool.Pool
 	admin *pgxpool.Pool // Admin's; pool when no admin URL was given
+	// bypass is set once Admin's role was found to bypass row-level
+	// security.
+	bypass atomic.Bool
 }
 
 // Open connects to the database at url (a postgres:// URL or a key=value

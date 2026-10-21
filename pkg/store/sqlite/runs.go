@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,14 +18,23 @@ import (
 const runColumns = `id, conversation, status,
 	input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
 	error, retryable, next_attempt_at, attempts, pending,
-	created_at, finished_at, lease_owner, lease_expires, interactive`
+	created_at, finished_at, lease_owner, lease_expires, interactive,
+	lane, priority, start_at`
 
 // final is the SQL list of final statuses (store.Status.Final).
 const final = `('completed', 'rejected', 'canceled')`
 
 // resumable is backend.Resumable in SQL, with :now as ?1.
-const resumable = `(interactive = 0 AND ((status = 'running' AND (lease_owner = '' OR lease_expires <= ?1))
+const resumable = `(interactive = 0 AND start_at <= ?1 AND ((status = 'running' AND (lease_owner = '' OR lease_expires <= ?1))
 	OR (status = 'failed' AND retryable = 1 AND (next_attempt_at IS NULL OR next_attempt_at <= ?1))))`
+
+// queued is backend.Queued in SQL, and due is store.Run.Due: the predicate
+// and the expression of the runs_queue index (migration 0009), which a query
+// must repeat word for word for SQLite to use it.
+const (
+	queued = `interactive = 0 AND (status = 'running' OR (status = 'failed' AND retryable = 1))`
+	due    = `max(start_at, coalesce(lease_expires, start_at), coalesce(next_attempt_at, start_at))`
+)
 
 // Create implements [store.RunStore].
 //
@@ -48,12 +58,22 @@ func (s *Store) Create(ctx context.Context, id, conversationID string, opts ...s
 	if err != nil {
 		return store.Run{}, fmt.Errorf("sqlite: create run: the clock reads %w", err)
 	}
+	c, err := backend.CheckCreate(o, now)
+	if err != nil {
+		return store.Run{}, err
+	}
+	expires, _ := storeTime(c.Lease.Expires) // checked by CheckCreate
 	var run store.Run
 	err = s.write(ctx, func(tx *sql.Tx) error {
-		_, insertErr := tx.ExecContext(ctx, `INSERT INTO runs (tenant, id, conversation, status, created_at, interactive)
-			VALUES (?, ?, ?, ?, ?, ?)`, tenant, id, conversationID, string(store.StatusRunning), at, o.Interactive)
+		_, insertErr := tx.ExecContext(ctx, `INSERT INTO runs (tenant, id, conversation, status, created_at, interactive,
+			lane, priority, start_at, lease_owner, lease_expires)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, tenant, id, conversationID, string(store.StatusRunning), at, o.Interactive,
+			o.Lane, o.Priority, c.Start.UnixNano(), c.Lease.Owner, expires)
 		if insertErr == nil {
-			run = store.Run{ID: id, ConversationID: conversationID, Status: store.StatusRunning, CreatedAt: now, Interactive: o.Interactive}
+			run = store.Run{
+				ID: id, ConversationID: conversationID, Status: store.StatusRunning, CreatedAt: now,
+				Interactive: o.Interactive, Lane: o.Lane, Priority: o.Priority, StartAt: c.Start, Lease: c.Lease,
+			}
 			return nil
 		}
 		r, err := getRun(ctx, tx, tenant, id)
@@ -422,20 +442,73 @@ func (a admin) ListResumableAll(ctx context.Context, now time.Time, limit int) (
 	return out, nil
 }
 
+// ClaimNext implements [store.Admin]. In one write transaction (which holds
+// the database's write lock, so claimers take turns) it reads the first
+// queued, due run of the lanes from the runs_queue index and leases it.
+func (a admin) ClaimNext(ctx context.Context, lanes []string, owner string, ttl time.Duration) (store.TenantRun, error) {
+	if err := ctx.Err(); err != nil {
+		return store.TenantRun{}, err
+	}
+	if err := backend.CheckClaimNext(lanes, owner, ttl); err != nil {
+		return store.TenantRun{}, err
+	}
+	now := a.s.now()
+	expires, err := storeTime(now.Add(ttl))
+	if err != nil {
+		return store.TenantRun{}, err
+	}
+	// now is ?1; the lanes follow.
+	args := []any{argTime(now)}
+	marks := make([]string, len(lanes))
+	for i, l := range lanes {
+		args = append(args, l)
+		marks[i] = "?" + strconv.Itoa(i+2)
+	}
+	var out store.TenantRun
+	err = a.s.write(ctx, func(tx *sql.Tx) error {
+		var tenant, id string
+		err := tx.QueryRowContext(ctx, `SELECT tenant, id FROM runs
+			WHERE lane IN (`+strings.Join(marks, ", ")+`) AND `+queued+` AND `+due+` <= ?1
+			ORDER BY priority DESC, `+due+`, tenant, id LIMIT 1`, args...).Scan(&tenant, &id)
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: no run of lanes %q is due", store.ErrNotFound, lanes)
+		}
+		if err != nil {
+			return fmt.Errorf("sqlite: claim next run: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE runs SET lease_owner = ?, lease_expires = ? WHERE tenant = ? AND id = ?`,
+			owner, expires, tenant, id); err != nil {
+			return fmt.Errorf("sqlite: claim next run: %w", err)
+		}
+		r, err := getRun(ctx, tx, tenant, id)
+		if err != nil {
+			return err
+		}
+		t, err := tenancy.NewTenant(tenant)
+		if err != nil {
+			return fmt.Errorf("sqlite: run %q has a bad tenant: %w", id, err)
+		}
+		out = store.TenantRun{Tenant: t, Run: r}
+		return nil
+	})
+	return out, err
+}
+
 // scanRun reads one row of runColumns, after the columns in pre.
 func scanRun(row scanner, pre ...any) (store.Run, error) {
 	var (
 		r                       store.Run
 		status, pending         string
 		next, created, finished sql.NullInt64
-		expires                 sql.NullInt64
+		expires, start          sql.NullInt64
 		in, out, cacheR, cacheW int
 		retryable               bool
 	)
 	err := row.Scan(append(pre, &r.ID, &r.ConversationID, &status,
 		&in, &out, &cacheR, &cacheW,
 		&r.Error, &retryable, &next, &r.Attempts, &pending,
-		&created, &finished, &r.Lease.Owner, &expires, &r.Interactive)...)
+		&created, &finished, &r.Lease.Owner, &expires, &r.Interactive,
+		&r.Lane, &r.Priority, &start)...)
 	if err != nil {
 		return store.Run{}, err
 	}
@@ -444,7 +517,7 @@ func scanRun(row scanner, pre ...any) (store.Run, error) {
 	r.Usage.CacheReadTokens, r.Usage.CacheWriteTokens = cacheR, cacheW
 	r.Retryable = retryable
 	r.NextAttemptAt, r.CreatedAt, r.FinishedAt = loadTime(next), loadTime(created), loadTime(finished)
-	r.Lease.Expires = loadTime(expires)
+	r.Lease.Expires, r.StartAt = loadTime(expires), loadTime(start)
 	if pending != "" {
 		if err := json.Unmarshal([]byte(pending), &r.Pending); err != nil {
 			return store.Run{}, fmt.Errorf("pending of run %q: %w", r.ID, err)

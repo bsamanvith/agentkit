@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -11,14 +12,19 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/tenancy"
 )
 
-// Recovery finds the background runs that should continue (interrupted by a
-// crash or a deploy, or failed retryably and now due) in every tenant, and
-// resumes them with their runner. Interactive runs ([Interactive]) are never
-// among them: the store does not list them. It is the only holder of the store's [store.Admin]: build
-// the Admin once, in the wiring, and give it to NewRecovery and nothing else.
+// Recovery is the dispatcher of the run queue: it claims the due background
+// runs of its lanes in every tenant, in the queue's order, and runs each with
+// its runner. A run is due when it is enqueued and its start time has come
+// ([Runner.Enqueue]), when its execution stopped (a crash or a deploy) and
+// its lease expired, or when it failed retryably and its next attempt is
+// due; see [store.Admin.ClaimNext] for the order. Interactive runs
+// ([Interactive]) are never among them. It is the only holder of the store's
+// [store.Admin]: build the Admin once, in the wiring, and give it to
+// NewRecovery and nothing else.
 type Recovery struct {
 	r        *Runner
 	admin    store.Admin
+	lanes    []string
 	limit    int
 	workers  int
 	interval time.Duration
@@ -28,7 +34,20 @@ type Recovery struct {
 // RecoveryOption configures [NewRecovery].
 type RecoveryOption func(*Recovery) error
 
-// WithBatch sets how many runs one pass lists (default 100).
+// WithLanes sets the lanes the dispatcher claims runs from (default the
+// default lane, ""). A run of any other lane is left to the dispatchers that
+// serve it.
+func WithLanes(lanes ...string) RecoveryOption {
+	return func(rc *Recovery) error {
+		if len(lanes) == 0 {
+			return fmt.Errorf("%w: no lanes", ErrInvalidConfig)
+		}
+		rc.lanes = slices.Clone(lanes)
+		return nil
+	}
+}
+
+// WithBatch sets how many runs one pass claims at most (default 100).
 func WithBatch(n int) RecoveryOption {
 	return func(rc *Recovery) error {
 		if n < 1 || n > store.MaxPageLimit {
@@ -39,7 +58,8 @@ func WithBatch(n int) RecoveryOption {
 	}
 }
 
-// WithWorkers sets how many runs a pass resumes at once (default 4).
+// WithWorkers sets how many runs a pass runs at once (default 4). A pass
+// claims a run only when one of its workers is free to run it.
 func WithWorkers(n int) RecoveryOption {
 	return func(rc *Recovery) error {
 		if n < 1 {
@@ -75,14 +95,14 @@ func WithExecute(f func(ctx context.Context, x *Execution)) RecoveryOption {
 	}
 }
 
-// NewRecovery returns the recovery loop of r over admin, the cross-tenant
-// view of r's store.
+// NewRecovery returns the dispatcher of r over admin, the cross-tenant view
+// of r's store.
 func NewRecovery(r *Runner, admin store.Admin, opts ...RecoveryOption) (*Recovery, error) {
 	if r == nil || admin == nil {
 		return nil, fmt.Errorf("%w: nil runner or admin", ErrInvalidConfig)
 	}
 	rc := &Recovery{
-		r: r, admin: admin, limit: 100, workers: 4, interval: 30 * time.Second,
+		r: r, admin: admin, lanes: []string{""}, limit: 100, workers: 4, interval: 30 * time.Second,
 		execute: func(_ context.Context, x *Execution) { _, _ = x.Wait() },
 	}
 	for _, opt := range opts {
@@ -97,33 +117,32 @@ func NewRecovery(r *Runner, admin store.Admin, opts ...RecoveryOption) (*Recover
 type Report struct {
 	// Resumed runs were claimed and run; they may have failed again.
 	Resumed int
-	// Skipped runs were claimed by another process first, became final in
-	// between, or are too new: a running run that was never claimed within
-	// one lease time of its creation is left to the execution that made it.
+	// Skipped runs were claimed but not run: final by then, or claimed a
+	// second time in the pass (its execution ended at once, leaving the
+	// run due). Such a run keeps the second claim's lease, so it is tried
+	// again one lease time later and never holds up the runs behind it.
 	Skipped int
 	// Errors are runs that could not be resumed (the error is joined into
-	// Recover's).
+	// Recover's). Each keeps the lease the pass took until it expires, so
+	// it is tried again one lease time later, not at once.
 	Errors int
 }
 
-// Recover makes one pass: it lists up to the batch of runs that should
-// continue now, oldest first, and resumes each with its tenant in ctx, at
-// most the workers at a time, running each to its end. The lease decides who
-// resumes a run: of two processes recovering at once, each run is resumed by
-// one. Cancelling ctx stops the runs being resumed; they stay running, for
-// the next pass.
+// Recover makes one pass: while one of its workers is free, it claims the
+// next due run of its lanes ([store.Admin.ClaimNext]) and runs it with its
+// tenant in ctx, until no run is due or it has claimed the batch; then it
+// waits for the runs it started to end. The store's claim decides who runs
+// a run: of two processes dispatching at once, each run is run by one.
+// Cancelling ctx stops the runs being run; they stay running, for the next
+// pass.
 func (rc *Recovery) Recover(ctx context.Context) (Report, error) {
-	now := rc.r.clk.Now()
-	runs, err := rc.admin.ListResumableAll(ctx, now, rc.limit)
-	if err != nil {
-		return Report{}, err
-	}
 	var (
 		mu   sync.Mutex
 		rep  Report
 		errs []error
 		wg   sync.WaitGroup
 		sem  = make(chan struct{}, rc.workers)
+		seen = map[liveKey]bool{}
 	)
 	count := func(n *int, err error) {
 		mu.Lock()
@@ -133,25 +152,42 @@ func (rc *Recovery) Recover(ctx context.Context) (Report, error) {
 			errs = append(errs, err)
 		}
 	}
-	for _, tr := range runs {
-		run := tr.Run
-		if run.Status == store.StatusRunning && run.Lease == (store.Lease{}) && run.Attempts == 0 &&
-			now.Before(run.CreatedAt.Add(rc.r.ttl)) {
-			// Probably between its creation and its claim.
-			count(&rep.Skipped, nil)
-			continue
-		}
+	for range rc.limit {
 		select {
 		case sem <- struct{}{}:
 		case <-ctx.Done():
 			wg.Wait()
 			return rep, ctx.Err()
 		}
+		if rc.r.isClosed() {
+			<-sem
+			break
+		}
+		owner := rc.r.nextOwner()
+		tr, err := rc.admin.ClaimNext(ctx, rc.lanes, owner, rc.r.ttl)
+		if err != nil {
+			<-sem
+			if !errors.Is(err, store.ErrNotFound) {
+				count(&rep.Errors, fmt.Errorf("claim the next run: %w", err))
+			}
+			break
+		}
+		tctx := tenancy.With(ctx, tr.Tenant)
+		k := liveKey{tr.Tenant.ID(), tr.Run.ID}
+		if seen[k] {
+			// Its execution ended at once and left it due: it would be
+			// claimed again and again, ahead of the runs behind it. It
+			// keeps this claim's lease, so it is tried again one lease
+			// time later, and the pass goes on to the next run.
+			<-sem
+			count(&rep.Skipped, nil)
+			continue
+		}
+		seen[k] = true
 		wg.Go(func() {
 			defer func() { <-sem }()
-			tctx := tenancy.With(ctx, tr.Tenant)
-			x, err := rc.r.Resume(tctx, run.ID)
-			if errors.Is(err, store.ErrLeased) || errors.Is(err, store.ErrFinal) {
+			x, err := rc.r.resume(tctx, tr.Run.ID, resumeConfig{claimed: owner})
+			if errors.Is(err, store.ErrFinal) {
 				count(&rep.Skipped, nil)
 				return
 			}
@@ -160,17 +196,19 @@ func (rc *Recovery) Recover(ctx context.Context) (Report, error) {
 				return
 			}
 			if x.Run.Status.Final() {
-				// Completed by another process since the listing.
+				// Completed by another process since the claim.
 				count(&rep.Skipped, nil)
 				return
 			}
 			// The run's own outcome is stored with it; a failure here is
-			// the run's, not recovery's.
+			// the run's, not the dispatcher's.
 			rc.execute(tctx, x)
 			count(&rep.Resumed, nil)
 		})
 	}
 	wg.Wait()
+	mu.Lock()
+	defer mu.Unlock()
 	return rep, errors.Join(errs...)
 }
 

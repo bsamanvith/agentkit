@@ -14,8 +14,9 @@ import (
 )
 
 // SimulateRuns runs one seeded simulation against a fresh store from
-// newStore: runs created (and retried), interactive or background, in a few
-// conversations of two tenants,
+// newStore: runs created (and retried), interactive or background, in two
+// lanes at a few priorities, some starting later, in a few conversations of
+// two tenants,
 // claims, renewals and releases by several owners, transitions from the right
 // and the wrong status with valid and invalid details, clock moves, and
 // ListResumable and Unfinished reads. Every result, and the stored lease
@@ -29,7 +30,9 @@ func SimulateRuns(t *testing.T, newStore func(t *testing.T, clk clock.Clock) sto
 
 // SimulateAdmin is [SimulateRuns] for a store with an [store.Admin] view, as
 // [RunAdmin] takes it: every ListResumable read is followed by a
-// ListResumableAll at the same time, compared with the model of both tenants.
+// ListResumableAll at the same time, compared with the model of both tenants,
+// and ClaimNext from random lanes is one of the steps, its run (or none)
+// predicted by the model.
 func SimulateAdmin(t *testing.T, newStore func(t *testing.T, clk clock.Clock) (store.RunStore, store.Admin), seed uint64) {
 	t.Helper()
 	simulateRuns(t, newAdminRig(t, newStore), seed)
@@ -70,6 +73,9 @@ type runSim struct {
 type simRun struct {
 	conv        string
 	interactive bool
+	lane        string
+	priority    int
+	start       time.Time
 	created     time.Time
 	status      store.Status
 	lease       store.Lease
@@ -89,8 +95,14 @@ func (m *simRun) run(id string) store.Run {
 		CreatedAt:      m.created,
 		Lease:          m.lease,
 		Interactive:    m.interactive,
+		Lane:           m.lane,
+		Priority:       m.priority,
+		StartAt:        m.start,
 	}
 }
+
+// simLanes are the lanes of the simulation.
+var simLanes = []string{"", "batch"}
 
 var simOwners = []string{"o0", "o1", "o2"}
 
@@ -125,8 +137,12 @@ func (s *runSim) do() {
 		s.release(ctx, tenant)
 	case op < 82:
 		s.transition(ctx, tenant)
-	case op < 92:
+	case op < 88:
 		s.r.clk.Advance(time.Duration(s.rng.IntN(4000)) * time.Millisecond)
+	case op < 92:
+		if s.r.admin != nil {
+			s.claimNext(ctx)
+		}
 	default:
 		s.checkReads(ctx, tenant)
 	}
@@ -155,6 +171,19 @@ func (s *runSim) create(ctx context.Context, tenant string) {
 	if interactive {
 		opts = append(opts, store.Interactive())
 	}
+	lane, priority := simLanes[s.rng.IntN(len(simLanes))], s.rng.IntN(3)-1
+	opts = append(opts, store.WithLane(lane), store.WithPriority(priority))
+	start := s.r.clk.Now()
+	if s.rng.IntN(3) == 0 {
+		start = start.Add(time.Duration(s.rng.IntN(6000)-2000) * time.Millisecond)
+		opts = append(opts, store.WithStartAt(start))
+	}
+	var lease store.Lease
+	if s.rng.IntN(3) == 0 {
+		ttl := time.Duration(1+s.rng.IntN(5)) * time.Second
+		lease = store.Lease{Owner: simOwners[s.rng.IntN(len(simOwners))], Expires: s.r.clk.Now().Add(ttl)}
+		opts = append(opts, store.WithLease(lease.Owner, ttl))
+	}
 	run, err := s.r.create(ctx, id, conv, opts...)
 	if !isErr(err, want) {
 		s.fatalf("Create %s/%s in %s (exists %v, busy with %q) = %v, want %v", tenant, id, conv, exists, busy, err, want)
@@ -162,13 +191,22 @@ func (s *runSim) create(ctx context.Context, tenant string) {
 	switch {
 	case exists && want == nil && run.Interactive != m.interactive:
 		s.fatalf("Create again of %s/%s (interactive %v) = interactive %v, want it as first created", tenant, id, interactive, run.Interactive)
+	case exists && want == nil && !sameLease(run.Lease, m.lease):
+		s.fatalf("Create again of %s/%s = lease %+v, want the stored %+v", tenant, id, run.Lease, m.lease)
 	case !exists && want == nil && run.Interactive != interactive:
 		s.fatalf("Create %s/%s interactive %v = interactive %v", tenant, id, interactive, run.Interactive)
+	case !exists && want == nil && !sameLease(run.Lease, lease):
+		s.fatalf("Create %s/%s = lease %+v, want %+v", tenant, id, run.Lease, lease)
 	}
 	if want == nil && !exists {
-		s.runs[logKey{tenant, id}] = &simRun{conv: conv, created: s.r.clk.Now(), status: store.StatusRunning, interactive: interactive}
+		m := &simRun{
+			conv: conv, created: s.r.clk.Now(), status: store.StatusRunning, interactive: interactive,
+			lane: lane, priority: priority, start: start, lease: lease,
+		}
+		s.runs[logKey{tenant, id}] = m
 		s.busy[logKey{tenant, conv}] = id
 		s.order[tenant] = append(s.order[tenant], id)
+		s.checkLease(ctx, tenant, id, m)
 	}
 }
 
@@ -314,6 +352,53 @@ func (s *runSim) checkReads(ctx context.Context, tenant string) {
 			s.fatalf("Unfinished %s/%s = %q, %v; want %q", tenant, conv, run.ID, err, busy)
 		}
 	}
+}
+
+// claimNext calls ClaimNext from one or both lanes and compares the run it
+// claims (or ErrNotFound) with the model's choice: of every tenant's queued
+// runs in those lanes that are due at the clock's time, the first in claim
+// order. The model then takes the claim's lease. ctx carries a tenant, which
+// the call must ignore.
+func (s *runSim) claimNext(ctx context.Context) {
+	lanes := []string{simLanes[s.rng.IntN(len(simLanes))]}
+	if s.rng.IntN(3) == 0 {
+		lanes = simLanes
+	}
+	owner := simOwners[s.rng.IntN(len(simOwners))]
+	ttl := time.Duration(1+s.rng.IntN(5)) * time.Second
+	now := s.r.clk.Now()
+	var (
+		want    store.TenantRun
+		wantKey logKey
+		found   bool
+	)
+	for _, tenant := range []string{tenantA, tenantB} {
+		for _, id := range s.order[tenant] {
+			run := s.runs[logKey{tenant, id}].run(id)
+			if !slices.Contains(lanes, run.Lane) || !claimable(run, now) {
+				continue
+			}
+			tr := store.TenantRun{Tenant: tenancy.MustFrom(s.ctxs[tenant]), Run: run}
+			if !found || claimOrder(tr, want) < 0 {
+				want, wantKey, found = tr, logKey{tenant, id}, true
+			}
+		}
+	}
+	got, err := s.r.admin.ClaimNext(ctx, lanes, owner, ttl)
+	switch {
+	case !found && !isErr(err, store.ErrNotFound):
+		s.fatalf("ClaimNext %q at %v = %s/%s, %v; want ErrNotFound", lanes, now, got.Tenant.ID(), got.Run.ID, err)
+	case !found:
+		return
+	case err != nil || got.Tenant != want.Tenant || got.Run.ID != want.Run.ID:
+		s.fatalf("ClaimNext %q at %v = %s/%s, %v; want %s/%s", lanes, now, got.Tenant.ID(), got.Run.ID, err, want.Tenant.ID(), want.Run.ID)
+	}
+	m := s.runs[wantKey]
+	m.lease = store.Lease{Owner: owner, Expires: now.Add(ttl)}
+	if !sameLease(got.Run.Lease, m.lease) {
+		s.fatalf("ClaimNext returned %s/%s with lease %+v, want %+v", wantKey.tenant, got.Run.ID, got.Run.Lease, m.lease)
+	}
+	s.checkLease(s.ctxs[wantKey.tenant], wantKey.tenant, got.Run.ID, m)
 }
 
 func (s *runSim) checkLease(ctx context.Context, tenant, id string, m *simRun) {

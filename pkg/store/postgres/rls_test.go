@@ -168,10 +168,19 @@ func TestAdminRole(t *testing.T) {
 	if _, err := postgres.Admin(s).ListResumableAll(context.Background(), now, 10); !errors.Is(err, postgres.ErrAdminRole) {
 		t.Errorf("Admin on the application role: %v, want ErrAdminRole", err)
 	}
+	if _, err := postgres.Admin(s).ClaimNext(context.Background(), []string{""}, "w", time.Minute); !errors.Is(err, postgres.ErrAdminRole) {
+		t.Errorf("ClaimNext on the application role: %v, want ErrAdminRole", err)
+	}
 	withAdmin := openURL(t, app, postgres.WithMigrate(false), postgres.WithAdminURL(owner))
 	got, err := postgres.Admin(withAdmin).ListResumableAll(context.Background(), now, 10)
 	if err != nil || len(got) != 2 {
 		t.Fatalf("Admin on its own role: %d runs, %v; want both tenants'", len(got), err)
+	}
+	// The seeded runs, one per tenant, are due.
+	for range 2 {
+		if tr, err := postgres.Admin(withAdmin).ClaimNext(context.Background(), []string{""}, "w", time.Minute); err != nil {
+			t.Fatalf("ClaimNext on its own role = %+v, %v; want a run of either tenant", tr.Run, err)
+		}
 	}
 	if _, err := postgres.Open(context.Background(), app, postgres.WithAdminURL("::bad")); err == nil {
 		t.Error("a bad admin URL was accepted")

@@ -46,7 +46,12 @@ func schema(t testing.TB) (owner, app string) {
 	}
 	q := u.Query()
 	q.Set("search_path", name)
-	q.Set("pool_max_conns", "8")
+	// The database's connections are shared with the store's tests, which
+	// run at the same time (go test runs packages in parallel), and CI's
+	// Postgres has the default max_connections, 100. 4 per pool keeps
+	// TestTwoReplicas's running tests to 32 and still lets
+	// TestConcurrentCreates's 8 writers all be in flight.
+	q.Set("pool_max_conns", "4")
 	u.RawQuery = q.Encode()
 	owner = u.String()
 	roleOnce.Do(func() {

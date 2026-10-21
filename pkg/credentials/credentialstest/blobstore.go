@@ -3,6 +3,7 @@ package credentialstest
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -35,10 +36,16 @@ func RunBlobStore(t *testing.T, newStore func(t *testing.T) credentials.BlobStor
 			tc.fn(t, newRig(t, newStore(t), nil))
 		})
 	}
+	// A subtest per seed, as storetest's simulations: each seed's store is
+	// closed when its seed ends, not held open until the last one's does
+	// (20 stores at once ran a shared database out of connections).
 	t.Run("simulation", func(t *testing.T) {
 		t.Parallel()
 		for seed := range uint64(20) {
-			Simulate(t, newStore, seed)
+			t.Run(fmt.Sprintf("seed=%d", seed), func(t *testing.T) {
+				t.Parallel()
+				Simulate(t, newStore, seed)
+			})
 		}
 	})
 }

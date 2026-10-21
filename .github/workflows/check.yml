@@ -154,6 +154,8 @@ jobs:
         run: scripts/smoke.sh --images
         env:
           AGENTKIT_STORE: postgres://agentkit:agentkit@localhost:5432/agentkit_smoke?sslmode=disable
+      - name: the fakellm image (make image BIN=fakellm), within its own 12 MB budget
+        run: make image BIN=fakellm && make image-size BIN=fakellm
 
   # The web workspace (web/): lint, typecheck, unit tests, audit, and a
   # rebuild that must match the committed pkg/web/dist; then the browser

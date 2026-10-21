@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/auth"
+	"github.com/bsamanvith/agentkit/pkg/auth/resourcemeta"
 	"github.com/bsamanvith/agentkit/pkg/component"
 	"github.com/bsamanvith/agentkit/pkg/mcp/server"
 	"github.com/bsamanvith/agentkit/pkg/tool"
@@ -61,8 +62,14 @@ func newMCPServer(ctx context.Context, cfg mcpConfig, regs map[string]tool.Regis
 		opts = append(opts, server.WithStateful())
 	}
 	if authn != nil {
+		mw := auth.Middleware(authn, auth.WithLogger(log.With("component", mcpServerName)))
+		if cfg.protected != nil {
+			// A 401 names the metadata of the endpoint asked for, whose
+			// resource is that endpoint's URL, as MCP clients check.
+			mw = resourcemeta.Middleware(authn, cfg.protected.Audience, []string{mcpPrefix(cfg)}, auth.WithLogger(log.With("component", mcpServerName)))
+		}
 		opts = append(opts,
-			server.WithMiddleware(auth.Middleware(authn, auth.WithLogger(log.With("component", mcpServerName)))),
+			server.WithMiddleware(mw),
 			server.WithAccess(func(ctx context.Context, name string) bool {
 				p, ok := auth.From(ctx)
 				return ok && p.AllowsToolset(name)
@@ -74,9 +81,53 @@ func newMCPServer(ctx context.Context, cfg mcpConfig, regs map[string]tool.Regis
 		return component.Mount{}, err
 	}
 	// Mounted without http.StripPrefix: the server routes on the full path.
-	pattern := strings.TrimSuffix(cfg.BasePath, "/") + "/"
-	return component.Mount{Pattern: pattern, Component: &mcpServer{handler: srv, problems: problems}}, nil
+	return component.Mount{Pattern: mcpPrefix(cfg), Component: &mcpServer{handler: srv, problems: problems}}, nil
 }
+
+// mcpPrefix is the path prefix of the toolsets' endpoints: "/mcp/".
+func mcpPrefix(cfg mcpConfig) string { return strings.TrimSuffix(cfg.BasePath, "/") + "/" }
+
+// resourceMetadataName names the components that serve the MCP endpoints'
+// protected resource metadata.
+const resourceMetadataName = "oauth-protected-resource"
+
+// newResourceMetadata serves the protected resource metadata (RFC 9728) of
+// the MCP endpoints when auth.jwt is configured: at
+// /.well-known/oauth-protected-resource for the server, and at that path
+// followed by an endpoint's path (/mcp/crm) for each endpoint. The resource
+// is auth.jwt's audience, which must then be the server's origin. With no
+// auth.jwt it serves nothing.
+func newResourceMetadata(cfg mcpConfig) ([]component.Mount, error) {
+	j := cfg.protected
+	if j == nil {
+		return nil, nil
+	}
+	h, err := resourcemeta.Handler(resourcemeta.Config{
+		Resource:             j.Audience,
+		AuthorizationServers: j.authorizationServers(),
+		ScopesSupported:      j.ScopesSupported,
+		Paths:                []string{mcpPrefix(cfg)},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("auth.jwt: the MCP endpoints' metadata: %w (the audience must be the server's origin, such as https://agents.example.com)", err)
+	}
+	return []component.Mount{
+		{Pattern: resourcemeta.WellKnown, Component: &resourceMetadata{name: resourceMetadataName, h: h}},
+		{Pattern: resourcemeta.WellKnown + "/", Component: &resourceMetadata{name: resourceMetadataName + "-endpoints", h: h}},
+	}, nil
+}
+
+// resourceMetadata is a component that serves the metadata: public, always
+// ready, nothing to shut down.
+type resourceMetadata struct {
+	name string
+	h    http.Handler
+}
+
+func (m *resourceMetadata) Name() string                   { return m.name }
+func (m *resourceMetadata) Handler() http.Handler          { return m.h }
+func (m *resourceMetadata) Ready(context.Context) error    { return nil }
+func (m *resourceMetadata) Shutdown(context.Context) error { return nil }
 
 func (m *mcpServer) Name() string          { return mcpServerName }
 func (m *mcpServer) Handler() http.Handler { return m.handler }

@@ -22,7 +22,6 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/component"
 	"github.com/bsamanvith/agentkit/pkg/harness"
-	"github.com/bsamanvith/agentkit/pkg/memory"
 	"github.com/bsamanvith/agentkit/pkg/policy"
 	"github.com/bsamanvith/agentkit/pkg/rpc"
 	"github.com/bsamanvith/agentkit/pkg/runner"
@@ -390,12 +389,12 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 				}
 			}
 		} else {
-			mem, closeMem, err := openMemory(ctx, a, cfg.legacy)
+			mem, err := openMemory(ctx, a, cfg.legacy, clk)
 			if err != nil {
 				return fail(err)
 			}
-			if closeMem != nil {
-				closers = append(closers, closeMem)
+			if mem != nil {
+				closers = append(closers, mem.close)
 			}
 			h, sk, ks, err := c.newHarness(ctx, cfg, a, built, admin, mem, clk)
 			if err != nil {
@@ -479,10 +478,10 @@ func (d agentDef) check(legacy bool) error {
 }
 
 // newHarness builds an agent's harness: its model, its toolsets merged into
-// one registry with its memory tool (mem, nil without memory), its skills,
-// and its limits. It returns the toolsets the agent names that were skipped
+// one registry with its memory and recall tools (mem, nil without memory),
+// its skills, auto recall, and its limits. It returns the toolsets the agent names that were skipped
 // (optional ones that failed to build) and the skills it loaded.
-func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built map[string]tool.Registry, admin toolsetAdmin, mem tool.Registry, clk clock.Clock) (*harness.Harness, []string, agentSkills, error) {
+func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built map[string]tool.Registry, admin toolsetAdmin, mem *agentMemory, clk clock.Clock) (*harness.Harness, []string, agentSkills, error) {
 	label := a.label(cfg.legacy)
 	fail := func(err error) (*harness.Harness, []string, agentSkills, error) { return nil, nil, agentSkills{}, err }
 	if err := a.check(cfg.legacy); err != nil {
@@ -493,7 +492,7 @@ func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built 
 		newModel = buildModel
 	}
 	f := a.Model.flags(c.env)
-	f.nativeMemory = mem != nil && a.Memory != nil && a.Memory.NativeTool
+	f.nativeMemory = mem != nil && mem.native
 	model, err := newModel(f)
 	if err != nil {
 		return fail(fmt.Errorf("%s.model: %w", label, err))
@@ -520,10 +519,12 @@ func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built 
 		if err != nil {
 			return fail(fmt.Errorf("%s.toolsets: %w", label, err))
 		}
-		if slices.ContainsFunc(defs, func(d tool.Definition) bool { return d.Name == memory.ToolName }) {
-			return fail(fmt.Errorf("%s.memory: a toolset of the agent has a tool named %q, the memory tool's name", label, memory.ToolName))
+		for _, name := range mem.names {
+			if slices.ContainsFunc(defs, func(d tool.Definition) bool { return d.Name == name }) {
+				return fail(fmt.Errorf("%s.memory: a toolset of the agent has a tool named %q, the name of a memory tool", label, name))
+			}
 		}
-		tools = joinRegistries(mem, tools)
+		tools = joinRegistries(mem.tools, tools)
 	}
 	if len(a.RuntimeToolsets) > 0 {
 		tools = joinRegistries(tools, admin.Registry(a.RuntimeToolsets...))
@@ -532,7 +533,7 @@ func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built 
 	if err != nil {
 		return fail(fmt.Errorf("%s.toolsets: %w", label, err))
 	}
-	h, err := harness.New(model, tools,
+	opts := []harness.Option{
 		harness.WithToolPolicy(a.toolPolicy(cfg.Environment.ToolPolicy), toolsetOf),
 		harness.WithInteraction(cmp.Or(a.Interaction, harness.Autonomous)),
 		harness.WithSystem(system),
@@ -541,7 +542,11 @@ func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built 
 		harness.WithMaxTotalTokens(a.MaxTotalTokens),
 		harness.WithContextWindow(a.Model.window()),
 		harness.WithClock(clk),
-	)
+	}
+	if mem != nil && mem.prepare != nil {
+		opts = append(opts, harness.WithPrepare(mem.prepare))
+	}
+	h, err := harness.New(model, tools, opts...)
 	if err != nil {
 		return fail(fmt.Errorf("%s: %w", label, err))
 	}

@@ -72,6 +72,13 @@
 // asks gets an error result, and a call the policy wants approved is refused
 // ([PolicyError]).
 //
+// # Adding context to a message
+//
+// [WithPrepare] is the one hook for retrieved context (memory recall, and
+// later RAG): it runs once at the start of a run with a new message, and the
+// blocks it returns go into that user message, before its own. The system
+// prompt never changes, so a cached prompt stays cached across runs.
+//
 // # Errors
 //
 // Every error from a run is a [*RunError] wrapping its cause, and carrying

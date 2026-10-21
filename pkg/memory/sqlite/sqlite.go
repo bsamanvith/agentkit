@@ -9,6 +9,10 @@
 // connections (WAL mode). The schema version is PRAGMA user_version; a file
 // whose schema is newer than this package knows is refused (ErrSchemaTooNew).
 //
+// An [Index] (OpenIndex) is a [memory.Index] in the same kind of file, or in
+// the same file as a Store: its tables (memory_items, the FTS5 table
+// memory_items_fts) keep their version in memory_index_meta.
+//
 // The driver is modernc.org/sqlite (pure Go), the one the store's SQLite
 // backend uses, so it adds nothing to a binary that has that backend.
 package sqlite

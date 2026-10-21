@@ -246,8 +246,13 @@ func ModuleRules() Rules {
 			// The memory context store (E12, T058) knows tenants and the tool
 			// abstraction, never the harness, a model or the store: memory
 			// reaches the model as a tool. Its live test runs it with the
-			// harness on Claude.
-			"pkg/memory": {"pkg/tenancy", "pkg/tool", "pkg/harness", "pkg/llm", "pkg/llm/anthropic"},
+			// harness on Claude. The search store (T059) adds the clock that
+			// dates saved items and the harness's prepare hook (auto
+			// recall), tested on the fake model with a golden request.
+			"pkg/memory": {
+				"pkg/tenancy", "pkg/tool", "pkg/harness", "pkg/llm", "pkg/llm/anthropic", "pkg/clock",
+				"pkg/clock/clocktest", "pkg/llm/llmtest", "internal/testkit",
+			},
 			// The SSRF guard is the standard library only.
 			"pkg/netguard": {},
 			// The credential vault (T042) knows tenants and nothing else:

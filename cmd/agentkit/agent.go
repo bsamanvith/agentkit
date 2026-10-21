@@ -97,10 +97,19 @@ type apiConfig struct {
 
 // agentModelConfig chooses the model.
 type agentModelConfig struct {
-	// Provider names the model adapter (modelProviders): "anthropic".
+	// Provider names the model adapter (modelProviders): "anthropic", or
+	// "openai" for any OpenAI-compatible server.
 	Provider string `json:"provider"`
-	// ID is the model ID.
+	// ID is the model ID: defaultModelID when empty for anthropic,
+	// required for openai.
 	ID string `json:"id"`
+	// BaseURL is the server of an openai model, ending before
+	// /chat/completions (http://localhost:11434/v1 for Ollama); empty for
+	// $OPENAI_BASE_URL, or else OpenAI's API.
+	BaseURL string `json:"base_url"`
+	// APIKeyEnv names the environment variable holding an openai model's
+	// API key (default OPENAI_API_KEY); an unset variable sends no key.
+	APIKeyEnv string `json:"api_key_env"`
 	// Effort is low, medium, high, xhigh or max; empty for the adapter's
 	// default (medium).
 	Effort string `json:"effort"`
@@ -114,6 +123,31 @@ type agentModelConfig struct {
 	CompactAt     float64 `json:"compact_at"`
 }
 
+// providerOpenAI is the provider of OpenAI-compatible servers, and
+// defaultOpenAIKeyEnv the variable its key comes from by default.
+const (
+	providerOpenAI      = "openai"
+	defaultOpenAIKeyEnv = "OPENAI_API_KEY"
+)
+
+// id is the model ID, with the default for anthropic.
+func (m agentModelConfig) id() string {
+	if m.ID == "" && cmp.Or(m.Provider, defaultProvider) == defaultProvider {
+		return defaultModelID
+	}
+	return m.ID
+}
+
+// flags are the model's settings for buildModel, with its key read through
+// getenv.
+func (m agentModelConfig) flags(getenv func(string) string) modelFlags {
+	f := modelFlags{provider: m.Provider, model: m.id(), effort: m.Effort}
+	if m.Provider == providerOpenAI {
+		f.baseURL, f.apiKey = m.BaseURL, getenv(cmp.Or(m.APIKeyEnv, defaultOpenAIKeyEnv))
+	}
+	return f
+}
+
 // defaultContextWindow is the context window of Claude models.
 const defaultContextWindow = 200_000
 
@@ -124,7 +158,7 @@ func (m agentModelConfig) window() harness.ContextWindow {
 
 func defaultAgentDef() agentDef {
 	return agentDef{
-		Model:    agentModelConfig{Provider: "anthropic", ID: defaultModelID},
+		Model:    agentModelConfig{Provider: defaultProvider},
 		System:   "You are a helpful assistant. Use the tools when they help.",
 		MaxTurns: 25,
 	}
@@ -310,7 +344,7 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 	for _, a := range cfg.Agents {
 		def := agentapi.Agent{
 			Name: a.Name, Description: a.Description, System: a.System,
-			Model:    wire.Model{Provider: a.Model.Provider, ID: a.Model.ID, Effort: a.Model.Effort},
+			Model:    wire.Model{Provider: a.Model.Provider, ID: a.Model.id(), Effort: a.Model.Effort},
 			Toolsets: a.Toolsets, PrefixToolNames: a.PrefixToolNames, RuntimeToolsets: a.RuntimeToolsets,
 		}
 		if len(a.RuntimeToolsets) > 0 && admin == nil {
@@ -410,6 +444,15 @@ func (d agentDef) check(legacy bool) error {
 	if _, ok := modelProviders()[cmp.Or(d.Model.Provider, defaultProvider)]; !ok {
 		return fmt.Errorf("%s.model.provider %q: want %s", label, d.Model.Provider, providerNames())
 	}
+	if d.Model.Provider == providerOpenAI && d.Model.ID == "" {
+		return fmt.Errorf("%s.model.id: provider %q needs the model ID the server knows (\"gpt-5-mini\", \"llama3.2\")", label, providerOpenAI)
+	}
+	if d.Model.Provider == providerOpenAI && d.Memory != nil && d.Memory.NativeTool {
+		return fmt.Errorf("%s.memory.native_tool: Claude's native memory tool needs provider %q", label, defaultProvider)
+	}
+	if d.Model.Provider != providerOpenAI && (d.Model.BaseURL != "" || d.Model.APIKeyEnv != "") {
+		return fmt.Errorf("%s.model: base_url and api_key_env are for provider %q", label, providerOpenAI)
+	}
 	if d.MaxTotalTokens < 0 || d.Model.MaxTokens < 0 || d.Model.ContextWindow < 0 {
 		return fmt.Errorf("%s: negative limit", label)
 	}
@@ -433,10 +476,9 @@ func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built 
 	if newModel == nil {
 		newModel = buildModel
 	}
-	model, err := newModel(modelFlags{
-		provider: a.Model.Provider, model: a.Model.ID, effort: a.Model.Effort,
-		nativeMemory: mem != nil && a.Memory != nil && a.Memory.NativeTool,
-	})
+	f := a.Model.flags(c.env)
+	f.nativeMemory = mem != nil && a.Memory != nil && a.Memory.NativeTool
+	model, err := newModel(f)
 	if err != nil {
 		return fail(fmt.Errorf("%s.model: %w", label, err))
 	}

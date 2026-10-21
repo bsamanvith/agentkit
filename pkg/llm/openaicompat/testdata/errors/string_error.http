@@ -1,0 +1,4 @@
+HTTP/1.1 404 Not Found
+Content-Type: application/json
+
+{"error":"model \"nope\" not found, try pulling it first"}

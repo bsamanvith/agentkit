@@ -163,6 +163,14 @@ Inside the container the server listens on `:8080` (not loopback), so `AGENTKIT_
 }
 ```
 
+**Other models.** `"provider": "openai"` runs an agent on any server that speaks OpenAI's Chat Completions API: OpenAI, vLLM, Ollama, llama.cpp, Groq, or a gateway such as LiteLLM or OpenRouter. Ollama on the same machine needs no key:
+
+```json
+{"name": "local", "model": {"provider": "openai", "id": "llama3.2", "base_url": "http://localhost:11434/v1", "context_window": 128000}}
+```
+
+The key is read on the process that runs the agent (the runner, when split) from the variable `api_key_env` names, `OPENAI_API_KEY` by default; if it is unset, no key is sent. Plain `http://` base URLs work, with a key too, for a server on the same host or inside a cluster (`http://vllm:8000/v1`); the key then crosses the network unencrypted, so use `https://` anywhere else. Set `model.context_window` to the model's window: the default, 200000, is Claude's.
+
 A run names its agent (`{"message": "...", "agent": "math"}`); without one it gets the agent named `default` (or the only agent). A conversation stays with its agent: continuing it with another is `409 agent_mismatch`.
 
 Each entry of `agents`:
@@ -171,8 +179,10 @@ Each entry of `agents`:
 |---|---|---|
 | `name` | required | `^[a-zA-Z0-9_-]{1,64}$`, unique |
 | `description` | none | shown in `GET /v1/agents` |
-| `model.id` | `claude-haiku-5-5` | Claude model |
-| `model.effort` | adapter default (medium) | `low` … `max` |
+| `model.provider` | `anthropic` | `anthropic` (Claude), or `openai` for any OpenAI-compatible server (below) |
+| `model.id` | `claude-haiku-5-5` for `anthropic`; required for `openai` | model ID, as the server names it |
+| `model.base_url`, `model.api_key_env` | `$OPENAI_BASE_URL` or OpenAI; `OPENAI_API_KEY` | `openai` only: the server, ending before `/chat/completions`, and the variable holding its key |
+| `model.effort` | adapter default (medium) | `low` … `max`; for `openai`, sent as `reasoning_effort` |
 | `model.max_tokens` | adapter default | output limit per model call |
 | `model.context_window`, `model.compact_at` | 200000, 0.8 | when a request fills this share of the window, the conversation is compacted (summarized) before its next run; a request that does not fit at all is compacted and retried once |
 | `system` | a short generic prompt | system prompt |

@@ -1,0 +1,104 @@
+{
+  "messages": [
+    {
+      "content": "You are a careful assistant.",
+      "role": "system"
+    },
+    {
+      "content": "Find Go news.",
+      "role": "user"
+    },
+    {
+      "content": "Searching.",
+      "tool_calls": [
+        {
+          "id": "call_1",
+          "function": {
+            "arguments": "{\"q\":\"go <1.27>\"}",
+            "name": "search"
+          },
+          "type": "function"
+        },
+        {
+          "id": "call_2",
+          "function": {
+            "arguments": "{}",
+            "name": "now"
+          },
+          "type": "function"
+        }
+      ],
+      "role": "assistant",
+      "reasoning_content": "The user wants Go news & a time."
+    },
+    {
+      "content": "[{\"title\":\"Go 1.27 released\"}]",
+      "tool_call_id": "call_1",
+      "role": "tool"
+    },
+    {
+      "content": "Error: clock unavailable",
+      "tool_call_id": "call_2",
+      "role": "tool"
+    },
+    {
+      "content": "Only the headline, please.",
+      "role": "user"
+    },
+    {
+      "content": "Go 1.27 is out.",
+      "role": "assistant"
+    },
+    {
+      "content": [
+        {
+          "text": "Thanks.",
+          "type": "text"
+        },
+        {
+          "text": "Anything else?",
+          "type": "text"
+        }
+      ],
+      "role": "user"
+    },
+    {
+      "content": "Summarize it.",
+      "role": "user"
+    }
+  ],
+  "model": "gpt-replay",
+  "max_completion_tokens": 1024,
+  "reasoning_effort": "high",
+  "stream_options": {
+    "include_usage": true
+  },
+  "tools": [
+    {
+      "function": {
+        "name": "search",
+        "description": "Search the news.",
+        "parameters": {
+          "properties": {
+            "q": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          "required": [
+            "q"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "name": "now"
+      },
+      "type": "function"
+    }
+  ],
+  "stream": true
+}

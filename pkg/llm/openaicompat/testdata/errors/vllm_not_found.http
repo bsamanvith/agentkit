@@ -1,0 +1,5 @@
+HTTP/1.1 404 Not Found
+Content-Type: application/json
+X-Request-Id: req_replay
+
+{"object": "error", "message": "The model `nope` does not exist.", "type": "NotFoundError", "param": null, "code": 404}

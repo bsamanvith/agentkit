@@ -1,0 +1,20 @@
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+X-Request-Id: req_replay
+
+data: {"id":"chatcmpl-replay","object":"chat.completion.chunk","created":1760000000,"model":"gpt-replay","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-replay","object":"chat.completion.chunk","created":1760000000,"model":"gpt-replay","choices":[{"index":0,"delta":{"content":"Let me check."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-replay","object":"chat.completion.chunk","created":1760000000,"model":"gpt-replay","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"","name":"echo"},"id":"toolu_1","type":"function"}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-replay","object":"chat.completion.chunk","created":1760000000,"model":"gpt-replay","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"te"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-replay","object":"chat.completion.chunk","created":1760000000,"model":"gpt-replay","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"xt\": \"hi\"}"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-replay","object":"chat.completion.chunk","created":1760000000,"model":"gpt-replay","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+data: {"id":"chatcmpl-replay","object":"chat.completion.chunk","created":1760000000,"model":"gpt-replay","choices":[],"usage":{"prompt_tokens":20,"completion_tokens":15,"total_tokens":35,"prompt_tokens_details":{"cached_tokens":0}}}
+
+data: [DONE]
+

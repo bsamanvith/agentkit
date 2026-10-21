@@ -1,0 +1,12 @@
+HTTP/1.1 429 Too Many Requests
+Content-Type: application/json
+X-Request-Id: req_replay
+
+{
+    "error": {
+        "message": "Rate limit reached for gpt-replay on tokens per min (TPM): Limit 30000, Used 30000, Requested 120.",
+        "type": "tokens",
+        "param": null,
+        "code": "rate_limit_exceeded"
+    }
+}

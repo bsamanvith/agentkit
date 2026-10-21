@@ -14,8 +14,13 @@ import (
 // tool call (in any order between calls, but each call's start before its
 // done, and its EventToolPolicy and EventToolFlagged, if any, in between),
 // and one EventTurnDone; and last one EventRunDone. A run that fails ends with
-// an error instead of EventRunDone. Consumers must ignore kinds they do not
-// know: later versions add more.
+// an error instead of EventRunDone, and one that suspends ([WithInteraction])
+// with EventSuspended: its last turn's calls end with an EventToolDone or an
+// EventInterrupt, and the turn has no EventTurnDone. A run that finishes a
+// pending turn ([Input.Pending]) announces it first, as turn 0: an
+// EventToolStart and EventToolDone (or EventInterrupt) for each call that
+// waited, and its EventTurnDone, whose TurnRecord.Turn is 0 too. Consumers
+// must ignore kinds they do not know: later versions add more.
 type EventKind uint8
 
 // The event kinds.
@@ -49,6 +54,15 @@ const (
 	// EventToolFlagged says a call the policy flagged is about to run, with
 	// the same fields as its EventToolPolicy, which comes first.
 	EventToolFlagged
+	// EventInterrupt says a tool call waits for a person ([WithInteraction]):
+	// Event.Call, Event.ToolUse (its ID and name) and Event.Interrupt. It
+	// ends the call in place of its EventToolDone.
+	EventInterrupt
+	// EventSuspended ends a run, in place of EventRunDone, whose turn has
+	// calls that wait for people: Event.Result is what the run did, with the
+	// turn in Result.Pending. The turn has no EventTurnDone; the run that
+	// finishes it announces it.
+	EventSuspended
 )
 
 func (k EventKind) String() string {
@@ -69,6 +83,10 @@ func (k EventKind) String() string {
 		return "tool_policy"
 	case EventToolFlagged:
 		return "tool_flagged"
+	case EventInterrupt:
+		return "interrupt"
+	case EventSuspended:
+		return "suspended"
 	}
 	return "unknown"
 }
@@ -99,9 +117,12 @@ type Event struct {
 	// Decision is the policy's decision of EventToolPolicy and
 	// EventToolFlagged.
 	Decision policy.Decision
+	// Interrupt is what the call of EventInterrupt waits for.
+	Interrupt *Interrupt
 
 	// Prompt is set for EventRunStart, TurnRecord for EventTurnDone and Result
-	// for EventRunDone. They are copies the consumer may keep.
+	// for EventRunDone and EventSuspended. They are copies the consumer may
+	// keep.
 	Prompt     *TimedMessage
 	TurnRecord *TurnRecord
 	Result     *Result

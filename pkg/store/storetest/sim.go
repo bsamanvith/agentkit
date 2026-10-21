@@ -172,6 +172,8 @@ func (s *convSim) appendNext(w *simWriter, k logKey) {
 		kind = store.KindPrompt
 	case x < 4:
 		kind = store.KindCompaction
+	case x < 5:
+		kind = store.KindInterrupt
 	}
 	e := s.entry(seq, kind)
 	var want error

@@ -76,6 +76,14 @@ type agentDef struct {
 	// policy (package policy). Absent: "all". The environment's policy and a
 	// run's narrow it.
 	ToolPolicy *policy.Policy `json:"tool_policy"`
+	// Interaction says whether the agent's tool calls may wait for people
+	// (harness.WithInteraction): "interactive" or "supervised" (a tool that
+	// asks, such as ask_user, and a call the policy wants approved suspend
+	// the run until answered through POST /v1/runs/{id}/input), or
+	// "autonomous", the default (they never wait: ask_user is not offered,
+	// and a call that wants an approval is refused). A run's interaction
+	// narrows it.
+	Interaction harness.Interaction `json:"interaction"`
 	// Memory gives the agent a context store and the "memory" tool over it
 	// (memory.go); nil gives it neither.
 	Memory *memoryConfig `json:"memory"`
@@ -464,6 +472,9 @@ func (d agentDef) check(legacy bool) error {
 	if d.Model.CompactAt < 0 || d.Model.CompactAt > 1 {
 		return fmt.Errorf("%s.model.compact_at %v: want a share above 0, at most 1", label, d.Model.CompactAt)
 	}
+	if d.Interaction != "" && !d.Interaction.Valid() {
+		return fmt.Errorf("%s.interaction %q: want %q", label, d.Interaction, harness.Interactions())
+	}
 	return nil
 }
 
@@ -523,6 +534,7 @@ func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built 
 	}
 	h, err := harness.New(model, tools,
 		harness.WithToolPolicy(a.toolPolicy(cfg.Environment.ToolPolicy), toolsetOf),
+		harness.WithInteraction(cmp.Or(a.Interaction, harness.Autonomous)),
 		harness.WithSystem(system),
 		harness.WithRequest(harness.RequestOptions{MaxTokens: a.Model.MaxTokens}),
 		harness.WithMaxTurns(a.MaxTurns),

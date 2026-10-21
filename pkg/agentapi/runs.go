@@ -15,7 +15,9 @@ import (
 
 	"github.com/bsamanvith/agentkit/pkg/bus"
 	"github.com/bsamanvith/agentkit/pkg/flow"
+	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/runner"
 	"github.com/bsamanvith/agentkit/pkg/store"
 	"github.com/bsamanvith/agentkit/pkg/stream"
 )
@@ -140,7 +142,7 @@ func (s *Server) runView(ctx context.Context, run store.Run) (Run, error) {
 }
 
 // runSummary is what a list shows of a run: its state as stored, without
-// reading its events.
+// reading its events (a suspended run's interrupts are its log's last entry).
 func (s *Server) runSummary(ctx context.Context, run store.Run) Run {
 	now := s.cfg.clock.Now()
 	v := Run{V: WireVersion, ID: run.ID, ConversationID: run.ConversationID, Status: runStatus(run, now), CreatedAt: run.CreatedAt, Usage: run.Usage}
@@ -158,8 +160,42 @@ func (s *Server) runSummary(ctx context.Context, run store.Run) Run {
 		v.Error = &Error{Code: CodeRejected, Message: run.Error}
 	case StatusInterrupted:
 		v.Error = interruptedError(run.ID)
+	case StatusSuspended:
+		ins, err := s.interruptsOf(ctx, run)
+		if err != nil {
+			s.log.Error("reading a suspended run's interrupts", "run_id", run.ID, "err", err)
+		}
+		v.Interrupts = ins
+		v.Error = suspendedError(run, len(ins) > 0)
 	}
 	return v
+}
+
+// interruptsOf returns what a suspended chat run waits for: the interrupts
+// of the pending turn its last entry holds, with the answers so far. A flow
+// run has none. A suspended run is its conversation's one unfinished run, so
+// its pending turn is the conversation's last entry: only that is read.
+func (s *Server) interruptsOf(ctx context.Context, run store.Run) ([]Interrupt, error) {
+	page, err := s.store.History(ctx, run.ConversationID, store.Page{Order: store.Descending, Limit: 1})
+	if err != nil {
+		return nil, fmt.Errorf("reading the log of conversation %q: %w", run.ConversationID, err)
+	}
+	if len(page.Entries) == 0 || page.Entries[0].RunID != run.ID || page.Entries[0].Kind != store.KindInterrupt {
+		return nil, nil
+	}
+	p, answers, err := runner.PendingTurn(page.Entries[0])
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Interrupt, len(p.Interrupts))
+	for i, in := range p.Interrupts {
+		var a *harness.Answer
+		if j := slices.IndexFunc(answers, func(a harness.Answer) bool { return a.ID == in.ID }); j >= 0 {
+			a = &answers[j]
+		}
+		out[i] = wireInterrupt(in, a)
+	}
+	return out, nil
 }
 
 // getStored reads a run of the request's tenant; it answers 404 or 500 and
@@ -491,7 +527,7 @@ func (s *Server) resume(ctx context.Context, w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusConflict, &Error{Code: CodeRunFinal, RunID: run.ID, Message: "run " + quote(run.ID) + " is " + string(run.Status) + "; it never changes again"})
 		return
 	case run.Status == store.StatusSuspended:
-		writeError(w, http.StatusConflict, &Error{Code: CodeAwaitingDecision, RunID: run.ID, Message: "run " + quote(run.ID) + " waits for a decision (POST /v1/runs/{id}/decisions)"})
+		writeError(w, http.StatusConflict, &Error{Code: CodeAwaitingDecision, RunID: run.ID, Message: "run " + quote(run.ID) + " waits for a decision (POST /v1/runs/{id}/decisions) or for input (POST /v1/runs/{id}/input)"})
 		return
 	case held(run, s.cfg.clock.Now()):
 		writeError(w, http.StatusConflict, &Error{Code: busy, RunID: run.ID, Retryable: true, Message: "run " + quote(run.ID) + " is going on; wait for it to end, or stop it"})
@@ -644,6 +680,101 @@ func (s *Server) decideRun(w http.ResponseWriter, r *http.Request) {
 		s.log.Error("reading a decided run's events", "run_id", id, "err", err)
 	}
 	s.log.Info("run decided", "run_id", id, "path", req.Path, "approved", req.Approved)
+	h := s.launch(execCtx, cancel, x, seed)
+	if strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
+		s.follow(w, r, h, lastID(seed.events))
+		return
+	}
+	if v, ok := s.viewByID(ctx, w, id); ok {
+		writeJSON(w, http.StatusOK, v)
+	}
+}
+
+// inputRun serves POST /v1/runs/{id}/input: answers to interrupts of a
+// suspended chat run. Once every interrupt of its pending turn has its
+// answer, the run goes on in the background; the answer is the run as it is
+// then (or its events, for Accept: text/event-stream). Until then it is the
+// run, still suspended, with the answers so far.
+func (s *Server) inputRun(w http.ResponseWriter, r *http.Request) {
+	body, apiErr, code := s.readBody(w, r)
+	if apiErr != nil {
+		writeError(w, code, apiErr)
+		return
+	}
+	var req InputRequest
+	if err := decodeStrict(body, &req); err != nil || len(req.Answers) == 0 || slices.ContainsFunc(req.Answers, func(a Answer) bool { return a.ID == "" }) {
+		msg := "the body must be a JSON object {\"answers\": [{\"id\": ..., \"text\": ...} or {\"id\": ..., \"approved\": ..., \"reason\": ...}]} with at least one answer, each with an id"
+		if err != nil {
+			msg += ": " + err.Error()
+		}
+		writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: msg})
+		return
+	}
+	ctx, ok := s.scope(w, r)
+	if !ok {
+		return
+	}
+	id := r.PathValue("id")
+	run, ok := s.getStored(ctx, w, id)
+	if !ok {
+		return
+	}
+	acc := accessOf(r)
+	if acc.ok {
+		// An approval runs the agent's tools: only for a request that may
+		// use them all, as for a resume.
+		c, err := s.store.GetConversation(ctx, run.ConversationID)
+		if err != nil {
+			s.internal(w, "reading conversation "+quote(run.ConversationID), err)
+			return
+		}
+		if a := s.agents[c.Agent]; a != nil && !acc.agent(a) {
+			writeError(w, http.StatusNotFound, &Error{Code: CodeNotFound, Message: "no run " + quote(id)})
+			return
+		}
+	}
+	answers := make([]harness.Answer, len(req.Answers))
+	for i, a := range req.Answers {
+		// Who answered is who the server authenticated, never the body.
+		answers[i] = harness.Answer{ID: a.ID, Text: a.Text, Approved: a.Approved, Reason: a.Reason}
+		if acc.ok {
+			answers[i].By = acc.p.User
+		}
+	}
+	if apiErr := s.admit(); apiErr != nil {
+		s.unavailable(w, apiErr)
+		return
+	}
+	execCtx, cancel := execContext(ctx)
+	x, err := s.runs.Answer(execCtx, id, answers...)
+	if err != nil {
+		cancel(nil)
+		s.release()
+		switch {
+		case errors.Is(err, store.ErrFinal):
+			writeError(w, http.StatusConflict, &Error{Code: CodeRunFinal, RunID: id, Message: "run " + quote(id) + " is final"})
+		case errors.Is(err, runner.ErrNotPending):
+			writeError(w, http.StatusConflict, &Error{Code: CodeNotPending, RunID: id, Message: err.Error()})
+		default:
+			s.startError(w, err, CodeRunLeased)
+		}
+		return
+	}
+	s.log.Info("run answered", "run_id", id, "answers", len(answers))
+	if x.Run.Status == store.StatusSuspended {
+		// Answers still missing: nothing runs.
+		_, _ = x.Wait()
+		cancel(nil)
+		s.release()
+		if v, ok := s.viewByID(ctx, w, id); ok {
+			writeJSON(w, http.StatusOK, v)
+		}
+		return
+	}
+	seed, err := s.history(ctx, x.Run, true)
+	if err != nil {
+		s.log.Error("reading an answered run's events", "run_id", id, "err", err)
+	}
 	h := s.launch(execCtx, cancel, x, seed)
 	if strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
 		s.follow(w, r, h, lastID(seed.events))

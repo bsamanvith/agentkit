@@ -61,7 +61,7 @@ func (s *Store) CreateConversation(ctx context.Context, c store.Conversation) (s
 			}
 			rec, err = scanConversation(tx.QueryRow(ctx, `INSERT INTO conversations
 				(tenant, id, agent, title, messages, created_at, updated_at)
-				SELECT $1::text, $2::text, $3::text, $4::text, COALESCE(SUM(json_array_length(messages::json)) FILTER (WHERE kind <> 'compaction'), 0), $5::bigint, $5::bigint
+				SELECT $1::text, $2::text, $3::text, $4::text, COALESCE(SUM(json_array_length(messages::json)) FILTER (WHERE kind NOT IN ('compaction', 'interrupt')), 0), $5::bigint, $5::bigint
 				FROM entries WHERE tenant = $1 AND conversation = $2
 				ON CONFLICT (tenant, id) DO NOTHING
 				RETURNING `+conversationColumns, tenant, c.ID, c.Agent, c.Title, *at))

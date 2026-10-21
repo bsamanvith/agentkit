@@ -64,13 +64,14 @@ type Metadata struct {
 	// Risk is how much harm a wrong call could do. Empty means unclassified.
 	Risk Risk `json:"risk,omitempty"`
 	// Interrupts marks a tool that needs a person to answer, such as
-	// ask_user, so that runs that must never wait can leave it out. Nothing
-	// acts on it yet: the interaction modes (T084) will.
+	// ask_user ([Interrupt]): a run that must never wait (an autonomous one,
+	// harness.WithInteraction) does not offer it to the model.
 	Interrupts bool `json:"interrupts,omitempty"`
 	// RequiresApproval asks that a person approve each call before it runs,
 	// unless a policy rule names the tool (package policy). Only a run with a
-	// tool policy enforces it (agentkit serve gives every agent one); until
-	// approval holds exist (T084), such a run refuses the call, saying so.
+	// tool policy enforces it (agentkit serve gives every agent one): a run
+	// that may wait for people suspends until the call is approved, and an
+	// autonomous one refuses it, saying so.
 	RequiresApproval bool `json:"requiresApproval,omitempty"`
 	// Tags are free-form labels policies can match, such as "external",
 	// "billing" or "pii". Each matches ^[a-z0-9][a-z0-9_.-]{0,63}$; no

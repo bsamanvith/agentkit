@@ -153,6 +153,9 @@ func TestTenantsDoNotSeeEachOther(t *testing.T) {
 	if resp, body := r.do("POST", "/v1/runs", `{"message":"mine now","conversation_id":"`+run.ConversationID+`"}`, asJSON(keyB)...); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("B continuing A's conversation = %d %s, want 404", resp.StatusCode, body)
 	}
+	if resp, body := r.do("POST", "/v1/runs/"+run.ID+"/input", `{"answers":[{"id":"x","approved":true}]}`, asJSON(keyB)...); resp.StatusCode != http.StatusNotFound {
+		t.Errorf("B answering A's run = %d %s, want 404", resp.StatusCode, body)
+	}
 	for key, want := range map[string]int{keyA: 1, keyB: 0} {
 		_, body := r.do("GET", "/v1/conversations", "", as(key)...)
 		var list wire.ConversationList

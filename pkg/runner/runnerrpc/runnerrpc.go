@@ -6,7 +6,9 @@
 // in a runner container, and a runner pool (E20) can be one.
 //
 // A remote agent streams the same events as the local one, and fails with
-// the same errors: a failed run is a [*harness.RunError] with what the run
+// the same errors, and suspends the same way: a run whose calls wait for
+// people ([harness.EventSuspended]) carries its pending turn, and a resume
+// sends the pending turn and its answers back. A failed run is a [*harness.RunError] with what the run
 // had done, matching the same harness and llm errors (llm.IsRetryable
 // included), and a refusal is a [*harness.RefusalError]. A runner that cannot
 // be reached, or goes away mid-run, fails the run as [llm.ErrOverloaded]
@@ -52,7 +54,13 @@ var (
 	// the field and run unrestricted, fails the run with
 	// [rpc.ErrUnknownMethod] instead: a policy fails closed.
 	policyRunMethod = rpc.Stream[runReq, event]{Name: Service + "/RunWithPolicy", Errors: codes}
-	compactMethod   = rpc.Unary[compactReq, harness.Summary]{Name: Service + "/Compact", Errors: codes}
+	// interruptRunMethod is Run for a run that may wait for people (its
+	// interaction is interactive or supervised) or that finishes a pending
+	// turn with its answers. A runner older than interrupts would run the
+	// approvals' calls as denied and drop the answers: it fails the run with
+	// [rpc.ErrUnknownMethod] instead.
+	interruptRunMethod = rpc.Stream[runReq, event]{Name: Service + "/RunWithInterrupts", Errors: codes}
+	compactMethod      = rpc.Unary[compactReq, harness.Summary]{Name: Service + "/Compact", Errors: codes}
 )
 
 // ErrCannotCompact means the server's agent cannot compact (it is not a
@@ -95,6 +103,11 @@ type runReq struct {
 	// ToolPolicy narrows the agent's for this run. A run with one is sent
 	// as policyRunMethod, which a runner older than it does not serve.
 	ToolPolicy *policy.Policy `json:"tool_policy,omitempty"`
+	// Interaction, Pending and Answers are the input's; a request that may
+	// wait or finishes a pending turn is sent as interruptRunMethod.
+	Interaction harness.Interaction `json:"interaction,omitempty"`
+	Pending     *harness.Pending    `json:"pending,omitempty"`
+	Answers     []harness.Answer    `json:"answers,omitempty"`
 }
 
 // event is a [harness.Event] on the wire: only the fields its kind sets.
@@ -112,6 +125,7 @@ type event struct {
 	TurnRecord *harness.TurnRecord   `json:"turn_record,omitempty"`
 	Result     *result               `json:"result,omitempty"`
 	Decision   *policy.Decision      `json:"decision,omitempty"`
+	Interrupt  *harness.Interrupt    `json:"interrupt,omitempty"`
 }
 
 // result is a [harness.Result] on the wire. Final is derived on the way back
@@ -122,6 +136,8 @@ type result struct {
 	Usage      llm.Usage      `json:"usage"`
 	Turns      int            `json:"turns"`
 	Record     harness.Record `json:"record"`
+	// Pending is a suspended run's pending turn.
+	Pending *harness.Pending `json:"pending,omitempty"`
 }
 
 // failure is what a failed run's error carries besides its codes.
@@ -168,7 +184,10 @@ func Register(s *rpc.Server, agents map[string]runner.Agent) error {
 				yield(event{}, fmt.Errorf("%w: %q", ErrNoAgent, r.Agent))
 				return
 			}
-			in := harness.Input{Transcript: r.Transcript, At: r.At, ToolPolicy: r.ToolPolicy}
+			in := harness.Input{
+				Transcript: r.Transcript, At: r.At, ToolPolicy: r.ToolPolicy,
+				Interaction: r.Interaction, Pending: r.Pending, Answers: r.Answers,
+			}
 			if r.Message != nil {
 				in.Message = *r.Message
 			}
@@ -190,6 +209,7 @@ func Register(s *rpc.Server, agents map[string]runner.Agent) error {
 	}
 	runMethod.Handle(s, run)
 	policyRunMethod.Handle(s, run)
+	interruptRunMethod.Handle(s, run)
 	return nil
 }
 
@@ -233,18 +253,27 @@ func (a *agent) ShouldCompact(u llm.Usage) bool { return a.window.Full(u) }
 
 func (a *agent) Run(ctx context.Context, in harness.Input) iter.Seq2[harness.Event, error] {
 	return func(yield func(harness.Event, error) bool) {
-		req := runReq{Agent: a.name, Transcript: in.Transcript, At: in.At, ToolPolicy: in.ToolPolicy}
+		req := runReq{
+			Agent: a.name, Transcript: in.Transcript, At: in.At, ToolPolicy: in.ToolPolicy,
+			Interaction: in.Interaction, Pending: in.Pending, Answers: in.Answers,
+		}
 		if in.Message.Role != "" || len(in.Message.Content) > 0 {
 			m := in.Message
 			req.Message = &m
 		}
-		method := runMethod
-		if req.ToolPolicy != nil {
+		method, waits := runMethod, mayWait(in)
+		switch {
+		case waits:
+			method = interruptRunMethod
+		case req.ToolPolicy != nil:
 			method = policyRunMethod
 		}
 		for w, err := range method.Call(ctx, a.c.conn, req) {
 			if err != nil {
-				if req.ToolPolicy != nil && errors.Is(err, rpc.ErrUnknownMethod) {
+				switch {
+				case waits && errors.Is(err, rpc.ErrUnknownMethod):
+					err = fmt.Errorf("agent %q: the runner is too old to wait for people: %w", a.name, err)
+				case req.ToolPolicy != nil && errors.Is(err, rpc.ErrUnknownMethod):
 					err = fmt.Errorf("agent %q: the runner is too old to enforce the run's tool policy: %w", a.name, err)
 				}
 				yield(harness.Event{}, decodeFailure(err))
@@ -262,6 +291,13 @@ func (a *agent) Run(ctx context.Context, in harness.Input) iter.Seq2[harness.Eve
 	}
 }
 
+// mayWait reports whether a run of in may wait for people, or finishes a
+// pending turn: what a runner older than interrupts cannot do.
+func mayWait(in harness.Input) bool {
+	return in.Pending != nil || len(in.Answers) > 0 ||
+		in.Interaction == harness.Interactive || in.Interaction == harness.Supervised
+}
+
 func toWire(ev harness.Event) (event, error) {
 	w := event{
 		Kind: ev.Kind, Turn: ev.Turn, At: ev.At, Text: ev.Text, Block: ev.Block, Call: ev.Call,
@@ -277,7 +313,13 @@ func toWire(ev harness.Event) (event, error) {
 		w.Decision = &d
 	case harness.EventToolDone:
 		w.ToolResult, err = json.Marshal(ev.ToolResult)
-	case harness.EventRunDone:
+	case harness.EventInterrupt:
+		w.ToolUse, err = json.Marshal(ev.ToolUse)
+		if ev.Interrupt != nil {
+			in := *ev.Interrupt
+			w.Interrupt = &in
+		}
+	case harness.EventRunDone, harness.EventSuspended:
 		if ev.Result != nil {
 			r := resultToWire(*ev.Result)
 			w.Result = &r
@@ -311,6 +353,11 @@ func fromWire(w event) (harness.Event, error) {
 		r := w.Result.toResult()
 		ev.Result = &r
 	}
+	if w.Interrupt != nil {
+		// An interrupt's event names the call; the interrupt has its input.
+		ev.Interrupt = w.Interrupt
+		ev.ToolUse = llm.ToolUse{ID: ev.ToolUse.ID, Name: ev.ToolUse.Name}
+	}
 	if w.Decision != nil {
 		ev.Decision = *w.Decision
 		// A decision's event names the call without its input.
@@ -320,7 +367,7 @@ func fromWire(w event) (harness.Event, error) {
 }
 
 func resultToWire(r harness.Result) result {
-	w := result{Transcript: r.Transcript, Usage: r.Usage, Turns: r.Turns, Record: r.Record}
+	w := result{Transcript: r.Transcript, Usage: r.Usage, Turns: r.Turns, Record: r.Record, Pending: r.Pending}
 	if r.Final.Role != "" {
 		f := r.Final
 		w.Final = &f
@@ -329,7 +376,7 @@ func resultToWire(r harness.Result) result {
 }
 
 func (w result) toResult() harness.Result {
-	r := harness.Result{Transcript: w.Transcript, Usage: w.Usage, Turns: w.Turns, Record: w.Record}
+	r := harness.Result{Transcript: w.Transcript, Usage: w.Usage, Turns: w.Turns, Record: w.Record, Pending: w.Pending}
 	if w.Final != nil {
 		r.Final = *w.Final
 	}

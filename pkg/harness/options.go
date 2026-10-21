@@ -45,6 +45,7 @@ type config struct {
 	maxParallel int
 	policy      *policy.Policy
 	toolsetOf   func(name string) string
+	interaction Interaction
 	before      []BeforeToolFunc
 	after       []AfterToolFunc
 	clock       clock.Clock
@@ -91,9 +92,10 @@ func WithBeforeTool(f BeforeToolFunc) Option {
 // EventToolStart and EventToolDone, and a flagged one an [EventToolFlagged]
 // after that, then runs. A denied call does not run: the model is shown "not
 // allowed in this run: " and the decision's reason as an error result, and
-// the run goes on. A call that needs approval is refused the same way, saying
-// so, until approvals exist (T084). The [WithAfterTool] hooks see a refusal
-// like any result.
+// the run goes on. A call that needs approval waits for one if the run's
+// [Interaction] may wait (the run suspends, see [WithInteraction]), and is
+// refused like a denied one, saying why, if it may not. The [WithAfterTool]
+// hooks see a refusal like any result.
 //
 // p must be valid ([policy.Policy.Validate]); New fails with
 // [ErrInvalidConfig] otherwise. Without this option, every call is allowed,
@@ -104,6 +106,26 @@ func WithToolPolicy(p policy.Policy, toolsetOf func(name string) string) Option 
 		c.policy, c.toolsetOf = &own, toolsetOf
 	}
 }
+
+// WithInteraction sets how the harness's runs may involve a person (default
+// [Autonomous]); a run's [Input.Interaction] can only narrow it.
+//
+// In a mode that may wait ([Interactive], [Supervised]), a tool call that
+// asks a person (its tool returns a [*tool.InterruptError]) or that the tool
+// policy wants approved waits: it gets an [EventInterrupt] in place of its
+// EventToolDone, the other calls of the turn finish, and the run ends with
+// [EventSuspended] carrying the [Pending] turn. Nothing of that turn is in the
+// transcript, which stays valid. A later run given the pending turn and the
+// answers ([Input.Pending], [Input.Answers]) finishes it first: an answered
+// question's text is the call's result, an approved call runs with its
+// original input, and a denied one's result is the denial. Then it goes on
+// as usual.
+//
+// In [Autonomous] mode, tools that declare [tool.Metadata.Interrupts] are not
+// offered to the model, a call that asks a person anyway gets an error
+// result, and a call the policy wants approved is refused as denied. m must
+// be one of [Interactions]; New fails with [ErrInvalidConfig] otherwise.
+func WithInteraction(m Interaction) Option { return func(c *config) { c.interaction = m } }
 
 // WithAfterTool adds a hook that can replace tool results. Hooks run in the
 // order given, each seeing the result of the one before.

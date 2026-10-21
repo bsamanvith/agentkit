@@ -80,6 +80,13 @@ func (p *printer) event(path string, ev harness.Event) {
 	case harness.EventToolPolicy:
 		d := ev.Decision
 		p.line("! %s: %s by %s/%s: %s", ev.ToolUse.Name, d.Action, d.Policy, d.Rule, d.Reason)
+	case harness.EventInterrupt:
+		in := ev.Interrupt
+		if in.Kind == harness.InterruptApproval {
+			p.line("? %s waits for an approval (%s): %s", in.Name, in.Prompt, in.Input)
+		} else {
+			p.line("? %s asks: %s %q", in.Name, in.Prompt, in.Choices)
+		}
 	case harness.EventToolDone:
 		name := p.calls[fmt.Sprint(path, ev.Call)]
 		status := ""

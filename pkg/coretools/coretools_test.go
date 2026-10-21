@@ -23,7 +23,7 @@ func build(t *testing.T, spec string) tool.Registry {
 }
 
 func tryBuild(spec string) (tool.Registry, error) {
-	catalog, err := toolset.NewCatalog(coretools.Math(), coretools.Files())
+	catalog, err := toolset.NewCatalog(coretools.Math(), coretools.Files(), coretools.User())
 	if err != nil {
 		return nil, err
 	}

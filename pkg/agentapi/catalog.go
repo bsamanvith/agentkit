@@ -494,6 +494,11 @@ func (s *Server) lastIsUser(ctx context.Context, id string) (bool, error) {
 	if err != nil || len(page.Entries) == 0 {
 		return false, err
 	}
+	if page.Entries[0].Kind == store.KindInterrupt {
+		// A pending turn is not in the conversation: its reply answers the
+		// user message before it.
+		return true, nil
+	}
 	msgs := page.Entries[0].Messages
 	return msgs[len(msgs)-1].Role == llm.RoleUser, nil
 }

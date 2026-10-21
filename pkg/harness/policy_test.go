@@ -151,7 +151,7 @@ func TestToolPolicyFlaggedCallRuns(t *testing.T) {
 }
 
 // Every decision but a plain allow is in the events, with its rule and
-// reason; approve is refused, saying so, until approvals exist.
+// reason; approve is refused, saying so, in an autonomous run.
 func TestToolPolicyEventsShowEveryDecision(t *testing.T) {
 	leakcheck(t)
 	r := &ran{}

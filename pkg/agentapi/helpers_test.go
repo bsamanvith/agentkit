@@ -448,6 +448,8 @@ func endStatus(code string) string {
 		return agentapi.StatusInterrupted
 	case agentapi.CodeCancelled:
 		return agentapi.StatusCanceled
+	case agentapi.CodeSuspended:
+		return agentapi.StatusSuspended
 	}
 	return agentapi.StatusFailed
 }
@@ -779,7 +781,7 @@ func checkStream(t *testing.T, events []agentapi.Event) {
 				t.Errorf("run_start at %d", i)
 			}
 		case agentapi.TypeTextDelta, agentapi.TypeToolCall, agentapi.TypeToolResult, agentapi.TypeTurnDone,
-			agentapi.TypeToolPolicy, agentapi.TypeToolFlagged:
+			agentapi.TypeToolPolicy, agentapi.TypeToolFlagged, agentapi.TypeInterrupt:
 			if e.Turn != turn+1 {
 				t.Errorf("event %d (%s) of turn %d after turn %d was done", i, e.Type, e.Turn, turn)
 			}
@@ -815,7 +817,7 @@ func checkStream(t *testing.T, events []agentapi.Event) {
 		case agentapi.TypeTextDelta:
 			deltas[e.Turn] += e.Text
 		case agentapi.TypeToolCall:
-			if _, dup := calls[[2]int{e.Turn, e.Call}]; dup {
+			if had, dup := calls[[2]int{e.Turn, e.Call}]; dup && had != "waiting:"+e.ToolUseID {
 				t.Errorf("tool_call %d/%d twice", e.Turn, e.Call)
 			}
 			calls[[2]int{e.Turn, e.Call}] = e.ToolUseID
@@ -836,6 +838,14 @@ func checkStream(t *testing.T, events []agentapi.Event) {
 			} else {
 				calls[key] = e.ToolUseID
 			}
+		case agentapi.TypeInterrupt:
+			// In place of the call's tool_result, until the run resumes and
+			// runs the call again: its tool_call, then its tool_result.
+			key := [2]int{e.Turn, e.Call}
+			if id := strings.TrimPrefix(calls[key], "flag:"); id != e.ToolUseID || e.Interrupt == nil || e.Interrupt.ID != e.ToolUseID || e.Name == "" {
+				t.Errorf("event %d: interrupt %+v out of place or incomplete", i, e)
+			}
+			calls[key] = "waiting:" + e.ToolUseID
 		case agentapi.TypeToolResult:
 			id, ok := calls[[2]int{e.Turn, e.Call}]
 			if strings.HasPrefix(id, "flag:") {

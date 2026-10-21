@@ -188,6 +188,17 @@ type Input struct {
 	// Without a harness policy, it is the run's policy. It must be valid
 	// ([policy.Policy.Validate]), or the run fails with [ErrInvalidInput].
 	ToolPolicy *policy.Policy
+	// Interaction, when set, narrows the harness's [WithInteraction] for this
+	// run ([NarrowInteraction]). It must be one of [Interactions].
+	Interaction Interaction
+	// Pending is a turn an earlier run suspended in ([EventSuspended]), to
+	// finish first with Answers, one for each of its interrupts. The run
+	// then has no Message, and Transcript is the transcript the suspended
+	// run ended with (it ends with the user message the pending reply
+	// answers). Answers without Pending are [ErrInvalidInput], and so are
+	// answers that do not fit ([ErrInvalidAnswer]).
+	Pending *Pending
+	Answers []Answer
 }
 
 // hasMessage reports whether m is set. The zero Message means "none".

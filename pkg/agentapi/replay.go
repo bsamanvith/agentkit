@@ -33,6 +33,9 @@ type replayed struct {
 	// first: the log has turns, or a turn's beginning, that the run did not
 	// keep (see [TypeRewind]). turns, usage and final are the kept turns'.
 	rewind *Event
+	// interrupts is set when the run's last stored event is an interrupt:
+	// a chat run that waits for input.
+	interrupts bool
 }
 
 // runEntries returns the entries the run wrote, in order. They are read from
@@ -106,6 +109,19 @@ func replay(run store.Run, entries []store.Entry) (replayed, error) {
 		reply := tr.Messages[0].Message
 		r.final = &reply
 	}
+	if n := len(entries); n > 0 && entries[n-1].Kind == store.KindInterrupt {
+		// The run waits on a pending turn: its calls that wait, as the
+		// stream announced them.
+		p, _, err := runner.PendingTurn(entries[n-1])
+		if err != nil {
+			return r, fmt.Errorf("entry %d of conversation %q: %w", entries[n-1].Seq, run.ConversationID, err)
+		}
+		for _, in := range p.Interrupts {
+			w := wireInterrupt(in, nil)
+			add(Event{Type: TypeInterrupt, Turn: r.turns + 1, At: p.Turn.DoneAt, Call: in.Call, ToolUseID: in.ID, Name: in.Name, Interrupt: &w})
+		}
+		r.interrupts = len(p.Interrupts) > 0
+	}
 	return r, nil
 }
 
@@ -171,7 +187,7 @@ func ending(run store.Run, r replayed, now time.Time) *Event {
 	case store.StatusRejected:
 		e.Error = &Error{Code: CodeRejected, Message: run.Error}
 	case store.StatusSuspended:
-		e.Error = &Error{Code: CodeSuspended, Message: "the run waits for a decision at " + strings.Join(run.Pending, ", ")}
+		e.Error = suspendedError(run, r.interrupts)
 	default:
 		if held(run, now) {
 			return nil
@@ -179,6 +195,15 @@ func ending(run store.Run, r replayed, now time.Time) *Event {
 		e.Error = interruptedError(run.ID)
 	}
 	return e
+}
+
+// suspendedError is the error of a suspended run: a flow run waits for
+// decisions, a chat run with interrupts for input.
+func suspendedError(run store.Run, interrupts bool) *Error {
+	if interrupts {
+		return &Error{Code: CodeSuspended, Message: "the run waits for input (POST /v1/runs/" + run.ID + "/input) to " + strings.Join(run.Pending, ", ")}
+	}
+	return &Error{Code: CodeSuspended, Message: "the run waits for a decision at " + strings.Join(run.Pending, ", ")}
 }
 
 func interruptedError(runID string) *Error {
@@ -203,8 +228,11 @@ func (s *Server) conversationMessages(ctx context.Context, id string) ([]TimedMe
 			return nil, err
 		}
 		for _, e := range page.Entries {
-			if e.Kind == store.KindCompaction {
+			switch e.Kind {
+			case store.KindCompaction:
 				continue // it stands in for messages already listed, for the model
+			case store.KindInterrupt:
+				continue // a pending turn: its turn entry lists its messages once it is done
 			}
 			times := make([]time.Time, len(e.Messages))
 			for i := range times {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"iter"
+	"slices"
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/clock"
@@ -32,7 +33,7 @@ func New(model llm.Model, tools tool.Registry, opts ...Option) (*Harness, error)
 	if tools == nil {
 		return nil, fmt.Errorf("%w: tool registry is nil", ErrInvalidConfig)
 	}
-	cfg := config{maxTurns: defaultMaxTurns, maxParallel: defaultMaxParallel, clock: clock.Real()}
+	cfg := config{maxTurns: defaultMaxTurns, maxParallel: defaultMaxParallel, clock: clock.Real(), interaction: Autonomous}
 	for _, o := range opts {
 		o(&cfg)
 	}
@@ -49,6 +50,8 @@ func New(model llm.Model, tools tool.Registry, opts ...Option) (*Harness, error)
 		return nil, fmt.Errorf("%w: clock is nil", ErrInvalidConfig)
 	case cfg.window.Tokens < 0 || cfg.window.Share < 0 || cfg.window.Share > 1:
 		return nil, fmt.Errorf("%w: context window %+v", ErrInvalidConfig, cfg.window)
+	case !cfg.interaction.Valid():
+		return nil, fmt.Errorf("%w: interaction %q", ErrInvalidConfig, cfg.interaction)
 	}
 	if cfg.policy != nil {
 		if err := cfg.policy.Validate(); err != nil {
@@ -87,7 +90,8 @@ func (h *Harness) Run(ctx context.Context, in Input) iter.Seq2[Event, error] {
 // Collect reads a run to its end and returns its [Result]. If the run fails,
 // it returns the error together with the partial result (the transcript of the
 // completed turns, usage and record), unlike [llm.Collect], so that the work
-// is not lost.
+// is not lost. A run that suspends gives its result, with Result.Pending set,
+// and a [*SuspendedError].
 func Collect(seq iter.Seq2[Event, error]) (Result, error) {
 	for ev, err := range seq {
 		if err != nil {
@@ -97,8 +101,11 @@ func Collect(seq iter.Seq2[Event, error]) (Result, error) {
 			}
 			return Result{}, err
 		}
-		if ev.Kind == EventRunDone {
+		switch ev.Kind {
+		case EventRunDone:
 			return *ev.Result, nil
+		case EventSuspended:
+			return *ev.Result, &SuspendedError{Pending: ev.Result.Pending.Clone()}
 		}
 	}
 	return Result{}, fmt.Errorf("harness: %w: the run ended without a final event", llm.ErrIncompleteStream)
@@ -119,6 +126,13 @@ type run struct {
 	// policy decides the run's tool calls: the harness's, narrowed by the
 	// input's; nil when neither has one.
 	policy *policy.Policy
+	// mode is the run's interaction: the harness's, narrowed by the input's.
+	mode Interaction
+	// resume is the pending turn the run finishes first, with its answers by
+	// call; suspended is the turn the run suspends in.
+	resume    *Pending
+	answers   map[int]Answer
+	suspended *Pending
 }
 
 // toolDef returns the definition of the named tool; for a tool that was not
@@ -210,10 +224,28 @@ func (r *run) exec(ctx context.Context, in Input) {
 		return
 	}
 	r.defs = make(map[string]tool.Definition, len(defs))
+	offered := defs[:0:0]
 	for _, d := range defs {
 		r.defs[d.Name] = d.Clone()
+		if d.Interrupts && !r.mode.waits() {
+			continue // nobody could answer it
+		}
+		offered = append(offered, d)
 	}
 
+	if r.resume != nil {
+		err := r.finishPending(ctx)
+		switch {
+		case r.stopped:
+			return
+		case err != nil:
+			r.fail(err)
+			return
+		case r.suspended != nil:
+			r.suspend()
+			return
+		}
+	}
 	for {
 		if err := ctx.Err(); err != nil {
 			r.fail(err)
@@ -223,12 +255,16 @@ func (r *run) exec(ctx context.Context, in Input) {
 			r.fail(err)
 			return
 		}
-		done, err := r.turn(ctx, defs)
+		done, err := r.turn(ctx, offered)
 		if r.stopped {
 			return
 		}
 		if err != nil {
 			r.fail(err)
+			return
+		}
+		if r.suspended != nil {
+			r.suspend()
 			return
 		}
 		if done {
@@ -238,8 +274,13 @@ func (r *run) exec(ctx context.Context, in Input) {
 	}
 }
 
-// begin validates the input and sets up the transcript and the policy.
+// begin validates the input and sets up the transcript, the policy, the
+// interaction and the pending turn.
 func (r *run) begin(in Input) error {
+	if in.Interaction != "" && !in.Interaction.Valid() {
+		return invalidInput("interaction %q", in.Interaction)
+	}
+	r.mode = NarrowInteraction(r.h.cfg.interaction, in.Interaction)
 	r.policy = r.h.cfg.policy
 	if p := in.ToolPolicy; p != nil {
 		if err := p.Validate(); err != nil {
@@ -258,6 +299,24 @@ func (r *run) begin(in Input) error {
 	r.transcript = t
 	endsWithUser := len(t) > 0 && t[len(t)-1].Role == llm.RoleUser
 
+	if in.Pending == nil && len(in.Answers) > 0 {
+		return invalidInput("answers without a pending turn")
+	}
+	if in.Pending != nil {
+		if hasMessage(in.Message) {
+			return invalidInput("a new message with a pending turn: answer the turn first")
+		}
+		p := in.Pending.Clone()
+		if err := p.check(t); err != nil {
+			return err
+		}
+		answers, err := p.checkAnswers(in.Answers)
+		if err != nil {
+			return err
+		}
+		r.resume, r.answers = &p, answers
+		return nil
+	}
 	if !hasMessage(in.Message) {
 		if !endsWithUser {
 			return invalidInput("no message to answer: the transcript does not end with a user message and no new message was given")
@@ -386,21 +445,94 @@ func (r *run) turn(ctx context.Context, defs []tool.Definition) (done bool, err 
 // useTools runs the model's tool calls and, once they are all done, adds the
 // reply and the results to the transcript as one turn.
 func (r *run) useTools(ctx context.Context, tr *TurnRecord, msg llm.Message, uses []llm.ToolUse) (bool, error) {
-	calls, err := r.runTools(ctx, tr.Turn, uses)
+	jobs := make([]job, len(uses))
+	for i, u := range uses {
+		jobs[i] = job{call: i, use: u}
+	}
+	calls, err := r.runTools(ctx, tr.Turn, jobs)
 	if r.stopped || err != nil {
 		return false, err
 	}
-	blocks := make([]llm.Block, len(calls))
+	blocks := make([]llm.Block, 0, len(calls))
 	tr.Tools = make([]ToolRecord, len(calls))
+	var waiting []Interrupt
 	for i, c := range calls {
-		blocks[i] = c.result
 		tr.Tools[i] = c.rec
+		if c.interrupt != nil {
+			waiting = append(waiting, *c.interrupt)
+			continue
+		}
+		blocks = append(blocks, c.result)
+	}
+	if len(waiting) > 0 {
+		tr.Messages = []TimedMessage{{Message: msg, At: tr.DoneAt}}
+		r.suspended = &Pending{Turn: tr.clone(), Done: llm.User(append([]llm.Block(nil), blocks...)...), Interrupts: waiting}
+		return false, nil
 	}
 	r.commit(tr,
 		TimedMessage{Message: msg, At: tr.DoneAt},
 		TimedMessage{Message: llm.User(blocks...), At: r.now()},
 	)
 	return false, nil
+}
+
+// finishPending finishes the pending turn the run resumes, as turn 0: the
+// calls that waited get their answers (an approved one runs), and the turn is
+// committed. A call that waits again (an approved tool that asks a person)
+// suspends the run on the same turn.
+func (r *run) finishPending(ctx context.Context) error {
+	p := r.resume
+	uses := toolUses(p.Reply())
+	jobs := make([]job, len(p.Interrupts))
+	for k, in := range p.Interrupts {
+		a := r.answers[in.Call]
+		jobs[k] = job{call: in.Call, use: uses[in.Call], interrupt: &in, answer: &a}
+	}
+	calls, err := r.runTools(ctx, 0, jobs)
+	if r.stopped || err != nil {
+		return err
+	}
+	tr := p.Turn.clone()
+	got := map[int]llm.ToolResult{}
+	var waiting []Interrupt
+	for k, c := range calls {
+		call := jobs[k].call
+		tr.Tools[call] = c.rec
+		if c.interrupt != nil {
+			waiting = append(waiting, *c.interrupt)
+			continue
+		}
+		got[call] = c.result
+	}
+	if len(waiting) > 0 {
+		var done []llm.Block
+		for _, b := range p.results(got).Content {
+			res := b.(llm.ToolResult)
+			if !slices.ContainsFunc(waiting, func(in Interrupt) bool { return in.ID == res.ToolUseID }) {
+				done = append(done, res)
+			}
+		}
+		r.suspended = &Pending{Turn: tr, Done: llm.User(done...), Interrupts: waiting}
+		return nil
+	}
+	reply := tr.Messages[0]
+	tr.Turn, tr.Messages = 0, nil
+	r.commit(&tr, reply, TimedMessage{Message: p.results(got), At: r.now()})
+	return nil
+}
+
+// suspend ends a run whose turn waits for people.
+func (r *run) suspend() {
+	r.rec.FinishedAt = r.now()
+	p := r.suspended.Clone()
+	res := Result{
+		Transcript: r.transcript.Clone(),
+		Usage:      r.usage,
+		Turns:      r.turns,
+		Record:     r.rec.clone(),
+		Pending:    &p,
+	}
+	r.emit(Event{Kind: EventSuspended, At: r.rec.FinishedAt, Result: &res})
 }
 
 // commit adds a finished turn's messages to the transcript and announces it.

@@ -94,6 +94,12 @@ type rig struct {
 
 func newRig(t *testing.T, m *model, api ...agentapi.Option) *rig {
 	t.Helper()
+	return newRigHarness(t, m, nil, api...)
+}
+
+// newRigHarness is newRig with options for the agent's harness.
+func newRigHarness(t *testing.T, m *model, hopts []harness.Option, api ...agentapi.Option) *rig {
+	t.Helper()
 	m.tb = t
 	catalog, err := toolset.NewCatalog(toolset.Demo())
 	if err != nil {
@@ -105,7 +111,7 @@ func newRig(t *testing.T, m *model, api ...agentapi.Option) *rig {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := harness.New(m, sets["a"])
+	h, err := harness.New(m, sets["a"], hopts...)
 	if err != nil {
 		t.Fatal(err)
 	}

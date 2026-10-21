@@ -59,6 +59,12 @@ const (
 	// KindCompaction is a summary that replaces everything before it in the
 	// context. Its Covers is the last sequence number it summarizes.
 	KindCompaction Kind = "compaction"
+	// KindInterrupt is a turn that waits for people: the assistant's reply
+	// whose tool calls wait for an answer or an approval, with the rest kept
+	// in Record by the writer. It is not part of the context: the turn entry
+	// that finishes it holds the reply again with its results. Like a
+	// compaction, it adds nothing to [Conversation.Messages].
+	KindInterrupt Kind = "interrupt"
 )
 
 // Entry is one position of a conversation's log.

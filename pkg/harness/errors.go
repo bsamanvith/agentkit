@@ -96,14 +96,15 @@ func (e *RunError) result() Result {
 type PolicyError struct {
 	Decision policy.Decision
 	// NeedsApproval is set when the policy asked for a person's approval,
-	// which a run cannot ask for yet (T084).
+	// which the run cannot wait for: its Interaction is [Autonomous].
 	NeedsApproval bool
+	Interaction   Interaction
 }
 
 func (e *PolicyError) Error() string {
 	msg := "not allowed in this run: " + e.Decision.Reason
 	if e.NeedsApproval {
-		msg += "; the call needs a person's approval, which this run cannot ask for"
+		msg += "; the call needs a person's approval, and this run cannot wait for one (it is " + string(e.Interaction) + ")"
 	}
 	return msg
 }

@@ -1,6 +1,8 @@
 package agentapi
 
 import (
+	"encoding/json"
+	"slices"
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
@@ -22,6 +24,7 @@ const (
 	TypeToolResult  = wire.TypeToolResult
 	TypeToolPolicy  = wire.TypeToolPolicy
 	TypeToolFlagged = wire.TypeToolFlagged
+	TypeInterrupt   = wire.TypeInterrupt
 	TypeTurnDone    = wire.TypeTurnDone
 	TypeRunDone     = wire.TypeRunDone
 	TypeRunError    = wire.TypeRunError
@@ -114,6 +117,13 @@ type (
 	// DecisionRequest is [wire.DecisionRequest]: the body of POST
 	// /v1/runs/{id}/decisions.
 	DecisionRequest = wire.DecisionRequest
+	// InputRequest is [wire.InputRequest]: the body of POST
+	// /v1/runs/{id}/input.
+	InputRequest = wire.InputRequest
+	// Interrupt is [wire.Interrupt]: a tool call that waits for people.
+	Interrupt = wire.Interrupt
+	// Answer is [wire.Answer]: the answer to an Interrupt.
+	Answer = wire.Answer
 	// Credential is [wire.Credential]: where a toolset's credential comes
 	// from. The other catalog types (agents, toolsets, tools, conversation
 	// lists) are used from package wire: [Agent] and [Toolset] here are what
@@ -153,15 +163,16 @@ func ms(d time.Duration) float64 { return float64(d.Microseconds()) / 1000 }
 // wireEvent converts a harness event other than EventRunDone (which the
 // server turns into run_done itself). ok is false for a kind it does not know.
 // turns is added to the event's turn: the turns of the run before this
-// execution, which the harness does not count.
+// execution, which the harness does not count. The harness's turn 0 is the
+// pending turn a resume finishes: the run's next turn, turns+1.
 func wireEvent(runID, convID string, turns int, ev harness.Event) (Event, bool) {
-	e := Event{V: WireVersion, RunID: runID, At: ev.At, Turn: ev.Turn}
-	if e.Turn > 0 {
-		e.Turn += turns
+	e := Event{V: WireVersion, RunID: runID, At: ev.At, Turn: ev.Turn + turns}
+	if ev.Turn == 0 {
+		e.Turn = turns + 1
 	}
 	switch ev.Kind {
 	case harness.EventRunStart:
-		e.Type, e.ConversationID = TypeRunStart, convID
+		e.Type, e.ConversationID, e.Turn = TypeRunStart, convID, 0
 		if ev.Prompt != nil {
 			p := timedMessage(*ev.Prompt)
 			e.Prompt = &p
@@ -182,12 +193,33 @@ func wireEvent(runID, convID string, turns int, ev harness.Event) (Event, bool) 
 		e.Call, e.ToolUseID, e.Name = ev.Call, ev.ToolUse.ID, ev.ToolUse.Name
 		e.Action, e.Policy, e.Rule, e.Reason = string(d.Action), d.Policy, d.Rule, d.Reason
 		e.ToolKind, e.ToolRisk = string(d.Kind), string(d.Risk)
+	case harness.EventInterrupt:
+		if ev.Interrupt == nil { // from an agent that broke the contract
+			return Event{}, false
+		}
+		in := wireInterrupt(*ev.Interrupt, nil)
+		e.Type, e.Call, e.ToolUseID, e.Name, e.Interrupt = TypeInterrupt, ev.Call, ev.ToolUse.ID, ev.ToolUse.Name, &in
 	case harness.EventTurnDone:
 		r := turnRecord(*ev.TurnRecord)
-		r.Turn += turns
+		r.Turn = e.Turn
 		e.Type, e.Record = TypeTurnDone, &r
 	default:
 		return Event{}, false
 	}
 	return e, true
+}
+
+// wireInterrupt is an interrupt on the wire, with its answer if it has one.
+func wireInterrupt(in harness.Interrupt, a *harness.Answer) Interrupt {
+	out := Interrupt{ID: in.ID, Kind: string(in.Kind), Name: in.Name, Prompt: in.Prompt, Choices: slices.Clone(in.Choices)}
+	if in.Kind == harness.InterruptApproval {
+		out.Input = json.RawMessage(in.Input)
+		if d := in.Decision; d != nil {
+			out.Policy, out.Rule = d.Policy, d.Rule
+		}
+	}
+	if a != nil {
+		out.Answer = &Answer{ID: a.ID, Text: a.Text, Approved: a.Approved, Reason: a.Reason, By: a.By}
+	}
+	return out
 }

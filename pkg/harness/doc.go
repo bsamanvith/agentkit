@@ -53,6 +53,25 @@
 // in return [ErrBudgetExceeded] leaves a transcript that continues with a
 // bigger budget.
 //
+// # Waiting for people
+//
+// A run's [Interaction] ([WithInteraction], narrowed by
+// [Input.Interaction]) says whether its tool calls may wait for people. In
+// an interactive or supervised run, a call whose tool asks ([tool.Interrupt],
+// such as ask_user) or that the tool policy wants approved does not finish:
+// it is an [Interrupt] ([EventInterrupt]). Once the turn's other calls are
+// done, the run ends with [EventSuspended], whose result holds the
+// [Pending] turn: the reply, the results so far and the interrupts. The
+// transcript does not hold the pending turn. A later run takes the same
+// transcript, the pending turn and an [Answer] to every interrupt
+// ([Input.Pending], [Input.Answers]). It finishes the turn as turn 0 first: a
+// question's answer is its result; an approved call runs with exactly the
+// input it was approved with; a denied call's result is the denial. Then the
+// run goes on as usual. An autonomous run, the default, never waits: tools
+// that interrupt ([tool.Metadata.Interrupts]) are not offered, a tool that
+// asks gets an error result, and a call the policy wants approved is refused
+// ([PolicyError]).
+//
 // # Errors
 //
 // Every error from a run is a [*RunError] wrapping its cause, and carrying

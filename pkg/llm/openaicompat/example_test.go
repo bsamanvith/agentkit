@@ -10,8 +10,6 @@ import (
 	"net/http/httptest"
 	"os"
 
-	"github.com/openai/openai-go/v3/option"
-
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/openaicompat"
 )
@@ -32,8 +30,7 @@ func ExampleNew() {
 	model, err := openaicompat.New(
 		openaicompat.WithModel("gpt-replay"),
 		openaicompat.WithBaseURL(srv.URL+"/v1"),
-		// A key over plain HTTP needs a loopback address and this option.
-		openaicompat.WithClientOptions(option.WithAPIKey("sk-example"), option.WithUnsafeAllowHTTP()),
+		openaicompat.WithAPIKey("sk-example"),
 	)
 	if err != nil {
 		fmt.Println(err)

@@ -1,16 +1,18 @@
 // Package openaicompat is the llm.Model for any server that speaks OpenAI's
 // Chat Completions API: OpenAI itself, xAI (Grok), Groq, vLLM, Ollama,
-// llama.cpp, and gateways such as the LiteLLM proxy or OpenRouter. It is built
-// on the official OpenAI Go SDK (github.com/openai/openai-go/v3); the SDK
-// sends the requests, retries them and decodes the event stream.
+// llama.cpp, and gateways such as the LiteLLM proxy or OpenRouter. It is a
+// small net/http client of the one endpoint it needs, POST
+// {base URL}/chat/completions with stream=true, and reads the reply as
+// server-sent events.
 //
 // New needs a model ID ([WithModel]); the server is OpenAI's unless
 // [WithBaseURL] (or OPENAI_BASE_URL) names another, for example
-// http://localhost:11434/v1 for Ollama. The API key comes from OPENAI_API_KEY
-// or WithClientOptions(option.WithAPIKey(...)); without one no Authorization
-// header is sent, which local servers accept. The SDK sends a key over plain
-// HTTP only to a loopback address, and only with option.WithUnsafeAllowHTTP;
-// otherwise the request fails with [llm.ErrInvalidRequest].
+// http://localhost:11434/v1 for Ollama. The API key comes from
+// OPENAI_API_KEY or [WithAPIKey]; without one no Authorization header is
+// sent, which local servers accept. Plain http base URLs are allowed, with a
+// key too, for servers on the same host or inside a cluster (vLLM at
+// http://vllm:8000/v1): the key then crosses the network in the clear, so
+// use https for anything else.
 //
 // # Mapping
 //
@@ -62,6 +64,7 @@
 // [llm.ErrInvalidRequest]; 408, 409, 5xx, a dropped connection, a garbled
 // stream or one that ends without a finish_reason to [llm.ErrOverloaded]. An
 // error sent inside the stream is classified by its code and type the same
-// way. The SDK's own retries (two by default) run first; its *openai.Error
-// stays reachable with errors.As.
+// way. Connection failures and 408, 409, 429 and 5xx responses are retried
+// first, twice by default ([WithMaxRetries]), honoring Retry-After-Ms and
+// Retry-After. The server's error is an [*Error], reachable with errors.As.
 package openaicompat

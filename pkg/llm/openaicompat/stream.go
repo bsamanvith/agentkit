@@ -9,9 +9,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/openai/openai-go/v3"
-	"github.com/openai/openai-go/v3/packages/respjson"
-
 	"github.com/bsamanvith/agentkit/pkg/llm"
 )
 
@@ -25,6 +22,67 @@ var errIncomplete = errors.New("openaicompat: stream ended without a finish_reas
 
 // errGarbled is a stream whose content cannot be made into a reply.
 var errGarbled = errors.New("openaicompat: garbled stream")
+
+// chunk is one event of the stream, a chat.completion.chunk, as far as this
+// adapter reads it. Reasoning, the content filter and the usage are kept raw:
+// servers differ in what they put there, and a value of an unexpected shape
+// is ignored rather than failing the reply.
+type chunk struct {
+	Choices []struct {
+		Index int64 `json:"index"`
+		Delta struct {
+			Content          string          `json:"content"`
+			Refusal          string          `json:"refusal"`
+			ReasoningContent json.RawMessage `json:"reasoning_content"`
+			Reasoning        json.RawMessage `json:"reasoning"`
+			ToolCalls        []toolCallDelta `json:"tool_calls"`
+		} `json:"delta"`
+		FinishReason         string          `json:"finish_reason"`
+		ContentFilterResults json.RawMessage `json:"content_filter_results"`
+	} `json:"choices"`
+	Usage json.RawMessage `json:"usage"`
+}
+
+// toolCallDelta is a fragment of a tool call.
+type toolCallDelta struct {
+	Index    int64  `json:"index"`
+	ID       string `json:"id"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
+}
+
+// usage is the token usage of a reply, in the last chunk.
+type usage struct {
+	PromptTokens        int64 `json:"prompt_tokens"`
+	CompletionTokens    int64 `json:"completion_tokens"`
+	PromptTokensDetails struct {
+		CachedTokens     int64 `json:"cached_tokens"`
+		CacheWriteTokens int64 `json:"cache_write_tokens"`
+	} `json:"prompt_tokens_details"`
+	// CacheCreationInputTokens is LiteLLM's count of cache writes.
+	CacheCreationInputTokens json.RawMessage `json:"cache_creation_input_tokens"`
+}
+
+// parseChunk decodes the data of one event: a chunk, or an error the server
+// sent inside the stream ({"error":{...}}), which it returns as an *Error.
+func parseChunk(data []byte) (*chunk, error) {
+	var probe struct {
+		Error json.RawMessage `json:"error"`
+	}
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return nil, fmt.Errorf("%w: %w", errGarbled, err)
+	}
+	if len(probe.Error) > 0 && !bytes.Equal(probe.Error, []byte("null")) {
+		return nil, streamError(data)
+	}
+	var c chunk
+	if err := json.Unmarshal(data, &c); err != nil {
+		return nil, fmt.Errorf("%w: %w", errGarbled, err)
+	}
+	return &c, nil
+}
 
 type blockKind uint8
 
@@ -58,17 +116,17 @@ type reader struct {
 }
 
 // read handles one chunk and returns the events it completes.
-func (r *reader) read(chunk openai.ChatCompletionChunk) []llm.Event {
-	if chunk.JSON.Usage.Valid() {
-		r.usage = usageOf(chunk.Usage)
+func (r *reader) read(c *chunk) []llm.Event {
+	if u, ok := usageOf(c.Usage); ok {
+		r.usage = u
 	}
 	var events []llm.Event
-	for _, choice := range chunk.Choices {
+	for _, choice := range c.Choices {
 		if choice.Index != 0 {
 			continue // n is never set, so there is one choice
 		}
 		d := choice.Delta
-		if name, text := reasoningDelta(d.JSON.ExtraFields); text != "" {
+		if name, text := reasoningDelta(d.ReasoningContent, d.Reasoning); text != "" {
 			if r.open != reasoningBlock || r.field != name {
 				events = r.close(events)
 				r.open, r.field = reasoningBlock, name
@@ -101,8 +159,8 @@ func (r *reader) read(chunk openai.ChatCompletionChunk) []llm.Event {
 		if choice.FinishReason != "" {
 			r.reason = choice.FinishReason
 		}
-		if f, ok := choice.JSON.ExtraFields["content_filter_results"]; ok {
-			r.filtered = filteredCategories(f.Raw(), r.filtered)
+		if len(choice.ContentFilterResults) > 0 {
+			r.filtered = filteredCategories(choice.ContentFilterResults, r.filtered)
 		}
 	}
 	return events
@@ -111,7 +169,7 @@ func (r *reader) read(chunk openai.ChatCompletionChunk) []llm.Event {
 // callFor returns the call a tool-call delta continues, or nil if it starts a
 // new one: a new index, or a new ID at a known index (some servers give every
 // parallel call index 0).
-func (r *reader) callFor(tc openai.ChatCompletionChunkChoiceDeltaToolCall) *call {
+func (r *reader) callFor(tc toolCallDelta) *call {
 	for i := len(r.calls) - 1; i >= 0; i-- {
 		c := r.calls[i]
 		if c.index == tc.Index {
@@ -209,45 +267,47 @@ func (r *reader) stop(hasCalls bool) llm.StopReason {
 	return llm.StopReason{Kind: llm.StopOther, Raw: r.reason}
 }
 
-// usageOf maps the API's usage. prompt_tokens counts the cached tokens too:
-// those read (prompt_tokens_details.cached_tokens) and, where a server
-// reports them, those written (prompt_tokens_details.cache_write_tokens, or
+// usageOf maps the API's usage, if raw is a usage object (not absent, null
+// or of another shape). prompt_tokens counts the cached tokens too: those
+// read (prompt_tokens_details.cached_tokens) and, where a server reports
+// them, those written (prompt_tokens_details.cache_write_tokens, or
 // LiteLLM's cache_creation_input_tokens).
-func usageOf(u openai.CompletionUsage) llm.Usage {
+func usageOf(raw json.RawMessage) (llm.Usage, bool) {
+	var u *usage
+	if len(raw) == 0 || json.Unmarshal(raw, &u) != nil || u == nil {
+		return llm.Usage{}, false
+	}
 	read := max(u.PromptTokensDetails.CachedTokens, 0)
 	written := max(u.PromptTokensDetails.CacheWriteTokens, 0)
 	if written == 0 {
-		written = extraInt(u.JSON.ExtraFields["cache_creation_input_tokens"])
+		written = count(u.CacheCreationInputTokens)
 	}
 	return llm.Usage{
 		InputTokens:      int(max(u.PromptTokens-read-written, 0)),
 		OutputTokens:     int(max(u.CompletionTokens, 0)),
 		CacheReadTokens:  int(read),
 		CacheWriteTokens: int(written),
-	}
+	}, true
 }
 
-// extraInt reads a field the SDK does not know as a count; anything but a
-// non-negative integer is zero.
-func extraInt(f respjson.Field) int64 {
+// count reads a field as a count; anything but a non-negative integer is
+// zero.
+func count(raw json.RawMessage) int64 {
 	var n int64
-	if json.Unmarshal([]byte(f.Raw()), &n) != nil || n < 0 {
+	if json.Unmarshal(raw, &n) != nil || n < 0 {
 		return 0
 	}
 	return n
 }
 
 // reasoningDelta returns the reasoning field of a delta and its text, if it
-// has one.
-func reasoningDelta(extra map[string]respjson.Field) (name, text string) {
-	for _, name := range reasoningNames {
-		f, ok := extra[name]
-		if !ok {
-			continue
-		}
+// has one. fields are the raw values of the fields of reasoningNames, in
+// that order.
+func reasoningDelta(fields ...json.RawMessage) (name, text string) {
+	for i, raw := range fields {
 		var s string
-		if json.Unmarshal([]byte(f.Raw()), &s) == nil && s != "" {
-			return name, s
+		if json.Unmarshal(raw, &s) == nil && s != "" {
+			return reasoningNames[i], s
 		}
 	}
 	return "", ""
@@ -265,11 +325,11 @@ func reasoningData(field, text string) json.RawMessage {
 // filteredCategories adds the categories an Azure-style
 // content_filter_results marks as filtered to seen, sorted and without
 // repeats.
-func filteredCategories(raw string, seen []string) []string {
+func filteredCategories(raw json.RawMessage, seen []string) []string {
 	var results map[string]struct {
 		Filtered bool `json:"filtered"`
 	}
-	if json.Unmarshal([]byte(raw), &results) != nil {
+	if json.Unmarshal(raw, &results) != nil {
 		return seen
 	}
 	for name, res := range results {

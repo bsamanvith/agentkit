@@ -6,10 +6,6 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/openai/openai-go/v3"
-	"github.com/openai/openai-go/v3/packages/param"
-	"github.com/openai/openai-go/v3/shared"
-
 	"github.com/bsamanvith/agentkit/pkg/llm"
 )
 
@@ -17,26 +13,89 @@ import (
 // error flag for tool messages.
 const errorPrefix = "Error: "
 
-// build turns req into the SDK's request parameters. It fails with
-// llm.ErrInvalidRequest for a request the API cannot take.
-func (m *Model) build(req llm.Request) (openai.ChatCompletionNewParams, error) {
+// The request body of POST /chat/completions, as far as this adapter sends
+// it. Field order is the order on the wire.
+type (
+	chatRequest struct {
+		Messages            []message     `json:"messages"`
+		Model               string        `json:"model"`
+		MaxCompletionTokens int           `json:"max_completion_tokens,omitempty"`
+		MaxTokens           int           `json:"max_tokens,omitempty"`
+		ReasoningEffort     string        `json:"reasoning_effort,omitempty"`
+		StreamOptions       streamOptions `json:"stream_options"`
+		Tools               []toolParam   `json:"tools,omitempty"`
+		Stream              bool          `json:"stream"`
+	}
+	streamOptions struct {
+		IncludeUsage bool `json:"include_usage"`
+	}
+	// message is one message of any role. Content is a string, or text
+	// parts for a user message of several texts; nil leaves it out (an
+	// assistant message with only tool calls).
+	message struct {
+		Content          any        `json:"content,omitempty"`
+		ToolCalls        []toolCall `json:"tool_calls,omitempty"`
+		ToolCallID       string     `json:"tool_call_id,omitempty"`
+		Role             string     `json:"role"`
+		ReasoningContent *string    `json:"reasoning_content,omitempty"`
+		Reasoning        *string    `json:"reasoning,omitempty"`
+	}
+	textPart struct {
+		Text string `json:"text"`
+		Type string `json:"type"`
+	}
+	toolCall struct {
+		ID       string       `json:"id"`
+		Function callFunction `json:"function"`
+		Type     string       `json:"type"`
+	}
+	callFunction struct {
+		Arguments string `json:"arguments"`
+		Name      string `json:"name"`
+	}
+	toolParam struct {
+		Function functionDef `json:"function"`
+		Type     string      `json:"type"`
+	}
+	functionDef struct {
+		Name        string                     `json:"name"`
+		Description string                     `json:"description,omitempty"`
+		Parameters  map[string]json.RawMessage `json:"parameters,omitempty"`
+	}
+)
+
+// encode writes the request body. HTML characters are not escaped, so text
+// and tool arguments go out as written.
+func (r *chatRequest) encode() ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(r); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
+}
+
+// build turns req into the request body. It fails with llm.ErrInvalidRequest
+// for a request the API cannot take.
+func (m *Model) build(req llm.Request) (*chatRequest, error) {
 	opts := requestOptions(req, m.defaults)
 	if err := opts.validate(); err != nil {
-		return openai.ChatCompletionNewParams{}, err
+		return nil, err
 	}
 	if len(req.Messages) == 0 {
-		return openai.ChatCompletionNewParams{}, fmt.Errorf("%w: no messages", llm.ErrInvalidRequest)
+		return nil, fmt.Errorf("%w: no messages", llm.ErrInvalidRequest)
 	}
 	if req.MaxTokens < 0 {
-		return openai.ChatCompletionNewParams{}, fmt.Errorf("%w: max tokens %d is negative", llm.ErrInvalidRequest, req.MaxTokens)
+		return nil, fmt.Errorf("%w: max tokens %d is negative", llm.ErrInvalidRequest, req.MaxTokens)
 	}
-	var msgs []openai.ChatCompletionMessageParamUnion
+	var msgs []message
 	if req.System != "" {
-		msgs = append(msgs, openai.SystemMessage(req.System))
+		msgs = append(msgs, message{Role: "system", Content: req.System})
 	}
 	for i, msg := range req.Messages {
 		var (
-			out []openai.ChatCompletionMessageParamUnion
+			out []message
 			err error
 		)
 		switch msg.Role {
@@ -48,50 +107,44 @@ func (m *Model) build(req llm.Request) (openai.ChatCompletionNewParams, error) {
 			err = fmt.Errorf("unknown role %q", msg.Role)
 		}
 		if err != nil {
-			return openai.ChatCompletionNewParams{}, fmt.Errorf("%w: message %d: %w", llm.ErrInvalidRequest, i, err)
+			return nil, fmt.Errorf("%w: message %d: %w", llm.ErrInvalidRequest, i, err)
 		}
 		msgs = append(msgs, out...)
 	}
-	params := openai.ChatCompletionNewParams{
-		Model:         m.model,
-		Messages:      msgs,
-		StreamOptions: openai.ChatCompletionStreamOptionsParam{IncludeUsage: param.NewOpt(true)},
+	body := &chatRequest{
+		Model:           m.model,
+		Messages:        msgs,
+		ReasoningEffort: opts.ReasoningEffort,
+		StreamOptions:   streamOptions{IncludeUsage: true},
+		Stream:          true,
 	}
 	for _, def := range req.Tools {
-		fn := shared.FunctionDefinitionParam{Name: def.Name}
-		if def.Description != "" {
-			fn.Description = param.NewOpt(def.Description)
-		}
+		fn := functionDef{Name: def.Name, Description: def.Description}
 		if len(def.InputSchema) > 0 {
 			schema, err := decodeSchema(def.InputSchema)
 			if err != nil {
-				return openai.ChatCompletionNewParams{}, fmt.Errorf("%w: tool %q: input schema: %w", llm.ErrInvalidRequest, def.Name, err)
+				return nil, fmt.Errorf("%w: tool %q: input schema: %w", llm.ErrInvalidRequest, def.Name, err)
 			}
 			fn.Parameters = schema
 		}
-		params.Tools = append(params.Tools, openai.ChatCompletionFunctionTool(fn))
+		body.Tools = append(body.Tools, toolParam{Function: fn, Type: "function"})
 	}
 	maxTokens := req.MaxTokens
 	if maxTokens == 0 {
 		maxTokens = m.maxTokens
 	}
-	if maxTokens > 0 {
-		if opts.LegacyMaxTokens {
-			params.MaxTokens = param.NewOpt(int64(maxTokens))
-		} else {
-			params.MaxCompletionTokens = param.NewOpt(int64(maxTokens))
-		}
+	if opts.LegacyMaxTokens {
+		body.MaxTokens = maxTokens
+	} else {
+		body.MaxCompletionTokens = maxTokens
 	}
-	if opts.ReasoningEffort != "" {
-		params.ReasoningEffort = shared.ReasoningEffort(opts.ReasoningEffort)
-	}
-	return params, nil
+	return body, nil
 }
 
 // decodeSchema decodes a JSON schema object. Its members stay raw JSON, so
 // the schema is sent as written (numbers included), with only its top-level
 // members reordered.
-func decodeSchema(raw json.RawMessage) (map[string]any, error) {
+func decodeSchema(raw json.RawMessage) (map[string]json.RawMessage, error) {
 	var members map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &members); err != nil {
 		return nil, err
@@ -99,18 +152,14 @@ func decodeSchema(raw json.RawMessage) (map[string]any, error) {
 	if members == nil {
 		return nil, fmt.Errorf("not a JSON object")
 	}
-	schema := make(map[string]any, len(members))
-	for k, v := range members {
-		schema[k] = v
-	}
-	return schema, nil
+	return members, nil
 }
 
 // userMessages maps a user message: its tool results first, as "tool"
 // messages, then its text, as one "user" message.
-func userMessages(msg llm.Message) ([]openai.ChatCompletionMessageParamUnion, error) {
+func userMessages(msg llm.Message) ([]message, error) {
 	var (
-		out   []openai.ChatCompletionMessageParamUnion
+		out   []message
 		texts []string
 	)
 	for j, b := range msg.Content {
@@ -125,7 +174,7 @@ func userMessages(msg llm.Message) ([]openai.ChatCompletionMessageParamUnion, er
 			if b.IsError {
 				content = errorPrefix + content
 			}
-			out = append(out, openai.ToolMessage(content, b.ToolUseID))
+			out = append(out, message{Role: "tool", Content: content, ToolCallID: b.ToolUseID})
 		case llm.Opaque:
 			if b.Provider == Provider {
 				return nil, fmt.Errorf("block %d: a reasoning block in a user message", j)
@@ -140,13 +189,13 @@ func userMessages(msg llm.Message) ([]openai.ChatCompletionMessageParamUnion, er
 			return nil, fmt.Errorf("empty user message")
 		}
 	case 1:
-		out = append(out, openai.UserMessage(texts[0]))
+		out = append(out, message{Role: "user", Content: texts[0]})
 	default:
-		parts := make([]openai.ChatCompletionContentPartUnionParam, len(texts))
+		parts := make([]textPart, len(texts))
 		for k, t := range texts {
-			parts[k] = openai.TextContentPart(t)
+			parts[k] = textPart{Text: t, Type: "text"}
 		}
-		out = append(out, openai.UserMessage(parts))
+		out = append(out, message{Role: "user", Content: parts})
 	}
 	return out, nil
 }
@@ -155,12 +204,12 @@ func userMessages(msg llm.Message) ([]openai.ChatCompletionMessageParamUnion, er
 // tool uses as its tool calls, and this adapter's reasoning blocks as the
 // fields they came in. A message left with nothing to send (only other
 // providers' blocks) is left out.
-func assistantMessage(msg llm.Message, dropReasoning bool) ([]openai.ChatCompletionMessageParamUnion, error) {
+func assistantMessage(msg llm.Message, dropReasoning bool) ([]message, error) {
 	var (
-		a       openai.ChatCompletionAssistantMessageParam
-		text    []byte
-		hasText bool
-		extra   map[string]any
+		a         = message{Role: "assistant"}
+		text      []byte
+		hasText   bool
+		reasoning = map[string]*string{}
 	)
 	for j, b := range msg.Content {
 		switch b := b.(type) {
@@ -177,12 +226,7 @@ func assistantMessage(msg llm.Message, dropReasoning bool) ([]openai.ChatComplet
 			} else if !json.Valid(b.Input) {
 				return nil, fmt.Errorf("block %d: input of tool use %q is not valid JSON", j, b.ID)
 			}
-			a.ToolCalls = append(a.ToolCalls, openai.ChatCompletionMessageToolCallUnionParam{
-				OfFunction: &openai.ChatCompletionMessageFunctionToolCallParam{
-					ID:       b.ID,
-					Function: openai.ChatCompletionMessageFunctionToolCallFunctionParam{Name: b.Name, Arguments: args},
-				},
-			})
+			a.ToolCalls = append(a.ToolCalls, toolCall{ID: b.ID, Function: callFunction{Name: b.Name, Arguments: args}, Type: "function"})
 		case llm.Opaque:
 			if b.Provider != Provider || dropReasoning {
 				continue
@@ -191,30 +235,26 @@ func assistantMessage(msg llm.Message, dropReasoning bool) ([]openai.ChatComplet
 			if err != nil {
 				return nil, fmt.Errorf("block %d: %w", j, err)
 			}
-			if extra == nil {
-				extra = map[string]any{}
-			}
 			for _, f := range fields {
-				if prev, ok := extra[f.name].(string); ok {
-					extra[f.name] = prev + f.text
+				if prev := reasoning[f.name]; prev != nil {
+					*prev += f.text
 					continue
 				}
-				extra[f.name] = f.text
+				t := f.text
+				reasoning[f.name] = &t
 			}
 		default:
 			return nil, fmt.Errorf("block %d: %T is not allowed in an assistant message", j, b)
 		}
 	}
-	if !hasText && len(a.ToolCalls) == 0 && len(extra) == 0 {
+	if !hasText && len(a.ToolCalls) == 0 && len(reasoning) == 0 {
 		return nil, nil
 	}
 	if hasText {
-		a.Content.OfString = param.NewOpt(string(text))
+		a.Content = string(text)
 	}
-	if extra != nil {
-		a.SetExtraFields(extra)
-	}
-	return []openai.ChatCompletionMessageParamUnion{{OfAssistant: &a}}, nil
+	a.ReasoningContent, a.Reasoning = reasoning["reasoning_content"], reasoning["reasoning"]
+	return []message{a}, nil
 }
 
 type reasoningField struct{ name, text string }

@@ -51,7 +51,8 @@ Every container gets the same config file: the agents and `mcp.toolsets`.
 The agent API reads it for agent names and descriptions, the runner for
 models and limits, and the toolsets component for the connectors and their
 settings. Connector keys (`TAVILY_API_KEY`, ...) go to the toolsets
-component only, the model's key (`ANTHROPIC_API_KEY`) to the runner only, and
+component only, the model's key (`ANTHROPIC_API_KEY`, or the variable an `openai` model's
+`api_key_env` names) to the runner only, and
 the store and bus URLs to the agent API only.
 
 A component that serves `/rpc/` checks nothing but the token: keep it on the

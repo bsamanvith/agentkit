@@ -9,11 +9,12 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/llm"
 )
 
-// The model adapters serve can build. They are in their own file, which the
+// The model adapters serve can build. They are in their own files, which the
 // nomodels tag leaves out, so an image whose agents run on a remote runner
-// (agentkit-api) links no model SDK:
+// (agentkit-api) links no model adapter:
 //
-//	nomodels  no Anthropic adapter (models_anthropic.go); agent-api needs
+//	nomodels  no Anthropic adapter (models_anthropic.go) and no
+//	          OpenAI-compatible one (models_openai.go); agent-api needs
 //	          $AGENTKIT_RUNNER_URL, and run and flow demo fail
 //
 // defaultModelID is anthropic.DefaultModel, which a nomodels build cannot
@@ -29,7 +30,8 @@ const defaultProvider = "anthropic"
 // own, as models_anthropic.go is behind nomodels) and its line in this table.
 func modelProviders() map[string]func(modelFlags) (llm.Model, error) {
 	return map[string]func(modelFlags) (llm.Model, error){
-		"anthropic": newClaude,
+		defaultProvider: newClaude,
+		providerOpenAI:  newOpenAI,
 	}
 }
 

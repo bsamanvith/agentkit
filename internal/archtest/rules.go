@@ -14,15 +14,6 @@ func ModuleRules() Rules {
 				"github.com/anthropics/anthropic-sdk-go/packages/param",
 				"github.com/anthropics/anthropic-sdk-go/shared/constant",
 			},
-			// The OpenAI-compatible adapter (T025), on the official SDK.
-			"pkg/llm/openaicompat": {
-				"github.com/openai/openai-go/v3",
-				"github.com/openai/openai-go/v3/option",
-				"github.com/openai/openai-go/v3/packages/param",
-				"github.com/openai/openai-go/v3/packages/respjson",
-				"github.com/openai/openai-go/v3/packages/ssestream",
-				"github.com/openai/openai-go/v3/shared",
-			},
 			// Its serve e2e test uses the SDK client; its migrate integration
 			// test makes a schema to migrate with pgx.
 			"cmd/agentkit":         {"github.com/modelcontextprotocol/go-sdk/mcp", "github.com/jackc/pgx/v5"},

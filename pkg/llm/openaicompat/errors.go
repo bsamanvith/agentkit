@@ -5,21 +5,108 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
-	"net/url"
 	"strings"
-
-	"github.com/openai/openai-go/v3"
-	"github.com/openai/openai-go/v3/packages/ssestream"
 
 	"github.com/bsamanvith/agentkit/pkg/llm"
 )
 
+// Error is an error the server reported: an error response, or an error
+// event inside the stream. Generate's errors wrap it with the llm sentinel it
+// maps to; errors.As reaches it.
+type Error struct {
+	// StatusCode is the HTTP status of an error response. For an error
+	// inside a stream it is the numeric code vLLM puts there, or zero.
+	StatusCode int
+	// Code, Type and Message are the error's fields, as OpenAI and the
+	// servers that imitate it write them, nested under "error" or (vLLM)
+	// at the top level. Code is empty when the server gave none or gave a
+	// number.
+	Code, Type, Message string
+	// RequestID is the response's X-Request-Id header, if any.
+	RequestID string
+	// InStream is true for an error sent inside the stream.
+	InStream bool
+}
+
+func (e *Error) Error() string {
+	var b strings.Builder
+	b.WriteString("openaicompat: ")
+	if e.InStream {
+		b.WriteString("error in stream")
+	} else {
+		fmt.Fprintf(&b, "HTTP %d", e.StatusCode)
+	}
+	if e.Type != "" || e.Code != "" {
+		fmt.Fprintf(&b, " (%s)", strings.Trim(e.Type+" "+e.Code, " "))
+	}
+	if e.Message != "" {
+		b.WriteString(": " + e.Message)
+	}
+	if e.RequestID != "" {
+		b.WriteString(" [request " + e.RequestID + "]")
+	}
+	return b.String()
+}
+
+// errorBody is the body of an error: {"error":{...}}, {"error":"..."}
+// (Ollama, some gateways) or vLLM's top-level {"object":"error",...}.
+type errorBody struct {
+	Error   json.RawMessage `json:"error"`
+	Code    json.RawMessage `json:"code"`
+	Type    string          `json:"type"`
+	Message string          `json:"message"`
+}
+
+type errorFields struct {
+	Code    json.RawMessage `json:"code"`
+	Type    string          `json:"type"`
+	Message string          `json:"message"`
+}
+
+// read fills e from an error body; what it cannot read stays empty.
+// It returns the numeric code, if the error had one instead of a string.
+func (e *Error) read(data []byte) (numericCode int) {
+	var body errorBody
+	if json.Unmarshal(data, &body) != nil {
+		return 0
+	}
+	f := errorFields{Code: body.Code, Type: body.Type, Message: body.Message}
+	var nested errorFields
+	var text string
+	switch {
+	case len(body.Error) == 0 || string(body.Error) == "null":
+	case json.Unmarshal(body.Error, &nested) == nil:
+		f = nested
+	case json.Unmarshal(body.Error, &text) == nil:
+		f.Message = text
+	}
+	e.Type, e.Message = f.Type, f.Message
+	if json.Unmarshal(f.Code, &e.Code) != nil {
+		_ = json.Unmarshal(f.Code, &numericCode)
+	}
+	return numericCode
+}
+
+// responseError reads an error response.
+func responseError(resp *http.Response, body []byte) *Error {
+	e := &Error{StatusCode: resp.StatusCode, RequestID: resp.Header.Get("X-Request-Id")}
+	e.read(body)
+	return e
+}
+
+// streamError reads an error sent inside the stream, {"error":{...}}. Its
+// code is a string (OpenAI) or the HTTP status (vLLM), which then counts as
+// the status.
+func streamError(data []byte) *Error {
+	e := &Error{InStream: true}
+	e.StatusCode = e.read(data)
+	return e
+}
+
 // classify wraps err with the llm sentinel it maps to. A done context wins:
-// the caller gets the context's own error. status is the HTTP status of the
-// last response, or zero if unknown.
-func classify(ctx context.Context, err error, status int) error {
+// the caller gets the context's own error.
+func classify(ctx context.Context, err error) error {
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		// A stalled stream is cancelled by Generate's own watchdog, with
 		// errStalled as the cause: transient, like a dropped connection.
@@ -28,71 +115,12 @@ func classify(ctx context.Context, err error, status int) error {
 		}
 		return ctxErr
 	}
-	var apiErr *openai.Error
+	var apiErr *Error
 	if errors.As(err, &apiErr) {
-		msg := apiErr.Message
-		if msg == "" {
-			msg = topLevelMessage(apiErr.Response)
-		}
-		return fmt.Errorf("%w: %w", sentinel(apiErr.Code, apiErr.Type, msg, apiErr.StatusCode), err)
-	}
-	var streamErr *ssestream.StreamError
-	if errors.As(err, &streamErr) {
-		code, typ, msg, st := streamError(streamErr.Event.Data)
-		return fmt.Errorf("%w: %w", sentinel(code, typ, msg, st), err)
-	}
-	if status >= 400 {
-		// An error response the SDK could not read as an OpenAI error,
-		// such as vLLM's {"object":"error",...}: its status says enough.
-		return fmt.Errorf("%w: HTTP %d: %w", sentinel("", "", "", status), status, err)
-	}
-	var urlErr *url.Error
-	if status == 0 && !errors.As(err, &urlErr) && !errors.Is(err, errGarbled) && !errors.Is(err, errIncomplete) {
-		// No response, and not for a transport failure (the HTTP client
-		// reports those as *url.Error): the SDK refused to send the
-		// request, for example an API key over plain HTTP to a host that
-		// is not loopback. The same request fails the same way again.
-		return fmt.Errorf("%w: request not sent: %w", llm.ErrInvalidRequest, err)
+		return fmt.Errorf("%w: %w", sentinel(apiErr.Code, apiErr.Type, apiErr.Message, apiErr.StatusCode), err)
 	}
 	// A dropped connection, a stream cut short or garbled: transient.
 	return fmt.Errorf("%w: %w", llm.ErrOverloaded, err)
-}
-
-// topLevelMessage reads the message of an error body that is not nested
-// under "error", as vLLM writes it: {"object":"error","message":...}.
-func topLevelMessage(resp *http.Response) string {
-	if resp == nil || resp.Body == nil {
-		return ""
-	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
-	if err != nil {
-		return ""
-	}
-	var body struct {
-		Message string `json:"message"`
-	}
-	_ = json.Unmarshal(data, &body)
-	return body.Message
-}
-
-// streamError reads an error sent inside the stream, {"error":{...}}. Its
-// code is a string (OpenAI) or the HTTP status (vLLM).
-func streamError(data []byte) (code, typ, msg string, status int) {
-	var body struct {
-		Error struct {
-			Code    json.RawMessage `json:"code"`
-			Type    string          `json:"type"`
-			Message string          `json:"message"`
-		} `json:"error"`
-	}
-	if json.Unmarshal(data, &body) != nil {
-		return "", "", "", 0
-	}
-	e := body.Error
-	if json.Unmarshal(e.Code, &code) != nil {
-		_ = json.Unmarshal(e.Code, &status)
-	}
-	return code, e.Type, e.Message, status
 }
 
 // sentinel maps an API error by its code where OpenAI's codes say more than

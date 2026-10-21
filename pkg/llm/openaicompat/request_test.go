@@ -245,6 +245,31 @@ func TestReasoningSentBack(t *testing.T) {
 	}
 }
 
+// TestAssistantContent checks when an assistant message has content: an
+// empty text block is sent as "", and a message of tool calls only has none.
+func TestAssistantContent(t *testing.T) {
+	t.Parallel()
+	for name, c := range map[string]struct {
+		msg  llm.Message
+		want any // nil: no content member
+	}{
+		"empty text":      {llm.Assistant(llm.Text{}, llm.ToolUse{ID: "c1", Name: "now"}), ""},
+		"tool calls only": {llm.Assistant(llm.ToolUse{ID: "c1", Name: "now"}), nil},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			req := llm.Request{Messages: []llm.Message{
+				llm.User(llm.Text{Text: "Hi."}), c.msg, llm.User(llm.ToolResult{ToolUseID: "c1", Content: "noon"}),
+			}}
+			got := body(t, req)["messages"].([]any)[1].(map[string]any)
+			content, ok := got["content"]
+			if ok != (c.want != nil) || ok && content != c.want {
+				t.Errorf("content = %#v (present %v), want %#v", content, ok, c.want)
+			}
+		})
+	}
+}
+
 // TestInvalidRequests checks that requests the API cannot take fail with
 // llm.ErrInvalidRequest before anything is sent.
 func TestInvalidRequests(t *testing.T) {
@@ -290,6 +315,12 @@ func TestNewRejectsInvalidSettings(t *testing.T) {
 		"negative limit":   {openaicompat.WithModel("m"), openaicompat.WithMaxTokens(-1)},
 		"negative idle":    {openaicompat.WithModel("m"), openaicompat.WithIdleTimeout(-1)},
 		"invalid defaults": {openaicompat.WithModel("m"), openaicompat.WithOptions(openaicompat.Options{ReasoningEffort: "!"})},
+		"negative retries": {openaicompat.WithModel("m"), openaicompat.WithMaxRetries(-1)},
+		"no scheme":        {openaicompat.WithModel("m"), openaicompat.WithBaseURL("localhost:11434/v1")},
+		"other scheme":     {openaicompat.WithModel("m"), openaicompat.WithBaseURL("ftp://example.com/v1")},
+		"no host":          {openaicompat.WithModel("m"), openaicompat.WithBaseURL("http:///v1")},
+		"credentials":      {openaicompat.WithModel("m"), openaicompat.WithBaseURL("https://user:pass@example.com/v1")},
+		"unparsable":       {openaicompat.WithModel("m"), openaicompat.WithBaseURL("http://[::1/v1")},
 	} {
 		if _, err := openaicompat.New(opts...); !errors.Is(err, llm.ErrInvalidRequest) {
 			t.Errorf("%s: err = %v, want ErrInvalidRequest", name, err)

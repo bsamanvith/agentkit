@@ -10,7 +10,9 @@
 //	agentkit migrate                           apply the Postgres store's migrations to $AGENTKIT_STORE
 //
 // Credentials come from the Anthropic SDK's chain: ANTHROPIC_API_KEY,
-// ANTHROPIC_AUTH_TOKEN or an `ant auth login` profile.
+// ANTHROPIC_AUTH_TOKEN or an `ant auth login` profile. An agent on an
+// OpenAI-compatible server (model.provider "openai") reads its key from the
+// variable its model.api_key_env names, OPENAI_API_KEY by default.
 //
 // serve reads AGENTKIT_COMPONENTS (default mcp-server), AGENTKIT_ADDR
 // (default 127.0.0.1:8080), AGENTKIT_LOG_LEVEL (default info),
@@ -150,6 +152,10 @@ type modelFlags struct {
 	// nativeMemory sends the memory tool as the provider's native type
 	// (an agent's memory.native_tool).
 	nativeMemory bool
+	// baseURL and apiKey are an openai model's server and key (the
+	// key's value, read from the variable the config names).
+	baseURL string
+	apiKey  string
 }
 
 func (m *modelFlags) register(fs *flag.FlagSet) {

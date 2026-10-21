@@ -11,8 +11,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/openai/openai-go/v3/option"
-
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/openaicompat"
 )
@@ -55,7 +53,7 @@ func streamModel(t testing.TB, bodies ...string) (*openaicompat.Model, *sse) {
 		openaicompat.WithModel("gpt-replay"),
 		openaicompat.WithBaseURL("https://replay.invalid/v1"),
 		openaicompat.WithHTTPClient(&http.Client{Transport: tr}),
-		openaicompat.WithClientOptions(option.WithAPIKey("test-key"), option.WithMaxRetries(0)),
+		openaicompat.WithAPIKey("test-key"), openaicompat.WithMaxRetries(0),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -256,8 +254,12 @@ func TestUsage(t *testing.T) {
 			`{"usage":{"prompt_tokens":100,"completion_tokens":7,"cache_creation_input_tokens":30,"prompt_tokens_details":{"cached_tokens":50}},"choices":[]}`,
 			llm.Usage{InputTokens: 20, OutputTokens: 7, CacheReadTokens: 50, CacheWriteTokens: 30},
 		},
-		"no usage":     {"", llm.Usage{}},
-		"null usage":   {`{"usage":null,"choices":[]}`, llm.Usage{}},
+		"no usage":   {"", llm.Usage{}},
+		"null usage": {`{"usage":null,"choices":[]}`, llm.Usage{}},
+		"null after usage": {
+			`{"usage":{"prompt_tokens":10,"completion_tokens":2},"choices":[]}` + "\n\ndata: " + `{"usage":null,"choices":[]}`,
+			llm.Usage{InputTokens: 10, OutputTokens: 2},
+		},
 		"inconsistent": {`{"usage":{"prompt_tokens":10,"completion_tokens":-3,"prompt_tokens_details":{"cached_tokens":64}},"choices":[]}`, llm.Usage{CacheReadTokens: 64}},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -337,6 +339,24 @@ func TestStreamCutShortIsOverloaded(t *testing.T) {
 				t.Errorf("err = %v, want ErrOverloaded", err)
 			}
 		})
+	}
+}
+
+// TestStreamExtras checks what servers add around the chunks: keep-alive
+// comments, event names, "error": null in a chunk, and CRLF line ends.
+func TestStreamExtras(t *testing.T) {
+	t.Parallel()
+	stream := ": OPENROUTER PROCESSING\r\n\r\n" +
+		"event: message\r\ndata: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hi\"}}],\"error\":null}\r\n\r\n" +
+		": ping\r\n\r\n" +
+		"data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\".\"},\"finish_reason\":\"stop\"}]}\r\n\r\n" +
+		"data: [DONE]\r\n\r\n"
+	got, err := generate(t, stream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Message.Text() != "Hi." || got.Stop.Kind != llm.StopEndTurn {
+		t.Errorf("response = %#v", got)
 	}
 }
 

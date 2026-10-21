@@ -6,11 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"os"
-	"strings"
 	"testing"
 	"time"
-
-	"github.com/openai/openai-go/v3/option"
 
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/openaicompat"
@@ -37,10 +34,6 @@ func liveModel(t *testing.T) *openaicompat.Model {
 		model = liveDefaultModel
 	}
 	opts := []openaicompat.Option{openaicompat.WithModel(model)}
-	if strings.HasPrefix(base, "http://") {
-		// A key over plain HTTP: the SDK allows it to loopback only, with this.
-		opts = append(opts, openaicompat.WithClientOptions(option.WithUnsafeAllowHTTP()))
-	}
 	m, err := openaicompat.New(opts...)
 	if err != nil {
 		t.Fatal(err)

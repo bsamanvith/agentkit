@@ -13,8 +13,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/openai/openai-go/v3/option"
-
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/openaicompat"
 )
@@ -101,14 +99,14 @@ func (rp *replay) sent() []recorded {
 	return append([]recorded(nil), rp.requests...)
 }
 
-// newModel returns a model talking to srv, with a fake API key and the SDK's
+// newModel returns a model talking to srv, with a fake API key and
 // retries off (TestRetriesStayOn covers them).
 func newModel(t testing.TB, srv *httptest.Server, opts ...openaicompat.Option) *openaicompat.Model {
 	t.Helper()
 	m, err := openaicompat.New(append([]openaicompat.Option{
 		openaicompat.WithModel("gpt-replay"),
 		openaicompat.WithBaseURL(srv.URL + "/v1"),
-		openaicompat.WithClientOptions(option.WithAPIKey("test-key"), option.WithMaxRetries(0), option.WithUnsafeAllowHTTP()),
+		openaicompat.WithAPIKey("test-key"), openaicompat.WithMaxRetries(0),
 	}, opts...)...)
 	if err != nil {
 		t.Fatalf("New: %v", err)

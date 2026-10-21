@@ -101,9 +101,27 @@ jobs:
           AGENTAPI_TEST_STORE="postgres://agentkit_app:agentkit_app@localhost:5432/agentkit_test?sslmode=disable&search_path=app" go test -race -count=1 ./pkg/agentapi/...
 
   # The image builds and stays within IMAGE_BUDGET_MB. A unit test can't see
-  # a .dockerignore that leaves out a package cmd/ imports; this can.
+  # a .dockerignore that leaves out a package cmd/ imports; this can. Then the
+  # per-image smoke (T102): the split images run on the host's network
+  # against a Postgres service, the api image migrates it (twice; the second
+  # run must change nothing, scripts/migrate-check.sh) and serves it with
+  # AGENTKIT_STORE_MIGRATE=off, and the smoke suite checks each image's
+  # /readyz and surface and runs a chat on the fake model.
   image:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        ports: ["5432:5432"]
+        env:
+          POSTGRES_USER: agentkit
+          POSTGRES_PASSWORD: agentkit
+          POSTGRES_DB: agentkit_smoke
+        options: >-
+          --health-cmd "pg_isready -U agentkit -d agentkit_smoke"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -122,6 +140,16 @@ jobs:
         run: |
           make images-split
           make image-size-api && make image-size-runner && make image-size-toolsets
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: web/.nvmrc
+      - name: per-image smoke on Postgres (scripts/smoke.sh --images)
+        run: scripts/smoke.sh --images
+        env:
+          AGENTKIT_STORE: postgres://agentkit:agentkit@localhost:5432/agentkit_smoke?sslmode=disable
 
   # The web workspace (web/): lint, typecheck, unit tests, audit, and a
   # rebuild that must match the committed pkg/web/dist; then the browser

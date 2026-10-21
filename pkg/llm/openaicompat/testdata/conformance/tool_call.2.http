@@ -1,0 +1,14 @@
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+X-Request-Id: req_replay
+
+data: {"id":"chatcmpl-replay","object":"chat.completion.chunk","created":1760000000,"model":"gpt-replay","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-replay","object":"chat.completion.chunk","created":1760000000,"model":"gpt-replay","choices":[{"index":0,"delta":{"content":"The tool said: "},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-replay","object":"chat.completion.chunk","created":1760000000,"model":"gpt-replay","choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-replay","object":"chat.completion.chunk","created":1760000000,"model":"gpt-replay","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]
+

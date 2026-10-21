@@ -29,6 +29,8 @@ const (
 	maxDocument = 1 << 20
 	// minRSABits is the smallest RSA key used (RFC 7518 §3.3).
 	minRSABits = 2048
+	// maxRedirects caps the redirects one fetch follows.
+	maxRedirects = 5
 )
 
 // keyCache holds the provider's keys and fetches them again when a token
@@ -54,6 +56,27 @@ type keyCache struct {
 func (k *keyCache) init(a *Authenticator) {
 	k.clock, k.log, k.issuer = a.clock, a.log, a.cfg.Issuer
 	k.jwksURL, k.minInterval, k.maxAge = a.cfg.JWKSURL, a.cfg.MinRefreshInterval, a.cfg.MaxCacheAge
+	// A redirect is held to what the configured URLs are (https, or http
+	// on a loopback host): a provider redirecting to http would otherwise
+	// let anyone on the path swap the keys. A client with its own policy
+	// keeps it.
+	c := *k.client
+	if c.CheckRedirect == nil {
+		c.CheckRedirect = checkRedirect
+	}
+	k.client = &c
+}
+
+// checkRedirect lets a fetch follow a redirect only to a URL [checkURL]
+// accepts, and at most maxRedirects of them.
+func checkRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= maxRedirects {
+		return fmt.Errorf("more than %d redirects", maxRedirects)
+	}
+	if err := checkURL(req.URL.String()); err != nil {
+		return fmt.Errorf("redirect: %w", err)
+	}
+	return nil
 }
 
 // verify checks the signature of jws with the key that kid names and that fits

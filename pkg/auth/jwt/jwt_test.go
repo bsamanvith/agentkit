@@ -489,6 +489,75 @@ func TestDiscovery(t *testing.T) {
 	}
 }
 
+// TestEndpointAudienceNeedsACleanPath: a token for one MCP endpoint holds on
+// that endpoint's paths, not on a path that only starts with it as text.
+func TestEndpointAudienceNeedsACleanPath(t *testing.T) {
+	t.Parallel()
+	r := newRig(t)
+	tok := r.token(map[string]any{"aud": audience + "/mcp/crm"})
+	for p, want := range map[string]int{
+		"/mcp/crm":          http.StatusOK,
+		"/mcp/crm/":         http.StatusOK,
+		"/mcp/crm/x":        http.StatusOK,
+		"/mcp/crm/../gmail": http.StatusUnauthorized,
+		"/mcp/crm/./x":      http.StatusUnauthorized,
+		"/mcp/crm//x":       http.StatusUnauthorized,
+	} {
+		if res := r.do(tok, p); res.status != want {
+			t.Errorf("%s: %d, want %d", p, res.status, want)
+		}
+	}
+	// The configured audience itself holds whatever the path.
+	if res := r.do(r.token(nil), "/mcp/crm/../gmail"); res.status != http.StatusOK {
+		t.Errorf("the configured audience on an unclean path: %d, want 200", res.status)
+	}
+}
+
+// TestRedirectsHeldToTheURLRule:a fetch follows a redirect only to what a
+// configured URL may be, so a provider's redirect to plain http on another
+// host does not hand the keys to whoever is on the path.
+func TestRedirectsHeldToTheURLRule(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, to string
+		ok       bool
+	}{
+		{"to http on another host", "http://keys.example.com/jwks", false},
+		{"to https on another host", "https://keys.example.com/jwks", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := newRig(t)
+			redirector := httptest.NewServer(http.RedirectHandler(tc.to, http.StatusFound))
+			t.Cleanup(redirector.Close)
+			// keys.example.com serves the issuer's JWKS, whatever the scheme.
+			client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.URL.Host == "keys.example.com" {
+					req = req.Clone(req.Context())
+					req.URL.Scheme, req.URL.Host, req.URL.Path = "http", strings.TrimPrefix(r.iss.URL(), "http://"), jwttest.JWKSPath
+				}
+				return http.DefaultTransport.RoundTrip(req)
+			})}
+			a, err := jwt.New(jwt.Config{Issuer: r.iss.URL(), Audience: audience, JWKSURL: redirector.URL + "/jwks"},
+				jwt.WithClock(r.clk), jwt.WithHTTPClient(client))
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = a.Authenticate(bearer(r.token(nil)))
+			if tc.ok && err != nil {
+				t.Errorf("Authenticate = %v, want a principal", err)
+			}
+			if !tc.ok && !errors.Is(err, auth.ErrInvalidCredentials) {
+				t.Errorf("Authenticate = %v, want ErrInvalidCredentials", err)
+			}
+		})
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
 func TestConfigErrors(t *testing.T) {
 	t.Parallel()
 	ok := jwt.Config{Issuer: "https://id.example", Audience: audience}

@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"path"
 	"slices"
 	"strings"
 	"time"
@@ -392,6 +393,11 @@ func (a *Authenticator) covers(aud, reqPath string) bool {
 	}
 	u, err := url.Parse(aud)
 	if err != nil || u.RawQuery != "" || u.Fragment != "" || u.Path == "" {
+		return false
+	}
+	// Only a clean request path is under it: "/mcp/crm/../gmail" starts
+	// with "/mcp/crm/" as text, not as a path.
+	if c := path.Clean(reqPath); c != reqPath && c != strings.TrimSuffix(reqPath, "/") {
 		return false
 	}
 	p := strings.TrimSuffix(u.Path, "/")

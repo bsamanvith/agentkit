@@ -22,3 +22,6 @@ func Latest() int {
 // Pool is the store's connection pool, for tests that plant queries the
 // store would never send.
 func Pool(s *Store) *pgxpool.Pool { return s.pool }
+
+// ClaimNextSQL is the statement of Admin's ClaimNext, for EXPLAIN.
+const ClaimNextSQL = claimNext

@@ -369,8 +369,7 @@ func TestRacingNewMessagesStartOneRun(t *testing.T) {
 		{"Claim", 1},      // as it claims the old run
 		{"Transition", 1}, // as it cancels it
 		{"Append", 1},     // as it appends the marker
-		{"Create", 2},     // as it creates its own run
-		{"Claim", 2},      // as it claims its own run
+		{"Create", 2},     // as it creates its own run, which is leased as it is created (T099)
 	}
 	for _, at := range points {
 		t.Run(fmt.Sprint(at.op, " ", at.n), func(t *testing.T) {

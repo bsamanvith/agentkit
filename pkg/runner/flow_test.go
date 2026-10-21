@@ -234,6 +234,12 @@ func TestChangedStepTreeWritesNothing(t *testing.T) {
 			if got := w.get(id); got.Attempts != run.Attempts || got.Status != run.Status {
 				t.Errorf("recovery changed the run: %+v", got)
 			}
+			if how == "interrupted" {
+				// The dispatcher keeps the lease it claimed the run with
+				// for one lease time, so that it does not claim it again at
+				// once (T099).
+				w.expire()
+			}
 
 			v.Store(1)
 			evs, err := resume()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/llm"
@@ -267,6 +268,32 @@ type Run struct {
 	// never resumable ([RunStore.ListResumable]): when its process stops
 	// running it, it is interrupted, and only its user continues it.
 	Interactive bool
+	// Lane is the queue the run waits in, for [Admin.ClaimNext]: a name,
+	// "" for the default lane. It is set by [WithLane] and never changes.
+	Lane string
+	// Priority orders the runs of a lane: a higher one is claimed first. It
+	// is set by [WithPriority] (default 0) and never changes.
+	Priority int
+	// StartAt is the time before which the run is neither resumable nor
+	// claimed: a run scheduled for later. It is set by [WithStartAt], to
+	// CreatedAt by default, and never changes.
+	StartAt time.Time
+}
+
+// Due returns the time from which a background run that is running, or
+// failed and retryable, may be taken up ([Admin.ClaimNext]): the latest of
+// its StartAt, its lease's expiry (while it has a lease) and its
+// NextAttemptAt (set only on a failed run). A running run that nobody
+// leases is due at StartAt; one whose lease is held is due when the lease
+// expires.
+func (r Run) Due() time.Time {
+	due := r.StartAt
+	for _, t := range []time.Time{r.Lease.Expires, r.NextAttemptAt} {
+		if t.After(due) {
+			due = t
+		}
+	}
+	return due
 }
 
 // Interrupted reports whether r is an interactive run that nobody is running
@@ -284,7 +311,23 @@ type CreateOption func(*CreateOptions)
 type CreateOptions struct {
 	// Interactive is set by [Interactive].
 	Interactive bool
+	// Lane, Priority and StartAt are set by [WithLane], [WithPriority] and
+	// [WithStartAt]. The zero StartAt means the run's CreatedAt.
+	Lane     string
+	Priority int
+	StartAt  time.Time
+	// LeaseOwner and LeaseTTL are set by [WithLease]; an empty owner means
+	// the run is created unclaimed.
+	LeaseOwner string
+	LeaseTTL   time.Duration
 }
+
+// The range of [Run.Priority]: what a 32-bit integer holds. Create refuses
+// one outside it with [ErrInvalid].
+const (
+	MinPriority = math.MinInt32
+	MaxPriority = math.MaxInt32
+)
 
 // NewCreateOptions applies opts in order.
 func NewCreateOptions(opts ...CreateOption) CreateOptions {
@@ -302,6 +345,36 @@ func NewCreateOptions(opts ...CreateOption) CreateOptions {
 // without it are background runs.
 func Interactive() CreateOption {
 	return func(o *CreateOptions) { o.Interactive = true }
+}
+
+// WithLane creates the run in the named lane ([Run.Lane]); runners claim
+// from the lanes they serve ([Admin.ClaimNext]). The name is text (see Text
+// in the package documentation); "" is the default lane.
+func WithLane(lane string) CreateOption {
+	return func(o *CreateOptions) { o.Lane = lane }
+}
+
+// WithPriority creates the run with priority p ([Run.Priority]): of the due
+// runs of a lane, the highest priority is claimed first. p must be within
+// [MinPriority, MaxPriority].
+func WithPriority(p int) CreateOption {
+	return func(o *CreateOptions) { o.Priority = p }
+}
+
+// WithStartAt creates the run due at t ([Run.StartAt]) instead of at once:
+// it is not resumable, and not claimed, before t. A time the store cannot
+// keep (see Times in the package documentation) is [ErrInvalid].
+func WithStartAt(t time.Time) CreateOption {
+	return func(o *CreateOptions) { o.StartAt = t }
+}
+
+// WithLease creates the run claimed by owner for ttl from the store's clock,
+// in the same write: nobody can claim it ([Leaser.Claim],
+// [Admin.ClaimNext]) between its creation and its creator's claim. owner and
+// ttl are checked as Claim checks them. A retry of the Create returns the
+// run with its lease as stored, and claims nothing.
+func WithLease(owner string, ttl time.Duration) CreateOption {
+	return func(o *CreateOptions) { o.LeaseOwner, o.LeaseTTL = owner, ttl }
 }
 
 // Details is what a [RunStore.Transition] records with the new status. A field
@@ -371,8 +444,11 @@ type RunStore interface {
 	// conversation is [ErrConflict]. A conversation has at most one
 	// unfinished run: creating another while one is not final is
 	// [ErrUnfinished]. opts set properties stored with the run
-	// ([Interactive]); a retry returns the run as first stored, whatever
-	// its opts.
+	// ([Interactive], [WithLane], [WithPriority], [WithStartAt],
+	// [WithLease]; a lane that is not text, a priority out of range, a
+	// start time the store cannot keep or a lease Claim would refuse is
+	// [ErrInvalid]); a retry returns the run as first stored, whatever its
+	// opts.
 	Create(ctx context.Context, id, conversationID string, opts ...CreateOption) (Run, error)
 	// Get returns the run, or [ErrNotFound].
 	Get(ctx context.Context, id string) (Run, error)
@@ -391,7 +467,8 @@ type RunStore interface {
 	// ListResumable returns up to limit background runs that should
 	// continue at now, ordered by CreatedAt and then ID: running runs whose
 	// lease has expired (or that have none), and failed runs that are
-	// Retryable with NextAttemptAt at or before now. An interactive run
+	// Retryable with NextAttemptAt at or before now; in both cases only
+	// runs whose StartAt is at or before now. An interactive run
 	// ([Run.Interactive]) is never listed. Limit is read like [Page.Limit].
 	ListResumable(ctx context.Context, now time.Time, limit int) ([]Run, error)
 	// ListSuspended returns one page of the suspended runs, ordered by
@@ -409,10 +486,11 @@ type TenantRun struct {
 	Run    Run
 }
 
-// Admin is the one read that crosses tenants. It exists for the runner's
-// recovery loop, which starts with no request and no tenant and must find the
-// interrupted runs of every tenant; it is never given to code that serves
-// requests. The loop resumes each run it finds with that run's tenant in ctx.
+// Admin is the one view that crosses tenants. It exists for the runner's
+// dispatcher (its recovery loop), which starts with no request and no tenant
+// and must find the due runs of every tenant; it is never given to code that
+// serves requests. The dispatcher resumes each run it claims with that run's
+// tenant in ctx.
 //
 // A backend implements Admin on a separate value with no other method,
 // returned by a package-level function that takes its store (as package
@@ -432,6 +510,23 @@ type Admin interface {
 	// CreatedAt, then tenant id (compared as bytes), then run ID. It needs
 	// no tenant in ctx, and ignores one that is there.
 	ListResumableAll(ctx context.Context, now time.Time, limit int) ([]TenantRun, error)
+	// ClaimNext claims for owner, for ttl from the store's clock, the next
+	// run of the given lanes that is due, and returns it as claimed, with
+	// its tenant. The runs it considers are the background runs (never an
+	// interactive one) that are running, or failed and Retryable, with
+	// [Run.Due] at or before now: so a run whose lease is held, or whose
+	// StartAt or NextAttemptAt is still to come, is never claimed. Of those
+	// it takes the one with the highest Priority, then the earliest Due,
+	// then the lowest tenant id and run ID (compared as bytes), whichever
+	// of the lanes it is in. It fails with [ErrNotFound] when no run of the
+	// lanes is due. Callers claiming at once never get the same run, and
+	// on Postgres never wait on each other's choice (SKIP LOCKED).
+	//
+	// lanes must not be empty and each must be text (see Text in the
+	// package documentation); owner and ttl are checked as [Leaser.Claim]
+	// checks them ([ErrInvalid]). It needs no tenant in ctx, and ignores
+	// one that is there.
+	ClaimNext(ctx context.Context, lanes []string, owner string, ttl time.Duration) (TenantRun, error)
 }
 
 // Event is one position of a run's event log.

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -157,6 +158,74 @@ func TestRunsFromBeforeInteractiveStayBackgroundRuns(t *testing.T) {
 		if _, err := s.Claim(ctx, r.ID, "worker", time.Minute); err != nil {
 			t.Errorf("Claim of old run %q: %v", r.ID, err)
 		}
+	}
+}
+
+// ownerRole owns the tables in TestRunsFromBeforeTheQueueAreQueued: not a
+// superuser and without BYPASSRLS, so row-level security, forced on owners
+// too, applies to the migrations it runs.
+const ownerRole = "agentkit_test_owner"
+
+var ownerOnce sync.Once
+
+// Migration 0010 (T099) puts the runs a binary from before it wrote in the
+// default lane at priority 0, starting when they were created, in every
+// tenant, although the role that migrates is under row-level security: they
+// read back so, are resumable as before, and ClaimNext takes them in due
+// order.
+func TestRunsFromBeforeTheQueueAreQueued(t *testing.T) {
+	t.Parallel()
+	u := schemaURL(t)
+	ownerOnce.Do(func() {
+		exec(t, u, `DO $$ BEGIN
+			CREATE ROLE `+ownerRole+` LOGIN NOSUPERUSER NOBYPASSRLS;
+		EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL; END $$`)
+	})
+	parsed, err := url.Parse(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exec(t, u, `GRANT ALL ON SCHEMA `+parsed.Query().Get("search_path")+` TO `+ownerRole)
+	parsed.User = url.User(ownerRole)
+	owner := parsed.String()
+
+	openURL(t, owner, postgres.WithMigrations(9)).Close()
+	// The runs an older binary would have written, in two tenants, written
+	// as rows by a superuser (whom row-level security does not hold back).
+	exec(t, u, `INSERT INTO runs (tenant, id, conversation, status, created_at) VALUES ('acme', 'interrupted', 'c1', 'running', 1)`)
+	exec(t, u, `INSERT INTO runs (tenant, id, conversation, status, retryable, attempts, error, created_at)
+		VALUES ('globex', 'due', 'c2', 'failed', true, 1, 'overloaded', 2)`)
+	exec(t, u, `INSERT INTO runs (tenant, id, conversation, status, created_at, interactive) VALUES ('acme', 'chat', 'c3', 'running', 3, true)`)
+
+	s := openURL(t, owner, postgres.WithAdminURL(u)) // migrates, as the owner
+	var unset int
+	queryRow(t, u, `SELECT count(*) FROM runs WHERE start_at IS DISTINCT FROM created_at OR lane <> '' OR priority <> 0`, nil, &unset)
+	if unset != 0 {
+		t.Errorf("%d old runs are not in the default lane at priority 0 starting at their creation", unset)
+	}
+	for tenant, id := range map[string]string{"acme": "interrupted", "globex": "due"} {
+		r, err := s.Get(tenantCtx(t, tenant), id)
+		if err != nil || !r.StartAt.Equal(r.CreatedAt) {
+			t.Errorf("old run %s/%s after the upgrade = %+v, %v; want it starting at its creation", tenant, id, r, err)
+		}
+	}
+	if runs, err := s.ListResumable(tenantCtx(t, "acme"), time.Unix(0, 3), 0); err != nil || len(runs) != 1 || runs[0].ID != "interrupted" {
+		t.Errorf("ListResumable after the upgrade = %+v, %v; want the old background run", runs, err)
+	}
+	admin := postgres.Admin(s)
+	for _, want := range []string{"acme/interrupted", "globex/due"} {
+		tr, err := admin.ClaimNext(context.Background(), []string{""}, "worker", time.Minute)
+		if got := tr.Tenant.ID() + "/" + tr.Run.ID; err != nil || got != want {
+			t.Fatalf("ClaimNext after the upgrade = %s, %v; want %s", got, err, want)
+		}
+	}
+	if tr, err := admin.ClaimNext(context.Background(), []string{""}, "worker", time.Minute); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("ClaimNext once both are claimed = %+v, %v; want ErrNotFound", tr.Run, err)
+	}
+	var forced bool
+	queryRow(t, u, `SELECT relforcerowsecurity FROM pg_class WHERE oid = 'runs'::regclass`, nil, &forced)
+	if !forced {
+		t.Error("row-level security is no longer forced on runs after the migration")
 	}
 }
 

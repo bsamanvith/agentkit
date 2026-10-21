@@ -303,6 +303,11 @@ func (s *Store) Create(ctx context.Context, id, conversationID string, opts ...s
 	if err := backend.CheckID("conversation", conversationID); err != nil {
 		return store.Run{}, err
 	}
+	now := s.now()
+	c, err := backend.CheckCreate(o, now)
+	if err != nil {
+		return store.Run{}, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if r, ok := s.runs[k]; ok {
@@ -314,7 +319,10 @@ func (s *Store) Create(ctx context.Context, id, conversationID string, opts ...s
 	if r, ok := s.unfinished(k.tenant, conversationID); ok {
 		return store.Run{}, fmt.Errorf("%w: conversation %q has run %q", store.ErrUnfinished, conversationID, r.ID)
 	}
-	r := store.Run{ID: id, ConversationID: conversationID, Status: store.StatusRunning, CreatedAt: s.now(), Interactive: o.Interactive}
+	r := store.Run{
+		ID: id, ConversationID: conversationID, Status: store.StatusRunning, CreatedAt: now,
+		Interactive: o.Interactive, Lane: o.Lane, Priority: o.Priority, StartAt: c.Start, Lease: c.Lease,
+	}
 	if err := backend.CheckTime("the clock's time", r.CreatedAt); err != nil {
 		return store.Run{}, err
 	}
@@ -535,6 +543,42 @@ func (a admin) ListResumableAll(ctx context.Context, now time.Time, limit int) (
 		)
 	})
 	return runs[:min(n, len(runs))], nil
+}
+
+// ClaimNext implements [store.Admin]: under the store's lock, the first of
+// the claimable runs of the lanes in claim order gets owner's lease.
+func (a admin) ClaimNext(ctx context.Context, lanes []string, owner string, ttl time.Duration) (store.TenantRun, error) {
+	if err := ctx.Err(); err != nil {
+		return store.TenantRun{}, err
+	}
+	if err := backend.CheckClaimNext(lanes, owner, ttl); err != nil {
+		return store.TenantRun{}, err
+	}
+	now := a.s.now()
+	if err := backend.CheckTime("lease expiry", now.Add(ttl)); err != nil {
+		return store.TenantRun{}, err
+	}
+	a.s.mu.Lock()
+	defer a.s.mu.Unlock()
+	var (
+		best  key
+		found bool
+	)
+	for k, r := range a.s.runs {
+		if !slices.Contains(lanes, r.Lane) || !backend.Claimable(r, now) {
+			continue
+		}
+		if !found || backend.ClaimOrder(k.tenant.ID(), r, best.tenant.ID(), a.s.runs[best]) < 0 {
+			best, found = k, true
+		}
+	}
+	if !found {
+		return store.TenantRun{}, fmt.Errorf("%w: no run of lanes %q is due", store.ErrNotFound, lanes)
+	}
+	r := a.s.runs[best]
+	r.Lease = store.Lease{Owner: owner, Expires: now.Add(ttl)}
+	a.s.runs[best] = r
+	return store.TenantRun{Tenant: best.tenant, Run: cloneRun(r)}, nil
 }
 
 // Unfinished implements [store.RunStore].

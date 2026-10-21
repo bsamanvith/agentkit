@@ -8,10 +8,22 @@
 // [Runner.Run] starts a chat run: a new user message on a conversation, run by
 // the [Agent] the [AgentFactory] gives for the run's [Placement]. [Runner.RunFlow]
 // starts a flow run, whose step tree comes from the [FlowFactory]. Both create
-// the run, claim its lease and return an [Execution] before anything runs, so
+// the run with its lease (in one write: no dispatcher can take it first) and
+// return an [Execution] before anything runs, so
 // a caller learns the run ID, or that the conversation already has an
 // unfinished run ([ErrRunUnfinished]), at once. Iterating
 // [Execution.Events] runs it and streams its events.
+//
+// # The run queue
+//
+// [Runner.Enqueue] creates a chat run without running it: it stores the
+// message as the run's prompt and leaves the run in the store, which is the
+// queue ([T099]). A run has a [Lane] (a named partition of the queue, ""
+// by default), a [Priority] within it, and a [StartAt] before which it does
+// not start. A [Recovery] is the dispatcher of some lanes ([WithLanes]): each
+// pass claims the due runs of its lanes in every tenant, while it has a free
+// worker, highest priority first and then the earliest due
+// ([store.Admin.ClaimNext]), and runs them as it resumes any run.
 //
 // A chat run writes its prompt entry first, before the prompt's event reaches
 // the consumer. It then keeps its turns, one entry per harness
@@ -49,8 +61,9 @@
 //
 // A stopped background run continues in one of four ways ([E05]):
 //
-//   - after a crash or deploy, a [Recovery] finds it with [store.Admin] and
-//     resumes it under its tenant;
+//   - after a crash or deploy, a [Recovery] (the dispatcher of the run
+//     queue) claims it with [store.Admin.ClaimNext] once its lease has
+//     expired, and resumes it under its tenant;
 //   - after a transient model failure ([llm.IsRetryable]), the run is stored
 //     as failed and retryable with a backoff from the [RetryPolicy], and the
 //     recovery loop resumes it when it is due, up to the policy's attempts;
@@ -116,5 +129,6 @@
 //
 // [E05]: https://github.com/bsamanvith/agentkit/blob/main/tasks/E05-store-runner.md
 // [T100]: https://github.com/bsamanvith/agentkit/blob/main/tasks/T100-interactive-chat-runs.md
+// [T099]: https://github.com/bsamanvith/agentkit/blob/main/tasks/T099-run-queue-order.md
 // [E20]: https://github.com/bsamanvith/agentkit/blob/main/tasks/E20-runner-pools.md
 package runner

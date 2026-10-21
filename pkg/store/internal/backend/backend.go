@@ -246,10 +246,10 @@ func Held(l store.Lease, now time.Time) bool {
 }
 
 // Resumable reports whether r should continue at now: a background run
-// running with no lease held, or failed, retryable and due. An interactive run
-// never is.
+// whose start time has come, running with no lease held, or failed,
+// retryable and due. An interactive run never is.
 func Resumable(r store.Run, now time.Time) bool {
-	if r.Interactive {
+	if r.Interactive || r.StartAt.After(now) {
 		return false
 	}
 	switch r.Status {
@@ -259,6 +259,88 @@ func Resumable(r store.Run, now time.Time) bool {
 		return r.Retryable && !r.NextAttemptAt.After(now)
 	}
 	return false
+}
+
+// Queued reports whether r is in the queue [store.Admin.ClaimNext] takes
+// from, due or not: a background run that is running, or failed and
+// retryable. It is the predicate of the backends' queue index.
+func Queued(r store.Run) bool {
+	return !r.Interactive && (r.Status == store.StatusRunning || (r.Status == store.StatusFailed && r.Retryable))
+}
+
+// Claimable reports whether ClaimNext may take r at now: queued and due
+// ([store.Run.Due] at or before now).
+func Claimable(r store.Run, now time.Time) bool {
+	return Queued(r) && !r.Due().After(now)
+}
+
+// ClaimOrder compares two claimable runs, each with its tenant id, in the
+// order ClaimNext takes them: highest Priority, then earliest Due, then
+// tenant id and run ID as bytes.
+func ClaimOrder(at string, a store.Run, bt string, b store.Run) int {
+	if a.Priority != b.Priority {
+		if a.Priority > b.Priority {
+			return -1
+		}
+		return 1
+	}
+	if c := a.Due().Compare(b.Due()); c != 0 {
+		return c
+	}
+	if c := strings.Compare(at, bt); c != 0 {
+		return c
+	}
+	return strings.Compare(a.ID, b.ID)
+}
+
+// Created is what a Create stores beside the run's ids and status, from its
+// options and the time it is created.
+type Created struct {
+	Start time.Time
+	Lease store.Lease
+}
+
+// CheckCreate checks the options of a Create made at created against the
+// rules on [store.CreateOptions] and [store.RunStore.Create], and returns
+// the start time to store (o.StartAt, or created when that is zero) and the
+// lease (none without [store.WithLease]).
+func CheckCreate(o store.CreateOptions, created time.Time) (Created, error) {
+	if err := CheckText("lane", o.Lane); err != nil {
+		return Created{}, err
+	}
+	if o.Priority < store.MinPriority || o.Priority > store.MaxPriority {
+		return Created{}, fmt.Errorf("%w: priority %d is outside %d to %d", store.ErrInvalid, o.Priority, store.MinPriority, store.MaxPriority)
+	}
+	c := Created{Start: created}
+	if !o.StartAt.IsZero() {
+		if err := CheckTime("start time", o.StartAt); err != nil {
+			return Created{}, err
+		}
+		c.Start = o.StartAt.Round(0).UTC()
+	}
+	if o.LeaseOwner != "" || o.LeaseTTL != 0 {
+		if err := CheckLease(o.LeaseOwner, o.LeaseTTL); err != nil {
+			return Created{}, err
+		}
+		c.Lease = store.Lease{Owner: o.LeaseOwner, Expires: created.Add(o.LeaseTTL)}
+		if err := CheckTime("lease expiry", c.Lease.Expires); err != nil {
+			return Created{}, err
+		}
+	}
+	return c, nil
+}
+
+// CheckClaimNext checks the arguments of [store.Admin.ClaimNext].
+func CheckClaimNext(lanes []string, owner string, ttl time.Duration) error {
+	if len(lanes) == 0 {
+		return fmt.Errorf("%w: no lanes to claim from", store.ErrInvalid)
+	}
+	for _, l := range lanes {
+		if err := CheckText("lane", l); err != nil {
+			return err
+		}
+	}
+	return CheckLease(owner, ttl)
 }
 
 // Limit returns the page size p asks for.

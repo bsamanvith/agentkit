@@ -274,6 +274,10 @@ func (a pairAdmin) ListResumableAll(ctx context.Context, now time.Time, limit in
 	return sqlite.Admin(a.p.next()).ListResumableAll(ctx, now, limit)
 }
 
+func (a pairAdmin) ClaimNext(ctx context.Context, lanes []string, owner string, ttl time.Duration) (store.TenantRun, error) {
+	return sqlite.Admin(a.p.next()).ClaimNext(ctx, lanes, owner, ttl)
+}
+
 // The cross-tenant read is not reachable from the tenant-scoped store: code
 // holding it cannot type-assert its way to other tenants' runs, neither to
 // store.Admin itself nor to any method that hands one out.

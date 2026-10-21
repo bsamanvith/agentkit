@@ -147,6 +147,9 @@ type modelFlags struct {
 	model    string
 	effort   string
 	maxTurns int
+	// nativeMemory sends the memory tool as the provider's native type
+	// (an agent's memory.native_tool).
+	nativeMemory bool
 }
 
 func (m *modelFlags) register(fs *flag.FlagSet) {

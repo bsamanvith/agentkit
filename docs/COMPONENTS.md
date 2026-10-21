@@ -130,6 +130,7 @@ implementation passes the suite and is picked by a spec or config value.
 | Run orchestration | `agentapi.Runs` (default `*runner.Runner`: in process, under leases) | agentapi tests | `agentapi.WithRuns` |
 | Tools | `tool.Registry` | `toolsettest` | the config's toolsets (`connectors/`, write-connector skill) |
 | Transport | `rpc.Conn` | rpc tests | `rpc.Dial` |
+| Memory (context store) | `memory.Store` (an agent's notes under `/memories`, scoped by tenant or user) | `memorytest.RunStore` | an agent's `memory.store.backend` through `memoryBackends` (`cmd/agentkit/memory.go`) |
 
 A new store backend: a package under `pkg/store` that passes the suites, a
 `Backend` in `storeopen` behind a build tag with its `_none.go` twin, its
@@ -138,7 +139,11 @@ backend is the same in `busopen`. A model provider is a package under
 `pkg/llm`, a `models_<name>.go` that builds it, and its line in
 `modelProviders`. It must give up on a silent stream: its own idle timeout
 if it can see the provider's keep-alives, else `llm.WithIdleTimeout`; its
-conformance test declares it with `llmtest.WithStallTimeout`.
+conformance test declares it with `llmtest.WithStallTimeout`. A memory
+backend is a package under `pkg/memory` that runs each command as one
+transaction through `pkg/memory/internal/fileops` (the commands' rules live
+there once) and passes `memorytest.RunStore`, plus its line in
+`memoryBackends`, behind a build tag when it brings a driver.
 
 ## Topologies
 

@@ -376,7 +376,18 @@ func (s *Server) tenantContext(r *http.Request) (context.Context, error) {
 	if err != nil {
 		return nil, err
 	}
-	return tenancy.With(r.Context(), t), nil
+	ctx := tenancy.With(r.Context(), t)
+	// With starts a new scope: keep the user and request the middleware set
+	// for this same tenant, which user-scoped tools (memory) key data by.
+	if prev, ok := tenancy.From(r.Context()); ok && prev == t {
+		if u, ok := tenancy.User(r.Context()); ok {
+			ctx = tenancy.WithUser(ctx, u)
+		}
+		if id, ok := tenancy.Request(r.Context()); ok {
+			ctx = tenancy.WithRequest(ctx, id)
+		}
+	}
+	return ctx, nil
 }
 
 func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
@@ -549,12 +560,16 @@ func (s *Server) unavailable(w http.ResponseWriter, e *Error) {
 	writeError(w, http.StatusServiceUnavailable, e)
 }
 
-// execContext is the context of an execution: the request's tenant, but
-// not its cancellation, since a run outlives its request (the reconnect
-// grace).
+// execContext is the context of an execution: the request's tenant and
+// user (which a user-scoped tool, such as memory, keys its data by), but not
+// its cancellation, since a run outlives its request (the reconnect grace).
 func execContext(req context.Context) (context.Context, context.CancelCauseFunc) {
 	t, _ := tenancy.From(req)
-	return context.WithCancelCause(tenancy.With(context.Background(), t))
+	ctx := tenancy.With(context.Background(), t)
+	if u, ok := tenancy.User(req); ok {
+		ctx = tenancy.WithUser(ctx, u)
+	}
+	return context.WithCancelCause(ctx)
 }
 
 // startError answers a run the runner would not start or resume. busy is the

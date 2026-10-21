@@ -31,6 +31,14 @@ type Options struct {
 	// Betas are extra anthropic-beta header values, for API features this
 	// package does not set itself.
 	Betas []string
+	// NativeMemory sends a tool named "memory" as Claude's memory tool (type
+	// memory_20250818) instead of as its definition: the API gives it the
+	// memory tool's own description and instructions, and Claude calls it
+	// with the input it was trained on. The tool must take that input and
+	// run its commands, as pkg/memory's tool does. With no "memory" tool in
+	// the request it does nothing. A request's true or the model's turns it
+	// on.
+	NativeMemory bool
 }
 
 // Effort is the output_config.effort of a request.
@@ -108,6 +116,7 @@ func (o Options) merge(base Options) Options {
 		o.Fallback = base.Fallback
 	}
 	o.Betas = append(slices.Clip(base.Betas), o.Betas...)
+	o.NativeMemory = o.NativeMemory || base.NativeMemory
 	return o
 }
 

@@ -180,6 +180,7 @@ Each entry of `agents`:
 | `prefix_tool_names` | false | name tools `<toolset>__<tool>` (needed when two toolsets share a tool name) |
 | `runtime_toolsets` | none | toolsets admins add while the server runs (section 8); the agent gets their approved tools as `<toolset>__<tool>` |
 | `max_turns`, `max_total_tokens` | 25, unlimited | budgets per run |
+| `memory` | none (no memory tool, nothing stored) | the agent's own notes across conversations: one tool, `memory`, with the commands of Claude's memory tool on files under `/memories`. `store.backend` is `memory` (in the process, lost on restart) or `sqlite` with `store.path` (a file); `store.scope` is `tenant` (default) or `user` (each user of a tenant apart: needs API keys with a `user`); `store.max_file_bytes`, `store.max_scope_bytes`, `store.max_files` default to 16 KiB, 1 MiB and 200. `native_tool: true` sends it to Claude as the native memory tool type. Not yet for agents on a runner component |
 
 `agent_api`:
 

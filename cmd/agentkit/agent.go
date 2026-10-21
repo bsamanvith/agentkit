@@ -21,6 +21,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/component"
 	"github.com/bsamanvith/agentkit/pkg/harness"
+	"github.com/bsamanvith/agentkit/pkg/memory"
 	"github.com/bsamanvith/agentkit/pkg/rpc"
 	"github.com/bsamanvith/agentkit/pkg/runner"
 	"github.com/bsamanvith/agentkit/pkg/runner/runnerrpc"
@@ -64,6 +65,9 @@ type agentDef struct {
 	// no limit).
 	MaxTurns       int `json:"max_turns"`
 	MaxTotalTokens int `json:"max_total_tokens"`
+	// Memory gives the agent a context store and the "memory" tool over it
+	// (memory.go); nil gives it neither.
+	Memory *memoryConfig `json:"memory"`
 }
 
 // apiConfig is the "agent_api" section of the serve config file: limits of
@@ -176,16 +180,27 @@ type agentComponent struct {
 	toolsetsURL string
 	// admin keeps the toolsets added at run time; nil when off.
 	admin toolsetAdmin
+	// closers close the agents' memory stores.
+	closers []func() error
 }
 
 // Shutdown drains the API, then closes the connections to the MCP servers
-// added at run time.
+// added at run time and the agents' memory stores.
 func (a *agentComponent) Shutdown(ctx context.Context) error {
 	err := a.Server.Shutdown(ctx)
 	if a.admin != nil {
 		_ = a.admin.Close()
 	}
-	return err
+	return errors.Join(err, closeAll(a.closers))
+}
+
+// closeAll calls each close func.
+func closeAll(closers []func() error) error {
+	var errs []error
+	for _, c := range closers {
+		errs = append(errs, c())
+	}
+	return errors.Join(errs...)
 }
 
 // runnerCheckTimeout bounds the call that checks the runner in /readyz.
@@ -256,6 +271,14 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 	}
 	var agents []agentapi.Agent
 	var skipped []string
+	var closers []func() error
+	fail := func(err error) (component.Mount, *agentapi.Server, error) {
+		if admin != nil {
+			_ = admin.Close()
+		}
+		_ = closeAll(closers)
+		return component.Mount{}, nil, err
+	}
 	for _, a := range cfg.Agents {
 		def := agentapi.Agent{
 			Name: a.Name, Description: a.Description, System: a.System,
@@ -263,22 +286,27 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 			Toolsets: a.Toolsets, PrefixToolNames: a.PrefixToolNames, RuntimeToolsets: a.RuntimeToolsets,
 		}
 		if len(a.RuntimeToolsets) > 0 && admin == nil {
-			return component.Mount{}, nil, fmt.Errorf("%s.runtime_toolsets: toolsets added at run time are off (runtime_toolsets.enabled)", a.label(cfg.legacy))
+			return fail(fmt.Errorf("%s.runtime_toolsets: toolsets added at run time are off (runtime_toolsets.enabled)", a.label(cfg.legacy)))
 		}
 		for _, name := range a.RuntimeToolsets {
 			if slices.ContainsFunc(cfg.MCP.Toolsets, func(s toolset.Spec) bool { return s.Name == name }) {
-				return component.Mount{}, nil, fmt.Errorf("%s.runtime_toolsets: %q is a toolset of the config file; list it in toolsets", a.label(cfg.legacy), name)
+				return fail(fmt.Errorf("%s.runtime_toolsets: %q is a toolset of the config file; list it in toolsets", a.label(cfg.legacy), name))
 			}
 		}
 		if remote != nil {
 			if len(a.RuntimeToolsets) > 0 {
 				// TODO(T096): the runner component reads them too.
-				return component.Mount{}, nil, fmt.Errorf("%s.runtime_toolsets: an agent that runs on the runner at $%s cannot use toolsets added at run time yet", a.label(cfg.legacy), envRunnerURL)
+				return fail(fmt.Errorf("%s.runtime_toolsets: an agent that runs on the runner at $%s cannot use toolsets added at run time yet", a.label(cfg.legacy), envRunnerURL))
 			}
 			// The runner builds the model and the tools: this process
 			// needs neither (the agentkit-api image has no model adapter).
+			if a.Memory != nil {
+				// TODO(T058 follow-up): the tenant does not cross to the
+				// runner yet, so its memory calls would all be refused.
+				return fail(fmt.Errorf("%s.memory: an agent that runs on the runner at $%s cannot have memory yet", a.label(cfg.legacy), envRunnerURL))
+			}
 			if err := a.check(cfg.legacy); err != nil {
-				return component.Mount{}, nil, err
+				return fail(err)
 			}
 			def.Runner = remote.Agent(a.Name, a.Model.window())
 			for _, name := range a.Toolsets {
@@ -287,9 +315,16 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 				}
 			}
 		} else {
-			h, sk, err := c.newHarness(ctx, cfg, a, built, admin, clk)
+			mem, closeMem, err := openMemory(ctx, a, cfg.legacy)
 			if err != nil {
-				return component.Mount{}, nil, err
+				return fail(err)
+			}
+			if closeMem != nil {
+				closers = append(closers, closeMem)
+			}
+			h, sk, err := c.newHarness(ctx, cfg, a, built, admin, mem, clk)
+			if err != nil {
+				return fail(err)
 			}
 			def.Harness = h
 			skipped = appendNew(skipped, sk...)
@@ -297,7 +332,7 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 		agents = append(agents, def)
 	}
 	if cfg.API.RunTimeout < 0 {
-		return component.Mount{}, nil, errors.New("agent_api: negative limit")
+		return fail(errors.New("agent_api: negative limit"))
 	}
 	host, _ := os.Hostname()
 	// The lease owner names this process in the store, for operators.
@@ -328,12 +363,9 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 		agentapi.WithDrain(ctx.Done(), env.shutdownTimeout*9/10),
 	)...)
 	if err != nil {
-		if admin != nil {
-			_ = admin.Close()
-		}
-		return component.Mount{}, nil, err
+		return fail(err)
 	}
-	ac := &agentComponent{Server: srv, skipped: skipped, runner: remote, runnerURL: env.runnerURL, agents: agentNames(cfg), toolsetsURL: env.toolsetsURL, admin: admin}
+	ac := &agentComponent{Server: srv, skipped: skipped, runner: remote, runnerURL: env.runnerURL, agents: agentNames(cfg), toolsetsURL: env.toolsetsURL, admin: admin, closers: closers}
 	for _, name := range slices.Sorted(maps.Keys(built)) {
 		if r, ok := built[name].(remoteToolset); ok {
 			ac.toolsets = r
@@ -359,9 +391,10 @@ func (d agentDef) check(legacy bool) error {
 }
 
 // newHarness builds an agent's harness: its model, its toolsets merged into
-// one registry, and its limits. It returns the toolsets the agent names that
-// were skipped (optional ones that failed to build).
-func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built map[string]tool.Registry, admin toolsetAdmin, clk clock.Clock) (*harness.Harness, []string, error) {
+// one registry with its memory tool (mem, nil without memory), and its
+// limits. It returns the toolsets the agent names that were skipped
+// (optional ones that failed to build).
+func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built map[string]tool.Registry, admin toolsetAdmin, mem tool.Registry, clk clock.Clock) (*harness.Harness, []string, error) {
 	label := a.label(cfg.legacy)
 	if err := a.check(cfg.legacy); err != nil {
 		return nil, nil, err
@@ -370,7 +403,10 @@ func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built 
 	if newModel == nil {
 		newModel = buildModel
 	}
-	model, err := newModel(modelFlags{provider: a.Model.Provider, model: a.Model.ID, effort: a.Model.Effort})
+	model, err := newModel(modelFlags{
+		provider: a.Model.Provider, model: a.Model.ID, effort: a.Model.Effort,
+		nativeMemory: mem != nil && a.Memory != nil && a.Memory.NativeTool,
+	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("%s.model: %w", label, err)
 	}
@@ -386,6 +422,16 @@ func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built 
 	tools, err := agentapi.MergeTools(ctx, sets, a.PrefixToolNames)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%s.toolsets: %w", label, err)
+	}
+	if mem != nil {
+		defs, err := tools.List(ctx)
+		if err != nil {
+			return nil, nil, fmt.Errorf("%s.toolsets: %w", label, err)
+		}
+		if slices.ContainsFunc(defs, func(d tool.Definition) bool { return d.Name == memory.ToolName }) {
+			return nil, nil, fmt.Errorf("%s.memory: a toolset of the agent has a tool named %q, the memory tool's name", label, memory.ToolName)
+		}
+		tools = joinRegistries(mem, tools)
 	}
 	if len(a.RuntimeToolsets) > 0 {
 		tools = joinRegistries(tools, admin.Registry(a.RuntimeToolsets...))

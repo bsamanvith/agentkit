@@ -15,7 +15,13 @@
 #                               binaries: agentkit-api, agentkit-runner and
 #                               agentkit-toolsets:$IMAGE_TAG (default latest,
 #                               as make images-split tags them) on the host's
-#                               network. CI's image job runs it
+#                               network. CI's image job runs it. It builds
+#                               none: each image must exist (make images-split)
+#                               and pass its budget (make image-size-<name>),
+#                               and is never pulled
+#
+# The suite runs with -v and AGENTKIT_SMOKE_STRICT=1: a test that would skip
+# fails, and the run fails unless every test of the suite passed by name.
 #
 # Environment: AGENTKIT_STORE (default: memory; a postgres:// URL names an
 # empty database, which scripts/migrate-check.sh migrates twice with the api
@@ -56,17 +62,34 @@ token=smoke-api-token-0123456789
 
 if [ -n "$images" ]; then
 	tag="${IMAGE_TAG:-latest}"
+	for c in api runner toolsets; do
+		docker image inspect "agentkit-$c:$tag" >/dev/null 2>&1 || {
+			echo "smoke: no image agentkit-$c:$tag; build it (make images-split)" >&2
+			exit 1
+		}
+		make --no-print-directory -s image-size-"$c" VERSION="$tag"
+	done
 	# The api image, as a release's migrate job runs it.
-	api=(docker run --rm --network host -e AGENTKIT_STORE "agentkit-api:$tag")
+	api=(docker run --rm --pull=never --network host -e AGENTKIT_STORE "agentkit-api:$tag")
 	start() { # start NAME ENV...: the image on the host's network, the config where it looks (Dockerfile)
 		local name="$1" c="agentkit-smoke-$1-$$" e=()
 		shift
 		for kv in "$@"; do e+=(-e "$kv"); done
-		docker run -d --name "$c" --network host -e AGENTKIT_RPC_TOKEN "${e[@]}" \
+		docker run -d --pull=never --name "$c" --network host -e AGENTKIT_RPC_TOKEN "${e[@]}" \
 			-v "$dir/config.json:/etc/agentkit/config.json:ro" "agentkit-$name:$tag" serve >/dev/null
 		containers+=("$c")
 	}
 	logs() { for c in "${containers[@]}"; do echo "== $c"; docker logs --tail 20 "$c" 2>&1; done; }
+	# running: each container is up, from the image it names (it did not exit).
+	running() {
+		local c s bad=0
+		for c in "${containers[@]}"; do
+			s="$(docker inspect -f '{{.Config.Image}} {{.Image}} running={{.State.Running}}' "$c" 2>&1)" || s="$c: $s"
+			echo "smoke: $c: $s"
+			case "$s" in *" running=true") ;; *) bad=1 ;; esac
+		done
+		return "$bad"
+	}
 else
 	# The tags of each image (Makefile, VARIANTS).
 	tags() { make --no-print-directory -s print-tags-"$1"; }
@@ -82,7 +105,20 @@ else
 		pids+=($!)
 	}
 	logs() { tail -n 20 "$dir"/*.log; }
+	running() { # every process still runs
+		local p bad=0
+		for p in "${pids[@]}"; do kill -0 "$p" 2>/dev/null || { echo "smoke: process $p exited" >&2; bad=1; }; done
+		return "$bad"
+	}
 fi
+
+# Nothing else may answer on the ports, or the suite would test it instead.
+for p in "$port" "$model" "$toolsets" "$runner"; do
+	if curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$p/"; then
+		echo "smoke: 127.0.0.1:$p is already in use; stop what serves it or set PORT" >&2
+		exit 1
+	fi
+done
 
 (cd web/apps/console && exec node e2e/fake-model.ts "$model") >"$dir/model.log" 2>&1 &
 pids+=($!)
@@ -112,11 +148,27 @@ for url in "$model/healthz" "$toolsets/readyz" "$runner/readyz" "$port/readyz"; 
 	exit 1
 done
 
+running || { logs >&2 || true; exit 1; }
+
+# -count=1: never a cached result. -v: the log shows each test ran.
 ok=0
-AGENTKIT_URL="http://127.0.0.1:$port" AGENTKIT_API_TOKEN="$token" \
+AGENTKIT_URL="http://127.0.0.1:$port" AGENTKIT_API_TOKEN="$token" AGENTKIT_SMOKE_STRICT=1 \
 	AGENTKIT_SMOKE_RUNNER_URL="http://127.0.0.1:$runner" AGENTKIT_SMOKE_TOOLSETS_URL="http://127.0.0.1:$toolsets" \
-	go test -tags e2e -count=1 ./test/e2e/ || ok=$?
-if [ "$ok" != 0 ]; then
+	go test -tags e2e -count=1 -v ./test/e2e/ 2>&1 | tee "$dir/test.log" || ok=$?
+# Every test of the suite passed by name: none filtered out, none missing.
+want=$(sed -n 's/^func \(Test[A-Za-z0-9_]*\)(t \*testing\.T).*/\1/p' test/e2e/*_test.go)
+[ -n "$want" ] || { echo "smoke: found no tests in test/e2e" >&2; ok=1; }
+for t in $want; do
+	grep -q -- "^--- PASS: $t " "$dir/test.log" || { echo "smoke: $t did not pass" >&2; ok=1; }
+done
+# The suite ran against the processes or containers started here, which
+# still run.
+running || ok=1
+if [ "$ok" = 0 ]; then
+	what="the binaries"
+	[ -z "$images" ] || what="the images agentkit-api, agentkit-runner and agentkit-toolsets:$tag"
+	echo "smoke: passed: ${want//$'\n'/ } against $what"
+else
 	logs >&2 || true
 fi
 if [ -n "$keep" ]; then

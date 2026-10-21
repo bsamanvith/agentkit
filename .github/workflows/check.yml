@@ -146,6 +146,10 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: web/.nvmrc
+      # The images built above, never pulled: each checked against its budget
+      # again, run as containers on this Postgres, and the suite (-v, strict:
+      # a skip fails) must pass every test by name. The log ends with
+      # "smoke: passed: ... against the images".
       - name: per-image smoke on Postgres (scripts/smoke.sh --images)
         run: scripts/smoke.sh --images
         env:

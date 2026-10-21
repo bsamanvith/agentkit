@@ -19,7 +19,9 @@ its own surface (`/v1/agents` and `/`, `/rpc/runner/`, `/rpc/toolsets/` and
 `/mcp/demo`) and none of the others'. It needs `AGENTKIT_SMOKE_RUNNER_URL`,
 `AGENTKIT_SMOKE_TOOLSETS_URL` and `AGENTKIT_RPC_TOKEN`, which `make smoke` sets
 and `make k8s-smoke` does not (the cluster does not expose them), so it skips
-there. A stopped runner fails `TestHealth` and `TestChat` with
+there. `scripts/smoke.sh` runs the suite with `-v` and
+`AGENTKIT_SMOKE_STRICT=1`, under which a test that would skip fails, and fails
+unless every test passed by name. A stopped runner fails `TestHealth` and `TestChat` with
 `runner`, stopped toolsets fail `TestToolsets` and `TestChat` with `toolsets`.
 
 Adding flows: at most a handful per epic, one per user-visible feature, each

@@ -37,14 +37,15 @@ type probe struct {
 // each image's tags; scripts/smoke.sh --images (CI's image job) against the
 // images. It needs AGENTKIT_SMOKE_RUNNER_URL, AGENTKIT_SMOKE_TOOLSETS_URL and
 // AGENTKIT_RPC_TOKEN, which a deployment whose runner and toolsets are not
-// reachable from outside (make k8s-smoke) does not set: it is skipped there.
+// reachable from outside (make k8s-smoke) does not set: it is skipped there,
+// and fails instead under AGENTKIT_SMOKE_STRICT=1 (scripts/smoke.sh).
 func TestComponents(t *testing.T) {
 	tg := newTarget(t)
 	runnerURL := strings.TrimRight(os.Getenv("AGENTKIT_SMOKE_RUNNER_URL"), "/")
 	toolsetsURL := strings.TrimRight(os.Getenv("AGENTKIT_SMOKE_TOOLSETS_URL"), "/")
 	rpcToken := os.Getenv("AGENTKIT_RPC_TOKEN")
 	if runnerURL == "" || toolsetsURL == "" || rpcToken == "" {
-		t.Skip("set AGENTKIT_SMOKE_RUNNER_URL, AGENTKIT_SMOKE_TOOLSETS_URL and AGENTKIT_RPC_TOKEN to check each component (make smoke does)")
+		skipOrFail(t, "set AGENTKIT_SMOKE_RUNNER_URL, AGENTKIT_SMOKE_TOOLSETS_URL and AGENTKIT_RPC_TOKEN to check each component (make smoke does)")
 	}
 	api := map[string]string{"Authorization": "Bearer " + tg.token}
 	rpc := map[string]string{"Authorization": "Bearer " + rpcToken, "Content-Type": "application/json"}

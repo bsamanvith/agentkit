@@ -45,6 +45,7 @@ type entry struct {
 	match   string
 	reply   *reply // or fixture
 	fixture []byte
+	status  int // the fixture's status
 }
 
 // reply is a scripted response.
@@ -124,7 +125,7 @@ func parseEntry(line []byte, fsys fs.FS) (*entry, error) {
 	if err := dec.Decode(&ej); err != nil {
 		return nil, err
 	}
-	if dec.More() {
+	if _, err := dec.Token(); err != io.EOF {
 		return nil, errors.New("more than one JSON value on the line")
 	}
 	e := &entry{}
@@ -138,11 +139,11 @@ func parseEntry(line []byte, fsys fs.FS) (*entry, error) {
 	case (ej.Response == nil) == (ej.Fixture == ""):
 		return nil, errors.New(`want exactly one of "response" and "fixture"`)
 	case ej.Fixture != "":
-		raw, err := readFixture(fsys, ej.Fixture)
+		raw, status, err := readFixture(fsys, ej.Fixture)
 		if err != nil {
 			return nil, err
 		}
-		e.fixture = raw
+		e.fixture, e.status = raw, status
 	default:
 		rp, err := parseReply(ej.Response)
 		if err != nil {
@@ -158,13 +159,16 @@ func parseReply(rj *replyJSON) (*reply, error) {
 		return nil, errors.New(`a response needs "text", "tool_calls" or both`)
 	}
 	rp := &reply{text: rj.Text, stopReason: rj.StopReason}
-	if rp.stopReason == "" {
+	switch {
+	case rp.stopReason == "":
 		rp.stopReason = "end_turn"
 		if len(rj.ToolCalls) > 0 {
 			rp.stopReason = "tool_use"
 		}
-	} else if !slices.Contains(stopReasons, rp.stopReason) {
+	case !slices.Contains(stopReasons, rp.stopReason):
 		return nil, fmt.Errorf("stop_reason %q: want one of %s", rp.stopReason, strings.Join(stopReasons, ", "))
+	case (rp.stopReason == "tool_use") != (len(rj.ToolCalls) > 0):
+		return nil, errors.New(`stop_reason "tool_use" goes with tool calls, and only with them`)
 	}
 	ids := map[string]bool{}
 	for i, c := range rj.ToolCalls {
@@ -194,22 +198,29 @@ func parseReply(rj *replyJSON) (*reply, error) {
 	return rp, nil
 }
 
-func readFixture(fsys fs.FS, name string) ([]byte, error) {
+// readFixture reads a fixture and checks it is a whole recorded response,
+// body included, so that serving it cannot fail halfway. It returns the
+// fixture's status too.
+func readFixture(fsys fs.FS, name string) ([]byte, int, error) {
 	if fsys == nil {
-		return nil, fmt.Errorf("fixture %q: no directory to read fixtures from", name)
+		return nil, 0, fmt.Errorf("fixture %q: no directory to read fixtures from", name)
 	}
 	name = path.Clean(name)
 	if !fs.ValidPath(name) {
-		return nil, fmt.Errorf("fixture %q: want a relative path inside the script directory", name)
+		return nil, 0, fmt.Errorf("fixture %q: want a relative path inside the script directory", name)
 	}
 	raw, err := fs.ReadFile(fsys, name)
 	if err != nil {
-		return nil, fmt.Errorf("fixture: %w", err)
+		return nil, 0, fmt.Errorf("fixture: %w", err)
 	}
-	if _, err := parseFixture(raw); err != nil {
-		return nil, fmt.Errorf("fixture %q: %w", name, err)
+	resp, err := parseFixture(raw, nil)
+	if err == nil {
+		_, err = io.Copy(io.Discard, resp.Body)
 	}
-	return raw, nil
+	if err != nil {
+		return nil, 0, fmt.Errorf("fixture %q: %w", name, err)
+	}
+	return raw, resp.StatusCode, nil
 }
 
 // LoadDir loads every name.jsonl in dir as the script name. Fixtures are

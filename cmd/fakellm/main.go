@@ -18,15 +18,18 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -91,29 +94,17 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 }
 
 func addr(env func(string) string) string {
-	for _, k := range []string{envAddr, envShared} {
-		if v := env(k); v != "" {
-			return v
-		}
-	}
-	return defaultAddr
-}
-
-func or(v, def string) string {
-	if v == "" {
-		return def
-	}
-	return v
+	return cmp.Or(env(envAddr), env(envShared), defaultAddr)
 }
 
 func serve(ctx context.Context, env func(string) string, stderr io.Writer, ready func(string)) error {
 	log := slog.New(slog.NewTextHandler(stderr, nil))
-	dir := or(env(envDir), defaultDir)
+	dir := cmp.Or(env(envDir), defaultDir)
 	scripts, err := fakellm.LoadDir(dir)
 	if err != nil {
 		return fmt.Errorf("%w (set %s)", err, envDir)
 	}
-	def := or(env(envScript), defaultScript)
+	def := cmp.Or(env(envScript), defaultScript)
 	h, err := fakellm.New(scripts, fakellm.WithDefault(def), fakellm.WithLogger(log))
 	if err != nil {
 		return fmt.Errorf("%w (set %s)", err, envScript)
@@ -122,10 +113,7 @@ func serve(ctx context.Context, env func(string) string, stderr io.Writer, ready
 	if err != nil {
 		return err
 	}
-	names := make([]string, 0, len(scripts))
-	for n := range scripts {
-		names = append(names, n)
-	}
+	names := slices.Sorted(maps.Keys(scripts))
 	log.Info("fakellm listening", "addr", ln.Addr().String(), "dir", dir, "default", def, "scripts", strings.Join(names, ","), "version", version)
 	if ready != nil {
 		ready(ln.Addr().String())

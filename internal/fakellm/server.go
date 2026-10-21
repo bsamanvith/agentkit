@@ -130,7 +130,11 @@ func (s *Server) messages(w http.ResponseWriter, r *http.Request) {
 	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBody))
 	if err != nil {
-		fail(http.StatusRequestEntityTooLarge, "request_too_large", "fakellm: reading the request: "+err.Error())
+		if tooLarge := (*http.MaxBytesError)(nil); errors.As(err, &tooLarge) {
+			fail(http.StatusRequestEntityTooLarge, "request_too_large", "fakellm: reading the request: "+err.Error())
+		} else {
+			fail(http.StatusBadRequest, "invalid_request_error", "fakellm: reading the request: "+err.Error())
+		}
 		return
 	}
 	var req request
@@ -162,11 +166,14 @@ func (s *Server) messages(w http.ResponseWriter, r *http.Request) {
 	}
 	attrs = append(attrs, "line", e.line)
 	if e.fixture != nil {
-		if err := ServeFixture(w, r, e.fixture); err != nil { // checked when loaded
-			fail(http.StatusInternalServerError, "api_error", "fakellm: fixture: "+err.Error())
+		attrs = append(attrs, "fixture", true, "status", e.status)
+		// Read whole when loaded, so only writing it can fail, after its
+		// status is sent: log that, and write no second response.
+		if err := ServeFixture(w, r, e.fixture); err != nil {
+			s.log.Warn("fakellm request", append(attrs, "error", err.Error())...)
 			return
 		}
-		s.log.Info("fakellm request", append(attrs, "fixture", true)...)
+		s.log.Info("fakellm request", attrs...)
 		return
 	}
 	conv, _ := json.Marshal(req.Messages) // decoded from JSON, so it encodes
@@ -234,10 +241,18 @@ func appendText(parts *[]string, content json.RawMessage, results bool) error {
 
 func excerpt(s string) string {
 	const n = 120
-	if r := []rune(s); len(r) > n {
-		return string(r[:n]) + "…"
+	i := 0
+	for range n {
+		if i >= len(s) {
+			return s
+		}
+		_, size := utf8.DecodeRuneInString(s[i:])
+		i += size
 	}
-	return s
+	if i >= len(s) {
+		return s
+	}
+	return s[:i] + "…"
 }
 
 // message is a Messages API response.
@@ -378,9 +393,9 @@ func writeError(w http.ResponseWriter, status int, typ, msg string) {
 // body, as curl -i prints it, which is how the replay tests record the real
 // API) to w, as the answer to r. It writes nothing if raw is not a response.
 func ServeFixture(w http.ResponseWriter, r *http.Request, raw []byte) error {
-	resp, err := http.ReadResponse(bufio.NewReader(bytes.NewReader(raw)), r)
+	resp, err := parseFixture(raw, r)
 	if err != nil {
-		return fmt.Errorf("not a recorded HTTP response: %w", err)
+		return err
 	}
 	defer resp.Body.Close()
 	for k, vs := range resp.Header {
@@ -391,8 +406,10 @@ func ServeFixture(w http.ResponseWriter, r *http.Request, raw []byte) error {
 	return err
 }
 
-func parseFixture(raw []byte) (*http.Response, error) {
-	resp, err := http.ReadResponse(bufio.NewReader(bytes.NewReader(raw)), nil)
+// parseFixture reads raw's status line and headers as the answer to r (nil:
+// to a GET); the body is left to read.
+func parseFixture(raw []byte, r *http.Request) (*http.Response, error) {
+	resp, err := http.ReadResponse(bufio.NewReader(bytes.NewReader(raw)), r)
 	if err != nil {
 		return nil, fmt.Errorf("not a recorded HTTP response: %w", err)
 	}

@@ -34,7 +34,7 @@ Local runs and e2e tests must be deterministic and must not need an API key. `fa
 - [x] `stream: true` returns a valid SSE event sequence (`message_start` ... `message_stop`) — checked with a golden file. — `internal/fakellm.TestStreamGolden` (`internal/fakellm/testdata/stream.golden`)
 - [x] No match and no fallback returns a 4xx with a clear error body. — `internal/fakellm.TestNoAnswerIsAClientError`
 - [x] The official Anthropic Go SDK, pointed at `fakellm`, can complete a request (proves wire compatibility). — `internal/fakellm.TestOfficialSDK` (a streamed tool call accumulated by the SDK, its result sent back with SDK params, a non-streamed answer)
-- [ ] The `fakellm` image builds, runs as non-root and its size is recorded (T005: "T004 checks its image the same way"). *Not run: no Docker in this session. The binary is measured (docs/SIZES.md); run `make image BIN=fakellm && make image-size BIN=fakellm` and check `docker run --rm fakellm version` and the healthcheck.*
+- [ ] The `fakellm` image builds, runs as non-root and its size is recorded (T005: "T004 checks its image the same way"). *Not run here: no Docker in this session. CI's `image` job builds it and checks it against its own 12 MB budget (`IMAGE_BUDGET_MB_fakellm`) on every push; the binary is measured in docs/SIZES.md. By hand: `docker run --rm fakellm version` and the healthcheck.*
 
 ## Notes
 
@@ -99,7 +99,7 @@ Each bug was planted alone (the code compiled), `go test -count=1 ./internal/fak
 
 ### Size
 
-`fakellm` links the standard library only: a 7.6 MB stripped binary, its image projected at about 10.9 MB (docs/SIZES.md). No agentkit binary or image changes: `internal/fakellm` is imported only by `cmd/fakellm` and by `cmd/agentkit`'s replay test.
+`fakellm` links the standard library only: a 7,602,336-byte stripped binary (docs/SIZES.md). Its image is measured by CI's `image` job against a budget of its own, 12 MB (`IMAGE_BUDGET_MB_fakellm` in the Makefile): a test-only image that should stay the binary plus the base. No agentkit binary or image changes: `internal/fakellm` is imported only by `cmd/fakellm` and by `cmd/agentkit`'s replay test.
 
 ### For T005, T006 and T007
 

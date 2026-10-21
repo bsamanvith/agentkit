@@ -465,12 +465,19 @@ func TestFixture(t *testing.T) {
 
 func TestParseScriptErrors(t *testing.T) {
 	t.Parallel()
-	files := fstest.MapFS{"bad.http": {Data: []byte("not http")}}
+	files := fstest.MapFS{
+		"bad.http":       {Data: []byte("not http")},
+		"truncated.http": {Data: []byte("HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\nshort")},
+	}
 	for name, script := range map[string]string{
 		"empty":             "# nothing\n",
 		"not json":          `{"match": `,
 		"unknown field":     `{"matc": "x", "response": {"text": "y"}}`,
 		"two values":        `{"response": {"text": "y"}} {}`,
+		"trailing brace":    `{"response": {"text": "y"}}}`,
+		"tool_use no calls": `{"response": {"text": "y", "stop_reason": "tool_use"}}`,
+		"calls end_turn":    `{"response": {"tool_calls": [{"name": "t"}], "stop_reason": "end_turn"}}`,
+		"truncated fixture": `{"fixture": "truncated.http"}`,
 		"empty match":       `{"match": "", "response": {"text": "y"}}`,
 		"neither":           `{"match": "x"}`,
 		"both":              `{"match": "x", "response": {"text": "y"}, "fixture": "f.http"}`,

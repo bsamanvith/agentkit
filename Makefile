@@ -161,7 +161,11 @@ IMAGE ?= $(BIN)
 # 17.7 MB in T005 (5.9 MB compressed). Raised from 20 to 30 when the store
 # drivers joined the one default binary (SQLite: about 21 MB, then pgx; E18).
 # Log every size change, with its reason, in docs/SIZES.md (AGENTS.md, Sizes).
-IMAGE_BUDGET_MB ?= 35
+# An image with a budget of its own (IMAGE_BUDGET_MB_<image>) gets that one.
+IMAGE_BUDGET_MB ?= $(or $(IMAGE_BUDGET_MB_$(IMAGE)),35)
+# fakellm (T004) is a test-only image, standard library only: 12 MB, about
+# 1 MB over its binary plus the base. Growth there means something linked in.
+IMAGE_BUDGET_MB_fakellm ?= 12
 # Variants of the agentkit image, by the build tags that leave parts out
 # (cmd/agentkit/backends.go). `make image-<variant>` builds agentkit-<variant>;
 # `make image` is the all-in-one, which runs any set of components.

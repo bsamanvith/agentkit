@@ -101,7 +101,8 @@ func WithMetadata(m Metadata) FuncOption {
 // Definition implements [Tool].
 func (t *FuncTool[In, Out]) Definition() Definition { return t.def.Clone() }
 
-// Invoke implements [Tool]. Empty input is treated as {}.
+// Invoke implements [Tool]. Empty input, or null (what an MCP client sends
+// for a call with no arguments), is treated as {}.
 func (t *FuncTool[In, Out]) Invoke(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, contextError(t.def.Name, err)
@@ -128,7 +129,7 @@ func (t *FuncTool[In, Out]) Invoke(ctx context.Context, input json.RawMessage) (
 
 func (t *FuncTool[In, Out]) decode(input json.RawMessage) (In, error) {
 	var in In
-	if len(bytes.TrimSpace(input)) == 0 {
+	if t := bytes.TrimSpace(input); len(t) == 0 || string(t) == "null" {
 		input = json.RawMessage("{}")
 	}
 	var generic any

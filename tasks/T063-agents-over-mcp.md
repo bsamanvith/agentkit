@@ -76,6 +76,8 @@ The owner wants to drive and test our agents from Claude Code and other CLI harn
 14. the API's error code dropped from tool errors (`TestRunErrors`, `TestAuth`)
 15. in process ignored, so a URL always needed (`TestServeAgentsOverMCP`)
 16. serve gives the MCP server no agent API (`TestServeAgentsOverMCP`)
+17. the credential sent on a redirect to another host (`TestForwardingStaysAtTheAPI`)
+18. agent_run's run request not ended when its caller leaves before the API answers (`TestAgentRunLeavesWithTheCaller`)
 
 ### Left
 
@@ -84,7 +86,7 @@ The owner wants to drive and test our agents from Claude Code and other CLI harn
 
 ### Found out of scope
 
-- The MCP SDK client sends `"arguments": null` for a call with nil arguments, and `tool.Func` refuses `null` (it takes empty input as `{}`, not `null`). Every toolset's no-argument tools fail that way for such a client; `tool.Func` could treat `null` as `{}`.
+- The MCP SDK client sends `"arguments": null` for a call with nil arguments, and `tool.Func` refused `null`. Fixed in review: `tool.Func` treats `null` as `{}` (`TestFuncEmptyInput`).
 - `GET /v1/runs/{id}`, right as a run ends, can show the stored status (`done`) before the run's last event, so with no answer or record end (`runView`: "has just ended and its execution has not said so"). `run_get` passes that on; the tests wait for the answer.
 - `deploy/k8s/base/split.yaml`'s toolsets component could serve `agentkit` with `settings.url` pointing at the API service.
 

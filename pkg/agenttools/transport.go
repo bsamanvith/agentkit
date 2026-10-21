@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 )
 
@@ -27,13 +29,24 @@ func ForwardCredentials(next http.Handler) http.Handler {
 }
 
 // forwarding is the transport of the tools' agent API client: it sets the
-// Authorization header ForwardCredentials kept, and only that one.
-type forwarding struct{ base http.RoundTripper }
+// Authorization header ForwardCredentials kept, and only that one, and only
+// on requests to the agent API's origin (scheme and host), so that a
+// redirect elsewhere does not carry it.
+type forwarding struct {
+	base   http.RoundTripper
+	origin string // scheme://host of the agent API
+}
+
+func newForwarding(base http.RoundTripper, api *url.URL) forwarding {
+	return forwarding{base: base, origin: originOf(api)}
+}
+
+func originOf(u *url.URL) string { return strings.ToLower(u.Scheme + "://" + u.Host) }
 
 func (f forwarding) RoundTrip(req *http.Request) (*http.Response, error) {
 	req = req.Clone(req.Context())
 	req.Header.Del("Authorization")
-	if v, ok := req.Context().Value(credentialKey{}).([]string); ok {
+	if v, ok := req.Context().Value(credentialKey{}).([]string); ok && originOf(req.URL) == f.origin {
 		req.Header["Authorization"] = append([]string(nil), v...)
 	}
 	return f.base.RoundTrip(req)

@@ -214,7 +214,17 @@ func (t *tools) run(ctx context.Context, in RunInput) (Run, error) {
 		return Run{}, ErrClosed
 	}
 	sctx, cancel := t.f.detach(ctx)
+	// Until the run's response starts, the caller leaving (or its call
+	// timeout) ends the request; from then on the follower outlives the call.
+	stop := context.AfterFunc(ctx, cancel)
 	s, err := t.api.Stream(sctx, wire.RunRequest{Agent: in.Agent, Message: in.Message, ConversationID: in.ConversationID})
+	if !stop() { // ctx is done: sctx was canceled
+		if err == nil {
+			s.Close()
+		}
+		cancel()
+		return Run{}, ctx.Err()
+	}
 	if err != nil {
 		cancel()
 		return Run{}, apiError(err)

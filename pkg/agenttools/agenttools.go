@@ -134,17 +134,17 @@ func (f *Factory) Build(_ context.Context, raw json.RawMessage) ([]tool.Tool, er
 	)
 	switch {
 	case s.URL != "":
-		u, err := url.Parse(s.URL)
-		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.RawQuery != "" || u.User != nil {
-			return nil, fmt.Errorf("%w: url %q: want the agent API's base URL, http(s)://host[:port][/prefix]", toolset.ErrInvalidSettings, s.URL)
-		}
 		base, hc = s.URL, f.httpClient()
 	case f.cfg.handler != nil:
 		base, hc = inProcessURL, &http.Client{Transport: inProcess{f.cfg.handler}}
 	default:
 		return nil, fmt.Errorf("%w: url is required: the agent API does not run in this process", toolset.ErrInvalidSettings)
 	}
-	hc.Transport = forwarding{base: hc.Transport}
+	u, err := url.Parse(base)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.RawQuery != "" || u.User != nil {
+		return nil, fmt.Errorf("%w: url %q: want the agent API's base URL, http(s)://host[:port][/prefix]", toolset.ErrInvalidSettings, s.URL)
+	}
+	hc.Transport = newForwarding(hc.Transport, u)
 	api, err := agentclient.New(base, agentclient.WithHTTPClient(hc), agentclient.WithUserAgent("agentkit-agenttools"))
 	if err != nil {
 		return nil, fmt.Errorf("%w: url: %w", toolset.ErrInvalidSettings, err)

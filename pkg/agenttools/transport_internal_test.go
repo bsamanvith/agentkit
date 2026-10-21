@@ -7,6 +7,8 @@ package agenttools
 import (
 	"bufio"
 	"context"
+	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -119,7 +121,7 @@ func TestForwarding(t *testing.T) {
 		mcp := ForwardCredentials(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			req, _ := http.NewRequestWithContext(r.Context(), http.MethodGet, "http://in-process/v1/agents", nil)
 			req.Header.Set("Authorization", "Bearer the-client's-own")
-			resp, err := (&http.Client{Transport: forwarding{inProcess{api}}}).Do(req)
+			resp, err := (&http.Client{Transport: newForwarding(inProcess{api}, req.URL)}).Do(req)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -133,5 +135,92 @@ func TestForwarding(t *testing.T) {
 	}
 	if len(got) != 2 || got[0] != "Bearer caller" || got[1] != "" {
 		t.Errorf("the API got %q: want the caller's header, then none", got)
+	}
+}
+
+// TestForwardingStaysAtTheAPI: a toolset with a url sends the caller's
+// credential to that origin only: a redirect to another host gets none.
+func TestForwardingStaysAtTheAPI(t *testing.T) {
+	t.Parallel()
+	elsewhere := make(chan string, 1)
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		elsewhere <- r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"agents":[]}`)
+	}))
+	defer other.Close()
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer caller" {
+			t.Errorf("the API got %q", r.Header.Get("Authorization"))
+		}
+		http.Redirect(w, r, other.URL+r.URL.Path, http.StatusFound)
+	}))
+	defer api.Close()
+
+	f, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	tools, err := f.Build(t.Context(), json.RawMessage(`{"url":"`+api.URL+`"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := ForwardCredentials(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = tools[0].Invoke(r.Context(), nil) // agents_list
+	}))
+	req := httptest.NewRequest(http.MethodPost, "/mcp/agentkit", nil)
+	req.Header.Set("Authorization", "Bearer caller")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	select {
+	case got := <-elsewhere:
+		if got != "" {
+			t.Errorf("the redirect's target got Authorization %q: want none", got)
+		}
+	default:
+		t.Fatal("the redirect was not followed: the test checks nothing")
+	}
+}
+
+// TestAgentRunLeavesWithTheCaller: while the API has not answered the run's
+// request, the caller leaving (or its call timeout) ends agent_run, which
+// does not wait on the detached request.
+func TestAgentRunLeavesWithTheCaller(t *testing.T) {
+	t.Parallel()
+	started, gone := make(chan struct{}), make(chan struct{})
+	stuck := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-r.Context().Done()
+		close(gone)
+	})
+	f, err := New(WithHandler(stuck))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	tools, err := f.Build(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	errc := make(chan error, 1)
+	go func() {
+		_, err := tools[1].Invoke(ctx, json.RawMessage(`{"message":"hi"}`)) // agent_run
+		errc <- err
+	}()
+	<-started
+	cancel()
+	select {
+	case err := <-errc:
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("agent_run = %v: want context.Canceled", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("agent_run still waits for the API after its caller left")
+	}
+	select {
+	case <-gone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the API's request was not canceled")
 	}
 }

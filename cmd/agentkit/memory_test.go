@@ -69,7 +69,7 @@ func startAgents(t *testing.T, config string, models map[string]*llmtest.Fake) (
 	if err != nil {
 		return nil, err
 	}
-	authn, err := c.authenticator(cfg)
+	authn, err := c.authenticator(t.Context(), cfg, log)
 	if err != nil {
 		return nil, err
 	}

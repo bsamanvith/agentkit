@@ -93,7 +93,7 @@ Config (`agentkit serve`): `agents[].tool_policy` (also in the legacy `agent` se
 
 ### Open points
 
-- **Version skew in the split topology:** `runnerrpc` sends the run's policy as a new field; a runner older than this ignores it (the RPC decoder is lenient) and would run without the run's narrowing. Deploy runners before the API. The agent and environment policies are built into the runner's harness from its own config, so they are not affected.
+- **Version skew in the split topology:** `runnerrpc` sends a run that carries a policy as its own method (`runner/RunWithPolicy`), so a runner older than this answers `rpc.unknown_method` and the run fails instead of running without the run's narrowing (it fails closed; runs without a policy still go to `runner/Run`). Deploy runners before the API. The agent and environment policies are built into the runner's harness from its own config, so they are not affected.
 - `GET /v1/agents` does not show an agent's policy yet; a console (T087/T055) will want it.
 - A policy cannot extend a preset ("low_risk_writes, but deny X"); today that is two policies narrowed, or the preset's rules written out. An `extends` field would be additive.
 

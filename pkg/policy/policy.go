@@ -126,7 +126,8 @@ type Decision struct {
 // Limits on a policy, so that one from a run request stays cheap to check.
 const (
 	maxRules  = 256
-	maxDepth  = 8 // of NarrowedBy
+	maxDepth  = 8  // of NarrowedBy
+	maxTree   = 32 // policies in all: p and those that narrow it
 	maxGlob   = 256
 	maxReason = 300
 )
@@ -138,12 +139,29 @@ var namePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_.-]{0,63}$`)
 // [path.Match] patterns of at most 256 bytes; names match
 // ^[a-z0-9][a-z0-9_.-]{0,63}$; a reason is one line of at most 300
 // characters; there are at most 256 rules; and the policies that narrow it,
-// at most 8 deep, are valid too. Errors wrap [ErrInvalid].
+// at most 8 deep and 32 policies in all, are valid too. Errors wrap
+// [ErrInvalid].
 func (p Policy) Validate() error {
+	if n := p.size(maxTree); n > maxTree {
+		return fmt.Errorf("%w: more than %d policies narrow each other", ErrInvalid, maxTree)
+	}
 	if err := p.validate(0); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
 	return nil
+}
+
+// size is how many policies p's tree holds, counting p, stopping once it
+// passes limit.
+func (p Policy) size(limit int) int {
+	n := 1
+	for _, c := range p.NarrowedBy {
+		if n > limit {
+			break
+		}
+		n += c.size(limit - n)
+	}
+	return n
 }
 
 func (p Policy) validate(depth int) error {
@@ -392,6 +410,12 @@ func (p *Policy) UnmarshalJSON(data []byte) error {
 		*p = pr
 		return nil
 	}
+	if tooNested(data) {
+		// Checked before decoding: each level of narrowed_by is decoded by
+		// its own UnmarshalJSON, so a deep one would cost the square of its
+		// size before Validate saw its depth.
+		return fmt.Errorf("%w: narrowed more than %d deep", ErrInvalid, maxDepth)
+	}
 	type plain Policy // without methods, so decoding it does not recurse
 	var v plain
 	dec := json.NewDecoder(bytes.NewReader(data))
@@ -404,4 +428,37 @@ func (p *Policy) UnmarshalJSON(data []byte) error {
 	}
 	*p = Policy(v)
 	return nil
+}
+
+// maxNesting is the deepest JSON nesting of a valid policy: an object and a
+// narrowed_by list per level, and under the last a rule's list, object,
+// match and one of its lists.
+const maxNesting = 2*maxDepth + 5
+
+// tooNested reports whether the JSON value data nests objects and arrays
+// deeper than any valid policy does. It stops at the first level too deep.
+func tooNested(data []byte) bool {
+	depth, inString, escaped := 0, false, false
+	for _, c := range data {
+		switch {
+		case inString:
+			switch {
+			case escaped:
+				escaped = false
+			case c == '\\':
+				escaped = true
+			case c == '"':
+				inString = false
+			}
+		case c == '"':
+			inString = true
+		case c == '{' || c == '[':
+			if depth++; depth > maxNesting {
+				return true
+			}
+		case c == '}' || c == ']':
+			depth--
+		}
+	}
+	return false
 }

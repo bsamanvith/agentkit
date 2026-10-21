@@ -19,8 +19,8 @@ type view struct {
 	// lastRun is the RunID of the entry at seq, "" for an empty log.
 	lastRun string
 	// flush is the FlushEvery of the last prompt entry's record, and
-	// policy its ToolPolicy; policyErr says that record could not be read,
-	// so the run's policy is not known.
+	// policy its ToolPolicy (as a later compaction carries it); policyErr
+	// says that record could not be read, so the run's policy is not known.
 	flush     int
 	policy    *policy.Policy
 	policyErr error
@@ -51,6 +51,15 @@ func (v *view) apply(e store.Entry) {
 			v.policyErr = err
 		} else if rec.Prompt != nil {
 			v.flush, v.policy = rec.Prompt.FlushEvery, rec.Prompt.ToolPolicy
+		}
+	case store.KindCompaction:
+		// A cold read starts here, without the prompt: the compaction
+		// carries its policy.
+		rec, err := DecodeRecord(e)
+		if err != nil {
+			v.policyErr = err
+		} else if rec.Compaction != nil {
+			v.policy = rec.Compaction.ToolPolicy
 		}
 	case store.KindTurn:
 		if rec, err := DecodeRecord(e); err == nil && rec.Turn != nil {

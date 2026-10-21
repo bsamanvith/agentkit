@@ -366,6 +366,43 @@ func TestJSON(t *testing.T) {
 	}
 }
 
+// The deepest valid policy reads; a deeper one is refused before it is
+// decoded, so a run request nesting narrowed_by thousands deep costs little.
+func TestJSONNesting(t *testing.T) {
+	t.Parallel()
+	leaf := `{"default":"deny","rules":[{"match":{"kinds":["read"],"tools":["a\"[{[]"]},"action":"allow"}]}`
+	nest := func(n int, leaf string) string {
+		return strings.Repeat(`{"default":"deny","narrowed_by":[`, n) + leaf + strings.Repeat(`]}`, n)
+	}
+	var p policy.Policy
+	if err := json.Unmarshal([]byte(nest(8, leaf)), &p); err != nil {
+		t.Fatalf("the deepest valid policy: %v", err)
+	}
+	for _, s := range []string{nest(9, leaf), nest(9, `{"default":"deny"}`), nest(4000, `{"default":"deny"}`)} {
+		if err := json.Unmarshal([]byte(s), &p); !errors.Is(err, policy.ErrInvalid) {
+			t.Errorf("%.80s...: %v, want ErrInvalid", s, err)
+		}
+	}
+}
+
+// A policy is narrowed by at most 32 policies in all, however wide, so that a
+// run request's policy stays cheap to check on every call.
+func TestJSONBreadth(t *testing.T) {
+	t.Parallel()
+	wide := func(n int) string {
+		return `{"default":"allow","narrowed_by":[` + strings.TrimSuffix(strings.Repeat(`"read_only",`, n), ",") + `]}`
+	}
+	var p policy.Policy
+	if err := json.Unmarshal([]byte(wide(31)), &p); err != nil {
+		t.Fatalf("32 policies: %v", err)
+	}
+	for _, n := range []int{32, 80000} {
+		if err := json.Unmarshal([]byte(wide(n)), &p); !errors.Is(err, policy.ErrInvalid) {
+			t.Errorf("%d policies: %v, want ErrInvalid", n+1, err)
+		}
+	}
+}
+
 func TestPresetsAreCopies(t *testing.T) {
 	t.Parallel()
 	p := policy.MustPreset(policy.ReadOnly)

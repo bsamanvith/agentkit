@@ -2289,7 +2289,7 @@
               },
               "narrowed_by": {
                 "type": "array",
-                "description": "Policies (or presets' names) that narrow this one.",
+                "description": "Policies (or presets' names) that narrow this one: at most 8 deep, and 32 policies in all with this one.",
                 "items": {
                   "$ref": "#/components/schemas/ToolPolicy"
                 }

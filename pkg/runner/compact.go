@@ -8,6 +8,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/policy"
 	"github.com/bsamanvith/agentkit/pkg/store"
 )
 
@@ -67,6 +68,10 @@ type CompactionRecord struct {
 	Reason string `json:"reason"`
 	// Usage is the summary request's.
 	Usage llm.Usage `json:"usage"`
+	// ToolPolicy is the [PromptRecord.ToolPolicy] of the last prompt before
+	// the compaction. A cold read of the context starts at the compaction,
+	// so a run compacted after its prompt is resumed with its policy.
+	ToolPolicy *policy.Policy `json:"tool_policy,omitempty"`
 }
 
 // The reasons of a [CompactionRecord].
@@ -125,7 +130,7 @@ func (x *exec) compact(ctx context.Context, c Compactor, v *view, reason string,
 		Messages: msgs,
 		RunID:    v.lastRun,
 		Covers:   v.seq,
-		Record:   mustJSON(Record{Compaction: &CompactionRecord{At: x.r.clk.Now(), Reason: reason, Usage: s.Usage}}),
+		Record:   mustJSON(Record{Compaction: &CompactionRecord{At: x.r.clk.Now(), Reason: reason, Usage: s.Usage, ToolPolicy: v.policy}}),
 	})
 	if err != nil {
 		return fmt.Errorf("compact: %w", err)

@@ -80,8 +80,9 @@ func ToolPolicy(p policy.Policy) RunOption {
 			c.err = fmt.Errorf("%w: %w", ErrInvalidConfig, err)
 			return
 		}
-		p = p.Clone()
-		c.policy = &p
+		// Not p: the option may be given to runs that run concurrently.
+		own := p.Clone()
+		c.policy = &own
 	}
 }
 

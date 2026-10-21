@@ -45,9 +45,14 @@ var ErrNoAgent = errors.New("agent not run here")
 
 // The service's methods.
 var (
-	agentsMethod  = rpc.Unary[struct{}, agentsResp]{Name: Service + "/Agents"}
-	runMethod     = rpc.Stream[runReq, event]{Name: Service + "/Run", Errors: codes}
-	compactMethod = rpc.Unary[compactReq, harness.Summary]{Name: Service + "/Compact", Errors: codes}
+	agentsMethod = rpc.Unary[struct{}, agentsResp]{Name: Service + "/Agents"}
+	runMethod    = rpc.Stream[runReq, event]{Name: Service + "/Run", Errors: codes}
+	// policyRunMethod is Run for a run with a tool policy. It is its own
+	// method so that a runner older than tool policies, which would ignore
+	// the field and run unrestricted, fails the run with
+	// [rpc.ErrUnknownMethod] instead: a policy fails closed.
+	policyRunMethod = rpc.Stream[runReq, event]{Name: Service + "/RunWithPolicy", Errors: codes}
+	compactMethod   = rpc.Unary[compactReq, harness.Summary]{Name: Service + "/Compact", Errors: codes}
 )
 
 // ErrCannotCompact means the server's agent cannot compact (it is not a
@@ -87,8 +92,8 @@ type runReq struct {
 	Message    *llm.Message  `json:"message,omitempty"`
 	Transcript []llm.Message `json:"transcript,omitempty"`
 	At         time.Time     `json:"at,omitzero"`
-	// ToolPolicy narrows the agent's for this run. A runner older than it
-	// ignores it: update runners before the API that sends it.
+	// ToolPolicy narrows the agent's for this run. A run with one is sent
+	// as policyRunMethod, which a runner older than it does not serve.
 	ToolPolicy *policy.Policy `json:"tool_policy,omitempty"`
 }
 
@@ -156,7 +161,7 @@ func Register(s *rpc.Server, agents map[string]runner.Agent) error {
 		}
 		return c.Compact(ctx, r.History)
 	})
-	runMethod.Handle(s, func(ctx context.Context, r runReq) iter.Seq2[event, error] {
+	run := func(ctx context.Context, r runReq) iter.Seq2[event, error] {
 		return func(yield func(event, error) bool) {
 			a := agents[r.Agent]
 			if a == nil {
@@ -182,7 +187,9 @@ func Register(s *rpc.Server, agents map[string]runner.Agent) error {
 				}
 			}
 		}
-	})
+	}
+	runMethod.Handle(s, run)
+	policyRunMethod.Handle(s, run)
 	return nil
 }
 
@@ -231,8 +238,15 @@ func (a *agent) Run(ctx context.Context, in harness.Input) iter.Seq2[harness.Eve
 			m := in.Message
 			req.Message = &m
 		}
-		for w, err := range runMethod.Call(ctx, a.c.conn, req) {
+		method := runMethod
+		if req.ToolPolicy != nil {
+			method = policyRunMethod
+		}
+		for w, err := range method.Call(ctx, a.c.conn, req) {
 			if err != nil {
+				if req.ToolPolicy != nil && errors.Is(err, rpc.ErrUnknownMethod) {
+					err = fmt.Errorf("agent %q: the runner is too old to enforce the run's tool policy: %w", a.name, err)
+				}
 				yield(harness.Event{}, decodeFailure(err))
 				return
 			}

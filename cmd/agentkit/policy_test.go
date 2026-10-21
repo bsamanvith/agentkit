@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/agentclient"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
+	"github.com/bsamanvith/agentkit/pkg/tool"
 )
 
 // lastResults are the tool results of the last request a fake was sent.
@@ -122,6 +124,41 @@ func TestLoadToolPolicies(t *testing.T) {
 	} {
 		if _, err := load(bad); err == nil {
 			t.Errorf("%s loaded", bad)
+		}
+	}
+}
+
+// A toolset whose name contains the separator still names its tools' toolset.
+func TestToolsetsOfPrefixedNames(t *testing.T) {
+	t.Parallel()
+	ls, err := tool.Func("ls", "lists", func(context.Context, struct{}) (string, error) { return "", nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg, err := tool.NewRegistry([]tool.Tool{ls})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sets := map[string]tool.Registry{"my__fs": reg, "my": reg}
+	for _, prefix := range []bool{true, false} {
+		of, err := toolsetsOf(context.Background(), map[string]tool.Registry{"my__fs": reg}, agentDef{PrefixToolNames: prefix, RuntimeToolsets: []string{"rt__x"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := of("rt__x__y"); got != "rt__x" {
+			t.Errorf("prefix %v: runtime tool's toolset %q, want rt__x", prefix, got)
+		}
+		if got := of("nope"); got != "" {
+			t.Errorf("prefix %v: unknown tool's toolset %q", prefix, got)
+		}
+	}
+	of, err := toolsetsOf(context.Background(), sets, agentDef{PrefixToolNames: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]string{"my__fs__ls": "my__fs", "my__ls": "my"} {
+		if got := of(name); got != want {
+			t.Errorf("toolset of %q: %q, want %q", name, got, want)
 		}
 	}
 }

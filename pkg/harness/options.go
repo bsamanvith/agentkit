@@ -100,8 +100,8 @@ func WithBeforeTool(f BeforeToolFunc) Option {
 // unless an Input.ToolPolicy says otherwise.
 func WithToolPolicy(p policy.Policy, toolsetOf func(name string) string) Option {
 	return func(c *config) {
-		p = p.Clone()
-		c.policy, c.toolsetOf = &p, toolsetOf
+		own := p.Clone() // not p: the option may be applied more than once
+		c.policy, c.toolsetOf = &own, toolsetOf
 	}
 }
 

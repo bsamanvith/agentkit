@@ -482,13 +482,18 @@ func toolsetsOf(ctx context.Context, sets map[string]tool.Registry, a agentDef) 
 			}
 		}
 	}
+	// A toolset's name may itself contain the separator ("my__tools"): the
+	// longest name that prefixes the tool's is its toolset.
+	prefixed := slices.Concat(slices.Collect(maps.Keys(sets)), a.RuntimeToolsets)
+	slices.SortFunc(prefixed, func(x, y string) int { return cmp.Compare(len(y), len(x)) })
 	return func(tool string) string {
 		if set, ok := owner[tool]; ok {
 			return set
 		}
-		set, _, ok := strings.Cut(tool, agentapi.ToolPrefixSeparator)
-		if ok && (sets[set] != nil || slices.Contains(a.RuntimeToolsets, set)) {
-			return set
+		for _, set := range prefixed {
+			if strings.HasPrefix(tool, set+agentapi.ToolPrefixSeparator) {
+				return set
+			}
 		}
 		return ""
 	}, nil

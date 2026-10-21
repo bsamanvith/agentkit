@@ -25,6 +25,36 @@ import (
 
 var now = time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
 
+// A runner older than tool policies serves only Run, whose request it reads
+// without the policy. A run with a policy must not run there unrestricted:
+// it fails, and is not retried, without the agent running.
+func TestOldRunnerRefusesARunWithAPolicy(t *testing.T) {
+	t.Parallel()
+	type oldReq struct {
+		Agent string `json:"agent"`
+	}
+	ran := false
+	s := rpc.NewServer()
+	rpc.Stream[oldReq, struct{}]{Name: runnerrpc.Service + "/Run"}.Handle(s, func(context.Context, oldReq) iter.Seq2[struct{}, error] {
+		return func(func(struct{}, error) bool) { ran = true }
+	})
+	a := runnerrpc.NewClient(rpc.Pipe(s)).Agent("default", harness.ContextWindow{})
+
+	in := harness.Input{Message: llm.User(llm.Text{Text: "x"}), ToolPolicy: &policy.Policy{Default: policy.Deny}}
+	_, err := collect(a, in)
+	if !errors.Is(err, rpc.ErrUnknownMethod) || llm.IsRetryable(err) {
+		t.Fatalf("err = %v, want a non-retryable rpc.ErrUnknownMethod", err)
+	}
+	if ran {
+		t.Fatal("the old runner ran a run whose policy it cannot enforce")
+	}
+
+	// Without a policy, the old runner still serves runs.
+	if _, err := collect(a, harness.Input{Message: llm.User(llm.Text{Text: "x"})}); err != nil || !ran {
+		t.Fatalf("run without a policy: err = %v, ran = %v", err, ran)
+	}
+}
+
 // newHarness returns an agent on the fixture tools that plays replies.
 func newHarness(t *testing.T, replies ...llmtest.Reply) *harness.Harness {
 	t.Helper()

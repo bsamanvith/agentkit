@@ -3,6 +3,7 @@ package runner_test
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -111,6 +112,46 @@ func TestToolPolicyUnreadableFailsTheResume(t *testing.T) {
 	}
 	if run := w.get("run9"); run.Status != store.StatusFailed || run.Retryable {
 		t.Fatalf("run %+v, want failed for good", run)
+	}
+}
+
+// A run compacted after its prompt keeps its policy when a cold resume reads
+// the context from the compaction on, without the prompt entry.
+func TestToolPolicyKeptAcrossCompaction(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	if _, err := w.process().run("c", w.model.on("a", 1)); err != nil {
+		t.Fatal(err)
+	}
+	prompt := w.model.on("b", 2)
+	w.model.failing("b", 0, 1, fmt.Errorf("%w: scripted", llm.ErrContextTooLong))
+	dead := w.process()
+	dead.store.crashAt(crashAtNth("Append", 3, false)) // the prompt, the compaction, then the first turn
+	x, err := dead.r.Run(w.ctx, "c", harness.UserText(prompt), runner.ToolPolicy(policy.MustPreset(policy.ReadOnly)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dead.drain(x, nil); !errors.Is(err, errCrashed) {
+		t.Fatalf("crashed run ended with %v", err)
+	}
+	log := w.log("c")
+	if last := log[len(log)-1]; last.Kind != store.KindCompaction || last.RunID != x.Run.ID {
+		t.Fatalf("log ends with %s, want the run's compaction", js(last))
+	}
+	w.expire()
+	evs, err := w.process().resume(x.Run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lastDone(t, evs)
+	res := toolResults(w, prompt)
+	if len(res) != 2 {
+		t.Fatalf("results %+v, want one per turn", res)
+	}
+	for _, r := range res {
+		if !r.IsError || !strings.HasPrefix(r.Content, "not allowed in this run: ") {
+			t.Errorf("a write ran under read_only after a compaction: %+v", r)
+		}
 	}
 }
 

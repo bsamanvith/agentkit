@@ -93,7 +93,7 @@ func (r *Runner) Run(ctx context.Context, conversationID string, msg llm.Message
 	if err != nil {
 		return nil, err
 	}
-	agent, err := r.agents(ctx, conversationID)
+	agent, err := r.agents(ctx, Placement{ConversationID: conversationID, Interactive: c.interactive})
 	if err != nil {
 		return nil, fmt.Errorf("agent of conversation %q: %w", conversationID, err)
 	}
@@ -318,7 +318,7 @@ func (r *Runner) resume(ctx context.Context, runID string, c resumeConfig) (*Exe
 			return func(ctx context.Context, emit func(Event) bool) outcome { return x.flow(ctx, step, &c, emit) }
 		}
 	} else {
-		agent, err := r.agents(ctx, run.ConversationID)
+		agent, err := r.agents(ctx, Placement{ConversationID: run.ConversationID, RunID: run.ID, Interactive: run.Interactive, Resume: true})
 		if err != nil {
 			return nil, fmt.Errorf("agent of conversation %q: %w", run.ConversationID, err)
 		}

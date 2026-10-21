@@ -96,7 +96,7 @@ func ModuleRules() Rules {
 			// for the decisions of a suspended flow run.
 			"pkg/agentapi": {
 				"pkg/harness", "pkg/llm", "pkg/tool", "pkg/toolset", "pkg/component", "pkg/clock",
-				"pkg/runner", "pkg/store", "pkg/tenancy", "pkg/flow",
+				"pkg/runner", "pkg/runner/pool", "pkg/store", "pkg/tenancy", "pkg/flow",
 				// Runs' events and commands between replicas (T090): the
 				// stream over the store and a bus, in memory unless serve
 				// gives one.
@@ -168,6 +168,9 @@ func ModuleRules() Rules {
 			// Toolsets on the wire: the tool abstraction over the transport.
 			// Its tests run the registry conformance suite through it.
 			"pkg/tool/toolrpc": {"pkg/tool", "pkg/rpc", "pkg/tool/tooltest"},
+			// Runner pools (E20, T104): where a run's agent runs, over the
+			// runner's Agent and Placement, never the store.
+			"pkg/runner/pool": {"pkg/runner", "pkg/harness"},
 			// Agents on the wire: the runner's Agent (a harness's events and
 			// errors) over the transport, never the store: the runner that
 			// keeps runs stays where the store is.

@@ -112,7 +112,7 @@ func newBenchEnv(tb testing.TB, backend string, latency time.Duration, opts ...r
 		tb.Fatal(err)
 	}
 	model := benchModel{tb: tb, latency: latency}
-	e.agents = func(context.Context, string) (runner.Agent, error) { return harness.New(model, tools) }
+	e.agents = func(context.Context, runner.Placement) (runner.Agent, error) { return harness.New(model, tools) }
 	if e.r, err = runner.New(e.s, e.agents, append([]runner.Option{runner.WithClock(clock.Real())}, opts...)...); err != nil {
 		tb.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func BenchmarkRun(b *testing.B) {
 			b.ReportAllocs()
 			b.RunParallel(func(pb *testing.PB) {
 				for pb.Next() {
-					h, err := e.agents(e.ctx, "")
+					h, err := e.agents(e.ctx, runner.Placement{})
 					if err != nil {
 						b.Fatal(err)
 					}
@@ -208,7 +208,7 @@ func BenchmarkRunInLongConversation(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
 				if backend == "harness" {
-					h, err := e.agents(e.ctx, "")
+					h, err := e.agents(e.ctx, runner.Placement{})
 					if err != nil {
 						b.Fatal(err)
 					}

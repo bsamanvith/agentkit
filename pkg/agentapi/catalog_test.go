@@ -18,6 +18,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/runner/pool"
 	"github.com/bsamanvith/agentkit/pkg/store/scoped"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 )
@@ -566,6 +567,7 @@ func TestNewAgentsRejectsBadConfig(t *testing.T) {
 		"toolset without tools": {agents: []agentapi.Agent{{Name: "a", Harness: h}}, sets: []agentapi.Toolset{{Name: "x"}}},
 		"toolset tools skipped": {agents: []agentapi.Agent{{Name: "a", Harness: h}}, sets: []agentapi.Toolset{{Name: "x", Tools: reg, Skipped: "why"}}},
 		"bad toolset name":      {agents: []agentapi.Agent{{Name: "a", Harness: h}}, sets: []agentapi.Toolset{{Name: "x y", Tools: reg}}},
+		"unknown isolation":     {agents: []agentapi.Agent{{Name: "a", Harness: h, Isolation: pool.VM + 1}}},
 	} {
 		if _, err := agentapi.NewAgents(tc.agents, agentapi.WithStore(scoped.Memory(nil)), agentapi.WithToolsets(tc.sets...)); !errors.Is(err, agentapi.ErrInvalidConfig) {
 			t.Errorf("%s: %v, want ErrInvalidConfig", name, err)

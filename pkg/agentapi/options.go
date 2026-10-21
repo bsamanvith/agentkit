@@ -13,6 +13,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/bus"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/runner"
+	"github.com/bsamanvith/agentkit/pkg/runner/pool"
 	"github.com/bsamanvith/agentkit/pkg/store"
 )
 
@@ -64,6 +65,7 @@ type config struct {
 	streamPoll     time.Duration
 	watchBuffer    int // events a viewer of a shared watch may be behind (T103)
 	runnerOpts     []runner.Option
+	router         *pool.Router
 	runs           RunsFactory
 	grace          time.Duration
 	graceArmed     func(runID string) // tests: called when a run's grace starts
@@ -203,6 +205,20 @@ func WithStreamPoll(d time.Duration) Option { return func(c *config) { c.streamP
 func WithRunnerOptions(opts ...runner.Option) Option {
 	return func(c *config) { c.runnerOpts = append(c.runnerOpts, opts...) }
 }
+
+// WithRouter sets the pools the server runs its agents in ([E20]). The router
+// places every chat run, started or resumed, by the default runner or the
+// [Runs] of [WithRuns], from the run's placement, its agent's name and its
+// agent's [Agent.Isolation]; a run no pool may run does not start. Without
+// it the server runs every agent as built, in one process pool
+// ([pool.Default]): the runner as it ran before pools.
+//
+// The server owns the router: [Server.Shutdown] closes it, and so the agents
+// its pools made, once the runs have stopped; [NewAgents] closes it when it
+// fails to make the server.
+//
+// [E20]: https://github.com/bsamanvith/agentkit/blob/main/tasks/E20-runner-pools.md
+func WithRouter(rt *pool.Router) Option { return func(c *config) { c.router = rt } }
 
 // WithReconnectGrace sets how long a chat run goes on with nobody reading
 // its events (default [DefaultReconnectGrace]): the last client to go away

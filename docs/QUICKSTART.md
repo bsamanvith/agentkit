@@ -239,9 +239,18 @@ Each entry of `agents`:
 | `max_runs`, `max_conversations`, `retention` | 1000, 1000, `24h` | recent runs whose events are kept in memory to stream; older ones are read from the store |
 | `max_body_bytes` | 1 MiB | limit on a run's request body |
 
+`credentials` (where connectors' stored credentials go; T044 puts them to use): the vault keeps only sealed blobs, AES-256-GCM under `AGENTKIT_CREDENTIALS_KEY`, never plaintext.
+
+| `backend` | `path` | For |
+|---|---|---|
+| `memory` (default) | none | tests; lost on restart |
+| `file` | the file, required | one process: the whole store in one JSON file, created `0600` (a file others may read is refused), written atomically, locked so a second process fails to open it |
+| `sqlite` | the SQLite file; default the store's (`AGENTKIT_STORE=sqlite:...`) | one machine, local image only: a `credential_blobs` table beside the store's |
+| `postgres` | none: `AGENTKIT_STORE` must be `postgres://` | replicas, dev and cloud images: a `credential_blobs` table in the store's database, migrated with it, under its row-level security |
+
 The one-agent form still works: an `agent` section (instead of `agents` and `agent_api`) with the fields of both tables except `name` is served as the agent `default`.
 
-Environment: `AGENTKIT_COMPONENTS` (any of `agent`, `web`, `mcp-server`, comma-separated; `web` serves the console at `/`, a chat client of `agent` on the same address), `AGENTKIT_ADDR` (default `127.0.0.1:8080`), `AGENTKIT_API_TOKEN` and `AGENTKIT_API_KEYS_FILE` (credentials, below; one of them, or `auth` in the config with keys or `jwt`, is required off loopback), `AGENTKIT_CONFIG`, `AGENTKIT_LOG_LEVEL`, `AGENTKIT_SHUTDOWN_TIMEOUT`, `AGENTKIT_CREDENTIALS_KEY` (the credential vault's key ring, `<id>:<base64 of 32 random bytes>[,<id>:<base64>...]` with the first key sealing, e.g. `k1:$(openssl rand -base64 32)`; optional until connectors store credentials, but a malformed one fails startup). The API's reference: [docs/api/openapi.yaml](api/openapi.yaml) (OpenAPI 3.1); the event format and error codes are also in [tasks/T036](../tasks/T036-agent-api-v0.md) Notes.
+Environment: `AGENTKIT_COMPONENTS` (any of `agent`, `web`, `mcp-server`, comma-separated; `web` serves the console at `/`, a chat client of `agent` on the same address), `AGENTKIT_ADDR` (default `127.0.0.1:8080`), `AGENTKIT_API_TOKEN` and `AGENTKIT_API_KEYS_FILE` (credentials, below; one of them, or `auth` in the config with keys or `jwt`, is required off loopback), `AGENTKIT_CONFIG`, `AGENTKIT_LOG_LEVEL`, `AGENTKIT_SHUTDOWN_TIMEOUT`, `AGENTKIT_CREDENTIALS_KEY` (the credential vault's key ring, `<id>:<base64 of 32 random bytes>[,<id>:<base64>...]` with the first key sealing, e.g. `k1:$(openssl rand -base64 32)`; required by every `credentials.backend` but `memory`, and a malformed one fails startup). The API's reference: [docs/api/openapi.yaml](api/openapi.yaml) (OpenAPI 3.1); the event format and error codes are also in [tasks/T036](../tasks/T036-agent-api-v0.md) Notes.
 
 ### Tool policies
 

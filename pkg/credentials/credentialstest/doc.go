@@ -1,6 +1,6 @@
 // Package credentialstest has the conformance suites every credentials
-// backend runs, so the memory store and later ones (T043: an encrypted file,
-// SQLite) behave the same:
+// backend runs, so the memory store and the others (file, sqlite, postgres)
+// behave the same:
 //
 //	func TestConformance(t *testing.T) {
 //		newStore := func(t *testing.T) credentials.BlobStore { return mybackend.Open(t.TempDir()) }
@@ -18,5 +18,6 @@
 // zero, CreatedAt no later than UpdatedAt, and each listed entry readable
 // with the same metadata (opening, through a vault). Seeded simulations
 // ([Simulate]) check every result against a model, with rounds of
-// concurrent writers racing on one version.
+// concurrent writers racing on one version. [CheckAtRest] is the canary test
+// of a backend whose bytes a person could read: a file, a database.
 package credentialstest

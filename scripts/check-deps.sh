@@ -15,15 +15,20 @@ redis='github.com/redis/go-redis'
 connectors='github.com/bsamanvith/agentkit/connectors/'
 skill='github.com/bsamanvith/agentkit/pkg/skill'
 openai='github.com/bsamanvith/agentkit/pkg/llm/openaicompat'
+# The credential vault's SQL backends (T043), named on their own so that a
+# backend wired without its store's build tag fails here even before it
+# pulls in the driver.
+credsqlite='github.com/bsamanvith/agentkit/pkg/credentials/sqlite'
+credpg='github.com/bsamanvith/agentkit/pkg/credentials/postgres'
 
 # What each variant must not link.
 forbidden() {
 	case "$1" in
-	local) echo "$pgx $redis" ;;
-	dev) echo "$sqlite" ;;
-	api) echo "$anthropic $openai $mcp $sqlite $connectors $skill" ;;
-	runner) echo "$mcp $pgx $sqlite $redis $connectors" ;;
-	toolsets) echo "$anthropic $openai $pgx $sqlite $redis $skill" ;;
+	local) echo "$pgx $redis $credpg" ;;
+	dev) echo "$sqlite $credsqlite" ;;
+	api) echo "$anthropic $openai $mcp $sqlite $connectors $skill $credsqlite" ;;
+	runner) echo "$mcp $pgx $sqlite $redis $connectors $credsqlite $credpg" ;;
+	toolsets) echo "$anthropic $openai $pgx $sqlite $redis $skill $credsqlite $credpg" ;;
 	*) echo "check-deps: unknown variant $1" >&2; exit 2 ;;
 	esac
 }

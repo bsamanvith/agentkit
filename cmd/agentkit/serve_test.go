@@ -116,6 +116,13 @@ func TestServeRejectsBadSetup(t *testing.T) {
 		"auth.jwt: http issuer":            {env: map[string]string{envComponents: "agent"}, config: `{"auth":{"jwt":{"issuer":"http://id.example","audience":"https://a.example"}}}`, code: 1, says: "auth.jwt"},
 		"auth.jwt: MCP audience no origin": {env: map[string]string{envComponents: "mcp-server"}, config: `{"mcp":{"toolsets":[{"name":"demo","type":"demo"}]},"auth":{"jwt":{"issuer":"http://127.0.0.1:1","audience":"api://agentkit"}}}`, code: 1, says: "origin"},
 		"bad dependency wait":              {env: map[string]string{envDependencyWait: "soon"}, config: good, code: 1, says: envDependencyWait},
+		// The credential vault's backend (T043).
+		"credentials: unknown field":      {config: `{"mcp":{"toolsets":[{"name":"demo","type":"demo"}]},"credentials":{"backnd":"file"}}`, code: 1, says: "backnd"},
+		"credentials: unknown backend":    {config: `{"mcp":{"toolsets":[{"name":"demo","type":"demo"}]},"credentials":{"backend":"vault"}}`, code: 1, says: `credentials.backend "vault"`},
+		"credentials: no key":             {config: `{"mcp":{"toolsets":[{"name":"demo","type":"demo"}]},"credentials":{"backend":"file","path":"/tmp/x.json"}}`, code: 1, says: `credentials.backend "file" needs the key ring in $` + envCredentialsKey},
+		"credentials: file without path":  {env: map[string]string{envCredentialsKey: testCredentialsKey}, config: `{"mcp":{"toolsets":[{"name":"demo","type":"demo"}]},"credentials":{"backend":"file"}}`, code: 1, says: `backend "file" needs a path`},
+		"credentials: memory with path":   {env: map[string]string{envCredentialsKey: testCredentialsKey}, config: `{"mcp":{"toolsets":[{"name":"demo","type":"demo"}]},"credentials":{"path":"x.json"}}`, code: 1, says: `backend "memory" keeps nothing in a file`},
+		"credentials: postgres, no store": {env: map[string]string{envCredentialsKey: testCredentialsKey, envStore: "sqlite:/tmp/x.db"}, config: `{"mcp":{"toolsets":[{"name":"demo","type":"demo"}]},"credentials":{"backend":"postgres"}}`, code: 1, says: `backend "postgres"`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

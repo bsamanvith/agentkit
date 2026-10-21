@@ -54,6 +54,9 @@ func ModuleRules() Rules {
 			"pkg/store/sqlite": {"modernc.org/sqlite"},
 			// The memory context store on SQLite (T058): the same driver.
 			"pkg/memory/sqlite": {"modernc.org/sqlite"},
+			// The credential vault's Postgres backend (T043), on the
+			// store's pool.
+			"pkg/credentials/postgres": {"github.com/jackc/pgx/v5", "github.com/jackc/pgx/v5/pgxpool"},
 			// The Postgres store's driver and pool (T088). pgconn names the
 			// server's error type, for SQLSTATEs.
 			"pkg/store/postgres": {"github.com/jackc/pgx/v5", "github.com/jackc/pgx/v5/pgconn", "github.com/jackc/pgx/v5/pgxpool"},
@@ -250,6 +253,18 @@ func ModuleRules() Rules {
 			"pkg/credentials":                 {"pkg/tenancy", "pkg/credentials/credentialstest", "pkg/credentials/memory"},
 			"pkg/credentials/memory":          {"pkg/credentials", "pkg/tenancy", "pkg/credentials/credentialstest"},
 			"pkg/credentials/credentialstest": {"pkg/credentials", "pkg/tenancy"},
+			// The SQL backends (T043) keep their table in the store's own
+			// file or database, on the store's connections: they import
+			// their store backend for that, and cmd/agentkit picks them
+			// behind the same build tags as the store (nosqlite, nopostgres).
+			"pkg/credentials/sqlite": {
+				"pkg/credentials", "pkg/credentials/internal/sqltime", "pkg/tenancy",
+				"pkg/store/sqlite", "pkg/store", "pkg/credentials/credentialstest",
+			},
+			"pkg/credentials/postgres": {
+				"pkg/credentials", "pkg/credentials/internal/sqltime", "pkg/tenancy",
+				"pkg/store/postgres", "pkg/credentials/credentialstest", "internal/testkit",
+			},
 			// Connectors are toolset factories over plain net/http: the tool
 			// abstraction, the factory contract and the clock, never the
 			// server, the harness or another connector (E10). Their tests

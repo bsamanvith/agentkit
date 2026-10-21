@@ -9,8 +9,9 @@
 #        store is memory)
 #   STORE=postgres          what CI's integration job runs (check.yml), against
 #                           a throwaway Postgres and Redis run as processes
-#     1. go test -tags integration: pkg/bus, pkg/store, pkg/stream, and
-#        cmd/agentkit's migrate and replica tests
+#     1. go test -tags integration: pkg/bus, pkg/store, pkg/stream,
+#        pkg/credentials, and cmd/agentkit's migrate, replica and
+#        credential vault tests
 #     2. the agent API's suite on SQLite and on Postgres
 #     3. the smoke suite on Postgres: the api binary migrates an empty
 #        database, and a second run has nothing to do
@@ -150,10 +151,10 @@ if [ -n "$deps_only" ]; then
 	while :; do sleep 3600; done
 fi
 
-step "integration: bus, store, stream" \
-	go test -race -shuffle=on -count=1 -tags integration ./pkg/bus/... ./pkg/store/... ./pkg/stream/...
-step "integration: migrate and replicas" \
-	go test -race -count=1 -tags integration -run '^(TestMigrate|TestE2EServeReplicas)' ./cmd/agentkit/
+step "integration: bus, store, stream, credentials" \
+	go test -race -shuffle=on -count=1 -tags integration ./pkg/bus/... ./pkg/store/... ./pkg/stream/... ./pkg/credentials/...
+step "integration: migrate, replicas and credentials" \
+	go test -race -count=1 -tags integration -run '^(TestMigrate|TestE2EServeReplicas|TestCredentials)' ./cmd/agentkit/
 step "agent API suite on SQLite" \
 	env AGENTAPI_TEST_STORE=sqlite go test -race -count=1 ./pkg/agentapi/...
 step "agent API suite on Postgres" \

@@ -22,6 +22,8 @@
 // Writes are compare-and-swap on [Meta.Version]: 0 creates, n replaces
 // version n. Versions never repeat for a key, even after a delete.
 //
-// credentials/memory is the reference backend; credentialstest has the
-// conformance suites every backend runs.
+// credentials/memory is the reference backend; credentials/file keeps the
+// blobs in one file for one process, credentials/sqlite in the SQLite store's
+// file (local images), credentials/postgres in the Postgres store's database
+// (replicas). credentialstest has the conformance suites every backend runs.
 package credentials

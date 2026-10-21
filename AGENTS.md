@@ -28,3 +28,18 @@ Image size is tracked, and every change to it is explained.
   without a row that says why.
 - The console has its own first-load budget (`web/scripts/check-size.sh`);
   the image log records what it adds to the image.
+
+## Cloud sessions
+
+Claude Code cloud sessions have no Docker. `.claude/hooks/session-start.sh`
+prepares one (Go modules, the linter, the web workspace, Postgres and Redis
+binaries), so `make check`, `make web-check` and these run as on a laptop:
+
+- `make integration`: the agent API's suite on SQLite and the smoke suite
+  (the split deployment as processes, fake model). Seconds.
+- `make integration STORE=postgres`: CI's integration tier against a
+  throwaway Postgres and Redis run as processes, then the smoke suite on
+  that Postgres. A few minutes.
+- Either one also runs the live tests against the real model when
+  `ANTHROPIC_API_KEY` is set: add it as an environment variable of the
+  project's cloud environment.

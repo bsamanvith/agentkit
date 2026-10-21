@@ -78,7 +78,13 @@ conversations, and runs fail until the runner is back.
 image's binary links what its tags leave out. A component an image leaves
 out fails at startup with a message naming the tag. Migrations run with the
 image that has the store: `agentkit-api migrate` as a job, then serve with
-`AGENTKIT_STORE_MIGRATE=off`.
+`AGENTKIT_STORE_MIGRATE=off`. CI's image job runs the split images
+(`scripts/smoke.sh --images`): each reports ready for its own components
+only and serves its own surface, and `agentkit-api` migrates an empty
+Postgres (a second run changes nothing, `scripts/migrate-check.sh`) and then
+serves runs on it with migrations off. `make smoke` (memory) and
+`make integration STORE=postgres` do the same with binaries built with each
+image's tags.
 
 ### An image of your own
 

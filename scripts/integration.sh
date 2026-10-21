@@ -12,7 +12,10 @@
 #     1. go test -tags integration: pkg/bus, pkg/store, pkg/stream, and
 #        cmd/agentkit's migrate and replica tests
 #     2. the agent API's suite on SQLite and on Postgres
-#     3. the smoke suite on Postgres
+#     3. the smoke suite on Postgres: the api binary migrates an empty
+#        database, and a second run has nothing to do
+#        (scripts/migrate-check.sh); the API then serves runs on it with
+#        AGENTKIT_STORE_MIGRATE=off
 #   Either way, last: live tests against the real model (make test-live), only
 #   when ANTHROPIC_API_KEY (or ANTHROPIC_KEY) is set.
 #
@@ -158,7 +161,7 @@ step "agent API suite on Postgres" \
 # The smoke suite gets a database of its own: its migrate must not meet the
 # schemas the store tests left behind.
 "${as_pg[@]}" "$pgbin/createdb" -h 127.0.0.1 -p "$pgport" -U agentkit agentkit_smoke
-step "smoke suite on Postgres (fake model)" \
-	env AGENTKIT_STORE="postgres://agentkit@127.0.0.1:$pgport/agentkit_smoke?sslmode=disable" scripts/smoke.sh
+step "smoke suite on Postgres (fake model): migrate, then serve with AGENTKIT_STORE_MIGRATE=off" \
+	env PSQL="$pgbin/psql" AGENTKIT_STORE="postgres://agentkit@127.0.0.1:$pgport/agentkit_smoke?sslmode=disable" scripts/smoke.sh
 live
 finish

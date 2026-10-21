@@ -38,6 +38,17 @@ func newTarget(t *testing.T) target {
 	return target{url: url, token: token, client: &http.Client{Timeout: 30 * time.Second}}
 }
 
+// skipOrFail skips t for why, or fails it under AGENTKIT_SMOKE_STRICT=1,
+// which scripts/smoke.sh (make smoke, CI's image job) sets: there every
+// check is meant to run, and one that skips is a broken harness.
+func skipOrFail(t *testing.T, why string) {
+	t.Helper()
+	if os.Getenv("AGENTKIT_SMOKE_STRICT") == "1" {
+		t.Fatalf("AGENTKIT_SMOKE_STRICT=1, so this does not skip: %s", why)
+	}
+	t.Skip(why)
+}
+
 // do sends a request, with the token when auth is true, and returns the
 // response; the caller closes its body.
 func (tg target) do(t *testing.T, method, path, body string, auth bool) *http.Response {
@@ -154,7 +165,7 @@ func TestToolsets(t *testing.T) {
 // model.
 func TestChat(t *testing.T) {
 	if os.Getenv("AGENTKIT_SMOKE_CHAT") == "0" {
-		t.Skip("AGENTKIT_SMOKE_CHAT=0")
+		skipOrFail(t, "AGENTKIT_SMOKE_CHAT=0")
 	}
 	tg := newTarget(t)
 	tg.client.Timeout = 2 * time.Minute

@@ -94,14 +94,69 @@ It waits for T037, because T037 rewrites the code this changes: `serve.go`
 
 ## Acceptance criteria
 
-- [ ] `make images` builds the five images; each passes its own `make image-size` budget. — CI job
-- [ ] `agentkit-agent`, `agentkit-mcp` and `agentkit-web` each start, report ready on `/readyz` for their component only, and serve it (`/v1/agents`, `/mcp/...`, `/`). — test: per-image smoke in CI
-- [ ] The packages each component binary links match the plan: no Anthropic SDK or pgx in `agentkit-web` or `agentkit-mcp`, no MCP SDK in `agentkit-web` (`go list -deps`). — test: a script in `make check`
-- [ ] `agentkit-migrate` migrates an empty Postgres and exits 0, and a second run exits 0 with nothing to do. — test: integration
-- [ ] An `agentkit-agent` with `AGENTKIT_STORE_MIGRATE=off` against a migrated database serves runs. — test: integration
-- [ ] docs/SIZES.md has a row for each new image, with its measured size.
+Reworded 2026-10-21 to the image set the owner chose (see Notes): the
+all-in-one `agentkit`, `agentkit-local` and `agentkit-dev`, and one image per
+component, `agentkit-api`, `agentkit-runner` and `agentkit-toolsets`; no
+migrate image (the api image runs `migrate` as a job or init container).
+
+- [ ] `make image`, `make image-local`, `make image-dev` and `make images-split` build the six images; each passes its own budget (`make image-size`, `make image-size-<variant>`); and the split images, run as containers, pass the per-image smoke on Postgres (`scripts/smoke.sh --images`: the checks of the next three criteria, against the images). — CI job `image` (check.yml). Not run here: no Docker in this session.
+- [x] `agentkit-api`, `agentkit-runner` and `agentkit-toolsets` (binaries built with each image's tags, wired as deploy/k8s wires them) each start, report ready on `/readyz` for their own components only (`agent,web`; `runner`; `toolsets,mcp-server`), serve their surface (`/v1/agents` and `/`; `/rpc/runner/`; `/rpc/toolsets/` and `/mcp/demo`) and answer 404 for the others'. — test: `TestComponents` (test/e2e/components_test.go), run by `make smoke` (CI's web job) and `make integration`
+- [x] The packages each image's binary links match its tags: api links no model SDK (Anthropic, openaicompat), MCP SDK, SQLite, connectors or skills; runner no MCP SDK, pgx, SQLite, go-redis or connectors; toolsets no model SDK, pgx, SQLite, go-redis or skills; local no pgx or go-redis; dev no SQLite (`go list -deps`). — test: `scripts/check-deps.sh` (`make deps-check`, in `make check`)
+- [x] `agentkit migrate` from the image that holds the store (`agentkit-api`) migrates an empty Postgres and exits 0, and a second run exits 0 with nothing to do (schema and `schema_migrations` unchanged). — test: `scripts/migrate-check.sh`, run by `scripts/smoke.sh` on Postgres (`make integration STORE=postgres`; CI's image job against the image); also `TestMigrateCommand` (CI integration job)
+- [x] An `agentkit-api` with `AGENTKIT_STORE_MIGRATE=off` against the database it migrated serves runs (`TestChat`: a run with a tool call, kept by the store). — test: `scripts/smoke.sh` on Postgres (`make integration STORE=postgres`; CI's image job against the image)
+- [x] docs/SIZES.md has a row for each new image, with its measured size. — `agentkit-local`, `agentkit-dev` (2026-10-14, T090) and `agentkit-api`, `agentkit-runner`, `agentkit-toolsets` (2026-10-16, #26), each measured with `make image-size`
 
 ## Notes
+
+- 2026-10-21 (reconciliation, `claude/project-thread-trypa2-t102`): status
+  stays `review` because the first criterion needs `docker build`, which only
+  CI's `image` job has; it now also runs the per-image smoke against the
+  images on a Postgres service.
+  - Image set: the owner chose one image per component plus the all-in-one
+    (and local and dev for the stores), migrate not baked in as its own image
+    and not run by serving pods, SQLite only in the local image. That is what
+    main has: one Dockerfile whose `BIN` and `TAGS` pick the image (the
+    original scope's reason, copies drift, still holds), variants by build
+    tag. The criteria above were reworded from `agentkit-agent/-mcp/-web/
+    -migrate` to it. No `agentkit-web`: the console stays in the API image,
+    which serves `/v1` on the same origin (Rescoped section). No
+    `agentkit-migrate`: pgx is in the API image anyway (the store), so a
+    migrate image saves nothing; the release runs `agentkit-api migrate`
+    (deploy/k8s's init container) and serves with `AGENTKIT_STORE_MIGRATE=off`.
+  - Already covered on main and ticked with their tests: the dependency
+    script (`make deps-check`, built in #26) and the SIZES rows.
+  - Built here: `TestComponents` (per-component readiness and surfaces; it
+    skips when the runner and toolsets URLs are not set, as under
+    `make k8s-smoke`, where the cluster does not expose them);
+    `scripts/migrate-check.sh` (empty database required, two runs, a
+    fingerprint of the columns and of `schema_migrations` with `applied_at`
+    must not move); `scripts/smoke.sh --images` (the same suite against the
+    images on the host's network, `docker run`, config mounted at the image's
+    default path); smoke.sh on Postgres now runs migrate-check instead of one
+    bare `migrate`. CI's `image` job got a Postgres service, Go and Node, and
+    runs `scripts/smoke.sh --images` on it.
+  - Defaults chosen: the per-image smoke reuses the smoke suite and its fake
+    model rather than a second harness; the images run with `--network host`
+    (Linux CI runners) so the script's URLs are the same in both modes;
+    `IMAGE_TAG` defaults to `latest`, as `make images-split` tags it.
+  - Checked here: `make smoke` (memory) and `scripts/smoke.sh` on a
+    throwaway Postgres pass; `--images` was run through a fake `docker` that
+    starts the tagged binaries (argument plumbing only, on memory); the
+    images themselves are left to CI.
+  - Mutation self-check (each made a test fail, then reverted):
+    1. toolsets started without `mcp-server`: `TestComponents/toolsets`
+       fails (readyz list, `/mcp/demo` 404).
+    2. api started without `web`: `TestComponents/api` fails (readyz, `/`).
+    3. `TAGS_api` without `nomodels`: `make deps-check` fails (openaicompat,
+       Anthropic SDK, skill linked).
+    4. postgres migrate bumps `applied_at` on every run: migrate-check fails
+       ("second run changed the schema or schema_migrations").
+    5. `agentkit migrate` returns before migrating: migrate-check fails
+       ("first run exited 0 but applied no migration").
+    6. the schema check behind `AGENTKIT_STORE_MIGRATE=off` refuses a
+       current schema: the API never gets ready and smoke fails.
+  - No image content changed (test, scripts, workflow and docs only), so no
+    SIZES row.
 
 - 2026-10-14 (from T055): `go list -deps` shows `pkg/web` and `pkg/agentapi`
   link neither the Anthropic SDK, the MCP SDK nor pgx; `pkg/mcp/server`

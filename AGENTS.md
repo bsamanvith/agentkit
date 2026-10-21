@@ -3,7 +3,42 @@
 A Go kit for running Claude agents: one binary (`cmd/agentkit`), a web console
 (`web/`), tasks in `tasks/`, docs in `docs/`. How we work is in
 [docs/ENGINEERING.md](docs/ENGINEERING.md) and [docs/WORKFLOW.md](docs/WORKFLOW.md).
-T010 fills in the rest of this file (commands, skills).
+
+## Commands
+
+- `make check`: what every change passes (tidy, format, lint, deps, unit
+  tests with `-race`). Gate on its exit status: `make check > log 2>&1; echo $?`.
+- `make lint`: golangci-lint, then `scripts/lint-skills.sh` (skills, links,
+  task files; `--test` runs it on its fixtures).
+- `make test`; one package: `go test -race -shuffle=on -count=20 ./pkg/<p>/...`.
+- `make integration` (SQLite) or `make integration STORE=postgres`; `make smoke`
+  (the split deployment as processes, fake model); `make fuzz`; `make golden`.
+- `make web-check` for the console; `make image` and `make image-size`.
+- Run it: `scripts/try-agent.sh` (one process, real model), `make k8s-up`
+  (Docker Desktop's Kubernetes). The `local-env` skill picks one.
+
+## Where things are
+
+- [docs/PLAN.md](docs/PLAN.md) what we build; [ENGINEERING.md](docs/ENGINEERING.md)
+  module design (§1), tests (§2), environments (§3), skills (§4);
+  [COMPONENTS.md](docs/COMPONENTS.md), [CONNECTORS.md](docs/CONNECTORS.md).
+- [tasks/](tasks/README.md): one file per task, epics, [STATUS.md](tasks/STATUS.md).
+- `pkg/` the library, `cmd/` binaries, `connectors/`, `internal/archtest` (import rules).
+
+## Skills
+
+In `.agents/skills/` (Claude Code reads them through `.claude/skills`; rules and
+template in [the README](.agents/skills/README.md)). Idea to merge:
+
+| Skill | Use it to |
+|---|---|
+| `plan` | Turn an idea into an epic and task files with testable criteria |
+| `design-module` | Shape a new package: layer, interfaces, `xxxtest`, component wiring |
+| `write-tests` | Map criteria to tests, check invariants, run the mutation self-check |
+| `write-connector` | Write, test and run a connector or a provider family |
+| `implement-task` | Take a task file from `todo` to `review` |
+| `review` | Review a diff against our rules and test its tests |
+| `local-env` | Run the change in a real deployment, smoke it, read logs |
 
 ## Seams
 

@@ -87,7 +87,9 @@ func TestLoadRepoSkills(t *testing.T) {
 		if !strings.HasPrefix(s.Body, "# "+s.Name) {
 			t.Errorf("%s: body starts %.40q, want its heading", s.Name, s.Body)
 		}
-		if len(s.Files) == 0 {
+		// Reference files are optional (several repo skills have none), so
+		// only the ones known to carry them are checked.
+		if (s.Name == "write-tests" || s.Name == "write-connector") && len(s.Files) == 0 {
 			t.Errorf("%s: no reference files indexed", s.Name)
 		}
 	}

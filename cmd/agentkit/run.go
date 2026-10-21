@@ -77,6 +77,9 @@ func (p *printer) event(path string, ev harness.Event) {
 		}
 		p.calls[fmt.Sprint(path, ev.Call)] = ev.ToolUse.Name
 		p.line("→ %s %s", ev.ToolUse.Name, ev.ToolUse.Input)
+	case harness.EventToolPolicy:
+		d := ev.Decision
+		p.line("! %s: %s by %s/%s: %s", ev.ToolUse.Name, d.Action, d.Policy, d.Rule, d.Reason)
 	case harness.EventToolDone:
 		name := p.calls[fmt.Sprint(path, ev.Call)]
 		status := ""

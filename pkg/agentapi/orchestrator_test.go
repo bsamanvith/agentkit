@@ -23,9 +23,9 @@ type countingRuns struct {
 	stopped atomic.Bool
 }
 
-func (c *countingRuns) Start(ctx context.Context, conv string, msg llm.Message) (*runner.Execution, error) {
+func (c *countingRuns) Start(ctx context.Context, conv string, msg llm.Message, opts agentapi.StartOptions) (*runner.Execution, error) {
 	c.started.Add(1)
-	return rewrap(c.rn.Run(ctx, conv, msg, runner.Interactive()))
+	return rewrap(c.rn.Run(ctx, conv, msg, append(opts.RunOptions(), runner.Interactive())...))
 }
 
 func (c *countingRuns) Resume(ctx context.Context, id string) (*runner.Execution, error) {

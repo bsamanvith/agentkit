@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/policy"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 )
 
@@ -53,7 +54,7 @@ func isCancel(err error) bool {
 func (r *run) runTools(ctx context.Context, turn int, uses []llm.ToolUse) ([]toolCall, error) {
 	n := len(uses)
 	calls := make([]toolCall, n)
-	events := make(chan toolEvent, 2*n) // at most a start and a done per call
+	events := make(chan toolEvent, 4*n) // at most a start, a policy, a flag and a done per call
 	sem := make(chan struct{}, r.h.cfg.maxParallel)
 
 	toolCtx, stop := context.WithCancel(ctx)
@@ -88,7 +89,7 @@ func (r *run) runTools(ctx context.Context, turn int, uses []llm.ToolUse) ([]too
 			go func() {
 				defer wg.Done()
 				defer func() { <-sem }()
-				r.h.call(toolCtx, stop, turn, i, u, r.kindOf(u.Name), &calls[i], events)
+				r.h.call(toolCtx, stop, turn, i, u, r.toolDef(u.Name), r.policy, &calls[i], events)
 			}()
 		}
 	}()
@@ -123,8 +124,9 @@ func (r *run) runTools(ctx context.Context, turn int, uses []llm.ToolUse) ([]too
 }
 
 // call runs one tool call, which holds a slot, on its own goroutine. It always
-// sends exactly one done event, after the start event.
-func (h *Harness) call(ctx context.Context, stop context.CancelFunc, turn, i int, u llm.ToolUse, kind tool.Kind, out *toolCall, events chan<- toolEvent) {
+// sends exactly one done event, after the start event and the policy's.
+func (h *Harness) call(ctx context.Context, stop context.CancelFunc, turn, i int, u llm.ToolUse, def tool.Definition, pol *policy.Policy, out *toolCall, events chan<- toolEvent) {
+	kind, _ := def.Class()
 	out.rec = ToolRecord{ToolUseID: u.ID, Name: u.Name, Kind: kind}
 	defer func() {
 		if v := recover(); v != nil {
@@ -152,7 +154,13 @@ func (h *Harness) call(ctx context.Context, stop context.CancelFunc, turn, i int
 	events <- toolEvent{ev: Event{Kind: EventToolStart, Turn: turn, At: start, Call: i, ToolUse: cloneUse(u)}}
 
 	hooked := cloneUse(u) // hooks may scribble on their copy
-	res, err := h.invoke(ctx, hooked, bytes.Clone(u.Input))
+	var res llm.ToolResult
+	var err error
+	if refused, ok := h.decide(turn, i, u, def, pol, events); ok {
+		res = refused
+	} else {
+		res, err = h.invoke(ctx, hooked, bytes.Clone(u.Input))
+	}
 	if err != nil {
 		out.err = err
 		out.result = errorResult(u.ID, err)
@@ -165,6 +173,35 @@ func (h *Harness) call(ctx context.Context, stop context.CancelFunc, turn, i int
 	}
 	out.rec.Duration = h.cfg.clock.Now().Sub(start)
 	out.rec.IsError = out.result.IsError
+}
+
+// decide applies the run's policy to a call: it sends the decision's events
+// and, for a call that must not run, returns the error result the model sees
+// and true.
+func (h *Harness) decide(turn, i int, u llm.ToolUse, def tool.Definition, pol *policy.Policy, events chan<- toolEvent) (llm.ToolResult, bool) {
+	if pol == nil {
+		return llm.ToolResult{}, false
+	}
+	toolset := ""
+	if h.cfg.toolsetOf != nil {
+		toolset = h.cfg.toolsetOf(u.Name)
+	}
+	d := pol.Decide(def, toolset)
+	if d.Action == policy.Allow {
+		return llm.ToolResult{}, false
+	}
+	ev := Event{Turn: turn, At: h.cfg.clock.Now(), Call: i, ToolUse: llm.ToolUse{ID: u.ID, Name: u.Name}, Decision: d}
+	ev.Kind = EventToolPolicy
+	events <- toolEvent{ev: ev}
+	switch d.Action {
+	case policy.Flag:
+		ev.Kind = EventToolFlagged
+		events <- toolEvent{ev: ev}
+		return llm.ToolResult{}, false
+	case policy.Approve:
+		return errorResult(u.ID, &PolicyError{Decision: d, NeedsApproval: true}), true
+	}
+	return errorResult(u.ID, &PolicyError{Decision: d}), true
 }
 
 // invoke runs the hooks and the tool. It returns an error only for failures

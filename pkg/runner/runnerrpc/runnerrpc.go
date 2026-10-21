@@ -31,6 +31,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/policy"
 	"github.com/bsamanvith/agentkit/pkg/rpc"
 	"github.com/bsamanvith/agentkit/pkg/runner"
 )
@@ -44,9 +45,14 @@ var ErrNoAgent = errors.New("agent not run here")
 
 // The service's methods.
 var (
-	agentsMethod  = rpc.Unary[struct{}, agentsResp]{Name: Service + "/Agents"}
-	runMethod     = rpc.Stream[runReq, event]{Name: Service + "/Run", Errors: codes}
-	compactMethod = rpc.Unary[compactReq, harness.Summary]{Name: Service + "/Compact", Errors: codes}
+	agentsMethod = rpc.Unary[struct{}, agentsResp]{Name: Service + "/Agents"}
+	runMethod    = rpc.Stream[runReq, event]{Name: Service + "/Run", Errors: codes}
+	// policyRunMethod is Run for a run with a tool policy. It is its own
+	// method so that a runner older than tool policies, which would ignore
+	// the field and run unrestricted, fails the run with
+	// [rpc.ErrUnknownMethod] instead: a policy fails closed.
+	policyRunMethod = rpc.Stream[runReq, event]{Name: Service + "/RunWithPolicy", Errors: codes}
+	compactMethod   = rpc.Unary[compactReq, harness.Summary]{Name: Service + "/Compact", Errors: codes}
 )
 
 // ErrCannotCompact means the server's agent cannot compact (it is not a
@@ -86,6 +92,9 @@ type runReq struct {
 	Message    *llm.Message  `json:"message,omitempty"`
 	Transcript []llm.Message `json:"transcript,omitempty"`
 	At         time.Time     `json:"at,omitzero"`
+	// ToolPolicy narrows the agent's for this run. A run with one is sent
+	// as policyRunMethod, which a runner older than it does not serve.
+	ToolPolicy *policy.Policy `json:"tool_policy,omitempty"`
 }
 
 // event is a [harness.Event] on the wire: only the fields its kind sets.
@@ -102,6 +111,7 @@ type event struct {
 	Prompt     *harness.TimedMessage `json:"prompt,omitempty"`
 	TurnRecord *harness.TurnRecord   `json:"turn_record,omitempty"`
 	Result     *result               `json:"result,omitempty"`
+	Decision   *policy.Decision      `json:"decision,omitempty"`
 }
 
 // result is a [harness.Result] on the wire. Final is derived on the way back
@@ -151,14 +161,14 @@ func Register(s *rpc.Server, agents map[string]runner.Agent) error {
 		}
 		return c.Compact(ctx, r.History)
 	})
-	runMethod.Handle(s, func(ctx context.Context, r runReq) iter.Seq2[event, error] {
+	run := func(ctx context.Context, r runReq) iter.Seq2[event, error] {
 		return func(yield func(event, error) bool) {
 			a := agents[r.Agent]
 			if a == nil {
 				yield(event{}, fmt.Errorf("%w: %q", ErrNoAgent, r.Agent))
 				return
 			}
-			in := harness.Input{Transcript: r.Transcript, At: r.At}
+			in := harness.Input{Transcript: r.Transcript, At: r.At, ToolPolicy: r.ToolPolicy}
 			if r.Message != nil {
 				in.Message = *r.Message
 			}
@@ -177,7 +187,9 @@ func Register(s *rpc.Server, agents map[string]runner.Agent) error {
 				}
 			}
 		}
-	})
+	}
+	runMethod.Handle(s, run)
+	policyRunMethod.Handle(s, run)
 	return nil
 }
 
@@ -221,13 +233,20 @@ func (a *agent) ShouldCompact(u llm.Usage) bool { return a.window.Full(u) }
 
 func (a *agent) Run(ctx context.Context, in harness.Input) iter.Seq2[harness.Event, error] {
 	return func(yield func(harness.Event, error) bool) {
-		req := runReq{Agent: a.name, Transcript: in.Transcript, At: in.At}
+		req := runReq{Agent: a.name, Transcript: in.Transcript, At: in.At, ToolPolicy: in.ToolPolicy}
 		if in.Message.Role != "" || len(in.Message.Content) > 0 {
 			m := in.Message
 			req.Message = &m
 		}
-		for w, err := range runMethod.Call(ctx, a.c.conn, req) {
+		method := runMethod
+		if req.ToolPolicy != nil {
+			method = policyRunMethod
+		}
+		for w, err := range method.Call(ctx, a.c.conn, req) {
 			if err != nil {
+				if req.ToolPolicy != nil && errors.Is(err, rpc.ErrUnknownMethod) {
+					err = fmt.Errorf("agent %q: the runner is too old to enforce the run's tool policy: %w", a.name, err)
+				}
 				yield(harness.Event{}, decodeFailure(err))
 				return
 			}
@@ -252,6 +271,10 @@ func toWire(ev harness.Event) (event, error) {
 	switch ev.Kind {
 	case harness.EventToolStart:
 		w.ToolUse, err = json.Marshal(ev.ToolUse)
+	case harness.EventToolPolicy, harness.EventToolFlagged:
+		w.ToolUse, err = json.Marshal(ev.ToolUse)
+		d := ev.Decision
+		w.Decision = &d
 	case harness.EventToolDone:
 		w.ToolResult, err = json.Marshal(ev.ToolResult)
 	case harness.EventRunDone:
@@ -287,6 +310,11 @@ func fromWire(w event) (harness.Event, error) {
 	if w.Result != nil {
 		r := w.Result.toResult()
 		ev.Result = &r
+	}
+	if w.Decision != nil {
+		ev.Decision = *w.Decision
+		// A decision's event names the call without its input.
+		ev.ToolUse = llm.ToolUse{ID: ev.ToolUse.ID, Name: ev.ToolUse.Name}
 	}
 	return ev, nil
 }

@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/policy"
 )
 
 // EventKind identifies an [Event].
@@ -11,8 +12,10 @@ import (
 // A run's events come in this order: one EventRunStart; then for each turn the
 // EventTextDeltas of the reply, an EventToolStart and EventToolDone for each
 // tool call (in any order between calls, but each call's start before its
-// done), and one EventTurnDone; and last one EventRunDone. A run that fails
-// ends with an error instead of EventRunDone.
+// done, and its EventToolPolicy and EventToolFlagged, if any, in between),
+// and one EventTurnDone; and last one EventRunDone. A run that fails ends with
+// an error instead of EventRunDone. Consumers must ignore kinds they do not
+// know: later versions add more.
 type EventKind uint8
 
 // The event kinds.
@@ -38,6 +41,14 @@ const (
 	EventTurnDone
 	// EventRunDone ends a successful run: Event.Result.
 	EventRunDone
+	// EventToolPolicy says what the run's tool policy ([WithToolPolicy])
+	// decided about a call, when it did not plainly allow it: Event.Call,
+	// Event.ToolUse (its ID and name, without the input) and Event.Decision.
+	// It comes after the call's EventToolStart and before its EventToolDone.
+	EventToolPolicy
+	// EventToolFlagged says a call the policy flagged is about to run, with
+	// the same fields as its EventToolPolicy, which comes first.
+	EventToolFlagged
 )
 
 func (k EventKind) String() string {
@@ -54,6 +65,10 @@ func (k EventKind) String() string {
 		return "turn_done"
 	case EventRunDone:
 		return "run_done"
+	case EventToolPolicy:
+		return "tool_policy"
+	case EventToolFlagged:
+		return "tool_flagged"
 	}
 	return "unknown"
 }
@@ -75,11 +90,15 @@ type Event struct {
 	// Call is the index of the tool call within its turn, for EventToolStart
 	// and EventToolDone.
 	Call int
-	// ToolUse is the call of EventToolStart.
+	// ToolUse is the call of EventToolStart; for EventToolPolicy and
+	// EventToolFlagged, its ID and name.
 	ToolUse llm.ToolUse
 	// ToolResult and Duration are those of EventToolDone.
 	ToolResult llm.ToolResult
 	Duration   time.Duration
+	// Decision is the policy's decision of EventToolPolicy and
+	// EventToolFlagged.
+	Decision policy.Decision
 
 	// Prompt is set for EventRunStart, TurnRecord for EventTurnDone and Result
 	// for EventRunDone. They are copies the consumer may keep.

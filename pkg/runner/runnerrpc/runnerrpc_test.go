@@ -15,6 +15,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
+	"github.com/bsamanvith/agentkit/pkg/policy"
 	"github.com/bsamanvith/agentkit/pkg/rpc"
 	"github.com/bsamanvith/agentkit/pkg/runner"
 	"github.com/bsamanvith/agentkit/pkg/runner/runnerrpc"
@@ -23,6 +24,36 @@ import (
 )
 
 var now = time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
+
+// A runner older than tool policies serves only Run, whose request it reads
+// without the policy. A run with a policy must not run there unrestricted:
+// it fails, and is not retried, without the agent running.
+func TestOldRunnerRefusesARunWithAPolicy(t *testing.T) {
+	t.Parallel()
+	type oldReq struct {
+		Agent string `json:"agent"`
+	}
+	ran := false
+	s := rpc.NewServer()
+	rpc.Stream[oldReq, struct{}]{Name: runnerrpc.Service + "/Run"}.Handle(s, func(context.Context, oldReq) iter.Seq2[struct{}, error] {
+		return func(func(struct{}, error) bool) { ran = true }
+	})
+	a := runnerrpc.NewClient(rpc.Pipe(s)).Agent("default", harness.ContextWindow{})
+
+	in := harness.Input{Message: llm.User(llm.Text{Text: "x"}), ToolPolicy: &policy.Policy{Default: policy.Deny}}
+	_, err := collect(a, in)
+	if !errors.Is(err, rpc.ErrUnknownMethod) || llm.IsRetryable(err) {
+		t.Fatalf("err = %v, want a non-retryable rpc.ErrUnknownMethod", err)
+	}
+	if ran {
+		t.Fatal("the old runner ran a run whose policy it cannot enforce")
+	}
+
+	// Without a policy, the old runner still serves runs.
+	if _, err := collect(a, harness.Input{Message: llm.User(llm.Text{Text: "x"})}); err != nil || !ran {
+		t.Fatalf("run without a policy: err = %v, ran = %v", err, ran)
+	}
+}
 
 // newHarness returns an agent on the fixture tools that plays replies.
 func newHarness(t *testing.T, replies ...llmtest.Reply) *harness.Harness {
@@ -78,12 +109,28 @@ func script() []llmtest.Reply {
 	}
 }
 
-// A remote agent streams exactly the events of the same agent run locally.
+// A remote agent streams exactly the events of the same agent run locally,
+// and the input's tool policy reaches it: its decisions are in the events.
 func TestRemoteRunMatchesLocal(t *testing.T) {
 	t.Parallel()
 	history := harness.Transcript{llm.User(llm.Text{Text: "earlier"}), llm.Assistant(llm.Text{Text: "ok"})}
 	in := harness.Input{Message: llm.User(llm.Text{Text: "echo hi twice"}), Transcript: history, At: now}
+	t.Run("without a policy", func(t *testing.T) {
+		t.Parallel()
+		matchesLocal(t, in, harness.EventToolStart, harness.EventToolDone, harness.EventTurnDone, harness.EventRunDone)
+	})
+	t.Run("with a policy", func(t *testing.T) {
+		t.Parallel()
+		in := in
+		in.ToolPolicy = &policy.Policy{Name: "run", Rules: []policy.Rule{
+			{Match: policy.Match{Tools: []string{"echo"}}, Action: policy.Flag},
+			{Match: policy.Match{Tools: []string{"fail"}}, Action: policy.Deny},
+		}, Default: policy.Allow}
+		matchesLocal(t, in, harness.EventToolPolicy, harness.EventToolFlagged)
+	})
+}
 
+func matchesLocal(t *testing.T, in harness.Input, covered ...harness.EventKind) {
 	want, err := collect(newHarness(t, script()...), in)
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +153,7 @@ func TestRemoteRunMatchesLocal(t *testing.T) {
 		}
 		return ks
 	}
-	for _, k := range []harness.EventKind{harness.EventToolStart, harness.EventToolDone, harness.EventTurnDone, harness.EventRunDone} {
+	for _, k := range covered {
 		if !slices.Contains(kinds(got), k) {
 			t.Errorf("no %s event: the comparison did not cover it", k)
 		}

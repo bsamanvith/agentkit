@@ -12,6 +12,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/flow"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/policy"
 	"github.com/bsamanvith/agentkit/pkg/store"
 	"github.com/bsamanvith/agentkit/pkg/tenancy"
 	"github.com/bsamanvith/agentkit/pkg/tool"
@@ -35,6 +36,7 @@ type RunOption func(*runConfig)
 
 type runConfig struct {
 	flush       int
+	policy      *policy.Policy
 	interactive bool
 	err         error
 }
@@ -64,6 +66,23 @@ func FlushEvery(n int) RunOption {
 		if n < 1 {
 			c.err = fmt.Errorf("%w: flush every %d turns", ErrInvalidConfig, n)
 		}
+	}
+}
+
+// ToolPolicy narrows the tool policy of the conversation's agent for this
+// run and every resume of it ([harness.Input.ToolPolicy]): each tool call gets
+// the stricter of the two decisions. It is stored with the run's prompt; a
+// resume whose stored record cannot be read fails rather than run without it.
+// An invalid p ([policy.Policy.Validate]) makes Run give [ErrInvalidConfig].
+func ToolPolicy(p policy.Policy) RunOption {
+	return func(c *runConfig) {
+		if err := p.Validate(); err != nil {
+			c.err = fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+			return
+		}
+		// Not p: the option may be given to runs that run concurrently.
+		own := p.Clone()
+		c.policy = &own
 	}
 }
 
@@ -107,7 +126,7 @@ func (r *Runner) Run(ctx context.Context, conversationID string, msg llm.Message
 	}
 	msg = msg.Clone()
 	return x.execution(ctx, func(ctx context.Context, emit func(Event) bool) outcome {
-		return x.chat(ctx, agent, &msg, c.flush, emit)
+		return x.chat(ctx, agent, &msg, c.flush, c.policy, emit)
 	}), nil
 }
 
@@ -323,7 +342,7 @@ func (r *Runner) resume(ctx context.Context, runID string, c resumeConfig) (*Exe
 			return nil, fmt.Errorf("agent of conversation %q: %w", run.ConversationID, err)
 		}
 		body = func(x *exec) func(context.Context, func(Event) bool) outcome {
-			return func(ctx context.Context, emit func(Event) bool) outcome { return x.chat(ctx, agent, nil, 0, emit) }
+			return func(ctx context.Context, emit func(Event) bool) outcome { return x.chat(ctx, agent, nil, 0, nil, emit) }
 		}
 	}
 
@@ -770,9 +789,9 @@ func (x *exec) keepLease(ctx context.Context, cancel context.CancelCauseFunc) (s
 }
 
 // chat runs a chat run's agent: a new run if msg is set, a resume otherwise.
-// flush is the run's FlushEvery, 0 for the runner's; a resume reads it from
-// the run's prompt entry.
-func (x *exec) chat(ctx context.Context, agent Agent, msg *llm.Message, flush int, emit func(Event) bool) outcome {
+// flush is the run's FlushEvery, 0 for the runner's, and pol its ToolPolicy;
+// a resume reads them from the run's prompt entry.
+func (x *exec) chat(ctx context.Context, agent Agent, msg *llm.Message, flush int, pol *policy.Policy, emit func(Event) bool) outcome {
 	r, conv := x.r, x.run.ConversationID
 	v, err := r.cache.load(ctx, r.store, conv)
 	if err != nil {
@@ -807,9 +826,14 @@ func (x *exec) chat(ctx context.Context, agent Agent, msg *llm.Message, flush in
 			// The run had answered; only its completion was not stored.
 			return outcome{kind: outCompleted}
 		}
-		flush = v.flush
+		if v.policyErr != nil {
+			// Its tool policy may be narrower than the agent's: never
+			// run without it.
+			return outcome{kind: outFailed, err: fmt.Errorf("reading the run's tool policy: %w", v.policyErr)}
+		}
+		flush, pol = v.flush, v.policy
 	}
-	t := &turns{x: x, v: &v, every: flush, emit: emit}
+	t := &turns{x: x, v: &v, every: flush, policy: pol, emit: emit}
 	if flush == 0 {
 		t.every = r.flush
 	}
@@ -900,6 +924,9 @@ type turns struct {
 	failed bool
 	// prompted is set once the run's prompt is stored.
 	prompted bool
+	// policy is the run's ToolPolicy, given to the agent on every attempt
+	// and stored with the prompt.
+	policy *policy.Policy
 }
 
 // run runs the agent, streaming its events. flush is recorded with the
@@ -907,6 +934,7 @@ type turns struct {
 func (t *turns) run(ctx context.Context, agent Agent, in harness.Input, flush int) outcome {
 	x := t.x
 	var result *harness.Result
+	in.ToolPolicy = t.policy
 	for ev, err := range agent.Run(ctx, in) {
 		if err != nil {
 			out := outcome{kind: outFailed, err: err}
@@ -926,7 +954,7 @@ func (t *turns) run(ctx context.Context, agent Agent, in harness.Input, flush in
 					Kind:     store.KindPrompt,
 					Messages: []llm.Message{ev.Prompt.Message},
 					RunID:    x.run.ID,
-					Record:   mustJSON(Record{Prompt: &PromptRecord{At: ev.Prompt.At, FlushEvery: flush}}),
+					Record:   mustJSON(Record{Prompt: &PromptRecord{At: ev.Prompt.At, FlushEvery: flush, ToolPolicy: t.policy}}),
 				})
 				if err != nil {
 					t.failed = true

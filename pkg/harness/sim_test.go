@@ -13,6 +13,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
+	"github.com/bsamanvith/agentkit/pkg/policy"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 )
 
@@ -144,7 +145,22 @@ func genScenario(seed uint64, scribbler bool) scenario {
 		}))
 	}
 
+	// The tool policy: the sim's tools are unclassified (write/medium).
+	if rng.IntN(3) == 0 {
+		sc.opts = append(sc.opts, harness.WithToolPolicy(policy.Policy{Rules: []policy.Rule{
+			{Match: policy.Match{Tools: []string{"fail"}}, Action: policy.Deny},
+			{Match: policy.Match{Tools: []string{"ok"}}, Action: policy.Flag},
+			{Match: policy.Match{Tools: []string{"boom"}}, Action: policy.Approve},
+		}, Default: policy.Allow}, nil))
+	}
+	var narrow *policy.Policy
+	if rng.IntN(5) == 0 {
+		p := policy.MustPreset(policy.Presets()[rng.IntN(len(policy.Presets()))])
+		narrow = &p
+	}
+
 	// What the conversation starts from.
+	defer func() { sc.in.ToolPolicy = narrow }()
 	q := harness.UserText("question")
 	earlier := harness.Transcript{q, llm.Assistant(simOpaque, llm.Text{Text: "earlier answer"})}
 	switch rng.IntN(4) {

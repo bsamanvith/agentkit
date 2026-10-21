@@ -2,7 +2,7 @@
 id: T013
 title: write-tests skill
 epic: E02
-status: in-progress
+status: done
 depends_on: [T010, T017]
 ---
 
@@ -37,8 +37,8 @@ Lesson from T022 (`pkg/harness`): its first tests had one test per criterion and
 
 ## Acceptance criteria
 
-- [ ] Dry run on T018 (MCP stdio server): test count equals criteria count ± documented extras (error cases, regressions). Recorded in Notes.
-- [ ] Dry run tests pass `-race -shuffle=on -count=20`.
+- [x] Dry run on T018 (MCP stdio server): test count equals criteria count ± documented extras (error cases, regressions). Recorded in Notes.
+- [x] Dry run tests pass `-race -shuffle=on -count=20`.
 - [x] Dry run on a package with concurrency or hostile input: the invariants are listed and checked after every run through one helper, a seeded simulation and fuzz target exist, and the mutation self-check was run with no survivor. Recorded in Notes with what the first round missed.
 
 ## Notes
@@ -79,3 +79,29 @@ Lesson from T022 (`pkg/harness`): its first tests had one test per criterion and
     - the mutation driver counts timeouts and races and uses a private directory;
     - note catches that are timing luck;
     - how to handle a real bug found while testing.
+- 2026-10-21, **criteria 1 and 2, on T018 (`pkg/mcp/server`), rerun as planned above.**
+  - Setup: in a scratch copy, the package's tests and `testdata/` were deleted. A separate Claude Code session (`claude -p`, with only the repo, T018's file and the skill) wrote them again. Every round restored the non-test code byte for byte. Nothing was pushed, and the tests on `main` are unchanged.
+  - **Round 1** ran out of its 50-minute limit during the mutation step and printed no report.
+    - It had written 15 tests and a fuzz target.
+    - My `-race -shuffle=on -count=20` run of its tests **failed once**, in `TestMaxInFlight`: "the held call ended before it ran: ... Service Unavailable". With `WithMaxInFlight(1)`, a slot is released just after the response is written. So the connect's own request can still hold the only slot when the held call arrives.
+    - Skill changes: step 8 runs step 10's `-count=20` before planting; plants run with `-count=1` (`-race` only for locking or sharing plants); each result is written down as soon as it is known.
+  - **Round 2** (90-minute limit) finished.
+    - 18 `Test` functions: 10 for the criteria and 8 documented extras, including a seeded simulation and its case-mix check.
+    - Six invariants, checked through `rig.check`.
+    - 39 plants, all caught.
+    - Its own `-count=20` passed. **Mine failed once in `TestMaxInFlight`**, with the same race in another form ("gave up waiting for the tool to start"); T018's own test avoids it with a cap of 2.
+    - Skill change: step 6 says a test of a limit must not share the limit with its own setup.
+  - **Round 3**, with that change, is the result for both criteria:
+    - **Criterion 1.** 15 `Test` functions:
+      - 10 map to the 8 automated criteria. Two criteria name two tests each, as in T018: `TestRouting` with `TestNewRejects`, and `TestStatelessConcurrentClients` with `TestStateful`.
+      - 5 documented extras, each a behavior in T018's Scope or public API that no criterion names: `TestListing`, `TestAccess`, `TestCallTimeout`, `TestMaxInFlight` and `TestMaxBodyBytes`.
+      - Plus `FuzzServeHTTP` and `BenchmarkCallTool`. T018's own suite also has 15.
+    - **Invariants**, checked in every test through `helpers_test.go`:
+      - every listing matches its registry's;
+      - every result is well formed, with no stack trace;
+      - no tool call outlives the test;
+      - no tool ran more often than it was called.
+    - **Mutation check.** 43 plants, all caught except one equivalent mutant: an `isError` sent to a client that has already left, which nothing can observe.
+    - **Criterion 2.** `go test -race -shuffle=on -count=20 ./pkg/mcp/server/` passed in the session (189 s), and **passed again in my own independent run** (152 s, load average about 40 on 4 CPUs).
+  - **Found out of scope** by round 3: `route` in `pkg/mcp/server/server.go` has a branch for a path equal to the base (`/mcp` with no slash), but does not clear `rest` there, so `GET /mcp` answers 404 instead of the listing. Only `GET {base}/` is documented. Either the branch is dead or it has a bug; that is for T018's owner.
+

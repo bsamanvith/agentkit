@@ -101,9 +101,10 @@ func (c runnersConfig) dispatched() []string {
 
 // router builds the pools and routes of c for agents (whose isolations,
 // parsed, are in isolations), and checks that every agent's chats and
-// background runs have a pool isolated enough. With no pools it returns a
-// nil router: the server's default.
-func (c runnersConfig) router(agents []agentDef, isolations map[string]pool.Isolation) (*pool.Router, error) {
+// background runs have a pool isolated enough; legacy says the agents come
+// from the one-agent form (serveConfig.legacy), for the names in errors.
+// With no pools it returns a nil router: the server's default.
+func (c runnersConfig) router(agents []agentDef, isolations map[string]pool.Isolation, legacy bool) (*pool.Router, error) {
 	fail := func(format string, args ...any) (*pool.Router, error) {
 		return nil, fmt.Errorf("%w.%s", errRunners, fmt.Sprintf(format, args...))
 	}
@@ -113,7 +114,7 @@ func (c runnersConfig) router(agents []agentDef, isolations map[string]pool.Isol
 		}
 		for _, a := range agents {
 			if iso := isolations[a.Name]; iso > pool.Process {
-				return nil, fmt.Errorf("agents.%s.isolation: %s needs a %s pool in runners.pools (%s pools come with %s)", a.Name, iso, iso, iso, poolTask[iso])
+				return nil, fmt.Errorf("%s.isolation: %s needs a %s pool in runners.pools (%s pools come with %s)", a.label(legacy), iso, iso, iso, poolTask[iso])
 			}
 		}
 		return nil, nil
@@ -173,7 +174,10 @@ func (c runnersConfig) router(agents []agentDef, isolations map[string]pool.Isol
 				return fail("routes[%d].agents: %q is not one of the agents", i, name)
 			}
 		}
-		if r.Agents != nil {
+		if r.Agents != nil && len(r.Agents) == 0 {
+			return fail("routes[%d].agents: empty, so the route takes no run; leave it out for every agent", i)
+		}
+		if len(r.Agents) > 0 {
 			when = append(when, pool.Agents(r.Agents...))
 		}
 		if r.Isolation != "" {
@@ -197,8 +201,8 @@ func (c runnersConfig) router(agents []agentDef, isolations map[string]pool.Isol
 			if _, err := rt.Route(req); err != nil {
 				_ = rt.Close()
 				iso := isolations[a.Name]
-				return nil, fmt.Errorf("agents.%s.isolation: no pool in runners runs its %s runs with %s isolation (%s pools come with %s)",
-					a.Name, map[bool]string{true: runsChat, false: runsBackground}[interactive], iso, iso, poolTask[iso])
+				return nil, fmt.Errorf("%s.isolation: no pool in runners runs its %s runs with %s isolation (%s pools come with %s)",
+					a.label(legacy), map[bool]string{true: runsChat, false: runsBackground}[interactive], iso, iso, poolTask[iso])
 			}
 		}
 	}

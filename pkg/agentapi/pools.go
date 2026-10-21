@@ -27,7 +27,7 @@ var ErrNoRunner = errors.New("the server's runs are not run by its runner (WithR
 func (s *Server) admitPool(a *agent, p runner.Placement) (name string, release func(), status int, apiErr *Error) {
 	pl, err := s.router.Route(pool.Request{Placement: p, Agent: a.Name, Isolation: a.Isolation})
 	if err != nil {
-		return "", nil, http.StatusConflict, &Error{Code: CodeInvalidRequest, Message: "this server has no pool isolated enough for the agent: " + err.Error()}
+		return "", nil, http.StatusConflict, noPool(err)
 	}
 	slots := s.router.Slots(pl.Name())
 	if slots == nil {
@@ -41,6 +41,11 @@ func (s *Server) admitPool(a *agent, p runner.Placement) (name string, release f
 		}
 	}
 	return pl.Name(), sync.OnceFunc(slots.Release), 0, nil
+}
+
+// noPool is the error of a run no pool may run ([pool.ErrNoPool]).
+func noPool(err error) *Error {
+	return &Error{Code: CodeInvalidRequest, Message: "this server has no pool isolated enough for the agent: " + err.Error()}
 }
 
 // refuse answers a run admitPool refused.

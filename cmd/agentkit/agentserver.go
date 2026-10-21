@@ -108,7 +108,8 @@ func (w *agentWiring) serve(ctx context.Context, rt *component.Runtime, ln net.L
 	// A dispatcher per pool that takes background runs: each claims its
 	// pool's lane while the pool has a free slot.
 	var dispatchers []*runner.Recovery
-	for _, name := range runners.dispatched() {
+	dispatched := runners.dispatched()
+	for _, name := range dispatched {
 		rc, err := agents.Dispatcher(st.admin, name)
 		if err != nil {
 			ln.Close()
@@ -126,7 +127,7 @@ func (w *agentWiring) serve(ctx context.Context, rt *component.Runtime, ln net.L
 	rctx, stopRecovery := context.WithCancel(ctx)
 	var recovered sync.WaitGroup
 	for i, rc := range dispatchers {
-		name := runners.dispatched()[i]
+		name := dispatched[i]
 		recovered.Go(func() {
 			_ = rc.Run(rctx, func(r runner.Report, err error) {
 				switch {
@@ -374,7 +375,7 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 	if admin != nil {
 		authOpts = append(authOpts, agentapi.WithToolsetAdmin(admin))
 	}
-	rt, err := cfg.Runners.router(cfg.Agents, isolations)
+	rt, err := cfg.Runners.router(cfg.Agents, isolations, cfg.legacy)
 	if err != nil {
 		return fail(err)
 	}

@@ -45,7 +45,7 @@ After T104 every run goes through a router, but two `process` pools behave the s
 - **429 with the existing code `over_capacity`**, not a new code: clients (agentclient, `agentkit` exit code 3) already treat it as retryable; the message names the pool.
 - **Lane = pool name.** Runs from before pools (lane `""`, pool `""`) are claimed by the default pool's dispatcher and routed by the rules as before.
 - **No dispatcher for chat-only pools**, so no dispatcher holds a chat slot even for the moment of an empty `ClaimNext`. A pool that takes both chats and background runs (e.g. the default with a limit) shares its slots: a chat can get 429 for the instant the dispatcher holds a freed slot while finding its lane empty.
-- **Flows:** a flow run's agent steps run with the flow run, not routed like chats (one run, one lease, one slot; a step waiting on a full chat pool would hold the flow's slot). Flow runs themselves are in no pool yet (decisions are not admitted to a pool); recorded in E20.
+- **Flows:** a flow run's agent steps run with the flow run, not routed like chats (one run, one lease, one slot; a step waiting on a full chat pool would hold the flow's slot). Flow runs themselves are in no pool yet (neither a decision nor a resume admits one to a pool); recorded in E20.
 - **Metrics:** there is no metrics system in the repo yet; the pool is on every run log line, which is what a log-based counter reads. Counting per pool in metrics waits for one (owner question).
 - A run whose stored pool has been removed from the config is routed afresh on resume; its stored `pool` keeps the old name. A queued run in the lane of a removed pool waits until a dispatcher serves that lane again.
 - Default limit: none (`limit` 0); a pool with no limit dispatches 4 runs at once, as before.
@@ -62,6 +62,7 @@ Each plant was run against the package named, then restored. All but one caught.
 | `drive` never frees the pool slot | `agentapi.TestFullChatPoolRefusesAChat` |
 | `Enqueue` leaves the run in the default lane | `agentapi.TestFullBackgroundPoolNeverDelaysAChat` |
 | `Dispatcher` without the pool's slots | `agentapi.TestFullBackgroundPoolNeverDelaysAChat` |
+| resume admits a flow run to its agent's pool | `agentapi.TestResumedFlowRunTakesNoPoolSlot` |
 | `Route` ignores the placed pool | `pool.TestRouterSendsAPlacedRunBack` |
 | `Route` takes a placed pool too weak for the agent | `pool.TestRouterSendsAPlacedRunBack` |
 | `WithLimit` accepts 0 | `pool.TestRouterLimits` |

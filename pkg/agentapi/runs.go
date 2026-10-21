@@ -642,8 +642,17 @@ func (s *Server) resume(ctx context.Context, w http.ResponseWriter, r *http.Requ
 		s.unavailable(w, apiErr)
 		return
 	}
+	// A flow run is in no pool: its agent steps run with it, as when it is
+	// decided (decideRun).
+	_, err = s.store.Load(ctx, run.ID)
+	isFlow := err == nil
+	if err != nil && !errors.Is(err, flow.ErrNotFound) {
+		s.release()
+		s.internal(w, "reading run "+quote(run.ID)+"'s checkpoint", err)
+		return
+	}
 	freePool := func() {}
-	if a != nil { // else the runner refuses the run: its agent is not served
+	if a != nil && !isFlow { // else the runner refuses the run (its agent is not served), or runs a flow
 		var (
 			status int
 			apiErr *Error

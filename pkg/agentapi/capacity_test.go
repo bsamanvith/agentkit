@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
+	"github.com/bsamanvith/agentkit/pkg/flow"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/runner"
 	"github.com/bsamanvith/agentkit/pkg/runner/pool"
@@ -63,9 +65,10 @@ type poolsRig struct {
 	mem   agentapi.Store
 	ctx   context.Context // the rig's tenant
 	queue *runner.Recovery
+	rt    *pool.Router
 }
 
-func newPoolsRig(t *testing.T) *poolsRig {
+func newPoolsRig(t *testing.T, api ...agentapi.Option) *poolsRig {
 	t.Helper()
 	work, talk := echo(t), echo(t)
 	work.gate = make(chan struct{}, 8)
@@ -84,7 +87,7 @@ func newPoolsRig(t *testing.T) *poolsRig {
 			{Name: "worker", Harness: agentHarness(t, work, tools, harness.WithClock(clk))},
 			{Name: "talk", Harness: agentHarness(t, talk, tools, harness.WithClock(clk))},
 		},
-		api: []agentapi.Option{agentapi.WithRouter(rt), agentapi.WithTenant(func(*http.Request) string { return "acme" })},
+		api: append([]agentapi.Option{agentapi.WithRouter(rt), agentapi.WithTenant(func(*http.Request) string { return "acme" })}, api...),
 	})
 	acme, err := tenancy.NewTenant("acme")
 	if err != nil {
@@ -94,7 +97,7 @@ func newPoolsRig(t *testing.T) *poolsRig {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &poolsRig{rig: r, work: work, mem: mem, ctx: tenancy.With(t.Context(), acme), queue: queue}
+	return &poolsRig{rig: r, work: work, mem: mem, ctx: tenancy.With(t.Context(), acme), queue: queue, rt: rt}
 }
 
 // enqueue queues a background run of the worker on a new conversation.
@@ -224,5 +227,51 @@ func TestRunPoolIsStoredAndReturned(t *testing.T) {
 	}
 	if got := p.getRun(queued.ID); got.Pool != "background" {
 		t.Errorf("GET /v1/runs/%s gives pool %q, want background", queued.ID, got.Pool)
+	}
+}
+
+// T105: a flow run is in no pool, so resuming one never waits on, or is
+// refused by, the pool its conversation's agent would be routed to: an
+// interrupted flow run resumes while the background pool is full.
+func TestResumedFlowRunTakesNoPoolSlot(t *testing.T) {
+	t.Parallel()
+	var first atomic.Bool
+	wait := flow.Func("wait", func(ctx context.Context, st *flow.State) error {
+		if first.CompareAndSwap(false, true) {
+			<-ctx.Done()
+			return ctx.Err()
+		}
+		return flow.Set(st, "wait", true)
+	})
+	p := newPoolsRig(t, agentapi.WithRunnerOptions(runner.WithFlows(func(context.Context, string) (flow.Step, error) {
+		return flow.Sequence("f", wait), nil
+	})))
+	conv := p.create(`{"agent":"worker"}`)
+	x, err := p.srv.Runner().RunFlow(p.ctx, conv.ID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stopped := make(chan struct{})
+	go func() { defer close(stopped); _, _ = x.Wait() }()
+	eventually(t, "the flow at its step", first.Load)
+	if _, err := p.srv.Runner().Interrupt(p.ctx, x.Run.ID); err != nil {
+		t.Fatalf("Interrupt: %v", err)
+	}
+	<-stopped
+
+	// The background pool full, as a background run holds its slot.
+	bg := p.rt.Slots("background")
+	if !bg.TryAcquire() {
+		t.Fatal("the background pool is full already")
+	}
+	defer bg.Release()
+
+	resp, body := p.do("POST", "/v1/runs/"+x.Run.ID+"/resume", "", "Accept", "application/json")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("resuming the flow run with the background pool full = %d %s, want 200", resp.StatusCode, body)
+	}
+	eventually(t, "the flow run completed", func() bool { return p.stored(x.Run.ID).Status == store.StatusCompleted })
+	if n := bg.InUse(); n != 1 {
+		t.Errorf("the background pool has %d slots taken after the flow run, want 1 (the test's)", n)
 	}
 }

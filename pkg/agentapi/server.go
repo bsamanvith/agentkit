@@ -643,7 +643,7 @@ func (s *Server) startError(w http.ResponseWriter, err error, busy string) {
 	case errors.Is(err, flow.ErrShapeChanged):
 		writeError(w, http.StatusConflict, &Error{Code: CodeShapeChanged, Message: err.Error()})
 	case errors.Is(err, pool.ErrNoPool):
-		writeError(w, http.StatusConflict, &Error{Code: CodeInvalidRequest, Message: "this server has no pool isolated enough for the agent: " + err.Error()})
+		writeError(w, http.StatusConflict, noPool(err))
 	case errors.Is(err, runner.ErrNoFlows):
 		writeError(w, http.StatusConflict, &Error{Code: CodeInvalidRequest, Message: "this server runs no flows"})
 	case errors.Is(err, runner.ErrShutdown):

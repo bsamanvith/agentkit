@@ -97,6 +97,7 @@ func TestServeRejectsBadSetup(t *testing.T) {
 		// Runner pools (T105).
 		"runners: unknown field":          {env: map[string]string{envComponents: "agent"}, config: `{"runners":{"pool":[]}}`, code: 1, says: "pool"},
 		"runners: route to unknown pool":  {env: map[string]string{envComponents: "agent"}, config: `{"runners":{"pools":[{"name":"chat"}],"routes":[{"pool":"chta","runs":"chat"}]}}`, code: 1, says: `runners.routes[0].pool: "chta"`},
+		"runners: route to no agents":     {env: map[string]string{envComponents: "agent"}, config: `{"runners":{"pools":[{"name":"chat"}],"routes":[{"pool":"chat","agents":[]}]}}`, code: 1, says: `runners.routes[0].agents: empty`},
 		"runners: unknown default":        {env: map[string]string{envComponents: "agent"}, config: `{"runners":{"pools":[{"name":"chat"}],"default":"bg"}}`, code: 1, says: `runners.default: "bg"`},
 		"runners: no default of two":      {env: map[string]string{envComponents: "agent"}, config: `{"runners":{"pools":[{"name":"a"},{"name":"b"}]}}`, code: 1, says: "runners.default"},
 		"runners: routes without pools":   {env: map[string]string{envComponents: "agent"}, config: `{"runners":{"routes":[{"pool":"chat"}]}}`, code: 1, says: "runners.pools"},

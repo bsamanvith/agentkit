@@ -67,7 +67,7 @@ func TestServeRoutesRunsByConfig(t *testing.T) {
 
 	cfg := loadConfig(t, routedConfig)
 	isolations := map[string]pool.Isolation{"plain": pool.Process, "search": pool.Process, "batch": pool.Process}
-	rt, err := cfg.Runners.router(cfg.Agents, isolations)
+	rt, err := cfg.Runners.router(cfg.Agents, isolations, cfg.legacy)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestServeRoutesRunsByConfig(t *testing.T) {
 
 	// No runners section: the one default pool, dispatched as before.
 	none := loadConfig(t, `{"agents": [{"name": "plain"}]}`)
-	if rt, err := none.Runners.router(none.Agents, map[string]pool.Isolation{"plain": pool.Process}); err != nil || rt != nil {
+	if rt, err := none.Runners.router(none.Agents, map[string]pool.Isolation{"plain": pool.Process}, none.legacy); err != nil || rt != nil {
 		t.Errorf("router of no runners = %v, %v; want none (the server's default)", rt, err)
 	}
 	if got := none.Runners.dispatched(); !slices.Equal(got, []string{pool.DefaultName}) {

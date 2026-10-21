@@ -42,11 +42,11 @@ func newTwoAgents(t *testing.T, api ...agentapi.Option) twoAgents {
 	agents := []agentapi.Agent{
 		{
 			Name: "plain", Description: "Answers plainly.", Model: wire.Model{ID: "model-plain"}, System: "You are plain.", Toolsets: []string{"a"},
-			Harness: agentHarness(t, plain, sets["a"], harness.WithSystem("You are plain."), harness.WithNow(clk.Now)),
+			Harness: agentHarness(t, plain, sets["a"], harness.WithSystem("You are plain."), harness.WithClock(clk)),
 		},
 		{
 			Name: "search", Description: "Searches.", Model: wire.Model{ID: "model-search", Effort: "low"}, System: "You search.", Toolsets: []string{"a", "b"}, PrefixToolNames: true,
-			Harness: agentHarness(t, search, merged, harness.WithSystem("You search."), harness.WithNow(clk.Now)),
+			Harness: agentHarness(t, search, merged, harness.WithSystem("You search."), harness.WithClock(clk)),
 		},
 	}
 	toolsets := agentapi.WithToolsets(

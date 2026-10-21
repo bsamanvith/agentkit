@@ -31,7 +31,7 @@ func (f failingCompact) Compact(context.Context, harness.Transcript) (harness.Su
 
 func windowHarness(t *testing.T, w *world, cw harness.ContextWindow) *harness.Harness {
 	t.Helper()
-	h, err := harness.New(w.model, w.tools, harness.WithNow(w.clk.Now), harness.WithContextWindow(cw))
+	h, err := harness.New(w.model, w.tools, harness.WithClock(w.clk), harness.WithContextWindow(cw))
 	if err != nil {
 		t.Fatal(err)
 	}

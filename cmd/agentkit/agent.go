@@ -396,7 +396,7 @@ func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built 
 		harness.WithMaxTurns(a.MaxTurns),
 		harness.WithMaxTotalTokens(a.MaxTotalTokens),
 		harness.WithContextWindow(a.Model.window()),
-		harness.WithNow(clk.Now),
+		harness.WithClock(clk),
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%s: %w", label, err)

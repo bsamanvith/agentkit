@@ -33,7 +33,7 @@ func goldenRun(t *testing.T, replies ...llmtest.Reply) (stream, run, conv []byte
 	t.Helper()
 	fake := clocktest.NewFake(time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC))
 	clk := stepClock{fake}
-	r := newRig(t, script(t, replies...), rigConfig{tools: demoTools(t)["a"], clock: fake, now: clk.Now})
+	r := newRig(t, script(t, replies...), rigConfig{tools: demoTools(t)["a"], clock: fake, now: clk})
 	resp := r.post(t.Context(), runBody("Echo hi, then tell me what it said.", ""), "")
 	defer resp.Body.Close()
 	stream, err := io.ReadAll(resp.Body)

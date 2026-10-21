@@ -2,8 +2,8 @@ package harness
 
 import (
 	"context"
-	"time"
 
+	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 )
 
@@ -44,7 +44,7 @@ type config struct {
 	maxParallel int
 	before      []BeforeToolFunc
 	after       []AfterToolFunc
-	now         func() time.Time
+	clock       clock.Clock
 	window      ContextWindow
 }
 
@@ -84,9 +84,10 @@ func WithAfterTool(f AfterToolFunc) Option {
 	return func(c *config) { c.after = append(c.after, f) }
 }
 
-// WithNow sets the clock used for every timestamp and duration (default
-// [time.Now]). It must be safe for concurrent use: tool calls read it from
-// their own goroutines. Durations are the difference of two readings, so they
-// are monotonic only if the clock returns times that carry a monotonic reading,
-// as [time.Now] does and its UTC or Round(0) forms do not.
-func WithNow(now func() time.Time) Option { return func(c *config) { c.now = now } }
+// WithClock sets the clock used for every timestamp and duration (default
+// [clock.Real]). The harness only reads its Now, from several goroutines:
+// tool calls read it from their own. Durations are the difference of two
+// readings, so they are monotonic only if the clock returns times that carry a
+// monotonic reading, as the real clock does and the UTC or Round(0) forms of
+// its times do not.
+func WithClock(c clock.Clock) Option { return func(cfg *config) { cfg.clock = c } }

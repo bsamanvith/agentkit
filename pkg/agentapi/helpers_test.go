@@ -24,6 +24,7 @@ import (
 	"github.com/bsamanvith/agentkit/internal/testkit"
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
+	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
@@ -133,8 +134,8 @@ type rigConfig struct {
 	api     []agentapi.Option
 	token   string
 	clock   *clocktest.Fake
-	now     func() time.Time // the harness's clock; default clock.Now
-	store   agentapi.Store   // default: testStore
+	now     clock.Clock    // the harness's clock; default clock
+	store   agentapi.Store // default: testStore
 }
 
 // testStore is the store of a rig: in memory, or the backend
@@ -185,9 +186,9 @@ func newRig(t *testing.T, m *model, cfg rigConfig) *rig {
 		cfg.clock = clocktest.NewFake(time.Time{})
 	}
 	if cfg.now == nil {
-		cfg.now = cfg.clock.Now
+		cfg.now = cfg.clock
 	}
-	h, err := harness.New(m, cfg.tools, append([]harness.Option{harness.WithNow(cfg.now)}, cfg.harness...)...)
+	h, err := harness.New(m, cfg.tools, append([]harness.Option{harness.WithClock(cfg.now)}, cfg.harness...)...)
 	if err != nil {
 		t.Fatal(err)
 	}

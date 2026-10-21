@@ -576,7 +576,7 @@ func TestNewRejectsBadConfig(t *testing.T) {
 		{"zero turns", fake, reg, []harness.Option{harness.WithMaxTurns(0)}},
 		{"negative tokens", fake, reg, []harness.Option{harness.WithMaxTotalTokens(-1)}},
 		{"zero parallelism", fake, reg, []harness.Option{harness.WithMaxParallelTools(0)}},
-		{"nil clock", fake, reg, []harness.Option{harness.WithNow(nil)}},
+		{"nil clock", fake, reg, []harness.Option{harness.WithClock(nil)}},
 		{"nil hook", fake, reg, []harness.Option{harness.WithBeforeTool(nil)}},
 	}
 	for _, tc := range tests {

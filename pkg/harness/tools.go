@@ -135,19 +135,19 @@ func (h *Harness) call(ctx context.Context, stop context.CancelFunc, turn, i int
 			out.result = errorResult(u.ID, errors.New("internal error"))
 			out.rec.IsError = true
 			if !out.rec.StartedAt.IsZero() {
-				out.rec.Duration = h.cfg.now().Sub(out.rec.StartedAt)
+				out.rec.Duration = h.cfg.clock.Now().Sub(out.rec.StartedAt)
 			}
 		}
 		if out.err != nil && !isCancel(out.err) {
 			stop() // the run is over: do not wait for the other calls
 		}
 		events <- toolEvent{ev: Event{
-			Kind: EventToolDone, Turn: turn, At: h.cfg.now(), Call: i,
+			Kind: EventToolDone, Turn: turn, At: h.cfg.clock.Now(), Call: i,
 			ToolResult: out.result, Duration: out.rec.Duration,
 		}}
 	}()
 
-	start := h.cfg.now()
+	start := h.cfg.clock.Now()
 	out.rec.StartedAt = start
 	events <- toolEvent{ev: Event{Kind: EventToolStart, Turn: turn, At: start, Call: i, ToolUse: cloneUse(u)}}
 
@@ -163,7 +163,7 @@ func (h *Harness) call(ctx context.Context, stop context.CancelFunc, turn, i int
 		}
 		out.result = res
 	}
-	out.rec.Duration = h.cfg.now().Sub(start)
+	out.rec.Duration = h.cfg.clock.Now().Sub(start)
 	out.rec.IsError = out.result.IsError
 }
 

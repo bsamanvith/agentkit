@@ -392,7 +392,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	// The harnesses run on the rig's clock, as the rig's own does: a run's
 	// replayed run_start has its prompt's time.
 	clk := clocktest.NewFake(time.Time{})
-	now := harness.WithNow(clk.Now)
+	now := harness.WithClock(clk)
 	agents := []agentapi.Agent{
 		{
 			Name: agentapi.DefaultAgent, Description: "The default.", Model: wire.Model{Provider: "anthropic", ID: "claude", Effort: "low"}, System: "Be brief.",

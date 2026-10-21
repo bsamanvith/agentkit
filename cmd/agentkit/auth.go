@@ -13,6 +13,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/auth"
 	"github.com/bsamanvith/agentkit/pkg/auth/jwt"
+	"github.com/bsamanvith/agentkit/pkg/auth/login"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
@@ -31,6 +32,15 @@ type authConfig struct {
 	APIKeys []auth.APIKey `json:"api_keys"`
 	// JWT accepts an identity provider's tokens beside the keys (T041).
 	JWT *jwtConfig `json:"jwt"`
+	// Users sign in to the console with a password (T061): each a
+	// username, the argon2id hash of the password (agentkit users
+	// hash-password), a tenant and roles. Only the agent API accepts their
+	// sessions; MCP clients use keys or tokens.
+	Users []login.User `json:"users"`
+	// TrustedProxies are the reverse proxies (addresses or CIDR prefixes)
+	// whose X-Forwarded-Proto and X-Forwarded-For sign-in believes: for
+	// Secure cookies behind a TLS proxy, and the client's address.
+	TrustedProxies []string `json:"trusted_proxies"`
 }
 
 // jwtConfig is the "auth.jwt" section: jwt.Config, with durations written
@@ -138,5 +148,5 @@ func (c cli) apiKeys(cfg serveConfig) (auth.Authenticator, error) {
 // needsCredentials is the error of a component that would serve addr, which
 // is not loopback, with no authenticator.
 func needsCredentials(addr string) error {
-	return fmt.Errorf("serving on %s, which is not a loopback address, needs credentials: a token in $%s, API keys (auth.api_keys in the config, or $%s), or an identity provider (auth.jwt)", addr, envAPIToken, envAPIKeysFile)
+	return fmt.Errorf("serving on %s, which is not a loopback address, needs credentials: a token in $%s, API keys (auth.api_keys in the config, or $%s), an identity provider (auth.jwt), or for the agent API alone local users (auth.users, or $%s)", addr, envAPIToken, envAPIKeysFile, envUsersFile)
 }

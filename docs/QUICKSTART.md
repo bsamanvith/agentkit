@@ -262,7 +262,7 @@ The client secret comes from the variable `client_secret_env` names, never the f
 
 The one-agent form still works: an `agent` section (instead of `agents` and `agent_api`) with the fields of both tables except `name` is served as the agent `default`.
 
-Environment: `AGENTKIT_COMPONENTS` (any of `agent`, `web`, `mcp-server`, comma-separated; `web` serves the console at `/`, a chat client of `agent` on the same address), `AGENTKIT_ADDR` (default `127.0.0.1:8080`), `AGENTKIT_API_TOKEN` and `AGENTKIT_API_KEYS_FILE` (credentials, below; one of them, or `auth` in the config with keys or `jwt`, is required off loopback), `AGENTKIT_CONFIG`, `AGENTKIT_LOG_LEVEL`, `AGENTKIT_SHUTDOWN_TIMEOUT`, `AGENTKIT_CREDENTIALS_KEY` (the credential vault's key ring, `<id>:<base64 of 32 random bytes>[,<id>:<base64>...]` with the first key sealing, e.g. `k1:$(openssl rand -base64 32)`; required by every `credentials.backend` but `memory`, and a malformed one fails startup). The API's reference: [docs/api/openapi.yaml](api/openapi.yaml) (OpenAPI 3.1); the event format and error codes are also in [tasks/T036](../tasks/T036-agent-api-v0.md) Notes.
+Environment: `AGENTKIT_COMPONENTS` (any of `agent`, `web`, `mcp-server`, comma-separated; `web` serves the console at `/`, a chat client of `agent` on the same address), `AGENTKIT_ADDR` (default `127.0.0.1:8080`), `AGENTKIT_API_TOKEN`, `AGENTKIT_API_KEYS_FILE` and `AGENTKIT_USERS_FILE` (credentials, below; one of them, or `auth` in the config with keys, `jwt` or `users`, is required off loopback), `AGENTKIT_CONFIG`, `AGENTKIT_LOG_LEVEL`, `AGENTKIT_SHUTDOWN_TIMEOUT`, `AGENTKIT_CREDENTIALS_KEY` (the credential vault's key ring, `<id>:<base64 of 32 random bytes>[,<id>:<base64>...]` with the first key sealing, e.g. `k1:$(openssl rand -base64 32)`; required by every `credentials.backend` but `memory`, and a malformed one fails startup). The API's reference: [docs/api/openapi.yaml](api/openapi.yaml) (OpenAPI 3.1); the event format and error codes are also in [tasks/T036](../tasks/T036-agent-api-v0.md) Notes.
 
 ### Tool policies
 
@@ -302,7 +302,7 @@ An approved call runs with exactly the input it was approved with. A denied call
 
 ### Credentials
 
-`/v1` and `/mcp` need a bearer credential whenever one is configured, and always off loopback (on loopback with none, the server logs a warning and stays open). `/healthz`, `/readyz` and `/version` are always open.
+`/v1` and `/mcp` need a credential (a bearer token, or for `/v1` a console session) whenever one is configured, and always off loopback (on loopback with none, the server logs a warning and stays open). `/healthz`, `/readyz` and `/version` are always open.
 
 - `AGENTKIT_API_TOKEN`: one key that may do everything (tenant `default`, every scope, every toolset). At least 16 bytes.
 - API keys, in the config's `auth` section or in a file named by `AGENTKIT_API_KEYS_FILE` (same JSON, so the hashes can live in a mounted secret). Only the key's hash is stored:
@@ -325,6 +325,17 @@ Make a key and its hash with `key=$(openssl rand -hex 24); printf %s "$key" | sh
 ```
 
 A token needs a valid signature (`RS256` or `ES256` unless `algorithms` says otherwise; never `none` or HMAC), `iss` equal to `issuer`, an `aud` naming `audience` (or an MCP endpoint under it, such as `https://agents.example.com/mcp/demo`), and an `exp`; `exp`, `nbf` and `iat` get a `leeway` (default `60s`). The tenant is the claim `tenant_claim` (default `tenant`), or `tenant` for every token; the user is `sub` (`user_claim`); scopes are `scope` or `scp` (`scopes_claim`); each scope `mcp:<toolset>` grants that toolset (`toolset_scope_prefix`), as do the names in `toolsets_claim` if set. Claims are names, never globs. The keys come from `jwks_url`, or the provider's `/.well-known/openid-configuration`; they are fetched again for an unknown key id at most once a minute (`min_refresh_interval`) and when their cache headers say, at most after `max_cache_age` (`1h`). With `auth.jwt`, the MCP endpoints publish their [protected resource metadata](https://www.rfc-editor.org/rfc/rfc9728) at `/.well-known/oauth-protected-resource/mcp/<toolset>` (and the server's at `/.well-known/oauth-protected-resource`), naming `authorization_servers` (default: the issuer), and a 401 points at it, so an MCP client that supports OAuth (Claude Code) finds the provider itself; `audience` must then be the server's origin.
+
+- Local users, who sign in to the console with a username and password, in `auth.users` or in a file named by `AGENTKIT_USERS_FILE` (same JSON). Only an argon2id hash of the password is stored; make one with `read -rs pw && printf '%s\n' "$pw" | agentkit users hash-password` (passwords are 8 to 1024 bytes):
+
+```json
+{"auth": {"users": [
+  {"username": "ann", "password_hash": "$argon2id$v=19$m=19456,t=2,p=1$...", "tenant": "acme",
+   "roles": ["admin"], "toolsets": ["*"]}
+], "trusted_proxies": ["10.0.0.0/8"]}}
+```
+
+`roles`: `user` may chat (`agent:run`, `agent:read`), `admin` may also manage toolsets (`agent:admin`) and see agents' system prompts. `toolsets` defaults to all (`*`). Signing in (`POST /v1/auth/login`) sets an `HttpOnly`, `SameSite=Strict` session cookie, which works for `/v1` only (never `/mcp`); a session ends after 12 hours idle or 7 days, or at sign-out. Requests other than GET with a session need the `X-Agentkit-CSRF` header from `GET /v1/auth/me` and a same-origin `Origin`. After 10 failed sign-ins for a username (or 100 from an address) each further try waits, doubling up to 15 minutes (429 with `Retry-After`). Off loopback, serve behind a TLS proxy and list it in `trusted_proxies` (addresses or CIDR prefixes): its `X-Forwarded-For` then names the client, and its `X-Forwarded-Proto: https` makes the cookie `Secure` (`__Host-agentkit_session`); without one the server warns at startup. Users alone are enough off loopback, unless `mcp-server` is a component (it needs a key or `auth.jwt`). `GET /v1/auth/config` (no credentials) says which sign-ins the console should offer.
 
 The store: `AGENTKIT_STORE` is `memory` (the default), `sqlite:/path/agentkit.db`, or `postgres://user:pass@host/db`; anything else fails startup. Postgres is migrated at startup unless `AGENTKIT_STORE_MIGRATE=off` (run `agentkit migrate` first then). Postgres also enforces tenant isolation itself, with row-level security, but only for a role that is not a superuser and lacks `BYPASSRLS`. For that, run `agentkit migrate` as the owner and serve as an application role (`GRANT USAGE ON SCHEMA ...; GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ...`). Then set `AGENTKIT_STORE_ADMIN` to a URL whose role has `BYPASSRLS`, for the loop that resumes every tenant's runs; startup fails without it. `AGENTKIT_RUN_LEASE` (default `30s`, at least `1s`) is how long a run stays claimed by a process that stops renewing it: after a crash, a chat run reads as `interrupted` once its lease runs out, and `POST /v1/runs/{id}/resume` continues it.
 

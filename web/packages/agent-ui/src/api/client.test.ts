@@ -7,6 +7,7 @@ import {
   ResponseTooLargeError,
   SSEReader,
   StreamTruncatedError,
+  csrfHeader,
   decodeMessage,
   type RunEvent,
 } from "./index";
@@ -282,6 +283,101 @@ describe("requests", () => {
     const client = new AgentClient({ fetch: fakeFetch(["<html>bad gateway</html>"], { status: 502 }) });
     const err = await client.listAgents().catch((e: unknown) => e);
     expect(err).toMatchObject({ status: 502, code: "http_502" });
+  });
+});
+
+/**
+ * A server with a session: GET /v1/auth/me hands out the CSRF token
+ * server.csrf, and every other request needs it in X-Agentkit-CSRF unless it
+ * is a GET.
+ */
+function sessionServer(server: { csrf: string }, seen: Request[]): typeof fetch {
+  return (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const req = new Request(new URL(String(input), "http://test.invalid"), init);
+    seen.push(req);
+    const path = new URL(req.url).pathname;
+    if (path === "/v1/auth/me") {
+      return Response.json({ v: 1, username: "ann", tenant: "acme", roles: ["user"], scopes: [], csrf: server.csrf });
+    }
+    if (req.method !== "GET" && req.headers.get(csrfHeader) !== server.csrf) {
+      return Response.json({ v: 1, error: { code: "csrf_failed", message: "no" } }, { status: 403 });
+    }
+    if (path === "/v1/conversations") return Response.json({ v: 1, id: "conv_1", agent: "a" }, { status: 201 });
+    return Response.json({ v: 1, agents: [] });
+  }) as typeof fetch;
+}
+
+describe("sign-in", () => {
+  it("sends a session's CSRF token, from /me, on requests other than GET", async () => {
+    const seen: Request[] = [];
+    const client = new AgentClient({ fetch: sessionServer({ csrf: "c1" }, seen) });
+    expect(await client.me()).toMatchObject({ username: "ann", csrf: "c1" });
+    await client.createConversation("a");
+    await client.listAgents();
+    expect(seen.map((r) => `${r.method} ${new URL(r.url).pathname} ${r.headers.get(csrfHeader)}`)).toEqual([
+      "GET /v1/auth/me null",
+      "POST /v1/conversations c1",
+      "GET /v1/agents null",
+    ]);
+  });
+
+  it("reads /me again once when the token is refused, then retries", async () => {
+    const seen: Request[] = [];
+    const server = { csrf: "c1" };
+    const client = new AgentClient({ fetch: sessionServer(server, seen) });
+    // No token yet (a reload with the cookie), then a rotated one.
+    for (const csrf of ["c1", "c2"]) {
+      server.csrf = csrf;
+      seen.length = 0;
+      expect(await client.createConversation("a")).toEqual({ id: "conv_1", agent: "a" });
+      expect(seen.map((r) => `${r.method} ${new URL(r.url).pathname}`)).toEqual([
+        "POST /v1/conversations",
+        "GET /v1/auth/me",
+        "POST /v1/conversations",
+      ]);
+      expect(seen[2]!.headers.get(csrfHeader)).toBe(csrf);
+    }
+  });
+
+  it("gives up after one retry", async () => {
+    const seen: Request[] = [];
+    const fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      seen.push(new Request(new URL(String(input), "http://test.invalid"), init));
+      if (String(input).endsWith("/v1/auth/me")) {
+        return Response.json({ v: 1, tenant: "t", roles: [], scopes: [], csrf: "never-right" });
+      }
+      return Response.json({ v: 1, error: { code: "csrf_failed", message: "no" } }, { status: 403 });
+    }) as typeof globalThis.fetch;
+    const err = await new AgentClient({ fetch }).createConversation("a").catch((e: unknown) => e);
+    expect(err).toMatchObject({ status: 403, code: "csrf_failed" });
+    expect(seen).toHaveLength(3);
+  });
+
+  it("posts the username and password, and forgets the token at logout", async () => {
+    const seen: Request[] = [];
+    const client = new AgentClient({ fetch: sessionServer({ csrf: "c1" }, seen) });
+    await client.login("ann", "pw");
+    expect(seen[0]!.method).toBe("POST");
+    expect(new URL(seen[0]!.url).pathname).toBe("/v1/auth/login");
+    expect(await seen[0]!.json()).toEqual({ username: "ann", password: "pw" });
+    await client.me();
+    await client.logout();
+    expect(seen[2]!.headers.get(csrfHeader)).toBe("c1");
+    seen.length = 0;
+    await client.createConversation("a");
+    expect(seen[0]!.headers.has(csrfHeader)).toBe(false);
+  });
+
+  it("reads the sign-in methods, and refuses a body without them", async () => {
+    const ok = new AgentClient({
+      fetch: fakeFetch(['{"v":1,"methods":["password","token"]}'], { headers: { "Content-Type": "application/json" } }),
+    });
+    expect(await ok.authConfig()).toEqual({ methods: ["password", "token"] });
+    const bad = new AgentClient({
+      fetch: fakeFetch(['{"v":1,"agents":[]}'], { headers: { "Content-Type": "application/json" } }),
+    });
+    await expect(bad.authConfig()).rejects.toBeInstanceOf(BadResponseError);
+    await expect(bad.me()).rejects.toBeInstanceOf(BadResponseError);
   });
 });
 

@@ -8,6 +8,7 @@
 //	agentkit create [flags]                    create an empty conversation on a server; prints its ID
 //	agentkit toolsets <command> [flags]        list a server's toolsets; add, review and approve MCP servers
 //	agentkit migrate                           apply the Postgres store's migrations to $AGENTKIT_STORE
+//	agentkit users hash-password < password    the argon2id hash of a password, for auth.users
 //
 // Credentials come from the Anthropic SDK's chain: ANTHROPIC_API_KEY,
 // ANTHROPIC_AUTH_TOKEN or an `ant auth login` profile. An agent on an
@@ -98,6 +99,7 @@ const usage = `usage:
   agentkit migrate                         apply the Postgres store's migrations to $AGENTKIT_STORE, then exit
   agentkit mcp-tools [flags] <url>         list an MCP server's tools with the fingerprints to pin them
   agentkit toolsets <command> [flags]      list a server's toolsets; add, review and approve MCP servers on it
+  agentkit users hash-password < password  print the argon2id hash of a password, for the config's auth.users
 
 Run "agentkit <command> -h" for flags.
 `
@@ -128,6 +130,8 @@ func (c cli) main(ctx context.Context, args []string) int {
 		return c.create(ctx, args[1:])
 	case len(args) >= 1 && args[0] == "toolsets":
 		return c.toolsetsCmd(ctx, args[1:])
+	case len(args) >= 1 && args[0] == "users":
+		err = c.usersCmd(ctx, args[1:])
 	default:
 		fmt.Fprint(c.stderr, usage)
 		return 2

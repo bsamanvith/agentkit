@@ -57,6 +57,7 @@ type Server struct {
 	cfg     config
 	log     *slog.Logger
 	authn   auth.Authenticator // nil: open
+	bearer  auth.Authenticator // of WithAuthenticator or WithToken; nil: none
 	handler http.Handler
 	slots   chan struct{}
 	routes  []string
@@ -117,12 +118,19 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 	case cfg.drainRequested && (cfg.drainStop == nil || cfg.drainAfter < 0):
 		return nil, fmt.Errorf("%w: drain needs a stop channel and a time that is not negative", ErrInvalidConfig)
 	}
-	authn, err := authenticator(cfg)
+	bearer, err := authenticator(cfg)
 	if err != nil {
 		return nil, err
 	}
+	authn := bearer
+	switch {
+	case cfg.login != nil && bearer != nil:
+		authn = auth.Chain(bearer, cfg.login)
+	case cfg.login != nil:
+		authn = cfg.login
+	}
 	s := &Server{
-		cfg: cfg, log: cfg.logger, authn: authn,
+		cfg: cfg, log: cfg.logger, authn: authn, bearer: bearer,
 		agents: agents, agentOrder: order, defaultAgent: def, toolsets: toolsets,
 		slots:   make(chan struct{}, cfg.maxConcurrent),
 		closed:  make(chan struct{}),
@@ -194,6 +202,10 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 		{"POST /v1/toolsets/{name}/review", s.postReview},
 		{"PATCH /v1/toolsets/{name}", s.patchToolset},
 		{"DELETE /v1/toolsets/{name}", s.deleteToolset},
+		{"GET /v1/auth/config", s.authConfig},
+		{"POST /v1/auth/login", s.signIn},
+		{"POST /v1/auth/logout", s.signOut},
+		{"GET /v1/auth/me", s.me},
 	} {
 		mux.HandleFunc(rt.pattern, requireScope(scopeOf(rt.pattern), rt.handler))
 		s.routes = append(s.routes, rt.pattern)
@@ -201,7 +213,16 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 	mux.HandleFunc("/v1/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, &Error{Code: CodeNotFound, Message: "no such endpoint: " + r.Method + " " + r.URL.Path})
 	})
-	s.handler = s.auth(mux)
+	// How to sign in, and signing in, need no credentials; every other
+	// request is authenticated, then (with a session) checked for CSRF.
+	authed := s.auth(s.csrf(mux))
+	s.handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if public(r) {
+			mux.ServeHTTP(w, r)
+			return
+		}
+		authed.ServeHTTP(w, r)
+	})
 	if cfg.drainStop != nil {
 		s.drainDone = make(chan struct{})
 		go s.drain(cfg.drainStop, cfg.drainAfter)

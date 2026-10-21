@@ -256,9 +256,10 @@ func (s *Server) getAgent(w http.ResponseWriter, r *http.Request) {
 		s.internal(w, "listing the agent's tools", err)
 		return
 	}
-	// TODO(T040): the system prompt is for admins only; return it to every
-	// caller until the API has roles.
-	v.System = a.System
+	// The system prompt is for admins (and an open server).
+	if p, ok := auth.From(r.Context()); !ok || p.HasScope(ScopeAdminAgents) {
+		v.System = a.System
+	}
 	writeJSON(w, http.StatusOK, v)
 }
 

@@ -40,6 +40,9 @@ func ModuleRules() Rules {
 			// with it.
 			"pkg/auth/jwt":         {"github.com/go-jose/go-jose/v4"},
 			"pkg/auth/jwt/jwttest": {"github.com/go-jose/go-jose/v4"},
+			// Local users' password hashes (T061): argon2id, in this
+			// package only.
+			"pkg/auth/login": {"golang.org/x/crypto/argon2"},
 			// Protected resource metadata (RFC 9728) on the SDK's handler
 			// and types; apart from auth/jwt so that only what serves MCP
 			// links the SDK.
@@ -145,6 +148,8 @@ func ModuleRules() Rules {
 				// Edge authentication: API keys, scopes and the toolsets a
 				// credential may use (T040).
 				"pkg/auth", "pkg/auth/authtest",
+				// The console's password sign-in, behind /v1/auth (T061).
+				"pkg/auth/login", "pkg/auth/login/logintest",
 				// Its tests add MCP servers at run time (T096) through
 				// the manager, behind the SSRF guard.
 				"pkg/mcp/servers", "pkg/netguard",
@@ -178,6 +183,9 @@ func ModuleRules() Rules {
 			"pkg/auth/jwt": {"pkg/auth", "pkg/tenancy", "pkg/clock", "pkg/clock/clocktest", "pkg/auth/authtest"},
 			// The metadata wraps auth's middleware; its tests use the fake.
 			"pkg/auth/resourcemeta": {"pkg/auth", "pkg/tenancy", "pkg/auth/authtest"},
+			// Password sign-in and sessions (T061): the clock for session
+			// lifetimes and throttling; its tests the shared suite.
+			"pkg/auth/login": {"pkg/auth", "pkg/tenancy", "pkg/clock", "pkg/clock/clocktest", "pkg/auth/authtest"},
 			// The wire format, shared by the server and its clients: messages
 			// and usage, nothing else (E11).
 			"pkg/agentapi/wire": {"pkg/llm"},

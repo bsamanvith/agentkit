@@ -14,6 +14,9 @@
     {
       "bearer": []
     },
+    {
+      "session": []
+    },
     {}
   ],
   "paths": {
@@ -78,7 +81,7 @@
             }
           },
           "403": {
-            "description": "forbidden: the request's credential does not have the scope agent:run.",
+            "description": "forbidden: the request's credential does not have the scope agent:run. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
             "content": {
               "application/json": {
                 "schema": {
@@ -447,7 +450,7 @@
             }
           },
           "403": {
-            "description": "forbidden: the request's credential does not have the scope agent:run.",
+            "description": "forbidden: the request's credential does not have the scope agent:run. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
             "content": {
               "application/json": {
                 "schema": {
@@ -543,7 +546,7 @@
             }
           },
           "403": {
-            "description": "forbidden: the request's credential does not have the scope agent:run.",
+            "description": "forbidden: the request's credential does not have the scope agent:run. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
             "content": {
               "application/json": {
                 "schema": {
@@ -621,7 +624,7 @@
             }
           },
           "403": {
-            "description": "forbidden: the request's credential does not have the scope agent:run.",
+            "description": "forbidden: the request's credential does not have the scope agent:run. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
             "content": {
               "application/json": {
                 "schema": {
@@ -725,7 +728,7 @@
             }
           },
           "403": {
-            "description": "forbidden: the request's credential does not have the scope agent:run.",
+            "description": "forbidden: the request's credential does not have the scope agent:run. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
             "content": {
               "application/json": {
                 "schema": {
@@ -980,7 +983,7 @@
             }
           },
           "403": {
-            "description": "forbidden: the request's credential does not have the scope agent:run.",
+            "description": "forbidden: the request's credential does not have the scope agent:run. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1209,7 +1212,7 @@
             }
           },
           "403": {
-            "description": "forbidden: the request's credential does not have the scope agent:run.",
+            "description": "forbidden: the request's credential does not have the scope agent:run. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1290,7 +1293,7 @@
     "/v1/agents/{name}": {
       "get": {
         "operationId": "getAgent",
-        "summary": "Get an agent, with its system prompt",
+        "summary": "Get an agent, with its system prompt for admins",
         "parameters": [
           {
             "name": "name",
@@ -1351,7 +1354,8 @@
               }
             }
           }
-        }
+        },
+        "description": "The system prompt (system) is only shown to a caller with the scope admin:agents (admins, and keys with admin:* or *), and on a server without credentials."
       }
     },
     "/v1/toolsets": {
@@ -1463,7 +1467,7 @@
             }
           },
           "403": {
-            "description": "forbidden: the request's credential does not have the scope agent:admin, or (adding) may not use a toolset of that name.",
+            "description": "forbidden: the request's credential does not have the scope agent:admin, or (adding) may not use a toolset of that name. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1562,7 +1566,7 @@
             }
           },
           "403": {
-            "description": "forbidden: the request's credential does not have the scope agent:admin, or (adding) may not use a toolset of that name.",
+            "description": "forbidden: the request's credential does not have the scope agent:admin, or (adding) may not use a toolset of that name. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1621,7 +1625,7 @@
             }
           },
           "403": {
-            "description": "forbidden: the request's credential does not have the scope agent:admin, or (adding) may not use a toolset of that name.",
+            "description": "forbidden: the request's credential does not have the scope agent:admin, or (adding) may not use a toolset of that name. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1776,7 +1780,7 @@
             }
           },
           "403": {
-            "description": "forbidden: the request's credential does not have the scope agent:admin, or (adding) may not use a toolset of that name.",
+            "description": "forbidden: the request's credential does not have the scope agent:admin, or (adding) may not use a toolset of that name. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1874,6 +1878,214 @@
           }
         }
       }
+    },
+    "/v1/auth/config": {
+      "get": {
+        "operationId": "getAuthConfig",
+        "summary": "How to sign in",
+        "description": "Needs no credentials. Lists the sign-in methods the server accepts: password (POST /v1/auth/login), token (a bearer token), both, or none on a server without credentials.",
+        "security": [
+          {}
+        ],
+        "responses": {
+          "200": {
+            "description": "The sign-in methods.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthConfig"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/login": {
+      "post": {
+        "operationId": "login",
+        "summary": "Sign in with a username and password",
+        "description": "Needs no credentials. Starts a session for a local user (the config's auth.users) and sets its cookie. A session ends after 12 hours unused, 7 days after sign-in, or at POST /v1/auth/logout. A request the session authenticates with a method other than GET must send the server's own Origin and the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF, else 403 csrf_failed.",
+        "security": [
+          {}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Signed in.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "Set-Cookie: the session cookie, __Host-agentkit_session (agentkit_session over plain HTTP): HttpOnly, SameSite=Strict, Path=/, Secure over TLS.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: the body is not a LoginRequest of at most 4 KiB, or the username or password is empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the username or the password is wrong. The answer is the same for a user that does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "csrf_failed: the request's Origin is another site.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: the server has no password sign-in (no auth.users).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "too_many_attempts: too many failed sign-ins for the username or from the client's address; the password was not checked.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the next attempt is allowed.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/logout": {
+      "post": {
+        "operationId": "logout",
+        "summary": "Sign out",
+        "description": "Ends the request's session and clears its cookie. With a bearer token it only clears the cookie.",
+        "responses": {
+          "204": {
+            "description": "Signed out.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "The session cookie, cleared (Max-Age=0).",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials and the request has none that are valid: a missing or wrong bearer token, or a session that ended.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "csrf_failed: a session's request without the server's Origin or the CSRF token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: the server has no password sign-in (no auth.users).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/me": {
+      "get": {
+        "operationId": "getMe",
+        "summary": "Who the caller is",
+        "description": "Any credential may ask. A session's answer has the user's roles and the CSRF token its unsafe requests send.",
+        "responses": {
+          "200": {
+            "description": "The caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials and the request has none that are valid: a missing or wrong bearer token, or a session that ended.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1882,6 +2094,12 @@
         "type": "http",
         "scheme": "bearer",
         "description": "An API key (the config's auth.api_keys, or AGENTKIT_API_KEYS_FILE), or the server's token (AGENTKIT_API_TOKEN), when it has any. A key acts for one tenant, with scopes (agent:read for GET, agent:run for the rest, agent:admin to add, review, change and remove toolsets) and the toolsets it may use: other toolsets, and agents that use them, are not found (404)."
+      },
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-agentkit_session",
+        "description": "A local user's session (POST /v1/auth/login), for the console; agentkit_session over plain HTTP. Its scopes come from the user's roles: user has agent:read and agent:run; admin adds agent:admin and admin:*. A request with a method other than GET also needs the server's own Origin and the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF, else 403 csrf_failed. A bearer token, if sent, is used instead."
       }
     },
     "schemas": {
@@ -1891,7 +2109,7 @@
         "properties": {
           "code": {
             "type": "string",
-            "description": "What went wrong, for programs: invalid_request (400), unauthorized (401), forbidden (403), not_found (404), too_large (413), conversation_busy, agent_mismatch, run_final, run_leased, awaiting_decision, not_pending, shape_changed, toolset_exists, conflict (409), auth_required, server_unreachable (422), over_capacity, shutting_down (503), internal (500); a run's codes are interrupted, run_failed, suspended (a flow run waits for a decision, a chat run for input), rejected, budget_exceeded, max_tokens, refused, unexpected_stop, cancelled, timeout, shutdown, rate_limited, overloaded, model_auth, context_too_long, model_rejected and internal. conversation_interrupted is no longer returned. New codes may be added: treat an unknown one as internal."
+            "description": "What went wrong, for programs: invalid_request (400), unauthorized (401), forbidden, csrf_failed (403), not_found (404), too_large (413), too_many_attempts (429), conversation_busy, agent_mismatch, run_final, run_leased, awaiting_decision, not_pending, shape_changed, toolset_exists, conflict (409), auth_required, server_unreachable (422), over_capacity, shutting_down (503), internal (500); a run's codes are interrupted, run_failed, suspended (a flow run waits for a decision, a chat run for input), rejected, budget_exceeded, max_tokens, refused, unexpected_stop, cancelled, timeout, shutdown, rate_limited, overloaded, model_auth, context_too_long, model_rejected and internal. conversation_interrupted is no longer returned. New codes may be added: treat an unknown one as internal."
           },
           "message": {
             "type": "string",
@@ -3498,6 +3716,98 @@
             "type": "object"
           }
         }
+      },
+      "AuthConfig": {
+        "type": "object",
+        "description": "How a client signs in.",
+        "properties": {
+          "v": {
+            "type": "integer",
+            "const": 1
+          },
+          "methods": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "password",
+                "token"
+              ]
+            },
+            "description": "The sign-in methods, password first when it is one. Empty: the server needs no credentials."
+          }
+        },
+        "required": [
+          "v",
+          "methods"
+        ]
+      },
+      "LoginRequest": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "minLength": 1
+          },
+          "password": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "additionalProperties": false
+      },
+      "Me": {
+        "type": "object",
+        "description": "Who the caller is.",
+        "properties": {
+          "v": {
+            "type": "integer",
+            "const": 1
+          },
+          "username": {
+            "type": "string",
+            "description": "The signed-in user, or a credential's user; absent for a service key and on a server without credentials."
+          },
+          "tenant": {
+            "type": "string"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "user",
+                "admin"
+              ]
+            },
+            "description": "A signed-in user's roles; empty for a bearer token."
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What the caller may do, as patterns: agent:read, agent:run, agent:admin, admin:* (admins), * (everything)."
+          },
+          "credential": {
+            "type": "string",
+            "description": "The kind of credential: session, api_key or jwt; absent on a server without credentials."
+          },
+          "csrf": {
+            "type": "string",
+            "description": "A session's CSRF token, for the X-Agentkit-CSRF header of its requests other than GET."
+          }
+        },
+        "required": [
+          "v",
+          "tenant",
+          "roles",
+          "scopes"
+        ]
       }
     }
   }

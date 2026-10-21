@@ -5,9 +5,9 @@ import { useApi } from "./api";
 import { ApiProvider } from "./api-provider";
 import { RunsProvider } from "./chat/context";
 import { routes } from "./routes";
-import { TokenPrompt } from "./token-prompt";
+import { SignIn } from "./sign-in";
 
-/** The app behind the token prompt is inert while it is open. */
+/** The app behind the sign-in card is inert while it is open. */
 function Body({ router }: { router: Router }) {
   const { prompt } = useApi();
   return (
@@ -18,7 +18,7 @@ function Body({ router }: { router: Router }) {
           <RouterProvider router={router} />
         </RunsProvider>
       </div>
-      <TokenPrompt />
+      <SignIn />
     </>
   );
 }

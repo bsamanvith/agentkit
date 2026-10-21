@@ -118,6 +118,13 @@ func TestEveryPathNeedsCredentials(t *testing.T) {
 	}
 	for _, p := range paths {
 		method, path, _ := strings.Cut(p, " ")
+		if p == "GET /v1/auth/config" || p == "POST /v1/auth/login" {
+			// How to sign in, and signing in, need no credentials.
+			if resp, body := r.do(method, path, `{"username":"u","password":"p"}`); resp.StatusCode == http.StatusUnauthorized {
+				t.Errorf("%s with no credentials = %d %s, want it served", p, resp.StatusCode, body)
+			}
+			continue
+		}
 		for _, cred := range [][]string{nil, as("not-a-key-0123456789"), {"Authorization", "Basic eDp5"}} {
 			resp, body := r.do(method, path, `{}`, cred...)
 			if resp.StatusCode != http.StatusUnauthorized || apiCode(body) != agentapi.CodeUnauthorized || !strings.HasPrefix(resp.Header.Get("WWW-Authenticate"), "Bearer") {
@@ -184,6 +191,10 @@ func TestScopes(t *testing.T) {
 		resp, body := r.do(method, path, `{"message":"x"}`, as(keyRead)...)
 		admin := strings.HasSuffix(rt, "/review") // agent:admin, even to read
 		switch {
+		case strings.Contains(rt, " /v1/auth/"): // any credential
+			if resp.StatusCode == http.StatusForbidden {
+				t.Errorf("read-only %s = 403, want it served", rt)
+			}
 		case method == "GET" && !admin && resp.StatusCode == http.StatusForbidden:
 			t.Errorf("read-only %s = 403, want it served", rt)
 		case (method != "GET" || admin) && (resp.StatusCode != http.StatusForbidden || apiCode(body) != agentapi.CodeForbidden):

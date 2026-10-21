@@ -4,6 +4,7 @@ export {
   BadResponseError,
   NetworkError,
   StreamTruncatedError,
+  csrfHeader,
   listField,
   type ClientOptions,
 } from "./client";

@@ -19,6 +19,22 @@ export type WireError = {
   explanation?: string;
 };
 
+/** GET /v1/auth/config: how to sign in ("password", "token"; none on an open server). */
+export type AuthConfig = { methods: string[] };
+
+/** GET /v1/auth/me: who the caller is. */
+export type Me = {
+  username?: string;
+  tenant: string;
+  /** A signed-in user's roles ("user", "admin"); empty for a token. */
+  roles: string[];
+  scopes: string[];
+  /** "session", "api_key", "jwt"; absent on a server without credentials. */
+  credential?: string;
+  /** A session's CSRF token, which AgentClient sends on its other requests. */
+  csrf?: string;
+};
+
 export type Usage = {
   input_tokens?: number;
   output_tokens?: number;

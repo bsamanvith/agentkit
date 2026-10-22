@@ -115,7 +115,7 @@ var redacted = []byte("[redacted]")
 
 // redact replaces every credential value in b. A JSON body with escapes is
 // first written again in encoding/json's own form, so that a value escaped
-// another way (`a`, `\/`), which decoding would give back whole, is
+// another way (`\u0061`, `\/`), which decoding would give back whole, is
 // found too.
 func (t *transport) redact(b []byte) []byte {
 	if len(t.secrets) == 0 {

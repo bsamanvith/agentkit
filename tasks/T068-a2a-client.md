@@ -82,7 +82,7 @@ needed: the remote agent is our own T067 server in process).
   decoded pair and the password) is replaced by `[redacted]` in every
   response body and error text before anything reads it. A JSON body with
   escapes is written again by encoding/json first, so a value escaped
-  another way (`a`, `\/`) is found too; a stream event is redacted
+  another way (`\u0061`, `\/`) is found too; a stream event is redacted
   whole. Nothing logs headers. The cards' URLs are the operator's (toolset
   settings, never added at run time), so `pkg/netguard` (for URLs users
   supply, E19) is not used; the card cannot point the client anywhere else,

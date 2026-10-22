@@ -55,17 +55,26 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
-      # setup-go caches the module and build caches (keyed on go.sum); this
-      # keeps the pinned linters make builds into bin/, and golangci-lint's
+      # setup-go caches the module and build caches (keyed on go.sum); these
+      # keep the pinned linters make builds into bin/, and golangci-lint's
       # analysis cache, so make lint neither rebuilds them nor starts cold.
+      # The linters are built with go.mod's Go (Makefile), and make reuses a
+      # bin/ file by name alone, so their key is exact (Makefile and go.mod)
+      # with no restore-keys: a fallback could restore one built by an older
+      # Go, which refuses to lint code that targets a newer one.
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             bin/golangci-lint-*
             bin/actionlint-*
-            ~/.cache/golangci-lint
-          key: lint-${{ runner.os }}-${{ hashFiles('Makefile', 'go.sum', '.golangci.yml') }}
-          restore-keys: lint-${{ runner.os }}-
+          key: lint-bin-${{ runner.os }}-${{ hashFiles('Makefile', 'go.mod') }}
+      # golangci-lint keys its own cache entries on its version and inputs,
+      # so an older analysis cache is only a head start.
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/golangci-lint
+          key: lint-analysis-${{ runner.os }}-${{ hashFiles('Makefile', 'go.mod', 'go.sum', '.golangci.yml') }}
+          restore-keys: lint-analysis-${{ runner.os }}-
       # make check runs zizmor when it is installed (scripts/zizmor.sh).
       - name: install zizmor for make workflow-lint
         run: pipx install "zizmor==$(make -s print-zizmor-version)"

@@ -66,14 +66,41 @@ if [ "${1:-}" = --test ]; then
 	want "web/ docs" "$(try $'web/docs/README.md\n')" code=true
 	want "nothing" "$(try '')" code=true
 	want "blank lines only" "$(try $'\n\n')" code=true
+	# BASE HEAD in a scratch repository: a merge commit (a pull request's
+	# checkout) against its first parent while the base moved on with code;
+	# a file renamed out of pkg/ into docs/; a file deleted from docs/.
+	self=$(cd "$(dirname "$0")" && pwd)/$(basename "$0")
+	repo=$(mktemp -d)
+	trap 'rm -rf "$repo"' EXIT
+	g() {
+		GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 git -C "$repo" \
+			-c user.name=t -c user.email=t@t -c commit.gpgsign=false "$@" >/dev/null 2>&1
+	}
+	changes() { (cd "$repo" && GIT_CONFIG_GLOBAL=/dev/null "$self" HEAD^1 HEAD 2>/dev/null); }
+	mkdir -p "$repo/pkg" "$repo/docs"
+	seq 1 50 >"$repo/pkg/a.go"
+	seq 1 50 >"$repo/docs/old.md"
+	g init -q -b main && g add -A && g commit -qm base
+	g switch -qc pr && echo x >"$repo/docs/new.md" && g add -A && g commit -qm docs
+	g switch -q main && echo y >>"$repo/pkg/a.go" && g commit -qam code
+	g merge -q --no-ff -m merge pr
+	want "a merge commit that adds docs, its base moved on with code" "$(changes)" code=false
+	g mv pkg/a.go docs/a.go && g commit -qm rename
+	want "a file renamed from pkg/ into docs/" "$(changes)" code=true
+	g rm -q docs/old.md && g commit -qm delete
+	want "a file deleted from docs/" "$(changes)" code=false
 	if "$0" >/dev/null 2>&1 || "$0" no-such-ref HEAD >/dev/null 2>&1; then
 		want "no arguments, or a ref git cannot diff" "exit 0" "a failure"
 	fi
 	# check.yml: the changes job runs this script; the image and smoke
 	# jobs need it and skip only on an explicit false (a failed or
 	# missing answer runs them); integration requires its variables.
-	grep -q 'scripts/ci-changes.sh' <<<"$(job changes)" ||
-		want "check.yml changes job" "no scripts/ci-changes.sh" "runs it"
+	# It diffs the merge commit against its first parent (the base), as the
+	# scratch repository above does, which needs both commits checked out.
+	grep -qF 'scripts/ci-changes.sh HEAD^1 HEAD >>"$GITHUB_OUTPUT"' <<<"$(job changes)" ||
+		want "check.yml changes job" "no scripts/ci-changes.sh HEAD^1 HEAD" "runs it"
+	grep -qE '^ +fetch-depth: 2$' <<<"$(job changes)" ||
+		want "check.yml changes job" "another fetch-depth" "fetch-depth: 2"
 	for j in image smoke; do
 		body=$(job "$j")
 		grep -qE '^    needs: \[?changes' <<<"$body" ||
@@ -81,6 +108,18 @@ if [ "${1:-}" = --test ]; then
 		grep -qF "if: \${{ !cancelled() && needs.changes.outputs.code != 'false' }}" <<<"$body" ||
 			want "check.yml $j job" "another if" "if: !cancelled() && code != 'false'"
 	done
+	# The check job's cache of the linters in bin/: keyed on go.mod (they
+	# are built with its Go) and no fallback key that could restore older.
+	bincache=$(job check | awk '
+		/^      - / { if (hit) exit; buf = "" }
+		{ buf = buf $0 "\n" }
+		/key: lint-bin-/ { hit = 1 }
+		END { if (hit) printf "%s", buf }
+	')
+	grep -qF "hashFiles('Makefile', 'go.mod')" <<<"$bincache" ||
+		want "check.yml check job's bin/ cache" "a key without Makefile and go.mod" "hashFiles('Makefile', 'go.mod')"
+	! grep -q 'restore-keys' <<<"$bincache" ||
+		want "check.yml check job's bin/ cache" "restore-keys" "an exact key only"
 	grep -qF 'AGENTKIT_REQUIRE_INTEGRATION: "1"' <<<"$(job integration)" ||
 		want "check.yml integration job" "no AGENTKIT_REQUIRE_INTEGRATION" 'AGENTKIT_REQUIRE_INTEGRATION: "1"'
 	if ((errors > 0)); then exit 1; fi
@@ -93,7 +132,9 @@ case "${1:-}" in
 "") echo "usage: scripts/ci-changes.sh BASE HEAD | - | --test" >&2; exit 2 ;;
 *)
 	[ $# = 2 ] || { echo "usage: scripts/ci-changes.sh BASE HEAD | - | --test" >&2; exit 2; }
-	paths=$(git diff --name-only "$1" "$2")
+	# --no-renames: with rename detection (git's default) a file moved from
+	# pkg/ into docs/ lists only its new path, and the change would skip.
+	paths=$(git diff --no-renames --name-only "$1" "$2")
 	classify <<<"$paths"
 	;;
 esac

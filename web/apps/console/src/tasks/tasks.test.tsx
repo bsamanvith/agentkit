@@ -439,7 +439,7 @@ describe("the Tasks pages", () => {
     const server = fakeServer();
     const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValue(true);
     renderAt("/tasks");
-    const list = await screen.findByRole("navigation", { name: "Tasks" }, { timeout: 5000 });
+    const list = await screen.findByRole("navigation", { name: "Tasks" });
     const rows = await within(list).findAllByRole("listitem");
     expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveTextContent("researcher");
@@ -478,17 +478,13 @@ describe("the Tasks pages", () => {
       { type: "text_delta", id: "3.1", text: "Working on it" },
     ]);
     renderAt("/tasks/r1");
-    expect(
-      await screen.findByRole("heading", { level: 1, name: "Summarize the incidents" }, { timeout: 5000 }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Summarize the incidents" })).toBeInTheDocument();
     const log = screen.getByRole("log", { name: "Transcript of Summarize the incidents" });
     expect(await within(log).findByText("Working on it")).toBeInTheDocument();
     expect(within(log).getByRole("button", { name: /echo/i })).toBeInTheDocument();
     expect(within(log).getByRole("region", { name: "About this task" })).toHaveTextContent("r1");
     // The stream ended early: it follows again from the last event.
-    await waitFor(() => expect(server.seen.filter((r) => r.path === "/v1/runs/r1/events").at(-1)?.after).toBe("3.1"), {
-      timeout: 3000,
-    });
+    await waitFor(() => expect(server.seen.filter((r) => r.path === "/v1/runs/r1/events").at(-1)?.after).toBe("3.1"));
     vi.spyOn(window, "confirm").mockReturnValue(true);
     await userEvent.click(screen.getByRole("button", { name: "Cancel…" }));
     await waitFor(() =>
@@ -537,7 +533,7 @@ describe("the Tasks pages", () => {
       },
     ];
     renderAt("/tasks/threads");
-    const list = await screen.findByRole("navigation", { name: "Threads" }, { timeout: 5000 });
+    const list = await screen.findByRole("navigation", { name: "Threads" });
     const row = await within(list).findByRole("link", { name: /boss ⇄ worker/ });
     expect(row).toHaveTextContent("2 hops · worker: 42");
     await userEvent.click(row);
@@ -567,7 +563,7 @@ describe("the Tasks pages", () => {
     const toast = await screen.findByText("Task of researcher is waiting for you.", undefined, { timeout: 8000 });
     expect(within(rail).getByRole("link", { name: "Tasks, 1 waiting for you" })).toBeInTheDocument();
     await userEvent.click(within(toast.closest("li")!).getByRole("link", { name: "Open" }));
-    expect(await screen.findByRole("region", { name: "About this task" }, { timeout: 5000 })).toHaveTextContent("r1");
+    expect(await screen.findByRole("region", { name: "About this task" })).toHaveTextContent("r1");
     // A finished task doesn't count.
     server.runs[0]!.status = "done";
     await waitFor(() => expect(within(rail).getByRole("link", { name: "Tasks" })).toBeInTheDocument(), {
@@ -591,7 +587,7 @@ describe("the Tasks pages", () => {
       { id: "deploy", prompt: "Check", webhook: { path: "/v1/hooks/deploy" }, paused: true, version: 3 },
     ];
     renderAt("/tasks/triggers");
-    const table = await screen.findByRole("table", { name: "Triggers" }, { timeout: 5000 });
+    const table = await screen.findByRole("table", { name: "Triggers" });
     const rows = within(table).getAllByRole("row").slice(1);
     expect(rows[0]).toHaveTextContent("daily-digest");
     expect(rows[0]).toHaveTextContent("0 8 * * 1-5");

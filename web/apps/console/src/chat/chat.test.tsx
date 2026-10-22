@@ -171,7 +171,7 @@ describe("a new chat", () => {
     ]);
     const router = renderAt("/new");
     // The first test of the file waits for the page's chunk too: give it time.
-    await screen.findByRole("button", { name: "Agent: researcher" }, { timeout: 5000 });
+    await screen.findByRole("button", { name: "Agent: researcher" });
     await userEvent.type(box(), "Hello{Enter}");
 
     await waitFor(() => expect(router.state.location.pathname).toBe("/c/conv_1"));

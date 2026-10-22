@@ -6154,7 +6154,7 @@
             "additionalProperties": {
               "type": "string"
             },
-            "description": "With auth headers: sent with every request. ${NAME} is the server's variable NAME, which the operator must allow (runtime_toolsets.header_env); a header that carries a secret must take it from one."
+            "description": "With auth headers: sent with every request. ${NAME} is the server's variable NAME, which the operator must allow (runtime_toolsets.header_env); a header that carries a secret must take it from one, and a value that looks like a key written out (a scheme with a literal, a long token of letters and digits) is refused (400) whatever the header's name."
           },
           "scope": {
             "enum": [

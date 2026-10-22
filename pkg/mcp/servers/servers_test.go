@@ -401,6 +401,45 @@ func TestAddErrors(t *testing.T) {
 	}
 }
 
+// A header value that looks like a key written out is refused whatever the
+// header's name, on add and on update, as the console refuses it: only
+// ${NAME}s the operator allows carry secrets (T096).
+func TestLiteralHeaderValues(t *testing.T) {
+	t.Parallel()
+	r := newRig(t, servers.WithMaxToolsets(20))
+	r.env["LINEAR_KEY"] = "s3cret"
+	ctx := ctxOf(t, "acme")
+	add := func(name string, headers map[string]string) error {
+		_, err := r.m.Add(ctx, "k", wire.AddToolsetRequest{Type: "mcp", Name: name, URL: r.f.ts.URL, Auth: "headers", Headers: headers})
+		return err
+	}
+	for i, v := range []string{
+		"sk0123456789abcdefghijk",                 // a long token of letters and digits
+		"ghp_A1b2C3d4E5f6G7h8I9j0",                // with a prefix
+		"Bearer abc",                              // a scheme with a literal
+		"basic dXNlcjpwYXNz",                      // any case
+		"Bearer ${LINEAR_KEY}x",                   // a literal after a variable
+		"${LINEAR_KEY} eyJhbGciOiJIUzI1NiJ9.e30x", // a literal beside one
+	} {
+		if err := add(fmt.Sprintf("bad%d", i), map[string]string{"X-Api": v}); !errors.Is(err, agentapi.ErrToolsetInvalid) {
+			t.Errorf("X-Api: %q: %v, want ErrToolsetInvalid", v, err)
+		} else if strings.Contains(err.Error(), v) {
+			t.Errorf("the error repeats the value: %v", err)
+		}
+	}
+	for i, v := range []string{
+		"eng", "Bearer ${LINEAR_KEY}", "${LINEAR_KEY}", "123e4567-e89b-12d3-a456-426614174000",
+		"application/vnd.github+json", "2024-10-01T00:00:00Z", "abcdefghijklmnopqrstuvwxyz",
+	} {
+		if err := add(fmt.Sprintf("ok%d", i), map[string]string{"X-Api": v}); err != nil {
+			t.Errorf("X-Api: %q: %v", v, err)
+		}
+	}
+	if _, err := r.m.Update(ctx, "ok0", wire.UpdateToolsetRequest{Headers: map[string]string{"X-Api": "sk0123456789abcdefghijk"}}); !errors.Is(err, agentapi.ErrToolsetInvalid) {
+		t.Errorf("update with a literal key: %v, want ErrToolsetInvalid", err)
+	}
+}
+
 // SSRF: without an allowed host, only https to a public address; an
 // address is checked as it is connected to.
 func TestSSRF(t *testing.T) {

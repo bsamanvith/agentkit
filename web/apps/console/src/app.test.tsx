@@ -413,8 +413,8 @@ describe("signing in with a password", () => {
     await signInAs("ann", "secret-pw");
     expect(await screen.findByText("Too many attempts. Try again in 2 s.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign in" })).toBeDisabled();
-    expect(await screen.findByText("Too many attempts. Try again in 1 s.", {}, { timeout: 2000 })).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole("button", { name: "Sign in" })).toBeEnabled(), { timeout: 2000 });
+    expect(await screen.findByText("Too many attempts. Try again in 1 s.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Sign in" })).toBeEnabled());
   });
 
   it("says it couldn't reach the server on a 5xx", async () => {

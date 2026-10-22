@@ -177,7 +177,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 // The admin pages are a lazy chunk: its first load, under a full run, can take over a second.
-const h1 = (name: string) => screen.findByRole("heading", { level: 1, name }, { timeout: 5000 });
+const h1 = (name: string) => screen.findByRole("heading", { level: 1, name });
 
 describe("the agents page", () => {
   it("lists the agents and shows the detail, with the system prompt for an admin", async () => {

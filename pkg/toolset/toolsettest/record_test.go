@@ -234,8 +234,8 @@ func TestRecordScrub(t *testing.T) {
 // connector never fills: every toy_get output fails the output schema.
 type strictGet struct{ toolset.Factory }
 
-func (f strictGet) Build(ctx context.Context, settings json.RawMessage) ([]tool.Tool, error) {
-	tools, err := f.Factory.Build(ctx, settings)
+func (f strictGet) Build(ctx context.Context, in toolset.BuildInput) ([]tool.Tool, error) {
+	tools, err := f.Factory.Build(ctx, in)
 	for i, tl := range tools {
 		if tl.Definition().Name == "toy_get" {
 			tools[i] = requiresScore{tl}

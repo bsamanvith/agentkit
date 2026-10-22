@@ -11,6 +11,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/connectors/exa"
 	"github.com/bsamanvith/agentkit/pkg/tool"
+	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
 // FuzzDecodeSearch feeds hostile 200 bodies to exa_search, in both content
@@ -61,7 +62,7 @@ func fuzzTools(f *testing.F) fuzzToolset {
 			exa.WithHTTPClient(&http.Client{Transport: bodyTransport{}}),
 			exa.WithLookupEnv(func(string) (string, bool) { return canaryKey, true }),
 		)
-		tools, err := fac.Build(f.Context(), json.RawMessage(settings))
+		tools, err := fac.Build(f.Context(), toolset.BuildInput{Settings: json.RawMessage(settings)})
 		if err != nil {
 			f.Fatal(err)
 		}

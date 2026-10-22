@@ -91,6 +91,8 @@ type record struct {
 	CreatedAt time.Time        `json:"created_at"`
 	UpdatedAt time.Time        `json:"updated_at"`
 	Expiry    time.Time        `json:"expiry,omitzero"`
+	// NeedsReconnect is the credential's Meta.NeedsReconnect.
+	NeedsReconnect bool `json:"needs_reconnect,omitempty"`
 	// Blob is the sealed bytes; a tombstone has none and Deleted set.
 	Blob    []byte `json:"blob,omitempty"`
 	Deleted bool   `json:"deleted,omitempty"`
@@ -189,6 +191,7 @@ func (s *Store) load() error {
 			meta: credentials.Meta{
 				Slot: r.Slot, User: r.User, Kind: r.Kind, Version: r.Version,
 				CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC(), Expiry: r.Expiry.UTC(),
+				NeedsReconnect: r.NeedsReconnect,
 			},
 			data: r.Blob,
 		}
@@ -217,7 +220,8 @@ func (s *Store) save() error {
 		d.Credentials = append(d.Credentials, record{
 			Tenant: k.tenant, User: k.user, Slot: k.slot, Kind: e.meta.Kind, Version: e.meta.Version,
 			CreatedAt: e.meta.CreatedAt, UpdatedAt: e.meta.UpdatedAt, Expiry: e.meta.Expiry,
-			Blob: e.data, Deleted: e.data == nil,
+			NeedsReconnect: e.meta.NeedsReconnect,
+			Blob:           e.data, Deleted: e.data == nil,
 		})
 	}
 	slices.SortFunc(d.Credentials, func(a, b record) int {
@@ -359,6 +363,7 @@ func (s *Store) Put(ctx context.Context, user, slot string, b credentials.Blob, 
 	m := credentials.Meta{
 		Slot: slot, User: user, Kind: b.Kind, Version: cur.meta.Version + 1,
 		CreatedAt: b.UpdatedAt.UTC(), UpdatedAt: b.UpdatedAt.UTC(), Expiry: b.Expiry.UTC(),
+		NeedsReconnect: b.NeedsReconnect,
 	}
 	if exists {
 		m.CreatedAt = cur.meta.CreatedAt

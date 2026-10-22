@@ -134,7 +134,7 @@ func (f *fake) sseOnly(t *testing.T) *httptest.Server {
 // build builds the "mcp" toolset from settings, failing the test on error.
 func build(t *testing.T, settings string, opts ...client.Option) map[string]tool.Tool {
 	t.Helper()
-	tools, err := client.Factory(opts...).Build(t.Context(), json.RawMessage(settings))
+	tools, err := client.Factory(opts...).Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(settings)})
 	if err != nil {
 		t.Fatalf("Build(%s): %v", settings, err)
 	}

@@ -35,7 +35,9 @@ type Meta struct {
 	// access token).
 	Expiry time.Time `json:"expiry,omitzero"`
 	// NeedsReconnect marks a credential that can no longer be refreshed
-	// (T044): a person has to connect the account again.
+	// (an OAuth2 refresh answered invalid_grant): a person has to connect
+	// the account again. [Vault.MarkNeedsReconnect] sets it; any other
+	// write clears it.
 	NeedsReconnect bool `json:"needs_reconnect,omitempty"`
 }
 
@@ -57,6 +59,11 @@ type Vault interface {
 	// List returns the metadata of user's credentials ("" lists the
 	// tenant's shared ones), by slot.
 	List(ctx context.Context, user string) ([]Meta, error)
+	// MarkNeedsReconnect sets NeedsReconnect on version ifVersion of the
+	// credential at (user, slot), keeping its value: [ErrConflict] if the
+	// current version is another, [ErrNotFound] if there is none. Like any
+	// write, it makes a new version.
+	MarkNeedsReconnect(ctx context.Context, user, slot string, ifVersion int64) (Meta, error)
 }
 
 // Blob is what a [BlobStore] keeps at a key: the sealed bytes and the
@@ -72,7 +79,9 @@ type Blob struct {
 // sets Version (1 on the first write of a key, then one more than the last
 // version the key ever had), CreatedAt (kept from the first write while the
 // credential exists) and UpdatedAt (to the blob's UpdatedAt, or CreatedAt
-// when that is later: clocks of replicas differ); it ignores the other two. Get, Put and List return copies the caller may keep.
+// when that is later: clocks of replicas differ); it stores Kind, Expiry and
+// NeedsReconnect as given and ignores Slot and User (the arguments say
+// them). Get, Put and List return copies the caller may keep.
 type BlobStore interface {
 	Get(ctx context.Context, user, slot string) (Blob, error)
 	Put(ctx context.Context, user, slot string, b Blob, ifVersion int64) (Meta, error)
@@ -157,6 +166,25 @@ func (v *vault) Delete(ctx context.Context, user, slot string, ifVersion int64) 
 		return fmt.Errorf("%w: ifVersion %d", ErrConflict, ifVersion)
 	}
 	return v.store.Delete(ctx, user, slot, ifVersion)
+}
+
+func (v *vault) MarkNeedsReconnect(ctx context.Context, user, slot string, ifVersion int64) (Meta, error) {
+	if _, err := keyOf(ctx, user, slot); err != nil {
+		return Meta{}, err
+	}
+	if ifVersion < 1 {
+		return Meta{}, fmt.Errorf("%w: ifVersion %d", ErrConflict, ifVersion)
+	}
+	b, err := v.store.Get(ctx, user, slot)
+	if err != nil {
+		return Meta{}, err
+	}
+	if b.Version != ifVersion {
+		return Meta{}, fmt.Errorf("credential %q: version %d: %w", slot, ifVersion, ErrConflict)
+	}
+	// The sealed bytes are bound to the key, not to a version: they stay.
+	b.NeedsReconnect, b.UpdatedAt = true, v.now().UTC()
+	return v.store.Put(ctx, user, slot, b, ifVersion)
 }
 
 func (v *vault) List(ctx context.Context, user string) ([]Meta, error) {

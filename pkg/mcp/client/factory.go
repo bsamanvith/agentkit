@@ -102,7 +102,8 @@ type settings struct {
 
 const maxResultLimit = 16 << 20
 
-func (f *factory) Build(ctx context.Context, raw json.RawMessage) ([]tool.Tool, error) {
+func (f *factory) Build(ctx context.Context, in toolset.BuildInput) ([]tool.Tool, error) {
+	raw := in.Settings
 	cfg, where, err := f.config(raw)
 	if err != nil {
 		return nil, err

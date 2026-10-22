@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/bsamanvith/agentkit/connectors/exa"
+	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
 // recordEnv, set to 1 with -tags live, rewrites testdata/cassettes from the
@@ -34,7 +35,7 @@ func TestLive(t *testing.T) {
 	call := func(t *testing.T, name, toolName, settings, input string) json.RawMessage {
 		rec := &recorder{base: http.DefaultTransport}
 		f := exa.Factory(exa.WithLookupEnv(os.LookupEnv), exa.WithHTTPClient(&http.Client{Transport: rec}))
-		tools, err := f.Build(t.Context(), json.RawMessage(settings))
+		tools, err := f.Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(settings)})
 		if err != nil {
 			t.Fatal(err)
 		}

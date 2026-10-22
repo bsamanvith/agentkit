@@ -163,7 +163,7 @@ func TestBuildRejectsSettings(t *testing.T) {
 			"empty": {"MY_EXA_KEY": "  "},
 		} {
 			f := exa.Factory(exa.WithLookupEnv(func(k string) (string, bool) { v, ok := env[k]; return v, ok }))
-			_, err := f.Build(t.Context(), json.RawMessage(`{"api_key_env": "MY_EXA_KEY"}`))
+			_, err := f.Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(`{"api_key_env": "MY_EXA_KEY"}`)})
 			if !errors.Is(err, exa.ErrMissingKey) || !strings.Contains(err.Error(), "MY_EXA_KEY") {
 				t.Errorf("%s: Build = %v, want ErrMissingKey naming MY_EXA_KEY", name, err)
 			}
@@ -172,7 +172,7 @@ func TestBuildRejectsSettings(t *testing.T) {
 	// Not in RunConnector, which always passes WithLookupEnv.
 	t.Run("no LookupEnv reads nothing", func(t *testing.T) {
 		t.Parallel()
-		_, err := exa.Factory().Build(t.Context(), nil)
+		_, err := exa.Factory().Build(t.Context(), toolset.BuildInput{Settings: nil})
 		if !errors.Is(err, exa.ErrMissingKey) || !strings.Contains(err.Error(), "EXA_API_KEY") {
 			t.Errorf("Build = %v, want ErrMissingKey naming EXA_API_KEY", err)
 		}
@@ -181,7 +181,7 @@ func TestBuildRejectsSettings(t *testing.T) {
 		t.Parallel()
 		for _, s := range []string{``, `null`, `{}`} {
 			f := exa.Factory(exa.WithLookupEnv(func(k string) (string, bool) { return canaryKey, k == keyEnv }))
-			tools, err := f.Build(t.Context(), json.RawMessage(s))
+			tools, err := f.Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(s)})
 			if err != nil || len(tools) != 2 {
 				t.Errorf("Build(%q) = %d tools, %v", s, len(tools), err)
 			}
@@ -195,7 +195,7 @@ func TestBuildRejectsSettings(t *testing.T) {
 			exa.WithBaseURL("https://exa.invalid"),
 			exa.WithLookupEnv(func(k string) (string, bool) { return canaryKey, k == keyEnv }),
 		)
-		tools, err := f.Build(t.Context(), json.RawMessage(`{"base_url": "`+up.srv.URL+`/"}`))
+		tools, err := f.Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(`{"base_url": "` + up.srv.URL + `/"}`)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -206,15 +206,15 @@ func TestBuildRejectsSettings(t *testing.T) {
 			t.Errorf("requests = %+v, want one to /search on base_url", reqs)
 		}
 		for _, u := range []string{"https://exa.example/v1", "http://localhost:1", "http://[::1]:1"} {
-			if _, err := f.Build(t.Context(), json.RawMessage(`{"base_url": "`+u+`"}`)); err != nil {
+			if _, err := f.Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(`{"base_url": "` + u + `"}`)}); err != nil {
 				t.Errorf("base_url %s: %v", u, err)
 			}
 		}
-		if _, err := exa.Factory(exa.WithBaseURL("http://api.exa.ai"), exa.WithLookupEnv(func(string) (string, bool) { return canaryKey, true })).Build(t.Context(), nil); err == nil {
+		if _, err := exa.Factory(exa.WithBaseURL("http://api.exa.ai"), exa.WithLookupEnv(func(string) (string, bool) { return canaryKey, true })).Build(t.Context(), toolset.BuildInput{Settings: nil}); err == nil {
 			t.Error("WithBaseURL over plain http to a remote host built")
 		}
 		// T049's suite passes WithBaseURL("") to mean the default.
-		if _, err := exa.Factory(exa.WithBaseURL(""), exa.WithLookupEnv(func(string) (string, bool) { return canaryKey, true })).Build(t.Context(), nil); err != nil {
+		if _, err := exa.Factory(exa.WithBaseURL(""), exa.WithLookupEnv(func(string) (string, bool) { return canaryKey, true })).Build(t.Context(), toolset.BuildInput{Settings: nil}); err != nil {
 			t.Errorf(`WithBaseURL(""): %v, want the default`, err)
 		}
 	})
@@ -243,7 +243,7 @@ func TestBuildRejectsSettings(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			f := exa.Factory(exa.WithLookupEnv(func(string) (string, bool) { return canaryKey, true }))
-			_, err := f.Build(t.Context(), json.RawMessage(s))
+			_, err := f.Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(s)})
 			if !errors.Is(err, toolset.ErrInvalidSettings) {
 				t.Fatalf("Build(%s) = %v, want ErrInvalidSettings", s, err)
 			}

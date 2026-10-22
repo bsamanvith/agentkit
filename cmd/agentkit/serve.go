@@ -103,7 +103,7 @@ type serveEnv struct {
 	credentialKeys *credentials.KeyRing
 	// vault is the credential vault over the config's credentials backend
 	// (credentials.go), opened at startup: nil without a key ring. The
-	// toolsets that use it come with T044.
+	// toolsets whose spec names a credential slot get sources over it.
 	vault credentials.Vault
 }
 
@@ -324,7 +324,11 @@ func (c cli) buildToolsets(ctx context.Context, env serveEnv, cfg serveConfig, c
 	if err != nil {
 		return nil, nil, err
 	}
-	regs, problems, err := toolset.Build(ctx, catalog, specs)
+	sources, err := c.credentialSources(env.vault, cfg.Credentials, log)
+	if err != nil {
+		return nil, nil, err
+	}
+	regs, problems, err := toolset.Build(ctx, catalog, specs, toolset.WithSources(sources))
 	if err != nil {
 		return nil, nil, err
 	}

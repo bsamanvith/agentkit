@@ -22,6 +22,7 @@ import (
 	"github.com/bsamanvith/agentkit/internal/testkit"
 	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
 	"github.com/bsamanvith/agentkit/pkg/tool"
+	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
 // watchdog bounds every call the suite makes, so a connector that hangs fails
@@ -138,7 +139,7 @@ func (r *rig) build(settings json.RawMessage) ([]tool.Tool, error) {
 	f := r.s.c.New(r.env)
 	ctx, cancel := context.WithTimeout(context.Background(), watchdog)
 	defer cancel()
-	tools, err := f.Build(ctx, settings)
+	tools, err := f.Build(ctx, toolset.BuildInput{Settings: settings})
 	if err != nil && strings.Contains(err.Error(), r.s.canary) {
 		r.t.Errorf("[canary] the API key appears in a Build error: %v", err)
 	}

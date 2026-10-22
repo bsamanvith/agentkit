@@ -10,6 +10,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/connectors/tavily"
 	"github.com/bsamanvith/agentkit/pkg/tool"
+	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
 // TestNilOptionsMeanDefaults: an option given nil leaves the default in
@@ -27,7 +28,9 @@ func TestNilOptionsMeanDefaults(t *testing.T) {
 		tavily.WithLookupEnv(nil),
 		tavily.WithClock(nil),
 		tavily.WithLogger(nil),
-	).Build(t.Context(), json.RawMessage(`{"auth": "keyless"}`))
+	).Build(
+
+		t.Context(), toolset.BuildInput{Settings: json.RawMessage(`{"auth": "keyless"}`)})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}

@@ -4,13 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
+	"net"
+	"net/url"
 	"slices"
 	"strings"
 
 	"github.com/bsamanvith/agentkit/pkg/credentials"
 	"github.com/bsamanvith/agentkit/pkg/credentials/file"
 	"github.com/bsamanvith/agentkit/pkg/credentials/memory"
+	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
 // credentialsConfig is the config file's "credentials" section: where the
@@ -28,6 +32,9 @@ type credentialsConfig struct {
 	Backend string `json:"backend"`
 	// Path is the file of "file" and "sqlite".
 	Path string `json:"path"`
+	// OAuth2 are the OAuth2 clients of the slots whose tokens agentkit
+	// refreshes.
+	OAuth2 []oauth2AppConfig `json:"oauth2"`
 }
 
 // credentialsEnv is what a backend reads besides its config: the store
@@ -97,4 +104,77 @@ func (c cli) openVault(ctx context.Context, cfg credentialsConfig, ring *credent
 		return nil, nil, fmt.Errorf("credentials: %w", err)
 	}
 	return credentials.NewVault(store, credentials.NewSealer(ring)), closeFn, nil
+}
+
+// oauth2AppConfig is one entry of credentials.oauth2: the OAuth2 client a
+// slot's tokens were issued to, which refreshing them needs. The secret is
+// read from the environment variable client_secret_env names, never from
+// the file.
+//
+//	"oauth2": [{"slot": "gmail", "token_url": "https://oauth2.googleapis.com/token",
+//	            "client_id": "123.apps.googleusercontent.com", "client_secret_env": "GMAIL_CLIENT_SECRET"}]
+type oauth2AppConfig struct {
+	Slot            string `json:"slot"`
+	TokenURL        string `json:"token_url"`
+	ClientID        string `json:"client_id"`
+	ClientSecretEnv string `json:"client_secret_env"`
+	// AuthStyle is how the client authenticates to the token endpoint:
+	// "header" (HTTP basic, the default) or "params" (in the form).
+	AuthStyle string `json:"auth_style"`
+}
+
+// credentialSources is what toolset.Build gives the specs that name a
+// credential slot: the sources over the vault, with the OAuth2 clients of
+// credentials.oauth2. With no vault, every slot is refused, naming the key
+// ring that would open one (a required toolset then fails startup; an
+// optional one is skipped).
+func (c cli) credentialSources(vault credentials.Vault, cfg credentialsConfig, log *slog.Logger) (toolset.SourceProvider, error) {
+	if vault == nil {
+		if len(cfg.OAuth2) > 0 {
+			return nil, fmt.Errorf("credentials.oauth2 needs the credential vault: set $%s", envCredentialsKey)
+		}
+		return toolset.SourceFunc(func(_, slot string, _ credentials.Scope) (credentials.Source, error) {
+			return nil, fmt.Errorf("%w: slot %q needs the credential vault: set $%s (<id>:<base64 of %d random bytes>)",
+				toolset.ErrNoCredentials, slot, envCredentialsKey, credentials.KeySize)
+		}), nil
+	}
+	opts := []credentials.SourcesOption{credentials.WithLogger(log.With("component", "credentials"))}
+	seen := map[string]bool{}
+	for i, a := range cfg.OAuth2 {
+		where := fmt.Sprintf("credentials.oauth2[%d]", i)
+		if seen[a.Slot] {
+			return nil, fmt.Errorf("%s: slot %q is listed twice", where, a.Slot)
+		}
+		seen[a.Slot] = true
+		var style credentials.AuthStyle
+		switch a.AuthStyle {
+		case "", "header":
+			style = credentials.AuthInHeader
+		case "params":
+			style = credentials.AuthInParams
+		default:
+			return nil, fmt.Errorf("%s: auth_style %q: want \"header\" or \"params\"", where, a.AuthStyle)
+		}
+		if a.ClientSecretEnv == "" {
+			return nil, fmt.Errorf("%s: client_secret_env names the variable with the client secret (the file never holds it)", where)
+		}
+		secret := c.env(a.ClientSecretEnv)
+		if secret == "" {
+			return nil, fmt.Errorf("%s: $%s (client_secret_env) is not set", where, a.ClientSecretEnv)
+		}
+		// The client secret and refresh tokens go to it: https, or http only
+		// on a loopback host.
+		if u, err := url.Parse(a.TokenURL); err != nil || u.Host == "" ||
+			u.Scheme != "https" && (u.Scheme != "http" || !isLoopback(net.JoinHostPort(u.Hostname(), "0"))) {
+			return nil, fmt.Errorf("%s: token_url %q: want an https URL (http only on a loopback host)", where, a.TokenURL)
+		}
+		opts = append(opts, credentials.WithOAuth2App(a.Slot, credentials.OAuth2App{
+			ClientID: a.ClientID, ClientSecret: credentials.NewSecret(secret), TokenURL: a.TokenURL, AuthStyle: style,
+		}))
+	}
+	s, err := credentials.NewSources(vault, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
 }

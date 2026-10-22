@@ -2,7 +2,6 @@ package toolset
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math/big"
 	"time"
@@ -69,7 +68,8 @@ type (
 	}
 )
 
-func (d *demo) Build(_ context.Context, settings json.RawMessage) ([]tool.Tool, error) {
+func (d *demo) Build(_ context.Context, in BuildInput) ([]tool.Tool, error) {
+	settings := in.Settings
 	var s demoSettings
 	if err := DecodeSettings(settings, &s); err != nil {
 		return nil, err

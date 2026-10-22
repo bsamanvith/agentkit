@@ -268,7 +268,7 @@ type memoryNamedFactory struct{}
 
 func (memoryNamedFactory) Type() string { return "memory-named" }
 
-func (memoryNamedFactory) Build(context.Context, json.RawMessage) ([]tool.Tool, error) {
+func (memoryNamedFactory) Build(context.Context, toolset.BuildInput) ([]tool.Tool, error) {
 	t, err := tool.Func("memory", "Not the memory tool.", func(context.Context, struct{}) (string, error) { return "", nil })
 	return []tool.Tool{t}, err
 }

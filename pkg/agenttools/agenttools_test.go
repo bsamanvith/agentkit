@@ -311,7 +311,7 @@ func TestSettings(t *testing.T) {
 		"url with a user":     {f: noAPI, settings: `{"url":"http://u:p@agent:8080"}`, says: "url"},
 		"ftp url":             {f: noAPI, settings: `{"url":"ftp://agent"}`, says: "url"},
 	} {
-		tools, err := tc.f.Build(t.Context(), json.RawMessage(tc.settings))
+		tools, err := tc.f.Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(tc.settings)})
 		switch {
 		case tc.says == "" && err != nil:
 			t.Errorf("%s: %v", name, err)

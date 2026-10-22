@@ -42,7 +42,7 @@ func Definitions(tb testing.TB, newFactory func(Env) toolset.Factory, settings j
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), watchdog)
 	defer cancel()
-	tools, err := f.Build(ctx, settings)
+	tools, err := f.Build(ctx, toolset.BuildInput{Settings: settings})
 	if err != nil {
 		tb.Fatalf("toolsettest: Definitions: Build: %v", err)
 	}
@@ -369,7 +369,8 @@ func FakeFactory(tb testing.TB, typ string, defs []tool.Definition, scripts ...S
 func (f *FakeToolset) Type() string { return f.typ }
 
 // Build implements toolset.Factory.
-func (f *FakeToolset) Build(_ context.Context, settings json.RawMessage) ([]tool.Tool, error) {
+func (f *FakeToolset) Build(_ context.Context, in toolset.BuildInput) ([]tool.Tool, error) {
+	settings := in.Settings
 	var ignored map[string]json.RawMessage
 	if err := toolset.DecodeSettings(settings, &ignored); err != nil {
 		return nil, err

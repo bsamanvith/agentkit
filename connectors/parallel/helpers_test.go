@@ -46,6 +46,7 @@ import (
 	"github.com/bsamanvith/agentkit/internal/testkit"
 	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
 	"github.com/bsamanvith/agentkit/pkg/tool"
+	"github.com/bsamanvith/agentkit/pkg/toolset"
 	"github.com/bsamanvith/agentkit/pkg/toolset/toolsettest"
 )
 
@@ -244,7 +245,7 @@ func newRig(t *testing.T, settings string, opts ...rigOption) *rig {
 	if rc.client != nil {
 		fopts = append(fopts, parallel.WithHTTPClient(rc.client))
 	}
-	tools, err := parallel.Factory(fopts...).Build(t.Context(), json.RawMessage(settings))
+	tools, err := parallel.Factory(fopts...).Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(settings)})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}

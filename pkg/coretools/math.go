@@ -2,7 +2,6 @@ package coretools
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -66,7 +65,8 @@ type (
 
 var errDivByZero = errors.New("division by zero")
 
-func (mathFactory) Build(_ context.Context, settings json.RawMessage) ([]tool.Tool, error) {
+func (mathFactory) Build(_ context.Context, in toolset.BuildInput) ([]tool.Tool, error) {
+	settings := in.Settings
 	if err := toolset.DecodeSettings(settings, &struct{}{}); err != nil {
 		return nil, err
 	}

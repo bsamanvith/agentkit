@@ -19,6 +19,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
 	"github.com/bsamanvith/agentkit/pkg/tool"
+	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
 // Replay returns the real connector served from its cassettes: real request
@@ -130,7 +131,7 @@ func newFuzzRig(f *testing.F, s *suite, call Call) *fuzzRig {
 	ctx, cancel := context.WithTimeout(context.Background(), watchdog)
 	defer cancel()
 	settings := s.settingsFor(call)
-	tools, err := s.c.New(env).Build(ctx, settings)
+	tools, err := s.c.New(env).Build(ctx, toolset.BuildInput{Settings: settings})
 	if err != nil {
 		f.Fatalf("toolsettest: FuzzResponses: Build(%s): %v", settings, err)
 	}

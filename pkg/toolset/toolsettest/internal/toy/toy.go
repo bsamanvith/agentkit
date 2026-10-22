@@ -151,7 +151,8 @@ type settings struct {
 	MaxContentChars int `json:"max_content_chars,omitempty"`
 }
 
-func (f *factory) Build(ctx context.Context, raw json.RawMessage) ([]tool.Tool, error) {
+func (f *factory) Build(ctx context.Context, in toolset.BuildInput) ([]tool.Tool, error) {
+	raw := in.Settings
 	s := settings{APIKeyEnv: "TOY_API_KEY", Auth: "key"}
 	if f.bug == BugAcceptUnknownSettings {
 		if len(raw) > 0 {

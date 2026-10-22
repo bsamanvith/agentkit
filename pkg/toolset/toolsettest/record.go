@@ -20,6 +20,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/tool"
+	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
 // RecordEnv is the environment variable that, set to 1, makes connectors'
@@ -119,7 +120,7 @@ func runLive(tb testing.TB, c Connector, rec Recording, what string) *live {
 		tools, ok := built[string(settings)]
 		if !ok {
 			var err error
-			if tools, err = c.New(env).Build(ctx, settings); err != nil {
+			if tools, err = c.New(env).Build(ctx, toolset.BuildInput{Settings: settings}); err != nil {
 				tb.Fatalf("toolsettest: %s: Build(%s): %v", what, settings, err)
 			}
 			built[string(settings)] = tools

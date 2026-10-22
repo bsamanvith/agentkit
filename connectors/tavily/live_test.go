@@ -17,6 +17,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/connectors/tavily"
 	"github.com/bsamanvith/agentkit/pkg/tool"
+	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
 // liveTools builds the toolset against the real API.
@@ -26,7 +27,7 @@ func liveTools(t *testing.T, settings string, env map[string]string, client *htt
 	if client != nil {
 		opts = append(opts, tavily.WithHTTPClient(client))
 	}
-	tools, err := tavily.Factory(opts...).Build(t.Context(), json.RawMessage(settings))
+	tools, err := tavily.Factory(opts...).Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(settings)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +135,7 @@ func TestLiveRecord(t *testing.T) {
 			if err == nil {
 				// Keep only exchanges whose mapped output is what the
 				// output schema promises (T049 §6).
-				tools, berr := tavily.Factory().Build(t.Context(), json.RawMessage(settingsOr(c.settings)))
+				tools, berr := tavily.Factory().Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(settingsOr(c.settings))})
 				if berr != nil {
 					t.Fatal(berr)
 				}

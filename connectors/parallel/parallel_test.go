@@ -89,8 +89,9 @@ func TestSettingsValidation(t *testing.T) {
 	t.Parallel()
 	env := lookup(map[string]string{"PARALLEL_API_KEY": canary, "OTHER_KEY": canary, "BLANK_KEY": "  "})
 	build := func(settings string, env func(string) (string, bool)) error {
-		_, err := parallel.Factory(parallel.WithLookupEnv(env), parallel.WithHTTPClient(noNetwork(t))).
-			Build(t.Context(), json.RawMessage(settings))
+		_, err := parallel.Factory(parallel.WithLookupEnv(env), parallel.WithHTTPClient(noNetwork(t))).Build(
+			t.Context(), toolset.BuildInput{Settings: json.RawMessage(settings)})
+
 		return err
 	}
 	for _, tc := range []struct{ name, settings string }{
@@ -505,14 +506,17 @@ func TestNilOptionsMeanDefaults(t *testing.T) {
 		parallel.WithHTTPClient(nil),
 		parallel.WithClock(nil),
 		parallel.WithLogger(nil),
-	).Build(t.Context(), json.RawMessage(`{}`))
+	).Build(
+
+		t.Context(), toolset.BuildInput{Settings: json.RawMessage(`{}`)})
+
 	must(t, err)
 	reg, err := tool.NewRegistry(tools)
 	must(t, err)
 	if _, err := reg.Invoke(t.Context(), "parallel_search", json.RawMessage(`{"query": "q"}`)); err != nil {
 		t.Errorf("search with nil options: %v", err)
 	}
-	if _, err := parallel.Factory(parallel.WithLookupEnv(nil)).Build(t.Context(), json.RawMessage(`{}`)); err == nil {
+	if _, err := parallel.Factory(parallel.WithLookupEnv(nil)).Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(`{}`)}); err == nil {
 		t.Error("a nil lookup found a key")
 	}
 }

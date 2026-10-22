@@ -32,6 +32,8 @@ A provider with several products is a **family**: a directory with one connector
 - A missing key fails `Build` with an error naming the variable, unless the connector also runs keyless.
 - `base_url` overrides `WithBaseURL`. It must be `https`, or `http` only for a loopback host. That lets a config point a connector at a local replay server.
 
+**Per-tenant credentials** (T044). A spec may name a credential slot (`"credential": {"slot": ..., "scope": "tenant"|"user"}`); `Build` then gets `in.Credentials`, a `credentials.Source` of that slot only. A tool calls `src.HTTPClient(ctx, client, ...)` (or `src.Get(ctx)`) with its call's `ctx`, which picks the caller's tenant (and user) credential, refreshing OAuth2 tokens as needed. A `credentials.ErrNotConnected` is returned as it is (the model reads "<toolset> is not connected for this account"); an upstream error gives its status, never its body. `toolsettest.CredentialEcho` is the reference. The suite does not run slot-based connectors yet: the env-key rules above still apply to the ones that take keys from the environment.
+
 **`Build` makes no request.** Tool definitions are known without calling the API.
 
 **Tools.** Each is named `<type>_<verb>`, with a description, an object input schema and an output schema (`tool.Func` derives both).

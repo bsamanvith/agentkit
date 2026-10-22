@@ -932,6 +932,24 @@
               }
             }
           },
+          "429": {
+            "description": "over_capacity: the run's runner pool is running as many runs as its limit (retryable).",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "503": {
             "description": "over_capacity: too many runs (retryable); shutting_down: the server is draining.",
             "headers": {

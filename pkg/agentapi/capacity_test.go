@@ -2,6 +2,7 @@ package agentapi_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"slices"
@@ -13,6 +14,8 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
 	"github.com/bsamanvith/agentkit/pkg/flow"
 	"github.com/bsamanvith/agentkit/pkg/harness"
+	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
 	"github.com/bsamanvith/agentkit/pkg/runner"
 	"github.com/bsamanvith/agentkit/pkg/runner/pool"
 	"github.com/bsamanvith/agentkit/pkg/store"
@@ -274,4 +277,46 @@ func TestResumedFlowRunTakesNoPoolSlot(t *testing.T) {
 	if n := bg.InUse(); n != 1 {
 		t.Errorf("the background pool has %d slots taken after the flow run, want 1 (the test's)", n)
 	}
+}
+
+// T105: an answer that lets a suspended chat go on takes a slot of the
+// chat's pool, as a resume does: with the pool full it is 429 and the run
+// keeps waiting for its answer; with a slot free it goes on, and gives the
+// slot back when it ends.
+func TestAnsweredRunTakesItsPoolsSlot(t *testing.T) {
+	t.Parallel()
+	m := script(t, llmtest.ToolCalls(llm.ToolUse{ID: "c1", Name: "ask", Input: json.RawMessage(`{}`)}), llmtest.Text("done"))
+	rt, err := pool.NewRouter([]pool.Pool{pool.NewProcess("chat"), pool.NewProcess("background")},
+		[]pool.Rule{{Pool: "chat", When: pool.Chats()}}, "background", pool.WithLimit("chat", 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var notes atomic.Int64
+	r := newRig(t, m, rigConfig{tools: interruptTools(t, &notes), harness: interactive(), api: []agentapi.Option{agentapi.WithRouter(rt)}})
+	first := r.run("go", "")
+	if end := first.last(); end.Error == nil || end.Error.Code != agentapi.CodeSuspended {
+		t.Fatalf("the run ended %+v, want suspended for input", end)
+	}
+	id := first.runID()
+	chat := rt.Slots("chat")
+	eventually(t, "the suspended run's slot back", func() bool { return chat.InUse() == 0 })
+
+	if !chat.TryAcquire() {
+		t.Fatal("the chat pool is full")
+	}
+	answer := `{"answers":[{"id":"c1","text":"red"}]}`
+	resp, body := r.input(id, answer, "Accept", "application/json")
+	wantError(t, "an answer with the chat pool full", resp, body, http.StatusTooManyRequests, agentapi.CodeOverCapacity)
+	if run := r.getRun(id); run.Status != agentapi.StatusSuspended {
+		t.Errorf("after the refused answer the run is %s, want suspended", run.Status)
+	}
+	chat.Release()
+
+	resp, body = r.input(id, answer, "Accept", "application/json")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("the answer with a slot free = %d %s", resp.StatusCode, body)
+	}
+	eventually(t, "the run done and its slot back", func() bool {
+		return r.getRun(id).Status == agentapi.StatusDone && chat.InUse() == 0
+	})
 }

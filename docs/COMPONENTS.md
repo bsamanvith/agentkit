@@ -203,7 +203,8 @@ docker run -d --name api --network agk -p 8080:8080 -v $PWD/config.json:/etc/age
 On Kubernetes the same three become three Deployments and Services, with the
 config in a ConfigMap and the tokens and keys in Secrets:
 [deploy/k8s/base/split.yaml](../deploy/k8s/base/split.yaml). `make k8s-up` runs them, with
-Postgres, on Docker Desktop's Kubernetes ([deploy/k8s/README.md](../deploy/k8s/README.md)).
+Postgres, on Docker Desktop's Kubernetes ([deploy/k8s/README.md](../deploy/k8s/README.md)),
+and `make compose-up` runs the same in Docker Compose ([deploy/compose/README.md](../deploy/compose/README.md)).
 
 ## Adding a method or a service
 

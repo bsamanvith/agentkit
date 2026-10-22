@@ -7,22 +7,8 @@
 # anthropic-api-key. The store is in memory here (one API replica, lost on
 # restart); an overlay sets AGENTKIT_STORE to a postgres:// URL (and
 # AGENTKIT_BUS to redis:// for more replicas) to keep it. Every pod mounts
-# the same config.
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: agentkit-config
-data:
-  config.json: |
-    {
-      "mcp": {"toolsets": [{"name": "demo", "type": "demo"}]},
-      "agents": [{
-        "name": "default",
-        "description": "A helpful assistant with the demo tools.",
-        "toolsets": ["demo"]
-      }]
-    }
----
+# the same config, the ConfigMap agentkit-config that kustomization.yaml makes
+# from config.json.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

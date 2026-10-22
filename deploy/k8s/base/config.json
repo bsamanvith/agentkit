@@ -1,0 +1,8 @@
+{
+  "mcp": {"toolsets": [{"name": "demo", "type": "demo"}]},
+  "agents": [{
+    "name": "default",
+    "description": "A helpful assistant with the demo tools.",
+    "toolsets": ["demo"]
+  }]
+}

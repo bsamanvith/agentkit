@@ -313,9 +313,23 @@ k8s-smoke: ## Run the smoke suite (test/e2e) against the local deployment; one c
 k8s-down: ## Delete the local deployment: its pods, secret and Postgres data
 	scripts/k8s-local.sh down
 
+# The same split deployment in Docker Compose (deploy/compose/README.md), on
+# http://localhost:30081: the other way to run it locally. scripts/compose-local.sh
+# up allinone runs the agentkit-local image alone on SQLite instead.
+.PHONY: compose-up compose-status compose-smoke compose-down
+compose-up: ## Build the split images and start them, with Postgres, in Docker Compose; console on http://localhost:30081
+	scripts/compose-local.sh up
+compose-status: ## Show the Compose deployment's containers, health and console URL
+	scripts/compose-local.sh status
+compose-smoke: ## Run the smoke suite (test/e2e) against the Compose deployment; one chat run calls the model
+	scripts/compose-local.sh smoke
+compose-down: ## Delete the Compose deployment: its containers, volumes (Postgres data) and secrets file
+	scripts/compose-local.sh down -v
+
 # The smoke suite (test/e2e, T007): a few black-box flows against a running
 # deployment. make smoke runs the split deployment as processes, on a fake
-# model; make k8s-smoke runs the suite against make k8s-up's.
+# model; make k8s-smoke and make compose-smoke run it against make k8s-up's
+# and make compose-up's.
 .PHONY: smoke
 smoke: ## Smoke suite against the split deployment run as local processes (fake model; no Docker, no key)
 	scripts/smoke.sh

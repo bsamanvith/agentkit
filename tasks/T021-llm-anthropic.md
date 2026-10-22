@@ -79,7 +79,7 @@ Each bug planted alone, `go test ./pkg/llm/anthropic/` run, change reverted. Eve
 | Thinking block dropped from the next request | `TestThinkingBlocksRoundTrip`, `TestRequestBodyGolden`, `TestFallbackLeavesOutDeclinedThinking` |
 | Other providers' Opaque blocks sent to Anthropic | `TestRequestBodyGolden` |
 | Tool input deltas concatenated out of order | `TestConformance/tool_call`, `TestInterleavedBlocksStreamOneAtATime` |
-| Truncated tool call kept (with `{}` input, as the SDK accumulator does) instead of dropped with `StopMaxTokens` | `TestTruncatedToolCallIsDropped`, `FuzzStream` (seed) |
+| Truncated tool call kept (with `{}` input, as the SDK accumulator does) instead of dropped with `StopMaxTokens` | `TestRecorded/recorded/tool_truncated` (T035; was `TestTruncatedToolCallIsDropped`), `FuzzStream` (seed) |
 | Cached tokens counted in `InputTokens` | `TestConformance/text` |
 | 529 (`overloaded_error`) mapped to `ErrInvalidRequest` | `TestErrorMapping/529`, `TestErrorMapping/error_event_mid-stream`, `TestConformance/error_overloaded`, `TestConformance/error_mid_stream` |
 | Refusal mapped to `StopEndTurn` | `TestRefusalStopReason`, `TestConformance/refusal` |

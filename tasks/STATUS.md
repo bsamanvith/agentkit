@@ -81,7 +81,7 @@ T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentki
 | [T102](T102-component-images.md) | Split images: API, runner and toolsets on `pkg/rpc`, each alone or bundled; the all-in-one image stays | **Review** (rescoped by the owner 2026-10-16) |
 | [T006](T006-compose-and-dev-script.md) | Local deploy on Docker Desktop's Kubernetes: `make k8s-up` (rescoped from Compose 2026-10-17) | **Review** |
 | [T033](T033-harness-clock.md) | Harness on `pkg/clock` | Small, independent |
-| [T035](T035-rerecord-anthropic-fixtures.md) | Re-record Anthropic fixtures from the real API | A key is available |
+| [T035](T035-rerecord-anthropic-fixtures.md) | Re-record Anthropic fixtures from the real API | **Done** 2026-10-22: `make record-anthropic`; hand-written ones listed in `pkg/llm/anthropic/testdata/README.md` |
 | [T010](T010-skills-layout.md) | `AGENTS.md`, `CLAUDE.md`, skills README, lint | Small, independent |
 | [T034](T034-nightly-ci.md) | Nightly benchstat report (non-gating, no secrets) | Small; starts the perf history |
 

@@ -1,0 +1,61 @@
+HTTP/1.1 200 OK
+Content-Type: text/event-stream; charset=utf-8
+Request-Id: req_replay
+
+event: message_start
+data: {"type":"message_start","message":{"model":"claude-haiku-5-5","id":"msg_011CgH12foZUoFqC8v4gAL9R","type":"message","role":"assistant","content":[],"container":null,"stop_reason":null,"stop_sequence":null,"stop_details":null,"usage":{"input_tokens":32,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":8,"service_tier":"standard","inference_geo":"global","speed":"standard"},"diagnostics":null}      }
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}     }
+
+event: ping
+data: {"type": "ping"}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Counting prim"}     }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"es below 60: 2,"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"3,5,7,11,"} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"13,17,19,23,"}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"29,31,37,41,"}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"43,47,53,59 "}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"— that's 17 primes"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"."}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"\n\n"} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"CAQS0gUKEAgTGAI4AUIIdGhpbmtpbmcSDCl3Q+QaSnSGO2DxfBoMu+QM0csI1hXUskDDIjA5Q+oOc4wdx32/Ds5w/sAwh+S7hwg2Icv6sUTP/Ds/Y6XOJiezvKg3YpfMfrbCZGUq7wQK3PnjTMI9CjjvjRZllnccfwUTQ8n75hcSCQU9teUtsjzMylm1SRiulRcEh2OBeYNrI8vdc1VhGQEP1ZT+f0GQgKrcPdU9efUiF+lCXUWlm/XutNJswF7zhIswZ+WGHLGo6ZyGdiYwSpSwruVfR3JT0rcrE2bMhVf6XUunHEtKqJ3bvrnI+pvgHQR3CR+gubX9MSwqIdY25xeM8N18pVQMf5zbRRlELwchHeQahFBws9QNGC9ttjs9PXGj5GHbDZCTAluRdPfcCpsFi7r0y2Neve5q6An2kmanMOuRwugAHwuQAOciHEX9GuVHTMjHlX/M5R0d/iUbna4O53dKSQlBTuvOTeLDqvJGpDK+XxmR0ATDb9Czb6Up0ak0ETqDqVijFpNhZAr9B47LctvGCD2LbOThFTCq/LAMd5nUqzt8UxLXN5NSpD9EJlTuBYHXvhQdtL7S0zzeDbAQWNo1xdEttqQ4Gf/2QYJ2PhLhfXQay39kGoL3Z6PcJC9w/tFxkXbxX1RwfP/huvvFqfFbOtCaiiellnhZ5XatKiFWoZ/1ax2p/YJF6e7jlxdOXObOWnW5BwSyYSaXIPGAdyiFOdAIQjLYqHRbSD8aV8FBLfvLKrpGn8IwTQVMBlqpKdbNUeyFjuGxdTrM+HWLd7pt+PB9ejijPdWML62jmht51gMNg6hGrBg1xb/mNZDVQ+UF6GLjmpOXKjp+aftpGHuUMQ9Bhr1JKBt0WQYmjKhQay/O+WabJhkApM7Sp80Gf50rgGX7q0jxDVV9Uo//k0LZWdLqz7lX3zQarge8blS2jqtFj0u5OhAZjSPm2SnMwbezPBgB"}           }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0            }
+
+event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"17"}     }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1    }
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null,"stop_details":null,"container":null},"usage":{"input_tokens":32,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":80,"output_tokens_details":{"thinking_tokens":77},"iterations":[{"input_tokens":32,"output_tokens":80,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"type":"message","model":null}]}    }
+
+event: message_stop
+data: {"type":"message_stop"  }
+

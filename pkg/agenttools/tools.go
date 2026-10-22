@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -302,6 +303,9 @@ func (r *runIDs) get() idPair {
 }
 
 func (t *tools) getRun(ctx context.Context, in RunGetInput) (Run, error) {
+	if !isID(in.RunID) {
+		return Run{}, apiError(&agentclient.APIError{Status: http.StatusNotFound, Code: wire.CodeNotFound, Message: fmt.Sprintf("no run %q", in.RunID)})
+	}
 	r, err := t.api.GetRun(ctx, in.RunID)
 	if err != nil {
 		return Run{}, apiError(err)
@@ -325,6 +329,9 @@ func (t *tools) conversations(ctx context.Context, in ConversationsInput) (Conve
 }
 
 func (t *tools) conversation(ctx context.Context, in ConversationGetInput) (Conversation, error) {
+	if !isID(in.ConversationID) {
+		return Conversation{}, apiError(&agentclient.APIError{Status: http.StatusNotFound, Code: wire.CodeNotFound, Message: fmt.Sprintf("no conversation %q", in.ConversationID)})
+	}
 	c, err := t.api.GetConversation(ctx, in.ConversationID)
 	if err != nil {
 		return Conversation{}, apiError(err)
@@ -405,6 +412,12 @@ func toolCalls(turns []wire.TurnRecord) []ToolCall {
 	}
 	return calls
 }
+
+// isID reports whether s can name a run or a conversation in a path of the
+// agent API: not "." or "..", which the API's router would clean into
+// another path (GET /v1/conversations/. is the list of conversations).
+// agentclient escapes everything else ("/", "?", "#", "%").
+func isID(s string) bool { return s != "." && s != ".." }
 
 // apiError is the tool error of a request the agent API refused, carrying
 // its message, which says what to do.

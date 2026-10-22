@@ -62,8 +62,8 @@ func (s *Service) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log := s.log.With("slot", f.Slot, "tenant", f.Tenant, "user", f.User)
-	name := CookieName(state)
-	http.SetCookie(w, &http.Cookie{Name: name, Value: "", Path: f.CookiePath, MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: overTLS(r)})
+	name := f.cookieName(state)
+	http.SetCookie(w, &http.Cookie{Name: name, Value: "", Path: f.CookiePath, MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: f.CookieSecure || overTLS(r)})
 	if !boundTo(r, name, f.Binding) {
 		// Not the browser that started the flow: someone else's
 		// authorization URL (RFC 9700 §4.7). Nothing is exchanged, and the

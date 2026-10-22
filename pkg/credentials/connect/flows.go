@@ -59,11 +59,13 @@ type flow struct {
 	ReturnURL string `json:"return_url,omitempty"`
 	// Binding is the SHA-256 (hex) of the value of the cookie Connect set
 	// in the browser that started the flow, and CookiePath that cookie's
-	// Path ([Service.Connect]).
-	Binding    string    `json:"binding"`
-	CookiePath string    `json:"cookie_path"`
-	Created    time.Time `json:"created"`
-	Expires    time.Time `json:"expires"`
+	// Path, and CookieSecure whether it is a Secure "__Host-" cookie
+	// ([Service.Connect]).
+	Binding      string    `json:"binding"`
+	CookiePath   string    `json:"cookie_path"`
+	CookieSecure bool      `json:"cookie_secure,omitempty"`
+	Created      time.Time `json:"created"`
+	Expires      time.Time `json:"expires"`
 }
 
 type flows struct {

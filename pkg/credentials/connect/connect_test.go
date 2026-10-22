@@ -1044,6 +1044,69 @@ func TestBrowserBinding(t *testing.T) {
 	})
 }
 
+// Review of the security fix: with an https redirect URL the binding cookie
+// is a Secure "__Host-" cookie (no Domain, Path=/), which browsers refuse
+// from a sibling subdomain or over plain http. Without the prefix, either
+// could plant the caller's own cookie, under its plain name, in the
+// victim's browser, and the victim's consent would connect their account
+// as the caller's. The callback looks for the prefixed name only.
+func TestBrowserBindingHostCookie(t *testing.T) {
+	t.Parallel()
+	const redirect = "https://agent.example.com" + connect.CallbackPath
+	r := newRig(t, func(r *rig, cfg *connect.Config) {
+		app := r.app()
+		app.RedirectURL = redirect
+		cfg.Apps = map[string]connect.App{"mail": app, "crm": app}
+	})
+	// Served as behind a proxy that ends TLS and says nothing of it: the
+	// cookie's Secure comes from the flow, not the request.
+	serve := func(target string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, strings.Replace(target, "https://", "http://", 1), nil)
+		for _, c := range cookies {
+			req.AddCookie(c)
+		}
+		rec := httptest.NewRecorder()
+		r.svc.Callback().ServeHTTP(rec, req)
+		return rec
+	}
+	start := func(user string) (target string, c *http.Cookie) {
+		t.Helper()
+		resp, c, err := r.svc.Connect(ctxOf(t, "tenant-a"), user, "mail", wire.ConnectRequest{ReturnURL: returnTo})
+		if err != nil {
+			t.Fatal(err)
+		}
+		state := mustQuery(t, resp.AuthorizeURL).Get("state")
+		if c.Name != "__Host-"+connect.CookieName(state) || !c.Secure || c.Path != "/" || c.Domain != "" ||
+			!c.HttpOnly || c.SameSite != http.SameSiteLaxMode || c.MaxAge != int(connect.DefaultStateTTL/time.Second) {
+			t.Errorf("cookie %+v, want a Secure __Host- cookie with Path=/", c)
+		}
+		return r.authorize(resp.AuthorizeURL), c
+	}
+	// The attacker's cookie, planted under the name a sibling can set.
+	target, c := start("attacker")
+	rec := serve(target, &http.Cookie{Name: connect.CookieName(mustQuery(t, target).Get("state")), Value: c.Value})
+	if rec.Code != http.StatusForbidden || rec.Header().Get("Location") != "" {
+		t.Errorf("callback with the planted cookie = %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+	if got := r.stored("tenant-a", "attacker", "mail"); got != nil || r.ts.Grants("authorization_code") != 0 {
+		t.Errorf("stored %T after %d exchanges", got, r.ts.Grants("authorization_code"))
+	}
+	// The browser that started the flow holds the __Host- cookie and
+	// finishes; the callback clears that cookie with the same attributes.
+	target, c = start("u1")
+	rec = serve(target, &http.Cookie{Name: c.Name, Value: c.Value})
+	if rec.Code != http.StatusSeeOther || mustQuery(t, rec.Header().Get("Location")).Get("result") != wire.CallbackConnected {
+		t.Fatalf("callback with the cookie = %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+	cleared := false
+	for _, sc := range rec.Result().Cookies() {
+		cleared = cleared || (sc.Name == c.Name && sc.MaxAge < 0 && sc.Path == "/" && sc.Secure && sc.Domain == "")
+	}
+	if !cleared {
+		t.Errorf("the cookie is not cleared: %v", rec.Header().Values("Set-Cookie"))
+	}
+}
+
 // Criterion (security fix): pending flows are bounded per caller. One
 // caller starting many flows drops only their own oldest: other users'
 // and other tenants' pending flows still finish.

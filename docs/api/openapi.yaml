@@ -2626,7 +2626,7 @@
             "description": "Where to send the browser.",
             "headers": {
               "Set-Cookie": {
-                "description": "agentkit_oauth_<id>=<random>; Path=/oauth/callback (the redirect URL's path); Max-Age=600; HttpOnly; SameSite=Lax; Secure when the request came over TLS. One per flow; the callback clears it.",
+                "description": "With an https redirect URL: __Host-agentkit_oauth_<id>=<random>; Path=/; Max-Age=600; HttpOnly; SameSite=Lax; Secure. With an http one: agentkit_oauth_<id>=<random>; Path=/oauth/callback (the redirect URL's path); Max-Age=600; HttpOnly; SameSite=Lax; Secure when the request came over TLS. One per flow; the callback clears it.",
                 "schema": {
                   "type": "string"
                 }

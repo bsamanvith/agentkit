@@ -26,8 +26,11 @@
 //
 // A flow is bound to the browser that started it (RFC 9700 §4.7): Connect
 // also returns a cookie (256 random bits, HttpOnly, SameSite=Lax, the
-// redirect URL's path, the flow's lifetime; one per flow, named from the
-// state), which the agent API sets on its answer, Secure over TLS. The flow
+// flow's lifetime; one per flow, named from the state), which the agent API
+// sets on its answer, Secure over TLS. When the redirect URL is https it is
+// a Secure "__Host-" cookie with Path=/, which no sibling subdomain or
+// plain-http answer can plant; when it is http (local use), it is limited
+// to the redirect URL's path. The flow
 // keeps only the cookie's SHA-256. The callback requires the cookie and
 // compares it in constant time; without it, or with another's, it answers
 // a page (403), exchanges and stores nothing, and does not follow the

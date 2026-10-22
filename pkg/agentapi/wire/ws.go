@@ -20,8 +20,9 @@ import "encoding/json"
 //
 // The first message is a hello: until it is answered with status 200, the
 // connection takes nothing else. A later hello renews the credentials, which
-// the commands after it are authorized by; a hello that fails closes the
-// connection ([WSCloseUnauthorized]). Commands run concurrently: results
+// the commands after it are authorized by; it must be for the first hello's
+// tenant and user (another's is refused with 403). A hello that fails closes
+// the connection ([WSCloseUnauthorized]). Commands run concurrently: results
 // come in the order they are ready, matched by id.
 //
 // A client too slow to read what its streams send is not waited for: each

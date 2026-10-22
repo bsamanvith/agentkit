@@ -1,0 +1,91 @@
+name: nightly
+
+# The nightly perf report (T034, docs/ENGINEERING.md 2.7), on a schedule and
+# on demand (Actions > nightly > Run workflow): every Benchmark* six times
+# (scripts/perf-report.sh), compared by benchstat with the last successful
+# run's numbers on the default branch, its "perf" artifact. The table is the
+# job summary, and goes into this run's "perf" artifact for the next one.
+# Report only: a slower number never fails the job (a benchmark that cannot
+# run does); budgets come after two weeks of numbers. The live tests are not
+# here: they run in Claude sessions (make test-live), with no key in GitHub.
+#
+# Fork-safe: no repository secret. The job's token can read the repository
+# and the Actions artifacts, and write nothing; it reaches GitHub only to
+# find and download the previous run's artifact.
+on:
+  schedule:
+    - cron: "41 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+jobs:
+  perf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      # gh run list and gh run download: the previous run's perf artifact.
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: the checkout left no credentials in .git/config
+        run: scripts/check-no-git-credentials.sh
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      # The newest successful run on the default branch (this run is still
+      # in progress, so never itself). None, or an expired artifact, leaves
+      # the file empty and the report says it has no baseline.
+      - name: the previous run's numbers (its perf artifact)
+        id: baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          dir="$RUNNER_TEMP/baseline"
+          mkdir -p "$dir"
+          run=$(gh run list -R "$REPO" -w nightly.yml -b "$BRANCH" -s success -L 1 \
+            --json databaseId,headSha,createdAt \
+            -q '.[0] | select(.) | "\(.databaseId) \(.headSha[0:7]) \(.createdAt)"' || true)
+          if [ -z "$run" ]; then
+            echo "::notice title=perf::no earlier successful nightly run on $BRANCH: no baseline"
+          elif ! gh run download "${run%% *}" -R "$REPO" -n perf -D "$dir"; then
+            echo "::notice title=perf::run ${run%% *} has no perf artifact (expired?): no baseline"
+          fi
+          read -r id sha at <<<"${run:-x x x}"
+          {
+            echo "file=$dir/bench.txt"
+            echo "label=run $id ($sha, $at)"
+          } >>"$GITHUB_OUTPUT"
+      - name: scripts/perf-report.sh
+        run: scripts/perf-report.sh
+        env:
+          OUT: ${{ runner.temp }}/perf
+          COUNT: "6"
+          BASELINE: ${{ steps.baseline.outputs.file }}
+          BASELINE_LABEL: ${{ steps.baseline.outputs.label }}
+      - name: the job summary
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -s "$RUNNER_TEMP/perf/summary.md" ]; then
+            cat "$RUNNER_TEMP/perf/summary.md" >>"$GITHUB_STEP_SUMMARY"
+          fi
+      # Kept 30 days: the next night reads it, and two weeks of them are the
+      # history the budgets are set from.
+      - name: Upload the perf artifact
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: perf
+          path: ${{ runner.temp }}/perf
+          retention-days: 30
+          if-no-files-found: error

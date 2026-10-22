@@ -1,0 +1,18 @@
+goos: linux
+goarch: amd64
+pkg: github.com/bsamanvith/agentkit/pkg/mcp/server
+cpu: Intel(R) Xeon(R) Processor @ 2.10GHz
+BenchmarkCallTool-4   	     200	   1775498 ns/op	  327545 B/op	     303 allocs/op
+BenchmarkCallTool-4   	     200	   1039661 ns/op	  328283 B/op	     303 allocs/op
+BenchmarkCallTool-4   	     200	    818925 ns/op	  326218 B/op	     301 allocs/op
+PASS
+ok  	github.com/bsamanvith/agentkit/pkg/mcp/server	0.836s
+goos: linux
+goarch: amd64
+pkg: github.com/bsamanvith/agentkit/pkg/bus/memory
+cpu: Intel(R) Xeon(R) Processor @ 2.10GHz
+BenchmarkPublishFanOut-4   	     200	      5506 ns/op	    2900 B/op	       9 allocs/op
+BenchmarkPublishFanOut-4   	     200	      1852 ns/op	    1588 B/op	       5 allocs/op
+BenchmarkPublishFanOut-4   	     200	      3605 ns/op	    2441 B/op	       8 allocs/op
+PASS
+ok  	github.com/bsamanvith/agentkit/pkg/bus/memory	0.024s

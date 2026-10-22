@@ -710,6 +710,27 @@ func TestOpenAPIResponses(t *testing.T) {
 	rec.probe(rs, "logout", 204, "POST", "/v1/auth/logout", "", "", sess.headers(rs, true)...)
 	rec.probe(rs, "logout_unauthorized", 401, "POST", "/v1/auth/logout", "", "", sess.headers(rs, true)...)
 	rec.probe(r, "logout_not_found", 404, "POST", "/v1/auth/logout", "", "")
+	// Credentials (T045), as user u1 of a server that keeps them; the
+	// rig r keeps none.
+	cr := newCredRig(t, agentapi.WithMaxBodyBytes(512))
+	big := `{"kind":"api_key","api_key":"` + strings.Repeat("x", 600) + `"}`
+	rec.probe(r, "list_credentials_off", 404, "GET", "/v1/credentials", "", "")
+	rec.probe(cr.rig, "put_credential", 200, "PUT", "/v1/credentials/mail", `{"kind":"api_key","api_key":"k"}`, "")
+	rec.probe(cr.rig, "put_credential_invalid", 400, "PUT", "/v1/credentials/mail", `{"kind":"api_key"}`, "")
+	rec.probe(cr.rig, "put_credential_unauthorized", 401, "PUT", "/v1/credentials/mail", `{"kind":"api_key","api_key":"k"}`, "", bearer...)
+	rec.probe(cr.rig, "put_credential_not_found", 404, "PUT", "/v1/credentials/nope", `{"kind":"api_key","api_key":"k"}`, "")
+	rec.probe(cr.rig, "put_credential_too_large", 413, "PUT", "/v1/credentials/mail", big, `{"kind":"api_key","api_key":"too long"}`)
+	rec.probe(cr.rig, "list_credentials", 200, "GET", "/v1/credentials", "", "")
+	rec.probe(cr.rig, "list_credentials_unauthorized", 401, "GET", "/v1/credentials", "", "", bearer...)
+	rec.probe(cr.rig, "connect_credential", 200, "POST", "/v1/credentials/mail/connect", `{"return_url":"https://console.example.com/connections/done"}`, "")
+	rec.probe(cr.rig, "connect_credential_invalid", 400, "POST", "/v1/credentials/mail/connect", `{"return_url":"https://evil.example.com/"}`, "")
+	rec.probe(cr.rig, "connect_credential_unauthorized", 401, "POST", "/v1/credentials/mail/connect", `{}`, "", bearer...)
+	rec.probe(cr.rig, "connect_credential_not_found", 404, "POST", "/v1/credentials/nope/connect", `{}`, "")
+	rec.probe(cr.rig, "connect_credential_too_large", 413, "POST", "/v1/credentials/mail/connect", `{"return_url":"`+strings.Repeat("x", 600)+`"}`, `{"return_url":"too long"}`)
+	rec.probe(cr.rig, "delete_credential_bad_scope", 400, "DELETE", "/v1/credentials/mail?scope=tenant", "", "")
+	rec.probe(cr.rig, "delete_credential_unauthorized", 401, "DELETE", "/v1/credentials/mail", "", "", bearer...)
+	rec.probe(cr.rig, "delete_credential", 204, "DELETE", "/v1/credentials/mail?scope=user", "", "")
+	rec.probe(cr.rig, "delete_credential_not_found", 404, "DELETE", "/v1/credentials/mail", "", "")
 
 	// Keys without the scope an endpoint needs: 403 on every route. The
 	// rig's own requests read, with the read key.
@@ -729,7 +750,7 @@ func TestOpenAPIResponses(t *testing.T) {
 			continue // any credential may sign out and ask who it is
 		}
 		method, target, _ := strings.Cut(rt, " ")
-		target = strings.NewReplacer("{id}", "x", "{name}", "x").Replace(target)
+		target = strings.NewReplacer("{id}", "x", "{name}", "x", "{slot}", "x").Replace(target)
 		name := strings.ToLower(method) + strings.NewReplacer("/v1/", "_", "/", "_", "{", "", "}", "").Replace(strings.TrimPrefix(rt, method+" ")) + "_forbidden"
 		if method == http.MethodGet {
 			rec.probe(rf, name, 403, method, target, "", "", "Authorization", "Bearer "+runKey)
@@ -738,8 +759,9 @@ func TestOpenAPIResponses(t *testing.T) {
 				"POST /v1/runs": `{"message":"hi"}`, "POST /v1/runs/{id}/decisions": `{"path":"f/ok","approved":true}`,
 				"POST /v1/runs/{id}/input": `{"answers":[{"id":"q1","text":"red"}]}`,
 				"POST /v1/toolsets":        `{"type":"mcp","name":"x","url":"https://mcp.example.com/mcp"}`, "POST /v1/toolsets/{name}/review": `{"tools":[]}`,
-				"PATCH /v1/toolsets/{name}": `{"enabled":true}`,
-				"POST /v1/tasks":            `{"input":"hi"}`,
+				"PATCH /v1/toolsets/{name}":  `{"enabled":true}`,
+				"POST /v1/tasks":             `{"input":"hi"}`,
+				"PUT /v1/credentials/{slot}": `{"kind":"api_key","api_key":"k"}`, "POST /v1/credentials/{slot}/connect": `{}`,
 			}[rt]
 			rec.probe(rf, name, 403, method, target, body, "")
 		}

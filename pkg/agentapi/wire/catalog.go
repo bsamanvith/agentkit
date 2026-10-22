@@ -145,10 +145,17 @@ type Toolset struct {
 // Credential is where a toolset's credential comes from, and whether it is
 // there. It never holds the value.
 type Credential struct {
-	// Status is one of the Credential constants.
+	// Status is one of the Credential constants. For a toolset whose spec
+	// names a credential slot it is the caller's: CredentialConnected,
+	// CredentialNotConnected or CredentialNeedsReconnect (as GET
+	// /v1/credentials says), or CredentialMissing when the server keeps
+	// no credentials.
 	Status string `json:"status"`
 	// Env names the environment variable the key is read from, if any.
 	Env string `json:"env,omitempty"`
+	// Slot and Scope name the credential slot the toolset uses, if any.
+	Slot  string `json:"slot,omitempty"`
+	Scope string `json:"scope,omitempty"`
 }
 
 // ToolsetList is the body of GET /v1/toolsets.

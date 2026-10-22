@@ -277,7 +277,32 @@ A toolset uses a stored credential when its spec names a slot: `{"name": "crm", 
 ]}
 ```
 
-The client secret comes from the variable `client_secret_env` names, never the file; `auth_style` is `header` (default) or `params`. Credentials are put in the vault by T045's API (until then, by code: `credentials.Vault.Put`).
+The client secret comes from the variable `client_secret_env` names, never the file; `auth_style` is `header` (default) or `params`.
+
+Putting credentials in (agent API, [openapi.yaml](api/openapi.yaml)):
+
+- `GET /v1/credentials` lists every slot the server's toolsets use, as the caller sees it: the tenant's shared ones and the caller's own. Each entry has its scope, status (`connected`, `not_connected`, `needs_reconnect`), kind and version, never a value. `GET /v1/toolsets` shows the caller's status too.
+- `PUT /v1/credentials/{slot}` stores an `api_key`, `basic` or `client_credentials` credential (`{"kind": "api_key", "api_key": "..."}`), and `DELETE` removes one. Add `scope` (`?scope=` for `DELETE`) when a slot is used with both scopes.
+- A tenant-scope slot needs the API key's scope `credentials:admin`. A user-scope slot holds the caller's own, so the key needs a `user`.
+- A `client_credentials` `token_url` must be `https` on a public address unless its host is in `allow_hosts`; every stored token URL is called through the same guard.
+
+Connecting an account with OAuth2 (authorization code + PKCE) needs the slot's app to have `auth_url` and `redirect_url`:
+
+```json
+"credentials": {"backend": "postgres",
+  "return_urls": ["https://app.example.com/settings/connections"],
+  "oauth2": [{"slot": "gmail", "profile": "google", "client_id": "123.apps.googleusercontent.com",
+    "client_secret_env": "GMAIL_CLIENT_SECRET", "scopes": ["https://www.googleapis.com/auth/gmail.readonly"],
+    "redirect_url": "https://agents.example.com/oauth/callback"}]}
+```
+
+- `profile` (`google`, `microsoft`, `salesforce`) fills in what the provider needs: the scope or `auth_params` that get a refresh token, and Google's URLs (Microsoft's and Salesforce's depend on the account, so set `auth_url` and `token_url`). Fields you set win. The profiles come from the MCP client, so the `api` image has none.
+- `redirect_url` is this server's `/oauth/callback`, registered with the provider.
+- `POST /v1/credentials/{slot}/connect` (`{"return_url": "..."}`, optional) answers `{"authorize_url", "expires_at"}`: send the browser there.
+- The provider sends the browser back to `GET /oauth/callback`, which needs no API key. The `state` says whose tokens they are: 256 bits, single use, ten minutes, kept sealed in the vault so any replica can finish the flow.
+- The callback shows a short page, or redirects to the return URL with `result` (`connected`, `denied`, `expired`, `failed`) and `slot`. A return URL must match one of `return_urls` in scheme, host and path.
+
+Without the API, `agentkit credentials put -config agentkit.json -tenant acme [-user u1] -kind api_key crm` writes to the configured vault directly. The value is the first line of stdin. `-kind` is `api_key`, `basic` (with `-username`), `client_credentials` (with `-client-id` and `-token-url`) or `oauth2` (a refresh token).
 `runners` places runs in runner pools, each with its own limit, so that background work never takes the slots chats need. Without it there is one pool, `default`, with no limit of its own:
 
 ```json

@@ -602,6 +602,48 @@ func TestClientCredentials(t *testing.T) {
 	}
 }
 
+// roundTripper is an http.RoundTripper from a func.
+type roundTripper func(*http.Request) (*http.Response, error)
+
+func (f roundTripper) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// A token URL read from the vault (a stored client credentials') is called
+// with WithStoredTokenClient's client, the guarded one, while the token
+// URLs of config (an OAuth2 app's refresh) keep WithTokenClient's (T045).
+func TestStoredTokenClient(t *testing.T) {
+	t.Parallel()
+	ts := credentialstest.NewTokenServer(t, credentialstest.TokenServerOptions{Prefix: canary + "-"})
+	var mu sync.Mutex
+	via := map[string]int{}
+	counting := func(name string) *http.Client {
+		return &http.Client{Transport: roundTripper(func(req *http.Request) (*http.Response, error) {
+			body, _ := io.ReadAll(req.Body)
+			req.Body = io.NopCloser(bytes.NewReader(body))
+			form, _ := url.ParseQuery(string(body))
+			mu.Lock()
+			via[name+" "+form.Get("grant_type")]++
+			mu.Unlock()
+			return http.DefaultTransport.RoundTrip(req)
+		})}
+	}
+	r := newSrcRig(t, credentials.WithTokenClient(counting("config")), credentials.WithStoredTokenClient(counting("stored")),
+		credentials.WithOAuth2App("mail", credentials.OAuth2App{ClientID: ts.ClientID, ClientSecret: credentials.NewSecret(ts.ClientSecret), TokenURL: ts.URL}))
+	a := scopeCtx(t, "tenant-a", "")
+	r.put(a, "", "api", credentials.ClientCredentials{ClientID: ts.ClientID, ClientSecret: credentials.NewSecret(ts.ClientSecret), TokenURL: ts.URL})
+	ts.AddRefreshToken("rt-" + canary)
+	r.put(a, "", "mail", credentials.OAuth2{RefreshToken: secret("rt")})
+	for _, slot := range []string{"api", "mail"} {
+		if _, err := r.source(r.sources, slot, "").Get(a); err != nil {
+			t.Fatalf("%s: %v", slot, err)
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if via["stored client_credentials"] != 1 || via["config refresh_token"] != 1 || len(via) != 2 {
+		t.Errorf("token requests by client: %v", via)
+	}
+}
+
 // How each kind is sent, the caller's request left as it was, and no
 // redirect to another host.
 func TestHTTPClientSendsTheCredential(t *testing.T) {

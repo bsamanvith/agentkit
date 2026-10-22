@@ -30,6 +30,9 @@ func (c cli) buildAgents(context.Context, *agentWiring, serveConfig, map[string]
 	return component.Mount{}, notBuilt(envComponents, "the agent API", "noagent")
 }
 
+// mounts are none: there is no agent API to connect accounts through.
+func (*agentWiring) mounts() []component.Mount { return nil }
+
 // handler is nil: the agentkit toolsets call the agent API at their
 // settings' URL.
 func (*agentWiring) handler() http.Handler { return nil }

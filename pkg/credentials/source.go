@@ -151,6 +151,9 @@ type Sources struct {
 	timeout     time.Duration
 	log         *slog.Logger
 	tokenClient *http.Client
+	// storedClient calls token URLs read from the vault (a stored
+	// ClientCredentials'), which a user may have written.
+	storedClient *http.Client
 
 	mu      sync.Mutex
 	flights map[flightKey]*flight
@@ -194,6 +197,15 @@ func WithLogger(l *slog.Logger) SourcesOption { return func(s *Sources) { s.log 
 // secret, which are in the request body, to wherever it points.
 func WithTokenClient(c *http.Client) SourcesOption { return func(s *Sources) { s.tokenClient = c } }
 
+// WithStoredTokenClient sets the HTTP client for token URLs that come from
+// the vault rather than from config: a [ClientCredentials]' TokenURL, which
+// whoever may write the slot chose. Give it an SSRF-guarded client (package
+// netguard) when users can write the vault. The default is the
+// [WithTokenClient] one. Redirects are not followed either.
+func WithStoredTokenClient(c *http.Client) SourcesOption {
+	return func(s *Sources) { s.storedClient = c }
+}
+
 // NewSources returns the sources over v.
 func NewSources(v Vault, opts ...SourcesOption) (*Sources, error) {
 	if v == nil {
@@ -222,13 +234,21 @@ func NewSources(v Vault, opts ...SourcesOption) (*Sources, error) {
 	if s.clock == nil || s.log == nil || s.tokenClient == nil {
 		return nil, errors.New("credentials: NewSources: nil clock, logger or token client")
 	}
-	tc := *s.tokenClient
-	tc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	s.tokenClient = &tc
+	if s.storedClient == nil {
+		s.storedClient = s.tokenClient
+	}
+	s.tokenClient, s.storedClient = noRedirects(s.tokenClient), noRedirects(s.storedClient)
 	if s.margin < 0 || s.timeout <= 0 {
 		return nil, errors.New("credentials: NewSources: the margin must not be negative and the timeout must be positive")
 	}
 	return s, nil
+}
+
+// noRedirects is a copy of c that never follows a redirect.
+func noRedirects(c *http.Client) *http.Client {
+	cc := *c
+	cc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return &cc
 }
 
 // Source returns the source of slot for the toolset named toolset (which

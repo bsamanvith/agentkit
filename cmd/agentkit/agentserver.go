@@ -51,6 +51,18 @@ type agentWiring struct {
 	closeBus func()
 	srv      *agentapi.Server
 	env      serveEnv // for the recovery loop and the webhooks
+	// callback serves the connect flows' redirects (/oauth/callback);
+	// nil when the server keeps no credentials.
+	callback http.Handler
+}
+
+// mounts are what the agent API serves beside /v1/: the OAuth callback,
+// when it keeps credentials.
+func (w *agentWiring) mounts() []component.Mount {
+	if w == nil || w.callback == nil {
+		return nil
+	}
+	return []component.Mount{{Pattern: oauthCallbackPath, Component: oauthCallback{w.callback}}}
 }
 
 // openAgents opens the agent API's store and bus.
@@ -77,6 +89,9 @@ func (w *agentWiring) close() {
 func (c cli) buildAgents(ctx context.Context, w *agentWiring, cfg serveConfig, built map[string]tool.Registry, problems []toolset.Problem, env serveEnv, authn auth.Authenticator, clk clock.Clock, log *slog.Logger) (component.Mount, error) {
 	m, srv, err := c.newAgents(ctx, cfg, built, problems, env, authn, w.st.Store, w.b, clk, log)
 	w.srv, w.env = srv, env
+	if ac, ok := m.Component.(*agentComponent); ok && ac.callback != nil {
+		w.callback = ac.callback
+	}
 	return m, err
 }
 
@@ -226,6 +241,8 @@ type agentComponent struct {
 	admin toolsetAdmin
 	// closers close the agents' memory stores.
 	closers []func() error
+	// callback serves the connect flows' redirects; nil without a vault.
+	callback http.Handler
 	// skillReport lists the agents' skills in /readyz (Report).
 	skillReport
 }
@@ -304,6 +321,10 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 		remote = runnerrpc.NewClient(conn)
 	}
 	admin, err := c.newToolsetAdmin(cfg, st, log)
+	if err != nil {
+		return component.Mount{}, nil, err
+	}
+	creds, err := c.newConnect(cfg, specs, env, log)
 	if err != nil {
 		return component.Mount{}, nil, err
 	}
@@ -413,6 +434,11 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 	if admin != nil {
 		authOpts = append(authOpts, agentapi.WithToolsetAdmin(admin))
 	}
+	var callback http.Handler
+	if creds != nil {
+		authOpts = append(authOpts, agentapi.WithCredentials(creds))
+		callback = creds.Callback()
+	}
 	rt, err := cfg.Runners.router(cfg.Agents, isolations, cfg.legacy)
 	if err != nil {
 		return fail(err)
@@ -440,7 +466,7 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 	if err != nil {
 		return fail(err)
 	}
-	ac := &agentComponent{Server: srv, skipped: skipped, skillReport: skills, runner: remote, runnerURL: env.runnerURL, agents: agentNames(cfg), toolsetsURL: env.toolsetsURL, admin: admin, closers: closers}
+	ac := &agentComponent{Server: srv, skipped: skipped, skillReport: skills, runner: remote, runnerURL: env.runnerURL, agents: agentNames(cfg), toolsetsURL: env.toolsetsURL, admin: admin, closers: closers, callback: callback}
 	for _, name := range slices.Sorted(maps.Keys(built)) {
 		if r, ok := built[name].(remoteToolset); ok {
 			ac.toolsets = r

@@ -218,6 +218,10 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 		{"POST /v1/auth/login", s.signIn},
 		{"POST /v1/auth/logout", s.signOut},
 		{"GET /v1/auth/me", s.me},
+		{"GET /v1/credentials", s.listCredentials},
+		{"PUT /v1/credentials/{slot}", s.putCredential},
+		{"DELETE /v1/credentials/{slot}", s.deleteCredential},
+		{"POST /v1/credentials/{slot}/connect", s.connectCredential},
 	} {
 		mux.HandleFunc(rt.pattern, requireScope(scopeOf(rt.pattern), rt.handler))
 		s.routes = append(s.routes, rt.pattern)

@@ -35,6 +35,9 @@ func ModuleRules() Rules {
 			// client credentials grant with x/oauth2, in this package only
 			// (E07's decision): connectors get a Source, never the library.
 			"pkg/credentials": {"golang.org/x/oauth2", "golang.org/x/oauth2/clientcredentials"},
+			// Connecting accounts (T045): the authorization code flow with
+			// PKCE (GenerateVerifier, S256ChallengeOption, Exchange).
+			"pkg/credentials/connect": {"golang.org/x/oauth2"},
 			// JWT bearer tokens (T041): go-jose for JWS and JWK sets, in
 			// this package only (E07's decision). Its fake provider signs
 			// with it.
@@ -155,6 +158,9 @@ func ModuleRules() Rules {
 				"pkg/mcp/servers", "pkg/netguard",
 				// A2UI surfaces as ui events, and ui_action (T065).
 				"pkg/a2ui",
+				// Its tests set and connect credentials (T045) through
+				// the service over a memory vault and a fake provider.
+				"pkg/credentials/connect", "pkg/credentials", "pkg/credentials/memory", "pkg/credentials/credentialstest",
 			},
 			// A2UI (T065): the protocol's types, the catalog and the
 			// validator stand alone; ui_render is a tool.
@@ -321,6 +327,15 @@ func ModuleRules() Rules {
 			"pkg/credentials":                 {"pkg/tenancy", "pkg/clock", "pkg/credentials/credentialstest", "pkg/credentials/memory"},
 			"pkg/credentials/memory":          {"pkg/credentials", "pkg/tenancy", "pkg/credentials/credentialstest"},
 			"pkg/credentials/credentialstest": {"pkg/credentials", "pkg/tenancy"},
+			// Connecting accounts (T045): the agent API's credentials
+			// contract over the vault. Its tests run the flow against the
+			// fake provider on the memory and file backends, and call a
+			// tool with what it stored (the test connector).
+			"pkg/credentials/connect": {
+				"pkg/agentapi", "pkg/agentapi/wire", "pkg/credentials", "pkg/tenancy", "pkg/clock",
+				"pkg/credentials/credentialstest", "pkg/credentials/memory", "pkg/credentials/file",
+				"pkg/clock/clocktest", "pkg/tool", "pkg/toolset", "pkg/toolset/toolsettest",
+			},
 			// The SQL backends (T043) keep their table in the store's own
 			// file or database, on the store's connections: they import
 			// their store backend for that, and cmd/agentkit picks them

@@ -2356,6 +2356,342 @@
           }
         }
       }
+    },
+    "/v1/credentials": {
+      "get": {
+        "operationId": "listCredentials",
+        "summary": "List the credential slots and the caller's status",
+        "description": "Every slot the server's toolsets use, once per scope it is used with: the tenant's shared credential (scope tenant) and the caller's own (scope user; not listed for a credential that is no user's). Each says whether a credential is stored (connected, not_connected, needs_reconnect after its refresh token was refused), its kind and dates, and whether an account can be connected with OAuth2. Values are never sent.",
+        "responses": {
+          "200": {
+            "description": "The slots.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: the server keeps no credentials (no credential vault).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/credentials/{slot}": {
+      "put": {
+        "operationId": "putCredential",
+        "summary": "Set a credential",
+        "description": "Stores an API key, a user name and password, or an OAuth2 client's id and secret (client credentials) at the slot, replacing what is there. A user sets their own for a slot of scope user; a slot of scope tenant needs credentials:admin. A client credentials token_url must be https on a public address. OAuth2 tokens come from POST /v1/credentials/{slot}/connect.",
+        "parameters": [
+          {
+            "name": "slot",
+            "in": "path",
+            "description": "The credential slot, as a toolset's spec names it.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The credential.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutCredentialRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The slot, as listed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: an unknown kind, a missing or extra field, a refused token_url, or a scope the slot is not used with (or none, for a slot used with both).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run; or the slot's scope is tenant and it does not have credentials:admin; or the slot's scope is user and the credential is not a user's.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no toolset of the server uses that slot, or the server keeps no credentials (no credential vault).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "too_large: the body is over the server's limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteCredential",
+        "summary": "Delete a credential",
+        "description": "Removes the credential at the slot (the caller's own, or with credentials:admin the tenant's). It does not revoke it at the provider.",
+        "parameters": [
+          {
+            "name": "slot",
+            "in": "path",
+            "description": "The credential slot, as a toolset's spec names it.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "description": "tenant or user; may be left out for a slot used with one scope only.",
+            "required": false,
+            "schema": {
+              "enum": [
+                "tenant",
+                "user"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "400": {
+            "description": "invalid_request: a scope the slot is not used with, or none for a slot used with both.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run; or the slot's scope is tenant and it does not have credentials:admin; or the slot's scope is user and the credential is not a user's.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no toolset of the server uses that slot, or the server keeps no credentials (no credential vault). Or nothing is stored there.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/credentials/{slot}/connect": {
+      "post": {
+        "operationId": "connectCredential",
+        "summary": "Start connecting an account with OAuth2",
+        "description": "Starts the authorization code flow with PKCE (S256) for the slot's OAuth2 app and returns the provider's page to send the user's browser to. The provider sends the browser back to the server's GET /oauth/callback (no bearer token: the flow's state, random, single use and valid for 10 minutes, names it), which exchanges the code with the verifier and stores the tokens for the caller (scope user) or the caller's tenant (scope tenant, with credentials:admin). It then shows a page of its own, or redirects to return_url with result (connected, denied, expired or failed) and slot added to its query.",
+        "parameters": [
+          {
+            "name": "slot",
+            "in": "path",
+            "description": "The credential slot, as a toolset's spec names it.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The scope, if needed, and where to return.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Where to send the browser.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: the slot has no OAuth2 app, the return_url is not on the server's allowlist, or a scope the slot is not used with.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run; or the slot's scope is tenant and it does not have credentials:admin; or the slot's scope is user and the credential is not a user's.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no toolset of the server uses that slot, or the server keeps no credentials (no credential vault).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "too_large: the body is over the server's limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3541,19 +3877,33 @@
       },
       "Credential": {
         "type": "object",
-        "description": "Where a toolset's credential comes from, and whether it is there.",
+        "description": "Where a toolset's credential comes from, and whether it is there. For a toolset whose spec names a credential slot, the status is the caller's (connected, not_connected or needs_reconnect, as GET /v1/credentials says), or missing when the server keeps no credentials.",
         "properties": {
           "status": {
             "enum": [
               "configured",
               "missing",
               "keyless",
-              "not_needed"
+              "not_needed",
+              "connected",
+              "not_connected",
+              "needs_reconnect"
             ]
           },
           "env": {
             "type": "string",
             "description": "The environment variable the key is read from. The value is never sent."
+          },
+          "slot": {
+            "type": "string",
+            "description": "The credential slot the toolset uses."
+          },
+          "scope": {
+            "enum": [
+              "tenant",
+              "user"
+            ],
+            "description": "Whose credential at the slot it uses: the tenant's shared one, or each user's own."
           }
         },
         "required": [
@@ -4278,6 +4628,178 @@
         "required": [
           "v",
           "secret"
+        ]
+      },
+      "CredentialInfo": {
+        "type": "object",
+        "description": "A slot as the caller sees it. It never holds a value.",
+        "properties": {
+          "slot": {
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "tenant",
+              "user"
+            ]
+          },
+          "status": {
+            "enum": [
+              "connected",
+              "not_connected",
+              "needs_reconnect"
+            ]
+          },
+          "kind": {
+            "enum": [
+              "api_key",
+              "basic",
+              "client_credentials",
+              "oauth2"
+            ],
+            "description": "The stored credential's kind, when one is stored."
+          },
+          "oauth": {
+            "type": "boolean",
+            "description": "An account can be connected for the slot (POST /v1/credentials/{slot}/connect)."
+          },
+          "toolsets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The server's toolsets that use the slot with this scope."
+          },
+          "version": {
+            "type": "integer",
+            "description": "Counts the stored credential's writes."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiry": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the stored access token expires, if it says."
+          }
+        },
+        "required": [
+          "slot",
+          "scope",
+          "status",
+          "oauth",
+          "toolsets"
+        ]
+      },
+      "CredentialList": {
+        "type": "object",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "credentials": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CredentialInfo"
+            }
+          }
+        },
+        "required": [
+          "v",
+          "credentials"
+        ]
+      },
+      "PutCredentialRequest": {
+        "type": "object",
+        "description": "A credential to store. Each kind takes its own fields and no others: api_key (api_key), basic (username and password), client_credentials (client_id, client_secret, token_url and scopes).",
+        "properties": {
+          "scope": {
+            "enum": [
+              "tenant",
+              "user"
+            ],
+            "description": "May be left out when the slot is used with one scope only."
+          },
+          "kind": {
+            "enum": [
+              "api_key",
+              "basic",
+              "client_credentials"
+            ]
+          },
+          "api_key": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "client_id": {
+            "type": "string"
+          },
+          "client_secret": {
+            "type": "string"
+          },
+          "token_url": {
+            "type": "string",
+            "description": "https, on a public address: the server sends the client secret there."
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "ConnectRequest": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "enum": [
+              "tenant",
+              "user"
+            ],
+            "description": "May be left out when the slot is used with one scope only."
+          },
+          "return_url": {
+            "type": "string",
+            "description": "Where the callback sends the browser when the flow ends, with result and slot added to its query; it must have the scheme, host and path of a URL on the server's allowlist. Without it the callback shows a page of its own."
+          }
+        }
+      },
+      "ConnectResponse": {
+        "type": "object",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "authorize_url": {
+            "type": "string",
+            "description": "The provider's authorization page, with the flow's state and PKCE challenge."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the flow expires: the callback refuses it after."
+          }
+        },
+        "required": [
+          "v",
+          "authorize_url",
+          "expires_at"
         ]
       }
     }

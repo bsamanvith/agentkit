@@ -317,6 +317,7 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 			Model:    wire.Model{Provider: a.Model.Provider, ID: a.Model.id(), Effort: a.Model.Effort},
 			Toolsets: a.Toolsets, PrefixToolNames: a.PrefixToolNames, RuntimeToolsets: a.RuntimeToolsets,
 			Isolation: iso,
+			UI:        a.UI,
 		}
 		if len(a.RuntimeToolsets) > 0 && admin == nil {
 			return fail(fmt.Errorf("%s.runtime_toolsets: toolsets added at run time are off (runtime_toolsets.enabled)", a.label(cfg.legacy)))

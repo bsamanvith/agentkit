@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/bsamanvith/agentkit/pkg/a2ui"
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/agenttools"
@@ -83,6 +84,11 @@ type agentDef struct {
 	// runners at least that isolated (runners.go); startup fails when no
 	// pool is.
 	Isolation string `json:"isolation"`
+	// UI "a2ui" lets the agent show the person UI (forms, choices, cards)
+	// as A2UI surfaces: it gets the ui_render tool (package a2ui), its
+	// surfaces stream as ui events, and runs take ui_action. Empty: text
+	// only, and no ui_render.
+	UI string `json:"ui"`
 }
 
 // apiConfig is the "agent_api" section of the serve config file: limits of
@@ -265,6 +271,9 @@ func (d agentDef) check(legacy bool) error {
 	if d.Interaction != "" && !d.Interaction.Valid() {
 		return fmt.Errorf("%s.interaction %q: want %q", label, d.Interaction, harness.Interactions())
 	}
+	if d.UI != "" && d.UI != a2ui.UIMode {
+		return fmt.Errorf("%s.ui %q: want %q, or none for text only", label, d.UI, a2ui.UIMode)
+	}
 	return nil
 }
 
@@ -316,6 +325,11 @@ func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built 
 			}
 		}
 		tools = joinRegistries(mem.tools, tools)
+	}
+	if a.UI == a2ui.UIMode {
+		if tools, err = withUI(ctx, tools); err != nil {
+			return fail(fmt.Errorf("%s.ui: %w", label, err))
+		}
 	}
 	if len(a.RuntimeToolsets) > 0 {
 		tools = joinRegistries(tools, admin.Registry(a.RuntimeToolsets...))

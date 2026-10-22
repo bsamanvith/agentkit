@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bsamanvith/agentkit/pkg/a2ui"
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/auth"
@@ -412,6 +413,11 @@ func TestOpenAPIResponses(t *testing.T) {
 		{Name: "asker", Harness: agentHarness(t, script(t,
 			llmtest.ToolCalls(llm.ToolUse{ID: "q1", Name: "ask", Input: json.RawMessage(`{}`)}), llmtest.Text("red it is"),
 		), interruptTools(t, new(atomic.Int64)), append(interactive(), now)...)},
+		// An agent with UI: its run streams ui events, and an action
+		// continues it.
+		{Name: "painter", UI: a2ui.UIMode, Harness: agentHarness(t, script(t,
+			llmtest.ToolCalls(renderCall("u1", false)), llmtest.Text("pick one"), llmtest.Text("searching"),
+		), registry(t, a2ui.Tool()), now)},
 	}
 	// A flow with an approval, for the decisions; and a store the probes
 	// share with a second server, which holds no run of its own: it creates
@@ -540,6 +546,15 @@ func TestOpenAPIResponses(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec.probe(r, "run_in_created", 200, "POST", "/v1/runs", `{"message":"hi","conversation_id":"`+created.ID+`"}`, "", jsonAccept...)
+	var painted agentapi.Run
+	if err := json.Unmarshal(rec.probe(r, "run_ui", 200, "POST", "/v1/runs", `{"message":"paint","agent":"painter"}`, "", jsonAccept...), &painted); err != nil {
+		t.Fatal(err)
+	}
+	rec.stream(r, "ui_events", "GET", "/v1/runs/"+painted.ID+"/events")
+	action := `{"conversation_id":"` + painted.ConversationID + `","ui_action":{"surface_id":"news","component_id":"go","action":"search","context":{"topic":["go"]}}}`
+	rec.probe(r, "run_ui_action", 200, "POST", "/v1/runs", action, "", jsonAccept...)
+	rec.probe(r, "run_ui_action_bad_request", 400, "POST", "/v1/runs", `{"agent":"painter","ui_action":{"surface_id":"news","component_id":"go","action":"search"}}`, "", jsonAccept...)
+	rec.probe(r, "get_agent_ui", 200, "GET", "/v1/agents/painter", "", "")
 	rec.probe(r, "create_conversation_bad_request", 400, "POST", "/v1/conversations", `{"title":"x"}`, `{"agent":"an unknown field instead"}`)
 	rec.probe(r, "create_conversation_unauthorized", 401, "POST", "/v1/conversations", `{}`, "", bearer...)
 	rec.probe(r, "create_conversation_no_agent", 404, "POST", "/v1/conversations", `{"agent":"nobody"}`, "")

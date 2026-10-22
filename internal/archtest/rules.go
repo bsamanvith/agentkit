@@ -153,7 +153,12 @@ func ModuleRules() Rules {
 				// Its tests add MCP servers at run time (T096) through
 				// the manager, behind the SSRF guard.
 				"pkg/mcp/servers", "pkg/netguard",
+				// A2UI surfaces as ui events, and ui_action (T065).
+				"pkg/a2ui",
 			},
+			// A2UI (T065): the protocol's types, the catalog and the
+			// validator stand alone; ui_render is a tool.
+			"pkg/a2ui": {"pkg/tool"},
 			// The tenant-scoped view of a backend: the one package outside
 			// cmd/ and the runner that opens one, and it returns only the
 			// interfaces, never the backend or its Admin.

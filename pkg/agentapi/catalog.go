@@ -12,6 +12,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/bsamanvith/agentkit/pkg/a2ui"
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/auth"
 	"github.com/bsamanvith/agentkit/pkg/harness"
@@ -73,6 +74,11 @@ type Agent struct {
 	// Skills and Memory describe the agent's skills and long-term memory.
 	Skills []string
 	Memory bool
+	// UI is how the agent shows UI besides text: [a2ui.UIMode] when its
+	// harness has the ui_render tool ([a2ui.Tool]), whose successful calls
+	// the server streams as ui events and to which runs answer with
+	// UIAction; "" for text only.
+	UI string
 	// Isolation is the least isolation the agent's runs need; the server's
 	// router ([WithRouter]) never runs them in a weaker pool. The zero value
 	// is [pool.Process]: the agent may run as built (Harness or Runner).
@@ -155,6 +161,8 @@ func newAgents(cfg config, agents []Agent) (*Server, error) {
 			return nil, fmt.Errorf("%w: two agents named %q", ErrInvalidConfig, a.Name)
 		case a.Isolation > pool.VM:
 			return nil, fmt.Errorf("%w: agent %q: unknown isolation %s", ErrInvalidConfig, a.Name, a.Isolation)
+		case a.UI != "" && a.UI != a2ui.UIMode:
+			return nil, fmt.Errorf("%w: agent %q: ui %q: want %q or none", ErrInvalidConfig, a.Name, a.UI, a2ui.UIMode)
 		}
 		for _, name := range a.Toolsets {
 			if sets[name] == nil {
@@ -268,7 +276,7 @@ func (s *Server) agentView(r *http.Request, a *agent) (wire.Agent, error) {
 	v := wire.Agent{
 		V: WireVersion, Name: a.Name, Description: a.Description, Default: a == s.defaultAgent,
 		Model: a.Model, Toolsets: make([]wire.AgentToolset, 0, len(a.Toolsets)),
-		Skills: append([]string{}, a.Skills...), Memory: a.Memory,
+		Skills: append([]string{}, a.Skills...), Memory: a.Memory, UI: a.UI,
 	}
 	for _, name := range a.Toolsets {
 		ts := s.toolsets[name]

@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bsamanvith/agentkit/pkg/a2ui"
 	"github.com/bsamanvith/agentkit/pkg/auth"
 	"github.com/bsamanvith/agentkit/pkg/bus"
 	memorybus "github.com/bsamanvith/agentkit/pkg/bus/memory"
@@ -66,6 +67,7 @@ type Server struct {
 	agentOrder   []*agent
 	defaultAgent *agent // nil when a run must name its agent
 	toolsets     map[string]*Toolset
+	anyUI        bool // some agent shows UI
 
 	store  Store
 	router *pool.Router // where runs' agents run; closed by Shutdown
@@ -139,6 +141,7 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 		store:   cfg.store,
 		bus:     cfg.bus,
 	}
+	s.anyUI = slices.ContainsFunc(order, func(a *agent) bool { return a.UI != "" })
 	if s.bus == nil {
 		s.bus, s.ownBus = memorybus.New(memorybus.WithClock(cfg.clock)), true
 	}
@@ -427,7 +430,17 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 		s.unavailable(w, shuttingDown())
 		return
 	}
-	hasMessage := strings.TrimSpace(req.Message) != ""
+	hasMessage := strings.TrimSpace(req.Message) != "" || req.UIAction != nil
+	if req.UIAction != nil {
+		switch {
+		case strings.TrimSpace(req.Message) != "":
+			writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "send either a message or a ui_action, not both"})
+			return
+		case req.ConversationID == "":
+			writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "a ui_action answers a surface of a conversation: give its conversation_id"})
+			return
+		}
+	}
 	var start StartOptions
 	if len(req.ToolPolicy) > 0 {
 		if !hasMessage {
@@ -480,6 +493,10 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 			s.resumeConversation(ctx, w, r, convID)
 			return
 		}
+		if req.UIAction != nil && ag.UI != a2ui.UIMode {
+			writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "agent " + quote(ag.Name) + " shows no UI, so it takes no ui_action"})
+			return
+		}
 	} else {
 		if !hasMessage {
 			writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "message is empty"})
@@ -489,6 +506,18 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 			writeError(w, code, apiErr)
 			return
 		}
+	}
+	prompt := harness.UserText(req.Message)
+	if a := req.UIAction; a != nil {
+		text, err := a2ui.ActionText(a2ui.Action{
+			Name: a.Action, SurfaceID: a.SurfaceID, SourceComponentID: a.ComponentID,
+			Timestamp: s.cfg.clock.Now(), Context: a.Context,
+		})
+		if err != nil {
+			writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "ui_action: " + uiActionProblem(err)})
+			return
+		}
+		prompt = harness.UserText(text)
 	}
 	if apiErr := s.admit(); apiErr != nil {
 		s.unavailable(w, apiErr)
@@ -513,7 +542,7 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 		created = true
 	}
 	execCtx, cancel := execContext(ctx)
-	x, err := s.runs.Start(execCtx, convID, harness.UserText(req.Message), start)
+	x, err := s.runs.Start(execCtx, convID, prompt, start)
 	if err != nil {
 		cancel(nil)
 		s.release()
@@ -704,6 +733,7 @@ func (s *Server) RunRecovered(ctx context.Context, x *runner.Execution) {
 func (s *Server) launch(ctx context.Context, cancel context.CancelCauseFunc, x *runner.Execution, seed replayed, freePool func()) *hub {
 	t, _ := tenancy.From(ctx)
 	h := newHub(x.Run.ID, x.Run.ConversationID, t, x.Run.Interactive, seed.events)
+	h.ui = s.showsUI(ctx, x.Run.ConversationID)
 	em := &emitter{log: s.log, h: h, seq: lastSeq(seed.events)}
 	rs, err := s.pub.Open(ctx, x.Run.ID)
 	if err != nil {
@@ -759,6 +789,7 @@ func (s *Server) drive(ctx context.Context, cancel context.CancelCauseFunc, x *r
 		done   *runner.Event
 		runErr error
 	)
+	uiCalls := map[string]llm.ToolUse{} // ui_render calls going on, by ID
 	for ev, err := range x.Events() {
 		if err != nil {
 			runErr = err
@@ -784,6 +815,11 @@ func (s *Server) drive(ctx context.Context, cancel context.CancelCauseFunc, x *r
 			}
 			if e, ok := wireEvent(h.runID, h.convID, baseTurns, ev.Harness); ok {
 				em.emit(ctx, e, !streamedOnly(e.Type))
+				if h.ui {
+					for _, u := range uiEvents(e, ev.Harness, uiCalls) {
+						em.emit(ctx, u, true)
+					}
+				}
 			}
 			if ev.Harness.Kind == harness.EventTurnDone && ev.Harness.Turn == 0 {
 				// The pending turn a resume finished: the harness numbers

@@ -2646,7 +2646,7 @@
         "properties": {
           "message": {
             "type": "string",
-            "description": "The user's message; empty only to resume an interrupted conversation."
+            "description": "The user's message. Absent or empty only to resume an interrupted conversation, or with ui_action."
           },
           "conversation_id": {
             "type": "string",
@@ -2666,10 +2666,38 @@
               "autonomous"
             ],
             "description": "Narrows the agent's interaction mode for this run, and every resume of it: whether its tool calls may wait for people. interactive and supervised wait (a tool that asks, such as ask_user; a call the policy wants approved): the run is suspended until answered (POST /v1/runs/{id}/input). autonomous never waits: ask_user is not offered, and a call that wants an approval is refused, saying why. The stricter of the agent's mode and this one wins. Only with a message: a resumed run keeps its mode. An unknown mode is 400 invalid_request."
+          },
+          "ui_action": {
+            "$ref": "#/components/schemas/UIAction"
+          }
+        },
+        "additionalProperties": false
+      },
+      "UIAction": {
+        "type": "object",
+        "description": "In place of a message: what the person did on an A2UI surface the agent showed (a ui event), sent to that conversation (conversation_id) of an agent with ui a2ui. The next user message is the action as structured text: <ui_action> and the A2UI action message as JSON (version, then action with name, surfaceId, sourceComponentId, the server's timestamp and context). With a message too, without a conversation, to an agent without UI, or with a field the check refuses, it is 400 invalid_request.",
+        "properties": {
+          "surface_id": {
+            "type": "string",
+            "description": "The surface."
+          },
+          "component_id": {
+            "type": "string",
+            "description": "The component (a button) whose action it is."
+          },
+          "action": {
+            "type": "string",
+            "description": "The action event's name."
+          },
+          "context": {
+            "type": "object",
+            "description": "The action event's context with its bindings resolved: the values chosen. Absent is {}."
           }
         },
         "required": [
-          "message"
+          "surface_id",
+          "component_id",
+          "action"
         ],
         "additionalProperties": false
       },
@@ -2934,7 +2962,7 @@
       },
       "Event": {
         "type": "object",
-        "description": "One event of a run's stream: the JSON of an SSE data line, whose event name is its type. A run's events are one run_start; per turn its text_delta events, a tool_call and tool_result per tool call (with its tool_policy and tool_flagged, if any, in between), and one turn_done; and last one run_done or run_error. A call that waits for people has an interrupt where its tool_result would be, and the execution ends there (run_error suspended); once answered, the run's events go on in the same turn: the call's tool_call again, its tool_result, the turn's turn_done.",
+        "description": "One event of a run's stream: the JSON of an SSE data line, whose event name is its type. A run's events are one run_start; per turn its text_delta events, a tool_call and tool_result per tool call (with its tool_policy and tool_flagged, if any, in between, and after a ui_render call's tool_result its ui events), and one turn_done; and last one run_done or run_error. A call that waits for people has an interrupt where its tool_result would be, and the execution ends there (run_error suspended); once answered, the run's events go on in the same turn: the call's tool_call again, its tool_result, the turn's turn_done.",
         "properties": {
           "v": {
             "const": 1,
@@ -2942,7 +2970,7 @@
           },
           "type": {
             "type": "string",
-            "description": "run_start, text_delta, tool_call, tool_policy, tool_flagged, interrupt, tool_result, turn_done, retrying, run_done or run_error; new types may be added: skip an unknown one. tool_policy says what the run's tool policy decided about a call it did not plainly allow (flag: the call runs; approve: in a run that may wait for people, an interrupt follows, else like deny; deny: the call does not run, and its tool_result is the error the model was shown); tool_flagged follows the tool_policy of a flagged call, with the same fields. interrupt says a call waits for people (its interrupt)."
+            "description": "run_start, text_delta, tool_call, tool_policy, tool_flagged, interrupt, tool_result, ui, turn_done, retrying, run_done or run_error; new types may be added: skip an unknown one. tool_policy says what the run's tool policy decided about a call it did not plainly allow (flag: the call runs; approve: in a run that may wait for people, an interrupt follows, else like deny; deny: the call does not run, and its tool_result is the error the model was shown); tool_flagged follows the tool_policy of a flagged call, with the same fields. interrupt says a call waits for people (its interrupt). ui carries one A2UI v0.9 message an agent with UI showed (its surface_id and message): each message of a ui_render call that succeeded, in order, right after the call's tool_result."
           },
           "id": {
             "type": "string",
@@ -3063,6 +3091,14 @@
           "delay_ms": {
             "type": "number",
             "description": "retrying: how long the run waits before it."
+          },
+          "surface_id": {
+            "type": "string",
+            "description": "ui: the A2UI surface the message is about."
+          },
+          "message": {
+            "type": "object",
+            "description": "ui: the A2UI v0.9 server-to-client message (createSurface, updateComponents, updateDataModel or deleteSurface), checked against the basic catalog minus its deferred components (package pkg/a2ui)."
           }
         },
         "required": [
@@ -3161,6 +3197,12 @@
           "system": {
             "type": "string",
             "description": "The system prompt: only in GET /v1/agents/{name}. It will be for admins only once the API has roles (T040)."
+          },
+          "ui": {
+            "enum": [
+              "a2ui"
+            ],
+            "description": "How the agent shows UI besides text: a2ui (A2UI surfaces as ui events; runs take ui_action). Absent: text only."
           }
         },
         "required": [

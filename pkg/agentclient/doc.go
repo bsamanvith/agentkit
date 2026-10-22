@@ -34,6 +34,15 @@
 // completed turns (it is "interrupted" if the run stopped before answering;
 // post an empty message to resume it).
 //
+// # UI
+//
+// An agent whose wire.Agent UI is "a2ui" shows A2UI surfaces: the stream
+// carries a wire.TypeUI event per A2UI message (Event.SurfaceID and the
+// message's JSON in Event.UI; package github.com/bsamanvith/agentkit/pkg/a2ui
+// reads it). The person's action on a surface goes back as a RunRequest whose
+// UIAction names the surface, the component, the action and its values, in
+// place of Message, with the conversation's ConversationID.
+//
 // # Agents, conversations and toolsets
 //
 // A server runs one or more agents ([Client.Agents], [Client.Agent]); a run

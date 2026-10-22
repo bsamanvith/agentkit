@@ -230,6 +230,7 @@ Each entry of `agents`:
 | `tool_policy` | `all` | which tool calls the agent may make (below) |
 | `interaction` | `autonomous` | whether its tool calls may wait for people: `interactive` or `supervised` (an `ask_user` question, or a call the policy wants approved, suspends the run until answered), or `autonomous` (never: `ask_user` is not offered, and such a call is refused) |
 | `isolation` | `process` | the least isolation the agent's runs need: `process`, `sandbox` or `vm`; a run goes only to a runner pool at least that isolated (`runners`, below), and startup fails when there is none. Only `process` pools exist yet |
+| `ui` | none (text only) | `a2ui`: the agent can show forms, choices and cards as A2UI surfaces with the `ui_render` tool (below, "Agent-made UI") |
 | `memory` | none (no memory tool, nothing stored) | the agent's own notes across conversations: one tool, `memory`, with the commands of Claude's memory tool on files under `/memories`. `store.backend` is `memory` (in the process, lost on restart) or `sqlite` with `store.path` (a file; only in the local image, the others refuse it at startup); `store.scope` is `tenant` (default) or `user` (each user of a tenant apart: needs API keys with a `user`); `store.max_file_bytes`, `store.max_scope_bytes`, `store.max_files` default to 16 KiB, 1 MiB and 200. `native_tool: true` sends it to Claude as the native memory tool type. `index` adds a search store (recall over many items): the tools `recall_search` (words, `"exact phrases"`, a metadata filter), `recall_get` and `recall_save`; `index.backend` is `memory` or `sqlite` with `index.path` (it may be the store's file), `index.scope` as the store's, `index.max_items` and `index.max_text_bytes` default to 10,000 and 32 KiB. `index.auto_recall: true` adds the top `index.k` (default 5) results for each new message to that message as a `<recalled source="memory">` block marked as data, never to the system prompt. A section may have a store, an index or both. Not yet for agents on a runner component |
 
 `agent_api`:
@@ -370,6 +371,21 @@ curl -s 'localhost:8080/v1/runs?conversation_id=conv_...' -H "Authorization: Bea
 curl -s -X POST localhost:8080/v1/runs/run_.../stop -H "Authorization: Bearer $AGENTKIT_API_TOKEN"
 curl -sN -X POST localhost:8080/v1/runs/run_.../resume -H "Authorization: Bearer $AGENTKIT_API_TOKEN"
 curl -sN localhost:8080/v1/runs/run_.../events -H "Authorization: Bearer $AGENTKIT_API_TOKEN" -H 'Last-Event-ID: 3'
+```
+
+### Agent-made UI (A2UI)
+
+An agent with `"ui": "a2ui"` gets the `ui_render` tool: its input is a list of [A2UI](https://a2ui.org/) v0.9 messages (`createSurface`, `updateComponents`, `updateDataModel`, `deleteSurface`) drawn with the basic catalog, without Slider, Tabs, Modal, Video and AudioPlayer. The server checks each call (unknown components or properties, a child that is not defined, cycles, sizes, URLs that are not `http(s)`); a bad one is a tool error naming each problem, which the model fixes and sends again. Each message of a good call is a `ui` event on the run's stream, after the call's `tool_result`:
+
+```json
+{"v":1,"type":"ui","id":"7","seq":7,"run_id":"run_...","at":"...","turn":1,"call":0,"tool_use_id":"toolu_...","surface_id":"pick_plan","message":{"version":"v0.9","createSurface":{"surfaceId":"pick_plan","catalogId":"https://a2ui.org/specification/v0_9/catalogs/basic/catalog.json"}}}
+```
+
+What the person does on a surface (a button's action, with its values) goes back as `ui_action` in place of `message`, to the same conversation; the agent reads it as the next user message:
+
+```bash
+curl -sN localhost:8080/v1/runs -H "Authorization: Bearer $AGENTKIT_API_TOKEN" -d '{"conversation_id": "conv_...",
+  "ui_action": {"surface_id": "pick_plan", "component_id": "ok", "action": "choose_plan", "context": {"plan": ["pro"]}}}'
 ```
 
 ## 6. Web search

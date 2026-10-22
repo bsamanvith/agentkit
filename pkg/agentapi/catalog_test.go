@@ -568,6 +568,7 @@ func TestNewAgentsRejectsBadConfig(t *testing.T) {
 		"toolset tools skipped": {agents: []agentapi.Agent{{Name: "a", Harness: h}}, sets: []agentapi.Toolset{{Name: "x", Tools: reg, Skipped: "why"}}},
 		"bad toolset name":      {agents: []agentapi.Agent{{Name: "a", Harness: h}}, sets: []agentapi.Toolset{{Name: "x y", Tools: reg}}},
 		"unknown isolation":     {agents: []agentapi.Agent{{Name: "a", Harness: h, Isolation: pool.VM + 1}}},
+		"unknown ui":            {agents: []agentapi.Agent{{Name: "a", Harness: h, UI: "html"}}},
 	} {
 		if _, err := agentapi.NewAgents(tc.agents, agentapi.WithStore(scoped.Memory(nil)), agentapi.WithToolsets(tc.sets...)); !errors.Is(err, agentapi.ErrInvalidConfig) {
 			t.Errorf("%s: %v, want ErrInvalidConfig", name, err)

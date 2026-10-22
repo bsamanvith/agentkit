@@ -1,0 +1,7 @@
+{"version":"v0.9","createSurface":{"surfaceId":"user_profile_card","catalogId":"https://a2ui.org/specification/v0_9/catalogs/basic/catalog.json","theme":{"primaryColor":"#00BFFF"},"sendDataModel":true}}
+{"version":"v0.9","updateComponents":{"surfaceId":"user_profile_card","components":[{"id":"root","component":"Column","children":["user_name","user_title"]},{"id":"user_name","component":"Text","text":"John Doe"},{"id":"user_title","component":"Text","text":"Software Engineer"}]}}
+{"version":"v0.9","updateDataModel":{"surfaceId":"user_profile_card","path":"/user/name","value":"Jane Doe"}}
+{"version":"v0.9","deleteSurface":{"surfaceId":"user_profile_card"}}
+{"version":"v0.9","updateDataModel":{"surfaceId":"surface_123","path":"/user/firstName","value":"Alice"}}
+{"version":"v0.9","updateDataModel":{"surfaceId":"surface_123","path":"/user/tempData"}}
+{"version":"v0.9","updateDataModel":{"surfaceId":"surface_123","value":{"user":{"firstName":"Alice","lastName":"Smith"},"preferences":{"theme":"dark"}}}}

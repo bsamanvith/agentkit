@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useApi } from "../api";
 import { Drafts } from "./drafts";
 import { RunStore } from "./runs";
@@ -11,15 +11,19 @@ import { RunsContext } from "./use-runs";
  * stop the run.
  */
 export function RunsProvider({ children }: { children: ReactNode }) {
-  const { unauthorized, hasToken } = useApi();
+  const { unauthorized, cleared } = useApi();
   const [said, setSaid] = useState("");
   const [store] = useState(() => new RunStore(new Drafts(), { unauthorized, announce: setSaid }));
   useEffect(() => store.setHooks({ unauthorized, announce: setSaid }), [store, unauthorized]);
 
-  // Forget token clears everything the console holds (drafts, runs).
+  // Sign out, Forget token, or another user signing in clears everything
+  // the console holds (drafts, runs).
+  const seen = useRef(cleared);
   useEffect(() => {
-    if (!hasToken) store.clear();
-  }, [store, hasToken]);
+    if (cleared === seen.current) return;
+    seen.current = cleared;
+    store.clear();
+  }, [store, cleared]);
 
   useEffect(() => {
     const onLeave = (e: BeforeUnloadEvent) => {

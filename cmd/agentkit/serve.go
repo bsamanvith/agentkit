@@ -153,13 +153,19 @@ func (c cli) serve(ctx context.Context, args []string) error {
 	}
 
 	// One authenticator for the agent API and the MCP endpoints, so both
-	// accept the same keys and see the same principals.
+	// accept the same keys and see the same principals. The agent API also
+	// takes the local users' sessions (newAgents), which are enough for it
+	// alone; the MCP endpoints need keys or tokens.
 	var authn auth.Authenticator
 	if slices.Contains(env.components, agentapi.Name) || slices.Contains(env.components, mcpServerName) {
 		if authn, err = c.authenticator(ctx, cfg, log); err != nil {
 			return err
 		}
-		if authn == nil {
+		users, err := c.users(cfg)
+		if err != nil {
+			return err
+		}
+		if authn == nil && (len(users) == 0 || slices.Contains(env.components, mcpServerName)) {
 			if !isLoopback(env.addr) {
 				return needsCredentials(env.addr)
 			}

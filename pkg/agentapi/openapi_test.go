@@ -236,9 +236,14 @@ func (rec *recorder) template(method, path string) string {
 	return ""
 }
 
+// doer sends requests: a rig, or a signinRig.
+type doer interface {
+	do(method, path, body string, header ...string) (*http.Response, []byte)
+}
+
 // probe sends a request on r, checks it gets status, and records it. A body
 // that is not a valid request (a probe of a 400) is recorded as reqBody.
-func (rec *recorder) probe(r *rig, name string, status int, method, target, body, reqBody string, header ...string) []byte {
+func (rec *recorder) probe(r doer, name string, status int, method, target, body, reqBody string, header ...string) []byte {
 	rec.t.Helper()
 	resp, got := r.do(method, target, body, header...)
 	if resp.StatusCode != status {
@@ -652,6 +657,27 @@ func TestOpenAPIResponses(t *testing.T) {
 	rec.probe(ra, "delete_toolset", 204, "DELETE", "/v1/toolsets/linear", "", "")
 	rec.probe(ra, "delete_toolset_not_found", 404, "DELETE", "/v1/toolsets/linear", "", "")
 
+	// Signing in and out.
+	rs := newSigninRig(t)
+	rec.probe(rs, "auth_config", 200, "GET", "/v1/auth/config", "", "")
+	rec.probe(rs, "login_bad_request", 400, "POST", "/v1/auth/login", `{"username":"ann"}`, `{"username":"ann","password":"missing"}`)
+	rec.probe(rs, "login_unauthorized", 401, "POST", "/v1/auth/login", `{"username":"ann","password":"wrong-password"}`, "")
+	rec.probe(rs, "login_csrf", 403, "POST", "/v1/auth/login", `{"username":"ann","password":"wrong-password"}`, "", "Origin", "https://evil.example")
+	rec.probe(r, "login_not_found", 404, "POST", "/v1/auth/login", `{"username":"ann","password":"wrong-password"}`, "")
+	for range 9 {
+		rs.do("POST", "/v1/auth/login", `{"username":"ann","password":"wrong-password"}`)
+	}
+	rec.probe(rs, "login_throttled", 429, "POST", "/v1/auth/login", `{"username":"ann","password":"wrong-password"}`, "")
+	rs.clk.Advance(time.Hour)
+	rec.probe(rs, "login", 204, "POST", "/v1/auth/login", `{"username":"root","password":"`+adminPassword+`"}`, `{"username":"root","password":"redacted"}`, "Origin", rs.ts.URL)
+	sess := rs.signIn("root", adminPassword)
+	rec.probe(rs, "me", 200, "GET", "/v1/auth/me", "", "", sess.headers(rs, false)...)
+	rec.probe(rs, "me_unauthorized", 401, "GET", "/v1/auth/me", "", "", "Authorization", "Bearer not-a-key-0123456789")
+	rec.probe(rs, "logout_csrf", 403, "POST", "/v1/auth/logout", "", "", sess.headers(rs, false)...)
+	rec.probe(rs, "logout", 204, "POST", "/v1/auth/logout", "", "", sess.headers(rs, true)...)
+	rec.probe(rs, "logout_unauthorized", 401, "POST", "/v1/auth/logout", "", "", sess.headers(rs, true)...)
+	rec.probe(r, "logout_not_found", 404, "POST", "/v1/auth/logout", "", "")
+
 	// Keys without the scope an endpoint needs: 403 on every route. The
 	// rig's own requests read, with the read key.
 	tenant403, err := tenancy.NewTenant(agentapi.DefaultTenant)
@@ -666,6 +692,9 @@ func TestOpenAPIResponses(t *testing.T) {
 	rf := newRig(t, echo(t), rigConfig{api: []agentapi.Option{agentapi.WithAuthenticator(keys)}})
 	rf.token = readKey
 	for _, rt := range rf.srv.Routes() {
+		if strings.Contains(rt, " /v1/auth/") {
+			continue // any credential may sign out and ask who it is
+		}
 		method, target, _ := strings.Cut(rt, " ")
 		target = strings.NewReplacer("{id}", "x", "{name}", "x").Replace(target)
 		name := strings.ToLower(method) + strings.NewReplacer("/v1/", "_", "/", "_", "{", "", "}", "").Replace(strings.TrimPrefix(rt, method+" ")) + "_forbidden"

@@ -12,6 +12,7 @@
 // shell is the height of the screen; only its panes scroll), the app behind
 // is inert while it is open, and Tab stays in it.
 
+import type { Me } from "@agentkit/agent-ui/api";
 import { isPreference, useTheme, themePreferences, type ThemePreference } from "@agentkit/ui";
 import { Button } from "@agentkit/ui/components/button";
 import {
@@ -31,6 +32,7 @@ import { Ellipsis, SquarePen, UserRound } from "lucide-react";
 import {
   Suspense,
   useCallback,
+  useContext,
   useEffect,
   useEffectEvent,
   useMemo,
@@ -42,6 +44,7 @@ import {
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 import { useApi, useResource, type Resource } from "./api";
 import { ChatsList } from "./chat/list";
+import { RunsContext } from "./chat/use-runs";
 import { composerId, searchId } from "./chat/shared";
 import { LayoutContext, isApple, listStorageKey, modHint, modKey, type Layout } from "./layout";
 import { ListRow } from "./list-row";
@@ -90,14 +93,29 @@ function trapTab(e: globalThis.KeyboardEvent, root: HTMLElement) {
 const tip =
   "pointer-events-none absolute z-30 rounded-sm bg-primary px-2 py-0.5 text-xs whitespace-nowrap text-primary-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100";
 
-/** The account menu: the theme, and Forget token. */
+/** Who is signed in, for the account menu: name, role and tenant (docs/UI.md "Sign in"). */
+function whoLabel(me: Me): string {
+  if (!me.credential) return "Local, no sign-in";
+  const role = me.roles.includes("admin") ? "admin" : me.roles[0];
+  const name = me.username || (me.credential === "api_key" ? "API token" : me.credential);
+  return [name, role, me.tenant].filter(Boolean).join(" · ");
+}
+
+/** The account menu: who you are, the theme, and Sign out or Forget token. */
 function UserMenu({ variant }: { variant: "rail" | "drawer" }) {
   const { preference, setPreference } = useTheme();
-  const { hasToken, forgetToken } = useApi();
+  const { hasToken, forgetToken, me, loadMe, signOut } = useApi();
+  const runs = useContext(RunsContext);
+  const session = me?.credential === "session";
+  // Signing out stops a running answer: ask first (docs/UI.md "Sign in").
+  const leave = (go: () => void) => () => {
+    if (runs?.anyRunning() && !window.confirm("An answer is running. Signing out stops it. Sign out anyway?")) return;
+    go();
+  };
   // Not modal: a modal menu locks scrolling with an injected <style>, which
   // the CSP blocks (no inline styles).
   return (
-    <DropdownMenu modal={false}>
+    <DropdownMenu modal={false} onOpenChange={(open) => open && loadMe()}>
       <DropdownMenuTrigger asChild>
         {variant === "rail" ? (
           <button
@@ -120,6 +138,12 @@ function UserMenu({ variant }: { variant: "rail" | "drawer" }) {
         )}
       </DropdownMenuTrigger>
       <DropdownMenuContent side={variant === "rail" ? "right" : "top"} align="end" className="w-56">
+        {me ? (
+          <>
+            <DropdownMenuLabel className="truncate font-normal text-ak-text">{whoLabel(me)}</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
         <DropdownMenuLabel className="text-ak-muted">Theme</DropdownMenuLabel>
         <DropdownMenuRadioGroup value={preference} onValueChange={(v) => isPreference(v) && setPreference(v)}>
           {themePreferences.map((p) => (
@@ -128,10 +152,15 @@ function UserMenu({ variant }: { variant: "rail" | "drawer" }) {
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>
-        {hasToken ? (
+        {session ? (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={forgetToken}>Forget token</DropdownMenuItem>
+            <DropdownMenuItem onSelect={leave(() => void signOut())}>Sign out</DropdownMenuItem>
+          </>
+        ) : hasToken ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={leave(forgetToken)}>Forget token</DropdownMenuItem>
           </>
         ) : null}
       </DropdownMenuContent>

@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/auth"
+	"github.com/bsamanvith/agentkit/pkg/auth/login"
+	"github.com/bsamanvith/agentkit/pkg/auth/login/logintest"
 )
 
 // agentClash gives the agent two toolsets with the same tools and no prefix.
@@ -19,6 +21,10 @@ const agentClash = `{"mcp":{"toolsets":[{"name":"a","type":"demo"},{"name":"b","
 // startup, before anything listens, with a message naming the mistake.
 // authHash is the hash of a key, for configs.
 var authHash = auth.HashKey("hunter2-hunter2-hunter2")
+
+// userHash is a well-formed password hash, for configs (made with the
+// test hasher: no test here signs in with it).
+var userHash = logintest.PHC((&logintest.Hasher{}).Hash, "hunter2-hunter2", login.DefaultParams)
 
 func TestServeRejectsBadSetup(t *testing.T) {
 	t.Parallel()
@@ -146,6 +152,12 @@ func TestServeRejectsBadSetup(t *testing.T) {
 		"credentials: file without path":  {env: map[string]string{envCredentialsKey: testCredentialsKey}, config: `{"mcp":{"toolsets":[{"name":"demo","type":"demo"}]},"credentials":{"backend":"file"}}`, code: 1, says: `backend "file" needs a path`},
 		"credentials: memory with path":   {env: map[string]string{envCredentialsKey: testCredentialsKey}, config: `{"mcp":{"toolsets":[{"name":"demo","type":"demo"}]},"credentials":{"path":"x.json"}}`, code: 1, says: `backend "memory" keeps nothing in a file`},
 		"credentials: postgres, no store": {env: map[string]string{envCredentialsKey: testCredentialsKey, envStore: "sqlite:/tmp/x.db"}, config: `{"mcp":{"toolsets":[{"name":"demo","type":"demo"}]},"credentials":{"backend":"postgres"}}`, code: 1, says: `backend "postgres"`},
+		// Local users (T061).
+		"users: bad hash":           {env: map[string]string{envComponents: "agent"}, config: `{"auth":{"users":[{"username":"ann","password_hash":"hunter2","tenant":"t","roles":["user"]}]}}`, code: 1, says: `user "ann"`},
+		"users: unknown role":       {env: map[string]string{envComponents: "agent"}, config: `{"auth":{"users":[{"username":"ann","password_hash":"` + userHash + `","tenant":"t","roles":["owner"]}]}}`, code: 1, says: `role "owner"`},
+		"users: a password":         {env: map[string]string{envComponents: "agent"}, config: `{"auth":{"users":[{"username":"ann","password":"hunter2","tenant":"t","roles":["user"]}]}}`, code: 1, says: "password"},
+		"users: file missing":       {env: map[string]string{envComponents: "agent", envUsersFile: "/nonexistent/users.json"}, config: good, code: 1, says: envUsersFile},
+		"users: not enough for MCP": {env: map[string]string{envComponents: "agent,mcp-server", envAddr: ":0"}, config: `{"mcp":{"toolsets":[{"name":"demo","type":"demo"}]},"auth":{"users":[{"username":"ann","password_hash":"` + userHash + `","tenant":"t","roles":["user"]}]}}`, code: 1, says: envAPIToken},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

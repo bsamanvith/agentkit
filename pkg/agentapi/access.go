@@ -50,10 +50,13 @@ func writeAuthError(w http.ResponseWriter, _ *http.Request, status int) {
 	writeError(w, status, &Error{Code: CodeInternal, Message: "authenticating the request failed; see the server log"})
 }
 
-// scopeOf is the scope an endpoint needs: [ScopeAdmin] to add, review,
-// change or remove toolsets, else reading for GET and running for the rest.
+// scopeOf is the scope an endpoint needs: none for signing in and out and
+// saying who the caller is, [ScopeAdmin] to add, review, change or remove
+// toolsets, else reading for GET and running for the rest.
 func scopeOf(pattern string) string {
 	switch {
+	case isAuthRoute(pattern):
+		return ""
 	case pattern == "POST /v1/toolsets" || strings.HasPrefix(pattern, "PATCH /v1/toolsets/") ||
 		strings.HasPrefix(pattern, "DELETE /v1/toolsets/") || strings.HasSuffix(pattern, "/v1/toolsets/{name}/review"):
 		return ScopeAdmin
@@ -64,10 +67,11 @@ func scopeOf(pattern string) string {
 }
 
 // requireScope answers 403 forbidden to a request whose principal does not
-// hold scope. A request with no principal (an open server) passes.
+// hold scope. A request with no principal (an open server) passes, as does
+// every request when scope is "".
 func requireScope(scope string, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if p, ok := auth.From(r.Context()); ok && !p.HasScope(scope) {
+		if p, ok := auth.From(r.Context()); ok && scope != "" && !p.HasScope(scope) {
 			writeError(w, http.StatusForbidden, &Error{Code: CodeForbidden, Message: "this credential does not have the scope " + quote(scope)})
 			return
 		}

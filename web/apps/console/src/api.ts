@@ -1,28 +1,57 @@
 // The console's connection to /v1: the context ApiProvider (api-provider.tsx)
-// fills, and a hook for loading a resource that turns a 401 into the token
-// prompt.
+// fills, and a hook for loading a resource that turns a 401 into the sign-in
+// card.
 //
-// Auth before T061 (E11 "Auth in the web client"): the user pastes an API
-// token once; it is kept in sessionStorage (cleared with the tab) and sent
-// as Authorization: Bearer. A server without a token (loopback dev) needs
-// none, so the prompt shows only after a 401.
+// Sign-in (docs/UI.md "Sign in", T061): a server with local users takes a
+// username and password, and the session cookie does the rest (the client
+// adds the CSRF token); one with keys takes an API token, kept in
+// sessionStorage (cleared with the tab) and sent as Authorization: Bearer.
+// GET /v1/auth/config says which. A server without credentials (loopback
+// dev) needs neither, so the card shows only after a 401.
 
-import { ApiError, type AgentClient } from "@agentkit/agent-ui/api";
+import { ApiError, type AgentClient, type Me } from "@agentkit/agent-ui/api";
 import { createContext, useContext, useEffect, useEffectEvent, useState } from "react";
 
 /** The sessionStorage key of the API token. Never localStorage (T055's mutation list). */
 export const tokenStorageKey = "agentkit.token";
 
+/**
+ * The sessionStorage key of the user the drafts belong to, so that after a
+ * reload a different user signing in still gets a fresh start.
+ */
+export const userStorageKey = "agentkit.user";
+
 export type Auth = {
   client: AgentClient;
   /** Whether a token is set (its value never leaves the provider). */
   hasToken: boolean;
+  /**
+   * The sign-in methods of GET /v1/auth/config ("password", "token"), asked
+   * when the card first opens; null until then. A server that can't say
+   * (an older one) is taken to want a token.
+   */
+  methods: string[] | null;
+  /** Who is signed in, from GET /v1/auth/me; null until known. */
+  me: Me | null;
+  /** Reads /v1/auth/me again (the account menu does, when it opens). */
+  loadMe: () => void;
+  /**
+   * Signs in with a password: resolves once signed in, or rejects with the
+   * error to show (ApiError 401 or 429, or any other failure).
+   */
+  signIn: (username: string, password: string) => Promise<void>;
+  /** Ends the session (on the server if it can) and clears what the console holds. */
+  signOut: () => Promise<void>;
+  /** Bumped when the user signs out or forgets the token: drop drafts and runs. */
+  cleared: number;
+  /** Said on the card after a sign-out the server didn't confirm. */
+  notice: string | null;
   /** Bumped when the token changes, so loaded resources reload. */
   epoch: number;
   /**
-   * Why the token prompt is open, or null when it isn't: no token yet, the
-   * token just entered was refused, or a token that worked was rejected
-   * later (expired or revoked).
+   * Why the sign-in card is open, or null when it isn't: no credential yet,
+   * the token just entered was refused, or a token or session that worked
+   * was rejected later (expired, revoked or signed out elsewhere).
    */
   prompt: null | "needed" | "refused" | "rejected";
   setToken: (token: string) => void;

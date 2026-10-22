@@ -4,7 +4,7 @@ import type { Agent } from "@agentkit/agent-ui/api";
 import { lazy } from "react";
 import { createMemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
-import { tokenStorageKey } from "./api";
+import { tokenStorageKey, userStorageKey } from "./api";
 import { listStorageKey } from "./layout";
 import { App } from "./app";
 import { Page } from "./pages/page";
@@ -20,18 +20,28 @@ const agents = {
   ],
 };
 
-/** A fake /v1 that wants the bearer token server.token ("good"), recording each request. */
+/**
+ * A fake /v1 that wants the bearer token server.token ("good"), recording
+ * each request but those to /v1/auth/ (the sign-in card's and the account
+ * menu's), which it answers as a server with keys and no users.
+ */
 function fakeServer(server = { token: "good" }) {
   const seen: Request[] = [];
   const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const req = new Request(new URL(String(input), "http://console.test"), init);
+    const path = new URL(req.url).pathname;
+    const bearer = req.headers.get("Authorization") === `Bearer ${server.token}`;
+    if (path === "/v1/auth/config") return Response.json({ v: 1, methods: ["token"] });
+    if (path === "/v1/auth/me" && bearer) {
+      return Response.json({ v: 1, tenant: "default", roles: [], scopes: ["*"], credential: "api_key" });
+    }
     seen.push(req);
-    if (req.headers.get("Authorization") !== `Bearer ${server.token}`) {
+    if (!bearer) {
       const body = { v: 1, error: { code: "unauthenticated", message: "token required", retryable: false } };
       return Response.json(body, { status: 401 });
     }
-    if (new URL(req.url).pathname === "/v1/agents") return Response.json(agents);
-    if (new URL(req.url).pathname === "/v1/toolsets") return Response.json({ v: 1, toolsets: [] });
+    if (path === "/v1/agents") return Response.json(agents);
+    if (path === "/v1/toolsets") return Response.json({ v: 1, toolsets: [] });
     return Response.json({ v: 1, error: { code: "not_found", message: "no", retryable: false } }, { status: 404 });
   });
   vi.stubGlobal("fetch", fetch);
@@ -243,6 +253,253 @@ describe("the token", () => {
     renderAt("/");
     expect(await screen.findByText("Finds things")).toBeInTheDocument();
     expect(screen.queryByLabelText("API token")).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * A fake /v1 with local users (ann:secret-pw, bob:other-pw) and keys: a
+ * session cookie is modelled by server.session (who is signed in), and a
+ * request other than GET with it must carry its CSRF token.
+ */
+function sessionServer(opts: { methods?: string[]; login?: () => Response | undefined; logout?: number } = {}) {
+  const server = { session: undefined as string | undefined, csrf: "csrf-1", requests: [] as Request[] };
+  const users: Record<string, string> = { ann: "secret-pw", bob: "other-pw" };
+  const error = (status: number, code: string, headers?: HeadersInit) =>
+    Response.json({ v: 1, error: { code, message: code, retryable: false } }, { status, headers });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const req = new Request(new URL(String(input), "http://console.test"), init);
+      server.requests.push(req);
+      const path = new URL(req.url).pathname;
+      if (path === "/v1/auth/config") return Response.json({ v: 1, methods: opts.methods ?? ["password", "token"] });
+      if (path === "/v1/auth/login") {
+        const forced = opts.login?.();
+        if (forced) return forced;
+        const { username, password } = (await req.json()) as { username: string; password: string };
+        if (users[username] !== password) return error(401, "unauthenticated");
+        server.session = username;
+        return new Response(null, { status: 204 });
+      }
+      const bearer = req.headers.get("Authorization");
+      if (bearer === "Bearer good") {
+        if (path === "/v1/auth/me")
+          return Response.json({ v: 1, tenant: "default", roles: [], scopes: ["*"], credential: "api_key" });
+      } else if (bearer !== null || server.session === undefined) {
+        // A bearer token wins over the cookie, as on the server.
+        return error(401, "unauthenticated");
+      } else if (req.method !== "GET" && req.headers.get("X-Agentkit-CSRF") !== server.csrf) {
+        return error(403, "csrf_failed");
+      }
+      if (path === "/v1/auth/me") {
+        const roles = server.session === "ann" ? ["admin"] : ["user"];
+        return Response.json({
+          v: 1,
+          username: server.session,
+          tenant: "acme",
+          roles,
+          scopes: [],
+          credential: "session",
+          csrf: server.csrf,
+        });
+      }
+      if (path === "/v1/auth/logout") {
+        if (opts.logout) return error(opts.logout, "internal");
+        server.session = undefined;
+        return new Response(null, { status: 204 });
+      }
+      if (path === "/v1/agents") return Response.json(agents);
+      if (path === "/v1/toolsets") return Response.json({ v: 1, toolsets: [] });
+      if (path === "/v1/conversations") return Response.json({ v: 1, conversations: [] });
+      return error(404, "not_found");
+    }),
+  );
+  return server;
+}
+
+async function signInAs(username: string, password: string) {
+  await userEvent.type(await screen.findByLabelText("Username"), username);
+  await userEvent.type(screen.getByLabelText("Password"), password);
+  await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
+}
+
+describe("signing in with a password", () => {
+  it("asks for a username and password, then uses the session", async () => {
+    const server = sessionServer();
+    renderAt("/agents");
+    await userEvent.click(await screen.findByRole("button", { name: "Sign in" }));
+    expect(screen.getByText("Enter your username")).toBeInTheDocument();
+    expect(screen.getByText("Enter your password")).toBeInTheDocument();
+    expect(server.requests.some((r) => r.url.endsWith("/v1/auth/login"))).toBe(false);
+
+    await signInAs("ann", "secret-pw");
+    expect(await researcher()).toBeInTheDocument();
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+    // No token: the cookie signs the requests, and nothing is kept in storage.
+    expect(server.requests.at(-1)?.headers.has("Authorization")).toBe(false);
+    expect(sessionStorage.getItem(tokenStorageKey)).toBeNull();
+  });
+
+  it("says a wrong username or password once, and clears and focuses the password", async () => {
+    sessionServer();
+    renderAt("/agents");
+    await signInAs("ann", "nope-nope");
+    expect(await screen.findByText("Wrong username or password.")).toBeInTheDocument();
+    const pw = screen.getByLabelText("Password");
+    expect(pw).toHaveValue("");
+    await waitFor(() => expect(pw).toHaveFocus());
+    expect(pw).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("Username")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("Username")).toHaveValue("ann");
+  });
+
+  it("counts down a throttled sign-in with the button disabled", async () => {
+    sessionServer({
+      login: () =>
+        Response.json(
+          { v: 1, error: { code: "too_many_attempts", message: "slow down", retryable: true } },
+          { status: 429, headers: { "Retry-After": "2" } },
+        ),
+    });
+    renderAt("/agents");
+    await signInAs("ann", "secret-pw");
+    expect(await screen.findByText("Too many attempts. Try again in 2 s.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeDisabled();
+    expect(await screen.findByText("Too many attempts. Try again in 1 s.", {}, { timeout: 2000 })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Sign in" })).toBeEnabled(), { timeout: 2000 });
+  });
+
+  it("says it couldn't reach the server on a 5xx", async () => {
+    sessionServer({ login: () => Response.json({ v: 1, error: { code: "internal", message: "x" } }, { status: 500 }) });
+    renderAt("/agents");
+    await signInAs("ann", "secret-pw");
+    expect(await screen.findByText("Couldn't reach the server. Try again.")).toBeInTheDocument();
+  });
+
+  it("offers the token card when the server takes keys too, and only then", async () => {
+    sessionServer();
+    const view = renderAt("/agents");
+    await userEvent.click(await screen.findByRole("button", { name: "Use an API token instead" }));
+    await userEvent.type(screen.getByLabelText("API token"), "good");
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(await researcher()).toBeInTheDocument();
+    view.unmount();
+    sessionStorage.clear(); // the token just used
+
+    sessionServer({ methods: ["password"] });
+    renderAt("/agents");
+    await screen.findByLabelText("Password");
+    expect(screen.queryByRole("button", { name: "Use an API token instead" })).not.toBeInTheDocument();
+  });
+
+  it("drops a token that stopped working, so the session's cookie is used", async () => {
+    sessionStorage.setItem(tokenStorageKey, "revoked");
+    const server = sessionServer();
+    renderAt("/agents");
+    expect(await screen.findByText("Your session ended. Sign in again; your draft is kept.")).toBeInTheDocument();
+    await signInAs("ann", "secret-pw");
+    expect(await researcher()).toBeInTheDocument();
+    expect(server.requests.at(-1)?.headers.has("Authorization")).toBe(false);
+    expect(sessionStorage.getItem(tokenStorageKey)).toBeNull();
+  });
+
+  it("shows who is signed in, and signs out, sending the CSRF token", async () => {
+    const server = sessionServer();
+    renderAt("/agents");
+    await signInAs("ann", "secret-pw");
+    await researcher();
+
+    await userEvent.click(screen.getByRole("button", { name: "Account and theme" }));
+    expect(await screen.findByText("ann · admin · acme")).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Forget token" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("menuitem", { name: "Sign out" }));
+    expect(await screen.findByLabelText("Password")).toBeInTheDocument();
+    const logout = server.requests.find((r) => r.url.endsWith("/v1/auth/logout"));
+    expect(logout?.headers.get("X-Agentkit-CSRF")).toBe("csrf-1");
+    expect(server.session).toBeUndefined();
+    expect(screen.queryByText(/Signed out on this device/)).not.toBeInTheDocument();
+  });
+
+  it("still signs out here when the server can't end the session, and says so", async () => {
+    sessionServer({ logout: 500 });
+    renderAt("/agents");
+    await signInAs("ann", "secret-pw");
+    await researcher();
+    await userEvent.click(screen.getByRole("button", { name: "Account and theme" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Sign out" }));
+    expect(
+      await screen.findByText("Signed out on this device. The server session ends when it expires."),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Password")).toBeInTheDocument();
+  });
+
+  it("says the session ended when a later request gets a 401", async () => {
+    const server = sessionServer();
+    renderAt("/agents");
+    await signInAs("ann", "secret-pw");
+    await researcher();
+
+    server.session = undefined; // expired on the server
+    await userEvent.click(screen.getByRole("link", { name: "Toolsets" }));
+    expect(await screen.findByText("Your session ended. Sign in again; your draft is kept.")).toBeInTheDocument();
+    await signInAs("ann", "secret-pw");
+    await waitFor(() => expect(screen.queryByLabelText("Password")).not.toBeInTheDocument());
+  });
+
+  it("keeps the draft for the same user after the session ends, and not for another", async () => {
+    const server = sessionServer();
+    renderAt("/new");
+    await signInAs("ann", "secret-pw");
+    const box = () => screen.getByRole("textbox", { name: "Message" });
+    await waitFor(() => expect(box()).toBeEnabled());
+    await userEvent.type(box(), "half a thought");
+
+    server.session = undefined;
+    await userEvent.click(screen.getByRole("link", { name: "Agents" }));
+    await signInAs("ann", "secret-pw");
+    await userEvent.click(await screen.findByRole("link", { name: "Chats" }));
+    await userEvent.click((await screen.findAllByRole("link", { name: "New chat" }))[0]!);
+    expect(await screen.findByRole("textbox", { name: "Message" })).toHaveValue("half a thought");
+
+    server.session = undefined;
+    await userEvent.click(screen.getByRole("link", { name: "Agents" }));
+    await signInAs("bob", "other-pw");
+    await userEvent.click(await screen.findByRole("link", { name: "Chats" }));
+    await userEvent.click((await screen.findAllByRole("link", { name: "New chat" }))[0]!);
+    expect(await screen.findByRole("textbox", { name: "Message" })).toHaveValue("");
+  });
+
+  it("knows whose the drafts are after a reload: kept for that user, cleared for another or no one known", async () => {
+    const box = () => screen.getByRole("textbox", { name: "Message" });
+    const server = sessionServer();
+    let view = renderAt("/new");
+    await signInAs("ann", "secret-pw");
+    await waitFor(() => expect(box()).toBeEnabled());
+    await userEvent.type(box(), "ann's thought");
+    view.unmount(); // a reload, and the session ends meanwhile
+    server.session = undefined;
+
+    view = renderAt("/new");
+    await signInAs("ann", "secret-pw");
+    expect(await screen.findByRole("textbox", { name: "Message" })).toHaveValue("ann's thought");
+    view.unmount();
+    server.session = undefined;
+
+    view = renderAt("/new");
+    await signInAs("bob", "other-pw");
+    await waitFor(() => expect(box()).toBeEnabled());
+    expect(box()).toHaveValue("");
+    expect(sessionStorage.getItem(userStorageKey)).toBe("bob");
+    view.unmount();
+    server.session = undefined;
+
+    // A draft of no known user (from before a reload) is not handed to whoever signs in.
+    sessionStorage.removeItem(userStorageKey);
+    sessionStorage.setItem("agentkit.draft.new", "whose?");
+    renderAt("/new");
+    await signInAs("ann", "secret-pw");
+    await waitFor(() => expect(box()).toBeEnabled());
+    expect(box()).toHaveValue("");
   });
 });
 

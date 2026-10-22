@@ -6,11 +6,12 @@ import { useApi } from "./api";
 
 /**
  * The API token card (docs/UI.md "Sign in", token mode), over the app,
- * which is inert behind it. T061's password sign-in replaces it when the
- * server has users.
+ * which is inert behind it. SignIn (sign-in.tsx) shows it when the server
+ * takes tokens and not passwords, or the user asked for it; onPassword goes
+ * back to the password card.
  */
-export function TokenPrompt() {
-  const { prompt, setToken } = useApi();
+export function TokenPrompt({ onPassword }: { onPassword?: (() => void) | undefined }) {
+  const { prompt, setToken, notice } = useApi();
   const [value, setValue] = useState("");
   const [invalid, setInvalid] = useState<null | "empty" | "unsendable">(null);
   const errorId = useId();
@@ -50,7 +51,7 @@ export function TokenPrompt() {
             Sign in to agentkit
           </CardTitle>
           <CardDescription className="text-ak-muted">
-            Paste an API token; it&apos;s kept for this tab only.
+            {notice ?? "Paste an API token; it's kept for this tab only."}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -77,6 +78,11 @@ export function TokenPrompt() {
               </p>
             ) : null}
             <Button type="submit">Continue</Button>
+            {onPassword ? (
+              <Button type="button" variant="link" className="h-auto p-0 text-ak-muted" onClick={onPassword}>
+                Sign in with a password instead
+              </Button>
+            ) : null}
           </form>
         </CardContent>
       </Card>

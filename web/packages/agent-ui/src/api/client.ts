@@ -8,8 +8,10 @@ import {
   isTerminal,
   decodeConversation,
   type Agent,
+  type AuthConfig,
   type Conversation,
   type ConversationSummary,
+  type Me,
   type Run,
   type RunEvent,
   type RunRequest,
@@ -71,11 +73,18 @@ export type ClientOptions = {
 
 type RequestOptions = { signal?: AbortSignal | undefined };
 
+/** The header a session's requests other than GET carry its CSRF token in. */
+export const csrfHeader = "X-Agentkit-CSRF";
+
+const safeMethods = ["GET", "HEAD", "OPTIONS"];
+
 export class AgentClient {
   readonly #base: string;
   readonly #token: () => string | undefined;
   readonly #fetch: typeof fetch;
   readonly #maxEvent: number;
+  /** The session's CSRF token, from the last GET /v1/auth/me. */
+  #csrf: string | undefined;
 
   constructor(opts: ClientOptions = {}) {
     this.#base = (opts.baseUrl ?? "").replace(/\/+$/, "");
@@ -83,6 +92,50 @@ export class AgentClient {
     // Bound, because calling a detached window.fetch throws "Illegal invocation".
     this.#fetch = opts.fetch ?? globalThis.fetch.bind(globalThis);
     this.#maxEvent = opts.maxEventBytes ?? defaultMaxEventBytes;
+  }
+
+  /** GET /v1/auth/config (no credentials needed): the sign-in methods, "password" and "token". */
+  async authConfig(opts: RequestOptions = {}): Promise<AuthConfig> {
+    const body = await this.getJSON<unknown>("/v1/auth/config", opts);
+    const methods = (body as { methods?: unknown } | null)?.methods;
+    if (!Array.isArray(methods) || !methods.every((m) => typeof m === "string")) {
+      throw new BadResponseError("/v1/auth/config: the response has no list of methods");
+    }
+    return { methods };
+  }
+
+  /**
+   * GET /v1/auth/me: who the caller is. A session's answer carries its CSRF
+   * token, which the client keeps and sends on later requests other than
+   * GET (and fetches again once if the server refuses it).
+   */
+  async me(opts: RequestOptions = {}): Promise<Me> {
+    const m = await this.getJSON<Partial<Me> | null>("/v1/auth/me", opts);
+    if (typeof m?.tenant !== "string" || !Array.isArray(m.roles) || !Array.isArray(m.scopes)) {
+      throw new BadResponseError("/v1/auth/me: the response is not who the caller is");
+    }
+    this.#csrf = typeof m.csrf === "string" && m.csrf !== "" ? m.csrf : undefined;
+    return m as Me;
+  }
+
+  /**
+   * POST /v1/auth/login: signs in; the server sets the session cookie. 401 is
+   * a wrong username or password, 429 too many attempts (retryAfter).
+   */
+  async login(username: string, password: string, opts: RequestOptions = {}): Promise<void> {
+    const body = JSON.stringify({ username, password });
+    const resp = await this.#send("POST", "/v1/auth/login", body, "application/json", opts.signal);
+    await resp.body?.cancel();
+  }
+
+  /** POST /v1/auth/logout: ends the session on the server. The CSRF token is forgotten either way. */
+  async logout(opts: RequestOptions = {}): Promise<void> {
+    try {
+      const resp = await this.#send("POST", "/v1/auth/logout", undefined, "application/json", opts.signal);
+      await resp.body?.cancel();
+    } finally {
+      this.#csrf = undefined;
+    }
   }
 
   /** GET /v1/agents: the agents the caller can use, the default first. */
@@ -230,11 +283,14 @@ export class AgentClient {
     body: string | undefined,
     accept: string,
     signal: AbortSignal | undefined,
+    retried = false,
   ): Promise<Response> {
     const headers = new Headers({ Accept: accept });
     if (body !== undefined) headers.set("Content-Type", "application/json");
     const token = this.#token();
     if (token) headers.set("Authorization", `Bearer ${token}`);
+    const unsafe = !safeMethods.includes(method);
+    if (unsafe && this.#csrf) headers.set(csrfHeader, this.#csrf);
     let resp: Response;
     try {
       resp = await this.#fetch(this.#base + path, {
@@ -249,7 +305,16 @@ export class AgentClient {
       if (isAbort(e)) throw e;
       throw new NetworkError({ cause: e });
     }
-    if (!resp.ok) throw await errorFrom(resp);
+    if (!resp.ok) {
+      const err = await errorFrom(resp);
+      // A stale or missing CSRF token: read /me for the session's, and try once more.
+      // A sign-in sends no token, so its refusal (another Origin) is final.
+      if (err.status === 403 && err.code === "csrf_failed" && unsafe && !retried && path !== "/v1/auth/login") {
+        await this.me({ signal });
+        if (this.#csrf) return this.#send(method, path, body, accept, signal, true);
+      }
+      throw err;
+    }
     return resp;
   }
 }

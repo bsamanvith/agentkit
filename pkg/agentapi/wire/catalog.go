@@ -57,7 +57,7 @@ type Agent struct {
 	Skills []string `json:"skills"`
 	Memory bool     `json:"memory"`
 	// System is the system prompt: only in GET /v1/agents/{name}, and only
-	// for admins once the API has roles.
+	// for a caller with the scope "admin:agents" (admins).
 	System string `json:"system,omitempty"`
 }
 

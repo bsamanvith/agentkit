@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/auth"
+	"github.com/bsamanvith/agentkit/pkg/auth/login"
 	"github.com/bsamanvith/agentkit/pkg/bus"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/runner"
@@ -45,6 +46,7 @@ type config struct {
 	admin          ToolsetAdmin
 	token          string
 	authn          auth.Authenticator
+	login          *login.Login
 	maxConcurrent  int
 	runTimeout     time.Duration
 	maxRuns        int

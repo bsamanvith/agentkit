@@ -10,6 +10,7 @@ import (
 	"maps"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"slices"
 	"strings"
@@ -19,6 +20,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/auth"
+	"github.com/bsamanvith/agentkit/pkg/auth/login"
 	"github.com/bsamanvith/agentkit/pkg/bus"
 	"github.com/bsamanvith/agentkit/pkg/bus/busopen"
 	"github.com/bsamanvith/agentkit/pkg/clock"
@@ -271,7 +273,11 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 	if err != nil {
 		return component.Mount{}, nil, err
 	}
-	if authn == nil && !isLoopback(env.addr) {
+	logins, err := c.login(cfg, env, log)
+	if err != nil {
+		return component.Mount{}, nil, err
+	}
+	if authn == nil && logins == nil && !isLoopback(env.addr) {
 		return component.Mount{}, nil, needsCredentials(env.addr)
 	}
 	var remote *runnerrpc.Client
@@ -372,6 +378,9 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 	if authn != nil {
 		authOpts = append(authOpts, agentapi.WithAuthenticator(authn))
 	}
+	if logins != nil {
+		authOpts = append(authOpts, agentapi.WithLogin(logins))
+	}
 	if admin != nil {
 		authOpts = append(authOpts, agentapi.WithToolsetAdmin(admin))
 	}
@@ -408,4 +417,39 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 		}
 	}
 	return component.Mount{Pattern: "/v1/", Component: ac}, srv, nil
+}
+
+// login is password sign-in for the console: the local users, nil when
+// there are none. A user's toolset pattern that matches none of the
+// config's toolsets is an error, as for API keys.
+func (c cli) login(cfg serveConfig, env serveEnv, log *slog.Logger) (*login.Login, error) {
+	users, err := c.users(cfg)
+	if err != nil || len(users) == 0 {
+		return nil, err
+	}
+	for _, u := range users {
+		if err := checkToolsets(cfg, fmt.Sprintf("user %q", u.Username), u.Toolsets); err != nil {
+			return nil, err
+		}
+	}
+	var proxies []netip.Prefix
+	for _, s := range cfg.Auth.TrustedProxies {
+		p, err := netip.ParsePrefix(s)
+		if err != nil {
+			a, aerr := netip.ParseAddr(s)
+			if aerr != nil {
+				return nil, fmt.Errorf("auth.trusted_proxies: %q is not an address or a CIDR prefix", s)
+			}
+			p = netip.PrefixFrom(a, a.BitLen())
+		}
+		proxies = append(proxies, p.Masked())
+	}
+	l, err := login.New(users, login.WithLogger(log.With("component", "auth")), login.WithTrustedProxies(proxies...))
+	if err != nil {
+		return nil, err
+	}
+	if !isLoopback(env.addr) && len(proxies) == 0 {
+		log.Warn("auth.users: this server speaks plain HTTP, so session cookies are not Secure: serve it behind a TLS proxy and name the proxy in auth.trusted_proxies", "addr", env.addr)
+	}
+	return l, nil
 }

@@ -168,6 +168,11 @@ func TestToolsetStore(t *testing.T) {
 	storetest.RunToolsetStore(t, func(t *testing.T, clk clock.Clock) store.ToolsetStore { return open(t, clk) })
 }
 
+func TestItemStore(t *testing.T) {
+	t.Parallel()
+	storetest.RunItemStore(t, func(t *testing.T, clk clock.Clock) store.ItemStore { return open(t, clk) })
+}
+
 // The suites again, with every call going to one of two Stores (two
 // connection pools) on the same schema, in turn, as two processes would. The
 // suites' races (sequence races, concurrent appends, claims and transitions)
@@ -205,6 +210,10 @@ func TestTwoPools(t *testing.T) {
 	t.Run("ToolsetStore", func(t *testing.T) {
 		t.Parallel()
 		storetest.RunToolsetStore(t, func(t *testing.T, clk clock.Clock) store.ToolsetStore { return openPair(t, clk) })
+	})
+	t.Run("ItemStore", func(t *testing.T) {
+		t.Parallel()
+		storetest.RunItemStore(t, func(t *testing.T, clk clock.Clock) store.ItemStore { return openPair(t, clk) })
 	})
 
 	t.Run("ConversationIndex", func(t *testing.T) {
@@ -374,6 +383,34 @@ func (p *pair) CreateNotification(ctx context.Context, runID, url string) (store
 
 func (p *pair) GetNotification(ctx context.Context, runID string) (store.Notification, error) {
 	return p.next().GetNotification(ctx, runID)
+}
+
+func (p *pair) SaveItem(ctx context.Context, v store.ItemVersion, ifLatest int64) (store.ItemVersion, error) {
+	return p.next().SaveItem(ctx, v, ifLatest)
+}
+
+func (p *pair) PublishItem(ctx context.Context, kind, name string, version int64) (store.Item, error) {
+	return p.next().PublishItem(ctx, kind, name, version)
+}
+
+func (p *pair) GetItem(ctx context.Context, kind, name string) (store.Item, error) {
+	return p.next().GetItem(ctx, kind, name)
+}
+
+func (p *pair) ListItems(ctx context.Context, kind string) ([]store.Item, error) {
+	return p.next().ListItems(ctx, kind)
+}
+
+func (p *pair) GetItemVersion(ctx context.Context, kind, name string, version int64) (store.ItemVersion, error) {
+	return p.next().GetItemVersion(ctx, kind, name, version)
+}
+
+func (p *pair) ListItemVersions(ctx context.Context, kind, name string) ([]store.ItemVersion, error) {
+	return p.next().ListItemVersions(ctx, kind, name)
+}
+
+func (p *pair) DeleteItemVersion(ctx context.Context, kind, name string, version int64) error {
+	return p.next().DeleteItemVersion(ctx, kind, name, version)
 }
 
 type pairAdmin struct{ p *pair }

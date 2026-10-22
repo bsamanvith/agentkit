@@ -74,6 +74,9 @@ func rlsRig(t *testing.T, opts ...postgres.Option) (owner, app string, s *postgr
 			_, err = s.PutToolset(ctx, store.ToolsetRecord{Name: "ts", Data: json.RawMessage(`{}`)}, 0)
 		}
 		if err == nil {
+			_, err = s.SaveItem(ctx, store.ItemVersion{Kind: "agent", Name: "ag", Data: json.RawMessage(`{}`)}, 0)
+		}
+		if err == nil {
 			err = s.Save(ctx, run, flow.Checkpoint{
 				Version: flow.CheckpointVersion, RunID: run, Status: flow.StatusRunning,
 				Initial: json.RawMessage(`{}`), Steps: map[string]json.RawMessage{},
@@ -93,7 +96,7 @@ func TestRowLevelSecurity(t *testing.T) {
 	owner, _, s := rlsRig(t)
 	pool := postgres.Pool(s)
 	ctx := tenantCtx(t, "a")
-	for _, table := range []string{"runs", "entries", "events", "checkpoints", "conversations", "commands", "toolsets", "notifications"} {
+	for _, table := range []string{"runs", "entries", "events", "checkpoints", "conversations", "commands", "toolsets", "notifications", "items", "item_versions"} {
 		var others int
 		if err := pool.QueryRow(ctx, `SELECT count(*) FROM `+table+` WHERE tenant <> 'a'`).Scan(&others); err != nil {
 			t.Fatalf("%s: %v", table, err)

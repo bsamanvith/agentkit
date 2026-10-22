@@ -33,6 +33,13 @@ import (
 // httptest server. It returns a client of it.
 func serveAgents(t *testing.T, config string, models map[string]*llmtest.Fake) *agentclient.Client {
 	t.Helper()
+	_, client := serveAgentsAt(t, config, models)
+	return client
+}
+
+// serveAgentsAt is serveAgents that also returns the server's URL.
+func serveAgentsAt(t *testing.T, config string, models map[string]*llmtest.Fake) (string, *agentclient.Client) {
+	t.Helper()
 	path := filepath.Join(t.TempDir(), "agentkit.json")
 	if err := os.WriteFile(path, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
@@ -71,7 +78,7 @@ func serveAgents(t *testing.T, config string, models map[string]*llmtest.Fake) *
 	if err != nil {
 		t.Fatal(err)
 	}
-	return client
+	return ts.URL, client
 }
 
 func toolNames(req llm.Request) []string {

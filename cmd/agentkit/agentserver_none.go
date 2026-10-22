@@ -20,6 +20,9 @@ import (
 // openAgents refuses the component, so serve's ag stays nil.
 type agentWiring struct{}
 
+// registryBuilt: without the agent component there is no agent registry.
+const registryBuilt = false
+
 func (c cli) openAgents(context.Context, clock.Clock, *slog.Logger) (*agentWiring, error) {
 	return nil, notBuilt(envComponents, "the agent API", "noagent")
 }

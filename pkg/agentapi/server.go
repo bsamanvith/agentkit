@@ -207,6 +207,11 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 		{"DELETE /v1/conversations/{id}", s.deleteConversation},
 		{"GET /v1/agents", s.listAgents},
 		{"GET /v1/agents/{name}", s.getAgent},
+		{"GET /v1/agents/{name}/versions", s.listVersions},
+		{"POST /v1/agents/{name}/versions", s.saveAgent},
+		{"GET /v1/agents/{name}/versions/{version}", s.getVersion},
+		{"DELETE /v1/agents/{name}/versions/{version}", s.deleteVersion},
+		{"POST /v1/agents/{name}/publish", s.publishAgent},
 		{"GET /v1/toolsets", s.listToolsets},
 		{"GET /v1/toolsets/{name}/tools", s.listTools},
 		{"POST /v1/toolsets", s.addToolset},
@@ -258,9 +263,9 @@ func (s *Server) describe(ctx context.Context, p runner.Placement) (pool.Request
 	if err != nil {
 		return pool.Request{}, err
 	}
-	a := s.agents[c.Agent]
-	if a == nil {
-		return pool.Request{}, fmt.Errorf("%w: conversation %q is of agent %q", errNoAgent, p.ConversationID, c.Agent)
+	a, err := s.agentFor(ctx, c.Agent, p.AgentVersion)
+	if err != nil {
+		return pool.Request{}, fmt.Errorf("conversation %q is of agent %q: %w", p.ConversationID, c.Agent, err)
 	}
 	return pool.Request{Agent: a.Name, Isolation: a.Isolation, Built: a.run()}, nil
 }
@@ -494,7 +499,11 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, &Error{Code: CodeAgentMismatch, Message: "the conversation belongs to agent " + quote(c.Agent) + ", not " + quote(req.Agent) + "; continue it without \"agent\", or start a new conversation"})
 			return
 		}
-		if ag = s.agents[c.Agent]; ag == nil {
+		if ag, err = s.agentFor(ctx, c.Agent, 0); err != nil && !errors.Is(err, errNoAgent) {
+			s.internal(w, "reading agent "+quote(c.Agent), err)
+			return
+		}
+		if ag == nil {
 			writeError(w, http.StatusConflict, &Error{Code: CodeAgentMismatch, Message: "the conversation belongs to agent " + quote(c.Agent) + ", which this server no longer runs"})
 			return
 		}
@@ -515,7 +524,7 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "message is empty"})
 			return
 		}
-		if ag, apiErr, code = s.resolveAgent(r, req.Agent); apiErr != nil {
+		if ag, apiErr, code = s.resolveAgent(ctx, r, req.Agent); apiErr != nil {
 			writeError(w, code, apiErr)
 			return
 		}
@@ -542,7 +551,7 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 		s.refuse(w, status, apiErr)
 		return
 	}
-	start.Pool = poolName
+	start.Pool, start.AgentVersion = poolName, ag.Version
 	created := false
 	if convID == "" {
 		convID = s.cfg.newID("conv_")

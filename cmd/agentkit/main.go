@@ -104,6 +104,8 @@ const usage = `usage:
   agentkit toolsets <command> [flags]      list a server's toolsets; add, review and approve MCP servers on it
   agentkit users hash-password < password  print the argon2id hash of a password, for the config's auth.users
   agentkit credentials put [flags] <slot>  store a credential in the configured vault (the secret on stdin)
+  agentkit export [flags] <dir>            write the agents stored on a server to <dir>/agents/<name>.json
+  agentkit import [flags] <dir>            save and publish each <dir>/agents/<name>.json on a server
 
 Run "agentkit <command> -h" for flags.
 `
@@ -140,6 +142,10 @@ func (c cli) main(ctx context.Context, args []string) int {
 		return c.toolsetsCmd(ctx, args[1:])
 	case len(args) >= 1 && args[0] == "users":
 		err = c.usersCmd(ctx, args[1:])
+	case len(args) >= 1 && args[0] == "export":
+		return c.exportCmd(ctx, args[1:])
+	case len(args) >= 1 && args[0] == "import":
+		return c.importCmd(ctx, args[1:])
 	default:
 		fmt.Fprint(c.stderr, usage)
 		return 2

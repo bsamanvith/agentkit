@@ -2692,6 +2692,465 @@
           }
         }
       }
+    },
+    "/v1/agents/{name}/versions": {
+      "get": {
+        "operationId": "listAgentVersions",
+        "summary": "List a stored agent's versions",
+        "description": "Admins only (agent:admin). Oldest first, with their definitions. An agent of the config file has none: it is read-only.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "The agent's name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The versions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentVersionList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: a bad agent name or version number.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:admin, or (saving) may not use a toolset the definition names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: the caller's tenant has no stored agent of that name (or no such version), or the server keeps no agent definitions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "saveAgent",
+        "summary": "Save a new version of a stored agent, creating it if need be",
+        "description": "Admins only (agent:admin). The definition (the shape of an entry of \"agents\" in the serve config file) is validated in full, as serve validates its config: its toolsets exist and build, tool names do not clash, the model and effort are valid. A refused definition saves nothing. The new version is a draft unless publish is set: new runs use the published version.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "The agent's name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The definition, and why.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveAgentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Saved: the new version.",
+            "headers": {
+              "Location": {
+                "description": "/v1/agents/{name}/versions/{version}",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentVersion"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_definition: the definition was refused; error.fields says what is wrong with which field. invalid_request: a bad name, or a body that is not a request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:admin, or (saving) may not use a toolset the definition names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: if_latest names a version of an agent that does not exist, or the server keeps no agent definitions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "read_only: the agent comes from the server's config file; change it there. conflict: the agent's latest version is not if_latest (0: the agent exists already), or it changed meanwhile; read it again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{name}/versions/{version}": {
+      "get": {
+        "operationId": "getAgentVersion",
+        "summary": "Get one version of a stored agent",
+        "description": "Admins only (agent:admin).",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "The agent's name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "description": "The version's number, from 1.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentVersion"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: a bad agent name or version number.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:admin, or (saving) may not use a toolset the definition names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: the caller's tenant has no stored agent of that name (or no such version), or the server keeps no agent definitions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteAgentVersion",
+        "summary": "Delete a draft",
+        "description": "Admins only (agent:admin). Only a version that was never published is deleted: one that was may have runs. The number is not given again; an agent left with no version is gone.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "The agent's name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "description": "The version's number, from 1.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "400": {
+            "description": "invalid_request: a bad agent name or version number.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:admin, or (saving) may not use a toolset the definition names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: the caller's tenant has no stored agent of that name (or no such version), or the server keeps no agent definitions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "version_published: the version was published, now or before, and is kept. read_only: the agent comes from the server's config file; change it there.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{name}/publish": {
+      "post": {
+        "operationId": "publishAgent",
+        "summary": "Publish a version of a stored agent",
+        "description": "Admins only (agent:admin). New runs of the agent use this version from now on, new conversations and those that go on alike; a run already started keeps its version (agent_version), resumed or not. Publishing an older version rolls back. The version is validated again first.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "The agent's name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The version to publish.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Published: the agent's versions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentVersionList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_definition: the version no longer builds (a toolset it names is gone from the config). invalid_request: a bad name or version number.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:admin, or (saving) may not use a toolset the definition names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: the caller's tenant has no stored agent of that name (or no such version), or the server keeps no agent definitions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "read_only: the agent comes from the server's config file; change it there.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2715,7 +3174,7 @@
         "properties": {
           "code": {
             "type": "string",
-            "description": "What went wrong, for programs: invalid_request (400), unauthorized (401), forbidden, csrf_failed (403), not_found (404), too_large (413), too_many_attempts, too_many_background_runs (429), conversation_busy, agent_mismatch, run_final, run_leased, awaiting_decision, not_pending, shape_changed, toolset_exists, conflict (409), auth_required, server_unreachable (422), over_capacity, shutting_down (503), internal (500); a run's codes are interrupted, run_failed, suspended (a flow run waits for a decision, a chat run for input), rejected, budget_exceeded, max_tokens, refused, unexpected_stop, cancelled, timeout, wall_clock_limit (a background run passed its wall-clock limit, and failed), shutdown, rate_limited, overloaded, model_auth, context_too_long, model_rejected and internal. conversation_interrupted is no longer returned. New codes may be added: treat an unknown one as internal."
+            "description": "What went wrong, for programs: invalid_request, invalid_definition (400), unauthorized (401), forbidden, csrf_failed (403), not_found (404), too_large (413), too_many_attempts, too_many_background_runs (429), conversation_busy, agent_mismatch, run_final, run_leased, awaiting_decision, not_pending, shape_changed, toolset_exists, conflict, read_only, version_published (409), auth_required, server_unreachable (422), over_capacity, shutting_down (503), internal (500); a run's codes are interrupted, run_failed, suspended (a flow run waits for a decision, a chat run for input), rejected, budget_exceeded, max_tokens, refused, unexpected_stop, cancelled, timeout, wall_clock_limit (a background run passed its wall-clock limit, and failed), shutdown, rate_limited, overloaded, model_auth, context_too_long, model_rejected and internal. conversation_interrupted is no longer returned. New codes may be added: treat an unknown one as internal."
           },
           "message": {
             "type": "string",
@@ -2736,6 +3195,13 @@
           "run_id": {
             "type": "string",
             "description": "The run a 409 is about: the conversation's unfinished run, or the run the command named."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FieldError"
+            },
+            "description": "What is wrong with which field of a refused agent definition (code invalid_definition)."
           }
         },
         "required": [
@@ -3077,6 +3543,11 @@
           "pool": {
             "type": "string",
             "description": "The runner pool the run was placed in: where its agent runs (the server's runners configuration). Absent for a run nobody placed: one from before pools, or a flow run."
+          },
+          "agent_version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The version of a stored agent the run runs: the one published when it started, kept through every resume whatever is published since. Absent for an agent of the config file."
           },
           "status": {
             "enum": [
@@ -3776,6 +4247,15 @@
               "a2ui"
             ],
             "description": "How the agent shows UI besides text: a2ui (A2UI surfaces as ui events; runs take ui_action). Absent: text only."
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "A stored agent's published version, which new runs use. Absent for an agent of the config file."
+          },
+          "read_only": {
+            "type": "boolean",
+            "description": "An agent of the server's config file, on a server that keeps agent definitions: it cannot be changed through the API."
           }
         },
         "required": [
@@ -3801,7 +4281,7 @@
             "items": {
               "$ref": "#/components/schemas/Agent"
             },
-            "description": "In the server's config order; without system prompts."
+            "description": "In the server's config order, then the caller's tenant's published stored agents by name; without system prompts."
           }
         },
         "required": [
@@ -4800,6 +5280,150 @@
           "v",
           "authorize_url",
           "expires_at"
+        ]
+      },
+      "FieldError": {
+        "type": "object",
+        "description": "What is wrong with one field of an agent definition.",
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "The field's path in the definition (model.provider, toolsets); empty for the definition as a whole."
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "message"
+        ]
+      },
+      "SaveAgentRequest": {
+        "type": "object",
+        "description": "A new version of a stored agent.",
+        "properties": {
+          "definition": {
+            "type": "object",
+            "description": "The agent: the shape of an entry of \"agents\" in the serve config file (description, model, system, toolsets, prefix_tool_names, runtime_toolsets, max_turns, max_total_tokens, tool_policy, interaction, isolation). Its name, if given, must be the path's. Skills, memory, ui and notify are not available to stored agents yet."
+          },
+          "message": {
+            "type": "string",
+            "description": "Why, for the version list."
+          },
+          "if_latest": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Save only if the agent's latest version is this one; 0: only if the agent does not exist yet. Absent: on whatever is latest."
+          },
+          "publish": {
+            "type": "boolean",
+            "description": "Publish the new version at once."
+          }
+        },
+        "required": [
+          "definition"
+        ]
+      },
+      "PublishRequest": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "version"
+        ]
+      },
+      "AgentVersion": {
+        "type": "object",
+        "description": "One version of a stored agent. A version never changes.",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "published": {
+            "type": "boolean",
+            "description": "The version new runs use."
+          },
+          "published_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was first published; absent for a draft that never was."
+          },
+          "definition": {
+            "type": "object",
+            "description": "The agent as saved, with its name."
+          },
+          "author": {
+            "type": "string",
+            "description": "The key that saved it."
+          },
+          "message": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "v",
+          "name",
+          "version",
+          "published",
+          "definition",
+          "created_at"
+        ]
+      },
+      "AgentVersionList": {
+        "type": "object",
+        "description": "A stored agent's versions, oldest first.",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "name": {
+            "type": "string"
+          },
+          "read_only": {
+            "type": "boolean",
+            "description": "An agent of the config file: it has no stored versions."
+          },
+          "published": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The version new runs use; 0 for none."
+          },
+          "latest": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The highest number given."
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentVersion"
+            }
+          }
+        },
+        "required": [
+          "v",
+          "name",
+          "published",
+          "latest",
+          "versions"
         ]
       }
     }

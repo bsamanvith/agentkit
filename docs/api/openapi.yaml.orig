@@ -1,0 +1,4807 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "agentkit agent API",
+    "version": "1",
+    "description": "The HTTP API of `agentkit serve` (package pkg/agentapi). Within version 1 the API only grows: new fields, event types and error codes; clients ignore what they do not know. Any route may also answer 500 internal on a server fault. This file is JSON, which is YAML too (tools that read YAML read it)."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8080"
+    }
+  ],
+  "security": [
+    {
+      "bearer": []
+    },
+    {
+      "session": []
+    },
+    {}
+  ],
+  "paths": {
+    "/v1/runs": {
+      "post": {
+        "operationId": "createRun",
+        "summary": "Run an agent on a message",
+        "description": "Starts a conversation, continues one, or (with an empty message) resumes an interrupted one. A new message to an interrupted conversation cancels the interrupted run and starts a new one. The response is the run's event stream (text/event-stream), or with Accept: application/json the run once it ends. A client that goes away from a stream leaves the run going for a reconnect grace (10s), in which GET /v1/runs/{id}/events follows it again; after the grace the run is interrupted.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "Server-Sent Events: each event's name is its type and its data the JSON of an Event (components.schemas.Event)."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: the body is not a RunRequest, the message is empty for a new conversation, or no agent is named and the server has no default.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such conversation, or no such agent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "conversation_busy: a run of the conversation is going on (run_id names it); agent_mismatch: the conversation belongs to another agent. A new message to an interrupted conversation replaces its run, so is not 409.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "too_large: the body is over the server's limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "over_capacity: the run's runner pool is running as many runs as its limit (retryable).",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "over_capacity: too many runs (retryable); shutting_down: the server is draining.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listRuns",
+        "summary": "List runs",
+        "description": "The tenant's runs, newest first, or a conversation's (conversation_id); status, background and agent filter them.",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "query",
+            "description": "Only the runs of this conversation.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Only runs of this status.",
+            "schema": {
+              "$ref": "#/components/schemas/Run/properties/status"
+            }
+          },
+          {
+            "name": "background",
+            "in": "query",
+            "description": "true: only background runs (tasks, POST /v1/tasks); false: only chat runs.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "agent",
+            "in": "query",
+            "description": "Only the runs of this agent's conversations.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Runs per page.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "The previous page's next_cursor.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of runs.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: an unknown status, a background that is not true or false, an agent that is not a name, a bad limit or cursor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such conversation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runs/{id}": {
+      "get": {
+        "operationId": "getRun",
+        "summary": "Get a run",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The run's ID.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such run (or it was dropped by retention).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runs/{id}/events": {
+      "get": {
+        "operationId": "runEvents",
+        "summary": "Follow a run's events",
+        "description": "The run's events from the one after Last-Event-ID (from the first without it), then, while this server runs it, the new ones as they come. A run that ended, or that another process runs, is replayed from the store as far as it is stored, and the stream ends there. Within the reconnect grace this is how a client comes back to a chat run.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The run's ID.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "description": "The id of the last event the client has. Any server sharing the run's store answers from the event after it.",
+            "schema": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)(\\.[1-9][0-9]*)?$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run's event stream.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "Server-Sent Events: each event's name is its type, its id the event's id, and its data the JSON of an Event (components.schemas.Event)."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: Last-Event-ID is not an event's id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runs/{id}/resume": {
+      "post": {
+        "operationId": "resumeRun",
+        "summary": "Resume a run",
+        "description": "Continues a run that is interrupted, failed, or was left by a process that stopped. The response is the run's event stream from the first event of the continuation (its ids go on after the run's events so far), or with Accept: application/json the run once it ends.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The run's ID.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The resumed run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "Server-Sent Events: each event's name is its type, its id the event's id, and its data the JSON of an Event (components.schemas.Event)."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "run_final: the run is done, canceled or rejected; awaiting_decision: it waits for a decision; run_leased: it is going on (retryable). run_id names the run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "over_capacity: the run's runner pool is running as many runs as its limit (retryable).",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "over_capacity: too many runs (retryable); shutting_down: the server is draining.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runs/{id}/stop": {
+      "post": {
+        "operationId": "stopRun",
+        "summary": "Stop a run",
+        "description": "Interrupts the run at once, keeping its completed turns: POST /v1/runs/{id}/resume continues it, and a new message to its conversation starts a new run. A run that is not going on is returned as it is.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The run's ID.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run, once this server's execution of it has ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "run_leased: another process runs it; the command must reach that process (retryable).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runs/{id}/cancel": {
+      "post": {
+        "operationId": "cancelRun",
+        "summary": "Cancel a run",
+        "description": "Ends the run for good (canceled). Canceling a canceled run is a no-op.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The run's ID.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run, once this server's execution of it has ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "run_final: the run ended otherwise (done, failed or rejected are final too); run_leased: another process runs it (retryable).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runs/{id}/decisions": {
+      "post": {
+        "operationId": "decideRun",
+        "summary": "Decide a pending step",
+        "description": "Approves or rejects the step a suspended flow run waits for. The run goes on in the background; the response is the run as it is then, or with Accept: text/event-stream its events from there on.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The run's ID.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "Server-Sent Events: each event's name is its type, its id the event's id, and its data the JSON of an Event (components.schemas.Event)."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: the body is not a DecisionRequest with a path.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "not_pending: the run does not wait at that path; run_final: the run has ended; awaiting_decision, shape_changed: the flow changed since the run suspended; run_leased: it is going on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "too_large: the body is over the server's limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "over_capacity: too many runs (retryable); shutting_down: the server is draining.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runs/{id}/input": {
+      "post": {
+        "operationId": "answerRun",
+        "summary": "Answer what a run waits for",
+        "description": "Answers interrupts of a suspended chat run: a question a tool asks (text, one of its choices if it has any), or an approval the run's tool policy wants (approved, and a reason for a denial). Answers may come one request at a time; the same answer again is accepted (a retry is safe). Until every interrupt of the run's pending turn has its answer, the response is the run, still suspended, with the answers so far. With the last one, the run goes on in the background: an answer is its question's result, an approved call runs with exactly the input it was approved with, a denied call's result is the denial. The response is then the run as it is, or with Accept: text/event-stream its events from there on. Who answered is the request's authenticated user, never the body.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The run's ID.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InputRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "Server-Sent Events: each event's name is its type, its id the event's id, and its data the JSON of an Event (components.schemas.Event)."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: the body is not an InputRequest with at least one answer, each with an id; an interrupt is answered twice in it; or an answer does not fit its interrupt (text for an approval, none for a question, text that is not one of its choices).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such run, or one whose agent uses a toolset the credential may not.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "run_final: the run is done, canceled or rejected; not_pending: the run waits for no answer (it is not suspended, it resumed already, it is a flow run waiting for decisions, or no interrupt has that id) or the interrupt has a different answer already; run_leased: another process holds the run, retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "too_large: the body is over the server's limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "over_capacity: the run's runner pool is running as many runs as its limit (retryable).",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "over_capacity: too many runs (retryable); shutting_down: the server is draining.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/conversations": {
+      "post": {
+        "operationId": "createConversation",
+        "summary": "Create an empty conversation",
+        "description": "Creates a conversation with no messages, of the agent named or the default one, so a client has its ID before the first message: then POST /v1/runs with that conversation_id. A run without conversation_id still creates one itself. The conversation is idle, with an empty title until its first message. For retention, it was used when it was created.",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateConversationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new conversation.",
+            "headers": {
+              "Location": {
+                "description": "The conversation's URL path, /v1/conversations/{id}.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: the body is not a CreateConversationRequest, or no agent is named and the server has no default.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such agent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "too_large: the body is over the server's limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listConversations",
+        "summary": "List the caller's conversations",
+        "description": "Newest (most recently started) first. Paging with next_cursor sees every conversation that existed when paging started exactly once, however many start meanwhile; those show at the start of a new listing.",
+        "parameters": [
+          {
+            "name": "agent",
+            "in": "query",
+            "description": "Only this agent's conversations.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Conversations per page.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "The previous page's next_cursor.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of conversations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: a bad limit or cursor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such agent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/conversations/{id}": {
+      "get": {
+        "operationId": "getConversation",
+        "summary": "Get a conversation and its messages",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The conversation's ID.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The conversation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such conversation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteConversation",
+        "summary": "Delete a conversation and its runs",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The conversation's ID.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such conversation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "conversation_busy: a run of the conversation is going on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents": {
+      "get": {
+        "operationId": "listAgents",
+        "summary": "List the agents",
+        "responses": {
+          "200": {
+            "description": "The agents, without system prompts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{name}": {
+      "get": {
+        "operationId": "getAgent",
+        "summary": "Get an agent, with its system prompt for admins",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "The agent's name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The agent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such agent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "The system prompt (system) is only shown to a caller with the scope admin:agents (admins, and keys with admin:* or *), and on a server without credentials."
+      }
+    },
+    "/v1/toolsets": {
+      "get": {
+        "operationId": "listToolsets",
+        "summary": "List the toolsets",
+        "description": "Every configured toolset: ready, skipped with the reason, or unavailable when its tools cannot be listed just now (the toolsets component is down); its credential's status and variable name, never its value.",
+        "responses": {
+          "200": {
+            "description": "The toolsets.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolsetList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "addToolset",
+        "summary": "Add an MCP server as a toolset",
+        "description": "Admins only (agent:admin). The server is probed: agentkit connects (https to a public address, unless the operator allows the host), lists its tools and stores the toolset in the caller's tenant, enabled, with every tool new and off until reviewed (POST /v1/toolsets/{name}/review). Agents that name it in runtime_toolsets get its approved tools as <name>__<tool>.",
+        "requestBody": {
+          "required": true,
+          "description": "The server to add.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddToolsetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Added: the toolset and the review of its tools.",
+            "headers": {
+              "Location": {
+                "description": "/v1/toolsets/{name}/review",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerToolset"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: a bad name, URL, transport, scope, auth or header; an address the server may not connect to; too many toolsets.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:admin, or (adding) may not use a toolset of that name. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "toolset_exists: a toolset (of the config, or added) has that name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "auth_required: the server refused agentkit for want of a credential; server_unreachable: it could not be reached or used.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/toolsets/{name}": {
+      "patch": {
+        "operationId": "updateToolset",
+        "summary": "Change a toolset added at run time",
+        "description": "Admins only. Turns it on or off, or replaces its headers (an empty object removes them).",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "The toolset's name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "What to change.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateToolsetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The toolset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerToolset"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: nothing to change, or a bad header.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:admin, or (adding) may not use a toolset of that name. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no toolset of that name was added at run time that the credential may see, or the server does not add toolsets at run time.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteToolset",
+        "summary": "Remove a toolset added at run time",
+        "description": "Admins only. Its connection closes; agents get none of its tools from their next turn.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "The toolset's name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed."
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:admin, or (adding) may not use a toolset of that name. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no toolset of that name was added at run time that the credential may see, or the server does not add toolsets at run time.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/toolsets/{name}/review": {
+      "get": {
+        "operationId": "getToolsetReview",
+        "summary": "Review a toolset's tools",
+        "description": "Admins only. Every tool the server lists now, and every approved one it no longer lists: new, approved, changed (with the approved definition and the fields that differ), removed or rejected, with the fingerprint to approve.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "The toolset's name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The toolset and its tools.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerToolset"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:admin, or (adding) may not use a toolset of that name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no toolset of that name was added at run time that the credential may see, or the server does not add toolsets at run time.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "reviewToolset",
+        "summary": "Approve or reject tools",
+        "description": "Admins only. Each decision names the fingerprint it is about, which must be the one the server lists now. An approved tool is offered to agents while the server lists it with that fingerprint.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "The toolset's name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The decisions.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The toolset and its tools.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerToolset"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: no decisions, an unknown tool, a bad decision, kind or risk.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:admin, or (adding) may not use a toolset of that name. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no toolset of that name was added at run time that the credential may see, or the server does not add toolsets at run time.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "conflict: a tool changed since it was reviewed, or the toolset was changed meanwhile; review again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/toolsets/{name}/tools": {
+      "get": {
+        "operationId": "listTools",
+        "summary": "List a toolset's tools",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "The toolset's name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The tools under their own names (an agent may prefix them).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such toolset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/config": {
+      "get": {
+        "operationId": "getAuthConfig",
+        "summary": "How to sign in",
+        "description": "Needs no credentials. Lists the sign-in methods the server accepts: password (POST /v1/auth/login), token (a bearer token), both, or none on a server without credentials.",
+        "security": [
+          {}
+        ],
+        "responses": {
+          "200": {
+            "description": "The sign-in methods.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthConfig"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/login": {
+      "post": {
+        "operationId": "login",
+        "summary": "Sign in with a username and password",
+        "description": "Needs no credentials. Starts a session for a local user (the config's auth.users) and sets its cookie. A session ends after 12 hours unused, 7 days after sign-in, or at POST /v1/auth/logout. A request the session authenticates with a method other than GET must send the server's own Origin and the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF, else 403 csrf_failed.",
+        "security": [
+          {}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Signed in.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "Set-Cookie: the session cookie, __Host-agentkit_session (agentkit_session over plain HTTP): HttpOnly, SameSite=Strict, Path=/, Secure over TLS.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: the body is not a LoginRequest of at most 4 KiB, or the username or password is empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the username or the password is wrong. The answer is the same for a user that does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "csrf_failed: the request's Origin is another site.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: the server has no password sign-in (no auth.users).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "too_many_attempts: too many failed sign-ins for the username or from the client's address; the password was not checked.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the next attempt is allowed.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/logout": {
+      "post": {
+        "operationId": "logout",
+        "summary": "Sign out",
+        "description": "Ends the request's session and clears its cookie. With a bearer token it only clears the cookie.",
+        "responses": {
+          "204": {
+            "description": "Signed out.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "The session cookie, cleared (Max-Age=0).",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials and the request has none that are valid: a missing or wrong bearer token, or a session that ended.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "csrf_failed: a session's request without the server's Origin or the CSRF token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: the server has no password sign-in (no auth.users).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/me": {
+      "get": {
+        "operationId": "getMe",
+        "summary": "Who the caller is",
+        "description": "Any credential may ask. A session's answer has the user's roles and the CSRF token its unsafe requests send.",
+        "responses": {
+          "200": {
+            "description": "The caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials and the request has none that are valid: a missing or wrong bearer token, or a session that ended.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tasks": {
+      "post": {
+        "operationId": "createTask",
+        "summary": "Start a task: a background run",
+        "description": "Starts a run of an agent on an input, in a conversation of its own, and answers at once. The run goes on whoever watches it (GET /v1/runs/{id}/events, from any replica, resumable with Last-Event-ID) until it ends or is canceled (POST /v1/runs/{id}/cancel); a server that stops mid-run leaves it to be resumed. It fails with wall_clock_limit past the server's limit (2h by default), and with budget_exceeded past the agent's budgets. With notify (or the agent's default), its end is posted to a webhook (WebhookEvent).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "The run, started.",
+            "headers": {
+              "Location": {
+                "description": "/v1/runs/{id}",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Agentkit-Run-Id": {
+                "description": "The run's ID.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Agentkit-Conversation-Id": {
+                "description": "The ID of the task's conversation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: the body is not a TaskRequest, the input is empty, an interaction that is not served, a bad policy, or a webhook URL the server does not post to (or webhooks it does not send).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such agent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "too_large: the body is over the server's limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "too_many_background_runs: the tenant has as many background runs going on as the server allows (retryable); over_capacity: the runner pool the task is placed in is running as many runs as its limit (retryable).",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "over_capacity: too many runs (retryable); shutting_down: the server is draining.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/webhooks/secret": {
+      "get": {
+        "operationId": "getWebhookSecret",
+        "summary": "Read the webhook secret",
+        "description": "The secret the tenant's webhooks are signed with, to verify their Agentkit-Signature.",
+        "responses": {
+          "200": {
+            "description": "The secret.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookSecret"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: the server sends no webhooks.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/credentials": {
+      "get": {
+        "operationId": "listCredentials",
+        "summary": "List the credential slots and the caller's status",
+        "description": "Every slot the server's toolsets use, once per scope it is used with: the tenant's shared credential (scope tenant) and the caller's own (scope user; not listed for a credential that is no user's). Each says whether a credential is stored (connected, not_connected, needs_reconnect after its refresh token was refused), its kind and dates, and whether an account can be connected with OAuth2. Values are never sent.",
+        "responses": {
+          "200": {
+            "description": "The slots.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:read. Also when the request's tenant is agentkit-oauth-flows, which is reserved for the connect flows' state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: the server keeps no credentials (no credential vault).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/credentials/{slot}": {
+      "put": {
+        "operationId": "putCredential",
+        "summary": "Set a credential",
+        "description": "Stores an API key, a user name and password, or an OAuth2 client's id and secret (client credentials) at the slot, replacing what is there. A user sets their own for a slot of scope user; a slot of scope tenant needs credentials:admin. A client credentials token_url must be https on a public address. OAuth2 tokens come from POST /v1/credentials/{slot}/connect.",
+        "parameters": [
+          {
+            "name": "slot",
+            "in": "path",
+            "description": "The credential slot, as a toolset's spec names it.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The credential.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutCredentialRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The slot, as listed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: an unknown kind, a missing or extra field, a refused token_url, or a scope the slot is not used with (or none, for a slot used with both).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run; or the slot's scope is tenant and it does not have credentials:admin; or the slot's scope is user and the credential is not a user's. Also when the request's tenant is agentkit-oauth-flows, which is reserved for the connect flows' state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no toolset of the server uses that slot, or the server keeps no credentials (no credential vault).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "too_large: the body is over the server's limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteCredential",
+        "summary": "Delete a credential",
+        "description": "Removes the credential at the slot (the caller's own, or with credentials:admin the tenant's). It does not revoke it at the provider.",
+        "parameters": [
+          {
+            "name": "slot",
+            "in": "path",
+            "description": "The credential slot, as a toolset's spec names it.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "description": "tenant or user; may be left out for a slot used with one scope only.",
+            "required": false,
+            "schema": {
+              "enum": [
+                "tenant",
+                "user"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "400": {
+            "description": "invalid_request: a scope the slot is not used with, or none for a slot used with both.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run; or the slot's scope is tenant and it does not have credentials:admin; or the slot's scope is user and the credential is not a user's. Also when the request's tenant is agentkit-oauth-flows, which is reserved for the connect flows' state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no toolset of the server uses that slot, or the server keeps no credentials (no credential vault). Or nothing is stored there.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/credentials/{slot}/connect": {
+      "post": {
+        "operationId": "connectCredential",
+        "summary": "Start connecting an account with OAuth2",
+        "description": "Starts the authorization code flow with PKCE (S256) for the slot's OAuth2 app and returns the provider's page to send the user's browser to. The provider sends the browser back to the server's GET /oauth/callback (no bearer token: the flow's state, random, single use and valid for 10 minutes, names it), which exchanges the code with the verifier and stores the tokens for the caller (scope user) or the caller's tenant (scope tenant, with credentials:admin). It then shows a page of its own, or redirects to return_url with result (connected, denied, expired or failed) and slot added to its query.",
+        "parameters": [
+          {
+            "name": "slot",
+            "in": "path",
+            "description": "The credential slot, as a toolset's spec names it.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The scope, if needed, and where to return.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Where to send the browser.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: the slot has no OAuth2 app, the return_url is not on the server's allowlist, or a scope the slot is not used with.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run; or the slot's scope is tenant and it does not have credentials:admin; or the slot's scope is user and the credential is not a user's. Also when the request's tenant is agentkit-oauth-flows, which is reserved for the connect flows' state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no toolset of the server uses that slot, or the server keeps no credentials (no credential vault).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "too_large: the body is over the server's limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "An API key (the config's auth.api_keys, or AGENTKIT_API_KEYS_FILE), or the server's token (AGENTKIT_API_TOKEN), when it has any. A key acts for one tenant, with scopes (agent:read for GET, agent:run for the rest, agent:admin to add, review, change and remove toolsets) and the toolsets it may use: other toolsets, and agents that use them, are not found (404)."
+      },
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-agentkit_session",
+        "description": "A local user's session (POST /v1/auth/login), for the console; agentkit_session over plain HTTP. Its scopes come from the user's roles: user has agent:read and agent:run; admin adds agent:admin and admin:*. A request with a method other than GET also needs the server's own Origin and the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF, else 403 csrf_failed. A bearer token, if sent, is used instead."
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "description": "A typed error: an HTTP error's body, a failed run's error, or a run_error event's.",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "What went wrong, for programs: invalid_request (400), unauthorized (401), forbidden, csrf_failed (403), not_found (404), too_large (413), too_many_attempts, too_many_background_runs (429), conversation_busy, agent_mismatch, run_final, run_leased, awaiting_decision, not_pending, shape_changed, toolset_exists, conflict (409), auth_required, server_unreachable (422), over_capacity, shutting_down (503), internal (500); a run's codes are interrupted, run_failed, suspended (a flow run waits for a decision, a chat run for input), rejected, budget_exceeded, max_tokens, refused, unexpected_stop, cancelled, timeout, wall_clock_limit (a background run passed its wall-clock limit, and failed), shutdown, rate_limited, overloaded, model_auth, context_too_long, model_rejected and internal. conversation_interrupted is no longer returned. New codes may be added: treat an unknown one as internal."
+          },
+          "message": {
+            "type": "string",
+            "description": "What went wrong, for people. Do not parse it."
+          },
+          "retryable": {
+            "type": "boolean",
+            "description": "The same request may succeed later."
+          },
+          "category": {
+            "type": "string",
+            "description": "A refusal's category (code refused)."
+          },
+          "explanation": {
+            "type": "string",
+            "description": "A refusal's explanation (code refused)."
+          },
+          "run_id": {
+            "type": "string",
+            "description": "The run a 409 is about: the conversation's unfinished run, or the run the command named."
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "description": "The body of every HTTP error.",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "error": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "required": [
+          "v",
+          "error"
+        ]
+      },
+      "Usage": {
+        "type": "object",
+        "description": "Tokens a run or turn used.",
+        "properties": {
+          "input_tokens": {
+            "type": "integer"
+          },
+          "output_tokens": {
+            "type": "integer"
+          },
+          "cache_read_tokens": {
+            "type": "integer"
+          },
+          "cache_write_tokens": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "input_tokens",
+          "output_tokens"
+        ]
+      },
+      "TextBlock": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "const": "text"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "text"
+        ]
+      },
+      "ToolUseBlock": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "const": "tool_use"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "input": {
+            "description": "The tool's input: any JSON value."
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "name",
+          "input"
+        ]
+      },
+      "ToolResultBlock": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "const": "tool_result"
+          },
+          "tool_use_id": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "is_error": {
+            "type": "boolean"
+          },
+          "loads": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Deferred tools this result loaded (a tool_search, or a skill that lists tools): the model has them from then on."
+          }
+        },
+        "required": [
+          "type",
+          "tool_use_id",
+          "content"
+        ]
+      },
+      "OpaqueBlock": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "const": "opaque"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "data": {
+            "type": "string",
+            "description": "The provider's block (Claude's thinking, say), passed back as is."
+          }
+        },
+        "required": [
+          "type",
+          "provider",
+          "data"
+        ]
+      },
+      "Message": {
+        "type": "object",
+        "description": "A message of a conversation.",
+        "properties": {
+          "role": {
+            "enum": [
+              "user",
+              "assistant"
+            ]
+          },
+          "content": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/TextBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolUseBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolResultBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/OpaqueBlock"
+                }
+              ]
+            }
+          }
+        },
+        "required": [
+          "role",
+          "content"
+        ]
+      },
+      "TimedMessage": {
+        "type": "object",
+        "description": "A message and when it was written.",
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "message": {
+            "$ref": "#/components/schemas/Message"
+          }
+        },
+        "required": [
+          "at",
+          "message"
+        ]
+      },
+      "StopReason": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "end_turn, tool_use, max_tokens, refusal or other."
+          },
+          "category": {
+            "type": "string"
+          },
+          "explanation": {
+            "type": "string"
+          },
+          "raw": {
+            "type": "string",
+            "description": "The provider's own stop reason."
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "ToolRecord": {
+        "type": "object",
+        "properties": {
+          "tool_use_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "duration_ms": {
+            "type": "number"
+          },
+          "is_error": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "tool_use_id",
+          "name",
+          "started_at",
+          "duration_ms",
+          "is_error"
+        ]
+      },
+      "TurnRecord": {
+        "type": "object",
+        "description": "One model call and the tools it asked for.",
+        "properties": {
+          "turn": {
+            "type": "integer"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimedMessage"
+            },
+            "description": "The reply and, if it called tools, the user message of their results."
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "first_event_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "done_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          },
+          "stop": {
+            "$ref": "#/components/schemas/StopReason"
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolRecord"
+            }
+          },
+          "loaded": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Deferred tools the turn's results loaded, in order (the console shows \"Loaded N tools\")."
+          }
+        },
+        "required": [
+          "turn",
+          "messages",
+          "requested_at",
+          "first_event_at",
+          "done_at",
+          "usage",
+          "stop",
+          "tools"
+        ]
+      },
+      "Record": {
+        "type": "object",
+        "description": "What a run did around its messages.",
+        "properties": {
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finished_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "prompt": {
+            "$ref": "#/components/schemas/TimedMessage"
+          },
+          "turns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TurnRecord"
+            }
+          }
+        },
+        "required": [
+          "started_at",
+          "finished_at",
+          "turns"
+        ]
+      },
+      "Run": {
+        "type": "object",
+        "description": "A run: one message to an agent and the turns it took to answer.",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "id": {
+            "type": "string"
+          },
+          "conversation_id": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string",
+            "description": "The conversation's agent."
+          },
+          "pool": {
+            "type": "string",
+            "description": "The runner pool the run was placed in: where its agent runs (the server's runners configuration). Absent for a run nobody placed: one from before pools, or a flow run."
+          },
+          "status": {
+            "enum": [
+              "running",
+              "interrupted",
+              "suspended",
+              "done",
+              "failed",
+              "canceled",
+              "rejected"
+            ],
+            "description": "running: an execution is going on; interrupted: a chat run stopped (a background run whose process stopped stays running until the server resumes it) with nobody running it (resume it, or post a new message); suspended: a flow run waits for a decision, or a chat run for input (its interrupts); then done, failed (it can still be resumed), canceled or rejected, which never change. New statuses may be added."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finished_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "answer": {
+            "type": "string",
+            "description": "The final message's text, once done."
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          },
+          "turns": {
+            "type": "integer",
+            "description": "Model calls so far."
+          },
+          "error": {
+            "$ref": "#/components/schemas/Error"
+          },
+          "record": {
+            "$ref": "#/components/schemas/Record"
+          },
+          "interrupts": {
+            "type": "array",
+            "description": "A suspended chat run's interrupts: the calls of its pending turn that wait for people, each with its answer once it has one (POST /v1/runs/{id}/input). The run resumes when they all have one.",
+            "items": {
+              "$ref": "#/components/schemas/Interrupt"
+            }
+          },
+          "background": {
+            "type": "boolean",
+            "description": "Set for a task (POST /v1/tasks): a background run, which goes on whoever watches it until it ends or is canceled."
+          },
+          "notify": {
+            "$ref": "#/components/schemas/Notification"
+          }
+        },
+        "required": [
+          "v",
+          "id",
+          "conversation_id",
+          "agent",
+          "status",
+          "created_at",
+          "usage",
+          "turns"
+        ]
+      },
+      "RunList": {
+        "type": "object",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Run"
+            },
+            "description": "Newest first. A listed run has no record: GET /v1/runs/{id} has it."
+          },
+          "next_cursor": {
+            "type": "string",
+            "description": "Fetches the next page (?cursor=); absent on the last page. Opaque."
+          }
+        },
+        "required": [
+          "v",
+          "runs"
+        ]
+      },
+      "Conversation": {
+        "type": "object",
+        "description": "A conversation and its messages: every message of its history, oldest first. When a conversation outgrows the model's context window, the agent gets a summary in place of its oldest messages; the summary is not listed, and the messages it replaced stay.",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "id": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string",
+            "description": "The agent it belongs to."
+          },
+          "status": {
+            "enum": [
+              "idle",
+              "running",
+              "interrupted"
+            ],
+            "description": "idle: post a message to go on; running: a run is going on; interrupted: post with no message to resume."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimedMessage"
+            }
+          }
+        },
+        "required": [
+          "v",
+          "id",
+          "agent",
+          "status",
+          "created_at",
+          "updated_at",
+          "messages"
+        ]
+      },
+      "RunRequest": {
+        "type": "object",
+        "description": "The body of POST /v1/runs. Unknown fields are refused.",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "The user's message. Absent or empty only to resume an interrupted conversation, or with ui_action."
+          },
+          "conversation_id": {
+            "type": "string",
+            "description": "Continues this conversation (started by an earlier run, or created by POST /v1/conversations); absent starts a new one."
+          },
+          "agent": {
+            "type": "string",
+            "description": "The agent of a new conversation (absent: the default agent). A conversation stays with its agent: naming another is 409 agent_mismatch."
+          },
+          "tool_policy": {
+            "$ref": "#/components/schemas/ToolPolicy"
+          },
+          "interaction": {
+            "enum": [
+              "interactive",
+              "supervised",
+              "autonomous"
+            ],
+            "description": "Narrows the agent's interaction mode for this run, and every resume of it: whether its tool calls may wait for people. interactive and supervised wait (a tool that asks, such as ask_user; a call the policy wants approved): the run is suspended until answered (POST /v1/runs/{id}/input). autonomous never waits: ask_user is not offered, and a call that wants an approval is refused, saying why. The stricter of the agent's mode and this one wins. Only with a message: a resumed run keeps its mode. An unknown mode is 400 invalid_request."
+          },
+          "ui_action": {
+            "$ref": "#/components/schemas/UIAction"
+          }
+        },
+        "additionalProperties": false
+      },
+      "UIAction": {
+        "type": "object",
+        "description": "In place of a message: what the person did on an A2UI surface the agent showed (a ui event), sent to that conversation (conversation_id) of an agent with ui a2ui. The next user message is the action as structured text: <ui_action> and the A2UI action message as JSON (version, then action with name, surfaceId, sourceComponentId, the server's timestamp and context). With a message too, without a conversation, to an agent without UI, or with a field the check refuses, it is 400 invalid_request.",
+        "properties": {
+          "surface_id": {
+            "type": "string",
+            "description": "The surface."
+          },
+          "component_id": {
+            "type": "string",
+            "description": "The component (a button) whose action it is."
+          },
+          "action": {
+            "type": "string",
+            "description": "The action event's name."
+          },
+          "context": {
+            "type": "object",
+            "description": "The action event's context with its bindings resolved: the values chosen. Absent is {}."
+          }
+        },
+        "required": [
+          "surface_id",
+          "component_id",
+          "action"
+        ],
+        "additionalProperties": false
+      },
+      "ToolPolicy": {
+        "description": "Narrows the agent's tool policy for this run, and every resume of it: each tool call gets the stricter of the two decisions (deny over approve over flag over allow), so a run can never widen what its agent may do. A preset's name, or a policy. Only with a message: a resumed run keeps the policy it started with. An invalid policy is 400 invalid_request.",
+        "oneOf": [
+          {
+            "enum": [
+              "read_only",
+              "low_risk_writes",
+              "approve_writes",
+              "all"
+            ],
+            "description": "read_only: read tools only. low_risk_writes: reads and low-risk writes; medium-risk writes need approval; high-risk tools, deletes, sends and executes are denied. approve_writes: reads; everything else needs approval. all: every call (a tool that requires approval still needs it)."
+          },
+          {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9_.-]{0,63}$",
+                "description": "Names the policy in decisions (absent: run)."
+              },
+              "rules": {
+                "type": "array",
+                "maxItems": 256,
+                "description": "Tried in order; the first that matches decides.",
+                "items": {
+                  "$ref": "#/components/schemas/ToolPolicyRule"
+                }
+              },
+              "default": {
+                "enum": [
+                  "allow",
+                  "flag",
+                  "approve",
+                  "deny"
+                ],
+                "description": "Decides a call no rule matches."
+              },
+              "narrowed_by": {
+                "type": "array",
+                "description": "Policies (or presets' names) that narrow this one: at most 8 deep, and 32 policies in all with this one.",
+                "items": {
+                  "$ref": "#/components/schemas/ToolPolicy"
+                }
+              }
+            },
+            "required": [
+              "default"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "ToolPolicyRule": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_.-]{0,63}$"
+          },
+          "match": {
+            "type": "object",
+            "description": "The calls the rule applies to: every field that is set must match; an empty match matches every call.",
+            "properties": {
+              "kinds": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "read",
+                    "write",
+                    "delete",
+                    "send",
+                    "execute"
+                  ]
+                },
+                "description": "The tool's kind is one of these (an unclassified tool is write)."
+              },
+              "risks": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high"
+                  ]
+                },
+                "description": "The tool's risk is one of these (an unclassified tool is medium)."
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "The tool has at least one of these tags."
+              },
+              "tools": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Globs over the tool's name, as the model sees it (github__create_issue) or within its toolset (create_issue). A rule that names a tool exactly overrides the tool's requires_approval."
+              },
+              "toolsets": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Globs over the tool's toolset."
+              }
+            },
+            "additionalProperties": false
+          },
+          "action": {
+            "enum": [
+              "allow",
+              "flag",
+              "approve",
+              "deny"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "What the events and, for a refused call, the model are told."
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "additionalProperties": false
+      },
+      "DecisionRequest": {
+        "type": "object",
+        "description": "The answer to the approval at path of a suspended flow run.",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The approval's path in the flow, as the run's pending steps name it."
+          },
+          "approved": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Kept with a rejection."
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "InputRequest": {
+        "type": "object",
+        "description": "The body of POST /v1/runs/{id}/input: answers to interrupts of a suspended chat run. Unknown fields are refused.",
+        "properties": {
+          "answers": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/Answer"
+            }
+          }
+        },
+        "required": [
+          "answers"
+        ],
+        "additionalProperties": false
+      },
+      "Answer": {
+        "type": "object",
+        "description": "The answer to an interrupt: text for a question; approved, and a reason for a denial, for an approval.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The interrupt's id: the call's tool_use_id."
+          },
+          "text": {
+            "type": "string",
+            "description": "A question's answer: one of its choices, if it has any."
+          },
+          "approved": {
+            "type": "boolean",
+            "description": "An approval: whether the call runs."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why a call was denied: the model is shown \"denied by <who>: <reason>\"."
+          },
+          "by": {
+            "type": "string",
+            "description": "Who answered, as the server authenticated them (in a run). Ignored in a request."
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "Interrupt": {
+        "type": "object",
+        "description": "A tool call that waits for people.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The call's tool_use_id: what an answer names."
+          },
+          "kind": {
+            "enum": [
+              "question",
+              "approval"
+            ],
+            "description": "question: the tool asks (prompt, choices); approval: the run's tool policy wants the call (input) approved, prompt being the rule's reason. New kinds may be added."
+          },
+          "name": {
+            "type": "string",
+            "description": "The tool's name."
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "A question's choices, if it has any: the answer must be one of them."
+          },
+          "input": {
+            "description": "An approval: the call's JSON input, which runs as it is once approved."
+          },
+          "policy": {
+            "type": "string",
+            "description": "An approval: the policy that wants it."
+          },
+          "rule": {
+            "type": "string",
+            "description": "An approval: the rule that wants it."
+          },
+          "answer": {
+            "$ref": "#/components/schemas/Answer"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "prompt"
+        ]
+      },
+      "CreateConversationRequest": {
+        "type": "object",
+        "description": "The body of POST /v1/conversations (optional: no body is {}). Unknown fields are refused.",
+        "properties": {
+          "agent": {
+            "type": "string",
+            "description": "The conversation's agent (absent: the default agent). The conversation stays with it."
+          }
+        },
+        "additionalProperties": false
+      },
+      "Event": {
+        "type": "object",
+        "description": "One event of a run's stream: the JSON of an SSE data line, whose event name is its type. A run's events are one run_start; per turn its text_delta events, a tool_call and tool_result per tool call (with its tool_policy and tool_flagged, if any, in between, and after a ui_render call's tool_result its ui events), and one turn_done; and last one run_done or run_error. A call that waits for people has an interrupt where its tool_result would be, and the execution ends there (run_error suspended); once answered, the run's events go on in the same turn: the call's tool_call again, its tool_result, the turn's turn_done.",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "type": {
+            "type": "string",
+            "description": "run_start, text_delta, tool_call, tool_policy, tool_flagged, interrupt, tool_result, ui, turn_done, retrying, run_done or run_error; new types may be added: skip an unknown one. tool_policy says what the run's tool policy decided about a call it did not plainly allow (flag: the call runs; approve: in a run that may wait for people, an interrupt follows, else like deny; deny: the call does not run, and its tool_result is the error the model was shown); tool_flagged follows the tool_policy of a flagged call, with the same fields. interrupt says a call waits for people (its interrupt). ui carries one A2UI v0.9 message an agent with UI showed (its surface_id and message): each message of a ui_render call that succeeded, in order, right after the call's tool_result."
+          },
+          "id": {
+            "type": "string",
+            "description": "Orders the run's events, and is the SSE id. Every event but text_delta is stored, and its id is its seq (\"12\"); a text_delta is only streamed, and its id is the seq of the stored event before it and its count after it, from 1 (\"12.3\"). Compare ids by seq, then count. A client that missed text_delta events has the turn's whole reply in its turn_done."
+          },
+          "seq": {
+            "type": "integer",
+            "description": "Counts the run's stored events from 1, with no gaps; a text_delta has the seq of the stored event before it."
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "conversation_id": {
+            "type": "string",
+            "description": "run_start."
+          },
+          "prompt": {
+            "$ref": "#/components/schemas/TimedMessage"
+          },
+          "turn": {
+            "type": "integer",
+            "description": "text_delta, tool_call, tool_result, turn_done: the turn, from 1."
+          },
+          "block": {
+            "type": "integer",
+            "description": "text_delta."
+          },
+          "text": {
+            "type": "string",
+            "description": "text_delta."
+          },
+          "call": {
+            "type": "integer",
+            "description": "tool_call, tool_policy, tool_flagged, interrupt, tool_result: the call's index in its turn."
+          },
+          "tool_use_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "description": "tool_call, tool_policy, tool_flagged, interrupt: the tool."
+          },
+          "action": {
+            "enum": [
+              "allow",
+              "flag",
+              "approve",
+              "deny"
+            ],
+            "description": "tool_policy, tool_flagged: what the policy decided. approve: in a run that may wait for people the call waits for an approval (an interrupt event follows); in an autonomous run it is refused like deny, saying so."
+          },
+          "policy": {
+            "type": "string",
+            "description": "tool_policy, tool_flagged: the policy that decided: a preset's name, agent, environment or run, or the name the policy gives itself."
+          },
+          "rule": {
+            "type": "string",
+            "description": "tool_policy, tool_flagged: the rule that decided: its name, rules[i] by position, or default."
+          },
+          "reason": {
+            "type": "string",
+            "description": "tool_policy, tool_flagged: why. A refused call's tool_result is \"not allowed in this run: \" and this reason."
+          },
+          "tool_kind": {
+            "type": "string",
+            "description": "tool_policy, tool_flagged: the tool's kind as the policy saw it (an unclassified tool is write)."
+          },
+          "tool_risk": {
+            "type": "string",
+            "description": "tool_policy, tool_flagged: the tool's risk as the policy saw it (an unclassified tool is medium)."
+          },
+          "interrupt": {
+            "$ref": "#/components/schemas/Interrupt"
+          },
+          "input": {
+            "description": "tool_call: the tool's input."
+          },
+          "content": {
+            "type": "string",
+            "description": "tool_result."
+          },
+          "is_error": {
+            "type": "boolean",
+            "description": "tool_result."
+          },
+          "duration_ms": {
+            "type": "number",
+            "description": "tool_result."
+          },
+          "record": {
+            "$ref": "#/components/schemas/TurnRecord"
+          },
+          "answer": {
+            "type": "string",
+            "description": "run_done."
+          },
+          "final": {
+            "$ref": "#/components/schemas/Message"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          },
+          "turns": {
+            "type": "integer",
+            "description": "run_done, run_error: model calls."
+          },
+          "error": {
+            "$ref": "#/components/schemas/Error"
+          },
+          "attempt": {
+            "type": "integer",
+            "description": "retrying: the attempt that comes next (2 for the first retry)."
+          },
+          "delay_ms": {
+            "type": "number",
+            "description": "retrying: how long the run waits before it."
+          },
+          "surface_id": {
+            "type": "string",
+            "description": "ui: the A2UI surface the message is about."
+          },
+          "message": {
+            "type": "object",
+            "description": "ui: the A2UI v0.9 server-to-client message (createSurface, updateComponents, updateDataModel or deleteSurface), checked against the basic catalog minus its deferred components (package pkg/a2ui)."
+          }
+        },
+        "required": [
+          "v",
+          "type",
+          "id",
+          "seq",
+          "run_id",
+          "at"
+        ]
+      },
+      "Model": {
+        "type": "object",
+        "description": "The model an agent runs on.",
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "effort": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "AgentToolset": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "skipped",
+              "unavailable",
+              "not_added"
+            ]
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The tool names the agent's model sees (prefixed with the toolset's name when the agent prefixes them); empty when skipped."
+          }
+        },
+        "required": [
+          "name",
+          "status",
+          "tools"
+        ]
+      },
+      "Agent": {
+        "type": "object",
+        "description": "An agent: its own model, system prompt and tools.",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "default": {
+            "type": "boolean",
+            "description": "The agent a run gets when it names none."
+          },
+          "model": {
+            "$ref": "#/components/schemas/Model"
+          },
+          "toolsets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentToolset"
+            }
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Empty until skills land (E12)."
+          },
+          "memory": {
+            "type": "boolean",
+            "description": "False until memory lands (E12)."
+          },
+          "system": {
+            "type": "string",
+            "description": "The system prompt: only in GET /v1/agents/{name}. It will be for admins only once the API has roles (T040)."
+          },
+          "ui": {
+            "enum": [
+              "a2ui"
+            ],
+            "description": "How the agent shows UI besides text: a2ui (A2UI surfaces as ui events; runs take ui_action). Absent: text only."
+          }
+        },
+        "required": [
+          "v",
+          "name",
+          "description",
+          "default",
+          "model",
+          "toolsets",
+          "skills",
+          "memory"
+        ]
+      },
+      "AgentList": {
+        "type": "object",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "agents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Agent"
+            },
+            "description": "In the server's config order; without system prompts."
+          }
+        },
+        "required": [
+          "v",
+          "agents"
+        ]
+      },
+      "ConversationSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "description": "The start of the first message, on one line (80 characters at most); empty for a conversation created without a message, until its first one."
+          },
+          "status": {
+            "enum": [
+              "idle",
+              "running",
+              "interrupted"
+            ]
+          },
+          "message_count": {
+            "type": "integer"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "agent",
+          "title",
+          "status",
+          "message_count",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "ConversationList": {
+        "type": "object",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "conversations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConversationSummary"
+            },
+            "description": "Newest (most recently started) first."
+          },
+          "next_cursor": {
+            "type": "string",
+            "description": "Fetches the next page (?cursor=); absent on the last page. Opaque."
+          }
+        },
+        "required": [
+          "v",
+          "conversations"
+        ]
+      },
+      "Credential": {
+        "type": "object",
+        "description": "Where a toolset's credential comes from, and whether it is there. For a toolset whose spec names a credential slot, the status is the caller's (connected, not_connected or needs_reconnect, as GET /v1/credentials says), or missing when the server keeps no credentials.",
+        "properties": {
+          "status": {
+            "enum": [
+              "configured",
+              "missing",
+              "keyless",
+              "not_needed",
+              "connected",
+              "not_connected",
+              "needs_reconnect"
+            ]
+          },
+          "env": {
+            "type": "string",
+            "description": "The environment variable the key is read from. The value is never sent."
+          },
+          "slot": {
+            "type": "string",
+            "description": "The credential slot the toolset uses."
+          },
+          "scope": {
+            "enum": [
+              "tenant",
+              "user"
+            ],
+            "description": "Whose credential at the slot it uses: the tenant's shared one, or each user's own."
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "Toolset": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "description": "The connector: demo, tavily, exa, parallel, ..."
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "skipped",
+              "unavailable",
+              "review_needed",
+              "disabled"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why a skipped toolset was skipped, or why an unavailable one is (its tools could not be listed just now)."
+          },
+          "mcp_path": {
+            "type": "string",
+            "description": "Where the server serves the toolset over MCP, relative to its base URL; absent when it does not."
+          },
+          "tool_count": {
+            "type": "integer"
+          },
+          "credential": {
+            "$ref": "#/components/schemas/Credential"
+          },
+          "runtime": {
+            "type": "boolean",
+            "description": "A toolset added at run time (POST /v1/toolsets); its tool_count counts its approved tools."
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "status",
+          "tool_count",
+          "credential"
+        ]
+      },
+      "ToolsetList": {
+        "type": "object",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "toolsets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Toolset"
+            }
+          }
+        },
+        "required": [
+          "v",
+          "toolsets"
+        ]
+      },
+      "Tool": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "input_schema": {
+            "type": "object",
+            "description": "The JSON Schema of the tool's input."
+          },
+          "output_schema": {
+            "type": "object",
+            "description": "The JSON Schema of the tool's output, when it has one."
+          },
+          "kind": {
+            "enum": [
+              "read",
+              "write",
+              "delete",
+              "send",
+              "execute"
+            ],
+            "description": "What the tool does, as policies see it: what it declares, or write when it declares nothing."
+          },
+          "risk": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "description": "How much harm a wrong call could do, as policies see it: what the tool declares, or medium when it declares nothing."
+          },
+          "classified": {
+            "type": "boolean",
+            "description": "False when the tool left its kind or risk unset, so kind and risk are partly or wholly the defaults (write, medium)."
+          },
+          "interrupts": {
+            "type": "boolean",
+            "description": "The tool declares that it needs a person to answer (like ask_user): an autonomous run is not offered it. Omitted when false."
+          },
+          "requires_approval": {
+            "type": "boolean",
+            "description": "The tool declares that a person should approve each call before it runs, unless a policy rule names the tool: a run that may wait for people suspends until the call is answered (POST /v1/runs/{id}/input), an autonomous one refuses it, saying so. Omitted when false."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Labels policies match, such as external (reaches the open web), idempotent, billing or pii."
+          },
+          "display": {
+            "$ref": "#/components/schemas/ToolDisplay"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "input_schema",
+          "kind",
+          "risk",
+          "classified"
+        ],
+        "description": "A tool's definition, under the name its toolset gives it, with what its metadata says it does."
+      },
+      "ToolDisplay": {
+        "type": "object",
+        "description": "How a console shows the tool's calls (one line: an icon and a verb phrase). Omitted when the tool declares none; it is then shown as \"Ran <name>\".",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "The tool's human-readable name."
+          },
+          "icon": {
+            "type": "string",
+            "description": "An icon name of the console's set (search, page, calc, ...); an unknown name draws nothing."
+          },
+          "present": {
+            "type": "string",
+            "description": "The verb phrase while a call runs (\"Searching the web\")."
+          },
+          "past": {
+            "type": "string",
+            "description": "The verb phrase once a call is done (\"Searched the web\")."
+          }
+        }
+      },
+      "ToolList": {
+        "type": "object",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "toolset": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "skipped",
+              "unavailable"
+            ]
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            },
+            "description": "Empty when the toolset was skipped."
+          }
+        },
+        "required": [
+          "v",
+          "toolset",
+          "status",
+          "tools"
+        ]
+      },
+      "AddToolsetRequest": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "const": "mcp"
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]{1,64}$",
+            "description": "Names the toolset and prefixes its tools (<name>__<tool>)."
+          },
+          "url": {
+            "type": "string",
+            "description": "The server's endpoint: https, on a public address unless the operator allows its host."
+          },
+          "transport": {
+            "enum": [
+              "auto",
+              "http",
+              "sse"
+            ],
+            "description": "auto (the default) tries Streamable HTTP, then HTTP+SSE."
+          },
+          "auth": {
+            "enum": [
+              "none",
+              "headers"
+            ],
+            "description": "none (the default) or headers; MCP OAuth is not supported for servers added at run time yet."
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "With auth headers: sent with every request. ${NAME} is the server's variable NAME, which the operator must allow (runtime_toolsets.header_env); a header that carries a secret must take it from one."
+          },
+          "scope": {
+            "const": "tenant",
+            "description": "One connection the tenant shares (the default)."
+          }
+        },
+        "required": [
+          "type",
+          "name",
+          "url"
+        ]
+      },
+      "UpdateToolsetRequest": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Replace the headers; an empty object removes them."
+          }
+        }
+      },
+      "ReviewRequest": {
+        "type": "object",
+        "properties": {
+          "tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolDecision"
+            }
+          }
+        },
+        "required": [
+          "tools"
+        ]
+      },
+      "ToolDecision": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string",
+            "description": "The definition decided on, as the review showed it. Empty only to reject (forget) a removed tool."
+          },
+          "decision": {
+            "enum": [
+              "approve",
+              "reject"
+            ]
+          },
+          "kind": {
+            "enum": [
+              "read",
+              "write",
+              "delete",
+              "send",
+              "execute"
+            ],
+            "description": "Classifies an approved tool; left out, its annotations decide (write when they claim nothing)."
+          },
+          "risk": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "decision"
+        ]
+      },
+      "ServerToolset": {
+        "type": "object",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "const": "mcp"
+          },
+          "url": {
+            "type": "string"
+          },
+          "transport": {
+            "enum": [
+              "auto",
+              "http",
+              "sse"
+            ]
+          },
+          "auth": {
+            "enum": [
+              "none",
+              "headers"
+            ]
+          },
+          "header_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The headers sent; never their values."
+          },
+          "scope": {
+            "const": "tenant"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "review_needed",
+              "disabled",
+              "unavailable"
+            ],
+            "description": "review_needed: a tool is new or changed, and off until reviewed. unavailable: the server cannot be reached just now (reason says why)."
+          },
+          "reason": {
+            "type": "string"
+          },
+          "server": {
+            "$ref": "#/components/schemas/ServerInfo"
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewTool"
+            }
+          },
+          "version": {
+            "type": "integer",
+            "description": "Changes on every write."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "v",
+          "name",
+          "type",
+          "url",
+          "transport",
+          "auth",
+          "scope",
+          "enabled",
+          "status",
+          "server",
+          "tools",
+          "version",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "ServerInfo": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "description": "What the MCP server says it is."
+      },
+      "ReviewTool": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The server's name for the tool; agents call it <toolset>__<name>."
+          },
+          "status": {
+            "enum": [
+              "approved",
+              "new",
+              "changed",
+              "removed",
+              "rejected"
+            ]
+          },
+          "fingerprint": {
+            "type": "string",
+            "description": "The definition the server lists now (absent for a removed tool)."
+          },
+          "description": {
+            "type": "string",
+            "description": "What the model is given: the description, sanitized."
+          },
+          "current": {
+            "$ref": "#/components/schemas/ToolDefinition"
+          },
+          "approved": {
+            "$ref": "#/components/schemas/ToolDefinition"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "name",
+                "title",
+                "description",
+                "inputSchema",
+                "outputSchema",
+                "annotations"
+              ]
+            }
+          },
+          "kind": {
+            "type": "string"
+          },
+          "risk": {
+            "type": "string"
+          },
+          "reviewed_by": {
+            "type": "string",
+            "description": "The key that last decided on the tool."
+          },
+          "reviewed_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "name",
+          "status",
+          "kind",
+          "risk"
+        ]
+      },
+      "ToolDefinition": {
+        "type": "object",
+        "description": "A tool's definition as its MCP server sends it, raw.",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "annotations": {
+            "type": "object"
+          }
+        }
+      },
+      "AuthConfig": {
+        "type": "object",
+        "description": "How a client signs in.",
+        "properties": {
+          "v": {
+            "type": "integer",
+            "const": 1
+          },
+          "methods": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "password",
+                "token"
+              ]
+            },
+            "description": "The sign-in methods, password first when it is one. Empty: the server needs no credentials."
+          }
+        },
+        "required": [
+          "v",
+          "methods"
+        ]
+      },
+      "LoginRequest": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "minLength": 1
+          },
+          "password": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "additionalProperties": false
+      },
+      "Me": {
+        "type": "object",
+        "description": "Who the caller is.",
+        "properties": {
+          "v": {
+            "type": "integer",
+            "const": 1
+          },
+          "username": {
+            "type": "string",
+            "description": "The signed-in user, or a credential's user; absent for a service key and on a server without credentials."
+          },
+          "tenant": {
+            "type": "string"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "user",
+                "admin"
+              ]
+            },
+            "description": "A signed-in user's roles; empty for a bearer token."
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What the caller may do, as patterns: agent:read, agent:run, agent:admin, admin:* (admins), * (everything)."
+          },
+          "credential": {
+            "type": "string",
+            "description": "The kind of credential: session, api_key or jwt; absent on a server without credentials."
+          },
+          "csrf": {
+            "type": "string",
+            "description": "A session's CSRF token, for the X-Agentkit-CSRF header of its requests other than GET."
+          }
+        },
+        "required": [
+          "v",
+          "tenant",
+          "roles",
+          "scopes"
+        ]
+      },
+      "TaskRequest": {
+        "type": "object",
+        "description": "The body of POST /v1/tasks. Unknown fields are refused.",
+        "properties": {
+          "agent": {
+            "type": "string",
+            "description": "The agent (absent: the default agent)."
+          },
+          "input": {
+            "type": "string",
+            "description": "The task: the user message the run starts from, in a conversation of its own."
+          },
+          "interaction": {
+            "enum": [
+              "autonomous"
+            ],
+            "description": "How the task treats a tool that needs a person: autonomous (the default, and the only mode served) never waits for one."
+          },
+          "policy": {
+            "$ref": "#/components/schemas/ToolPolicy"
+          },
+          "notify": {
+            "type": "object",
+            "description": "The webhook told when the run ends (absent: the agent's default, if any). It is posted a signed WebhookEvent.",
+            "properties": {
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "An http or https URL the server may post to."
+              }
+            },
+            "required": [
+              "url"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "input"
+        ],
+        "additionalProperties": false
+      },
+      "Notification": {
+        "type": "object",
+        "description": "A run's webhook and its delivery so far.",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "delivered",
+              "failed"
+            ],
+            "description": "pending: not delivered yet (tried when the run ends, and again after a failure, for a day); delivered: an attempt was answered with a 2xx; failed: given up on."
+          },
+          "attempts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeliveryAttempt"
+            },
+            "description": "The attempts so far, oldest first."
+          },
+          "next_attempt_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When a pending notification is tried again."
+          }
+        },
+        "required": [
+          "url",
+          "state",
+          "attempts"
+        ]
+      },
+      "DeliveryAttempt": {
+        "type": "object",
+        "description": "One post of a run's end to its webhook.",
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "integer",
+            "description": "The HTTP status of the answer; absent when none came."
+          },
+          "error": {
+            "type": "string",
+            "description": "Why the attempt failed; absent for one that succeeded."
+          }
+        },
+        "required": [
+          "at"
+        ]
+      },
+      "WebhookEvent": {
+        "type": "object",
+        "description": "The body posted to a run's webhook when it ends, with the headers Agentkit-Webhook-Id (the run's ID, the same on every attempt: keep the first), Agentkit-Webhook-Attempt (1, 2, ...) and Agentkit-Signature (t=<unix seconds>,v1=<hex HMAC-SHA256 of \"<t>.<body>\" under the tenant's secret, GET /v1/webhooks/secret>).",
+        "properties": {
+          "v": {
+            "const": 1
+          },
+          "type": {
+            "const": "run.ended"
+          },
+          "run": {
+            "$ref": "#/components/schemas/Run"
+          }
+        },
+        "required": [
+          "v",
+          "type",
+          "run"
+        ]
+      },
+      "WebhookSecret": {
+        "type": "object",
+        "description": "The secret the tenant's webhooks are signed with.",
+        "properties": {
+          "v": {
+            "const": 1
+          },
+          "secret": {
+            "type": "string",
+            "description": "whsec_ and the secret's unpadded base64url: the HMAC key is the decoded bytes."
+          }
+        },
+        "required": [
+          "v",
+          "secret"
+        ]
+      },
+      "CredentialInfo": {
+        "type": "object",
+        "description": "A slot as the caller sees it. It never holds a value.",
+        "properties": {
+          "slot": {
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "tenant",
+              "user"
+            ]
+          },
+          "status": {
+            "enum": [
+              "connected",
+              "not_connected",
+              "needs_reconnect"
+            ]
+          },
+          "kind": {
+            "enum": [
+              "api_key",
+              "basic",
+              "client_credentials",
+              "oauth2"
+            ],
+            "description": "The stored credential's kind, when one is stored."
+          },
+          "oauth": {
+            "type": "boolean",
+            "description": "An account can be connected for the slot (POST /v1/credentials/{slot}/connect)."
+          },
+          "toolsets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The server's toolsets that use the slot with this scope."
+          },
+          "version": {
+            "type": "integer",
+            "description": "Counts the stored credential's writes."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiry": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the stored access token expires, if it says."
+          }
+        },
+        "required": [
+          "slot",
+          "scope",
+          "status",
+          "oauth",
+          "toolsets"
+        ]
+      },
+      "CredentialList": {
+        "type": "object",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "credentials": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CredentialInfo"
+            }
+          }
+        },
+        "required": [
+          "v",
+          "credentials"
+        ]
+      },
+      "PutCredentialRequest": {
+        "type": "object",
+        "description": "A credential to store. Each kind takes its own fields and no others: api_key (api_key), basic (username and password), client_credentials (client_id, client_secret, token_url and scopes).",
+        "properties": {
+          "scope": {
+            "enum": [
+              "tenant",
+              "user"
+            ],
+            "description": "May be left out when the slot is used with one scope only."
+          },
+          "kind": {
+            "enum": [
+              "api_key",
+              "basic",
+              "client_credentials"
+            ]
+          },
+          "api_key": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "client_id": {
+            "type": "string"
+          },
+          "client_secret": {
+            "type": "string"
+          },
+          "token_url": {
+            "type": "string",
+            "description": "https, on a public address: the server sends the client secret there."
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "ConnectRequest": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "enum": [
+              "tenant",
+              "user"
+            ],
+            "description": "May be left out when the slot is used with one scope only."
+          },
+          "return_url": {
+            "type": "string",
+            "description": "Where the callback sends the browser when the flow ends, with result and slot added to its query; it must have the scheme, host and path of a URL on the server's allowlist. Without it the callback shows a page of its own."
+          }
+        }
+      },
+      "ConnectResponse": {
+        "type": "object",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "authorize_url": {
+            "type": "string",
+            "description": "The provider's authorization page, with the flow's state and PKCE challenge."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the flow expires: the callback refuses it after."
+          }
+        },
+        "required": [
+          "v",
+          "authorize_url",
+          "expires_at"
+        ]
+      }
+    }
+  }
+}

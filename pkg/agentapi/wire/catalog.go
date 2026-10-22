@@ -62,6 +62,12 @@ type Agent struct {
 	// System is the system prompt: only in GET /v1/agents/{name}, and only
 	// for a caller with the scope "admin:agents" (admins).
 	System string `json:"system,omitempty"`
+	// Version is the published version of a stored agent (T075), which new
+	// runs use; absent for an agent of the config file.
+	Version int64 `json:"version,omitempty"`
+	// ReadOnly marks an agent of the server's config file: it cannot be
+	// changed through the API.
+	ReadOnly bool `json:"read_only,omitempty"`
 }
 
 // Model is the model an agent runs on.

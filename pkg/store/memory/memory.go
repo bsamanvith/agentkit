@@ -32,6 +32,7 @@ var (
 	_ store.ToolsetStore      = (*Store)(nil)
 	_ store.RunIndex          = (*Store)(nil)
 	_ store.NotificationLog   = (*Store)(nil)
+	_ store.ItemStore         = (*Store)(nil)
 	_ flow.Checkpointer       = (*Store)(nil)
 	_ store.Admin             = admin{}
 )
@@ -65,6 +66,7 @@ type Store struct {
 	toolsets    map[key]store.ToolsetRecord // by name
 
 	notifications map[key]store.Notification // by run id
+	items         map[key]*storedItem        // by itemID
 }
 
 // key scopes an id by tenant: the same id in two tenants is two things.
@@ -92,6 +94,7 @@ func New(opts ...Option) *Store {
 		toolsets:    map[key]store.ToolsetRecord{},
 
 		notifications: map[key]store.Notification{},
+		items:         map[key]*storedItem{},
 	}
 	for _, o := range opts {
 		o(s)
@@ -327,7 +330,7 @@ func (s *Store) Create(ctx context.Context, id, conversationID string, opts ...s
 	}
 	r := store.Run{
 		ID: id, ConversationID: conversationID, Status: store.StatusRunning, CreatedAt: now,
-		Interactive: o.Interactive, Lane: o.Lane, Priority: o.Priority, StartAt: c.Start, Pool: o.Pool, Lease: c.Lease,
+		Interactive: o.Interactive, Lane: o.Lane, Priority: o.Priority, StartAt: c.Start, Pool: o.Pool, AgentVersion: o.AgentVersion, Lease: c.Lease,
 	}
 	if err := backend.CheckTime("the clock's time", r.CreatedAt); err != nil {
 		return store.Run{}, err

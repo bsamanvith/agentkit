@@ -83,6 +83,16 @@ var (
 	ErrResponseTooLarge = errors.New("response larger than the client's limit")
 	// ErrClosed: [Stream.Next] after [Stream.Close].
 	ErrClosed = errors.New("stream closed")
+	// ErrInvalidDefinition: an agent definition was refused (400
+	// invalid_definition); [APIError.Fields] says what is wrong with which
+	// field.
+	ErrInvalidDefinition = errors.New("invalid agent definition")
+	// ErrReadOnly: the agent comes from the server's config file and
+	// cannot be changed through the API (409 read_only).
+	ErrReadOnly = errors.New("agent is read-only")
+	// ErrVersionPublished: the version was published and is kept; only
+	// drafts are deleted (409 version_published).
+	ErrVersionPublished = errors.New("version was published")
 )
 
 var codeSentinels = map[string]error{
@@ -102,6 +112,10 @@ var codeSentinels = map[string]error{
 	wire.CodeConflict:          ErrConflict,
 	wire.CodeServerUnreachable: ErrServerUnreachable,
 	wire.CodeAuthRequired:      ErrAuthRequired,
+
+	wire.CodeInvalidDefinition: ErrInvalidDefinition,
+	wire.CodeReadOnly:          ErrReadOnly,
+	wire.CodeVersionPublished:  ErrVersionPublished,
 
 	wire.CodeRunLeased:        ErrConversationBusy,
 	wire.CodeRunFinal:         ErrRunState,
@@ -127,6 +141,9 @@ type APIError struct {
 	// RunID is the run the error is about, when there is one: on a busy
 	// conversation (409), the run going on, to follow with [Client.Events].
 	RunID string
+	// Fields says what is wrong with which field of a refused agent
+	// definition ([ErrInvalidDefinition]).
+	Fields []wire.FieldError
 }
 
 func (e *APIError) Error() string {
@@ -154,6 +171,7 @@ func (c *Client) apiError(resp *http.Response) error {
 	var er wire.ErrorResponse
 	if err := json.Unmarshal(body, &er); err == nil && er.Error != nil && er.Error.Code != "" {
 		e.Code, e.Message, e.Retryable, e.RunID = er.Error.Code, er.Error.Message, er.Error.Retryable, er.Error.RunID
+		e.Fields = er.Error.Fields
 		return e
 	}
 	e.Message = snippet(body)

@@ -410,6 +410,9 @@ type Error struct {
 	// RunID names the run an HTTP error is about: the unfinished run that
 	// keeps a conversation busy (CodeBusy).
 	RunID string `json:"run_id,omitempty"`
+	// Fields says what is wrong with which field of a refused definition
+	// (CodeInvalidDefinition).
+	Fields []FieldError `json:"fields,omitempty"`
 }
 
 func (e *Error) Error() string { return e.Code + ": " + e.Message }
@@ -513,9 +516,13 @@ type Run struct {
 	Agent          string `json:"agent"` // the conversation's agent
 	// Pool is the runner pool the run was placed in: where its agent runs.
 	// Empty for a run nobody placed (from before pools, or a flow run).
-	Pool      string    `json:"pool,omitempty"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
+	Pool string `json:"pool,omitempty"`
+	// AgentVersion is the version of a stored agent the run runs (T075):
+	// the one published when it started, whatever is published since.
+	// Absent for an agent of the config file.
+	AgentVersion int64     `json:"agent_version,omitempty"`
+	Status       string    `json:"status"`
+	CreatedAt    time.Time `json:"created_at"`
 	// FinishedAt, Answer, Error and Record are set once the run has ended.
 	FinishedAt *time.Time `json:"finished_at,omitempty"`
 	Answer     string     `json:"answer,omitempty"`

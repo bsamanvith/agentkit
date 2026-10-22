@@ -66,7 +66,9 @@ type serveConfig struct {
 	Credentials credentialsConfig
 	// Runners are the runner pools the agents run in (runners.go).
 	Runners runnersConfig
-	legacy  bool // Agents come from an "agent" section (or none)
+	// Registry keeps the agents tenants define through the API (registry.go).
+	Registry registryConfig
+	legacy   bool // Agents come from an "agent" section (or none)
 }
 
 // environmentConfig is the "environment" section of the config file.
@@ -74,6 +76,25 @@ type environmentConfig struct {
 	// ToolPolicy narrows every agent's tool policy: a preset's name (an
 	// ephemeral environment might say "read_only") or a policy.
 	ToolPolicy *policy.Policy `json:"tool_policy"`
+}
+
+// registryConfig is the "agent_registry" section of the config file: the
+// agents admins (scope agent:admin) define through the API as versions, per
+// tenant, beside those of the file (T075).
+type registryConfig struct {
+	// Enabled turns it on; it is on unless false, and off when the agents
+	// run on a runner elsewhere ($AGENTKIT_RUNNER_URL), which builds only
+	// the agents of its file.
+	Enabled *bool `json:"enabled"`
+	// CacheSize caps the stored agents kept built, across tenants and
+	// versions (0: registry.DefaultCacheSize).
+	CacheSize int `json:"cache_size"`
+}
+
+// on reports whether the registry runs with env: this build has it
+// (registryBuilt), it is not turned off, and the agents run here.
+func (r registryConfig) on(env serveEnv) bool {
+	return registryBuilt && (r.Enabled == nil || *r.Enabled) && env.runnerURL == ""
 }
 
 // serveFile is the top level of the config file.
@@ -88,6 +109,7 @@ type serveFile struct {
 	// Credentials is the credential vault's backend (credentials.go).
 	Credentials json.RawMessage `json:"credentials"`
 	Runners     json.RawMessage `json:"runners"`
+	Registry    json.RawMessage `json:"agent_registry"`
 }
 
 // serveEnv is what agentkit serve reads from the environment.
@@ -258,8 +280,8 @@ func buildToolsets(ctx context.Context, env serveEnv, cfg serveConfig, configPat
 }
 
 // servedSpecs returns the toolsets the components use: every one in
-// mcp.toolsets when mcp-server or toolsets runs, else those the agents name
-// (agent-api, runner).
+// mcp.toolsets when mcp-server or toolsets runs, or the agent API with its
+// registry on, else those the agents name (agent-api, runner).
 func servedSpecs(env serveEnv, cfg serveConfig) ([]toolset.Spec, error) {
 	var specs []toolset.Spec
 	for _, name := range []string{agentapi.Name, runnerName} {
@@ -281,6 +303,19 @@ func servedSpecs(env serveEnv, cfg serveConfig) ([]toolset.Spec, error) {
 				return nil, err
 			}
 			specs = rest
+		}
+	}
+	// The agents stored through the API (registry.go) may use any toolset
+	// of the file, so the agent API builds them all.
+	if slices.Contains(env.components, agentapi.Name) && cfg.Registry.on(env) {
+		rest, _, err := splitAgentTools(cfg.MCP.Toolsets)
+		if err != nil {
+			return nil, err
+		}
+		for _, s := range rest {
+			if !slices.ContainsFunc(specs, func(t toolset.Spec) bool { return t.Name == s.Name }) {
+				specs = append(specs, s)
+			}
 		}
 	}
 	return specs, nil
@@ -469,6 +504,9 @@ func loadServeConfig(path string) (serveConfig, error) {
 	}
 	if err := decodeSection(file.Runners, &cfg.Runners); err != nil {
 		return cfg, fmt.Errorf("config %s: runners: %w", path, err)
+	}
+	if err := decodeSection(file.Registry, &cfg.Registry); err != nil {
+		return cfg, fmt.Errorf("config %s: agent_registry: %w", path, err)
 	}
 	switch {
 	case file.Agent != nil && (file.Agents != nil || file.AgentAPI != nil):

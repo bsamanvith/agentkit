@@ -288,6 +288,11 @@ type Run struct {
 	// runner/pool): where its agent runs. It is set by [WithPool], "" for a
 	// run nobody placed, and never changes.
 	Pool string
+	// AgentVersion is the version of its agent the run runs (T075): a
+	// version of a stored agent definition. It is set by
+	// [WithAgentVersion], 0 for an agent that is not versioned, and never
+	// changes.
+	AgentVersion int64
 }
 
 // Due returns the time from which a background run that is running, or
@@ -328,6 +333,8 @@ type CreateOptions struct {
 	StartAt  time.Time
 	// Pool is set by [WithPool].
 	Pool string
+	// AgentVersion is set by [WithAgentVersion].
+	AgentVersion int64
 	// LeaseOwner and LeaseTTL are set by [WithLease]; an empty owner means
 	// the run is created unclaimed.
 	LeaseOwner string
@@ -370,6 +377,12 @@ func WithLane(lane string) CreateOption {
 // name is text (see Text in the package documentation).
 func WithPool(pool string) CreateOption {
 	return func(o *CreateOptions) { o.Pool = pool }
+}
+
+// WithAgentVersion records the version of its agent the run runs
+// ([Run.AgentVersion]). It must not be negative.
+func WithAgentVersion(v int64) CreateOption {
+	return func(o *CreateOptions) { o.AgentVersion = v }
 }
 
 // WithPriority creates the run with priority p ([Run.Priority]): of the due
@@ -463,8 +476,8 @@ type RunStore interface {
 	// unfinished run: creating another while one is not final is
 	// [ErrUnfinished]. opts set properties stored with the run
 	// ([Interactive], [WithLane], [WithPriority], [WithStartAt],
-	// [WithPool], [WithLease]; a lane or pool that is not text, a priority
-	// out of range, a
+	// [WithPool], [WithAgentVersion], [WithLease]; a lane or pool that is
+	// not text, a negative agent version, a priority out of range, a
 	// start time the store cannot keep or a lease Claim would refuse is
 	// [ErrInvalid]); a retry returns the run as first stored, whatever its
 	// opts.

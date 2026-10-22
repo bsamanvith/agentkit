@@ -87,6 +87,10 @@ type Agent struct {
 	// ends, unless the task names its own; "" for none. It needs
 	// [WithWebhooks].
 	Notify string
+	// Version is the version of a stored agent ([AgentRegistry]) the
+	// harness was built from, which its runs record; 0 for an agent given
+	// to [NewAgents].
+	Version int64
 }
 
 // Toolset is a toolset of the server, as GET /v1/toolsets lists it.
@@ -219,7 +223,7 @@ func (a *agent) run() runner.Agent {
 // resolveAgent picks the agent of a new conversation, among those the
 // request may use: one it may not is no agent (404), and the default is none
 // if it may not use it.
-func (s *Server) resolveAgent(r *http.Request, name string) (*agent, *Error, int) {
+func (s *Server) resolveAgent(ctx context.Context, r *http.Request, name string) (*agent, *Error, int) {
 	acc := accessOf(r)
 	if name == "" {
 		if s.defaultAgent == nil || !acc.agent(s.defaultAgent) {
@@ -227,8 +231,12 @@ func (s *Server) resolveAgent(r *http.Request, name string) (*agent, *Error, int
 		}
 		return s.defaultAgent, nil, 0
 	}
-	a := s.agents[name]
-	if a == nil || !acc.agent(a) {
+	a, err := s.agentFor(ctx, name, 0)
+	switch {
+	case err != nil && !errors.Is(err, errNoAgent):
+		s.log.Error("reading a stored agent", "agent", name, "err", err)
+		return nil, &Error{Code: CodeInternal, Message: "reading agent " + quote(name) + " failed; see the server log"}, http.StatusInternalServerError
+	case a == nil || !acc.agent(a):
 		return nil, &Error{Code: CodeNotFound, Message: "no agent " + quote(name) + "; this server runs " + strings.Join(s.agentNames(acc), ", ")}, http.StatusNotFound
 	}
 	return a, nil, 0
@@ -259,12 +267,42 @@ func (s *Server) listAgents(w http.ResponseWriter, r *http.Request) {
 		}
 		out.Agents = append(out.Agents, v)
 	}
+	if s.cfg.registry != nil {
+		ctx, ok := s.scope(w, r)
+		if !ok {
+			return
+		}
+		stored, err := s.storedAgents(ctx)
+		if err != nil {
+			s.internal(w, "listing the stored agents", err)
+			return
+		}
+		for _, a := range stored {
+			if !acc.agent(a) {
+				continue
+			}
+			v, err := s.agentView(r, a)
+			if err != nil {
+				s.internal(w, "listing the agents' tools", err)
+				return
+			}
+			out.Agents = append(out.Agents, v)
+		}
+	}
 	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) getAgent(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	a := s.agents[name]
+	ctx, ok := s.scope(w, r)
+	if !ok {
+		return
+	}
+	a, err := s.agentFor(ctx, name, 0)
+	if err != nil && !errors.Is(err, errNoAgent) {
+		s.internal(w, "reading agent "+quote(name), err)
+		return
+	}
 	if a == nil || !accessOf(r).agent(a) {
 		writeError(w, http.StatusNotFound, &Error{Code: CodeNotFound, Message: "no agent " + quote(name)})
 		return
@@ -287,6 +325,7 @@ func (s *Server) agentView(r *http.Request, a *agent) (wire.Agent, error) {
 		V: WireVersion, Name: a.Name, Description: a.Description, Default: a == s.defaultAgent,
 		Model: a.Model, Toolsets: make([]wire.AgentToolset, 0, len(a.Toolsets)),
 		Skills: append([]string{}, a.Skills...), Memory: a.Memory, UI: a.UI,
+		Version: a.Version, ReadOnly: s.cfg.registry != nil && s.agents[a.Name] == a,
 	}
 	for _, name := range a.Toolsets {
 		ts := s.toolsets[name]
@@ -437,13 +476,13 @@ func (s *Server) createConversation(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	ag, apiErr, code := s.resolveAgent(r, req.Agent)
-	if apiErr != nil {
-		writeError(w, code, apiErr)
-		return
-	}
 	ctx, ok := s.scope(w, r)
 	if !ok {
+		return
+	}
+	ag, apiErr, code := s.resolveAgent(ctx, r, req.Agent)
+	if apiErr != nil {
+		writeError(w, code, apiErr)
 		return
 	}
 	c, err := s.store.CreateConversation(ctx, store.Conversation{ID: s.cfg.newID("conv_"), Agent: ag.Name})
@@ -545,7 +584,8 @@ func (s *Server) listConversations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	agentName := q.Get("agent")
-	if agentName != "" && s.agents[agentName] == nil {
+	// A stored agent's conversations stay listed when the agent is gone.
+	if agentName != "" && s.agents[agentName] == nil && (s.cfg.registry == nil || !validName.MatchString(agentName)) {
 		writeError(w, http.StatusNotFound, &Error{Code: CodeNotFound, Message: "no agent " + quote(agentName)})
 		return
 	}

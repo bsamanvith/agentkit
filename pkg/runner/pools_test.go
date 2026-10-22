@@ -146,6 +146,35 @@ func TestRunKeepsItsPool(t *testing.T) {
 	}
 }
 
+// AgentVersion stores the version of its agent the run runs and gives it to
+// the factory on the start and on every resume (T075), so a run keeps the
+// version it started on; a negative version is refused.
+func TestRunKeepsItsAgentVersion(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	p := w.process()
+	chat := w.interrupted(p, "chat", w.model.on("q", 2), 1, runner.AgentVersion(3))
+	if got := w.get(chat); got.AgentVersion != 3 {
+		t.Errorf("the run's stored agent version is %d, want 3", got.AgentVersion)
+	}
+	if _, err := p.resume(chat); err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	want := []runner.Placement{
+		{ConversationID: "chat", Interactive: true, AgentVersion: 3},
+		{ConversationID: "chat", RunID: chat, Interactive: true, Resume: true, AgentVersion: 3},
+	}
+	w.mu.Lock()
+	got := slices.Clone(w.placements)
+	w.mu.Unlock()
+	if !slices.Equal(got, want) {
+		t.Errorf("placements = %+v, want %+v", got, want)
+	}
+	if _, err := p.r.Run(w.ctx, "bad", harness.UserText(w.model.on("b", 0)), runner.AgentVersion(-1)); !errors.Is(err, store.ErrInvalid) {
+		t.Errorf("Run with agent version -1 = %v, want store.ErrInvalid", err)
+	}
+}
+
 // WithSlots refuses nil slots.
 func TestWithSlotsRefusesNil(t *testing.T) {
 	t.Parallel()

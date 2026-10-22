@@ -63,7 +63,7 @@ func (s *Server) postTask(w http.ResponseWriter, r *http.Request) {
 		s.unavailable(w, shuttingDown())
 		return
 	}
-	ag, apiErr, code := s.resolveAgent(r, req.Agent)
+	ag, apiErr, code := s.resolveAgent(ctx, r, req.Agent)
 	if apiErr != nil {
 		writeError(w, code, apiErr)
 		return
@@ -108,7 +108,7 @@ func (s *Server) postTask(w http.ResponseWriter, r *http.Request) {
 		s.refuse(w, status, apiErr)
 		return
 	}
-	start.Pool = poolName
+	start.Pool, start.AgentVersion = poolName, ag.Version
 	convID := s.cfg.newID("conv_")
 	if _, err := s.store.CreateConversation(ctx, store.Conversation{ID: convID, Agent: ag.Name}); err != nil {
 		s.tmu.Unlock()

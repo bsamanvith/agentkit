@@ -65,6 +65,7 @@ var (
 	_ store.CommandLog        = (*Store)(nil)
 	_ store.ConversationIndex = (*Store)(nil)
 	_ store.ToolsetStore      = (*Store)(nil)
+	_ store.ItemStore         = (*Store)(nil)
 	_ flow.Checkpointer       = (*Store)(nil)
 	_ store.Admin             = admin{}
 )

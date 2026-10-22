@@ -205,7 +205,7 @@ func TestRunsFromBeforeTheQueueAreQueued(t *testing.T) {
 	var unset int
 	queryRow(t, u, `SELECT count(*) FROM runs WHERE start_at IS DISTINCT FROM created_at OR lane <> '' OR priority <> 0 OR pool <> ''`, nil, &unset)
 	if unset != 0 {
-		t.Errorf("%d old runs are not in the default lane at priority 0 starting at their creation, in no pool (0012)", unset)
+		t.Errorf("%d old runs are not in the default lane at priority 0 starting at their creation, in no pool (0013)", unset)
 	}
 	for tenant, id := range map[string]string{"acme": "interrupted", "globex": "due"} {
 		r, err := s.Get(tenantCtx(t, tenant), id)

@@ -26,14 +26,14 @@ After T104 every run goes through a router, but two `process` pools behave the s
 - [x] A full background pool never delays a chat: chats start while background runs wait — test: `agentapi.TestFullBackgroundPoolNeverDelaysAChat` (and `agentapi.TestFullChatPoolRefusesAChat` for the chat pool's own 429)
 - [x] A background run waits in the store until its pool has a slot, then starts (fake clock) — test: `runner.TestBackgroundRunWaitsForItsPoolsSlot`
 - [x] The serve config routes runs as written; an unknown pool or isolation fails startup — tests: `main.TestServeRoutesRunsByConfig`, `main.TestServeRejectsBadSetup` (the `runners:` and `agents: ... isolation` cases)
-- [x] A run's pool is stored and returned by the API — tests: `agentapi.TestRunPoolIsStoredAndReturned`, storetest `QueueOptionsAreStored` (memory, SQLite; Postgres in the integration tier), the 0011/0012 upgrade checks in `TestRunsFromBeforeTheQueueAreQueued` (sqlite, postgres)
+- [x] A run's pool is stored and returned by the API — tests: `agentapi.TestRunPoolIsStoredAndReturned`, storetest `QueueOptionsAreStored` (memory, SQLite; Postgres in the integration tier), the SQLite 0012 and Postgres 0013 upgrade checks in `TestRunsFromBeforeTheQueueAreQueued` (sqlite, postgres)
 - [x] Mutation list recorded.
 
 ## Notes
 
 ### What was built
 
-- **Store:** `store.Run.Pool`, `store.WithPool` (text, checked like a lane), never changes; column `pool TEXT NOT NULL DEFAULT ''` by SQLite `0011_pool.sql` and Postgres `0012_pool.sql` (renumbered after T043 took 0010/0011) (constant default: no backfill, so no RLS lifting). Memory store too.
+- **Store:** `store.Run.Pool`, `store.WithPool` (text, checked like a lane), never changes; column `pool TEXT NOT NULL DEFAULT ''` by SQLite `0012_pool.sql` and Postgres `0013_pool.sql` (renumbered after T043 took SQLite 0010 and Postgres 0011, and T044 SQLite 0011 and Postgres 0012) (constant default: no backfill, so no RLS lifting). Memory store too.
 - **Runner:** `runner.InPool(name)` stores the pool; `Placement.Pool` carries it to the factory on the start and on every resume. `runner.Slots` and `runner.WithSlots(s)`: a dispatcher takes one of the pool's slots per run in place of its own workers, claims (`ClaimNext`) only while it holds one, and gives it back when the run's execution ends.
 - **pkg/runner/pool:** `Slots` (`TryAcquire`, `Acquire`, `Release`, `Limit`, `InUse`); `NewRouter(..., opts...)` with `WithLimit(pool, n)`; `Router.Slots`, `Pools`, `DefaultPool`. `Route` sends a run with a `Placement.Pool` back to that pool while it exists and is isolated enough (never a weaker one), else routes afresh.
 - **Agent API:** a chat (POST /v1/runs, a resume, an answer to its interrupts) is routed before it starts and takes a slot of its pool: none free is **429 `over_capacity`** with `Retry-After` (the global `WithMaxConcurrentRuns` stays 503); the slot goes back when the execution ends. `StartOptions.Pool` reaches a `WithRuns` orchestrator. `Server.Enqueue` routes a background run and queues it in its pool's lane (lane = pool name) with its pool; `Server.Dispatcher(admin, pool)` is that lane's `runner.Recovery` on the pool's slots (the default pool's also takes lane `""`). `pool` is in `wire.Run` (GET /v1/runs/{id}, the list) and in the run logs (started, resumed, recovered, queued, done).

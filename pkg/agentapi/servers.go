@@ -1,6 +1,7 @@
 package agentapi
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"net/http"
@@ -35,12 +36,28 @@ var (
 	// (422 server_unreachable).
 	ErrServerUnreachable = errors.New("the MCP server could not be used")
 	// ErrAuthRequired: the MCP server refused agentkit for want of a
-	// credential (422 auth_required).
+	// credential (422 auth_required). An [AuthRequiredError] also says
+	// which.
 	ErrAuthRequired = errors.New("the MCP server needs a credential")
 	// ErrURLNotAllowed: the tenant's mcp_servers.allow does not include
 	// the server's URL (403 url_not_allowed).
 	ErrURLNotAllowed = errors.New("the tenant does not allow adding this URL")
 )
+
+// AuthRequiredError is an [ErrAuthRequired] that says which sign-in the
+// server asks for: wire.AuthOAuth or wire.AuthHeaders. The API answers it
+// with that in the error's auth field, so a client need not read the
+// message.
+type AuthRequiredError struct {
+	Auth string
+	// Reason says what to do, for people.
+	Reason string
+}
+
+func (e *AuthRequiredError) Error() string { return ErrAuthRequired.Error() + ": " + e.Reason }
+
+// Is makes it an [ErrAuthRequired].
+func (e *AuthRequiredError) Is(target error) bool { return target == ErrAuthRequired }
 
 // ToolsetAdmin keeps the toolsets a tenant adds at run time: external MCP
 // servers, added by URL, whose tools an admin reviews before agents may call
@@ -220,6 +237,10 @@ func (s *Server) deleteToolset(w http.ResponseWriter, r *http.Request) {
 
 // adminError answers a [ToolsetAdmin]'s error with its status.
 func (s *Server) adminError(w http.ResponseWriter, what string, err error) {
+	if are := (*AuthRequiredError)(nil); errors.As(err, &are) {
+		writeError(w, http.StatusUnprocessableEntity, &Error{Code: CodeAuthRequired, Message: err.Error(), Auth: are.Auth})
+		return
+	}
 	for _, m := range []struct {
 		err    error
 		status int
@@ -260,8 +281,13 @@ func (s *Server) runtimeToolsets(ctx context.Context, acc access) ([]wire.Toolse
 			Name: ts.Name, Type: ts.Type, Status: ts.Status, Reason: ts.Reason, Runtime: true,
 			Credential: wire.Credential{Status: wire.CredentialNotNeeded},
 		}
-		if ts.Auth == wire.AuthHeaders {
+		switch ts.Auth {
+		case wire.AuthHeaders:
 			v.Credential.Status = wire.CredentialConfigured
+		case wire.AuthOAuth:
+			// The caller's connection, which they connect at the slot of
+			// the toolset's name.
+			v.Credential = wire.Credential{Status: cmp.Or(ts.Connection, wire.CredentialNotConnected), Slot: ts.Name, Scope: ts.Scope}
 		}
 		for _, t := range ts.Tools {
 			if t.Status == wire.ToolApproved {

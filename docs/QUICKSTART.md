@@ -572,7 +572,7 @@ A toolset of type `mcp` is another MCP server's tools, used by agents and served
   "transport": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/srv/docs"]}}
 ```
 
-Settings: `url`; `transport` (`auto`, the default: Streamable HTTP, then the older HTTP+SSE; or `http`, `sse`, `stdio`); `command`, `args` and `env` for stdio (`env` names the variables the command gets; it gets `PATH` and `HOME` and nothing else); `headers` (`${NAME}` is replaced by the variable; a header carrying a secret must use one, and headers go only over https or to this machine); `timeout` per call (default `60s`); `connect_timeout` (default `15s`); `max_result_bytes` (default 1 MiB). `include` and `exclude` pick tools, as for any toolset. OAuth sign-in to a server is T095.
+Settings: `url`; `transport` (`auto`, the default: Streamable HTTP, then the older HTTP+SSE; or `http`, `sse`, `stdio`); `command`, `args` and `env` for stdio (`env` names the variables the command gets; it gets `PATH` and `HOME` and nothing else); `headers` (`${NAME}` is replaced by the variable; a header carrying a secret must use one, and headers go only over https or to this machine); `timeout` per call (default `60s`); `connect_timeout` (default `15s`); `max_result_bytes` (default 1 MiB). `include` and `exclude` pick tools, as for any toolset. A server of the config can't sign in with MCP OAuth; add it at run time with `"auth": "oauth"` (section 8).
 
 The server is contacted at startup: one that does not answer fails startup, or with `"optional": true` is skipped and named in `/readyz`. Tools keep the server's names; an agent using two servers that both have a `search` sets `"prefix_tool_names": true` to get `linear__search` and `notion__search`. The server's descriptions are cleaned of hidden characters, its annotations can raise a tool's risk but not lower it, and its results are treated as third-party data.
 
@@ -611,7 +611,17 @@ The `runtime_toolsets` section of the config:
 
 Finding a server: `agentkit toolsets search linear` lists the servers the MCP Registry has for "linear" that can be added by URL (those with a Streamable HTTP or SSE remote; servers that are only packages to run are left out), with a suggested name and whether `mcp_servers.allow` lets you add each one. A listing is not a review: adding one is probed and its tools stay off until approved, as above. If the registry is down the search says so (`502 registry_unavailable`), and adding by URL still works.
 
-Not yet: OAuth sign-in to a server (T095) and per-user connections, agents on a separate runner component, and the console screens (T096 part 3).
+**A server that signs people in with MCP OAuth** (Linear, Notion, GitHub, ...) answers the plain add with `422 auth_required` and `"auth": "oauth"` in the error. Add it with `"auth": "oauth"`, and `"scope": "user"` for each person's own account (or `"tenant"`, the default, for one account the tenant shares). This needs the credential vault (`AGENTKIT_CREDENTIALS_KEY`) and the server's public origin in `AGENTKIT_PUBLIC_URL` (`https://agents.example.com`): the authorization server sends the browser back to `AGENTKIT_PUBLIC_URL/oauth/callback`, and over https `AGENTKIT_PUBLIC_URL/oauth/client-metadata.json` is agentkit's client ID (CIMD). agentkit finds the authorization server when the toolset is added and keeps it (`issuer`); it registers a client per tenant (RFC 7591) when the server takes no client ID document, or uses `"oauth_client": {"client_id": "...", "client_secret": "${NAME}"}`, the secret from a `header_env` variable.
+
+```sh
+curl -s -X POST localhost:8080/v1/toolsets -H "Authorization: Bearer $AGENTKIT_API_TOKEN" \
+  -d '{"type":"mcp","name":"linear","url":"https://mcp.linear.app/mcp","auth":"oauth","scope":"user"}'
+curl -s -X POST localhost:8080/v1/credentials/linear/connect -H "Authorization: Bearer $KEY" -d '{}'
+```
+
+The connect call returns `authorize_url`: open it in the browser that made the call (it keeps the flow's cookie), sign in, and the callback stores the token in the vault under the toolset's name, the caller's own for scope `user`. The tools are listed through a connection, so the admin connects their own account, then reviews them as above. Each person then connects theirs on Connections (or with the same call); a person who hasn't gets "not connected" from the tools, never someone else's token. A refresh token the server refuses turns the connection to `needs_reconnect` ("reconnect needed" from the tools) until they connect again. `GET /v1/toolsets` and the toolset's review show the caller's `connection`.
+
+Not yet: agents on a separate runner component.
 
 ## 9. Agents defined through the API
 

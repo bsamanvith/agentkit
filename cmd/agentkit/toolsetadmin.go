@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
+	"github.com/bsamanvith/agentkit/pkg/mcp/oauth"
 	"github.com/bsamanvith/agentkit/pkg/mcp/registry"
 	"github.com/bsamanvith/agentkit/pkg/mcp/servers"
 	"github.com/bsamanvith/agentkit/pkg/netguard"
@@ -24,7 +26,7 @@ var errNoRuntimeStore = errors.New("runtime_toolsets: the store cannot keep tool
 
 // newToolsetAdmin is the keeper of the toolsets added at run time, on st;
 // nil when they are off.
-func (c cli) newToolsetAdmin(cfg serveConfig, st agentapi.Store, log *slog.Logger) (toolsetAdmin, error) {
+func (c cli) newToolsetAdmin(cfg serveConfig, st agentapi.Store, env serveEnv, log *slog.Logger) (toolsetAdmin, error) {
 	rc := cfg.Runtime
 	if !rc.on() {
 		return nil, nil
@@ -71,5 +73,35 @@ func (c cli) newToolsetAdmin(cfg serveConfig, st agentapi.Store, log *slog.Logge
 	if rc.ConnectTimeout > 0 {
 		opts = append(opts, servers.WithConnectTimeout(time.Duration(rc.ConnectTimeout)))
 	}
-	return servers.New(ts, opts...)
+	var conn *oauth.Connector
+	if env.vaultParts != nil && env.publicURL != "" {
+		// MCP OAuth (T095): tokens and registered clients in the vault,
+		// every request through the same guard as the servers'.
+		vs := oauth.NewVaultStore(env.vaultParts.vault)
+		conn, err = oauth.New(oauth.Config{
+			PublicURL: env.publicURL, Tokens: vs, Clients: vs,
+			HTTPClient: guard.Client(nil),
+			Logger:     log.With("component", agentapi.Name),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("$%s: %w", envPublicURL, err)
+		}
+		opts = append(opts, servers.WithOAuth(conn))
+	}
+	m, err := servers.New(ts, opts...)
+	if err != nil || conn == nil {
+		return m, err
+	}
+	return oauthAdmin{m, conn.Handler()}, nil
 }
+
+// oauthAdmin is the toolset admin with MCP OAuth on: the connect flows'
+// slots (Dynamic) and the client's metadata document.
+type oauthAdmin struct {
+	*servers.Manager
+	meta http.Handler
+}
+
+// ClientMetadata serves the client's metadata document (its CIMD client
+// ID), at the root of the public URL.
+func (a oauthAdmin) ClientMetadata() http.Handler { return a.meta }

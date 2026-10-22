@@ -87,7 +87,7 @@ func (s *Service) callback(w http.ResponseWriter, r *http.Request) {
 		s.finish(w, r, f, wire.CallbackFailed)
 		return
 	}
-	if err := s.exchange(ctx, f, q.Get("code")); err != nil {
+	if err := s.complete(ctx, f, q); err != nil {
 		log.WarnContext(ctx, "connecting an account failed", "reason", err.Error())
 		s.finish(w, r, f, wire.CallbackFailed)
 		return
@@ -121,13 +121,9 @@ type reasonError string
 
 func (e reasonError) Error() string { return string(e) }
 
-// exchange trades code for tokens at the flow's app, sending the flow's
-// verifier, and stores them for the flow's tenant and user.
-func (s *Service) exchange(ctx context.Context, f flow, code string) error {
-	app, ok := s.cfg.Apps[f.Slot]
-	if !ok {
-		return reasonError("the slot no longer has an OAuth2 app")
-	}
+// complete finishes a flow in its tenant, for its user: the app's code
+// exchange, or a dynamic slot's.
+func (s *Service) complete(ctx context.Context, f flow, q url.Values) error {
 	tn, err := tenancy.NewTenant(f.Tenant)
 	if err != nil {
 		return reasonError("the flow's tenant is not valid")
@@ -135,6 +131,27 @@ func (s *Service) exchange(ctx context.Context, f flow, code string) error {
 	tctx := tenancy.With(ctx, tn)
 	if f.User != "" {
 		tctx = tenancy.WithUser(tctx, f.User)
+	}
+	if !f.Dynamic {
+		return s.exchange(tctx, f, q.Get("code"))
+	}
+	if s.cfg.Dynamic == nil {
+		return reasonError("this server no longer connects the toolsets added at run time")
+	}
+	if _, ok := s.dynamicSlot(tctx, f.Slot); !ok {
+		return reasonError("the toolset was removed, or no longer signs in with OAuth")
+	}
+	cctx, cancel := context.WithTimeout(tctx, credentials.DefaultTokenTimeout)
+	defer cancel()
+	return s.cfg.Dynamic.Complete(cctx, f.User, f.Slot, f.Data, q)
+}
+
+// exchange trades code for tokens at the flow's app, sending the flow's
+// verifier, and stores them for the flow's tenant and user (tctx).
+func (s *Service) exchange(tctx context.Context, f flow, code string) error {
+	app, ok := s.cfg.Apps[f.Slot]
+	if !ok {
+		return reasonError("the slot no longer has an OAuth2 app")
 	}
 	ectx, cancel := context.WithTimeout(context.WithValue(tctx, oauth2.HTTPClient, s.http), credentials.DefaultTokenTimeout)
 	defer cancel()
@@ -155,7 +172,7 @@ func (s *Service) exchange(ctx context.Context, f flow, code string) error {
 		cred.Scopes = strings.Fields(sc)
 	}
 	if _, err := s.store(tctx, f.User, f.Slot, cred); err != nil {
-		s.log.ErrorContext(ctx, "storing a connected account", "slot", f.Slot, "tenant", f.Tenant, "err", err)
+		s.log.ErrorContext(tctx, "storing a connected account", "slot", f.Slot, "tenant", f.Tenant, "err", err)
 		return reasonError("storing the tokens failed")
 	}
 	return nil

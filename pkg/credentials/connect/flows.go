@@ -66,6 +66,10 @@ type flow struct {
 	CookieSecure bool      `json:"cookie_secure,omitempty"`
 	Created      time.Time `json:"created"`
 	Expires      time.Time `json:"expires"`
+	// Dynamic marks a flow of a slot that [Dynamic] connects, and Data is
+	// what its Complete needs (instead of Verifier).
+	Dynamic bool   `json:"dynamic,omitempty"`
+	Data    []byte `json:"data,omitempty"`
 }
 
 type flows struct {

@@ -15,9 +15,11 @@ const (
 	KindBasic             Kind = "basic"
 	KindOAuth2            Kind = "oauth2"
 	KindClientCredentials Kind = "client_credentials"
+	KindOAuth2Client      Kind = "oauth2_client"
 )
 
-// Credential is one of [APIKey], [Basic], [OAuth2] and [ClientCredentials].
+// Credential is one of [APIKey], [Basic], [OAuth2], [ClientCredentials]
+// and [OAuth2Client].
 type Credential interface {
 	// Kind says which.
 	Kind() Kind
@@ -42,6 +44,32 @@ type OAuth2 struct {
 	Expiry       time.Time // zero: unknown or never
 	Scopes       []string
 	TokenType    string // "Bearer" when empty
+	// Client is the OAuth2 client the token was issued to when it was
+	// found as the account was connected, rather than configured for the
+	// slot (MCP OAuth, T095): what refreshing the token needs. Nil for a
+	// slot whose client is configured (credentials.oauth2).
+	Client *OAuth2Client
+	// Extra holds token response fields kept with the token, such as
+	// Salesforce's instance_url. They are not secret.
+	Extra map[string]string
+}
+
+// OAuth2Client is an OAuth2 client registered with an authorization server
+// at run time (MCP OAuth, T095). Stored on its own, it is a client
+// registered by dynamic registration (RFC 7591) that a tenant's users
+// share; in an [OAuth2], the client its token was issued to.
+type OAuth2Client struct {
+	ClientID     string
+	ClientSecret Secret // empty for a public client
+	// Issuer is the authorization server, TokenURL its token endpoint.
+	Issuer   string
+	TokenURL string
+	// TokenAuthStyle is how the client authenticates to the token
+	// endpoint, as golang.org/x/oauth2's AuthStyle: 0 auto-detects, 1 in
+	// the form, 2 in a basic auth header.
+	TokenAuthStyle int
+	// Resource is the resource (RFC 8707) tokens are asked for.
+	Resource string
 }
 
 // ClientCredentials is what an OAuth2 client credentials grant needs.
@@ -64,10 +92,14 @@ func (OAuth2) Kind() Kind { return KindOAuth2 }
 // Kind implements [Credential].
 func (ClientCredentials) Kind() Kind { return KindClientCredentials }
 
+// Kind implements [Credential].
+func (OAuth2Client) Kind() Kind { return KindOAuth2Client }
+
 func (APIKey) credential()            {}
 func (Basic) credential()             {}
 func (OAuth2) credential()            {}
 func (ClientCredentials) credential() {}
+func (OAuth2Client) credential()      {}
 
 // expiry is the time a credential stops working, if it says.
 func expiry(c Credential) time.Time {
@@ -92,11 +124,21 @@ type (
 		Password string `json:"password"`
 	}
 	oauth2JSON struct {
-		AccessToken  string    `json:"access_token"`
-		RefreshToken string    `json:"refresh_token,omitempty"`
-		Expiry       time.Time `json:"expiry,omitzero"`
-		Scopes       []string  `json:"scopes,omitempty"`
-		TokenType    string    `json:"token_type,omitempty"`
+		AccessToken  string            `json:"access_token"`
+		RefreshToken string            `json:"refresh_token,omitempty"`
+		Expiry       time.Time         `json:"expiry,omitzero"`
+		Scopes       []string          `json:"scopes,omitempty"`
+		TokenType    string            `json:"token_type,omitempty"`
+		Client       *oauth2ClientJSON `json:"client,omitempty"`
+		Extra        map[string]string `json:"extra,omitempty"`
+	}
+	oauth2ClientJSON struct {
+		ClientID       string `json:"client_id"`
+		ClientSecret   string `json:"client_secret,omitempty"`
+		Issuer         string `json:"issuer,omitempty"`
+		TokenURL       string `json:"token_url,omitempty"`
+		TokenAuthStyle int    `json:"token_auth_style,omitempty"`
+		Resource       string `json:"resource,omitempty"`
 	}
 	clientCredentialsJSON struct {
 		ClientID     string   `json:"client_id"`
@@ -115,10 +157,17 @@ func encode(c Credential) ([]byte, error) {
 	case Basic:
 		data = basicJSON{User: c.User, Password: c.Password.Reveal()}
 	case OAuth2:
-		data = oauth2JSON{
+		d := oauth2JSON{
 			AccessToken: c.AccessToken.Reveal(), RefreshToken: c.RefreshToken.Reveal(),
-			Expiry: c.Expiry.UTC(), Scopes: c.Scopes, TokenType: c.TokenType,
+			Expiry: c.Expiry.UTC(), Scopes: c.Scopes, TokenType: c.TokenType, Extra: c.Extra,
 		}
+		if c.Client != nil {
+			cj := clientJSON(*c.Client)
+			d.Client = &cj
+		}
+		data = d
+	case OAuth2Client:
+		data = clientJSON(c)
 	case ClientCredentials:
 		data = clientCredentialsJSON{ClientID: c.ClientID, ClientSecret: c.ClientSecret.Reveal(), TokenURL: c.TokenURL, Scopes: c.Scopes}
 	default:
@@ -155,10 +204,21 @@ func decode(b []byte) (Credential, error) {
 		if json.Unmarshal(env.Data, &d) != nil {
 			return nil, ErrCorrupt
 		}
-		return OAuth2{
+		o := OAuth2{
 			AccessToken: NewSecret(d.AccessToken), RefreshToken: NewSecret(d.RefreshToken),
-			Expiry: d.Expiry, Scopes: d.Scopes, TokenType: d.TokenType,
-		}, nil
+			Expiry: d.Expiry, Scopes: d.Scopes, TokenType: d.TokenType, Extra: d.Extra,
+		}
+		if d.Client != nil {
+			cl := d.Client.client()
+			o.Client = &cl
+		}
+		return o, nil
+	case KindOAuth2Client:
+		var d oauth2ClientJSON
+		if json.Unmarshal(env.Data, &d) != nil {
+			return nil, ErrCorrupt
+		}
+		return d.client(), nil
 	case KindClientCredentials:
 		var d clientCredentialsJSON
 		if json.Unmarshal(env.Data, &d) != nil {
@@ -167,6 +227,20 @@ func decode(b []byte) (Credential, error) {
 		return ClientCredentials{ClientID: d.ClientID, ClientSecret: NewSecret(d.ClientSecret), TokenURL: d.TokenURL, Scopes: d.Scopes}, nil
 	}
 	return nil, ErrCorrupt
+}
+
+func clientJSON(c OAuth2Client) oauth2ClientJSON {
+	return oauth2ClientJSON{
+		ClientID: c.ClientID, ClientSecret: c.ClientSecret.Reveal(), Issuer: c.Issuer,
+		TokenURL: c.TokenURL, TokenAuthStyle: c.TokenAuthStyle, Resource: c.Resource,
+	}
+}
+
+func (d oauth2ClientJSON) client() OAuth2Client {
+	return OAuth2Client{
+		ClientID: d.ClientID, ClientSecret: NewSecret(d.ClientSecret), Issuer: d.Issuer,
+		TokenURL: d.TokenURL, TokenAuthStyle: d.TokenAuthStyle, Resource: d.Resource,
+	}
 }
 
 // check refuses a credential with nothing to use in it.
@@ -181,6 +255,8 @@ func check(c Credential) error {
 		empty = c.AccessToken.IsZero() && c.RefreshToken.IsZero()
 	case ClientCredentials:
 		empty = c.ClientID == "" || c.ClientSecret.IsZero() || c.TokenURL == ""
+	case OAuth2Client:
+		empty = c.ClientID == ""
 	case nil:
 		return fmt.Errorf("%w: nil", ErrInvalidCredential)
 	default:

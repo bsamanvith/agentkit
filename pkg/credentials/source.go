@@ -384,6 +384,18 @@ func (s *source) load(ctx context.Context, k flightKey) (Credential, Meta, error
 	case meta.NeedsReconnect:
 		return nil, Meta{}, s.notConnected()
 	}
+	// A connection to an MCP server made at run time (an OAuth2 with its
+	// own Client), or a client registered for one, is for that server and
+	// its authorization server only (T095): never sent by a toolset of the
+	// config whose slot has the same name.
+	switch c := cred.(type) {
+	case OAuth2:
+		if c.Client != nil {
+			return nil, Meta{}, s.notConnected()
+		}
+	case OAuth2Client:
+		return nil, Meta{}, s.notConnected()
+	}
 	return cred, meta, nil
 }
 

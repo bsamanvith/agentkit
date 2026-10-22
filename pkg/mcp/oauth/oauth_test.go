@@ -45,6 +45,9 @@ type setup struct {
 	scope   oauth.Scope
 	// store, if set, is shared with another env (a second replica).
 	store *oauth.MemoryStore
+	// tokens and clients, if set, replace the store's.
+	tokens  oauth.TokenStore
+	clients oauth.ClientStore
 }
 
 // newEnv starts agentkit's public endpoint (TLS, for CIMD), a fake
@@ -64,9 +67,17 @@ func newEnv(t *testing.T, s setup) *env {
 	if e.store == nil {
 		e.store = &oauth.MemoryStore{}
 	}
+	var tokens oauth.TokenStore = e.store
+	var clients oauth.ClientStore = e.store
+	if s.tokens != nil {
+		tokens = s.tokens
+	}
+	if s.clients != nil {
+		clients = s.clients
+	}
 	c, err := oauth.New(oauth.Config{
 		PublicURL: e.public.URL,
-		Tokens:    e.store, Clients: e.store, States: e.store,
+		Tokens:    tokens, Clients: clients, States: e.store,
 		Clock:  e.clk,
 		Logger: slog.New(slog.NewJSONHandler(e.logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
 	})
@@ -437,6 +448,37 @@ func TestRefresh(t *testing.T) {
 			t.Fatalf("call after the server dropped the token: %v (want refresh and retry)", err)
 		}
 	})
+}
+
+// racingStore loses every Swap to a connection made meanwhile to another
+// server under the same name (a toolset removed and added again).
+type racingStore struct {
+	*oauth.MemoryStore
+	other string
+}
+
+func (r *racingStore) Swap(ctx context.Context, k oauth.Key, old, t oauth.Token) error {
+	nt := old
+	nt.Access, nt.Resource = oauth.NewSecret("token-for-another-server"), r.other
+	if err := r.Put(ctx, k, nt); err != nil {
+		return err
+	}
+	return oauth.ErrConflict
+}
+
+// A refresh that loses its compare-and-swap uses the winner's token only
+// if it was issued for the same server.
+func TestRefreshConflictKeepsTheServer(t *testing.T) {
+	t.Parallel()
+	mem := &oauth.MemoryStore{}
+	rs := &racingStore{MemoryStore: mem, other: "https://other.example/mcp"}
+	e := newEnv(t, setup{as: spec, store: mem, tokens: rs})
+	e.connect(t, alice)
+	e.clk.Advance(2 * time.Hour)
+	s, err := e.c.Token(t.Context(), alice, e.srv)
+	if s.Reveal() == "token-for-another-server" || !errors.Is(err, oauth.ErrNotConnected) {
+		t.Fatalf("Token after losing to another server's connection: %v, want ErrNotConnected and no token", err)
+	}
 }
 
 func TestNeedsMoreAccess(t *testing.T) {

@@ -279,6 +279,17 @@ describe("requests", () => {
     expect(err).toMatchObject({ status: 503, code: "over_capacity", message: "busy", retryable: true, retryAfter: 2 });
   });
 
+  it("keeps the sign-in an auth_required error names", async () => {
+    const client = new AgentClient({
+      fetch: fakeFetch(['{"v":1,"error":{"code":"auth_required","message":"401","auth":"oauth"}}'], {
+        status: 422,
+        headers: { "Content-Type": "application/json" },
+      }),
+    });
+    const err = await client.listAgents().catch((e: unknown) => e);
+    expect(err).toMatchObject({ status: 422, code: "auth_required", auth: "oauth" });
+  });
+
   it("keeps the status of an error that isn't JSON", async () => {
     const client = new AgentClient({ fetch: fakeFetch(["<html>bad gateway</html>"], { status: 502 }) });
     const err = await client.listAgents().catch((e: unknown) => e);

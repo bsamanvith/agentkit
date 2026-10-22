@@ -4664,6 +4664,13 @@
               "$ref": "#/components/schemas/FieldError"
             },
             "description": "What is wrong with which field of a refused agent definition (code invalid_definition)."
+          },
+          "auth": {
+            "enum": [
+              "oauth",
+              "headers"
+            ],
+            "description": "The sign-in an MCP server asks for (code auth_required): oauth (MCP OAuth: add it with auth oauth, then connect an account) or headers (a credential in a header, such as a key)."
           }
         },
         "required": [
@@ -6137,9 +6144,10 @@
           "auth": {
             "enum": [
               "none",
-              "headers"
+              "headers",
+              "oauth"
             ],
-            "description": "none (the default) or headers; MCP OAuth is not supported for servers added at run time yet."
+            "description": "none (the default), headers, or oauth (MCP OAuth). With oauth the server is not probed for tools: its authorization server is found and kept (issuer), and the tools are listed once an account is connected (POST /v1/credentials/{name}/connect). It needs the server's public URL (AGENTKIT_PUBLIC_URL) and a credential vault."
           },
           "headers": {
             "type": "object",
@@ -6149,8 +6157,27 @@
             "description": "With auth headers: sent with every request. ${NAME} is the server's variable NAME, which the operator must allow (runtime_toolsets.header_env); a header that carries a secret must take it from one."
           },
           "scope": {
-            "const": "tenant",
-            "description": "One connection the tenant shares (the default)."
+            "enum": [
+              "tenant",
+              "user"
+            ],
+            "description": "tenant (the default): one connection the tenant shares. user, with auth oauth only: each user connects their own account, and a user who has not gets \"not connected\" from its tools."
+          },
+          "oauth_client": {
+            "type": "object",
+            "description": "A client registered with the authorization server beforehand, for auth oauth. Without one agentkit uses its client ID metadata document if the authorization server takes it, else registers a client for the tenant.",
+            "properties": {
+              "client_id": {
+                "type": "string"
+              },
+              "client_secret": {
+                "type": "string",
+                "description": "${NAME}: the server's variable NAME, which the operator must allow (runtime_toolsets.header_env). Never a literal secret."
+              }
+            },
+            "required": [
+              "client_id"
+            ]
           }
         },
         "required": [
@@ -6253,7 +6280,8 @@
           "auth": {
             "enum": [
               "none",
-              "headers"
+              "headers",
+              "oauth"
             ]
           },
           "header_names": {
@@ -6264,10 +6292,29 @@
             "description": "The headers sent; never their values."
           },
           "scope": {
-            "const": "tenant"
+            "enum": [
+              "tenant",
+              "user"
+            ]
           },
           "enabled": {
             "type": "boolean"
+          },
+          "issuer": {
+            "type": "string",
+            "description": "auth oauth: the authorization server found when the toolset was added; accounts are connected there only."
+          },
+          "oauth_client_id": {
+            "type": "string",
+            "description": "auth oauth: the pre-registered client, if any."
+          },
+          "connection": {
+            "enum": [
+              "connected",
+              "not_connected",
+              "needs_reconnect"
+            ],
+            "description": "auth oauth: the caller's connection (scope user) or the tenant's (scope tenant). Its slot is the toolset's name: POST /v1/credentials/{name}/connect connects it. The tools are listed through it, so before it is made the toolset is unavailable to the caller."
           },
           "status": {
             "enum": [

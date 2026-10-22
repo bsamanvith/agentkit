@@ -26,7 +26,7 @@ Decisions (reasons in T070 Notes):
 - **Tasks have one home: the Tasks list** (T087). Any run that isn't a chat (started with `POST /v1/tasks`, by a trigger, by another agent, or by an API key) shows there and not in Chats. This replaces v3's line that showed a background run's conversation in Chats too. E16's jobs land in the same list. Details: "Tasks".
 - **Waiting for you is the one thing that nags.** The Tasks badge counts tasks waiting for an answer; a chat that waits shows an amber mark and "Waiting for you" on its row. A finished task you haven't opened gets a dot on its row, not a badge.
 - **Full-width pages:** the agent builder, versions and the skill editor hide the list, because a form with a test chat beside it doesn't fit next to the list (at 1200 px the content column is 856 px). The agent detail's **Edit** and **Versions** lead there; on phones they show a read-only view.
-- **Still later:** **Memories** (E12), from the user menu, as a side panel; per-user sign-in to MCP servers (T095); finding a server in a registry (T097).
+- **Still later:** **Memories** (E12), from the user menu, as a side panel; finding a server in a registry (T097).
 
 ## Layouts
 
@@ -317,7 +317,7 @@ T096's runtime toolsets, added by an admin from Toolsets (+ in the list header).
 2. **Sign-in:** first what the server said: a 401 with `WWW-Authenticate`, or that it answered without sign-in. Then the choices:
    - **No sign-in**.
    - **A header from a server variable**: a header name and a value like `Bearer ${LINEAR_API_KEY}`. Only variables listed in `runtime_toolsets.header_env` are allowed, and the value never passes through the console.
-   - **Each person signs in**: later (T095, T044), shown disabled with "Not available yet". It will add a row to Connections, "Account, MCP server". When the server asks for MCP OAuth, a notice says so.
+   - **Each person signs in** (T095): MCP OAuth, each person's own account (`auth: oauth`, `scope: user`). Offered only when the server's 401 named MCP OAuth (the 422's `auth` is `oauth`), and then chosen first, with a notice that says so. It adds a row to Connections for the toolset. Saving stores the toolset without its tools: step 3 first asks the admin to **Connect** their own account (POST /v1/credentials/{name}/connect, in a popup, back at /connections/done), with **Check again**, then lists the tools for review.
    - A server that answers without sign-in skips this step; a header that carries a secret must be a `${VAR}`, checked before it is sent.
 3. **Review tools:** one card per tool, and every tool needs **Approve** or **Reject**. **Approve the 3 without flags** saves clicks. A card shows:
    - the name;

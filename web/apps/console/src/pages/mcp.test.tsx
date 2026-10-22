@@ -32,7 +32,6 @@ import {
   urlProblem,
   urlWarning,
   visible,
-  wantsOAuth,
   words,
 } from "./mcp-servers";
 
@@ -453,24 +452,125 @@ describe("Add an MCP server", () => {
     expect(screen.getByLabelText("Name")).toHaveAttribute("aria-invalid", "true");
   });
 
-  it("shows per-user sign-in as not available yet, and says when the server wants OAuth", async () => {
+  it("offers per-user sign-in only when the 422 says MCP OAuth, whatever its message says", async () => {
     fakeServer(asAdmin, [
       on("POST", "/v1/toolsets", () =>
-        apiError(
-          422,
-          "auth_required",
-          "the server asks for MCP OAuth sign-in, which servers added at run time do not support yet (T095)",
-        ),
+        apiError(422, "auth_required", "the server asks for MCP OAuth sign-in, with a key in a header"),
       ),
     ]);
     renderAt("/toolsets/new");
     await userEvent.type(await screen.findByLabelText("Server URL"), "https://mcp.notion.com/mcp");
     await userEvent.click(screen.getByRole("button", { name: "Connect" }));
     await h2("How does agentkit sign in?");
-    const each = screen.getByRole("radio", { name: /Each person signs in/ });
-    expect(each).toBeDisabled();
-    expect(screen.getByText(/Not available yet: per-user OAuth/)).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /Each person signs in/ })).toBeDisabled();
+    expect(screen.queryByText("It signs people in with MCP OAuth.")).not.toBeInTheDocument();
+  });
+
+  it("adds an MCP OAuth server for each person, connects the admin's account, then reviews its tools", async () => {
+    let connected = false;
+    const oauthServer = (over: Partial<ServerToolset>) =>
+      server([], { name: "notion", auth: "oauth", header_names: undefined, scope: "user", ...over });
+    const calls = fakeServer(asAdmin, [
+      (req, body) => {
+        const path = new URL(req.url).pathname;
+        if (req.method === "POST" && path === "/v1/toolsets")
+          return JSON.parse(body).auth === "oauth"
+            ? json(
+                201,
+                oauthServer({
+                  issuer: "https://auth.notion.com",
+                  connection: "not_connected",
+                  status: "unavailable",
+                  reason: "not connected",
+                }),
+              )
+            : json(422, { v: 1, error: { code: "auth_required", message: "401", auth: "oauth" } });
+        if (req.method === "POST" && path === "/v1/credentials/notion/connect")
+          return json(200, { v: 1, authorize_url: "https://auth.notion.com/authorize?x=1" });
+        if (req.method === "GET" && path === "/v1/toolsets/notion/review")
+          return json(
+            200,
+            connected
+              ? oauthServer({ connection: "connected", tools: [echoTool] })
+              : oauthServer({ connection: "not_connected", status: "unavailable" }),
+          );
+        return undefined;
+      },
+    ]);
+    const popup = { closed: false, close: vi.fn(), location: { href: "" } };
+    vi.stubGlobal(
+      "open",
+      vi.fn(() => popup),
+    );
+    renderAt("/toolsets/new");
+    await userEvent.type(await screen.findByLabelText("Server URL"), "https://mcp.notion.com/mcp");
+    await userEvent.click(screen.getByRole("button", { name: "Connect" }));
+    await h2("How does agentkit sign in?");
     expect(screen.getByText("It signs people in with MCP OAuth.")).toBeInTheDocument();
+    const each = screen.getByRole("radio", { name: /Each person signs in/ });
+    expect(each).toBeEnabled();
+    expect(each).toBeChecked();
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    const posts = calls.filter((c) => c.method === "POST" && c.path === "/v1/toolsets");
+    expect(JSON.parse(posts[1]?.body ?? "")).toEqual({
+      type: "mcp",
+      name: "notion",
+      url: "https://mcp.notion.com/mcp",
+      transport: "auto",
+      auth: "oauth",
+      scope: "user",
+    });
+
+    // Its tools are listed through a connection: the admin connects theirs.
+    expect(await h2("Connect notion")).toBeInTheDocument();
+    expect(screen.getByText("Connect your account to list its tools.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Connect notion" }));
+    await waitFor(() => expect(popup.location.href).toBe("https://auth.notion.com/authorize?x=1"));
+    const started = calls.find((c) => c.path === "/v1/credentials/notion/connect");
+    expect(JSON.parse(started?.body ?? "")).toEqual({
+      scope: "user",
+      return_url: `${window.location.origin}/connections/done`,
+    });
+    // Not connected yet: checking again keeps asking.
+    await userEvent.click(screen.getByRole("button", { name: "Check again" }));
+    expect(await h2("Connect notion")).toBeInTheDocument();
+    connected = true;
+    await userEvent.click(screen.getByRole("button", { name: "Check again" }));
+    expect(await h2("notion offers 1 tool")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save and continue" })).toBeInTheDocument();
+  });
+
+  it("never sends the sign-in window to an authorization URL that is not a web address", async () => {
+    const oauthServer = (over: Partial<ServerToolset>) =>
+      server([], { name: "notion", auth: "oauth", header_names: undefined, scope: "user", ...over });
+    fakeServer(asAdmin, [
+      (req, body) => {
+        const path = new URL(req.url).pathname;
+        if (req.method === "POST" && path === "/v1/toolsets")
+          return JSON.parse(body).auth === "oauth"
+            ? json(201, oauthServer({ connection: "not_connected", status: "unavailable", reason: "not connected" }))
+            : json(422, { v: 1, error: { code: "auth_required", message: "401", auth: "oauth" } });
+        if (req.method === "POST" && path === "/v1/credentials/notion/connect")
+          return json(200, { v: 1, authorize_url: "javascript:alert(document.domain)" });
+        return undefined;
+      },
+    ]);
+    const popup = { closed: false, close: vi.fn(), location: { href: "" } };
+    vi.stubGlobal(
+      "open",
+      vi.fn(() => popup),
+    );
+    renderAt("/toolsets/new");
+    await userEvent.type(await screen.findByLabelText("Server URL"), "https://mcp.notion.com/mcp");
+    await userEvent.click(screen.getByRole("button", { name: "Connect" }));
+    await h2("How does agentkit sign in?");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await h2("Connect notion")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Connect notion" }));
+    // The API client refuses it (it is never a javascript: or data: URL).
+    expect(await screen.findByText("Couldn't reach agentkit.")).toBeInTheDocument();
+    expect(popup.close).toHaveBeenCalled();
+    expect(popup.location.href).toBe("");
   });
 
   it("fills the form from a registry search; a URL not allowed can't be picked", async () => {
@@ -875,8 +975,12 @@ describe("the add form's checks", () => {
     );
     expect(addError(new ApiError(404, { code: "not_found", message: "m" })).message).toMatch(/runtime_toolsets is off/);
     expect(addError(new NetworkError()).field).toBe("form");
-    expect(wantsOAuth("asks for MCP OAuth sign-in")).toBe(true);
-    expect(wantsOAuth("answered 401 Unauthorized")).toBe(false);
+    // MCP OAuth is read from the 422's auth field, never from its words.
+    expect(addError(new ApiError(422, { code: "auth_required", message: "m", auth: "oauth" })).oauth).toBe(true);
+    expect(
+      addError(new ApiError(422, { code: "auth_required", message: "asks for MCP OAuth", auth: "headers" })).oauth,
+    ).toBe(false);
+    expect(addError(new ApiError(422, { code: "auth_required", message: "asks for MCP OAuth" })).oauth).toBe(false);
   });
 });
 

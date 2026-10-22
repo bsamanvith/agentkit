@@ -22,7 +22,11 @@ func ModuleRules() Rules {
 			"examples/mcp-gateway": {"github.com/modelcontextprotocol/go-sdk/mcp"}, // its test uses the SDK client
 			"pkg/mcp/server":       {"github.com/modelcontextprotocol/go-sdk/jsonrpc", "github.com/modelcontextprotocol/go-sdk/mcp"},
 			// Other MCP servers' tools (T094), on the SDK's client.
-			"pkg/mcp/client": {"github.com/modelcontextprotocol/go-sdk/jsonrpc", "github.com/modelcontextprotocol/go-sdk/mcp"},
+			// Its OAuthHandler is the SDK's auth interface (T095).
+			"pkg/mcp/client": {
+				"github.com/modelcontextprotocol/go-sdk/jsonrpc", "github.com/modelcontextprotocol/go-sdk/mcp",
+				"github.com/modelcontextprotocol/go-sdk/auth",
+			},
 			// MCP OAuth for external servers (T095): the SDK's metadata
 			// discovery and registration (oauthex, auth), x/oauth2 for PKCE,
 			// the code exchange and refresh. Its tests run the SDK's client
@@ -57,7 +61,7 @@ func ModuleRules() Rules {
 			"pkg/agenttools": {"github.com/modelcontextprotocol/go-sdk/mcp"},
 			// MCP servers added at run time (T096): the SDK's tool type
 			// for definitions; its tests run SDK servers as the fakes.
-			"pkg/mcp/servers": {"github.com/modelcontextprotocol/go-sdk/mcp"},
+			"pkg/mcp/servers": {"github.com/modelcontextprotocol/go-sdk/mcp", "github.com/modelcontextprotocol/go-sdk/auth"},
 			// The A2A server (T067) is written on net/http; its tests run
 			// the official SDK's client against it, on both bindings. That
 			// its own code never links the SDK is checked by its
@@ -322,10 +326,14 @@ func ModuleRules() Rules {
 			// Agent Skills (T057) are read through the tool abstraction and
 			// nothing else; its tests run a harness on the fake model.
 			"pkg/skill": {"pkg/tool", "pkg/harness", "pkg/llm", "pkg/llm/llmtest", "internal/testkit"},
-			// MCP OAuth knows principals (to name a connection's owner) and
-			// the clock, never the server, a store backend or the harness: the
-			// vault backs its stores once T042 lands.
-			"pkg/mcp/oauth": {"pkg/auth", "pkg/tenancy", "pkg/clock", "pkg/clock/clocktest", "pkg/mcp/oauth/oauthtest"},
+			// MCP OAuth knows principals (to name a connection's owner), the
+			// clock and the credentials vault its connections and registered
+			// clients are sealed in (T095), never the server, a store backend
+			// or the harness (its tests use the vault's memory backend).
+			"pkg/mcp/oauth": {
+				"pkg/auth", "pkg/tenancy", "pkg/clock", "pkg/clock/clocktest", "pkg/mcp/oauth/oauthtest",
+				"pkg/credentials", "pkg/credentials/memory",
+			},
 			// MCP servers added at run time (T096): the API's admin
 			// contract, the MCP client, the SSRF guard and the store's
 			// toolset records, never a backend but in its tests.
@@ -334,6 +342,11 @@ func ModuleRules() Rules {
 				"pkg/netguard", "pkg/store", "pkg/tenancy", "pkg/tool", "pkg/store/memory",
 				// The MCP Registry's search, for the add form (T097).
 				"pkg/mcp/registry",
+				// MCP OAuth (T095): the connections, and the agent API's
+				// connect flow they are made through; its tests run the
+				// flow on the vault's memory backend and the fakes.
+				"pkg/mcp/oauth", "pkg/credentials", "pkg/credentials/connect",
+				"pkg/credentials/memory", "pkg/mcp/oauth/oauthtest", "pkg/auth", "pkg/clock/clocktest",
 			},
 			// The MCP Registry's client (T097): net/http and the clock of
 			// its cache, nothing else.

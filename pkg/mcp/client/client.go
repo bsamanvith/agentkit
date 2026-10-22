@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -50,6 +51,11 @@ type Config struct {
 	Env     []string
 	// Header is sent with every HTTP request.
 	Header http.Header
+	// OAuthHandler, if set, authorizes the requests of the Streamable HTTP
+	// transport (MCP OAuth, package mcp/oauth): it adds a token to each,
+	// and is asked what to do on a 401 or 403. It needs [TransportHTTP]
+	// (TransportAuto means it): the older HTTP+SSE transport has none.
+	OAuthHandler auth.OAuthHandler
 	// HTTPClient makes the HTTP requests (default: a client of its own).
 	HTTPClient *http.Client
 	// CallTimeout bounds one tool call (default [DefaultCallTimeout]).
@@ -97,6 +103,15 @@ func Connect(ctx context.Context, cfg Config) (*Client, error) {
 		}
 	default:
 		return nil, fmt.Errorf("mcp client: unknown transport %q (auto, http, sse or stdio)", cfg.Transport)
+	}
+	if cfg.OAuthHandler != nil {
+		switch cfg.Transport {
+		case TransportAuto:
+			cfg.Transport = TransportHTTP // never falls back to a transport without the handler
+		case TransportHTTP:
+		default:
+			return nil, fmt.Errorf("mcp client: an OAuth handler needs transport %q, not %q", TransportHTTP, cfg.Transport)
+		}
 	}
 	if cfg.CallTimeout <= 0 {
 		cfg.CallTimeout = DefaultCallTimeout
@@ -303,7 +318,7 @@ func (c *Client) mcpTransport(tr Transport) mcp.Transport {
 		cmd.Env = append([]string{}, c.cfg.Env...)
 		return &mcp.CommandTransport{Command: cmd}
 	default:
-		return &mcp.StreamableClientTransport{Endpoint: c.cfg.URL, HTTPClient: c.cfg.HTTPClient, MaxEventSize: c.maxEvent()}
+		return &mcp.StreamableClientTransport{Endpoint: c.cfg.URL, HTTPClient: c.cfg.HTTPClient, MaxEventSize: c.maxEvent(), OAuthHandler: c.cfg.OAuthHandler}
 	}
 }
 

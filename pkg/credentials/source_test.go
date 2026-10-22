@@ -245,6 +245,23 @@ func TestSourceNotConnected(t *testing.T) {
 	notConnected(t, errOf(src.Get(a)), "crm-tools")
 }
 
+// A connection to an MCP server added at run time (T095), or a client
+// registered for one, at a slot of the config's name is that server's: a
+// toolset of the config never sends it to its own server.
+func TestSourceNeverSendsAnMCPConnection(t *testing.T) {
+	t.Parallel()
+	r := newSrcRig(t)
+	a := scopeCtx(t, "tenant-a", "")
+	src := r.source(r.sources, "crm", credentials.ScopeTenant)
+	r.put(a, "", "crm", credentials.OAuth2{
+		AccessToken: secret("mcp-at"), Expiry: time.Now().Add(time.Hour),
+		Client: &credentials.OAuth2Client{ClientID: "dcr", Issuer: "https://as.example", TokenURL: "https://as.example/token", Resource: "https://mcp.example/mcp"},
+	})
+	notConnected(t, errOf(src.Get(a)), "crm-tools")
+	r.put(a, "", "erp", credentials.OAuth2Client{ClientID: "dcr", ClientSecret: secret("dcs"), Issuer: "https://as.example"})
+	notConnected(t, errOf(r.source(r.sources, "erp", credentials.ScopeTenant).Get(a)), "erp-tools")
+}
+
 func errOf(_ credentials.Credential, err error) error { return err }
 
 // A Source has no way to name a slot: none of its methods takes a string.

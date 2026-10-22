@@ -60,6 +60,31 @@ type App struct {
 	AuthParams map[string]string
 }
 
+// Dynamic connects the slots of the toolsets a tenant adds at run time:
+// MCP servers that sign users in with MCP OAuth (T095), whose
+// authorization server and client are found when a flow starts rather than
+// configured as an [App]. The flow is this package's as for an App: the
+// state, the cookie that binds it to the browser, its single use, its
+// expiry and the callback. Dynamic only prepares the authorization URL and
+// finishes the exchange. Package mcp/servers implements it.
+type Dynamic interface {
+	// Slots are the dynamic slots of the tenant of ctx, with the scope its
+	// toolset uses: each is its toolset's name.
+	Slots(ctx context.Context) ([]Slot, error)
+	// RedirectURL is the redirect URI sent to the authorization servers:
+	// [CallbackPath] on the server's public URL.
+	RedirectURL() string
+	// Begin prepares a flow of the tenant of ctx for user ("" for the
+	// tenant's own connection) at slot. It returns the authorization URL,
+	// which carries state, and what Complete needs, which is kept sealed
+	// with the flow (it holds the PKCE verifier).
+	Begin(ctx context.Context, user, slot, state string) (authURL string, data []byte, err error)
+	// Complete finishes the flow with the callback's query, in the flow's
+	// tenant (ctx) for its user: it exchanges the code and stores the
+	// tokens. Its error is logged, so it must hold no secret.
+	Complete(ctx context.Context, user, slot string, data []byte, query url.Values) error
+}
+
 // Config configures [New].
 type Config struct {
 	// Vault stores the credentials. Store and Sealer are the vault's
@@ -75,6 +100,9 @@ type Config struct {
 	// Apps are the OAuth2 clients of the slots that can be connected, by
 	// slot.
 	Apps map[string]App
+	// Dynamic, if set, connects the slots of the toolsets tenants add at
+	// run time. A slot of the config (Slots) is never one of them.
+	Dynamic Dynamic
 	// ReturnURLs are the URLs a flow may return the browser to: a
 	// return URL must have the scheme, host and path of one of them (its
 	// query may differ). Empty allows none.
@@ -231,12 +259,50 @@ func (s *Service) allowed(raw string) bool {
 }
 
 // Scopes implements [agentapi.Credentials].
-func (s *Service) Scopes(slot string) []string {
+func (s *Service) Scopes(ctx context.Context, slot string) []string {
 	var out []string
 	for _, sc := range s.slots[slot] {
 		out = append(out, string(sc))
 	}
+	if out == nil {
+		if d, ok := s.dynamicSlot(ctx, slot); ok {
+			out = append(out, string(cmp.Or(d.Scope, credentials.ScopeTenant)))
+		}
+	}
 	return out
+}
+
+// dynamicSlots lists the tenant of ctx's dynamic slots, leaving out any
+// that has the name of a slot of the config; none without [Dynamic].
+func (s *Service) dynamicSlots(ctx context.Context) []Slot {
+	if s.cfg.Dynamic == nil {
+		return nil
+	}
+	if _, ok := tenancy.From(ctx); !ok {
+		return nil
+	}
+	list, err := s.cfg.Dynamic.Slots(ctx)
+	if err != nil {
+		s.log.WarnContext(ctx, "listing the slots of the toolsets added at run time", "err", err)
+		return nil
+	}
+	out := list[:0:0]
+	for _, d := range list {
+		if s.slots[d.Name] == nil && credentials.CheckSlot(d.Name) == nil && !strings.HasPrefix(d.Name, "_") {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// dynamicSlot finds slot among the tenant of ctx's dynamic slots.
+func (s *Service) dynamicSlot(ctx context.Context, slot string) (Slot, bool) {
+	for _, d := range s.dynamicSlots(ctx) {
+		if d.Name == slot {
+			return d, true
+		}
+	}
+	return Slot{}, false
 }
 
 // scopeOf is the scope of a request whose user is user.
@@ -248,12 +314,17 @@ func scopeOf(user string) credentials.Scope {
 }
 
 // info is what listing says of slot for user, given the stored metadata
-// (nil for none).
-func (s *Service) info(slot string, scope credentials.Scope, m *credentials.Meta) wire.CredentialInfo {
+// (nil for none). toolsets are a dynamic slot's (nil for the config's).
+func (s *Service) info(slot string, scope credentials.Scope, m *credentials.Meta, toolsets []string) wire.CredentialInfo {
 	_, oauth := s.cfg.Apps[slot]
+	if toolsets != nil {
+		oauth = true
+	} else {
+		toolsets = s.sets[slotScope{slot, scope}]
+	}
 	v := wire.CredentialInfo{
 		Slot: slot, Scope: string(scope), Status: wire.CredentialNotConnected, OAuth: oauth,
-		Toolsets: slices.Clone(s.sets[slotScope{slot, scope}]),
+		Toolsets: slices.Clone(toolsets),
 	}
 	if v.Toolsets == nil {
 		v.Toolsets = []string{}
@@ -316,9 +387,25 @@ func (s *Service) List(ctx context.Context, user string) ([]wire.CredentialInfo,
 			if m, ok := stored[scope][slot]; ok {
 				mp = &m
 			}
-			out = append(out, s.info(slot, scope, mp))
+			out = append(out, s.info(slot, scope, mp, nil))
 		}
 	}
+	for _, d := range s.dynamicSlots(ctx) {
+		scope := cmp.Or(d.Scope, credentials.ScopeTenant)
+		if scope == credentials.ScopeUser && user == "" {
+			continue
+		}
+		var mp *credentials.Meta
+		if m, ok := stored[scope][d.Name]; ok {
+			mp = &m
+		}
+		toolsets := d.Toolsets
+		if toolsets == nil {
+			toolsets = []string{}
+		}
+		out = append(out, s.info(d.Name, scope, mp, toolsets))
+	}
+	slices.SortStableFunc(out, func(a, b wire.CredentialInfo) int { return strings.Compare(a.Slot, b.Slot) })
 	return out, nil
 }
 
@@ -335,7 +422,7 @@ func (s *Service) Status(ctx context.Context, user, slot string) (string, error)
 	if !ok {
 		return wire.CredentialNotConnected, nil
 	}
-	return s.info(slot, scopeOf(user), &m).Status, nil
+	return s.info(slot, scopeOf(user), &m, nil).Status, nil
 }
 
 func invalid(format string, args ...any) error {
@@ -424,6 +511,11 @@ func (s *Service) Put(ctx context.Context, user, slot string, req wire.PutCreden
 	if err := notReserved(ctx); err != nil {
 		return wire.CredentialInfo{}, err
 	}
+	if s.slots[slot] == nil {
+		if _, ok := s.dynamicSlot(ctx, slot); ok {
+			return wire.CredentialInfo{}, invalid("slot %q is an MCP server's that signs in with OAuth: connect the account (POST /v1/credentials/%s/connect)", slot, slot)
+		}
+	}
 	cred, err := s.credential(req)
 	if err != nil {
 		return wire.CredentialInfo{}, err
@@ -432,7 +524,7 @@ func (s *Service) Put(ctx context.Context, user, slot string, req wire.PutCreden
 	if err != nil {
 		return wire.CredentialInfo{}, err
 	}
-	return s.info(slot, scopeOf(user), &m), nil
+	return s.info(slot, scopeOf(user), &m, nil), nil
 }
 
 // store writes cred at (user, slot), replacing what is there: it reads
@@ -479,7 +571,11 @@ func (s *Service) Delete(ctx context.Context, user, slot string) error {
 // without it. The API also sets it Secure when the request came over TLS.
 func (s *Service) Connect(ctx context.Context, user, slot string, req wire.ConnectRequest) (wire.ConnectResponse, *http.Cookie, error) {
 	app, ok := s.cfg.Apps[slot]
-	if !ok {
+	dynamic := false
+	if !ok && s.slots[slot] == nil {
+		_, dynamic = s.dynamicSlot(ctx, slot)
+	}
+	if !ok && !dynamic {
 		return wire.ConnectResponse{}, nil, invalid("slot %q has no OAuth2 app to connect an account with (credentials.oauth2)", slot)
 	}
 	if req.ReturnURL != "" && !s.allowed(req.ReturnURL) {
@@ -498,27 +594,50 @@ func (s *Service) Connect(ctx context.Context, user, slot string, req wire.Conne
 	s.random(b)
 	binding := base64.RawURLEncoding.EncodeToString(b)
 	clear(b)
-	verifier := oauth2.GenerateVerifier()
 	now := s.clk.Now().UTC()
-	secure, path := cookieScope(app.RedirectURL)
+	redirect := app.RedirectURL
+	if dynamic {
+		redirect = s.cfg.Dynamic.RedirectURL()
+	}
+	secure, path := cookieScope(redirect)
 	f := flow{
-		Tenant: t.ID(), User: user, Slot: slot, Verifier: verifier, ReturnURL: req.ReturnURL,
+		Tenant: t.ID(), User: user, Slot: slot, ReturnURL: req.ReturnURL,
 		Binding: bindingHash(binding), CookiePath: path, CookieSecure: secure,
 		Created: now, Expires: now.Add(s.ttl),
 	}
+	var authURL string
+	if dynamic {
+		// The authorization server and the client are found now; what
+		// finishing needs (the verifier among it) is kept, sealed, with the
+		// flow.
+		var err error
+		if authURL, f.Data, err = s.cfg.Dynamic.Begin(ctx, user, slot, state); err != nil {
+			return wire.ConnectResponse{}, nil, err
+		}
+		// The browser is sent there: an authorization server's metadata
+		// names it, so only a web address is taken (never javascript: and
+		// the like, which a page would run as its own).
+		if u, err := url.Parse(authURL); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+			return wire.ConnectResponse{}, nil, fmt.Errorf("connect: %s: the authorization server's sign-in page is not a web address", slot)
+		}
+		f.Dynamic = true
+	} else {
+		f.Verifier = oauth2.GenerateVerifier()
+		opts := []oauth2.AuthCodeOption{oauth2.S256ChallengeOption(f.Verifier)}
+		for _, k := range slices.Sorted(maps.Keys(app.AuthParams)) {
+			opts = append(opts, oauth2.SetAuthURLParam(k, app.AuthParams[k]))
+		}
+		authURL = oauthConfig(app).AuthCodeURL(state, opts...)
+	}
 	if err := s.flows.put(ctx, state, f); err != nil {
 		return wire.ConnectResponse{}, nil, fmt.Errorf("keeping the flow: %w", err)
-	}
-	opts := []oauth2.AuthCodeOption{oauth2.S256ChallengeOption(verifier)}
-	for _, k := range slices.Sorted(maps.Keys(app.AuthParams)) {
-		opts = append(opts, oauth2.SetAuthURLParam(k, app.AuthParams[k]))
 	}
 	cookie := &http.Cookie{
 		Name: f.cookieName(state), Value: binding, Path: f.CookiePath, Secure: f.CookieSecure,
 		MaxAge: int(s.ttl / time.Second), HttpOnly: true, SameSite: http.SameSiteLaxMode,
 	}
-	s.log.InfoContext(ctx, "connect flow started", "slot", slot, "tenant", f.Tenant, "user", user)
-	return wire.ConnectResponse{AuthorizeURL: oauthConfig(app).AuthCodeURL(state, opts...), ExpiresAt: f.Expires}, cookie, nil
+	s.log.InfoContext(ctx, "connect flow started", "slot", slot, "tenant", f.Tenant, "user", user, "mcp_oauth", dynamic)
+	return wire.ConnectResponse{AuthorizeURL: authURL, ExpiresAt: f.Expires}, cookie, nil
 }
 
 // CookieName is the name of the cookie that binds the flow of state to its

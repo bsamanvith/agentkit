@@ -44,6 +44,8 @@ export class ApiError extends Error {
   readonly retryable: boolean;
   /** Seconds from Retry-After (503 over_capacity, 429), if the server sent it. */
   readonly retryAfter: number | undefined;
+  /** auth_required: the sign-in the MCP server asks for ("oauth" or "headers"), if the server said. */
+  readonly auth: string | undefined;
 
   constructor(status: number, error: WireError, retryAfter?: number) {
     super(error.message || `HTTP ${status}`);
@@ -52,6 +54,7 @@ export class ApiError extends Error {
     this.code = error.code;
     this.retryable = error.retryable === true;
     this.retryAfter = retryAfter;
+    this.auth = typeof error.auth === "string" ? error.auth : undefined;
   }
 }
 
@@ -606,6 +609,7 @@ async function errorFrom(resp: Response): Promise<ApiError> {
         code: e.code,
         message: typeof e.message === "string" ? e.message : error.message,
         retryable: e.retryable === true,
+        ...(typeof e.auth === "string" ? { auth: e.auth } : {}),
       };
     }
   } catch (e) {

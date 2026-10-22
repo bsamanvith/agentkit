@@ -26,6 +26,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/bus/busopen"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/component"
+	"github.com/bsamanvith/agentkit/pkg/credentials/connect"
 	"github.com/bsamanvith/agentkit/pkg/rpc"
 	"github.com/bsamanvith/agentkit/pkg/runner"
 	"github.com/bsamanvith/agentkit/pkg/runner/pool"
@@ -56,6 +57,9 @@ type agentWiring struct {
 	// callback serves the connect flows' redirects (/oauth/callback);
 	// nil when the server keeps no credentials.
 	callback http.Handler
+	// clientMetadata serves the MCP OAuth client's metadata document
+	// (its CIMD client ID); nil when MCP OAuth is off.
+	clientMetadata http.Handler
 	// triggers finds the triggers the scheduler fires; nil when the API
 	// has none.
 	triggers store.TriggerAdmin
@@ -67,7 +71,11 @@ func (w *agentWiring) mounts() []component.Mount {
 	if w == nil || w.callback == nil {
 		return nil
 	}
-	return []component.Mount{{Pattern: oauthCallbackPath, Component: oauthCallback{w.callback}}}
+	m := []component.Mount{{Pattern: oauthCallbackPath, Component: oauthCallback{w.callback}}}
+	if w.clientMetadata != nil {
+		m = append(m, component.Mount{Pattern: oauthClientMetadataPath, Component: oauthClientMetadata{w.clientMetadata}})
+	}
+	return m
 }
 
 // openAgents opens the agent API's store and bus.
@@ -98,6 +106,9 @@ func (c cli) buildAgents(ctx context.Context, w *agentWiring, cfg serveConfig, b
 	ac, _ := m.Component.(*agentComponent)
 	if ac != nil {
 		w.callback, w.msg = ac.callback, ac.messenger
+		if cm, ok := ac.admin.(interface{ ClientMetadata() http.Handler }); ok && ac.callback != nil {
+			w.clientMetadata = cm.ClientMetadata()
+		}
 	}
 	if err != nil {
 		return m, err
@@ -386,12 +397,19 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 		}
 		remote = runnerrpc.NewClient(conn)
 	}
-	admin, err := c.newToolsetAdmin(cfg, st, log)
+	admin, err := c.newToolsetAdmin(cfg, st, env, log)
 	if err != nil {
 		return component.Mount{}, nil, err
 	}
-	creds, err := c.newConnect(cfg, specs, env, log)
+	var dyn connect.Dynamic
+	if d, ok := admin.(interface{ Dynamic() connect.Dynamic }); ok {
+		dyn = d.Dynamic()
+	}
+	creds, err := c.newConnect(cfg, specs, env, dyn, log)
 	if err != nil {
+		if admin != nil {
+			_ = admin.Close()
+		}
 		return component.Mount{}, nil, err
 	}
 	msgr, err := newMessenger(cfg, st, clk)

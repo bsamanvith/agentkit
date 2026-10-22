@@ -2,6 +2,7 @@ package servers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"maps"
 	"slices"
@@ -14,6 +15,15 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/store"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 )
+
+// show is view, with the caller's connection to a toolset with auth
+// "oauth".
+func (m *Manager) show(ctx context.Context, rec store.ToolsetRecord, r record, cn *conn, connErr error) wire.ServerToolset {
+	v := m.view(rec, r, cn, connErr)
+	v.Issuer, v.OAuthClientID = r.Issuer, r.OAuthClientID
+	v.Connection = m.connectionStatus(ctx, rec.Name, r)
+	return v
+}
 
 // view is a toolset as the API shows it: its connection cn, or why there
 // is none (connErr), decides the status of its tools.
@@ -154,4 +164,7 @@ type offer struct {
 	def tool.Definition
 	t   *listedTool
 	cn  *conn
+	// unusable, when set, is why the caller cannot call it now: their
+	// connection to an OAuth toolset is missing or broken.
+	unusable *connectionError
 }

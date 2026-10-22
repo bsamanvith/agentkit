@@ -38,7 +38,7 @@ const (
 const (
 	AuthNone    = "none"    // the server needs no credential
 	AuthHeaders = "headers" // static headers, from variables the operator allows
-	AuthOAuth   = "oauth"   // MCP OAuth: not supported for servers added at run time yet
+	AuthOAuth   = "oauth"   // MCP OAuth: each user (scope user) or the tenant (scope tenant) connects an account
 )
 
 // AddToolsetRequest is the body of POST /v1/toolsets: an MCP server to add
@@ -55,16 +55,35 @@ type AddToolsetRequest struct {
 	// Transport is auto (the default: Streamable HTTP, then HTTP+SSE),
 	// http or sse.
 	Transport string `json:"transport,omitempty"`
-	// Auth is AuthNone (the default) or AuthHeaders.
+	// Auth is AuthNone (the default), AuthHeaders or AuthOAuth. With
+	// AuthOAuth the server is not probed for tools: its authorization
+	// server is found and kept (Issuer), and the tools are listed once an
+	// account is connected (POST /v1/credentials/{name}/connect).
 	Auth string `json:"auth,omitempty"`
 	// Headers are sent with every request, with auth "headers". "${NAME}"
 	// in a value is the server's variable NAME, which the operator must
 	// allow; a header that carries a secret (Authorization, or a name with
 	// key, token, secret or auth in it) must take its value from one.
 	Headers map[string]string `json:"headers,omitempty"`
-	// Scope is "tenant" (the default): one connection the tenant shares.
-	// "user" (each user connects their own account) comes with MCP OAuth.
+	// Scope is "tenant" (the default): one connection the tenant shares;
+	// or, with auth "oauth" only, "user": each user connects their own
+	// account, and a user who has not gets "not connected" from its tools.
 	Scope string `json:"scope,omitempty"`
+	// OAuthClient is a client registered with the server's authorization
+	// server beforehand, for auth "oauth". Without one agentkit uses its
+	// client ID metadata document (CIMD) if the authorization server takes
+	// it, else registers a client for the tenant (RFC 7591).
+	OAuthClient *OAuthClient `json:"oauth_client,omitempty"`
+}
+
+// OAuthClient is a pre-registered OAuth client of an MCP server's
+// authorization server.
+type OAuthClient struct {
+	ClientID string `json:"client_id"`
+	// ClientSecret is "${NAME}": a variable of the server's environment
+	// that the operator allows (runtime_toolsets.header_env), never the
+	// secret itself. Empty for a public client.
+	ClientSecret string `json:"client_secret,omitempty"`
 }
 
 // UpdateToolsetRequest is the body of PATCH /v1/toolsets/{name}. A field
@@ -118,6 +137,18 @@ type ServerToolset struct {
 	HeaderNames []string `json:"header_names,omitempty"`
 	Scope       string   `json:"scope"`
 	Enabled     bool     `json:"enabled"`
+	// Issuer is the authorization server of a toolset with auth "oauth",
+	// found when it was added: accounts are connected there only, and
+	// OAuthClientID is its pre-registered client, if any.
+	Issuer        string `json:"issuer,omitempty"`
+	OAuthClientID string `json:"oauth_client_id,omitempty"`
+	// Connection is, for auth "oauth", the caller's connection (scope
+	// user: their own; tenant: the tenant's): CredentialConnected,
+	// CredentialNotConnected or CredentialNeedsReconnect. Its slot is the
+	// toolset's name: POST /v1/credentials/{name}/connect connects it. The
+	// tools are listed through it, so before it is made the toolset is
+	// unavailable to the caller.
+	Connection string `json:"connection,omitempty"`
 	// Status is ToolsetReady, ToolsetReviewNeeded, ToolsetDisabled or
 	// ToolsetUnavailable, with Reason saying why it is unavailable.
 	Status string `json:"status"`

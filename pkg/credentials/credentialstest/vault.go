@@ -110,6 +110,15 @@ func allKinds() []credentials.Credential {
 			Expiry: t0.Add(time.Hour), Scopes: []string{"read", "write"}, TokenType: "Bearer",
 		},
 		credentials.ClientCredentials{ClientID: "client", ClientSecret: s("cs-" + canary), TokenURL: "https://auth.example/token", Scopes: []string{"api"}},
+		credentials.OAuth2{
+			AccessToken: s("at2-" + canary), RefreshToken: s("rt2-" + canary), Expiry: t0.Add(time.Hour),
+			Client: &credentials.OAuth2Client{
+				ClientID: "dcr-1", ClientSecret: s("dcs-" + canary), Issuer: "https://as.example",
+				TokenURL: "https://as.example/token", TokenAuthStyle: 2, Resource: "https://mcp.example/mcp",
+			},
+			Extra: map[string]string{"instance_url": "https://acme.example"},
+		},
+		credentials.OAuth2Client{ClientID: "dcr-2", ClientSecret: s("dcs2-" + canary), Issuer: "https://as.example", TokenAuthStyle: 1},
 	}
 }
 
@@ -121,9 +130,15 @@ func reveal(c credentials.Credential) string {
 	case credentials.Basic:
 		return "basic:" + c.User + ":" + c.Password.Reveal()
 	case credentials.OAuth2:
-		return fmt.Sprintf("oauth2:%s:%s:%s:%v:%s", c.AccessToken.Reveal(), c.RefreshToken.Reveal(), c.Expiry.UTC().Format(time.RFC3339Nano), c.Scopes, c.TokenType)
+		cl := "-"
+		if c.Client != nil {
+			cl = reveal(*c.Client)
+		}
+		return fmt.Sprintf("oauth2:%s:%s:%s:%v:%s:%s:%v", c.AccessToken.Reveal(), c.RefreshToken.Reveal(), c.Expiry.UTC().Format(time.RFC3339Nano), c.Scopes, c.TokenType, cl, c.Extra)
 	case credentials.ClientCredentials:
 		return fmt.Sprintf("cc:%s:%s:%s:%v", c.ClientID, c.ClientSecret.Reveal(), c.TokenURL, c.Scopes)
+	case credentials.OAuth2Client:
+		return fmt.Sprintf("client:%s:%s:%s:%s:%d:%s", c.ClientID, c.ClientSecret.Reveal(), c.Issuer, c.TokenURL, c.TokenAuthStyle, c.Resource)
 	}
 	return fmt.Sprintf("%T", c)
 }
@@ -402,7 +417,7 @@ func vaultInvalid(t *testing.T, r *vaultRig) {
 	if _, err := r.vault.Put(ctx, "a\x00b", "crm", allKinds()[0], 0); !is(err, credentials.ErrInvalidKey) {
 		t.Errorf("user with NUL: %v", err)
 	}
-	for _, c := range []credentials.Credential{nil, credentials.APIKey{}, credentials.OAuth2{}, credentials.ClientCredentials{ClientID: "x"}} {
+	for _, c := range []credentials.Credential{nil, credentials.APIKey{}, credentials.OAuth2{}, credentials.ClientCredentials{ClientID: "x"}, credentials.OAuth2Client{}} {
 		if _, err := r.vault.Put(ctx, "", "crm", c, 0); !is(err, credentials.ErrInvalidCredential) {
 			t.Errorf("%#v: %v, want ErrInvalidCredential", c, err)
 		}

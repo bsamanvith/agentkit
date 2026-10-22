@@ -141,11 +141,13 @@ func statuses(ns []agentapi.UserEvent) []string {
 }
 
 // The keys of notifyRig: ann and bob in tenant A, a key of A with no user,
-// and a user named ann in tenant B.
+// a user of A named as the bus names the no-user stream, and a user named
+// ann in tenant B.
 const (
 	keyAnn   = "key-ann-tenant-a-012345"
 	keyBob   = "key-bob-tenant-a-012345"
 	keyNoone = "key-no-user-tenant-a-01"
+	keyNone  = "key-user-none-tenant-a1"
 	keyAnnB  = "key-ann-tenant-b-012345"
 )
 
@@ -166,6 +168,7 @@ func notifyRig(t *testing.T) *rig {
 		keyAnn:   {Tenant: a, User: "ann", Scopes: all, Toolsets: all},
 		keyBob:   {Tenant: a, User: "bob", Scopes: all, Toolsets: all},
 		keyNoone: {Tenant: a, Scopes: all, Toolsets: all},
+		keyNone:  {Tenant: a, User: "none", Scopes: all, Toolsets: all},
 		keyAnnB:  {Tenant: b, User: "ann", Scopes: all, Toolsets: all},
 	})
 	r := newRig(t, echo(t), rigConfig{api: []agentapi.Option{agentapi.WithTenant(nil), agentapi.WithAuthenticator(authn)}})
@@ -187,12 +190,13 @@ func (r *rig) chatAs(key, message string) agentapi.Run {
 // Notifications: a user's runs and tasks are on that user's stream, in that
 // user's tenant, and nobody else's: not another user's of the tenant, not a
 // caller's with no user, not the same user name's in another tenant. A
-// caller with no user has those of the runs started with no user.
+// caller with no user has those of the runs started with no user, and a
+// user named as the bus names that stream ("none") does not.
 func TestNotificationsReachOnlyTheirUser(t *testing.T) {
 	t.Parallel()
 	r := notifyRig(t)
 	streams := map[string]*userStream{}
-	for _, key := range []string{keyAnn, keyBob, keyNoone, keyAnnB} {
+	for _, key := range []string{keyAnn, keyBob, keyNoone, keyNone, keyAnnB} {
 		streams[key] = r.notifications(key[:12], key, "")
 	}
 
@@ -214,7 +218,7 @@ func TestNotificationsReachOnlyTheirUser(t *testing.T) {
 
 	// Every other caller's first notification is about its own run, sent
 	// after ann's: none of ann's reached them.
-	for _, key := range []string{keyBob, keyNoone, keyAnnB} {
+	for _, key := range []string{keyBob, keyNoone, keyNone, keyAnnB} {
 		run := r.chatAs(key, "mine")
 		streams[key].untilEnded(run.ID)
 	}
@@ -355,4 +359,108 @@ func TestNotificationsEndWithTheServer(t *testing.T) {
 			t.Errorf("%s: the stream did not end", s.name)
 		}
 	}
+}
+
+// A stop or cancel by another caller of the tenant tells the run's user, and
+// only that user: not the caller who sent it, nor a caller with no user. On
+// the server holding the run (the stop, then the cancel of a run nobody
+// executes) and through the bus from another replica (a cancel the holder
+// carries out).
+func TestNotificationsOfAnotherCallersStopAndCancel(t *testing.T) {
+	t.Parallel()
+	m := echo(t)
+	m.gate = make(chan struct{}) // a's model never answers
+	dt := mustTenant(t, agentapi.DefaultTenant)
+	all := []string{"*"}
+	authn := authtest.NewFake(map[string]auth.Principal{
+		keyAnn:   {Tenant: dt, User: "ann", Scopes: all, Toolsets: all},
+		keyBob:   {Tenant: dt, User: "bob", Scopes: all, Toolsets: all},
+		keyNoone: {Tenant: dt, Scopes: all, Toolsets: all},
+	})
+	withAuth := []agentapi.Option{agentapi.WithAuthenticator(authn)}
+	a, b := replicasWith(t, m, replicaConfig{
+		apiB: withAuth,
+		apiA: func(*clocktest.Fake) []agentapi.Option { return withAuth },
+	})
+	a.token, b.token = keyAnn, keyAnn // bob's requests say so
+	a.models = nil                    // runs are posted raw, by several callers
+	ann := b.notifications("ann", keyAnn, "")
+	others := map[string]*userStream{keyBob: b.notifications("bob", keyBob, ""), keyNoone: b.notifications("no user", keyNoone, "")}
+
+	// untilCanceled reads ann's stream until the run is canceled; every
+	// notification on it is about the run.
+	untilCanceled := func(id string) []string {
+		t.Helper()
+		var got []string
+		for !slices.Contains(got, agentapi.StatusCanceled) {
+			n := ann.next()
+			if n.RunID != id {
+				t.Fatalf("ann got %+v, want only run %s's", n, id)
+			}
+			got = append(got, statuses([]agentapi.UserEvent{n})...)
+		}
+		return got
+	}
+	post := func(r *rig, path string) {
+		t.Helper()
+		if resp, body := r.do(http.MethodPost, path, "", asJSON(keyBob)...); resp.StatusCode != http.StatusOK {
+			t.Fatalf("bob's POST %s = %d %s", path, resp.StatusCode, body)
+		}
+	}
+
+	// Bob stops ann's chat on a, which runs it, then cancels it there.
+	chat := a.start(t.Context(), "one", "")
+	first := chat.until(agentapi.TypeRunStart, 0).RunID
+	if n := ann.next(); n.RunID != first || n.Status != agentapi.StatusRunning {
+		t.Fatalf("ann's first notification = %+v, want chat %s running", n, first)
+	}
+	post(a, "/v1/runs/"+first+"/stop")
+	chat.all()
+	post(a, "/v1/runs/"+first+"/cancel")
+	if got := untilCanceled(first); !slices.Contains(got, agentapi.StatusInterrupted) {
+		t.Errorf("ann got %v for the chat bob stopped then canceled, want interrupted then canceled", got)
+	}
+
+	// Bob cancels ann's next task through b, which does not run it.
+	second := a.task(`{"input":"two"}`, as(keyAnn)...)
+	for n := ann.next(); n.Status != agentapi.StatusRunning || n.RunID != second.ID; n = ann.next() {
+		if n.RunID != first { // the chat's end, which may come twice
+			t.Fatalf("ann got %+v, want task %s running", n, second.ID)
+		}
+	}
+	post(b, "/v1/runs/"+second.ID+"/cancel")
+	untilCanceled(second.ID)
+
+	// Bob's and the no-user caller's first notifications are of their own
+	// runs, run on b after all that: none of ann's reached them.
+	for key, s := range others {
+		run := b.chatAs(key, "mine")
+		s.untilEnded(run.ID)
+	}
+}
+
+// A caller may have so many notification streams open on a server, each
+// holding a subscription of the bus; one more is 503 over_capacity, while
+// other callers of the tenant open theirs. A stream closed makes room.
+func TestNotificationStreamsPerCaller(t *testing.T) {
+	t.Parallel()
+	r := notifyRig(t)
+	var ann []*userStream
+	for i := range agentapi.MaxCallerNotificationStreams {
+		ann = append(ann, r.notifications(fmt.Sprintf("ann %d", i), keyAnn, ""))
+	}
+	resp, body := r.do(http.MethodGet, "/v1/events", "", as(keyAnn)...)
+	if resp.StatusCode != http.StatusServiceUnavailable || apiCode(body) != agentapi.CodeOverCapacity || resp.Header.Get("Retry-After") == "" {
+		t.Fatalf("one stream more for ann = %d %s (Retry-After %q), want 503 over_capacity", resp.StatusCode, body, resp.Header.Get("Retry-After"))
+	}
+	r.notifications("bob", keyBob, "")
+	r.notifications("no user", keyNoone, "")
+	r.notifications("ann of b", keyAnnB, "")
+	served := agentapi.MaxCallerNotificationStreams + 3
+	if n := r.srv.NotificationStreams(); n != served {
+		t.Errorf("the server serves %d streams, want %d", n, served)
+	}
+	ann[0].cancel()
+	eventually(t, "ann's closed stream is counted closed", func() bool { return r.srv.NotificationStreams() == served-1 })
+	r.notifications("ann again", keyAnn, "")
 }

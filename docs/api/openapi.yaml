@@ -497,6 +497,24 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "over_capacity: the server serves as many notification streams as it may, in all (500) or to this caller (8: a user, or the callers with no user, of a tenant) (retryable).",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }

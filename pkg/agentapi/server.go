@@ -79,6 +79,10 @@ type Server struct {
 	cmds   *stream.Commands
 	// notifier publishes on users' notification streams (GET /v1/events).
 	notifier *stream.Notifier
+	// The GET /v1/events streams open here: in all, and by caller.
+	nmu       sync.Mutex
+	nOpen     int
+	nByCaller map[notifyCaller]int
 
 	closeOnce sync.Once
 	closed    chan struct{} // closed by Shutdown

@@ -3,6 +3,7 @@ package agentapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/bsamanvith/agentkit/pkg/bus"
@@ -20,17 +21,59 @@ import (
 // not stored: the bus keeps an hour of them for a client that reconnects
 // with Last-Event-ID, and the stream says resync when that is not enough.
 
-// anonymous is the user of the notification stream of the runs started for
-// no user, followed by a caller with no user. It is a NUL, which no stored
-// user can be (a user is text), nor a principal's that started a run.
-const anonymous = "\x00"
+// anonymous is the bus's user of the notification stream of the runs
+// started for no user, followed by a caller with no user. Every user's has
+// the prefix "u.", which it does not, so no user id maps to it, whatever an
+// authenticator lets a user id be.
+const anonymous = "none"
 
-// notifyUser is the user of the notification stream of user u.
+// notifyUser is the bus's user of the notification stream of user u.
 func notifyUser(u string) string {
 	if u == "" {
 		return anonymous
 	}
-	return u
+	return "u." + u
+}
+
+// A notification stream has no end, and each one open holds a subscription
+// of the bus (on Redis, a connection of the subscriptions' pool, which the
+// run streams and command inboxes share), so a server serves at most
+// maxNotificationStreams at once, and at most maxCallerNotificationStreams
+// to one caller (a user, or the callers with no user, of a tenant): a
+// console open in several tabs, not a client that opens them in a loop.
+const (
+	maxNotificationStreams       = 500
+	maxCallerNotificationStreams = 8
+)
+
+// notifyCaller is whose notification stream it is: a bus user in a tenant.
+type notifyCaller struct{ tenant, user string }
+
+// openNotifications counts a stream of c open, and returns the function that
+// counts it closed, or the error to answer when the server, or c, has as
+// many open as it may.
+func (s *Server) openNotifications(c notifyCaller) (func(), *Error) {
+	s.nmu.Lock()
+	defer s.nmu.Unlock()
+	switch {
+	case s.nOpen >= maxNotificationStreams:
+		return nil, &Error{Code: CodeOverCapacity, Retryable: true, Message: fmt.Sprintf("%d notification streams are open, the most this server serves; retry later", maxNotificationStreams)}
+	case s.nByCaller[c] >= maxCallerNotificationStreams:
+		return nil, &Error{Code: CodeOverCapacity, Retryable: true, Message: fmt.Sprintf("%d notification streams of this caller are open, the most one caller may have on a server; close one", maxCallerNotificationStreams)}
+	}
+	if s.nByCaller == nil {
+		s.nByCaller = map[notifyCaller]int{}
+	}
+	s.nOpen++
+	s.nByCaller[c]++
+	return func() {
+		s.nmu.Lock()
+		defer s.nmu.Unlock()
+		s.nOpen--
+		if s.nByCaller[c]--; s.nByCaller[c] == 0 {
+			delete(s.nByCaller, c)
+		}
+	}, nil
 }
 
 // notify publishes n on the notification stream of run's user, in ctx's
@@ -78,6 +121,12 @@ func (s *Server) userEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	u, _ := tenancy.User(ctx)
 	user := notifyUser(u)
+	release, e := s.openNotifications(notifyCaller{tenancy.MustFrom(ctx).ID(), user})
+	if e != nil {
+		s.unavailable(w, e)
+		return
+	}
+	defer release()
 	if from.IsZero() {
 		// From now: from the newest kept, read before the headers go, so a
 		// client that has them misses nothing sent after.

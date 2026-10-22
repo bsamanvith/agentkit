@@ -162,7 +162,8 @@
 // started with none. The stream keeps an hour of notifications on the bus,
 // for a client that reconnects with Last-Event-ID, and says resync when
 // that is not enough: refetch what you show. It ends only with the client
-// or the server.
+// or the server. A server serves 500 at once, and 8 to one caller (a user,
+// or the callers with no user, of a tenant); one more is 503 over_capacity.
 //
 // # Store
 //

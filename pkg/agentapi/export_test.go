@@ -23,3 +23,15 @@ func (s *Server) Watching() (watches, viewers int) {
 	}
 	return len(s.watches), viewers
 }
+
+// MaxCallerNotificationStreams is how many GET /v1/events streams one
+// caller may have open on a server.
+const MaxCallerNotificationStreams = maxCallerNotificationStreams
+
+// NotificationStreams returns how many GET /v1/events streams the server
+// serves.
+func (s *Server) NotificationStreams() int {
+	s.nmu.Lock()
+	defer s.nmu.Unlock()
+	return s.nOpen
+}

@@ -509,6 +509,10 @@ func TestOpenAPIResponses(t *testing.T) {
 	}
 	rec.probe(ue, "user_events_bad_request", 400, "GET", "/v1/events", "", "", "Last-Event-ID", "x")
 	rec.probe(ue, "user_events_unauthorized", 401, "GET", "/v1/events", "", "", bearer...)
+	for i := 2; i < agentapi.MaxCallerNotificationStreams; i++ { // with the two above, as many as the caller may have
+		ue.notifications(fmt.Sprintf("user_events_%d", i), "", "")
+	}
+	rec.probe(ue, "user_events_over_capacity", 503, "GET", "/v1/events", "", "")
 
 	// Runs stopped while they wait for the model: interrupted. The first is
 	// resumed; the second waits for the probes of a full server.

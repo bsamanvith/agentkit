@@ -1,0 +1,12 @@
+{
+  "results": [
+    {
+      "url": "https://go.dev/doc/go1.27",
+      "raw_content": "# Go 1.27 Release Notes\n\n## Introduction to Go 1.27\n\nThe latest Go release, version 1.27, arrives six months after Go 1.26. Most of its changes are in the implementation of the toolchain, runtime, and libraries.\n\n## Changes to the language\n\nMethods may now have type parameters (generic methods).\n\n## Tools\n\nThe go command caches test fuzzing corpora per module.\n\n## Runtime\n\nThe goroutine leak detector is enabled by default in tests.\n\n## Standard library\n\nThe new encoding/json/v2 package is the default JSON implementation. The new crypto/mlkem hybrid key exchange is on by default in crypto/tls.\n",
+      "images": []
+    }
+  ],
+  "failed_results": [],
+  "response_time": 0.1,
+  "request_id": "00000000-0000-0000-0000-000000000000"
+}

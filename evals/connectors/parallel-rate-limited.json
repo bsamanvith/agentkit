@@ -1,0 +1,7 @@
+{
+  "behavior": "after a rate limit, switch to the other search tool",
+  "prompt": "When was Go 1.27 released? Try parallel_search first.",
+  "toolsets": ["parallel", "tavily"],
+  "upstream": {"parallel": {"/v1/search": [{"status": 429, "headers": {"Retry-After": "120"}, "body": {"error": {"message": "Rate limit exceeded"}}}]}},
+  "checks": {"after": {"tool": "parallel_search", "on": "error", "next": ["tavily_search"]}, "max_calls": 4}
+}

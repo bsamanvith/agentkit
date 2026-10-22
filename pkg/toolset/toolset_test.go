@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -269,6 +270,61 @@ func TestFilters(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, _, err := toolset.Build(t.Context(), cat, []toolset.Spec{{Name: "x", Type: "demo", Include: tc.include, Exclude: tc.exclude}})
+			if !errors.Is(err, toolset.ErrInvalidFilter) {
+				t.Errorf("err = %v, want ErrInvalidFilter", err)
+			}
+		})
+	}
+}
+
+func TestDescriptions(t *testing.T) {
+	t.Parallel()
+	cat := demoCatalog(t)
+	regs, _, err := toolset.Build(t.Context(), cat, []toolset.Spec{{
+		Name: "x", Type: "demo", Exclude: []string{"current_time"},
+		Descriptions: map[string]string{"echo": "Says it back."},
+	}})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	defs, err := regs["x"].List(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, _, err := toolset.Build(t.Context(), cat, []toolset.Spec{{Name: "x", Type: "demo"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	orig, err := plain["x"].List(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{}
+	for _, d := range orig {
+		want[d.Name] = d.Description
+	}
+	want["echo"] = "Says it back."
+	if len(defs) != 2 {
+		t.Fatalf("tools = %v, want calculate and echo", defs)
+	}
+	for _, d := range defs {
+		if d.Description != want[d.Name] {
+			t.Errorf("%s: description %q, want %q", d.Name, d.Description, want[d.Name])
+		}
+	}
+	// The tool still runs.
+	if got := call(t, regs["x"], "echo", `{"text":"hi"}`); !strings.Contains(got, "hi") {
+		t.Errorf("echo = %s", got)
+	}
+
+	for name, descs := range map[string]map[string]string{
+		"unknown tool":      {"nope": "x"},
+		"excluded tool":     {"current_time": "x"},
+		"empty description": {"echo": ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, _, err := toolset.Build(t.Context(), cat, []toolset.Spec{{Name: "x", Type: "demo", Exclude: []string{"current_time"}, Descriptions: descs}})
 			if !errors.Is(err, toolset.ErrInvalidFilter) {
 				t.Errorf("err = %v, want ErrInvalidFilter", err)
 			}

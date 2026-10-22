@@ -1,0 +1,12 @@
+{
+  "results": [
+    {
+      "url": "https://endoflife.date/go",
+      "raw_content": "# Go\n\nEach major Go release is supported until there are two newer major releases.\n\n| Release | Released | Supported | Latest |\n|---|---|---|---|\n| 1.27 | 19 Aug 2026 | Yes | 1.27.1 (01 Sep 2026) |\n| 1.26 | 10 Feb 2026 | Yes | 1.26.8 (01 Sep 2026) |\n| 1.25 | 12 Aug 2025 | Ended 19 Aug 2026 | 1.25.14 (19 Aug 2026) |\n| 1.24 | 11 Feb 2025 | Ended 10 Feb 2026 | 1.24.13 (04 Feb 2026) |\n",
+      "images": []
+    }
+  ],
+  "failed_results": [],
+  "response_time": 0.12,
+  "request_id": "00000000-0000-0000-0000-000000000000"
+}

@@ -1,0 +1,9 @@
+{
+  "behavior": "a known URL goes straight to extract",
+  "prompt": "Summarize the release history page at https://go.dev/doc/devel/release in three bullet points.",
+  "toolsets": ["exa"],
+  "checks": {
+    "first": "exa_extract", "not_called": ["exa_search"], "max_calls": 2,
+    "args": [{"tool": "exa_extract", "field": "urls", "contains": "go.dev/doc/devel/release"}]
+  }
+}

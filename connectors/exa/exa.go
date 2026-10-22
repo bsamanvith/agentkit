@@ -36,7 +36,7 @@ var (
 	ErrKeyRejected = errors.New("exa rejected the API key")
 	// ErrRateLimited reports a 429 that persisted after the one retry, or
 	// asked for a wait longer than the connector honors.
-	ErrRateLimited = errors.New("exa rate limited the request")
+	ErrRateLimited = errors.New("exa rate limited the request; " + httpx.RateLimitAdvice)
 	// ErrUpstream reports any other failure of the call: a 5xx or other
 	// unexpected status, a transport error or timeout, an unreadable body.
 	ErrUpstream = errors.New("exa request failed")

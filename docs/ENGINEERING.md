@@ -194,6 +194,7 @@ A test should fail only when a **feature** breaks, not when code is refactored.
 | **E2E / smoke** | Real binaries in containers, black-box over HTTP/gRPC/MCP | `test/e2e`, `//go:build e2e` | `scripts/dev.sh smoke <topology>` | running topology | < 2 min per topology |
 | **Replay E2E** | The real binary as separate processes, against a local server replaying recorded provider responses | next to the `cmd`, no tag (skips under `-short`) | `make test` | nothing | seconds |
 | **Live** | Real model providers (Anthropic, OpenAI-compatible) | next to adapter, `//go:build live` | `make test-live` | API keys | manual (Claude sessions; on-demand workflow) |
+| **Eval** | Real Claude using the search connectors against faked upstreams: tool choice, arguments, calls, citations, recovery ([evals/README.md](../evals/README.md)) | `evals/`, `//go:build eval` | `make eval` | `ANTHROPIC_API_KEY` | manual; pass rates over N runs, a drop is shown, not gated |
 | **Perf** | Benchmarks (rerunnable) and load tests (recorded) | `Benchmark*` next to code; load-test results in the task's Notes | `go test -bench` | nothing | not in CI until a budget is set |
 
 - `make test-timing` runs the unit tier and prints its slowest packages and top-level tests (`scripts/test-timing.sh` over `go test -json`); CI prints the top 10 after `make check`. Look there before a package nears go test's timeout, and fix waste (a query parsed on every call, a schema migrated for every subtest) before cutting a check.

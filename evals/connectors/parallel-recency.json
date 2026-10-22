@@ -1,0 +1,6 @@
+{
+  "behavior": "a published-date filter",
+  "prompt": "Find articles about the Go 1.27 release published on or after 2026-10-01.",
+  "toolsets": ["parallel"],
+  "checks": {"called": ["parallel_search"], "args": [{"tool": "parallel_search", "field": "after_date", "at_least": "2026-10-01"}]}
+}

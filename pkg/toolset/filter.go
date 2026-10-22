@@ -3,6 +3,7 @@ package toolset
 import (
 	"fmt"
 	"path"
+	"slices"
 
 	"github.com/bsamanvith/agentkit/pkg/tool"
 )
@@ -71,4 +72,44 @@ func matchesAny(pattern string, names []string) bool {
 		}
 	}
 	return false
+}
+
+// describeTools replaces the descriptions of the tools descs names. Every
+// name must be one of tools, and every description non-empty.
+func describeTools(tools []tool.Tool, descs map[string]string) ([]tool.Tool, error) {
+	if len(descs) == 0 {
+		return tools, nil
+	}
+	names := make([]string, len(tools))
+	for i, t := range tools {
+		names[i] = t.Definition().Name
+	}
+	for name, desc := range descs {
+		if !slices.Contains(names, name) {
+			return nil, fmt.Errorf("%w: descriptions names %q, which is not a tool of the toolset (tools: %v)", ErrInvalidFilter, name, names)
+		}
+		if desc == "" {
+			return nil, fmt.Errorf("%w: descriptions gives %q an empty description", ErrInvalidFilter, name)
+		}
+	}
+	out := make([]tool.Tool, len(tools))
+	for i, t := range tools {
+		out[i] = t
+		if desc, ok := descs[names[i]]; ok {
+			out[i] = described{Tool: t, description: desc}
+		}
+	}
+	return out, nil
+}
+
+// described is a tool with another description.
+type described struct {
+	tool.Tool
+	description string
+}
+
+func (d described) Definition() tool.Definition {
+	def := d.Tool.Definition()
+	def.Description = d.description
+	return def
 }

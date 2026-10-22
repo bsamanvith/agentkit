@@ -145,9 +145,9 @@ func (c *client) statusError(status int, body []byte) error {
 
 func (c *client) rateLimited() error {
 	if c.key == "" {
-		return fmt.Errorf("tavily rate limited the request; set %s for higher limits", c.keyEnv)
+		return fmt.Errorf("tavily rate limited the request; set %s for higher limits. Until then, %s", c.keyEnv, httpx.RateLimitAdvice)
 	}
-	return errors.New("tavily rate limited the request")
+	return errors.New("tavily rate limited the request; " + httpx.RateLimitAdvice)
 }
 
 // clean makes text taken from a response safe to show: the key replaced,

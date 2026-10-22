@@ -1,0 +1,7 @@
+{
+  "behavior": "a research question sets Parallel's objective",
+  "prompt": "I'm upgrading a service: research what changed in the go command in Go 1.27.",
+  "toolsets": ["parallel"],
+  "upstream": {"parallel": {"/v1/search": [{"cassette": "connectors/parallel/testdata/cassettes/search-filters.res.http"}]}},
+  "checks": {"called": ["parallel_search"], "args": [{"tool": "parallel_search", "field": "objective"}]}
+}

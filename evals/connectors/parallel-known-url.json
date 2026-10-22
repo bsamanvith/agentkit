@@ -1,0 +1,30 @@
+{
+  "behavior": "a known URL goes straight to extract",
+  "prompt": "What changed in the go command, according to https://go.dev/doc/go1.27 ?",
+  "toolsets": [
+    "parallel"
+  ],
+  "checks": {
+    "first": "parallel_extract",
+    "not_called": [
+      "parallel_search"
+    ],
+    "max_calls": 2,
+    "args": [
+      {
+        "tool": "parallel_extract",
+        "field": "urls",
+        "contains": "go.dev/doc/go1.27"
+      }
+    ]
+  },
+  "upstream": {
+    "parallel": {
+      "/v1/extract": [
+        {
+          "body_file": "evals/connectors/responses/parallel-extract-go1.27.json"
+        }
+      ]
+    }
+  }
+}

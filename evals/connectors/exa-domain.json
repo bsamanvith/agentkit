@@ -1,0 +1,6 @@
+{
+  "behavior": "a domain filter",
+  "prompt": "Using only pages on go.dev, what does the official Go site say about Go 1.27?",
+  "toolsets": ["exa"],
+  "checks": {"called": ["exa_search"], "args": [{"tool": "exa_search", "field": "include_domains", "contains": "go.dev"}]}
+}

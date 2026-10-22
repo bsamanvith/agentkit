@@ -523,6 +523,8 @@ Two built-in toolset types need no account (`pkg/coretools`):
 
 `files` settings: `root` (required; relative paths are from the server's working directory), `create_root` (create it when missing; default false, so a typo fails startup), and `max_file_bytes` (default 1 MiB, at most 64 MiB: the largest file read, searched or edited). Excluding `edit_file`, as `docs` does above, makes a read-only toolset.
 
+Any toolset entry can also replace tool descriptions with `descriptions`, a map from tool name to its new description: `"descriptions": {"read_file": "Read one file of the docs. Prefer search_files to find where something is."}`. Each name must be a tool the entry keeps. Use it to tune how a model uses a connector without changing its code; `make eval` (evals/README.md) measures the effect.
+
 `search.json` serves both, at `/mcp/math` and `/mcp/files`, with the agent `workspace` on `.data/workspace` (created at startup):
 
 ```sh

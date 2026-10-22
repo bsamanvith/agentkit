@@ -151,14 +151,14 @@ turn partial).
 
 ### Size
 
-On main at `440adb7`: +126,976 bytes on the stripped binary (local, dev and
-runner +131,072), +32,768 on api and +36,864 on toolsets, logged in
-docs/SIZES.md. No new dependency, no budget raised. The validator and the
+On main at `d2b049f` (with `noagent`): +126,976 bytes on the stripped
+binary (local +131,072, dev +126,976, runner +114,688), +36,864 on api and
++8,192 on toolsets, logged in docs/SIZES.md. No new dependency, no budget raised. The validator and the
 tool are behind `!nomodels` (`cmd/agentkit/ui_tool.go`, `ui_none.go`), and
 the agent API reads a successful call's input back with `a2ui.ReadInput`,
 which skips the validator, so the images that run no harness do not link
-it. Projected images: local about 28.36 MB of 29, dev about 29.89 MB of 30,
-toolsets about 17.97 MB of 18 (the last two are tight).
+it. Projected images: local about 28.38 MB of 29, dev about 29.89 MB of 30
+(tight), toolsets about 16.42 MB of 18.
 
 ### For T066 (console renderer)
 

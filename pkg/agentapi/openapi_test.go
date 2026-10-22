@@ -645,8 +645,46 @@ func TestOpenAPIResponses(t *testing.T) {
 	rec.probe(r, "task_unauthorized", 401, "POST", "/v1/tasks", `{"input":"hi"}`, "", bearer...)
 	rec.probe(r, "task_no_agent", 404, "POST", "/v1/tasks", `{"input":"hi","agent":"nobody"}`, "")
 	rec.probe(r, "task_too_large", 413, "POST", "/v1/tasks", `{"input":"`+strings.Repeat("x", 600)+`"}`, `{"input":"too long"}`)
+	// Steering it while its model call waits (T086): a message and a pause,
+	// both acted on at the boundary after the model's answer, which pauses
+	// the task with the message to answer.
+	tk := "/v1/tasks/" + task.ID
+	rec.probe(r, "steer_task", 202, "POST", tk+"/messages", `{"text":"focus on 2026 data"}`, "", "Idempotency-Key", "k-steer")
+	rec.probe(r, "pause_task", 202, "POST", tk+"/pause", "", "")
+	rec.probe(r, "steer_task_bad_request", 400, "POST", tk+"/messages", `{"text":" "}`, "")
+	rec.probe(r, "pause_task_bad_request", 400, "POST", tk+"/pause", "", "", "Idempotency-Key", "k-steer")
+	rec.probe(r, "resume_task_bad_request", 400, "POST", tk+"/resume", "", "", "Idempotency-Key", "k-steer")
+	rec.probe(r, "steer_task_unauthorized", 401, "POST", tk+"/messages", `{"text":"hi"}`, "", bearer...)
+	rec.probe(r, "pause_task_unauthorized", 401, "POST", tk+"/pause", "", "", bearer...)
+	rec.probe(r, "resume_task_unauthorized", 401, "POST", tk+"/resume", "", "", bearer...)
+	rec.probe(r, "steer_task_not_found", 404, "POST", "/v1/tasks/nope/messages", `{"text":"hi"}`, "")
+	rec.probe(r, "pause_task_not_found", 404, "POST", "/v1/tasks/"+run.ID+"/pause", "", "") // a chat
+	rec.probe(r, "resume_task_not_found", 404, "POST", "/v1/tasks/nope/resume", "", "")
+	rec.probe(r, "steer_task_too_large", 413, "POST", tk+"/messages", `{"text":"`+strings.Repeat("x", 600)+`"}`, `{"text":"too long"}`)
 	m.gate <- struct{}{}
-	r.waitEnded(task.ID)
+	if got := r.waitEnded(task.ID); got.Status != agentapi.StatusPaused {
+		t.Fatalf("the steered task is %s, want paused", got.Status)
+	}
+	rec.probe(r, "pause_task_paused", 200, "POST", tk+"/pause", "", "")
+	// Another task takes the tenant's one place meanwhile.
+	meanwhile := decodeAs[agentapi.Run](t, rec.probe(r, "task_meanwhile", 202, "POST", "/v1/tasks", `{"input":"meanwhile"}`, ""))
+	rec.probe(r, "resume_task_too_many", 429, "POST", tk+"/resume", "", "")
+	m.gate <- struct{}{}
+	r.waitEnded(meanwhile.ID)
+	// A chat takes the server's one run meanwhile.
+	hold := r.start(t.Context(), "hold on", "")
+	hold.until(agentapi.TypeRunStart, 0)
+	rec.probe(r, "resume_task_over_capacity", 503, "POST", tk+"/resume", "", "")
+	m.gate <- struct{}{}
+	hold.all()
+	rec.probe(r, "resume_task", 202, "POST", tk+"/resume", "", "")
+	m.gate <- struct{}{}
+	if got := r.waitEnded(task.ID); got.Status != agentapi.StatusDone {
+		t.Fatalf("the resumed task is %s, want done", got.Status)
+	}
+	rec.probe(r, "steer_task_final", 409, "POST", tk+"/messages", `{"text":"too late"}`, "")
+	rec.probe(r, "pause_task_final", 409, "POST", tk+"/pause", "", "")
+	rec.probe(r, "resume_task_final", 409, "POST", tk+"/resume", "", "")
 	rec.probe(r, "webhook_secret", 200, "GET", "/v1/webhooks/secret", "", "")
 	rec.probe(r, "webhook_secret_unauthorized", 401, "GET", "/v1/webhooks/secret", "", "", bearer...)
 	rec.probe(other, "webhook_secret_none", 404, "GET", "/v1/webhooks/secret", "", "")
@@ -726,7 +764,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	cm := echo(t)
 	cm.gate = make(chan struct{}, 1)
 	rc := newTrigRig(t, cm, trigConfig{token: token, api: []agentapi.Option{agentapi.WithMaxConcurrentRuns(1)}})
-	hold := rc.task(`{"input":"hold on"}`)
+	held := rc.task(`{"input":"hold on"}`)
 	gc := rc.create(`{"id":"gh","prompt":"Triage","webhook":true}`)
 	keyc, err := trigger.DecodeStandardSecret(gc.Webhook.Secret)
 	if err != nil {
@@ -736,7 +774,7 @@ func TestOpenAPIResponses(t *testing.T) {
 		trigger.StandardHeaderID, "msg_1", trigger.StandardHeaderTimestamp, strconv.FormatInt(at.Unix(), 10),
 		trigger.StandardHeaderSignature, trigger.SignStandard(keyc, "msg_1", at, []byte(event)))
 	cm.gate <- struct{}{}
-	rc.waitEnded(hold.ID)
+	rc.waitEnded(held.ID)
 	tm.gate <- struct{}{}
 	rt.waitEnded(started.Firing.RunID)
 	rec.probe(rt, "list_firings", 200, "GET", "/v1/triggers/gh/firings?limit=5", "", "")
@@ -891,9 +929,10 @@ func TestOpenAPIResponses(t *testing.T) {
 				"POST /v1/runs": `{"message":"hi"}`, "POST /v1/runs/{id}/decisions": `{"path":"f/ok","approved":true}`,
 				"POST /v1/runs/{id}/input": `{"answers":[{"id":"q1","text":"red"}]}`,
 				"POST /v1/toolsets":        `{"type":"mcp","name":"x","url":"https://mcp.example.com/mcp"}`, "POST /v1/toolsets/{name}/review": `{"tools":[]}`,
-				"PATCH /v1/toolsets/{name}":  `{"enabled":true}`,
-				"POST /v1/tasks":             `{"input":"hi"}`,
-				"PUT /v1/credentials/{slot}": `{"kind":"api_key","api_key":"k"}`, "POST /v1/credentials/{slot}/connect": `{}`,
+				"PATCH /v1/toolsets/{name}":    `{"enabled":true}`,
+				"POST /v1/tasks":               `{"input":"hi"}`,
+				"POST /v1/tasks/{id}/messages": `{"text":"hi"}`,
+				"PUT /v1/credentials/{slot}":   `{"kind":"api_key","api_key":"k"}`, "POST /v1/credentials/{slot}/connect": `{}`,
 				"POST /v1/agents/{name}/versions": `{"definition":{"system":"x"}}`, "POST /v1/agents/{name}/publish": `{"version":1}`,
 				"POST /v1/triggers": `{"id":"x","prompt":"hi","schedule":"@daily"}`, "PATCH /v1/triggers/{id}": `{"prompt":"hi"}`,
 			}[rt]

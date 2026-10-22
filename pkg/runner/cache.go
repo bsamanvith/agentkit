@@ -32,6 +32,36 @@ type view struct {
 	// last is the usage of the last turn's request since the latest
 	// compaction, zero if there is none.
 	last llm.Usage
+	// steered is the last steering command a steer entry of run steerRun
+	// delivered ([SteerRecord.Commands]), 0 if none since the context
+	// was read.
+	steerRun string
+	steered  int64
+}
+
+// delivered reports whether the steering command seq of run was delivered
+// already: a steer entry of the run names it, or a later one.
+func (v view) delivered(run string, seq int64) bool {
+	return v.steerRun == run && seq <= v.steered
+}
+
+// steerInto adds steering messages to the end of a transcript: into its last
+// message when that is the user's (the tool results the model has not seen
+// yet, or a message it has not answered), so that roles still alternate.
+func steerInto(tr harness.Transcript, msgs []llm.Message) harness.Transcript {
+	for _, m := range msgs {
+		n := len(tr)
+		if n == 0 || tr[n-1].Role != llm.RoleUser {
+			tr = append(tr, m.Clone())
+			continue
+		}
+		last := tr[n-1]
+		blocks := make([]llm.Block, 0, len(last.Content)+len(m.Content))
+		blocks = append(blocks, last.Content...)
+		blocks = append(blocks, m.Clone().Content...)
+		tr[n-1] = llm.Message{Role: last.Role, Content: blocks}
+	}
+	return tr
 }
 
 // pendingTurn is a run's turn that waits for people, as its latest interrupt
@@ -87,6 +117,18 @@ func (v *view) apply(e store.Entry) {
 		// Not part of the context: the turn that finishes it is.
 		turn, answers, err := PendingTurn(e)
 		v.pending = &pendingTurn{run: e.RunID, seq: e.Seq, turn: turn, answers: answers, err: err}
+		return
+	}
+	if e.Kind == store.KindSteer {
+		v.tr = steerInto(v.tr, e.Messages)
+		if rec, err := DecodeRecord(e); err == nil && rec.Steer != nil {
+			if e.RunID != v.steerRun {
+				v.steerRun, v.steered = e.RunID, 0
+			}
+			for _, seq := range rec.Steer.Commands {
+				v.steered = max(v.steered, seq)
+			}
+		}
 		return
 	}
 	for _, m := range e.Messages {

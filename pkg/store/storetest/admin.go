@@ -73,12 +73,14 @@ func RunAdmin(t *testing.T, newStore func(t *testing.T, clk clock.Clock) (store.
 			}
 		}
 		run("suspended")
+		run("paused")
 		run("due")
 		run("due-now")
 		run("not-due")
 		run("failed-for-good")
 		for _, ctx := range ab {
 			r.mustMove(ctx, "suspended", store.StatusRunning, store.StatusSuspended, store.Details{Pending: []string{"main/ask"}})
+			r.mustMove(ctx, "paused", store.StatusRunning, store.StatusPaused, store.Details{})
 			fail(ctx, "due", store.Details{Retryable: true, NextAttemptAt: t0.Add(5 * time.Second)})
 			fail(ctx, "due-now", store.Details{Retryable: true, NextAttemptAt: expires})
 			fail(ctx, "not-due", store.Details{Retryable: true, NextAttemptAt: expires.Add(time.Nanosecond)})

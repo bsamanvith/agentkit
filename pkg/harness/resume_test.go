@@ -104,6 +104,10 @@ func TestInvalidInputIsRejectedBeforeAnyModelCall(t *testing.T) {
 			user, calls,
 			llm.User(llm.ToolResult{ToolUseID: "other", Content: "x"}),
 		}}},
+		{"after the results, a block that is not text", harness.Input{Transcript: harness.Transcript{
+			user, calls,
+			llm.User(llm.ToolResult{ToolUseID: "c1", Content: "x"}, llm.Text{Text: "steer"}, llm.ToolResult{ToolUseID: "c1", Content: "x"}),
+		}}},
 		{"results with no call", harness.Input{Transcript: harness.Transcript{user, asst, result}, Message: user}},
 		{"tool call in a user message", harness.Input{Message: llm.User(use("c1", "echo", `{}`))}},
 		{"tool result in an assistant message", harness.Input{
@@ -217,13 +221,13 @@ func referenceValid(msgs []llm.Message) bool {
 			return false
 		}
 		if m.Role == llm.RoleUser {
-			if len(m.Content) == 0 || (len(awaiting) > 0 && len(m.Content) != len(awaiting)) {
+			if len(m.Content) == 0 || len(m.Content) < len(awaiting) {
 				return false
 			}
 			for j, b := range m.Content {
 				switch b := b.(type) {
-				case llm.Text:
-					if len(awaiting) > 0 {
+				case llm.Text: // after the results, if there are any (steering)
+					if j < len(awaiting) {
 						return false
 					}
 				case llm.Opaque:
@@ -231,7 +235,7 @@ func referenceValid(msgs []llm.Message) bool {
 						return false
 					}
 				case llm.ToolResult:
-					if b.ToolUseID == "" || len(awaiting) == 0 || b.ToolUseID != awaiting[j].ID {
+					if b.ToolUseID == "" || j >= len(awaiting) || b.ToolUseID != awaiting[j].ID {
 						return false
 					}
 				default: // a tool call, a block of a newer version, or no block at all

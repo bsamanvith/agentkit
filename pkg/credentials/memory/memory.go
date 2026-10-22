@@ -7,8 +7,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"slices"
-	"strings"
+	"sort"
 	"sync"
 
 	"github.com/bsamanvith/agentkit/pkg/credentials"
@@ -117,6 +116,8 @@ func (s *Store) List(ctx context.Context, user string) ([]credentials.Meta, erro
 			out = append(out, b.Meta)
 		}
 	}
-	slices.SortFunc(out, func(a, b credentials.Meta) int { return strings.Compare(a.Slot, b.Slot) })
+	// sort.Slice, not slices.SortFunc: one sort for every type, not one
+	// instantiated for Meta (size, docs/SIZES.md).
+	sort.Slice(out, func(i, j int) bool { return out[i].Slot < out[j].Slot })
 	return out, nil
 }

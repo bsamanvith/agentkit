@@ -36,6 +36,8 @@ func runStatus(run store.Run, now time.Time) string {
 		return StatusRejected
 	case store.StatusSuspended:
 		return StatusSuspended
+	case store.StatusPaused:
+		return StatusPaused
 	}
 	if run.Interrupted(now) {
 		return StatusInterrupted
@@ -60,6 +62,8 @@ func endStatus(e Event, interactive bool) string {
 		return StatusRejected
 	case CodeSuspended:
 		return StatusSuspended
+	case CodePaused:
+		return StatusPaused
 	}
 	return StatusFailed
 }
@@ -666,45 +670,67 @@ func (s *Server) resumeConversation(ctx context.Context, w http.ResponseWriter, 
 // resume continues a run that is not final and not going on. busy is the
 // code of a run that is going on.
 func (s *Server) resume(ctx context.Context, w http.ResponseWriter, r *http.Request, run store.Run, busy string) {
+	h, seed, ok := s.relaunch(ctx, w, r, run, busy)
+	if ok {
+		s.respond(w, r, h, lastID(seed.events))
+	}
+}
+
+// relaunch resumes a run that is not final and not going on, and runs its
+// execution as the server runs its own. When it answers the request itself
+// (an error) it reports false.
+func (s *Server) relaunch(ctx context.Context, w http.ResponseWriter, r *http.Request, run store.Run, busy string) (*hub, replayed, bool) {
 	c, err := s.store.GetConversation(ctx, run.ConversationID)
 	if err != nil {
 		s.internal(w, "reading conversation "+quote(run.ConversationID), err)
-		return
+		return nil, replayed{}, false
 	}
 	// The run goes on with the version of its agent it started on.
 	a, err := s.agentFor(ctx, c.Agent, run.AgentVersion)
 	if err != nil && !errors.Is(err, errNoAgent) {
 		s.internal(w, "reading agent "+quote(c.Agent), err)
-		return
+		return nil, replayed{}, false
 	}
 	// A resume runs the agent's tools: only for a request that may use them
 	// all.
 	if acc := accessOf(r); acc.ok && a != nil && !acc.agent(a) {
 		writeError(w, http.StatusNotFound, &Error{Code: CodeNotFound, Message: "no agent " + quote(c.Agent)})
-		return
+		return nil, replayed{}, false
 	}
 	switch {
 	case s.isDraining():
 		s.unavailable(w, shuttingDown())
-		return
+		return nil, replayed{}, false
 	case run.Status.Final():
 		writeError(w, http.StatusConflict, &Error{Code: CodeRunFinal, RunID: run.ID, Message: "run " + quote(run.ID) + " is " + string(run.Status) + "; it never changes again"})
-		return
+		return nil, replayed{}, false
 	case run.Status == store.StatusSuspended:
 		writeError(w, http.StatusConflict, &Error{Code: CodeAwaitingDecision, RunID: run.ID, Message: "run " + quote(run.ID) + " waits for a decision (POST /v1/runs/{id}/decisions) or for input (POST /v1/runs/{id}/input)"})
-		return
+		return nil, replayed{}, false
 	case held(run, s.cfg.clock.Now()):
 		writeError(w, http.StatusConflict, &Error{Code: busy, RunID: run.ID, Retryable: true, Message: "run " + quote(run.ID) + " is going on; wait for it to end, or stop it"})
-		return
+		return nil, replayed{}, false
+	}
+	if run.Status == store.StatusPaused && !run.Interactive {
+		// A paused task counts against the tenant's background runs again,
+		// however it is resumed (POST /v1/tasks/{id}/resume or
+		// /v1/runs/{id}/resume, an empty message): counting and resuming
+		// are one step, as for POST /v1/tasks.
+		s.tmu.Lock()
+		defer s.tmu.Unlock()
+		if rf := s.backgroundLimit(ctx); rf != nil {
+			s.writeRefusal(w, rf)
+			return nil, replayed{}, false
+		}
 	}
 	if apiErr := s.admit(); apiErr != nil {
 		s.unavailable(w, apiErr)
-		return
+		return nil, replayed{}, false
 	}
 	freePool, ok := s.admitContinued(ctx, w, run, a)
 	if !ok {
 		s.release()
-		return
+		return nil, replayed{}, false
 	}
 	execCtx, cancel := execContext(ctx)
 	x, err := s.runs.Resume(execCtx, run.ID)
@@ -713,7 +739,7 @@ func (s *Server) resume(ctx context.Context, w http.ResponseWriter, r *http.Requ
 		s.release()
 		freePool()
 		s.startError(w, err, busy)
-		return
+		return nil, replayed{}, false
 	}
 	seed, err := s.history(ctx, x.Run, true)
 	if err != nil {
@@ -722,8 +748,7 @@ func (s *Server) resume(ctx context.Context, w http.ResponseWriter, r *http.Requ
 		s.log.Error("reading a resumed run's events", "run_id", run.ID, "err", err)
 	}
 	s.log.Info("run resumed", "run_id", run.ID, "conversation_id", run.ConversationID, "pool", x.Run.Pool, "turns", seed.turns)
-	h := s.launch(execCtx, cancel, x, seed, freePool)
-	s.respond(w, r, h, lastID(seed.events))
+	return s.launch(execCtx, cancel, x, seed, freePool), seed, true
 }
 
 // admitContinued takes a slot of its pool ([Server.admitPool]) for a stored
@@ -1007,7 +1032,7 @@ func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	status := q.Get("status")
-	if status != "" && !slices.Contains([]string{StatusRunning, StatusInterrupted, StatusDone, StatusFailed, StatusCanceled, StatusRejected, StatusSuspended}, status) {
+	if _, ok := storeStatus[status]; status != "" && !ok {
 		writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "no run status " + quote(status)})
 		return
 	}
@@ -1111,6 +1136,7 @@ var storeStatus = map[string]store.Status{
 	StatusCanceled:    store.StatusCanceled,
 	StatusRejected:    store.StatusRejected,
 	StatusSuspended:   store.StatusSuspended,
+	StatusPaused:      store.StatusPaused,
 }
 
 // listLimit reads ?limit=; it answers 400 and returns false for a bad one.

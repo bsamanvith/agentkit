@@ -179,6 +179,10 @@ type Event struct {
 	// retrying: the attempt about to be made, and how long until it.
 	Attempt int     `json:"attempt,omitempty"`
 	DelayMS float64 `json:"delay_ms,omitempty"`
+
+	// steered: the steering messages delivered, in the order they were
+	// sent (TypeSteered).
+	Steering []string `json:"steering,omitempty"`
 }
 
 // UnmarshalJSON decodes any event, ignoring unknown fields; its final message
@@ -314,6 +318,11 @@ func (e Event) MarshalJSON() ([]byte, error) {
 			Attempt int     `json:"attempt"`
 			DelayMS float64 `json:"delay_ms"`
 		}{h, e.Error, e.Attempt, e.DelayMS})
+	case TypeSteered:
+		return json.Marshal(struct {
+			header
+			Steering []string `json:"steering"`
+		}{h, e.Steering})
 	case TypeRewind:
 		return json.Marshal(struct {
 			header
@@ -331,6 +340,11 @@ func (e Event) MarshalJSON() ([]byte, error) {
 type TimedMessage struct {
 	At      time.Time   `json:"at"`
 	Message llm.Message `json:"message"`
+	// Steer marks a user message sent to a task while it ran (POST
+	// /v1/tasks/{id}/messages), in the place the task read it. For the
+	// model it goes on the user message before it (the results it had not
+	// seen yet), if there is one.
+	Steer bool `json:"steer,omitempty"`
 }
 
 // UnmarshalJSON decodes the message leniently ([llm.UnmarshalMessageLenient]):
@@ -340,11 +354,12 @@ func (m *TimedMessage) UnmarshalJSON(data []byte) error {
 	var w struct {
 		At      time.Time       `json:"at"`
 		Message json.RawMessage `json:"message"`
+		Steer   bool            `json:"steer"`
 	}
 	if err := json.Unmarshal(data, &w); err != nil {
 		return err
 	}
-	*m = TimedMessage{At: w.At}
+	*m = TimedMessage{At: w.At, Steer: w.Steer}
 	if len(w.Message) == 0 {
 		return nil
 	}
@@ -491,6 +506,10 @@ const (
 	// StatusSuspended: a flow run waiting for a decision, or a chat run
 	// waiting for input (its Interrupts).
 	StatusSuspended = "suspended"
+	// StatusPaused: a task paused at a turn boundary (POST
+	// /v1/tasks/{id}/pause) until it is resumed (POST
+	// /v1/tasks/{id}/resume).
+	StatusPaused = "paused"
 	// StatusInterrupted (shared with conversations): stopped, with nobody
 	// running it; resume it or send a new message.
 )

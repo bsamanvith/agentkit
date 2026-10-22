@@ -797,6 +797,8 @@ const (
 	outFailed                    // the run failed: stored per the retry policy
 	outAbort                     // the run could not be persisted: stop, no transition
 	outNotStarted                // nothing to resume: cancel the run
+	outBoundary                  // the agent stopped at a turn boundary for commands (turns.stop)
+	outPaused                    // a person paused the run at a turn boundary
 )
 
 type outcome struct {
@@ -884,8 +886,12 @@ func (x *exec) finish(ctx, runCtx context.Context, out outcome) (Event, error) {
 		}
 		return Event{}, &RunError{Run: x.run, Err: ErrTimeLimit}
 	}
-	if runCtx.Err() != nil && out.kind != outCompleted {
+	_, gone := errors.AsType[leaseLost](context.Cause(runCtx))
+	if runCtx.Err() != nil && out.kind != outCompleted && (out.kind != outPaused || gone) {
 		// Interrupted: by Cancel, by the consumer, by ctx or by a lost lease.
+		// A pause acted on (its command consumed) is stored all the same,
+		// under the lease: otherwise it would be lost, and the run go on
+		// once resumed by recovery.
 		// The run stays as it is, for whoever continues it.
 		cause := context.Cause(runCtx)
 		x.release(ctx)
@@ -915,6 +921,13 @@ func (x *exec) finish(ctx, runCtx context.Context, out outcome) (Event, error) {
 			return Event{}, fmt.Errorf("run %q: reject: %w", id, err)
 		}
 		return Event{Kind: EventDone, Run: x.run}, nil
+	case outPaused:
+		if err := x.transition(ctx, store.StatusPaused, store.Details{Usage: out.usage}); err != nil {
+			return Event{}, fmt.Errorf("run %q: pause: %w", id, err)
+		}
+		return Event{Kind: EventDone, Run: x.run}, nil
+	case outBoundary:
+		return Event{}, fmt.Errorf("run %q: stopped at a turn boundary without acting on it", id)
 	case outNotStarted:
 		if err := x.transition(ctx, store.StatusCanceled, store.Details{Error: ErrNotStarted.Error()}); err != nil {
 			return Event{}, fmt.Errorf("run %q: %w; cancel: %w", id, ErrNotStarted, err)
@@ -1100,6 +1113,20 @@ func (x *exec) chat(ctx context.Context, agent Agent, msg *llm.Message, set runS
 	if flush == 0 {
 		t.every = r.flush
 	}
+	if msg == nil && in.Pending == nil {
+		// A resume starts at a turn boundary: the commands sent while
+		// nobody ran the run (a pause, steering) are acted on first.
+		if b := x.boundary(ctx, &v); b.any() {
+			paused, err := x.deliver(ctx, t, b)
+			if err != nil {
+				return outcome{kind: outAbort, err: err}
+			}
+			if paused {
+				return outcome{kind: outPaused}
+			}
+			in.Transcript = v.tr.Clone()
+		}
+	}
 	var spent llm.Usage
 	compacted := false
 	for attempt := 1; ; attempt++ {
@@ -1121,6 +1148,21 @@ func (x *exec) chat(ctx context.Context, agent Agent, msg *llm.Message, set runS
 		}
 		spent = spent.Add(out.usage)
 		out.usage = spent
+		if out.kind == outBoundary && ctx.Err() == nil {
+			// Stopped between two turns for the commands pending: deliver
+			// the steering, pause, or run on from the steered context. Not
+			// an attempt.
+			paused, err := x.deliver(ctx, t, t.stop)
+			if err != nil {
+				return outcome{kind: outAbort, err: err, usage: spent}
+			}
+			if paused {
+				return outcome{kind: outPaused, usage: spent}
+			}
+			attempt--
+			in = harness.Input{Transcript: t.v.tr.Clone()}
+			continue
+		}
 		if out.kind == outFailed && errors.Is(out.err, llm.ErrContextTooLong) && compactor != nil && !compacted && ctx.Err() == nil {
 			// Compacted, then run again from the compacted context, once.
 			// This is not a retry: it does not count as an attempt.
@@ -1198,6 +1240,9 @@ type turns struct {
 	// agent on every attempt and stored with the prompt.
 	policy *policy.Policy
 	mode   harness.Interaction
+	// stop is what the commands read at the boundary the agent was stopped
+	// at asked for, when run returned outBoundary.
+	stop boundary
 }
 
 // run runs the agent, streaming its events. flush is recorded with the
@@ -1206,6 +1251,7 @@ func (t *turns) run(ctx context.Context, agent Agent, in harness.Input, flush in
 	x := t.x
 	var result *harness.Result
 	suspended := false
+	var turnsUsage llm.Usage // of the turns done, for a stop at a boundary
 	in.ToolPolicy, in.Interaction = t.policy, t.mode
 	for ev, err := range agent.Run(ctx, in) {
 		if err != nil {
@@ -1297,6 +1343,18 @@ func (t *turns) run(ctx context.Context, agent Agent, in harness.Input, flush in
 		if save && ctx.Err() == nil {
 			if err := t.flush(ctx); err != nil {
 				return outcome{kind: outAbort, err: err}
+			}
+		}
+		if tr := ev.TurnRecord; ev.Kind == harness.EventTurnDone && tr != nil {
+			// A turn boundary: no model call or tool call is going on. The
+			// agent is stopped here for steering, and for a pause unless
+			// the model has answered (the run completes instead).
+			turnsUsage = turnsUsage.Add(tr.Usage)
+			if continuable(tr) && ctx.Err() == nil {
+				if b := x.boundary(ctx, t.v); len(b.steer) > 0 || b.pause && !final(tr) {
+					t.stop = b
+					return outcome{kind: outBoundary, usage: turnsUsage}
+				}
 			}
 		}
 	}

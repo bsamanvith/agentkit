@@ -31,6 +31,7 @@ const (
 	TypeRetrying    = wire.TypeRetrying
 	TypeRewind      = wire.TypeRewind
 	TypeUI          = wire.TypeUI
+	TypeSteered     = wire.TypeSteered
 )
 
 // Error codes of a failed run, and of HTTP errors.
@@ -79,6 +80,7 @@ const (
 
 	CodeTooManyBackgroundRuns = wire.CodeTooManyBackgroundRuns
 	CodeWallClockLimit        = wire.CodeWallClockLimit
+	CodePaused                = wire.CodePaused
 
 	CodeTriggerExists = wire.CodeTriggerExists
 	CodeStaticTrigger = wire.CodeStaticTrigger
@@ -96,6 +98,7 @@ const (
 	StatusCanceled  = wire.StatusCanceled
 	StatusRejected  = wire.StatusRejected
 	StatusSuspended = wire.StatusSuspended
+	StatusPaused    = wire.StatusPaused
 )
 
 // Conversation statuses (and [StatusRunning]).
@@ -147,6 +150,11 @@ type (
 	Credential = wire.Credential
 	// TaskRequest is [wire.TaskRequest]: the body of POST /v1/tasks.
 	TaskRequest = wire.TaskRequest
+	// SteerRequest is [wire.SteerRequest]: the body of POST
+	// /v1/tasks/{id}/messages.
+	SteerRequest = wire.SteerRequest
+	// TaskMessage is [wire.TaskMessage]: a steering message queued.
+	TaskMessage = wire.TaskMessage
 )
 
 // The conversions from harness types.

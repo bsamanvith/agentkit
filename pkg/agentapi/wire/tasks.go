@@ -14,7 +14,39 @@ const (
 	// CodeWallClockLimit ("wall_clock_limit"): a background run was still
 	// going on at its wall-clock limit, and failed. It is not retryable.
 	CodeWallClockLimit = "wall_clock_limit"
+	// CodePaused ("paused"): the run_error that ends an execution of a task
+	// paused at a turn boundary (POST /v1/tasks/{id}/pause). The task is
+	// paused, not over: POST /v1/tasks/{id}/resume continues it, and its
+	// events go on after this one, which is streamed, not stored.
+	CodePaused = "paused"
 )
+
+// TypeSteered says that steering messages (POST /v1/tasks/{id}/messages)
+// reached a task at a turn boundary: after the tool results of the turn
+// before it and before the next model call, which reads them. Steering holds
+// them in the order they were sent; messages queued together arrive in one
+// event. It does not end the run; the turns after it number on from the
+// turns before.
+const TypeSteered = "steered"
+
+// SteerRequest is the body of POST /v1/tasks/{id}/messages: a message for a
+// task that is going on, or paused. The answer is 202 and the message
+// queued ([TaskMessage]); the task reads it at its next turn boundary (a
+// [TypeSteered] event). A task that has ended refuses it (409 run_final).
+type SteerRequest struct {
+	Text string `json:"text"`
+}
+
+// TaskMessage is a steering message as POST /v1/tasks/{id}/messages queued
+// it: Seq numbers the commands sent to the run, from 1. A retry with the
+// same Idempotency-Key header returns the same message.
+type TaskMessage struct {
+	V     int       `json:"v"`
+	RunID string    `json:"run_id"`
+	Seq   int64     `json:"seq"`
+	Text  string    `json:"text"`
+	At    time.Time `json:"at"`
+}
 
 // Interaction modes of a task: whether it may wait for a person.
 const (

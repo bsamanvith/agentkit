@@ -454,3 +454,52 @@ func TestDefinitionStoredNormalized(t *testing.T) {
 		}
 	}
 }
+
+// draftGoesOnPublish is a store where the next publish finds its draft
+// deleted, as when another replica deletes it between the registry's build
+// and its publish.
+type draftGoesOnPublish struct {
+	store.ItemStore
+	armed atomic.Bool
+}
+
+func (s *draftGoesOnPublish) PublishItem(ctx context.Context, kind, name string, version int64) (store.Item, error) {
+	if s.armed.Swap(false) {
+		if err := s.DeleteItemVersion(ctx, kind, name, version); err != nil {
+			return store.Item{}, err
+		}
+	}
+	return s.ItemStore.PublishItem(ctx, kind, name, version)
+}
+
+// A draft's number is given again once its item has no versions left, so a
+// build of a draft is never kept: after a publish that lost its draft to a
+// delete, a new item of the same name runs its own version 1, not the old.
+func TestDraftBuildsAreNotKept(t *testing.T) {
+	t.Parallel()
+	g := newRig(t)
+	st := &draftGoesOnPublish{ItemStore: g.st}
+	r, err := registry.New(st, g.build)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := ctxOf(t, "acme")
+	save := func(system string) {
+		t.Helper()
+		if v, err := r.Save(ctx, "key-1", "a", wire.SaveAgentRequest{Definition: raw(t, def{System: system})}); err != nil || v.Version != 1 {
+			t.Fatalf("Save(%s) = %+v, %v; want version 1", system, v, err)
+		}
+	}
+	save("old")
+	st.armed.Store(true)
+	if _, err := r.Publish(ctx, "a", 1); !errors.Is(err, agentapi.ErrAgentNotFound) {
+		t.Fatalf("publishing a draft deleted meanwhile: %v, want ErrAgentNotFound", err)
+	}
+	save("new")
+	if _, err := r.Publish(ctx, "a", 1); err != nil {
+		t.Fatal(err)
+	}
+	if a, err := r.Agent(ctx, "a", 0); err != nil || a.System != "new" {
+		t.Errorf("Agent(a, published) = %q, %v; want the new version 1, %q", a.System, err, "new")
+	}
+}

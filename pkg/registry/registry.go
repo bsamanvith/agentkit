@@ -326,7 +326,12 @@ func (r *Registry) Agent(ctx context.Context, name string, version int64) (agent
 		return agentapi.Agent{}, fmt.Errorf("agent %q version %d: %w", name, version, err)
 	}
 	a.Version = version
-	r.keep(k, a)
+	// Only a version that was published is kept: it can never be deleted,
+	// so its number always means it. A draft's can name another version
+	// later, once its item lost every version and was made again.
+	if !v.PublishedAt.IsZero() {
+		r.keep(k, a)
+	}
 	return a, nil
 }
 

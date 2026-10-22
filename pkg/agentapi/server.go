@@ -801,6 +801,7 @@ func (s *Server) launch(ctx context.Context, cancel context.CancelCauseFunc, x *
 	t, _ := tenancy.From(ctx)
 	h := newHub(x.Run.ID, x.Run.ConversationID, t, x.Run.Interactive, seed.events)
 	h.ui = s.showsUI(ctx, x.Run.ConversationID)
+	h.stop = cancel
 	em := &emitter{log: s.log, h: h, seq: lastSeq(seed.events)}
 	rs, err := s.pub.Open(ctx, x.Run.ID)
 	if err != nil {
@@ -1152,7 +1153,7 @@ func (s *Server) leave(h *hub) {
 			return
 		}
 		s.log.Info("interrupting a run nobody follows", "run_id", h.runID, "grace", s.cfg.grace.String())
-		if _, err := s.runs.Interrupt(tenancy.With(context.Background(), h.tenant), h.runID); err != nil {
+		if _, err := s.interrupt(tenancy.With(context.Background(), h.tenant), h.runID); err != nil {
 			s.log.Warn("interrupting a run nobody follows", "run_id", h.runID, "err", err)
 		}
 	}()

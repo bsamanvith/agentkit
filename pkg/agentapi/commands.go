@@ -73,12 +73,57 @@ func (s *Server) command(ctx context.Context, w http.ResponseWriter, r *http.Req
 	if typ == commandCancel {
 		// The holder lets the run go, then cancels it: cancel it here too,
 		// so the answer is the run canceled (one of the two finds it final).
-		if _, err := s.runs.Cancel(ctx, id); err != nil && !errors.Is(err, store.ErrFinal) {
+		// A cancel holds the run while it stores it canceled: the other one
+		// finds it leased then, and waits for it once more.
+		_, err := s.runs.Cancel(ctx, id)
+		if errors.Is(err, store.ErrLeased) {
+			s.awaitReleased(ctx, id)
+			_, err = s.runs.Cancel(ctx, id)
+		}
+		if err != nil && !errors.Is(err, store.ErrFinal) {
 			s.commandError(w, id, err)
 			return
 		}
 	}
 	s.afterCommand(ctx, w, r, id)
+}
+
+// cancel cancels the run, as [runner.Runner.Cancel] does, and interrupt
+// interrupts it, as [runner.Runner.Interrupt] does, even in the moment
+// between this server launching an execution and the runner starting it:
+// the run is leased then, but by this server, and the runner does not yet
+// know the execution to stop it. Such an execution is stopped through its
+// context instead, and once it has ended, released, the command is done.
+func (s *Server) cancel(ctx context.Context, id string) (store.Run, error) {
+	run, err := s.runs.Cancel(ctx, id)
+	if errors.Is(err, store.ErrLeased) && s.stopOwn(ctx, id, runner.ErrCanceled) {
+		run, err = s.runs.Cancel(ctx, id)
+	}
+	return run, err
+}
+
+func (s *Server) interrupt(ctx context.Context, id string) (store.Run, error) {
+	run, err := s.runs.Interrupt(ctx, id)
+	if errors.Is(err, store.ErrLeased) && s.stopOwn(ctx, id, runner.ErrInterrupted) {
+		run, err = s.runs.Interrupt(ctx, id)
+	}
+	return run, err
+}
+
+// stopOwn stops the execution of the run this server launched, if it has
+// one, with cause, and reports whether it has ended (and let the run go).
+func (s *Server) stopOwn(ctx context.Context, id string, cause error) bool {
+	h := s.hubOf(ctx, id)
+	if h == nil {
+		return false
+	}
+	h.stop(cause)
+	select {
+	case <-h.ended:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 // lastStored is the Seq of the run's last stored event, or -1.
@@ -196,9 +241,9 @@ func (s *Server) consume(in *stream.Inbox, h *hub) bool {
 	go func() {
 		var err error
 		if verb == commandCancel {
-			_, err = s.runs.Cancel(ctx, h.runID)
+			_, err = s.cancel(ctx, h.runID)
 		} else {
-			_, err = s.runs.Interrupt(ctx, h.runID)
+			_, err = s.interrupt(ctx, h.runID)
 		}
 		if err != nil {
 			s.log.Warn("acting on a run's command", "run_id", h.runID, "command", verb, "err", err)

@@ -134,6 +134,28 @@ func TestOneRunnerHoldsTheLease(t *testing.T) {
 	}
 }
 
+// An execution iterated only once its context is done, its lease too old
+// to go on without a renewal (which then fails), lets the run go at once:
+// it does not stay leased until the lease expires.
+func TestExecutionStoppedBeforeItsRenewalReleasesTheLease(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	p := w.process()
+	ctx, cancel := context.WithCancel(w.ctx)
+	x, err := p.r.Run(ctx, "c", harness.UserText(w.model.on("q", 0)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.clk.Advance(ttl / 2)
+	cancel()
+	if _, err := x.Wait(); !errors.Is(err, context.Canceled) {
+		t.Errorf("Wait = %v, want context.Canceled", err)
+	}
+	if l := w.get(x.Run.ID).Lease; l.Owner != "" {
+		t.Errorf("the run is still leased: %+v", l)
+	}
+}
+
 // The lease is renewed while a run waits on the model longer than its time
 // to live: another runner cannot take it over meanwhile.
 func TestLeaseIsRenewedDuringALongTurn(t *testing.T) {

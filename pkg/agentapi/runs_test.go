@@ -16,6 +16,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/flow"
 	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
 	"github.com/bsamanvith/agentkit/pkg/runner"
+	"github.com/bsamanvith/agentkit/pkg/store"
 	"github.com/bsamanvith/agentkit/pkg/store/scoped"
 	"github.com/bsamanvith/agentkit/pkg/tenancy"
 )
@@ -182,6 +183,52 @@ func TestEventsOfAnEvictedRun(t *testing.T) {
 	}
 	if tail := r.events(first.runID(), "2"); len(tail) == 0 || tail[0].ID != "3" || !jsonEqual(tail, got[from(got, "3"):]) {
 		t.Errorf("from Last-Event-ID 2: %s", jsonOf(tail))
+	}
+}
+
+// staleStore answers the first Get of the run it was armed with as that run
+// was while it went on: a request that read the run just before it ended.
+type staleStore struct {
+	agentapi.Store
+	mu sync.Mutex
+	id string
+}
+
+func (s *staleStore) arm(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.id = id
+}
+
+func (s *staleStore) Get(ctx context.Context, id string) (store.Run, error) {
+	s.mu.Lock()
+	stale := s.id != "" && id == s.id
+	if stale {
+		s.id = ""
+	}
+	s.mu.Unlock()
+	run, err := s.Store.Get(ctx, id)
+	if err == nil && stale {
+		run.Status = store.StatusRunning
+		run.Lease = store.Lease{Owner: "this server", Expires: run.CreatedAt.Add(time.Hour)} // the rig's clock stands still
+	}
+	return run, err
+}
+
+// TestEventsOfARunThatEndsBetweenReads: GET /v1/runs/{id}/events that read
+// the run going on, and found its execution here ended by the time it looked
+// at the run's hub, streams the hub's events (the streamed ones included),
+// not the run replayed from the store.
+func TestEventsOfARunThatEndsBetweenReads(t *testing.T) {
+	t.Parallel()
+	clk := clocktest.NewFake(time.Time{})
+	base, tenant := testStore(t, clk)
+	st := &staleStore{Store: base}
+	r := newRig(t, script(t, llmtest.Text("Hello there, in a few deltas.")), rigConfig{clock: clk, store: st, api: tenant})
+	s := r.run("hi", "")
+	st.arm(s.runID())
+	if got := r.events(s.runID(), ""); !jsonEqual(got, s.events) {
+		t.Errorf("events of the run read going on:\n%s\nwant its stream's\n%s", jsonOf(got), jsonOf(s.events))
 	}
 }
 

@@ -75,6 +75,13 @@ func (s *Server) eventsOf(ctx context.Context, run store.Run) ([]Event, *hub, er
 	now := s.cfg.clock.Now()
 	if h := s.hubOf(ctx, run.ID); h != nil {
 		evs, done := h.snapshot()
+		if done && endStatus(evs[len(evs)-1], h.interactive) != runStatus(run, now) {
+			// The run may have ended since it was read, as its hub says:
+			// what the store says now decides.
+			if fresh, err := s.store.Get(ctx, run.ID); err == nil {
+				run = fresh
+			}
+		}
 		if !done || endStatus(evs[len(evs)-1], h.interactive) == runStatus(run, now) {
 			return evs, h, nil
 		}
@@ -104,6 +111,25 @@ func withEnding(run store.Run, rp replayed, now time.Time) []Event {
 	return append(evs[:len(evs):len(evs)], *end)
 }
 
+// endWait bounds how long a view of a run stored as ended waits for its
+// execution here to end: only its last writes are left, but an execution
+// that has not yet seen its run end elsewhere (canceled by another server)
+// goes on until its next lease renewal.
+const endWait = time.Second
+
+// awaitEnded waits until h's execution has ended, at most endWait (real
+// time: it waits for goroutines, not for the run's clock) or until ctx is
+// done.
+func awaitEnded(ctx context.Context, h *hub) {
+	t := time.NewTimer(endWait)
+	defer t.Stop()
+	select {
+	case <-h.ended:
+	case <-t.C:
+	case <-ctx.Done():
+	}
+}
+
 // runView is the run as GET /v1/runs/{id} returns it, from its events.
 func (s *Server) runView(ctx context.Context, run store.Run) (Run, error) {
 	evs, h, err := s.eventsOf(ctx, run)
@@ -111,9 +137,13 @@ func (s *Server) runView(ctx context.Context, run store.Run) (Run, error) {
 		return Run{}, err
 	}
 	if h != nil && run.Status != store.StatusRunning {
-		// The run's end is stored a moment before its last event reaches
-		// its log: end its events as its status says, as for a run no hub
-		// follows, so the view has its answer (or error) and end.
+		// The run's end is stored a moment before its execution here ends
+		// (and frees its slot of the server): wait for that, so a client
+		// that sees the run ended and starts the next one is not refused.
+		awaitEnded(ctx, h)
+		// The last event may still not be in the log: end its events as
+		// its status says, as for a run no hub follows, so the view has its
+		// answer (or error) and end.
 		evs = withEnding(run, summarize(evs), s.cfg.clock.Now())
 	}
 	v := s.runSummary(ctx, run)
@@ -795,7 +825,7 @@ func (s *Server) stopRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
-	_, err := s.runs.Interrupt(ctx, id)
+	_, err := s.interrupt(ctx, id)
 	switch {
 	case errors.Is(err, store.ErrLeased) && !s.ownBus:
 		s.command(ctx, w, r, id, commandStop)
@@ -814,7 +844,7 @@ func (s *Server) cancelRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
-	if _, err := s.runs.Cancel(ctx, id); err != nil {
+	if _, err := s.cancel(ctx, id); err != nil {
 		if errors.Is(err, store.ErrLeased) && !s.ownBus {
 			s.command(ctx, w, r, id, commandCancel)
 			return

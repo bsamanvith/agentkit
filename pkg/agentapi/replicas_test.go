@@ -25,11 +25,12 @@ func replicas(t *testing.T, m *model) (a, b *rig) {
 
 // replicaConfig changes what replicasWith builds.
 type replicaConfig struct {
-	tools  tool.Registry                       // a's tools
-	storeA func(agentapi.Store) agentapi.Store // wraps a's view of the store
-	storeB func(agentapi.Store) agentapi.Store // wraps b's view of the store
-	busB   func(bus.Bus) bus.Bus               // wraps b's view of the bus
-	apiB   []agentapi.Option                   // more options for b
+	tools  tool.Registry                           // a's tools
+	storeA func(agentapi.Store) agentapi.Store     // wraps a's view of the store
+	storeB func(agentapi.Store) agentapi.Store     // wraps b's view of the store
+	busB   func(bus.Bus) bus.Bus                   // wraps b's view of the bus
+	apiB   []agentapi.Option                       // more options for b
+	apiA   func(*clocktest.Fake) []agentapi.Option // more options for a, given the shared clock
 }
 
 // replicasWith is replicas, changed by cfg; clk and the shared store and bus
@@ -48,7 +49,11 @@ func replicasWith(t *testing.T, m *model, cfg replicaConfig) (a, b *rig) {
 	if cfg.busB != nil {
 		busB = cfg.busB(subs)
 	}
-	a = newRig(t, m, rigConfig{clock: sh.clock, store: wrap(cfg.storeA), tools: cfg.tools, api: sh.api(sh.bus)})
+	apiA := sh.api(sh.bus)
+	if cfg.apiA != nil {
+		apiA = append(apiA, cfg.apiA(sh.clock)...)
+	}
+	a = newRig(t, m, rigConfig{clock: sh.clock, store: wrap(cfg.storeA), tools: cfg.tools, api: apiA})
 	b = newRig(t, echo(t), rigConfig{clock: sh.clock, store: wrap(cfg.storeB), api: append(sh.api(busB), cfg.apiB...)})
 	b.models = nil // b runs nothing: a's model requests are a's
 	a.shared, b.shared = sh, sh

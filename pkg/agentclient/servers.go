@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 )
@@ -53,6 +54,19 @@ func (c *Client) UpdateToolset(ctx context.Context, name string, req wire.Update
 // (DELETE /v1/toolsets/{name}); agents lose its tools at their next turn.
 func (c *Client) DeleteToolset(ctx context.Context, name string) error {
 	return c.send(ctx, http.MethodDelete, toolsetPath(name), nil, http.StatusNoContent, nil)
+}
+
+// SearchMCPRegistry searches the MCP Registry the server is configured with
+// (GET /v1/mcp-registry/search) for servers that can be added by URL, up
+// to limit of them (0: the server's default). A registry that is down
+// matches [ErrRegistryUnavailable].
+func (c *Client) SearchMCPRegistry(ctx context.Context, query string, limit int) (wire.RegistrySearch, error) {
+	q := url.Values{"q": {query}}
+	if limit > 0 {
+		q.Set("limit", strconv.Itoa(limit))
+	}
+	var res wire.RegistrySearch
+	return res, c.get(ctx, "/v1/mcp-registry/search?"+q.Encode(), &res)
 }
 
 func toolsetPath(name string) string { return "/v1/toolsets/" + url.PathEscape(name) }

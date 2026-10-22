@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
+	"github.com/bsamanvith/agentkit/pkg/mcp/registry"
 	"github.com/bsamanvith/agentkit/pkg/mcp/servers"
 	"github.com/bsamanvith/agentkit/pkg/netguard"
 	"github.com/bsamanvith/agentkit/pkg/store"
@@ -40,6 +41,26 @@ func (c cli) newToolsetAdmin(cfg serveConfig, st agentapi.Store, log *slog.Logge
 		servers.WithGuard(guard),
 		servers.WithHeaderEnv(rc.HeaderEnv, func(name string) (string, bool) { v := c.env(name); return v, v != "" }),
 		servers.WithLogger(log.With("component", agentapi.Name)),
+	}
+	tenants := map[string][]string{}
+	for id, t := range rc.Tenants {
+		tenants[id] = t.MCPServers.Allow
+	}
+	allow, err := servers.NewAllowlist(rc.MCPServers.Allow, tenants)
+	if err != nil {
+		return nil, fmt.Errorf("runtime_toolsets: %w", err)
+	}
+	opts = append(opts, servers.WithAllowlist(allow))
+	if rc.Registry.on() {
+		url := rc.Registry.URL
+		if url == "" {
+			url = registry.DefaultURL
+		}
+		reg, err := registry.New(url)
+		if err != nil {
+			return nil, fmt.Errorf("runtime_toolsets.registry.url: %w", err)
+		}
+		opts = append(opts, servers.WithRegistry(reg))
 	}
 	if rc.MaxToolsets < 0 || rc.ConnectTimeout < 0 {
 		return nil, errors.New("runtime_toolsets: negative limit")

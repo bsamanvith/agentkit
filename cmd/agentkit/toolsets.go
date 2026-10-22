@@ -18,6 +18,7 @@ import (
 const toolsetsUsage = `usage: agentkit toolsets <command> [flags] [args]
 
   list                                  the server's toolsets: from its config, and added at run time
+  search [-limit n] <query>             find MCP servers to add in the MCP Registry (by name)
   add -name <name> [flags] <url>        add an MCP server as a toolset; its tools are off until approved
   review <name>                         a toolset's tools: approved, new, changed (and how), removed, rejected
   approve <name> [tool...]              approve the tools as the review shows them (default: every new and changed one)
@@ -39,7 +40,7 @@ func (c cli) toolsetsCmd(ctx context.Context, args []string) int {
 	verb, args := args[0], args[1:]
 	cmd := "agentkit toolsets " + verb
 	operands := map[string]string{
-		"list": "", "add": "<url>", "review": "<name>", "approve": "<name> [tool...]", "reject": "<name> <tool>...",
+		"list": "", "search": "<query>", "add": "<url>", "review": "<name>", "approve": "<name> [tool...]", "reject": "<name> <tool>...",
 		"enable": "<name>", "disable": "<name>", "delete": "<name>",
 	}
 	operand, ok := operands[verb]
@@ -55,6 +56,10 @@ func (c cli) toolsetsCmd(ctx context.Context, args []string) int {
 	fs.StringVar(&server, "server", server, "the agent API's base URL, from $"+envServer+" if set")
 	asJSON := fs.Bool("json", false, "print the server's answer as JSON")
 	var add wire.AddToolsetRequest
+	limit := 0
+	if verb == "search" {
+		fs.IntVar(&limit, "limit", 0, "the most servers to list (default: the server's, 20)")
+	}
 	var headers headerList
 	if verb == "add" {
 		fs.StringVar(&add.Name, "name", "", "the toolset's name, which prefixes its tools (<name>__<tool>)")
@@ -79,6 +84,8 @@ func (c cli) toolsetsCmd(ctx context.Context, args []string) int {
 	switch verb {
 	case "list":
 		out, err = client.Toolsets(ctx)
+	case "search":
+		out, err = client.SearchMCPRegistry(ctx, fs.Arg(0), limit)
 	case "add":
 		add.Type, add.URL = "mcp", fs.Arg(0)
 		if len(headers) > 0 {
@@ -163,6 +170,29 @@ func printToolsets(w io.Writer, v any) error {
 			}
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\n", ts.Name, ts.Type, status, ts.ToolCount, source)
 		}
+	case wire.RegistrySearch:
+		fmt.Fprintln(tw, "NAME\tTRANSPORT\tURL\tNOTE")
+		for _, s := range v.Servers {
+			for _, r := range s.Remotes {
+				var note []string
+				if !r.Allowed {
+					note = append(note, "not allowed here")
+				}
+				if len(r.Variables) > 0 {
+					note = append(note, "fill in "+strings.Join(r.Variables, ", "))
+				}
+				for _, h := range r.Headers {
+					if h.Required {
+						note = append(note, "header "+h.Name)
+					}
+				}
+				if s.Status != "active" {
+					note = append(note, s.Status)
+				}
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", s.SuggestedName, r.Transport, r.URL, strings.Join(note, "; "))
+			}
+		}
+		fmt.Fprintf(tw, "\n%d servers from %s. A listing is not a review: add one with\n  agentkit toolsets add -name <name> [-transport sse] <url>\n", len(v.Servers), v.Registry)
 	case wire.ServerToolset:
 		status := v.Status
 		if v.Reason != "" {

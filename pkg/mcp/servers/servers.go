@@ -15,6 +15,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/mcp/client"
+	mcpregistry "github.com/bsamanvith/agentkit/pkg/mcp/registry"
 	"github.com/bsamanvith/agentkit/pkg/netguard"
 	"github.com/bsamanvith/agentkit/pkg/store"
 	"github.com/bsamanvith/agentkit/pkg/tenancy"
@@ -82,6 +83,8 @@ type Manager struct {
 	log            *slog.Logger
 	connectTimeout time.Duration
 	maxToolsets    int
+	allow          *Allowlist
+	registry       *mcpregistry.Client
 
 	mu     sync.Mutex
 	conns  map[connKey]*conn
@@ -200,6 +203,9 @@ func (m *Manager) save(ctx context.Context, name string, r record, ifVersion int
 func (m *Manager) Add(ctx context.Context, by string, req wire.AddToolsetRequest) (wire.ServerToolset, error) {
 	r, err := m.checkAdd(req)
 	if err != nil {
+		return wire.ServerToolset{}, err
+	}
+	if err := m.checkAllowed(ctx, r.URL); err != nil {
 		return wire.ServerToolset{}, err
 	}
 	all, err := m.store.ListToolsets(ctx)

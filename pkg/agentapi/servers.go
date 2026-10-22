@@ -37,6 +37,9 @@ var (
 	// ErrAuthRequired: the MCP server refused agentkit for want of a
 	// credential (422 auth_required).
 	ErrAuthRequired = errors.New("the MCP server needs a credential")
+	// ErrURLNotAllowed: the tenant's mcp_servers.allow does not include
+	// the server's URL (403 url_not_allowed).
+	ErrURLNotAllowed = errors.New("the tenant does not allow adding this URL")
 )
 
 // ToolsetAdmin keeps the toolsets a tenant adds at run time: external MCP
@@ -226,6 +229,7 @@ func (s *Server) adminError(w http.ResponseWriter, what string, err error) {
 		{ErrToolsetExists, http.StatusConflict, CodeToolsetExists},
 		{ErrToolsetConflict, http.StatusConflict, CodeConflict},
 		{ErrToolsetInvalid, http.StatusBadRequest, CodeInvalidRequest},
+		{ErrURLNotAllowed, http.StatusForbidden, CodeURLNotAllowed},
 		{ErrAuthRequired, http.StatusUnprocessableEntity, CodeAuthRequired},
 		{ErrServerUnreachable, http.StatusUnprocessableEntity, CodeServerUnreachable},
 	} {

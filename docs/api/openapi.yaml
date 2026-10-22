@@ -1537,7 +1537,7 @@
             }
           },
           "403": {
-            "description": "forbidden: the request's credential does not have the scope agent:admin, or (adding) may not use a toolset of that name. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
+            "description": "forbidden: the request's credential does not have the scope agent:admin, or (adding) may not use a toolset of that name. url_not_allowed: the tenant's mcp_servers.allow does not include the URL. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1938,6 +1938,105 @@
           },
           "404": {
             "description": "not_found: no such toolset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/mcp-registry/search": {
+      "get": {
+        "operationId": "searchMCPRegistry",
+        "summary": "Search the MCP Registry for servers to add",
+        "description": "Admins only (agent:admin). Searches the MCP Registry the operator configured (the official one at registry.modelcontextprotocol.io by default, or a subregistry) and returns the servers that can be added by URL: those with a remote over Streamable HTTP or SSE. Servers that are only packages to run are left out. Results are cached for a few minutes. An entry fills in POST /v1/toolsets; it is not a trust signal: adding one is probed and reviewed like any URL. Each remote says whether the tenant's mcp_servers.allow lets admins add it.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "description": "What to search for (the registry matches server names); 1 to 200 bytes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "The most servers to return: 1 to 100, default 20.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The servers found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrySearch"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: q is missing or too long, or limit is out of range.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: this server searches no MCP registry (toolsets added at run time, or the registry, are off).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "registry_unavailable: the registry could not be reached or did not answer as its API says. Adding a server by URL (POST /v1/toolsets) still works.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4450,7 +4549,7 @@
         "properties": {
           "code": {
             "type": "string",
-            "description": "What went wrong, for programs: invalid_request, invalid_definition (400), unauthorized, bad_signature (401), forbidden, csrf_failed (403), not_found (404), too_large (413), too_many_attempts, too_many_background_runs (429), conversation_busy, agent_mismatch, run_final, run_leased, awaiting_decision, not_pending, shape_changed, toolset_exists, trigger_exists, static_trigger, trigger_paused, replayed, conflict, read_only, version_published (409), auth_required, server_unreachable (422), over_capacity, shutting_down (503), internal (500); a run's codes are interrupted, run_failed, suspended (a flow run waits for a decision, a chat run for input), rejected, budget_exceeded, max_tokens, refused, unexpected_stop, cancelled, timeout, wall_clock_limit (a background run passed its wall-clock limit, and failed), paused (a task paused at a turn boundary; it is not over: resume it), shutdown, rate_limited, overloaded, model_auth, context_too_long, model_rejected and internal. conversation_interrupted is no longer returned. New codes may be added: treat an unknown one as internal."
+            "description": "What went wrong, for programs: invalid_request, invalid_definition (400), unauthorized, bad_signature (401), forbidden, csrf_failed, url_not_allowed (403), not_found (404), too_large (413), too_many_attempts, too_many_background_runs (429), conversation_busy, agent_mismatch, run_final, run_leased, awaiting_decision, not_pending, shape_changed, toolset_exists, trigger_exists, static_trigger, trigger_paused, replayed, conflict, read_only, version_published (409), auth_required, server_unreachable (422), registry_unavailable (502), over_capacity, shutting_down (503), internal (500); a run's codes are interrupted, run_failed, suspended (a flow run waits for a decision, a chat run for input), rejected, budget_exceeded, max_tokens, refused, unexpected_stop, cancelled, timeout, wall_clock_limit (a background run passed its wall-clock limit, and failed), paused (a task paused at a turn boundary; it is not over: resume it), shutdown, rate_limited, overloaded, model_auth, context_too_long, model_rejected and internal. conversation_interrupted is no longer returned. New codes may be added: treat an unknown one as internal."
           },
           "message": {
             "type": "string",
@@ -6171,6 +6270,148 @@
             "type": "object"
           }
         }
+      },
+      "RegistrySearch": {
+        "type": "object",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "query": {
+            "type": "string"
+          },
+          "registry": {
+            "type": "string",
+            "description": "The URL of the registry searched."
+          },
+          "restricted": {
+            "type": "boolean",
+            "description": "The tenant limits the URLs admins may add (mcp_servers.allow); each remote's allowed says whether its URL is one."
+          },
+          "servers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegistryServer"
+            }
+          }
+        },
+        "required": [
+          "v",
+          "query",
+          "registry",
+          "restricted",
+          "servers"
+        ],
+        "description": "Servers an MCP Registry lists that can be added by URL."
+      },
+      "RegistryServer": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The registry's name for it (app.linear/linear)."
+          },
+          "suggested_name": {
+            "type": "string",
+            "description": "A toolset name for the add form (linear)."
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "description": "The registry's, sanitized: third-party text."
+          },
+          "version": {
+            "type": "string"
+          },
+          "website_url": {
+            "type": "string"
+          },
+          "repository_url": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "description": "The registry's: active or deprecated."
+          },
+          "remotes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegistryRemote"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "suggested_name",
+          "status",
+          "remotes"
+        ],
+        "description": "A server of a registry search, with at least one remote."
+      },
+      "RegistryRemote": {
+        "type": "object",
+        "properties": {
+          "transport": {
+            "enum": [
+              "http",
+              "sse"
+            ],
+            "description": "As POST /v1/toolsets takes it: http is Streamable HTTP."
+          },
+          "url": {
+            "type": "string"
+          },
+          "variables": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The {variables} in url to fill in before adding."
+          },
+          "headers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegistryHeader"
+            }
+          },
+          "allowed": {
+            "type": "boolean",
+            "description": "false when the tenant's mcp_servers.allow does not include url: POST /v1/toolsets refuses it."
+          }
+        },
+        "required": [
+          "transport",
+          "url",
+          "allowed"
+        ],
+        "description": "An endpoint a server is hosted at."
+      },
+      "RegistryHeader": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "secret": {
+            "type": "boolean",
+            "description": "A credential: add it as ${NAME} of a variable the operator allows."
+          }
+        },
+        "required": [
+          "name",
+          "required",
+          "secret"
+        ],
+        "description": "A header a remote takes."
       },
       "AuthConfig": {
         "type": "object",

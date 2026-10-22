@@ -57,6 +57,7 @@ type Store interface {
 	store.NotificationLog
 	store.ItemStore
 	store.MessageLog
+	store.TriggerStore
 	flow.Checkpointer
 }
 
@@ -65,7 +66,9 @@ type Store interface {
 type Opened struct {
 	Store Store
 	Admin store.Admin
-	Close func() error
+	// Triggers finds triggers across tenants, as Admin finds runs.
+	Triggers store.TriggerAdmin
+	Close    func() error
 }
 
 // Config is what [Open] passes a [Backend].

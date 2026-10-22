@@ -23,7 +23,7 @@ func sqliteBackend() Backend {
 			if err != nil {
 				return Opened{}, err
 			}
-			return Opened{Store: s, Admin: sqlite.Admin(s), Close: s.Close}, nil
+			return Opened{Store: s, Admin: sqlite.Admin(s), Triggers: sqlite.TriggerAdmin(s), Close: s.Close}, nil
 		},
 	}
 }

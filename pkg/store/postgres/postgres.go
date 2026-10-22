@@ -66,6 +66,8 @@ var (
 	_ store.ConversationIndex = (*Store)(nil)
 	_ store.ToolsetStore      = (*Store)(nil)
 	_ store.ItemStore         = (*Store)(nil)
+	_ store.TriggerStore      = (*Store)(nil)
+	_ store.TriggerAdmin      = admin{}
 	_ flow.Checkpointer       = (*Store)(nil)
 	_ store.Admin             = admin{}
 	_ store.MessageAdmin      = admin{}

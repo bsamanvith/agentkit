@@ -163,6 +163,9 @@ func ModuleRules() Rules {
 				"pkg/credentials/connect", "pkg/credentials", "pkg/credentials/memory", "pkg/credentials/credentialstest",
 				// Its tests define agents through the registry (T075).
 				"pkg/registry",
+				// Triggers (T072): their definitions, schedules and inbound
+				// webhooks' Standard Webhooks signatures.
+				"pkg/trigger",
 			},
 			// A2UI (T065): the protocol's types, the catalog and the
 			// validator stand alone; ui_render is a tool.
@@ -338,6 +341,10 @@ func ModuleRules() Rules {
 				"pkg/store", "pkg/tenancy", "pkg/clock", "pkg/tool", "pkg/llm", "pkg/runner", "pkg/agentapi/wire",
 				"pkg/agentapi", "pkg/harness", "pkg/store/memory", "pkg/llm/llmtest", "pkg/clock/clocktest", "internal/testkit",
 			},
+			// Triggers (T072): definitions, cron schedules, the data block of
+			// a firing's message, and the scheduler over the store's
+			// TriggerAdmin; it starts no runs (the agent API does).
+			"pkg/trigger": {"pkg/store", "pkg/clock", "pkg/llm", "pkg/tenancy", "pkg/clock/clocktest"},
 			// The SSRF guard is the standard library only.
 			"pkg/netguard": {},
 			// The credential vault (T042) knows tenants and nothing else:

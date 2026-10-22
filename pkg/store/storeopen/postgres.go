@@ -21,7 +21,7 @@ func postgresBackend() Backend {
 			if err != nil {
 				return Opened{}, err
 			}
-			return Opened{Store: s, Admin: postgres.Admin(s), Close: func() error { s.Close(); return nil }}, nil
+			return Opened{Store: s, Admin: postgres.Admin(s), Triggers: postgres.TriggerAdmin(s), Close: func() error { s.Close(); return nil }}, nil
 		},
 		Migrate: func(ctx context.Context, url string) error { return postgres.Migrate(ctx, url) },
 	}

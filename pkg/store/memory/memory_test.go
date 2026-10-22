@@ -154,3 +154,11 @@ func TestMessageLog(t *testing.T) {
 		return s, memory.MessageAdmin(s)
 	})
 }
+
+func TestTriggerStore(t *testing.T) {
+	t.Parallel()
+	storetest.RunTriggerStore(t, func(_ *testing.T, clk clock.Clock) (store.TriggerStore, store.TriggerAdmin) {
+		s := memory.New(memory.WithClock(clk))
+		return s, memory.TriggerAdmin(s)
+	})
+}

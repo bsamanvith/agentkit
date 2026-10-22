@@ -37,6 +37,8 @@ var (
 	_ flow.Checkpointer       = (*Store)(nil)
 	_ store.Admin             = admin{}
 	_ store.MessageAdmin      = admin{}
+	_ store.TriggerStore      = (*Store)(nil)
+	_ store.TriggerAdmin      = admin{}
 )
 
 // Option configures a [Store].
@@ -71,6 +73,7 @@ type Store struct {
 	items         map[key]*storedItem        // by itemID
 	messages      map[key]store.Message      // by message id
 	threads       map[key]store.Thread       // by thread id
+	triggers      map[key]*memTrigger        // by trigger id
 }
 
 // key scopes an id by tenant: the same id in two tenants is two things.
@@ -101,6 +104,7 @@ func New(opts ...Option) *Store {
 		items:         map[key]*storedItem{},
 		messages:      map[key]store.Message{},
 		threads:       map[key]store.Thread{},
+		triggers:      map[key]*memTrigger{},
 	}
 	for _, o := range opts {
 		o(s)

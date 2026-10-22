@@ -2701,6 +2701,736 @@
         }
       }
     },
+    "/v1/triggers": {
+      "post": {
+        "operationId": "createTrigger",
+        "summary": "Create a trigger",
+        "description": "A trigger starts background runs (tasks) of an agent without a person: on a cron schedule, or when its inbound webhook is called. Each firing is recorded (GET /v1/triggers/{id}/firings). A schedule fires at most once per due time across replicas; after downtime it fires once for all the times it missed; a firing while the trigger's previous run is still going on is recorded as skipped.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriggerRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The trigger, with its webhook's secret.",
+            "headers": {
+              "Location": {
+                "description": "/v1/triggers/{id}",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trigger"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: the body is not a TriggerRequest, a bad ID, prompt or schedule, both or neither of a schedule and a webhook, a webhook on a server that takes none, or a conversation of another agent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such agent or conversation, or this server has no triggers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "trigger_exists: a trigger has the ID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listTriggers",
+        "summary": "List the triggers",
+        "description": "The tenant's triggers, sorted by ID, without their webhooks' secrets.",
+        "responses": {
+          "200": {
+            "description": "The triggers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggerList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: this server has no triggers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/triggers/{id}": {
+      "get": {
+        "operationId": "getTrigger",
+        "summary": "Read a trigger",
+        "description": "The trigger, with its webhook's path and secret, its next firing and its newest firing.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The trigger's ID.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The trigger.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trigger"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such trigger, or this server has no triggers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateTrigger",
+        "summary": "Change a trigger",
+        "description": "The fields given replace the trigger's. A schedule replaces a webhook and a webhook a schedule; rotate_webhook gives it a new webhook path and secret. A changed schedule goes on from now.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The trigger's ID.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriggerUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The trigger as changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trigger"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: the body is not a TriggerUpdate, or the trigger it makes is not valid (as for createTrigger).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such trigger, agent or conversation, or this server has no triggers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "static_trigger: the trigger is from the server's config file; conflict: it is at another version than the body's.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteTrigger",
+        "summary": "Delete a trigger",
+        "description": "Removes the trigger and its firings; runs it started go on.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The trigger's ID.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such trigger, or this server has no triggers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "static_trigger: the trigger is from the server's config file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/triggers/{id}/pause": {
+      "post": {
+        "operationId": "pauseTrigger",
+        "summary": "Pause a trigger",
+        "description": "A paused trigger does not fire: its schedule is not due, and its webhook answers 409 trigger_paused. Pausing a paused trigger changes nothing.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The trigger's ID.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The trigger.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trigger"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such trigger, or this server has no triggers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/triggers/{id}/resume": {
+      "post": {
+        "operationId": "resumeTrigger",
+        "summary": "Resume a trigger",
+        "description": "A schedule goes on from now, without the times it missed while paused.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The trigger's ID.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The trigger.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trigger"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such trigger, or this server has no triggers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/triggers/{id}/firings": {
+      "get": {
+        "operationId": "listFirings",
+        "summary": "List a trigger's firings",
+        "description": "Every time the trigger fired, newest first (the newest 200 are kept): when, for which due time or delivery, and what became of it.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The trigger's ID.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "At most this many (1 to 200, default 20).",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The firings.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FiringList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: limit is not from 1 to 200.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such trigger, or this server has no triggers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/hooks/{id}": {
+      "post": {
+        "operationId": "postHook",
+        "summary": "Call a trigger's inbound webhook",
+        "description": "Fires the trigger of the webhook. It needs no credentials but a Standard Webhooks signature under the trigger's secret: headers webhook-id (the delivery's ID, unique per trigger), webhook-timestamp (Unix seconds, within 5 minutes of the server's clock) and webhook-signature (v1,<base64 of HMAC-SHA256 of \"<id>.<timestamp>.<body>\">). The JSON body is given to the run after the trigger's prompt as a labelled block of third-party data, never as instructions.",
+        "security": [
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The webhook's ID: the last segment of the trigger's webhook path.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "description": "Any JSON: the sender's event."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The firing, skipped: the trigger's previous run is still going on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HookAccepted"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "The firing, and the run it started.",
+            "headers": {
+              "Location": {
+                "description": "/v1/runs/{id}",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Agentkit-Run-Id": {
+                "description": "The run's ID.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Agentkit-Conversation-Id": {
+                "description": "The ID of the run's conversation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HookAccepted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: the body is not JSON, or the webhook-id is not ^[a-zA-Z0-9_.:-]{1,128}$.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "bad_signature: no signature, or none that matches the trigger's secret, or a timestamp too far from now.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such webhook, or this server takes no inbound webhooks.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "replayed: the trigger has taken a delivery with this webhook-id; trigger_paused: the trigger is paused. No run was started.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "too_large: the body is over the server's limit (64 KiB by default).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/agents/{name}/versions": {
       "get": {
         "operationId": "listAgentVersions",
@@ -3327,7 +4057,7 @@
         "properties": {
           "code": {
             "type": "string",
-            "description": "What went wrong, for programs: invalid_request, invalid_definition (400), unauthorized (401), forbidden, csrf_failed (403), not_found (404), too_large (413), too_many_attempts, too_many_background_runs (429), conversation_busy, agent_mismatch, run_final, run_leased, awaiting_decision, not_pending, shape_changed, toolset_exists, conflict, read_only, version_published (409), auth_required, server_unreachable (422), over_capacity, shutting_down (503), internal (500); a run's codes are interrupted, run_failed, suspended (a flow run waits for a decision, a chat run for input), rejected, budget_exceeded, max_tokens, refused, unexpected_stop, cancelled, timeout, wall_clock_limit (a background run passed its wall-clock limit, and failed), shutdown, rate_limited, overloaded, model_auth, context_too_long, model_rejected and internal. conversation_interrupted is no longer returned. New codes may be added: treat an unknown one as internal."
+            "description": "What went wrong, for programs: invalid_request, invalid_definition (400), unauthorized, bad_signature (401), forbidden, csrf_failed (403), not_found (404), too_large (413), too_many_attempts, too_many_background_runs (429), conversation_busy, agent_mismatch, run_final, run_leased, awaiting_decision, not_pending, shape_changed, toolset_exists, trigger_exists, static_trigger, trigger_paused, replayed, conflict, read_only, version_published (409), auth_required, server_unreachable (422), over_capacity, shutting_down (503), internal (500); a run's codes are interrupted, run_failed, suspended (a flow run waits for a decision, a chat run for input), rejected, budget_exceeded, max_tokens, refused, unexpected_stop, cancelled, timeout, wall_clock_limit (a background run passed its wall-clock limit, and failed), shutdown, rate_limited, overloaded, model_auth, context_too_long, model_rejected and internal. conversation_interrupted is no longer returned. New codes may be added: treat an unknown one as internal."
           },
           "message": {
             "type": "string",
@@ -5433,6 +6163,257 @@
           "v",
           "authorize_url",
           "expires_at"
+        ]
+      },
+      "TriggerRequest": {
+        "type": "object",
+        "description": "The body of POST /v1/triggers: give it a schedule or a webhook, not both. Unknown fields are refused.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]{1,64}$",
+            "description": "The trigger's ID in the tenant."
+          },
+          "agent": {
+            "type": "string",
+            "description": "The agent its runs are of: empty for the default agent, or the agent of conversation_id."
+          },
+          "prompt": {
+            "type": "string",
+            "description": "The template of the message each run starts from: {{trigger}} (its ID), {{time}} (the firing's time, RFC 3339 in the schedule's zone) and {{date}} (YYYY-MM-DD) are filled in. A webhook's body follows it as a data block, never in it."
+          },
+          "conversation_id": {
+            "type": "string",
+            "description": "The conversation every firing continues; absent: a new conversation each time."
+          },
+          "schedule": {
+            "type": "string",
+            "description": "A cron schedule: five fields (minute hour day-of-month month day-of-week) or @hourly, @daily, @weekly, @monthly, @yearly; optionally after CRON_TZ=<IANA zone> (default UTC). A time a daylight-saving change skips fires at the change; one it repeats fires once."
+          },
+          "webhook": {
+            "type": "boolean",
+            "description": "Give the trigger an inbound webhook (POST /v1/hooks/{id})."
+          },
+          "paused": {
+            "type": "boolean",
+            "description": "Create it paused."
+          }
+        },
+        "required": [
+          "id",
+          "prompt"
+        ]
+      },
+      "TriggerUpdate": {
+        "type": "object",
+        "description": "The body of PATCH /v1/triggers/{id}: the fields given replace the trigger's. Unknown fields are refused.",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "description": "If set, the version the change is to: another is 409 conflict."
+          },
+          "agent": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "conversation_id": {
+            "type": "string",
+            "description": "Empty: a new conversation each time."
+          },
+          "schedule": {
+            "type": "string"
+          },
+          "webhook": {
+            "type": "boolean"
+          },
+          "rotate_webhook": {
+            "type": "boolean",
+            "description": "Give the trigger a new webhook path and secret: the old ones stop working."
+          }
+        }
+      },
+      "TriggerWebhook": {
+        "type": "object",
+        "description": "Where a trigger's webhook is posted, and the secret its deliveries are signed with (shown with a single trigger, not in lists).",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The URL's path on this server: /v1/hooks/<id>."
+          },
+          "secret": {
+            "type": "string",
+            "description": "whsec_ and the base64 of the HMAC key (Standard Webhooks)."
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "Firing": {
+        "type": "object",
+        "description": "One time a trigger fired, whatever became of it.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The schedule's due time, or the webhook's webhook-id."
+          },
+          "scheduled_for": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The due time it is for; absent for a webhook."
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it fired."
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "started",
+              "skipped",
+              "failed"
+            ],
+            "description": "pending: its run not started yet; started: its run was started (run_id); skipped: no run, on purpose (reason), as the previous one was still going on; failed: its run could not be started (reason)."
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "ended_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "at",
+          "state"
+        ]
+      },
+      "Trigger": {
+        "type": "object",
+        "description": "A trigger: what starts background runs of an agent on a schedule or a webhook.",
+        "properties": {
+          "v": {
+            "const": 1
+          },
+          "id": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "conversation_id": {
+            "type": "string"
+          },
+          "schedule": {
+            "type": "string"
+          },
+          "webhook": {
+            "$ref": "#/components/schemas/TriggerWebhook"
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "static": {
+            "type": "boolean",
+            "description": "From the server's config file: the API pauses and resumes it, and changes nothing else."
+          },
+          "next_fire_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the schedule next fires; absent for a webhook or a paused trigger."
+          },
+          "last_firing": {
+            "$ref": "#/components/schemas/Firing"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "v",
+          "id",
+          "prompt",
+          "paused",
+          "version",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "TriggerList": {
+        "type": "object",
+        "description": "The tenant's triggers, sorted by ID.",
+        "properties": {
+          "v": {
+            "const": 1
+          },
+          "triggers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Trigger"
+            }
+          }
+        },
+        "required": [
+          "v",
+          "triggers"
+        ]
+      },
+      "FiringList": {
+        "type": "object",
+        "description": "A trigger's firings, newest first.",
+        "properties": {
+          "v": {
+            "const": 1
+          },
+          "firings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Firing"
+            }
+          }
+        },
+        "required": [
+          "v",
+          "firings"
+        ]
+      },
+      "HookAccepted": {
+        "type": "object",
+        "description": "An inbound webhook the trigger took.",
+        "properties": {
+          "v": {
+            "const": 1
+          },
+          "trigger": {
+            "type": "string",
+            "description": "The trigger's ID."
+          },
+          "firing": {
+            "$ref": "#/components/schemas/Firing"
+          }
+        },
+        "required": [
+          "v",
+          "trigger",
+          "firing"
         ]
       },
       "FieldError": {

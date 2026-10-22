@@ -79,6 +79,12 @@ const (
 
 	CodeTooManyBackgroundRuns = wire.CodeTooManyBackgroundRuns
 	CodeWallClockLimit        = wire.CodeWallClockLimit
+
+	CodeTriggerExists = wire.CodeTriggerExists
+	CodeStaticTrigger = wire.CodeStaticTrigger
+	CodeTriggerPaused = wire.CodeTriggerPaused
+	CodeBadSignature  = wire.CodeBadSignature
+	CodeReplayed      = wire.CodeReplayed
 )
 
 // Run statuses.

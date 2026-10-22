@@ -13,6 +13,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/bus"
 	"github.com/bsamanvith/agentkit/pkg/harness"
+	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/runner"
 	"github.com/bsamanvith/agentkit/pkg/store"
 	"github.com/bsamanvith/agentkit/pkg/tenancy"
@@ -79,84 +80,124 @@ func (s *Server) postTask(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	run, rf := s.startTask(ctx, taskStart{agent: ag, msg: harness.UserText(req.Input), title: title(req.Input), start: start, notify: notify})
+	if rf != nil {
+		s.writeRefusal(w, rf)
+		return
+	}
+	s.answerTask(ctx, w, run)
+}
+
+// answerTask answers 202 with a task that started.
+func (s *Server) answerTask(ctx context.Context, w http.ResponseWriter, run store.Run) {
+	v, err := s.taskView(ctx, run)
+	if err != nil {
+		s.log.Warn("reading a task's webhook", "run_id", run.ID, "err", err)
+	}
+	hd := w.Header()
+	hd.Set("Location", "/v1/runs/"+run.ID)
+	hd.Set("Agentkit-Run-Id", run.ID)
+	hd.Set("Agentkit-Conversation-Id", run.ConversationID)
+	writeJSON(w, http.StatusAccepted, v)
+}
+
+// taskView is a task as its start is answered: its summary and webhook.
+func (s *Server) taskView(ctx context.Context, run store.Run) (Run, error) {
+	v := s.runSummary(ctx, run)
+	var err error
+	v.Notify, err = s.notification(ctx, run.ID)
+	return v, err
+}
+
+// taskStart is a task to start, past the checks of its request.
+type taskStart struct {
+	agent *agent
+	// convID is the conversation the task continues; empty starts it in a
+	// conversation of its own, with title.
+	convID string
+	title  string
+	msg    llm.Message
+	start  StartOptions
+	notify string
+}
+
+// startTask starts a background run, counting it against the tenant's limit
+// of background runs, or says why not.
+func (s *Server) startTask(ctx context.Context, t taskStart) (store.Run, *refusal) {
+	ag, start := t.agent, t.start
 	// Counting the tenant's tasks and starting this one are one step here:
 	// two requests at once cannot both take the last place.
 	s.tmu.Lock()
 	n, err := s.backgroundRuns(ctx)
 	if err != nil {
 		s.tmu.Unlock()
-		s.internal(w, "counting the background runs", err)
-		return
+		return store.Run{}, s.internalRefusal("counting the background runs", err)
 	}
 	if n >= s.cfg.maxBackground {
 		s.tmu.Unlock()
-		w.Header().Set("Retry-After", retryAfterTask)
-		writeError(w, http.StatusTooManyRequests, &Error{Code: CodeTooManyBackgroundRuns, Retryable: true, Message: fmt.Sprintf("%d background runs are going on, the most a tenant may have; retry once one has ended", n)})
-		return
+		return store.Run{}, &refusal{status: http.StatusTooManyRequests, retryAfter: retryAfterTask, err: &Error{Code: CodeTooManyBackgroundRuns, Retryable: true, Message: fmt.Sprintf("%d background runs are going on, the most a tenant may have; retry once one has ended", n)}}
 	}
 	if apiErr := s.admit(); apiErr != nil {
 		s.tmu.Unlock()
-		s.unavailable(w, apiErr)
-		return
+		return store.Run{}, &refusal{status: http.StatusServiceUnavailable, retryAfter: retryAfter, err: apiErr}
 	}
 	// A task runs in a pool that takes background runs, in its lane, whose
 	// dispatcher resumes it after a crash.
-	poolName, freePool, status, apiErr := s.admitPool(ag, runner.Placement{})
+	poolName, freePool, status, apiErr := s.admitPool(ag, runner.Placement{ConversationID: t.convID})
 	if apiErr != nil {
 		s.tmu.Unlock()
 		s.release()
-		s.refuse(w, status, apiErr)
-		return
+		rf := &refusal{status: status, err: apiErr}
+		if status == http.StatusTooManyRequests {
+			rf.retryAfter = retryAfter
+		}
+		return store.Run{}, rf
 	}
 	start.Pool, start.AgentVersion = poolName, ag.Version
-	convID := s.cfg.newID("conv_")
-	if _, err := s.store.CreateConversation(ctx, store.Conversation{ID: convID, Agent: ag.Name}); err != nil {
-		s.tmu.Unlock()
-		s.release()
-		freePool()
-		s.internal(w, "creating a conversation", err)
-		return
+	convID, own := t.convID, t.convID == ""
+	if own {
+		convID = s.cfg.newID("conv_")
+		if _, err := s.store.CreateConversation(ctx, store.Conversation{ID: convID, Agent: ag.Name}); err != nil {
+			s.tmu.Unlock()
+			s.release()
+			freePool()
+			return store.Run{}, s.internalRefusal("creating a conversation", err)
+		}
 	}
 	execCtx, cancel := execContext(ctx)
-	x, err := s.runs.Start(execCtx, convID, harness.UserText(req.Input), start)
+	x, err := s.runs.Start(execCtx, convID, t.msg, start)
 	s.tmu.Unlock()
 	if err != nil {
 		cancel(nil)
 		s.release()
 		freePool()
-		if derr := s.store.DeleteConversation(ctx, convID); derr != nil {
-			s.log.Warn("deleting the conversation of a task that did not start", "conversation_id", convID, "err", derr)
+		if own {
+			if derr := s.store.DeleteConversation(ctx, convID); derr != nil {
+				s.log.Warn("deleting the conversation of a task that did not start", "conversation_id", convID, "err", derr)
+			}
 		}
-		s.startError(w, err, CodeBusy)
-		return
+		return store.Run{}, s.startErrorOf(err, CodeBusy)
 	}
-	if _, err := s.store.SetTitle(ctx, convID, title(req.Input)); err != nil {
-		s.log.Warn("setting a conversation's title", "conversation_id", convID, "err", err)
+	if own {
+		if _, err := s.store.SetTitle(ctx, convID, t.title); err != nil {
+			s.log.Warn("setting a conversation's title", "conversation_id", convID, "err", err)
+		}
 	}
 	var notifyErr error
-	if notify != "" {
-		if _, notifyErr = s.store.CreateNotification(ctx, x.Run.ID, notify); notifyErr != nil {
+	if t.notify != "" {
+		if _, notifyErr = s.store.CreateNotification(ctx, x.Run.ID, t.notify); notifyErr != nil {
 			// A task told to report must not run unreported: end it.
 			if _, err := s.runs.Cancel(ctx, x.Run.ID); err != nil {
 				s.log.Error("canceling a task whose webhook was not stored", "run_id", x.Run.ID, "err", err)
 			}
 		}
 	}
-	s.log.Info("task started", "run_id", x.Run.ID, "conversation_id", convID, "agent", ag.Name, "pool", x.Run.Pool, "notify", notify != "")
+	s.log.Info("task started", "run_id", x.Run.ID, "conversation_id", convID, "agent", ag.Name, "pool", x.Run.Pool, "notify", t.notify != "")
 	s.launch(execCtx, cancel, x, replayed{}, freePool)
 	if notifyErr != nil {
-		s.internal(w, "storing the task's webhook", notifyErr)
-		return
+		return store.Run{}, s.internalRefusal("storing the task's webhook", notifyErr)
 	}
-	v := s.runSummary(ctx, x.Run)
-	if v.Notify, err = s.notification(ctx, x.Run.ID); err != nil {
-		s.log.Warn("reading a task's webhook", "run_id", x.Run.ID, "err", err)
-	}
-	hd := w.Header()
-	hd.Set("Location", "/v1/runs/"+x.Run.ID)
-	hd.Set("Agentkit-Run-Id", x.Run.ID)
-	hd.Set("Agentkit-Conversation-Id", convID)
-	writeJSON(w, http.StatusAccepted, v)
+	return x.Run, nil
 }
 
 // backgroundRuns counts the tenant's background runs going on (queued or

@@ -56,11 +56,11 @@ func writeAuthError(w http.ResponseWriter, _ *http.Request, status int) {
 // running for the rest.
 func scopeOf(pattern string) string {
 	switch {
-	case isAuthRoute(pattern):
+	case isAuthRoute(pattern), isHookRoute(pattern):
 		return ""
 	case pattern == "POST /v1/toolsets" || strings.HasPrefix(pattern, "PATCH /v1/toolsets/") ||
 		strings.HasPrefix(pattern, "DELETE /v1/toolsets/") || strings.HasSuffix(pattern, "/v1/toolsets/{name}/review"),
-		pattern == "GET /v1/webhooks/secret":
+		pattern == "GET /v1/webhooks/secret", strings.Contains(pattern, " /v1/triggers"):
 		return ScopeAdmin
 	case strings.Contains(pattern, " /v1/agents/{name}/versions") || strings.HasSuffix(pattern, " /v1/agents/{name}/publish"):
 		// The agent registry: its versions hold whole definitions.

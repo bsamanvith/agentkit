@@ -68,6 +68,11 @@ type agentDef struct {
 	// Notify is the webhook told when a task of the agent ends, unless the
 	// task names one: {"url": ...}. It needs $AGENTKIT_WEBHOOK_SECRET.
 	Notify *notifyConfig `json:"notify"`
+	// Triggers start background runs of the agent without a person
+	// (T072): on a schedule, or when their inbound webhook is called. They
+	// are the default tenant's; the API pauses and resumes them, and
+	// changes nothing else.
+	Triggers []triggerConfig `json:"triggers"`
 	// ToolPolicy decides the agent's tool calls: a preset's name or a
 	// policy (package policy). Absent: "all". The environment's policy and a
 	// run's narrow it.
@@ -105,6 +110,24 @@ type agentDef struct {
 	// so that a key that may run this agent never reaches a toolset it may
 	// not use through another.
 	CanMessage []string `json:"can_message"`
+}
+
+// triggerConfig is one of an agent's static triggers (package trigger):
+// give it a schedule or a webhook. Each firing starts a task in a new
+// conversation.
+type triggerConfig struct {
+	// ID names the trigger: ^[a-zA-Z0-9_-]{1,64}$, unique in the tenant.
+	ID string `json:"id"`
+	// Prompt is the template of the run's message: {{trigger}}, {{time}}
+	// and {{date}} are filled in.
+	Prompt string `json:"prompt"`
+	// Schedule is a cron schedule ("0 9 * * 1-5", "@hourly"), optionally
+	// after "CRON_TZ=<zone> " (default UTC).
+	Schedule string `json:"schedule"`
+	// Webhook gives the trigger an inbound webhook URL (GET
+	// /v1/triggers/{id} shows it and its secret); it needs
+	// $AGENTKIT_WEBHOOK_SECRET.
+	Webhook bool `json:"webhook"`
 }
 
 // apiConfig is the "agent_api" section of the serve config file: limits of

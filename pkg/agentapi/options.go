@@ -88,6 +88,7 @@ type config struct {
 	taskLimit      time.Duration
 	webhooks       *Webhooks
 	runContext     func(context.Context, RunContext) context.Context
+	triggers       *Triggers
 }
 
 // Store is what the server keeps conversations and runs in: the runner's

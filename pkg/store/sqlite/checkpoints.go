@@ -23,7 +23,7 @@ func (s *Store) Save(ctx context.Context, id string, c flow.Checkpoint) error {
 	if err != nil {
 		return fmt.Errorf("sqlite: save checkpoint of run %q: %w", id, err)
 	}
-	return s.write(ctx, func(tx *sql.Tx) error {
+	return s.write(ctx, func(tx *txn) error {
 		_, err := tx.ExecContext(ctx, `INSERT INTO checkpoints (tenant, run_id, shape, body) VALUES (?, ?, ?, ?)
 			ON CONFLICT (tenant, run_id) DO UPDATE SET shape = excluded.shape, body = excluded.body`,
 			tenant, id, shape, string(body))

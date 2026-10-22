@@ -8,7 +8,8 @@
 // is opened in WAL mode with a busy timeout, through two connection pools: one
 // writer connection, whose transactions begin IMMEDIATE (they take the write
 // lock up front, so a read-then-write never fails half way), and a pool of
-// read-only connections. Several processes may open the same file; their
+// read-only connections. Each pool prepares a query text once and keeps the
+// statement. Several processes may open the same file; their
 // writes are serialized by SQLite's lock, and the store's rules (one entry per
 // position, one unfinished run per conversation, one lease holder) are kept by
 // primary keys, a partial unique index and conditional updates, never by a
@@ -99,8 +100,8 @@ func WithReaders(n int) Option {
 // [Store.Close] it when done.
 type Store struct {
 	clk clock.Clock
-	w   *sql.DB // one connection; every write goes through it
-	r   *sql.DB // read-only connections
+	w   *stmtDB // one connection; every write goes through it
+	r   *stmtDB // read-only connections, each query prepared once
 }
 
 // Open opens the database file at path, creating it if it does not exist, and
@@ -142,7 +143,7 @@ func Open(ctx context.Context, path string, opts ...Option) (*Store, error) {
 	r.SetMaxIdleConns(o.readers)
 	r.SetConnMaxLifetime(0)
 	r.SetConnMaxIdleTime(0)
-	return &Store{clk: o.clk, w: w, r: r}, nil
+	return &Store{clk: o.clk, w: newStmtDB(w), r: newStmtDB(r)}, nil
 }
 
 // dsn is the data source name of the file at abs. Every connection of a pool
@@ -199,7 +200,7 @@ const sqliteBusy = 5
 // kept beside the store's in the same file, such as credential_blobs
 // (pkg/credentials/sqlite, T043), whose queries filter by tenant themselves.
 // Closing the store closes them.
-func (s *Store) DB() (writer, reader *sql.DB) { return s.w, s.r }
+func (s *Store) DB() (writer, reader *sql.DB) { return s.w.DB, s.r.DB }
 
 // Close closes the store's connections. Calls after Close fail.
 func (s *Store) Close() error {
@@ -221,16 +222,21 @@ func scope(ctx context.Context) (string, error) {
 // write runs fn in a transaction on the writer connection. The transaction
 // begins IMMEDIATE (see dsn), so it holds the database's write lock from the
 // start. fn must not use s.w itself: its one connection is taken.
-func (s *Store) write(ctx context.Context, fn func(*sql.Tx) error) error {
+func (s *Store) write(ctx context.Context, fn func(*txn) error) error {
 	tx, err := s.w.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("sqlite: begin: %w", err)
 	}
+	t := &txn{Tx: tx, db: s.w}
 	// If fn panics, roll back on the way out: an open transaction would
 	// keep the writer's one connection, and every later write would wait
 	// for it. After a commit or a rollback this is a no-op (ErrTxDone).
-	defer func() { _ = tx.Rollback() }()
-	if err := fn(tx); err != nil {
+	// Then, with the connection free, keep the statements fn ran unkept.
+	defer func() {
+		_ = tx.Rollback()
+		t.keep(ctx)
+	}()
+	if err := fn(t); err != nil {
 		return errors.Join(err, ignoreDone(tx.Rollback()))
 	}
 	if err := tx.Commit(); err != nil {

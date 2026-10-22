@@ -29,7 +29,7 @@ func (s *Store) SendCommand(ctx context.Context, runID string, c store.Command) 
 		return store.Command{}, err
 	}
 	var out store.Command
-	err = s.write(ctx, func(tx *sql.Tx) error {
+	err = s.write(ctx, func(tx *txn) error {
 		stored, err := queryCommands(ctx, tx, `WHERE tenant = ? AND run_id = ? AND idempotency_key = ?`, tenant, runID, c.Key)
 		if err != nil {
 			return fmt.Errorf("sqlite: send command: %w", err)
@@ -87,7 +87,7 @@ func (s *Store) PendingCommands(ctx context.Context, runID string, limit int) ([
 	if err != nil {
 		return nil, err
 	}
-	out, err := queryCommands(ctx, s.r, `WHERE tenant = ? AND run_id = ? AND consumed_at IS NULL ORDER BY seq LIMIT ?`,
+	out, err := queryCommands(ctx, s.r, `WHERE tenant = ? AND run_id = ? AND consumed_at IS NULL ORDER BY seq LIMIT CAST(? AS INTEGER)`,
 		tenant, runID, n)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: pending commands: %w", err)
@@ -107,7 +107,7 @@ func (s *Store) ConsumeCommands(ctx context.Context, runID, owner string, throug
 	if err := backend.CheckConsume(owner, through); err != nil {
 		return err
 	}
-	return s.write(ctx, func(tx *sql.Tx) error {
+	return s.write(ctx, func(tx *txn) error {
 		r, err := getRun(ctx, tx, tenant, runID)
 		if err != nil {
 			return err

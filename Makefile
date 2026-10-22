@@ -7,9 +7,11 @@ GOLANGCI := bin/golangci-lint-$(GOLANGCI_VERSION)
 ACTIONLINT_VERSION := v1.7.12
 ACTIONLINT := bin/actionlint-$(ACTIONLINT_VERSION)
 ZIZMOR_VERSION := 1.30.1
-# Under -race the SQLite store's suites take about 11 minutes on 4 cores (most
+# Under -race the SQLite store's suites took about 11 minutes on 4 cores (most
 # of it the race build of modernc.org/sqlite, not fsync: synchronous=NORMAL
-# saved nothing), past go test's 10-minute default. A timeout is not a pass.
+# saved nothing), past go test's 10-minute default. T056 cut that about
+# threefold (kept statements, one migration per test binary); the timeout
+# stays as headroom. A timeout is not a pass.
 TESTFLAGS ?= -race -shuffle=on -timeout 30m
 FUZZTIME ?= 10s
 
@@ -23,9 +25,25 @@ help: ## Show this help
 build: ## Compile every package
 	$(GO) build ./...
 
+# TEST_JSON=file makes make test (and so make check) keep go test's -json
+# events in file, printing what go test would have printed anyway, for
+# make test-timing and CI's slowest-tests step (scripts/test-timing.sh).
+TEST_JSON ?=
+
 .PHONY: test
-test: ## Unit tests (race detector, shuffled order)
+test: ## Unit tests (race detector, shuffled order); TEST_JSON=file also keeps the -json events
+ifeq ($(TEST_JSON),)
 	$(GO) test $(TESTFLAGS) ./...
+else
+	@status=0; $(GO) test $(TESTFLAGS) -json ./... > $(TEST_JSON) || status=$$?; \
+	scripts/test-timing.sh --output $(TEST_JSON); exit $$status
+endif
+
+.PHONY: test-timing
+test-timing: ## Unit tests, then the slowest packages and top-level tests (TOP=10)
+	@mkdir -p bin
+	@status=0; $(MAKE) --no-print-directory test TEST_JSON=bin/test.json || status=$$?; \
+	echo; scripts/test-timing.sh bin/test.json; exit $$status
 
 .PHONY: test-integration
 test-integration: ## Unit + integration tests against your own deps (AGENTKIT_PG_URL, AGENTKIT_REDIS_URL; see make integration)

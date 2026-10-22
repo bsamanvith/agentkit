@@ -30,9 +30,15 @@ jobs:
       - name: install zizmor for make workflow-lint
         run: pipx install "zizmor==$(make -s print-zizmor-version)"
       - name: make check
-        run: make check
+        run: make check TEST_JSON="$RUNNER_TEMP/test.json"
         env:
           ZIZMOR_REQUIRED: "1"
+      # The ten slowest packages and tests (T056), passed or failed, so a
+      # slow test shows here before it nears go test's timeout.
+      - name: slowest tests
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -s "$RUNNER_TEMP/test.json" ]; then scripts/test-timing.sh "$RUNNER_TEMP/test.json"; fi
 
   # The integration tier, required like every job here: tests built with
   # -tags integration against real dependencies. pkg/bus (T089) runs against

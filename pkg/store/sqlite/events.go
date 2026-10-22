@@ -27,7 +27,7 @@ func (s *Store) AppendEvents(ctx context.Context, runID string, events []store.E
 	if err != nil || len(batch) == 0 {
 		return err
 	}
-	return s.write(ctx, func(tx *sql.Tx) error {
+	return s.write(ctx, func(tx *txn) error {
 		var last int64
 		var lastCreated sql.NullInt64
 		err := tx.QueryRowContext(ctx, `SELECT seq, created_at FROM events
@@ -84,7 +84,7 @@ func (s *Store) EventsAfter(ctx context.Context, runID string, after int64, limi
 	if err != nil {
 		return nil, err
 	}
-	out, err := queryEvents(ctx, s.r, `WHERE tenant = ? AND run_id = ? AND seq > ? ORDER BY seq LIMIT ?`,
+	out, err := queryEvents(ctx, s.r, `WHERE tenant = ? AND run_id = ? AND seq > ? ORDER BY seq LIMIT CAST(? AS INTEGER)`,
 		tenant, runID, after, n)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: events after: %w", err)

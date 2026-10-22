@@ -64,7 +64,7 @@ func (s *Store) Create(ctx context.Context, id, conversationID string, opts ...s
 	}
 	expires, _ := storeTime(c.Lease.Expires) // checked by CheckCreate
 	var run store.Run
-	err = s.write(ctx, func(tx *sql.Tx) error {
+	err = s.write(ctx, func(tx *txn) error {
 		_, insertErr := tx.ExecContext(ctx, `INSERT INTO runs (tenant, id, conversation, status, created_at, interactive,
 			lane, priority, start_at, lease_owner, lease_expires)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, tenant, id, conversationID, string(store.StatusRunning), at, o.Interactive,
@@ -193,7 +193,7 @@ func (s *Store) page(ctx context.Context, p store.Page, where string, args ...an
 		order = "created_at DESC, id DESC"
 	}
 	rows, err := s.r.QueryContext(ctx, `SELECT `+runColumns+` FROM runs WHERE `+
-		strings.Join(conds, " AND ")+` ORDER BY `+order+` LIMIT ?`, append(args, limit+1)...)
+		strings.Join(conds, " AND ")+` ORDER BY `+order+` LIMIT CAST(? AS INTEGER)`, append(args, limit+1)...)
 	if err != nil {
 		return store.RunPage{}, fmt.Errorf("sqlite: list runs: %w", err)
 	}
@@ -223,7 +223,7 @@ func (s *Store) ListResumable(ctx context.Context, now time.Time, limit int) ([]
 	}
 	rows, err := s.r.QueryContext(ctx, `SELECT `+runColumns+` FROM runs
 		WHERE tenant = ?2 AND status IN ('running', 'failed') AND `+resumable+`
-		ORDER BY created_at, id LIMIT ?3`, argTime(now), tenant, n)
+		ORDER BY created_at, id LIMIT CAST(?3 AS INTEGER)`, argTime(now), tenant, n)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: list resumable runs: %w", err)
 	}
@@ -268,7 +268,7 @@ func (s *Store) Transition(ctx context.Context, id string, from, to store.Status
 	}
 
 	var run store.Run
-	err = s.write(ctx, func(tx *sql.Tx) error {
+	err = s.write(ctx, func(tx *txn) error {
 		if invalid == nil {
 			res, err := tx.ExecContext(ctx, `UPDATE runs SET status = ?,
 				input_tokens = input_tokens + ?, output_tokens = output_tokens + ?,
@@ -339,7 +339,7 @@ func (s *Store) lease(ctx context.Context, runID, owner string, ttl time.Duratio
 	if claim {
 		cond = `(lease_owner = ?4 OR lease_owner = '' OR lease_expires <= ?5)`
 	}
-	err = s.write(ctx, func(tx *sql.Tx) error {
+	err = s.write(ctx, func(tx *txn) error {
 		res, err := tx.ExecContext(ctx, `UPDATE runs SET lease_owner = ?4, lease_expires = ?3
 			WHERE tenant = ?1 AND id = ?2 AND status NOT IN `+final+` AND `+cond,
 			tenant, runID, expires, owner, argTime(now))
@@ -378,7 +378,7 @@ func (s *Store) Release(ctx context.Context, runID, owner string) error {
 		return err
 	}
 	now := s.now()
-	return s.write(ctx, func(tx *sql.Tx) error {
+	return s.write(ctx, func(tx *txn) error {
 		res, err := tx.ExecContext(ctx, `UPDATE runs SET lease_owner = '', lease_expires = NULL
 			WHERE tenant = ? AND id = ? AND lease_owner = ?`, tenant, runID, owner)
 		if err != nil {
@@ -422,7 +422,7 @@ func (a admin) ListResumableAll(ctx context.Context, now time.Time, limit int) (
 	}
 	rows, err := a.s.r.QueryContext(ctx, `SELECT tenant, `+runColumns+` FROM runs
 		WHERE status IN ('running', 'failed') AND `+resumable+`
-		ORDER BY created_at, tenant, id LIMIT ?2`, argTime(now), n)
+		ORDER BY created_at, tenant, id LIMIT CAST(?2 AS INTEGER)`, argTime(now), n)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: list resumable runs of every tenant: %w", err)
 	}
@@ -465,7 +465,7 @@ func (a admin) ClaimNext(ctx context.Context, lanes []string, owner string, ttl 
 		marks[i] = "?" + strconv.Itoa(i+2)
 	}
 	var out store.TenantRun
-	err = a.s.write(ctx, func(tx *sql.Tx) error {
+	err = a.s.write(ctx, func(tx *txn) error {
 		var tenant, id string
 		err := tx.QueryRowContext(ctx, `SELECT tenant, id FROM runs
 			WHERE lane IN (`+strings.Join(marks, ", ")+`) AND `+queued+` AND `+due+` <= ?1

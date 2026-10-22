@@ -12,8 +12,15 @@ import (
 const MaxTriggerBytes = 64 << 10
 
 // MaxFirings is how many firings a store keeps per trigger: starting one
-// more removes the oldest beyond it.
+// more removes the oldest beyond it, unless they are younger than
+// [FiringKeep].
 const MaxFirings = 200
+
+// FiringKeep is how long a store keeps a firing even beyond [MaxFirings],
+// so that a webhook's delivery ID stays taken for as long as a replay of
+// the delivery could be accepted (twice its timestamp tolerance), however
+// many deliveries came since.
+const FiringKeep = 10 * time.Minute
 
 // TriggerRecord is a trigger (T072): what starts background runs without a
 // person, on a schedule or when a webhook is called. The store keeps its
@@ -150,7 +157,8 @@ type TriggerStore interface {
 	//
 	// It fails with [ErrNotFound] for a trigger that does not exist, and
 	// with [ErrInvalid] for a firing that breaks the rules on [Firing]. It
-	// keeps the newest [MaxFirings] firings of the trigger.
+	// keeps the newest [MaxFirings] firings of the trigger, and every one
+	// started less than [FiringKeep] ago.
 	StartFiring(ctx context.Context, triggerID string, f Firing, due, next time.Time) (Firing, error)
 	// EndFiring moves the pending firing firingID of trigger triggerID to
 	// end.State and returns it as stored. It fails with [ErrNotFound] for no

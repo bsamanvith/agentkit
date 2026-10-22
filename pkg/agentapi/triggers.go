@@ -52,7 +52,9 @@ type Triggers struct {
 	// [DefaultHookBodyBytes]); a larger one is 413.
 	MaxBodyBytes int64
 	// Tolerance is how far a delivery's webhook-timestamp may be from now
-	// (0: [trigger.DefaultTolerance]).
+	// (0: [trigger.DefaultTolerance]), at most half of [store.FiringKeep]
+	// so that a delivery's ID is kept for as long as a replay of it could
+	// be accepted.
 	Tolerance time.Duration
 }
 
@@ -535,6 +537,10 @@ func (s *Server) postHook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f, err := tc.Store.StartFiring(ctx, t.ID, store.Firing{ID: id}, time.Time{}, time.Time{})
+	if errors.Is(err, store.ErrConflict) && s.endLostFiring(ctx, t.ID, id) {
+		// The sender's retry of a delivery whose firing was lost.
+		f, err = tc.Store.StartFiring(ctx, t.ID, store.Firing{ID: id}, time.Time{}, time.Time{})
+	}
 	switch {
 	case errors.Is(err, store.ErrConflict):
 		writeError(w, http.StatusConflict, &Error{Code: CodeReplayed, Message: "trigger " + quote(t.ID) + " has taken delivery " + quote(id)})
@@ -632,7 +638,7 @@ func (s *Server) fireRun(ctx context.Context, t store.TriggerRecord, def trigger
 		}
 		return got
 	}
-	reason, err := s.triggerBusy(ctx, t.ID, def, f.ID)
+	reason, err := s.triggerBusy(ctx, t.ID, def, f)
 	if err != nil {
 		rf := s.internalRefusal("checking a trigger's previous firing", err)
 		return end(store.FiringEnd{State: store.FiringFailed, Reason: rf.err.Message}), store.Run{}, rf
@@ -662,11 +668,13 @@ func (s *Server) fireRun(ctx context.Context, t store.TriggerRecord, def trigger
 }
 
 // triggerBusy says why trigger id must not start another run now ("" when
-// it may): its conversation has a run going on, a firing other than self is
-// still starting its run, or the run of its newest firing that started one
-// is going on. A firing pending for longer than staleFiring was lost (its
-// process stopped before it started a run): it is recorded as failed.
-func (s *Server) triggerBusy(ctx context.Context, id string, def trigger.Definition, self string) (string, error) {
+// it may) for its pending firing self: its conversation has a run going on,
+// an earlier firing (a lower Seq) is still starting its run, or the run of
+// its newest firing that started one is going on. Of two firings pending at
+// once, the later defers to the earlier, so that one of them runs. A firing
+// pending for longer than staleFiring was lost (its process stopped before
+// it started a run): it is recorded as failed.
+func (s *Server) triggerBusy(ctx context.Context, id string, def trigger.Definition, self store.Firing) (string, error) {
 	if def.ConversationID != "" {
 		run, err := s.store.Unfinished(ctx, def.ConversationID)
 		switch {
@@ -684,13 +692,14 @@ func (s *Server) triggerBusy(ctx context.Context, id string, def trigger.Definit
 	now := s.cfg.clock.Now()
 	for _, f := range fs {
 		switch {
-		case f.ID == self:
+		case f.ID == self.ID:
 		case f.State == store.FiringPending && now.Sub(f.At) < staleFiring:
+			if f.Seq > self.Seq {
+				continue // a later firing, which defers to this one
+			}
 			return "firing " + f.ID + " is still starting its run", nil
 		case f.State == store.FiringPending:
-			if _, err := ts.EndFiring(ctx, id, f.ID, store.FiringEnd{State: store.FiringFailed, Reason: "lost: the process firing it stopped before it started a run"}); err != nil && !errors.Is(err, store.ErrFinal) {
-				s.log.Warn("recording a lost firing", "trigger", id, "firing", f.ID, "err", err)
-			}
+			s.markLost(ctx, id, f.ID)
 		case f.State == store.FiringStarted:
 			run, err := s.store.Get(ctx, f.RunID)
 			switch {
@@ -705,6 +714,36 @@ func (s *Server) triggerBusy(ctx context.Context, id string, def trigger.Definit
 		}
 	}
 	return "", nil
+}
+
+// markLost records the pending firing firingID of trigger id as failed: it
+// was lost (its process stopped before it started a run). It reports
+// whether the firing has ended, by this call or another.
+func (s *Server) markLost(ctx context.Context, id, firingID string) bool {
+	_, err := s.cfg.triggers.Store.EndFiring(ctx, id, firingID, store.FiringEnd{State: store.FiringFailed, Reason: "lost: the process firing it stopped before it started a run"})
+	if err != nil && !errors.Is(err, store.ErrFinal) {
+		s.log.Warn("recording a lost firing", "trigger", id, "firing", firingID, "err", err)
+		return false
+	}
+	return true
+}
+
+// endLostFiring marks the firing firingID of trigger id as lost if it has
+// been pending for longer than staleFiring, and reports whether it did: a
+// delivery whose firing was lost may then be retried under its ID.
+func (s *Server) endLostFiring(ctx context.Context, id, firingID string) bool {
+	fs, err := s.cfg.triggers.Store.ListFirings(ctx, id, store.MaxPageLimit)
+	if err != nil {
+		s.log.Warn("reading a trigger's firings", "trigger", id, "err", err)
+		return false
+	}
+	now := s.cfg.clock.Now()
+	for _, f := range fs {
+		if f.ID == firingID {
+			return f.State == store.FiringPending && now.Sub(f.At) >= staleFiring && s.markLost(ctx, id, firingID)
+		}
+	}
+	return false
 }
 
 // ended reports whether a run will not go on by itself: final, or failed and

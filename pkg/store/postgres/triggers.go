@@ -212,8 +212,10 @@ func (s *Store) StartFiring(ctx context.Context, triggerID string, f store.Firin
 			if err != nil {
 				return fail("start firing", err)
 			}
-			if _, err := tx.Exec(ctx, `DELETE FROM firings WHERE tenant = $1 AND trigger_id = $2 AND seq <= $3`,
-				tenant, triggerID, r.Seq-store.MaxFirings); err != nil {
+			// The oldest beyond MaxFirings go, unless a replay of them could
+			// still be accepted (FiringKeep).
+			if _, err := tx.Exec(ctx, `DELETE FROM firings WHERE tenant = $1 AND trigger_id = $2 AND seq <= $3 AND at < $4`,
+				tenant, triggerID, r.Seq-store.MaxFirings, now.Add(-store.FiringKeep).UnixNano()); err != nil {
 				return fail("start firing", err)
 			}
 			out = r

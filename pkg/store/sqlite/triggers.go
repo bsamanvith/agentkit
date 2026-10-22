@@ -193,8 +193,10 @@ func (s *Store) StartFiring(ctx context.Context, triggerID string, f store.Firin
 		if _, err := tx.ExecContext(ctx, set, args...); err != nil {
 			return fmt.Errorf("sqlite: start firing: %w", err)
 		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM firings WHERE tenant = ? AND trigger_id = ? AND seq <= ?`,
-			tenant, triggerID, f.Seq-store.MaxFirings); err != nil {
+		// The oldest beyond MaxFirings go, unless a replay of them could
+		// still be accepted (FiringKeep).
+		if _, err := tx.ExecContext(ctx, `DELETE FROM firings WHERE tenant = ? AND trigger_id = ? AND seq <= ? AND at < ?`,
+			tenant, triggerID, f.Seq-store.MaxFirings, now.Add(-store.FiringKeep).UnixNano()); err != nil {
 			return fmt.Errorf("sqlite: start firing: %w", err)
 		}
 		return nil

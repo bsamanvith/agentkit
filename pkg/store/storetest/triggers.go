@@ -332,6 +332,35 @@ func RunTriggerStore(t *testing.T, newStore func(t *testing.T, clk clock.Clock) 
 		}
 	})
 
+	// Firings younger than FiringKeep stay beyond MaxFirings: a delivery's
+	// ID stays taken while a replay of it could be accepted.
+	t.Run("FiringsKeptForReplay", func(t *testing.T) {
+		t.Parallel()
+		clk, s, _ := rig(t)
+		ctx := tenantCtx(t.Context(), t, tenantA)
+		mustPutTrigger(ctx, t, s, store.TriggerRecord{ID: "t", Data: data}, 0)
+		start := func(id string) error {
+			_, err := s.StartFiring(ctx, "t", store.Firing{ID: id}, time.Time{}, time.Time{})
+			return err
+		}
+		for i := range store.MaxFirings + 3 {
+			if err := start(fmt.Sprintf("f%03d", i)); err != nil {
+				t.Fatal(err)
+			}
+			clk.Advance(time.Second)
+		}
+		if err := start("f000"); !errors.Is(err, store.ErrConflict) {
+			t.Errorf("replaying the oldest of %d firings started within %v: %v, want ErrConflict", store.MaxFirings+3, store.FiringKeep, err)
+		}
+		clk.Advance(store.FiringKeep)
+		if err := start("next"); err != nil {
+			t.Fatal(err)
+		}
+		if err := start("f000"); err != nil {
+			t.Errorf("a firing older than FiringKeep and beyond MaxFirings: %v, want it dropped", err)
+		}
+	})
+
 	t.Run("ListFirings", func(t *testing.T) {
 		t.Parallel()
 		clk, s, _ := rig(t)
@@ -343,6 +372,9 @@ func RunTriggerStore(t *testing.T, newStore func(t *testing.T, clk clock.Clock) 
 				t.Fatal(err)
 			}
 			clk.Advance(time.Millisecond)
+			if i == 2 {
+				clk.Advance(store.FiringKeep) // the first three are old enough to go
+			}
 		}
 		fs := mustListFirings(ctx, t, s, "t", store.MaxPageLimit)
 		if len(fs) != store.MaxFirings || fs[0].ID != fmt.Sprintf("f%03d", store.MaxFirings+2) || fs[len(fs)-1].ID != "f003" {

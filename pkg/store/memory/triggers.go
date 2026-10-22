@@ -158,9 +158,13 @@ func (s *Store) StartFiring(ctx context.Context, triggerID string, f store.Firin
 	t.lastSeq++
 	f.Seq, f.At = t.lastSeq, now
 	t.firings = append(t.firings, f)
-	if over := len(t.firings) - store.MaxFirings; over > 0 {
-		t.firings = slices.Delete(t.firings, 0, over)
+	// The oldest beyond MaxFirings go, unless a replay of them could still
+	// be accepted (FiringKeep).
+	cutoff, drop := now.Add(-store.FiringKeep), 0
+	for over := len(t.firings) - store.MaxFirings; drop < over && t.firings[drop].At.Before(cutoff); {
+		drop++
 	}
+	t.firings = slices.Delete(t.firings, 0, drop)
 	if !due.IsZero() {
 		t.rec.NextFireAt = next
 	}

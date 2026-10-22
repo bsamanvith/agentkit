@@ -3,6 +3,7 @@ package agentapi_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -79,6 +80,8 @@ type trigConfig struct {
 	tn      string // the tenant (default: a new one)
 	token   string // the rig's token (default: none needed)
 	noHooks bool
+	// wrap, if set, wraps the trigger store the server is given.
+	wrap func(store.TriggerStore) store.TriggerStore
 }
 
 func newTrigRig(t *testing.T, m *model, cfg trigConfig) *trigRig {
@@ -102,6 +105,9 @@ func newTrigRig(t *testing.T, m *model, cfg trigConfig) *trigRig {
 	}
 	admin := tenantAdmin{ts: ts, tn: tn}
 	tc := agentapi.Triggers{Store: ts}
+	if cfg.wrap != nil {
+		tc.Store = cfg.wrap(ts)
+	}
 	if !cfg.noHooks {
 		tc.ByHook, tc.Secret = admin.TriggerByHook, hookSecret
 	}
@@ -322,6 +328,13 @@ func TestTriggersNeedTheirConfig(t *testing.T) {
 		t.Errorf("a webhook without a secret = %d %s, want 400", resp.StatusCode, b)
 	}
 	r.create(`{"id":"s","prompt":"p","schedule":"@daily"}`)
+	// A tolerance longer than half of how long a store keeps a delivery's
+	// ID would let a replay in after the ID is gone.
+	_, err := agentapi.New(agentHarness(t, echo(t), registry(t)), agentapi.WithStore(r.srvStore()),
+		agentapi.WithTriggers(agentapi.Triggers{Store: r.ts, Tolerance: store.FiringKeep/2 + time.Second}))
+	if !errors.Is(err, agentapi.ErrInvalidConfig) {
+		t.Errorf("a tolerance over FiringKeep/2: %v, want ErrInvalidConfig", err)
+	}
 }
 
 // srvStore is the rig's store, for another rig sharing it.
@@ -713,6 +726,81 @@ func TestLostFiring(t *testing.T) {
 		if f.ID == "msg_lost" && (f.State != wire.FiringFailed || !strings.HasPrefix(f.Reason, "lost")) {
 			t.Errorf("the pending firing is %+v, want failed as lost", f)
 		}
+	}
+}
+
+// TestWebhookLostFiringRetries: the sender's retry of a delivery whose
+// firing was lost (left pending for longer than a firing takes to start)
+// fires it, instead of being refused as a replay.
+func TestWebhookLostFiringRetries(t *testing.T) {
+	t.Parallel()
+	r := newTrigRig(t, echo(t), trigConfig{})
+	tr := r.create(`{"id":"gh","prompt":"Triage","webhook":true}`)
+	if _, err := r.ts.StartFiring(r.ctx(), "gh", store.Firing{ID: "msg_1"}, time.Time{}, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	if resp, b := r.hook(tr.Webhook.Path, tr.Webhook.Secret, "msg_1", r.clock.Now(), `{}`); resp.StatusCode != http.StatusConflict {
+		t.Errorf("a retry while the firing may still start its run = %d %s, want 409 replayed", resp.StatusCode, b)
+	}
+	r.clock.Advance(11 * time.Minute)
+	r.waitTask(r.accepted(tr, "msg_1", `{}`, http.StatusAccepted).Firing.RunID)
+	if fs := r.firings("gh"); len(fs) != 1 || fs[0].State != wire.FiringStarted {
+		t.Errorf("firings %s, want the one, started", jsonOf(fs))
+	}
+}
+
+// racingFirings is a trigger store in which another delivery, msg_2,
+// claims its firing right after msg_1 does: two deliveries at once.
+type racingFirings struct {
+	store.TriggerStore
+	once sync.Once
+}
+
+func (s *racingFirings) StartFiring(ctx context.Context, triggerID string, f store.Firing, due, next time.Time) (store.Firing, error) {
+	got, err := s.TriggerStore.StartFiring(ctx, triggerID, f, due, next)
+	if err == nil && f.ID == "msg_1" {
+		s.once.Do(func() {
+			if _, err := s.TriggerStore.StartFiring(ctx, triggerID, store.Firing{ID: "msg_2"}, time.Time{}, time.Time{}); err != nil {
+				panic(err)
+			}
+		})
+	}
+	return got, err
+}
+
+// TestWebhookConcurrentDeliveries: of two deliveries pending at once, the
+// later defers to the earlier, which starts its run: they do not both skip.
+func TestWebhookConcurrentDeliveries(t *testing.T) {
+	t.Parallel()
+	r := newTrigRig(t, echo(t), trigConfig{wrap: func(ts store.TriggerStore) store.TriggerStore { return &racingFirings{TriggerStore: ts} }})
+	tr := r.create(`{"id":"gh","prompt":"Triage","webhook":true}`)
+	r.waitTask(r.accepted(tr, "msg_1", `{}`, http.StatusAccepted).Firing.RunID)
+}
+
+// TestWebhookReplayAfterManyDeliveries: a delivery's ID stays taken while a
+// replay of it could be accepted, however many deliveries came since.
+func TestWebhookReplayAfterManyDeliveries(t *testing.T) {
+	t.Parallel()
+	m := echo(t)
+	r := newTrigRig(t, m, trigConfig{})
+	tr := r.create(`{"id":"gh","prompt":"Triage","webhook":true}`)
+	at := r.clock.Now()
+	r.waitTask(r.accepted(tr, "msg_0", `{}`, http.StatusAccepted).Firing.RunID)
+	for i := range store.MaxFirings {
+		id := fmt.Sprintf("msg_%d", i+1)
+		if _, err := r.ts.StartFiring(r.ctx(), "gh", store.Firing{ID: id}, time.Time{}, time.Time{}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := r.ts.EndFiring(r.ctx(), "gh", id, store.FiringEnd{State: store.FiringSkipped, Reason: "busy"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r.clock.Advance(trigger.DefaultTolerance) // the replay's timestamp is still accepted
+	if resp, b := r.hook(tr.Webhook.Path, tr.Webhook.Secret, "msg_0", at, `{}`); resp.StatusCode != http.StatusConflict {
+		t.Errorf("the first delivery replayed after %d more = %d %s, want 409 replayed", store.MaxFirings, resp.StatusCode, b)
+	}
+	if n := len(m.requests()); n != 1 {
+		t.Errorf("%d model requests, want the first delivery's alone", n)
 	}
 }
 

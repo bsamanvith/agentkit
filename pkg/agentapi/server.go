@@ -126,8 +126,8 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 	case cfg.webhooks != nil && cfg.webhooks.Secret == nil:
 		return nil, fmt.Errorf("%w: webhooks need their secrets", ErrInvalidConfig)
 	case cfg.triggers != nil && (cfg.triggers.Store == nil || (cfg.triggers.ByHook == nil) != (cfg.triggers.Secret == nil) ||
-		cfg.triggers.MaxBodyBytes < 0 || cfg.triggers.Tolerance < 0):
-		return nil, fmt.Errorf("%w: triggers need a store, and their webhooks both ByHook and Secret, and limits that are not negative", ErrInvalidConfig)
+		cfg.triggers.MaxBodyBytes < 0 || cfg.triggers.Tolerance < 0 || cfg.triggers.Tolerance > store.FiringKeep/2):
+		return nil, fmt.Errorf("%w: triggers need a store, and their webhooks both ByHook and Secret, a body limit that is not negative, and a tolerance from 0 to %v (half of how long a store keeps a delivery's ID)", ErrInvalidConfig, store.FiringKeep/2)
 	}
 	bearer, err := authenticator(cfg)
 	if err != nil {

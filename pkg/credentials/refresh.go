@@ -146,7 +146,7 @@ func (s *source) clientToken(ctx context.Context, k flightKey) (Credential, erro
 		ClientID: cc.ClientID, ClientSecret: cc.ClientSecret.Reveal(), TokenURL: cc.TokenURL,
 		Scopes: slices.Clone(cc.Scopes), AuthStyle: authStyle(style),
 	}
-	tok, err := cfg.Token(context.WithValue(ctx, oauth2.HTTPClient, s.p.tokenClient))
+	tok, err := cfg.Token(context.WithValue(ctx, oauth2.HTTPClient, s.p.storedClient))
 	if err != nil {
 		s.p.log.Warn("fetching a client credentials token failed", "toolset", s.toolset, "slot", k.slot, "tenant", k.tenant, "reason", tokenReason(err))
 		return nil, &SourceError{Toolset: s.toolset, Reason: "fetching its token failed: " + tokenReason(err), Err: err}

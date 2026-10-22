@@ -1,6 +1,8 @@
 package credentialstest
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,15 +12,22 @@ import (
 	"testing"
 )
 
-// TokenServer is a fake OAuth2 token endpoint (RFC 6749 §3.2) on an
-// httptest server, for tests of refreshing and client credentials: it
-// answers the refresh_token and client_credentials grants at /token,
+// TokenServer is a fake OAuth2 authorization server (RFC 6749) on an
+// httptest server, for tests of connecting accounts, refreshing and client
+// credentials. Its token endpoint (/token) answers the authorization_code
+// grant (with PKCE, RFC 7636: S256 only, the verifier checked against the
+// challenge), the refresh_token grant and the client_credentials grant,
 // authenticates the client (basic auth or form), rotates refresh tokens and
-// counts requests. Its zero options issue tokens that last an hour and keep
-// a used refresh token valid.
+// counts requests. Its authorization endpoint (/authorize) consents at once:
+// it redirects to the redirect_uri with a code (single use, bound to the
+// client, the redirect_uri and the challenge) and the state. Its zero options
+// issue tokens that last an hour and keep a used refresh token valid.
 type TokenServer struct {
 	// URL is the token endpoint: the server's URL and /token.
 	URL string
+	// AuthURL is the authorization endpoint: the server's URL and
+	// /authorize.
+	AuthURL string
 	// ClientID and ClientSecret are the client it accepts.
 	ClientID, ClientSecret string
 
@@ -27,6 +36,7 @@ type TokenServer struct {
 	mu       sync.Mutex
 	opts     TokenServerOptions
 	refresh  map[string]bool // refresh tokens: valid or used up
+	codes    map[string]authCode
 	clients  map[string]string
 	n        int
 	requests int
@@ -45,9 +55,18 @@ type TokenServerOptions struct {
 	RevokeUsed bool
 	// KeepRefreshToken answers a refresh without a new refresh token.
 	KeepRefreshToken bool
-	// Hook, if set, runs first on each request, under no lock: it may
-	// block, write to a vault, or answer itself (returning true).
+	// Hook, if set, runs first on each request to /token, under no lock:
+	// it may block, write to a vault, change the form, or answer itself
+	// (returning true).
 	Hook func(w http.ResponseWriter, r *http.Request, form url.Values) bool
+	// Deny makes /authorize answer the redirect_uri with
+	// error=access_denied, as when the user declines.
+	Deny bool
+}
+
+// authCode is an authorization code /authorize issued.
+type authCode struct {
+	clientID, redirectURI, challenge, scope string
 }
 
 // NewTokenServer starts a token server, closed when the test ends.
@@ -56,6 +75,7 @@ func NewTokenServer(t testing.TB, opts TokenServerOptions) *TokenServer {
 	s := &TokenServer{
 		ClientID: "test-client", ClientSecret: "test-client-secret",
 		opts: opts, refresh: map[string]bool{}, clients: map[string]string{}, grants: map[string]int{},
+		codes: map[string]authCode{},
 	}
 	if s.opts.ExpiresIn == 0 {
 		s.opts.ExpiresIn = 3600
@@ -64,6 +84,7 @@ func NewTokenServer(t testing.TB, opts TokenServerOptions) *TokenServer {
 	s.srv = httptest.NewServer(http.HandlerFunc(s.serve))
 	t.Cleanup(s.srv.Close)
 	s.URL = s.srv.URL + "/token"
+	s.AuthURL = s.srv.URL + "/authorize"
 	return s
 }
 
@@ -119,7 +140,48 @@ func TokenError(w http.ResponseWriter, status int, code, description string) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": code, "error_description": description})
 }
 
+// Challenge is the PKCE S256 challenge of verifier (RFC 7636 §4.2).
+func Challenge(verifier string) string {
+	sum := sha256.Sum256([]byte(verifier))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+// authorize issues a code and sends the browser back to the client, or
+// answers 400 to a request it cannot send back (an unknown client, no
+// redirect_uri).
+func (s *TokenServer) authorize(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	back, err := url.Parse(q.Get("redirect_uri"))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, known := s.clients[q.Get("client_id")]; !known || err != nil || !back.IsAbs() {
+		http.Error(w, "unknown client or no redirect_uri", http.StatusBadRequest)
+		return
+	}
+	answer := back.Query()
+	answer.Set("state", q.Get("state"))
+	switch {
+	case s.opts.Deny:
+		answer.Set("error", "access_denied")
+	case q.Get("response_type") != "code":
+		answer.Set("error", "unsupported_response_type")
+	case q.Get("code_challenge_method") != "S256" || q.Get("code_challenge") == "":
+		answer.Set("error", "invalid_request") // PKCE S256 is required
+	default:
+		s.n++
+		code := fmt.Sprintf("code-%d", s.n)
+		s.codes[code] = authCode{clientID: q.Get("client_id"), redirectURI: q.Get("redirect_uri"), challenge: q.Get("code_challenge"), scope: q.Get("scope")}
+		answer.Set("code", code)
+	}
+	back.RawQuery = answer.Encode()
+	http.Redirect(w, r, back.String(), http.StatusFound)
+}
+
 func (s *TokenServer) serve(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/authorize" && r.Method == http.MethodGet {
+		s.authorize(w, r)
+		return
+	}
 	if r.URL.Path != "/token" || r.Method != http.MethodPost {
 		http.NotFound(w, r)
 		return
@@ -170,6 +232,23 @@ func (s *TokenServer) serve(w http.ResponseWriter, r *http.Request) {
 			next := fmt.Sprintf("%srt-%d", s.opts.Prefix, s.n)
 			s.refresh[next] = true
 			resp["refresh_token"] = next
+		}
+	case "authorization_code":
+		c, ok := s.codes[form.Get("code")]
+		delete(s.codes, form.Get("code")) // single use, even when refused
+		switch {
+		case !ok || c.clientID != id || c.redirectURI != form.Get("redirect_uri"):
+			TokenError(w, http.StatusBadRequest, "invalid_grant", "unknown code, or another client or redirect_uri")
+			return
+		case form.Get("code_verifier") == "" || Challenge(form.Get("code_verifier")) != c.challenge:
+			TokenError(w, http.StatusBadRequest, "invalid_grant", "the code_verifier does not match the code_challenge")
+			return
+		}
+		next := fmt.Sprintf("%srt-%d", s.opts.Prefix, s.n)
+		s.refresh[next] = true
+		resp["refresh_token"] = next
+		if c.scope != "" {
+			resp["scope"] = c.scope
 		}
 	case "client_credentials":
 	default:

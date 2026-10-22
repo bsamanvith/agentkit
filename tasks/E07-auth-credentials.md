@@ -49,7 +49,7 @@ Two tracks that can start in parallel, and in parallel with E05: inbound (T039 â
 - [x] [T042](T042-credentials-core.md) `pkg/credentials`: secret values, sealer and key ring, vault interface, memory vault, conformance suite
 - [x] [T043](T043-credentials-backends.md) Credential backends: encrypted file now, SQLite on T029
 - [x] [T044](T044-credentials-in-tools.md) Credentials in tools: slots in toolset specs, scoped sources, OAuth2 refresh, the canary test end to end
-- [ ] [T045](T045-connect-accounts.md) Connecting accounts: credential API and the OAuth2 authorization code + PKCE flow
+- [x] [T045](T045-connect-accounts.md) Connecting accounts: credential API and the OAuth2 authorization code + PKCE flow
 - [ ] [T009](T009-kind-cluster.md) kind cluster and the k8s secrets backend (waits for the owner's deploy decision)
 
 ## Order and overlaps

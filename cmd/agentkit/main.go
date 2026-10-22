@@ -10,6 +10,7 @@
 //	agentkit migrate                           apply the Postgres store's migrations to $AGENTKIT_STORE
 //	agentkit users hash-password < password    the argon2id hash of a password, for auth.users
 //	agentkit memory reembed [-config file]     embed agents' memory items again after a change of embedder
+//	agentkit credentials put [flags] <slot>    store a credential in the configured vault, for bootstrapping
 //
 // Credentials come from the Anthropic SDK's chain: ANTHROPIC_API_KEY,
 // ANTHROPIC_AUTH_TOKEN or an `ant auth login` profile. An agent on an
@@ -102,6 +103,7 @@ const usage = `usage:
   agentkit mcp-tools [flags] <url>         list an MCP server's tools with the fingerprints to pin them
   agentkit toolsets <command> [flags]      list a server's toolsets; add, review and approve MCP servers on it
   agentkit users hash-password < password  print the argon2id hash of a password, for the config's auth.users
+  agentkit credentials put [flags] <slot>  store a credential in the configured vault (the secret on stdin)
 
 Run "agentkit <command> -h" for flags.
 `
@@ -132,6 +134,8 @@ func (c cli) main(ctx context.Context, args []string) int {
 		return c.ask(ctx, args[1:])
 	case len(args) >= 1 && args[0] == "create":
 		return c.create(ctx, args[1:])
+	case len(args) >= 1 && args[0] == "credentials":
+		return c.credentialsCmd(ctx, args[1:])
 	case len(args) >= 1 && args[0] == "toolsets":
 		return c.toolsetsCmd(ctx, args[1:])
 	case len(args) >= 1 && args[0] == "users":

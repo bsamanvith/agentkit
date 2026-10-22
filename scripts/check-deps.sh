@@ -32,7 +32,9 @@ stores='github.com/bsamanvith/agentkit/pkg/store/'
 busopen='github.com/bsamanvith/agentkit/pkg/bus/busopen'
 memory='github.com/bsamanvith/agentkit/pkg/memory'
 servers='github.com/bsamanvith/agentkit/pkg/mcp/servers'
-agent="$stores $busopen $memory $servers"
+# Connecting accounts (T045): the agent API's credential endpoints.
+connect='github.com/bsamanvith/agentkit/pkg/credentials/connect'
+agent="$stores $busopen $memory $servers $connect"
 
 # What each variant must not link.
 forbidden() {

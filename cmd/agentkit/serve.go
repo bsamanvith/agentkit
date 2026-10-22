@@ -115,6 +115,9 @@ type serveEnv struct {
 	webhookAllow  []string
 	// recoveryInterval is the recovery loop's; 0 for its default.
 	recoveryInterval time.Duration
+	// vaultParts is the vault with its backend and sealer, which the
+	// agent API's connect flows keep their state in; nil without a vault.
+	vaultParts *vaultParts
 }
 
 func (c cli) serve(ctx context.Context, args []string) error {
@@ -135,12 +138,14 @@ func (c cli) serve(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	vault, closeVault, err := c.openVault(ctx, cfg.Credentials, env.credentialKeys)
+	vault, closeVault, err := c.openVaultParts(ctx, cfg.Credentials, env.credentialKeys)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = closeVault() }()
-	env.vault = vault
+	if vault != nil {
+		env.vault, env.vaultParts = vault.vault, vault
+	}
 	log := slog.New(slog.NewJSONHandler(c.stderr, &slog.HandlerOptions{Level: env.logLevel}))
 	built, problems, err := c.buildToolsets(ctx, env, cfg, *configPath, log)
 	if err != nil {
@@ -208,6 +213,7 @@ func (c cli) serve(ctx context.Context, args []string) error {
 		}
 		mounts = append(mounts, m)
 	}
+	mounts = append(mounts, ag.mounts()...) // the OAuth callback
 	if mcpAt >= 0 {
 		mcp := cfg.MCP
 		mcp.protected = cfg.Auth.JWT

@@ -54,6 +54,7 @@ type Option func(*config)
 
 type config struct {
 	admin          ToolsetAdmin
+	credentials    Credentials
 	token          string
 	authn          auth.Authenticator
 	login          *login.Login

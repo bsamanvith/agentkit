@@ -324,11 +324,23 @@ func (s *Server) agentView(r *http.Request, a *agent) (wire.Agent, error) {
 func (s *Server) listToolsets(w http.ResponseWriter, r *http.Request) {
 	out := wire.ToolsetList{V: WireVersion, Toolsets: make([]wire.Toolset, 0, len(s.cfg.toolsets))}
 	acc := accessOf(r)
+	var tctx context.Context // the tenant's, for the credential slots' status
 	for _, ts := range s.cfg.toolsets {
 		if !acc.toolset(ts.Name) {
 			continue
 		}
-		v := wire.Toolset{Name: ts.Name, Type: ts.Type, Status: wire.ToolsetSkipped, Reason: ts.Skipped, MCPPath: ts.MCPPath, Credential: ts.Credential}
+		cred := ts.Credential
+		if cred.Slot != "" && s.cfg.credentials != nil {
+			if tctx == nil {
+				ctx, ok := s.scope(w, r)
+				if !ok {
+					return
+				}
+				tctx = ctx
+			}
+			cred = s.slotStatus(tctx, r, cred)
+		}
+		v := wire.Toolset{Name: ts.Name, Type: ts.Type, Status: wire.ToolsetSkipped, Reason: ts.Skipped, MCPPath: ts.MCPPath, Credential: cred}
 		if ts.Tools != nil {
 			defs, err := s.listToolset(r.Context(), ts.Name, ts.Tools)
 			if err != nil {

@@ -536,6 +536,15 @@ func credentialOf(s toolset.Spec, getenv func(string) string) agentapi.Credentia
 		Auth           string `json:"auth"` // tavily: auto, key or keyless
 	}
 	_ = json.Unmarshal(s.Settings, &settings) // the factory validated them
+	if s.Credential != nil {
+		// The agent API gives it the caller's status when it keeps
+		// credentials (WithCredentials); without a vault it has none.
+		scope := string(s.Credential.Scope)
+		if scope == "" {
+			scope = wire.ScopeTenant
+		}
+		return agentapi.Credential{Status: wire.CredentialMissing, Slot: s.Credential.Slot, Scope: scope}
+	}
 	env := credentialEnv[s.Type]
 	if settings.APIKeyEnv != "" {
 		env = settings.APIKeyEnv

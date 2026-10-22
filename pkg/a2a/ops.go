@@ -87,6 +87,9 @@ func (s *Server) getRun(ctx context.Context, agent, id string) (wire.Run, error)
 	if id == "" {
 		return wire.Run{}, ErrInvalidParams.with("params.id is required")
 	}
+	if !isID(id) {
+		return wire.Run{}, s.taskNotFound(id)
+	}
 	r, err := s.api.GetRun(ctx, id)
 	if err != nil {
 		if err := s.fromAPI(ctx, err, opTask); !errors.Is(err, ErrTaskNotFound) {

@@ -272,17 +272,27 @@ func quote(s string) string {
 // one agent (GET /v1/agents/{name}), not the whole catalog, whose every
 // agent's toolsets the API would list.
 func (s *Server) lookup(ctx context.Context, name string) (wire.Agent, error) {
+	notFound := &httpError{status: http.StatusNotFound, msg: "no agent " + quote(name)}
+	if !isID(name) {
+		return wire.Agent{}, notFound
+	}
 	a, err := s.api.Agent(ctx, name)
 	if err != nil {
 		var ae *agentclient.APIError
 		if ctx.Err() == nil && errors.As(err, &ae) && ae.Status == http.StatusNotFound {
-			return wire.Agent{}, &httpError{status: http.StatusNotFound, msg: "no agent " + quote(name)}
+			return wire.Agent{}, notFound
 		}
 		return wire.Agent{}, s.fromAPI(ctx, err, opAgent)
 	}
 	a.System = "" // never shown: the card describes the agent without it
 	return a, nil
 }
+
+// isID reports whether s can name an agent or a run in a path of the agent
+// API: not "." or "..", which the API's router would clean into another
+// path (GET /v1/agents/. is the catalog, GET /v1/runs/. the list of runs).
+// agentclient escapes everything else ("/", "?", "#", "%").
+func isID(s string) bool { return s != "." && s != ".." }
 
 // The card of an agent, and the directory.
 

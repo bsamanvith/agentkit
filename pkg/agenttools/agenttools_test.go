@@ -3,6 +3,7 @@ package agenttools_test
 import (
 	"encoding/json"
 	"errors"
+	"path"
 	"slices"
 	"strings"
 	"testing"
@@ -248,6 +249,36 @@ func TestRunErrors(t *testing.T) {
 	mustCall(t, cs, "agent_run", map[string]any{"message": "break", "conversation_id": run.ConversationID}, &failed)
 	if failed.Status != wire.StatusFailed || failed.Error == nil || failed.Error.Code == "" {
 		t.Errorf("a run whose model fails = %+v: want status failed with its error", failed)
+	}
+}
+
+// TestDotIDs: a run_id or conversation_id that is "." or ".." names
+// nothing. It is not looked up, where the agent API's router would clean
+// it into another path (GET /v1/conversations/. is the list of
+// conversations).
+func TestDotIDs(t *testing.T) {
+	t.Parallel()
+	for mode, remote := range modes {
+		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
+			r := newRig(t, llmtest.NewFake(t), llmtest.NewFake(t), rigOptions{remote: remote})
+			cs := r.client(keyFull)
+			for _, id := range []string{".", ".."} {
+				if e := call(t, cs, "run_get", map[string]any{"run_id": id}, nil); !strings.Contains(e, "not_found") {
+					t.Errorf("run_get %q: %q, want not_found", id, e)
+				}
+				if e := call(t, cs, "conversation_get", map[string]any{"conversation_id": id}, nil); !strings.Contains(e, "not_found") {
+					t.Errorf("conversation_get %q: %q, want not_found", id, e)
+				}
+			}
+			r.mu.Lock()
+			defer r.mu.Unlock()
+			for _, c := range r.apiCalls {
+				if p := c[strings.Index(c, " ")+1:]; path.Clean(p) != p {
+					t.Errorf("the agent API was asked for %s", c)
+				}
+			}
+		})
 	}
 }
 

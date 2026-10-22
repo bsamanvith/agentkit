@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -80,6 +81,9 @@ func TestServe(t *testing.T) {
 		{"/assets/nothing", "404", "", "", "no-cache"},
 		{"/robots.txt", "404", "", "", "no-cache"},
 		{"/app.js.map", "404", "", "", "no-cache"},
+		// A packed file is served by its name only (Pack), never as name.gz.
+		{"/theme.js.gz", "404", "", "", "no-cache"},
+		{"/index.html.gz", "404", "", "", "no-cache"},
 		{"/logo.PNG", "404", "", "", "no-cache"},
 		{"/agents/x.js", "404", "", "", "no-cache"},
 		{"/assets", "404", "", "", "no-cache"},
@@ -243,16 +247,26 @@ func TestEmbeddedBuild(t *testing.T) {
 }
 
 // TestEmbeddedBuildIsPacked keeps the console's text files out of the binary
-// uncompressed (docs/SIZES.md): the committed build is what Pack makes
-// of it, so packing it again changes nothing. A build written by Vite
-// without the pack step (make web runs it) fails here.
+// uncompressed (docs/SIZES.md): the committed build, unpacked and packed
+// again, is byte for byte what is committed. A build written by Vite without
+// the pack step (make web runs it), one with a file both as it is and
+// packed, or one packed some other way (gzip -9, another level) fails here.
 func TestEmbeddedBuildIsPacked(t *testing.T) {
 	t.Parallel()
+	before := tree(t, web.Dist())
 	dir := t.TempDir()
-	if err := os.CopyFS(dir, web.Dist()); err != nil {
-		t.Fatal(err)
+	for name, b := range before {
+		if orig, ok := strings.CutSuffix(name, ".gz"); ok {
+			name, b = orig, gunzip(t, b)
+		}
+		p := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(b), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
-	before := tree(t, os.DirFS(dir))
 	if err := web.Pack(dir); err != nil {
 		t.Fatal(err)
 	}
@@ -345,10 +359,19 @@ func TestPack(t *testing.T) {
 		t.Errorf("packing twice changed the build: %v", keys(again))
 	}
 
-	plain, gzd := web.New(files).Handler(), web.New(os.DirFS(dir)).Handler()
+	plainC, gzdC := web.New(files), web.New(os.DirFS(dir))
+	for name, c := range map[string]*web.Component{"unpacked": plainC, "packed": gzdC} {
+		if err := c.Ready(t.Context()); err != nil {
+			t.Fatalf("the %s build: Ready = %v", name, err)
+		}
+	}
+	plain, gzd := plainC.Handler(), gzdC.Handler()
 	for name := range files {
 		p := "/" + name
 		a, b := get(t, plain, http.MethodGet, p), get(t, gzd, http.MethodGet, p)
+		if a.StatusCode != http.StatusOK || b.StatusCode != http.StatusOK {
+			t.Errorf("GET %s: %s unpacked, %s packed; want 200 from both", p, a.Status, b.Status)
+		}
 		if body(t, a) != body(t, b) || a.Header.Get("ETag") != b.Header.Get("ETag") ||
 			a.Header.Get("Content-Type") != b.Header.Get("Content-Type") {
 			t.Errorf("GET %s: the packed build serves it otherwise (ETag %q, %q)", p, a.Header.Get("ETag"), b.Header.Get("ETag"))

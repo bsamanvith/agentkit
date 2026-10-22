@@ -83,9 +83,10 @@ var types = map[string]string{
 }
 
 // moreFiles are file extensions the build doesn't have: a request for one is
-// for a file too, never an app route.
+// for a file too, never an app route. .gz is one: a packed file (name.gz,
+// [Pack]) is served as name only, and /theme.js.gz is a 404, not index.html.
 var moreFiles = map[string]bool{
-	".map": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true, ".avif": true,
+	".gz": true, ".map": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true, ".avif": true,
 	".woff": true, ".ttf": true, ".otf": true, ".xml": true, ".webmanifest": true, ".wasm": true,
 }
 

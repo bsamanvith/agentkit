@@ -2,7 +2,7 @@
 id: T034
 title: Nightly perf report in CI; live tests run in sessions
 epic: E01
-status: review
+status: done
 depends_on: [T001]
 ---
 
@@ -20,7 +20,7 @@ depends_on: [T001]
 
 ## Acceptance criteria
 
-- [ ] A manual dispatch runs the perf job; its summary shows a benchstat comparison from its second run onwards. *(Not run: GitHub dispatches only a workflow that is on the default branch, and this session has no Actions access. Dry run in Notes; check it after merge.)*
+- [x] A manual dispatch runs the perf job; its summary shows a benchstat comparison from its second run onwards. *(Run 39743348345 on 2026-10-22 had no baseline; the second dispatch, run 39747737892, downloaded run 39743348345's perf artifact as `BASELINE` and wrote the benchstat comparison to the job summary and artifact.)*
 - [x] No job needs a secret; the workflow passes on a fork. *(`scripts/perf-report.sh --test`, in `make lint`: no `secrets.` and no `write` permission; the job's token reads the repository and its Actions artifacts only, so a fork's own dispatch runs it.)*
 - [x] `make test-live` runs with only `ANTHROPIC_KEY` set (checked in a Claude session). *(Planner, 2026-10-12; the Makefile still maps `ANTHROPIC_KEY` to `ANTHROPIC_API_KEY`.)*
 

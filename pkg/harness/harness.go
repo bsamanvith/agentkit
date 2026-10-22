@@ -68,6 +68,11 @@ func New(model llm.Model, tools tool.Registry, opts ...Option) (*Harness, error)
 			return nil, fmt.Errorf("%w: AfterTool hook is nil", ErrInvalidConfig)
 		}
 	}
+	for _, f := range cfg.prepare {
+		if f == nil {
+			return nil, fmt.Errorf("%w: Prepare hook is nil", ErrInvalidConfig)
+		}
+	}
 	return &Harness{model: model, tools: tools, cfg: cfg}, nil
 }
 
@@ -203,7 +208,7 @@ func (r *run) exec(ctx context.Context, in Input) {
 	defer cancel()
 
 	r.rec.StartedAt = r.now()
-	if err := r.begin(in); err != nil {
+	if err := r.begin(ctx, in); err != nil {
 		r.fail(err)
 		return
 	}
@@ -274,9 +279,9 @@ func (r *run) exec(ctx context.Context, in Input) {
 	}
 }
 
-// begin validates the input and sets up the transcript, the policy, the
-// interaction and the pending turn.
-func (r *run) begin(in Input) error {
+// begin validates the input, runs the prepare hooks on a new message, and
+// sets up the transcript, the policy, the interaction and the pending turn.
+func (r *run) begin(ctx context.Context, in Input) error {
 	if in.Interaction != "" && !in.Interaction.Valid() {
 		return invalidInput("interaction %q", in.Interaction)
 	}
@@ -332,6 +337,23 @@ func (r *run) begin(in Input) error {
 	t = append(t, m)
 	if err := t.Validate(); err != nil {
 		return err
+	}
+	if len(r.h.cfg.prepare) > 0 {
+		var added []llm.Block
+		for _, f := range r.h.cfg.prepare {
+			blocks, err := f(ctx, in.Message.Clone())
+			if err != nil {
+				return ctxOr(ctx, fmt.Errorf("prepare the message: %w", err))
+			}
+			added = append(added, blocks...)
+		}
+		if len(added) > 0 {
+			m = llm.Message{Role: m.Role, Content: append(added, m.Content...)}.Clone() // no block a hook still holds
+			t[len(t)-1] = m
+			if err := t.Validate(); err != nil {
+				return fmt.Errorf("prepare the message: %w", err)
+			}
+		}
 	}
 	at := in.At
 	if at.IsZero() {

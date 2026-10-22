@@ -50,6 +50,7 @@ type config struct {
 	after       []AfterToolFunc
 	clock       clock.Clock
 	window      ContextWindow
+	prepare     []PrepareFunc
 }
 
 // Option configures [New].
@@ -140,3 +141,22 @@ func WithAfterTool(f AfterToolFunc) Option {
 // monotonic reading, as the real clock does and the UTC or Round(0) forms of
 // its times do not.
 func WithClock(c clock.Clock) Option { return func(cfg *config) { cfg.clock = c } }
+
+// PrepareFunc adds content to the new message of a run before the model sees
+// it: the blocks it returns go before the message's own, in the user turn,
+// and the system prompt stays as it is (so a cached prompt stays cached).
+// It is how retrieved context, such as memory recall, reaches a run. It
+// gets a copy of the message as the caller gave it. An error fails the run
+// before the first model call.
+type PrepareFunc func(ctx context.Context, msg llm.Message) ([]llm.Block, error)
+
+// WithPrepare adds a hook that runs once at the start of each run that has a
+// new message (Input.Message), before the run's first event; a resumed run,
+// which has none, does not run it. Hooks run in the order given, each
+// seeing the message as the caller gave it, and the blocks of the first come
+// first. What they add is part of the message from then on: in the
+// transcript, the record's Prompt and EventRunStart, so a resumed or
+// continued run sends the model the same requests.
+func WithPrepare(f PrepareFunc) Option {
+	return func(c *config) { c.prepare = append(c.prepare, f) }
+}

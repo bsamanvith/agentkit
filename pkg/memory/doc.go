@@ -35,9 +35,26 @@
 // error matching [ErrLimit] and changes nothing. Every other failed command
 // changes nothing either.
 //
+// # Search store
+//
+// An [Index] holds many items (an ID, a text, metadata and a time) and finds
+// them by a [Query]: for recall over past conversations, documents and
+// facts, where a Store holds a few notes read whole. It is scoped like a
+// Store. A query has a [Mode]: [ModeKeyword] matches words and quoted
+// phrases ([ParseKeywordQuery], words by [Tokenize]) and ranks by BM25;
+// semantic and hybrid modes come with embeddings. A mode the backend lacks
+// is [ErrModeUnsupported], never results of another mode.
+//
+// [NewRecallTools] gives a model recall_search, recall_get and recall_save
+// over an index. [AutoRecall] is a harness prepare hook (harness.WithPrepare)
+// that adds the top results for each new user message to that message, in a
+// <recalled source="memory"> block marked as data and not instructions; the
+// system prompt never changes.
+//
 // # Backends
 //
-// Package inmem is the reference store, in memory; package sqlite keeps the
-// files in a SQLite file. Package memorytest is the conformance suite every
-// backend passes.
+// Package inmem is the reference store and index, in memory; package sqlite
+// keeps the files, and the items (searched through FTS5), in a SQLite file.
+// Package memorytest is the conformance suite every backend passes:
+// RunStore for stores, RunIndex (with a relevance set per mode) for indexes.
 package memory

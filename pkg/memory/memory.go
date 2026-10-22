@@ -221,7 +221,8 @@ func (e *LineError) Is(target error) bool { return target == ErrInvalidLine }
 
 // LimitError is a write past one of the [Limits].
 type LimitError struct {
-	// Limit names it: "file bytes", "scope bytes" or "files".
+	// Limit names it: "file bytes", "scope bytes" or "files" for a Store;
+	// "text bytes" or "items" for an Index.
 	Limit string
 	// Max is the limit; Want what the write would have made it.
 	Max, Want int64

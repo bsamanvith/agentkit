@@ -21,3 +21,16 @@ func openSQLiteMemory(ctx context.Context, c memoryStoreConfig, cfg memory.Confi
 	}
 	return s, s.Close, nil
 }
+
+// openSQLiteIndex opens the search store backend "sqlite" at c.Path, which
+// may be the context store's file.
+func openSQLiteIndex(ctx context.Context, c memoryIndexConfig, cfg memory.IndexConfig) (memory.Index, func() error, error) {
+	if c.Path == "" {
+		return nil, nil, errors.New(`backend "sqlite" needs a path (a file)`)
+	}
+	x, err := sqlite.OpenIndex(ctx, c.Path, cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	return x, x.Close, nil
+}

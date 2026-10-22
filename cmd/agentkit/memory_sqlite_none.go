@@ -11,3 +11,7 @@ import (
 func openSQLiteMemory(context.Context, memoryStoreConfig, memory.Config) (memory.Store, func() error, error) {
 	return nil, nil, notBuilt("backend \"sqlite\"", "SQLite", "nosqlite")
 }
+
+func openSQLiteIndex(context.Context, memoryIndexConfig, memory.IndexConfig) (memory.Index, func() error, error) {
+	return nil, nil, notBuilt("backend \"sqlite\"", "SQLite", "nosqlite")
+}

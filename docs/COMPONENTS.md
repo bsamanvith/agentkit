@@ -139,6 +139,7 @@ implementation passes the suite and is picked by a spec or config value.
 | Transport | `rpc.Conn` | rpc tests | `rpc.Dial` |
 | Memory (context store) | `memory.Store` (an agent's notes under `/memories`, scoped by tenant or user) | `memorytest.RunStore` | an agent's `memory.store.backend` through `memoryBackends` (`cmd/agentkit/memory.go`) |
 | Credential vault storage | `credentials.BlobStore` (sealed blobs only, versions for compare-and-swap) | `credentialstest.RunBlobStore`, `RunVault`, `CheckAtRest` | the config's `credentials.backend` through `credentialBackends` (`cmd/agentkit/credentials.go`) |
+| Memory (search store) | `memory.Index` (items found by query, scoped by tenant or user) | `memorytest.RunIndex` (and its relevance set per mode) | an agent's `memory.index.backend` through `memoryIndexBackends` (`cmd/agentkit/memory.go`) |
 
 A new store backend: a package under `pkg/store` that passes the suites, a
 `Backend` in `storeopen` behind a build tag with its `_none.go` twin, its
@@ -151,7 +152,10 @@ conformance test declares it with `llmtest.WithStallTimeout`. A memory
 backend is a package under `pkg/memory` that runs each command as one
 transaction through `pkg/memory/internal/fileops` (the commands' rules live
 there once) and passes `memorytest.RunStore`, plus its line in
-`memoryBackends`, behind a build tag when it brings a driver.
+`memoryBackends`, behind a build tag when it brings a driver. A search
+store backend passes `memorytest.RunIndex`, ranks keyword searches with
+`pkg/memory/internal/keyword` (so every backend returns the same results,
+scores included), and adds its line to `memoryIndexBackends`.
 
 ## Topologies
 

@@ -42,3 +42,37 @@ func Example() {
 	// Here's the content of /memories/preferences.md with line numbers:
 	//      1	Units: metric
 }
+
+// A keyword search: a quoted phrase must occur as it is, and the results come
+// best first.
+func ExampleIndex() {
+	x, err := inmem.NewIndex(memory.IndexConfig{})
+	if err != nil {
+		panic(err)
+	}
+	acme, _ := tenancy.NewTenant("acme")
+	ctx := tenancy.With(context.Background(), acme)
+	for _, it := range []memory.Item{
+		{ID: "bg", Text: "We ship with a blue green deployment."},
+		{ID: "colours", Text: "The deployment dashboard is green, or blue when paused."},
+		{ID: "canary", Text: "Canary deployment comes first."},
+	} {
+		if err := x.Put(ctx, it); err != nil {
+			panic(err)
+		}
+	}
+	for _, q := range []string{`"blue green" deployment`, "deployment canary"} {
+		res, err := x.Search(ctx, memory.Query{Text: q, K: 3})
+		if err != nil {
+			panic(err)
+		}
+		fmt.Print(q, ":")
+		for _, r := range res {
+			fmt.Print(" ", r.Item.ID)
+		}
+		fmt.Println()
+	}
+	// Output:
+	// "blue green" deployment: bg
+	// deployment canary: canary bg colours
+}

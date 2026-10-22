@@ -97,6 +97,8 @@ func TestServeRejectsBadSetup(t *testing.T) {
 		"runtime: on the remote runner":   {env: map[string]string{envComponents: "agent", envRunnerURL: "http://runner:8080"}, config: `{"agents":[{"name":"a","runtime_toolsets":["linear"]}]}`, code: 1, says: "cannot use toolsets added at run time"},
 		"runtime: bad allowed host":       {env: map[string]string{envComponents: "agent"}, config: `{"runtime_toolsets":{"allow_hosts":["http://x"]}}`, code: 1, says: "allow_hosts"},
 		"runtime: negative limit":         {env: map[string]string{envComponents: "agent"}, config: `{"runtime_toolsets":{"max_toolsets":-1}}`, code: 1, says: "negative"},
+		"runtime: bad allow pattern":      {env: map[string]string{envComponents: "agent"}, config: `{"runtime_toolsets":{"tenants":{"acme":{"mcp_servers":{"allow":["https://a*b.com"]}}}}}`, code: 1, says: "mcp_servers.allow"},
+		"runtime: bad registry url":       {env: map[string]string{envComponents: "agent"}, config: `{"runtime_toolsets":{"registry":{"url":"ftp://x"}}}`, code: 1, says: "registry.url"},
 		"agents: unknown provider":        {env: map[string]string{envComponents: "agent"}, config: `{"agents":[{"name":"a"},{"name":"b","model":{"provider":"gemini"}}]}`, code: 1, says: "agents.b.model.provider"},
 		"agents: bad effort":              {env: map[string]string{envComponents: "agent"}, config: `{"agents":[{"name":"a","model":{"effort":"extreme"}}]}`, code: 1, says: "agents.a.model"},
 		"agents: tool name clash":         {env: map[string]string{envComponents: "agent"}, config: `{"mcp":{"toolsets":[{"name":"a","type":"demo"},{"name":"b","type":"demo"}]},"agents":[{"name":"x","toolsets":["a","b"]}]}`, code: 1, says: "agents.x.toolsets"},

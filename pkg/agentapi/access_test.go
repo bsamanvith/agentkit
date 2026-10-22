@@ -191,8 +191,9 @@ func TestScopes(t *testing.T) {
 		}
 		resp, body := r.do(method, path, `{"message":"x"}`, as(keyRead)...)
 		// agent:admin, even to read: reviews, the webhook secret, the
-		// registry's versions, and triggers.
-		admin := strings.HasSuffix(rt, "/review") || rt == "GET /v1/webhooks/secret" || strings.Contains(rt, "/versions") || strings.Contains(rt, " /v1/triggers")
+		// registry's versions, triggers, and the MCP Registry's search.
+		admin := strings.HasSuffix(rt, "/review") || rt == "GET /v1/webhooks/secret" || strings.Contains(rt, "/versions") || strings.Contains(rt, " /v1/triggers") ||
+			rt == "GET /v1/mcp-registry/search"
 		switch {
 		case strings.Contains(rt, " /v1/auth/"), strings.Contains(rt, " /v1/hooks/"): // any credential, or none
 			if resp.StatusCode == http.StatusForbidden {

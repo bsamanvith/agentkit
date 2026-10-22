@@ -485,6 +485,9 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 	}
 	if admin != nil {
 		authOpts = append(authOpts, agentapi.WithToolsetAdmin(admin))
+		if d := admin.Directory(); d != nil {
+			authOpts = append(authOpts, agentapi.WithMCPRegistry(d))
+		}
 	}
 	var callback http.Handler
 	if creds != nil {

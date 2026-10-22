@@ -32,6 +32,40 @@ type runtimeConfig struct {
 	// ConnectTimeout bounds connecting to a server and listing its tools
 	// ("0s": 10s).
 	ConnectTimeout duration `json:"connect_timeout"`
+	// Registry is the MCP Registry admins search for servers to add
+	// (T097).
+	Registry runtimeRegistry `json:"registry"`
+	// MCPServers is the tenant setting mcp_servers: the URLs each tenant's
+	// admins may add servers at.
+	MCPServers mcpServersSetting `json:"mcp_servers"`
+	// Tenants are the tenants with settings of their own, which replace
+	// those above.
+	Tenants map[string]runtimeTenant `json:"tenants"`
+}
+
+// runtimeRegistry is "runtime_toolsets.registry".
+type runtimeRegistry struct {
+	// Enabled turns the search on; it is on unless false.
+	Enabled *bool `json:"enabled"`
+	// URL is the registry's ("": the official one), such as a company's
+	// own subregistry serving the same API.
+	URL string `json:"url"`
+}
+
+// on reports whether the search is on.
+func (r runtimeRegistry) on() bool { return r.Enabled == nil || *r.Enabled }
+
+// mcpServersSetting is the "mcp_servers" setting.
+type mcpServersSetting struct {
+	// Allow are URL patterns ([scheme://]host[:port][/path], with
+	// "*.domain" and "*" in a path): admins may add a server only at a URL
+	// one matches. Empty means any.
+	Allow []string `json:"allow"`
+}
+
+// runtimeTenant is a tenant's own settings, under runtime_toolsets.tenants.
+type runtimeTenant struct {
+	MCPServers mcpServersSetting `json:"mcp_servers"`
 }
 
 func defaultRuntimeConfig() runtimeConfig { return runtimeConfig{} }
@@ -44,6 +78,8 @@ func (r runtimeConfig) on() bool { return r.Enabled == nil || *r.Enabled }
 type toolsetAdmin interface {
 	agentapi.ToolsetAdmin
 	Registry(names ...string) tool.Registry
+	// Directory is the MCP Registry's search; nil when off.
+	Directory() agentapi.MCPRegistry
 	Close() error
 }
 

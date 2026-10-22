@@ -603,6 +603,11 @@ The `runtime_toolsets` section of the config:
 | `header_env` | none | the variables a header may use as `${NAME}`. Headers carrying a secret must use one, so no secret is stored |
 | `max_toolsets` | 50 | per tenant |
 | `connect_timeout` | `10s` | connecting and listing tools |
+| `registry` | `{"enabled": true}` | the MCP Registry `agentkit toolsets search` and `GET /v1/mcp-registry/search` look in: `url` is the official one unless set (a company's subregistry with the same API); `"enabled": false` turns the search off |
+| `mcp_servers.allow` | any | URL patterns admins may add servers at, for every tenant: `mcp.linear.app`, `https://*.example.com/mcp/*`. A URL no pattern matches is refused (`403 url_not_allowed`) before anything connects to it, and so is a redirect to one. Write an international host in its `xn--` form; while a list applies, a URL with `.` or `..` path segments is refused |
+| `tenants` | none | settings of a tenant's own, replacing the ones above: `{"acme": {"mcp_servers": {"allow": ["mcp.linear.app"]}}}`; an empty list lets that tenant add any URL |
+
+Finding a server: `agentkit toolsets search linear` lists the servers the MCP Registry has for "linear" that can be added by URL (those with a Streamable HTTP or SSE remote; servers that are only packages to run are left out), with a suggested name and whether `mcp_servers.allow` lets you add each one. A listing is not a review: adding one is probed and its tools stay off until approved, as above. If the registry is down the search says so (`502 registry_unavailable`), and adding by URL still works.
 
 Not yet: OAuth sign-in to a server (T095) and per-user connections, agents on a separate runner component, and the console screens (T096 part 3).
 

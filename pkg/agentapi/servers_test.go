@@ -54,8 +54,11 @@ func mcpFake(t *testing.T) *httptest.Server {
 // adminRig serves an agent "ops" that uses the runtime toolset "linear",
 // and the config toolset "a", with toolsets added at run time on, behind
 // the keys. The model of "ops" calls linear__search once, then answers.
-func adminRig(t *testing.T) (*rig, *model, string) {
+// Each of opts, given the fake MCP server's URL, adds an option of the
+// manager; the server searches the manager's registry if it has one.
+func adminRig(t *testing.T, opts ...func(mcpURL string) servers.Option) (*rig, *model, string) {
 	t.Helper()
+	mcpURL := mcpFake(t).URL
 	ten := func(name string) tenancy.Tenant {
 		tn, err := tenancy.NewTenant(fmt.Sprintf("%s%d", name, time.Now().UnixNano()))
 		if err != nil {
@@ -76,7 +79,11 @@ func adminRig(t *testing.T) (*rig, *model, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mgr, err := servers.New(st, servers.WithGuard(g))
+	mopts := []servers.Option{servers.WithGuard(g)}
+	for _, o := range opts {
+		mopts = append(mopts, o(mcpURL))
+	}
+	mgr, err := servers.New(st, mopts...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,14 +94,18 @@ func adminRig(t *testing.T) (*rig, *model, string) {
 	)
 	sets := demoTools(t)
 	agents := []agentapi.Agent{{Name: "ops", RuntimeToolsets: []string{"linear"}, Harness: agentHarness(t, m, mgr.Registry("linear"))}}
-	r := newRig(t, m, rigConfig{agents: agents, store: st, api: []agentapi.Option{
+	api := []agentapi.Option{
 		agentapi.WithTenant(nil),
 		agentapi.WithAuthenticator(authn),
 		agentapi.WithToolsets(agentapi.Toolset{Name: "a", Type: "demo", Tools: sets["a"], Credential: agentapi.Credential{Status: wire.CredentialNotNeeded}}),
 		agentapi.WithToolsetAdmin(mgr),
-	}})
+	}
+	if d := mgr.Directory(); d != nil {
+		api = append(api, agentapi.WithMCPRegistry(d))
+	}
+	r := newRig(t, m, rigConfig{agents: agents, store: st, api: api})
 	r.models, r.token = nil, keyA
-	return r, m, mcpFake(t).URL
+	return r, m, mcpURL
 }
 
 func decodeAs[T any](t *testing.T, body []byte) T {

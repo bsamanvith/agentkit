@@ -55,6 +55,7 @@ type Option func(*config)
 
 type config struct {
 	admin          ToolsetAdmin
+	mcpRegistry    MCPRegistry
 	credentials    Credentials
 	registry       AgentRegistry
 	token          string

@@ -156,6 +156,8 @@ func ModuleRules() Rules {
 				// Its tests add MCP servers at run time (T096) through
 				// the manager, behind the SSRF guard.
 				"pkg/mcp/servers", "pkg/netguard",
+				// ... and search the MCP Registry over a replay of it (T097).
+				"pkg/mcp/registry",
 				// A2UI surfaces as ui events, and ui_action (T065).
 				"pkg/a2ui",
 				// Its tests set and connect credentials (T045) through
@@ -314,7 +316,12 @@ func ModuleRules() Rules {
 			"pkg/mcp/servers": {
 				"pkg/agentapi", "pkg/agentapi/wire", "pkg/clock", "pkg/mcp/client",
 				"pkg/netguard", "pkg/store", "pkg/tenancy", "pkg/tool", "pkg/store/memory",
+				// The MCP Registry's search, for the add form (T097).
+				"pkg/mcp/registry",
 			},
+			// The MCP Registry's client (T097): net/http and the clock of
+			// its cache, nothing else.
+			"pkg/mcp/registry": {"pkg/clock", "pkg/clock/clocktest"},
 			// The agent registry (T075): the API's registry contract over
 			// the store's versioned items, never a backend but in its tests
 			// (which build agents on the fake model).

@@ -461,6 +461,12 @@ const (
 	CodeConflict          = "conflict"           // HTTP 409: it changed since it was read; read it again
 	CodeAuthRequired      = "auth_required"      // HTTP 422: the MCP server wants a credential
 	CodeServerUnreachable = "server_unreachable" // HTTP 422: the MCP server could not be used
+	// CodeURLNotAllowed: HTTP 403, the tenant's mcp_servers.allow does not
+	// include the server's URL.
+	CodeURLNotAllowed = "url_not_allowed"
+	// CodeRegistryUnavailable: HTTP 502, the MCP Registry could not be
+	// searched. Adding a server by URL still works.
+	CodeRegistryUnavailable = "registry_unavailable"
 	// CodeRunInterrupted: the run was stopped (POST /v1/runs/{id}/stop, or
 	// its client went away for longer than the reconnect grace). It stays
 	// interrupted: resume it, or send a new message.

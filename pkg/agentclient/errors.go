@@ -74,6 +74,12 @@ var (
 	// ErrAuthRequired: an MCP server being added wants a credential the
 	// request did not give (422).
 	ErrAuthRequired = errors.New("MCP server requires a credential")
+	// ErrURLNotAllowed: the tenant's mcp_servers.allow does not include the
+	// URL of an MCP server being added (403 url_not_allowed).
+	ErrURLNotAllowed = errors.New("MCP server URL not allowed")
+	// ErrRegistryUnavailable: the MCP Registry could not be searched (502
+	// registry_unavailable); adding a server by URL still works.
+	ErrRegistryUnavailable = errors.New("MCP registry unavailable")
 	// ErrBadResponse: the server's response is not what the API defines (not
 	// an event stream or JSON, an event that is not a JSON object with a
 	// type, a body that does not decode).
@@ -112,6 +118,9 @@ var codeSentinels = map[string]error{
 	wire.CodeConflict:          ErrConflict,
 	wire.CodeServerUnreachable: ErrServerUnreachable,
 	wire.CodeAuthRequired:      ErrAuthRequired,
+
+	wire.CodeURLNotAllowed:       ErrURLNotAllowed,
+	wire.CodeRegistryUnavailable: ErrRegistryUnavailable,
 
 	wire.CodeInvalidDefinition: ErrInvalidDefinition,
 	wire.CodeReadOnly:          ErrReadOnly,

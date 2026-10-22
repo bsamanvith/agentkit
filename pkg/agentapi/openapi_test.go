@@ -828,6 +828,15 @@ func TestOpenAPIResponses(t *testing.T) {
 	rec.probe(ra, "delete_toolset_unauthorized", 401, "DELETE", "/v1/toolsets/linear", "", "", bearer...)
 	rec.probe(ra, "delete_toolset", 204, "DELETE", "/v1/toolsets/linear", "", "")
 	rec.probe(ra, "delete_toolset_not_found", 404, "DELETE", "/v1/toolsets/linear", "", "")
+	rec.probe(ra, "search_registry_not_found", 404, "GET", "/v1/mcp-registry/search?q=linear", "", "")
+	// The MCP Registry's search (T097).
+	rr, _, down := mcpRegistryRig(t, func(string) []string { return []string{"https://mcp.linear.app/*"} })
+	rec.probe(rr, "search_registry", 200, "GET", "/v1/mcp-registry/search?q=linear&limit=5", "", "")
+	rec.probe(rr, "search_registry_invalid", 400, "GET", "/v1/mcp-registry/search?q=", "", "")
+	rec.probe(rr, "search_registry_unauthorized", 401, "GET", "/v1/mcp-registry/search?q=linear", "", "", bearer...)
+	rec.probe(rr, "add_toolset_not_allowed", 403, "POST", "/v1/toolsets", `{"type":"mcp","name":"x","url":"https://mcp.example.com/mcp"}`, "")
+	down.Store(true)
+	rec.probe(rr, "search_registry_unavailable", 502, "GET", "/v1/mcp-registry/search?q=linear", "", "")
 
 	// Signing in and out.
 	rs := newSigninRig(t)

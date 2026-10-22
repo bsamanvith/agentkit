@@ -63,6 +63,7 @@ const (
 	CodeConflict          = wire.CodeConflict
 	CodeAuthRequired      = wire.CodeAuthRequired
 	CodeServerUnreachable = wire.CodeServerUnreachable
+	CodeURLNotAllowed     = wire.CodeURLNotAllowed
 	CodeAgentMismatch     = wire.CodeAgentMismatch
 	CodeInvalidDefinition = wire.CodeInvalidDefinition
 	CodeReadOnly          = wire.CodeReadOnly

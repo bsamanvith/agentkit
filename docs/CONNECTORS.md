@@ -281,4 +281,4 @@ To fake a connector in config-driven tests, put `toolsettest.FakeFactory(t, "<ty
 
 ## 7. What the kit cannot show
 
-Fakes and cassettes show the connector works. They cannot show the model uses it well, for example picking the wrong tool or sending arguments the schema rejects. That is the eval tier, [T050](../tasks/T050-connector-tool-evals.md). The kit's fakes are what make those evals cheap.
+Fakes and cassettes show the connector works. They cannot show the model uses it well, for example picking the wrong tool or sending arguments the schema rejects. That is the eval tier, [T050](../tasks/T050-connector-tool-evals.md): `make eval` ([evals/README.md](../evals/README.md)). A new connector's tools get a scenario there. The kit's fakes are what make those evals cheap.

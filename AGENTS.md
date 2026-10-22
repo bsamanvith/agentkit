@@ -12,7 +12,8 @@ A Go kit for running Claude agents: one binary (`cmd/agentkit`), a web console
   task files; `--test` runs it on its fixtures).
 - `make test`; one package: `go test -race -shuffle=on -count=20 ./pkg/<p>/...`.
 - `make integration` (SQLite) or `make integration STORE=postgres`; `make smoke`
-  (the split deployment as processes, fake model); `make fuzz`; `make golden`.
+  (the split deployment as processes, fake model); `make fuzz`; `make golden`;
+  `make eval` (tool-use evals on real Claude, `evals/`); `make record-anthropic`.
 - `make web-check` for the console; `make image` and `make image-size`.
 - Run it: `scripts/try-agent.sh` (one process, real model), `make k8s-up`
   (Docker Desktop's Kubernetes). The `local-env` skill picks one.

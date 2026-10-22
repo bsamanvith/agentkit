@@ -116,4 +116,12 @@ Each bug planted alone by a script (applied, the packages' tests run, restored);
 - Record the embedding cassettes (`make record-cassettes`) once a key exists; until then they are synthetic.
 - `connectors/internal/httpx` could move to a shared `internal/httpx` so `pkg/memory/embed` reuses it instead of its copy.
 - Keyword search over 10k items (24 ms) is now the slow half of hybrid: an inverted index for the in-memory backend if scopes grow.
-- SQLite semantic search reads every vector of the scope per search (40 MB for 10k × 1024); a per-scope cache, or sqlite-vec with cgo, if that becomes the cost.
+- SQLite semantic search reads every vector of the scope per search (40 MB for 10k × 1024, scored on the driver's row buffer and not kept: `BenchmarkSemanticSearch5k` allocates 24 MB of short-lived buffers per search, 66 MB before the review); a per-scope cache, or sqlite-vec with cgo, if that becomes the cost.
+
+### Review fixes
+
+- A corrupt `dim` column (near 2^62, so `4*dim` overflowed past the length check) panicked a search in `Decode`. `Decode` bounds the dimension; the SQLite scan checks model and dimension and scores the blob in place (`semantic.DotBlob`), and a non-finite sum is an error, not a NaN score (`TestIndexCorruptVector`, `TestDecodeBadDim`, `TestDotBlob`).
+- `Reembed` skipped a vector of the right model with a blob of the wrong length, which every search then refused; it now re-embeds those.
+- Triggers drop a vector when its item is deleted or its text changes, whoever writes the file (a version 1 process that had it open across the upgrade): no vector silently describes an old text (`TestIndexVectorsFollowOtherWriters`). The upgrade is one IMMEDIATE transaction, so concurrent opens of a version 1 file all succeed (`TestIndexUpgradeConcurrentOpens`).
+- Semantic scores are held to [-1, 1] as documented (`TestTopClamps`).
+- The embed clients follow no redirect: Go keeps `Authorization` on a same-host redirect, https to http included (`TestNoRedirect`). The base URL does not go through `pkg/netguard`: it is operator config, like connectors' and model providers' URLs, and a local model server on a private address must work.

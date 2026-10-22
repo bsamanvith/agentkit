@@ -23,6 +23,9 @@ type hub struct {
 	tenant        tenancy.Tenant
 	interactive   bool // the grace applies
 	ui            bool // the run's agent shows UI: its ui_render calls are ui events
+	// stop cancels the execution's context with a cause; set before the hub
+	// is shared.
+	stop context.CancelCauseFunc
 
 	mu       sync.Mutex
 	events   []Event

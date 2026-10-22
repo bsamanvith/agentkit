@@ -2,11 +2,16 @@ package agentapi_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
+	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
 	"github.com/bsamanvith/agentkit/pkg/flow"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
@@ -100,5 +105,73 @@ func TestNewExecutionWithoutEvents(t *testing.T) {
 	t.Parallel()
 	if _, err := runner.NewExecution(store.Run{}, nil).Wait(); !errors.Is(err, runner.ErrNoEvents) {
 		t.Errorf("Wait = %v, want ErrNoEvents", err)
+	}
+}
+
+// gatedRuns holds each execution back from the runner until the
+// execution's context is done (or the test ends): the moment between the
+// server launching a run and the runner starting it, when the run is leased
+// (by this server) but the runner knows no execution of it to stop.
+type gatedRuns struct {
+	countingRuns
+	gate chan struct{}
+	open func()
+}
+
+func (g *gatedRuns) Start(ctx context.Context, conv string, msg llm.Message, opts agentapi.StartOptions) (*runner.Execution, error) {
+	x, err := g.rn.Run(ctx, conv, msg, opts.RunOptions()...)
+	if err != nil {
+		return nil, err
+	}
+	return runner.NewExecution(x.Run, func(yield func(runner.Event, error) bool) {
+		select {
+		case <-ctx.Done():
+		case <-g.gate:
+		}
+		for ev, err := range x.Events() {
+			if !yield(ev, err) {
+				return
+			}
+		}
+	}), nil
+}
+
+// TestCommandBeforeExecutionStarts: a cancel or stop that reaches the server
+// as soon as its run's stream opens, before the runner has started the
+// execution, stops the run as it would a moment later, instead of answering
+// run_leased for the server's own run.
+func TestCommandBeforeExecutionStarts(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct{ verb, status string }{
+		{"cancel", agentapi.StatusCanceled},
+		{"stop", agentapi.StatusInterrupted},
+	} {
+		t.Run(c.verb, func(t *testing.T) {
+			t.Parallel()
+			gate := make(chan struct{})
+			runs := &gatedRuns{gate: gate, open: sync.OnceFunc(func() { close(gate) })}
+			clk := clocktest.NewFake(time.Time{}) // the store's: leases are on it
+			opt := agentapi.WithRuns(func(st runner.Store, agents runner.AgentFactory) (agentapi.Runs, error) {
+				rn, err := runner.New(st, agents, runner.WithClock(clk))
+				runs.rn = rn
+				return runs, err
+			})
+			r := newRig(t, script(t), rigConfig{clock: clk, api: []agentapi.Option{opt}})
+			t.Cleanup(runs.open) // before the rig's cleanup, whatever failed
+			s := r.start(t.Context(), "hi", "")
+			id := s.resp.Header.Get("Agentkit-Run-Id")
+			resp, body := r.do(http.MethodPost, "/v1/runs/"+id+"/"+c.verb, "")
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("POST %s: %d %s", c.verb, resp.StatusCode, body)
+			}
+			var run agentapi.Run
+			if err := json.Unmarshal(body, &run); err != nil {
+				t.Fatal(err)
+			}
+			if run.Status != c.status {
+				t.Errorf("the run is %s after %s, want %s", run.Status, c.verb, c.status)
+			}
+			s.all()
+		})
 	}
 }

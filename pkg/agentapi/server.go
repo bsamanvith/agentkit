@@ -801,6 +801,7 @@ func (s *Server) launch(ctx context.Context, cancel context.CancelCauseFunc, x *
 	t, _ := tenancy.From(ctx)
 	h := newHub(x.Run.ID, x.Run.ConversationID, t, x.Run.Interactive, seed.events)
 	h.ui = s.showsUI(ctx, x.Run.ConversationID)
+	h.stop = cancel
 	em := &emitter{log: s.log, h: h, seq: lastSeq(seed.events)}
 	rs, err := s.pub.Open(ctx, x.Run.ID)
 	if err != nil {

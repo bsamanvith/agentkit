@@ -834,6 +834,10 @@ func (x *exec) drive(ctx context.Context, body func(context.Context, func(Event)
 	// keepLease without a write now.
 	if l := x.run.Lease; l.Owner != x.owner || l.Expires.Sub(r.clk.Now()) <= r.ttl*2/3 {
 		if _, err := r.store.Renew(runCtx, x.run.ID, x.owner, r.ttl); err != nil {
+			// Still ours if ctx was done before the renewal: let it go.
+			wctx, wcancel := r.detach(ctx)
+			defer wcancel()
+			x.release(wctx)
 			yield(Event{}, fmt.Errorf("run %q: %w", x.run.ID, err))
 			return
 		}

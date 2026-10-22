@@ -75,6 +75,13 @@ func (s *Server) eventsOf(ctx context.Context, run store.Run) ([]Event, *hub, er
 	now := s.cfg.clock.Now()
 	if h := s.hubOf(ctx, run.ID); h != nil {
 		evs, done := h.snapshot()
+		if done && endStatus(evs[len(evs)-1], h.interactive) != runStatus(run, now) {
+			// The run may have ended since it was read, as its hub says:
+			// what the store says now decides.
+			if fresh, err := s.store.Get(ctx, run.ID); err == nil {
+				run = fresh
+			}
+		}
 		if !done || endStatus(evs[len(evs)-1], h.interactive) == runStatus(run, now) {
 			return evs, h, nil
 		}
@@ -795,7 +802,7 @@ func (s *Server) stopRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
-	_, err := s.runs.Interrupt(ctx, id)
+	_, err := s.interrupt(ctx, id)
 	switch {
 	case errors.Is(err, store.ErrLeased) && !s.ownBus:
 		s.command(ctx, w, r, id, commandStop)
@@ -814,7 +821,7 @@ func (s *Server) cancelRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
-	if _, err := s.runs.Cancel(ctx, id); err != nil {
+	if _, err := s.cancel(ctx, id); err != nil {
 		if errors.Is(err, store.ErrLeased) && !s.ownBus {
 			s.command(ctx, w, r, id, commandCancel)
 			return

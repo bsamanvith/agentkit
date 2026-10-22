@@ -2,7 +2,7 @@
 id: T097
 title: "Search the official MCP Registry from the add form (later)"
 epic: E19
-status: review
+status: done
 depends_on: [T096]
 ---
 
@@ -31,7 +31,7 @@ Pasting a URL is the core path (T096). A search box saves looking up URLs. The o
 
 ## Notes
 
-- **Status `review`, not `done`:** the API, the CLI and the config are built and every criterion runs against them (below). The console's search box is not: the console has no "Add MCP server" form yet (T096 part 3, after T087), so there is nothing to put it in. T096 part 3 adds it on `GET /v1/mcp-registry/search` (see "For T096 part 3"). "Search shows an error" is checked as the API's `502 registry_unavailable` and the CLI's message.
+- **Status `done`** (2026-10-22): the API, the CLI and the config were built here, and the console's search box with T096 part 3: "Find a server" in Add an MCP server prefills the URL, transport, name and headers, disables a remote with `allowed: false`, is hidden on 404 and says "The registry can't be reached; paste the URL instead." on 502 (T096's Notes, part 3; `src/pages/mcp.test.tsx` and `e2e/mcp.spec.ts` against a fake registry). Before that the task waited in `review` for the form.
 - **What was built:**
   - `pkg/mcp/registry`: a client of the registry API v0.1 (`GET /v0.1/servers?search=&limit=&version=latest&cursor=`), standard library only. It keeps servers with a `streamable-http` or `sse` remote whose URL is http(s), drops packages-only and `deleted` ones, dedupes by name, follows `nextCursor` (up to 3 pages) until it has `limit` servers, caps a page at 4 MB, and caches results (5 min, 256 searches, oldest dropped; failures not cached; copies in and out). Remote URLs with `{variables}` are kept, with the variable names, for the admin to fill in.
   - `pkg/mcp/servers`: `Allowlist` (the tenant setting `mcp_servers.allow`), `WithAllowlist`, `WithRegistry` and `Manager.Directory()` (the `agentapi.MCPRegistry`). `Add` checks the allowlist after the request's own checks and **before connecting**, so a refused URL is never probed. The search sanitizes the registry's text (`client.SanitizeDescription`, names and titles capped at 200 runes), maps transports to `AddToolsetRequest`'s (`http`, `sse`), suggests a toolset name (`app.linear/linear` is `linear`) and marks each remote `allowed`.

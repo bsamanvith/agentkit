@@ -28,7 +28,7 @@ import {
 import { Skeleton } from "@agentkit/ui/components/skeleton";
 import { useIsMobile } from "@agentkit/ui/hooks/use-mobile";
 import { cn } from "@agentkit/ui/lib/utils";
-import { Ellipsis, SquarePen, UserRound } from "lucide-react";
+import { Ellipsis, Plus, SquarePen, UserRound } from "lucide-react";
 import {
   Suspense,
   useCallback,
@@ -254,6 +254,22 @@ function ListHead({ title, extra, below }: { title: string; extra?: ReactNode; b
   );
 }
 
+/** Toolsets' list head: Add an MCP server (admins; the API checks). */
+function AddServerButton() {
+  return (
+    <Link
+      to="/toolsets/new"
+      aria-label="Add an MCP server"
+      className="group relative grid size-8 place-items-center rounded-md text-ak-muted hover:bg-ak-hover hover:text-ak-text"
+    >
+      <Plus aria-hidden="true" className="size-4" />
+      <span aria-hidden="true" className={cn(tip, "top-9 right-0")}>
+        Add an MCP server
+      </span>
+    </Link>
+  );
+}
+
 function NewChatButton() {
   return (
     <Link
@@ -338,6 +354,7 @@ function selectedName(pathname: string): string {
 /** Laptop and desktop: the section's list. */
 function ListColumn({ current, lists }: { current: Section; lists: Lists }) {
   const selected = selectedName(useLocation().pathname);
+  const admin = mayAdmin(useApi().me);
   let content: ReactNode;
   if (current.to === "/agents" && lists.agents) {
     content = (
@@ -358,7 +375,15 @@ function ListColumn({ current, lists }: { current: Section; lists: Lists }) {
   } else if (current.to === "/toolsets" && lists.toolsets) {
     content = (
       <>
-        <ListHead title="Toolsets" extra={count(lists.toolsets)} />
+        <ListHead
+          title="Toolsets"
+          extra={
+            <span className="flex items-center gap-1">
+              {count(lists.toolsets)}
+              {admin ? <AddServerButton /> : null}
+            </span>
+          }
+        />
         <ListBody label="Toolsets" res={lists.toolsets} empty="No toolsets are configured.">
           {(t) => (
             <ListRow
@@ -472,11 +497,13 @@ export function Shell({ children }: { children?: ReactNode }) {
   const navigate = useNavigate();
 
   const agents = useResource(listAgents, "agents", current.to !== "/agents" || !mayList);
-  const toolsets = useResource(listToolsets, "toolsets", current.to !== "/toolsets" || !mayList);
+  const [toolsetsLoad, setToolsetsLoad] = useState(0);
+  const toolsets = useResource(listToolsets, `toolsets\n${toolsetsLoad}`, current.to !== "/toolsets" || !mayList);
   const lists = useMemo<Lists>(
     () => ({
       agents: current.to === "/agents" && mayList ? agents : null,
       toolsets: current.to === "/toolsets" && mayList ? toolsets : null,
+      reloadToolsets: () => setToolsetsLoad((n) => n + 1),
     }),
     [current, mayList, agents, toolsets],
   );

@@ -12,6 +12,8 @@ export const AgentsPage = lazy(() => admin().then((m) => ({ default: m.AgentsPag
 export const AgentPage = lazy(() => admin().then((m) => ({ default: m.AgentPage })));
 export const ToolsetsPage = lazy(() => admin().then((m) => ({ default: m.ToolsetsPage })));
 export const ToolsetPage = lazy(() => admin().then((m) => ({ default: m.ToolsetPage })));
+export const McpAddPage = lazy(() => admin().then((m) => ({ default: m.McpAddPage })));
+export const ReviewPage = lazy(() => admin().then((m) => ({ default: m.ReviewPage })));
 export const ConnectionsPage = lazy(() => admin().then((m) => ({ default: m.ConnectionsPage })));
 export const TasksPage = lazy(() => tasks().then((m) => ({ default: m.TasksPage })));
 export const RunPage = lazy(() => tasks().then((m) => ({ default: m.RunPage })));

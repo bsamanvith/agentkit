@@ -312,23 +312,25 @@ T057's skills, stored and versioned by T076.
 T096's runtime toolsets, added by an admin from Toolsets (+ in the list header). Four steps, shown as "1 Server · 2 Sign-in · 3 Review tools · 4 Use it" with the current one marked.
 
 1. **Server:** a URL, and a name (from the host by default; the tools become `name__tool`).
-   - Some URLs are refused before any request, with the reason under the field: not https ("Use an https URL…"); a private or local address ("10.0.3.12 is a private address. agentkit connects only to public addresses, so a server can't be used to reach your network. (url_not_allowed)"); a name already taken.
+   - Some URLs are refused before any request, with the reason under the field: not a URL, not http(s) ("Use an https URL."), a user name and password in it, an unfilled `{variable}`; a name already taken. Plain http and a private or local address get a warning ("10.0.3.12 is a private or local address. agentkit connects only to public addresses, unless the operator allows this host.") and go to the server, which refuses them unless `runtime_toolsets.allow_hosts` allows the host; its reason then shows under the field (T096 part 3: the console can't know that list).
    - **Connect** probes the server (`POST /v1/toolsets`). Nothing is saved if the probe fails.
 2. **Sign-in:** first what the server said: a 401 with `WWW-Authenticate`, or that it answered without sign-in. Then the choices:
    - **No sign-in**.
    - **A header from a server variable**: a header name and a value like `Bearer ${LINEAR_API_KEY}`. Only variables listed in `runtime_toolsets.header_env` are allowed, and the value never passes through the console.
-   - **Each person signs in**: later (T095, T044). It will add a row to Connections, "Account, MCP server".
+   - **Each person signs in**: later (T095, T044), shown disabled with "Not available yet". It will add a row to Connections, "Account, MCP server". When the server asks for MCP OAuth, a notice says so.
+   - A server that answers without sign-in skips this step; a header that carries a secret must be a `${VAR}`, checked before it is sent.
 3. **Review tools:** one card per tool, and every tool needs **Approve** or **Reject**. **Approve the 3 without flags** saves clicks. A card shows:
    - the name;
    - the description **exactly as the model sees it**, with invisible characters shown (⟦U+200B⟧);
    - flags ("3 invisible characters", "Tells the model to call another tool");
    - the class agentkit will use: kind and risk selects. The server's hints (`readOnlyHint`) are "a claim, not a check", and an unclassified tool is a medium-risk write;
    - the input schema, on demand.
-4. **Use it:** pick stored agents (config agents are greyed). Each gets a new draft with the toolset added, which changes nothing until it is published.
+4. **Use it:** pick stored agents (config agents are greyed). Each gets a new draft with the toolset added, which changes nothing until it is published, or a published version with "Publish the new versions now" (off by default, until the builder can publish).
 
 - **Pinned and reviewed:** approved definitions are pinned. When the server changes a tool or adds one, the toolset shows **Review needed** (in the list, on the agents' readiness, and as a notice with **Review** on its page), and only those tools are off.
 - **The review page** (`/toolsets/{name}/review`): each changed tool as a diff (approved → now, description and schema) and each new tool as a card, with Approve or Reject, then **Save review** (`POST /v1/toolsets/{name}/review`).
-- **Later:** a registry search (T097) adds "Find a server" before step 1.
+- **Find a server** (T097), above step 1's fields: a registry search that prefills the URL, the name and the headers. A remote the workspace doesn't allow is disabled ("not allowed in this workspace"); with no registry the box is hidden; when the registry is down: "The registry can't be reached; paste the URL instead."
+- The probe stores the toolset with every tool off, so the review is saved at step 3, and "Cancel and remove it" deletes it.
 
 ## Runs and conversations
 
@@ -394,7 +396,7 @@ Each has a design in the mockup (the **State** menu in its top bar) or here.
 | **Read-only agent** | Builder | An agent from the config file (409 `read_only` if written): read-only with **Duplicate to edit**. |
 | **Draft not tested** | Builder test chat | "Your draft isn't what answers here": the test runs the published version. |
 | **Skill check failed** | Skill upload | The failed checks with an icon and a hidden "Failed:", and Upload disabled. |
-| **URL refused** | Add an MCP server | Not https, or a private or local address: the reason under the field, with `url_not_allowed`; nothing is requested. |
+| **URL refused** | Add an MCP server | Not a URL, not http(s), user info: the reason under the field, and nothing is requested. Plain http or a private address: a warning, then the server's reason under the field. |
 | **Sign-in asked** | Add an MCP server | "The server asked for sign-in (401)." and the sign-in choices. |
 | **Review needed** | Toolsets, agents | A server changed or added tools: "Review needed" on the toolset, a notice with Review; only those tools are off. |
 

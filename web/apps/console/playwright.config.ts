@@ -8,6 +8,9 @@
 import { defineConfig } from "@playwright/test";
 import {
   adminPort,
+  fakeMcpPort,
+  mcpPort,
+  mcpTokenCanary,
   modelPort,
   providerCanary,
   providerPort,
@@ -97,6 +100,30 @@ export default defineConfig({
         AGENTKIT_CREDENTIALS_KEY: "e2e:ZioRPt9Lvn72IhkndjYpyWCJUjzmiBUs1HX8fZGrYZc=",
         MAIL_CLIENT_SECRET: "e2e-mail-client-secret",
         EXA_API_KEY: serverKeyCanary,
+        ANTHROPIC_API_KEY: "smoke-dummy-key",
+        ANTHROPIC_BASE_URL: `http://127.0.0.1:${modelPort}`,
+      },
+    },
+    // The MCP servers tests (e2e/mcp.spec.ts, T096): a fake MCP server and
+    // registry, and a server that adds MCP servers at run time and keeps
+    // stored agents (their own, so the admin tests' counts don't move).
+    {
+      command: `node e2e/fake-mcp.ts ${fakeMcpPort} ${mcpTokenCanary}`,
+      url: `http://127.0.0.1:${fakeMcpPort}/healthz`,
+      reuseExistingServer: false,
+      timeout: 10_000,
+    },
+    {
+      command: `"${bin}" serve`,
+      url: `http://127.0.0.1:${mcpPort}/readyz`,
+      reuseExistingServer: false,
+      timeout: 30_000,
+      stdout: "pipe",
+      env: {
+        AGENTKIT_ADDR: `127.0.0.1:${mcpPort}`,
+        AGENTKIT_COMPONENTS: "agent,web",
+        AGENTKIT_CONFIG: "e2e/mcp.json",
+        FAKE_MCP_TOKEN: mcpTokenCanary,
         ANTHROPIC_API_KEY: "smoke-dummy-key",
         ANTHROPIC_BASE_URL: `http://127.0.0.1:${modelPort}`,
       },

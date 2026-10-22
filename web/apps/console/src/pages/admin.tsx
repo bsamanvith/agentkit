@@ -1,31 +1,21 @@
 import { Status } from "@agentkit/ui";
 import { Button } from "@agentkit/ui/components/button";
-import { ApiError } from "@agentkit/agent-ui/api";
 import { Bot, ChevronRight, Info, Wrench, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, Navigate, useParams } from "react-router";
-import { isAdmin } from "../access";
-import { useApi, type Resource } from "../api";
+import type { Resource } from "../api";
 import { useLayout } from "../layout";
 import { ListRow } from "../list-row";
 import { agentRow, toolsetRow, useLists, type RowInfo } from "../lists";
 import { AgentDetail } from "./agent";
 import { Empty, Loaded, Page } from "./page";
+import { useForbidden } from "./forbidden";
 import { Forbidden } from "./parts";
-import { ToolsetDetail } from "./toolset";
+import { ToolsetActions, ToolsetDetail } from "./toolset";
 
 export { ConnectDonePage, ConnectionsPage } from "./connections";
-
-/**
- * Whether to show the 403 page instead: the caller is known not to be an
- * admin, or the API refused the list (a stale tab after a role change). A
- * CSRF refusal is never this (the client retries it).
- */
-function useForbidden(res: Resource<unknown> | null): boolean {
-  const { me } = useApi();
-  if (me && !isAdmin(me)) return true;
-  return res?.state === "failed" && res.error instanceof ApiError && res.error.status === 403;
-}
+export { McpAddPage } from "./mcp-add";
+export { ReviewPage } from "./mcp-review";
 
 type Kind = {
   title: string;
@@ -33,6 +23,8 @@ type Kind = {
   base: string;
   icon: LucideIcon;
   empty: ReactNode;
+  /** The list page's action on a phone (a laptop has it in the list column). */
+  add?: ReactNode;
 };
 
 const kinds = {
@@ -50,7 +42,19 @@ const kinds = {
     title: "Toolsets",
     base: "/toolsets",
     icon: Wrench,
-    empty: <p className="text-ak-muted">An admin adds MCP servers to the server config.</p>,
+    empty: (
+      <>
+        <p className="text-ak-muted">Add an MCP server by its URL, or name toolsets in the server config.</p>
+        <Button asChild size="sm">
+          <Link to="/toolsets/new">Add an MCP server</Link>
+        </Button>
+      </>
+    ),
+    add: (
+      <Button asChild size="sm" variant="outline">
+        <Link to="/toolsets/new">Add</Link>
+      </Button>
+    ),
   },
 } satisfies Record<string, Kind>;
 
@@ -84,7 +88,7 @@ function SectionPage<T extends { name: string }>({
   const first = res.state === "ready" ? res.data[0] : undefined;
   if (!phone && first) return <Navigate replace to={`${kind.base}/${encodeURIComponent(first.name)}`} />;
   return (
-    <Page title={kind.title}>
+    <Page title={kind.title} aside={kind.add}>
       <Loaded res={res} what={kind.title.toLowerCase()}>
         {(list) => (
           <nav aria-label={kind.title} className="-mx-2 flex flex-col gap-1">
@@ -202,6 +206,7 @@ export function ToolsetPage() {
       res={useLists().toolsets}
       row={toolsetRow}
       detail={(t) => <ToolsetDetail toolset={t} />}
+      action={(t) => (t.runtime ? <ToolsetActions toolset={t} /> : null)}
     />
   );
 }

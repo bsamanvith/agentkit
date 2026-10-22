@@ -575,6 +575,11 @@ func TestWebhookRefusals(t *testing.T) {
 	if resp.StatusCode != http.StatusConflict || !strings.Contains(string(b), wire.CodeTriggerPaused) {
 		t.Errorf("to a paused trigger: %d %s, want 409 trigger_paused", resp.StatusCode, b)
 	}
+	// Nothing but the signature's check answers a request that is not
+	// signed: it does not learn that the trigger is paused.
+	if resp, b := r.hook(tr.Webhook.Path, other.Webhook.Secret, "msg_3", now, `{}`); resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("badly signed, to a paused trigger: %d %s, want 401", resp.StatusCode, b)
+	}
 	if n := len(m.requests()); n != 1 {
 		t.Errorf("%d model requests, want the first delivery's alone", n)
 	}

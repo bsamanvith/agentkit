@@ -56,6 +56,8 @@ function fakeServer() {
     const url = new URL(String(input), "http://console.test");
     const method = init?.method ?? "GET";
     const body = typeof init?.body === "string" ? (JSON.parse(init.body) as Record<string, unknown>) : undefined;
+    // The shell's watch of background runs (Tasks): not what these tests count.
+    if (url.pathname === "/v1/runs" && url.searchParams.get("background") === "true") return json({ v: 1, runs: [] });
     state.seen.push({ method, path: url.pathname, body, signal: init?.signal ?? null });
     const path = url.pathname;
     if (path === "/v1/agents") {
@@ -168,7 +170,8 @@ describe("a new chat", () => {
       { type: "run_done", answer: "", usage: { input_tokens: 10, output_tokens: 5 }, turns: 2 },
     ]);
     const router = renderAt("/new");
-    await screen.findByRole("button", { name: "Agent: researcher" });
+    // The first test of the file waits for the page's chunk too: give it time.
+    await screen.findByRole("button", { name: "Agent: researcher" }, { timeout: 5000 });
     await userEvent.type(box(), "Hello{Enter}");
 
     await waitFor(() => expect(router.state.location.pathname).toBe("/c/conv_1"));

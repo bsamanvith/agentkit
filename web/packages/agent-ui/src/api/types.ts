@@ -66,6 +66,8 @@ export type RunEvent = {
   run_id: string;
   at?: string;
   conversation_id?: string;
+  /** run_start: the message the run started from, when the server has it ({at, message}, undecoded). */
+  prompt?: unknown;
   turn?: number;
   block?: number;
   text?: string;
@@ -137,6 +139,75 @@ export type Run = {
   usage?: Usage;
   turns?: number;
   error?: WireError;
+  /** Set for a task (POST /v1/tasks, or a message from another agent): a background run. */
+  background?: boolean;
+  /** The runner pool it was placed in. */
+  pool?: string;
+  /** The stored agent's version it runs (absent for a config agent). */
+  agent_version?: number;
+};
+
+/** The body of POST /v1/tasks. */
+export type TaskRequest = { input: string; agent?: string; notify?: { url: string } };
+
+/** One message of a thread between agents (GET /v1/threads/{id}). */
+export type ThreadMessage = {
+  id: string;
+  /** Its position in the thread, from 1. */
+  hop: number;
+  /** agent:<name>, or agentkit for the server's notices. */
+  from: string;
+  to: string;
+  from_conversation?: string;
+  to_conversation: string;
+  kind: "request" | "reply" | "notice" | (string & {});
+  text: string;
+  in_reply_to?: string;
+  state: "queued" | "running" | "done" | (string & {});
+  /** The run of its recipient that processed it. */
+  run_id?: string;
+  created_at: string;
+  processed_at?: string;
+};
+
+/** One time a trigger fired (T072). */
+export type Firing = {
+  id: string;
+  scheduled_for?: string;
+  at: string;
+  /** pending, started (run_id), skipped (reason), failed (reason). */
+  state: "pending" | "started" | "skipped" | "failed" | (string & {});
+  run_id?: string;
+  reason?: string;
+};
+
+/** A trigger: what starts background runs of an agent on a schedule or a webhook (GET /v1/triggers). */
+export type Trigger = {
+  id: string;
+  agent?: string;
+  prompt: string;
+  schedule?: string;
+  webhook?: { path: string };
+  paused: boolean;
+  /** From the server's config: the API only pauses and resumes it. */
+  static?: boolean;
+  next_fire_at?: string;
+  last_firing?: Firing;
+  version: number;
+};
+
+/** A thread of messages between agents; GET /v1/threads lists it without messages. */
+export type Thread = {
+  id: string;
+  /** open takes messages; stopped was stopped over a limit (error says which). */
+  status: "open" | "stopped" | (string & {});
+  error?: WireError;
+  /** The number of messages in it. */
+  hops: number;
+  tokens: number;
+  created_at: string;
+  updated_at: string;
+  messages?: ThreadMessage[];
 };
 
 /**

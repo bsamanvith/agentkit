@@ -35,7 +35,10 @@ function fakeServer(server = { token: "good" }) {
     if (path === "/v1/auth/me" && bearer) {
       return Response.json({ v: 1, tenant: "default", roles: [], scopes: ["*"], credential: "api_key" });
     }
-    seen.push(req);
+    // The shell's watch of background runs (Tasks): not what these tests count.
+    const watch = path === "/v1/runs" && new URL(req.url).searchParams.get("background") === "true";
+    if (watch && bearer) return Response.json({ v: 1, runs: [] });
+    if (!watch) seen.push(req);
     if (!bearer) {
       const body = { v: 1, error: { code: "unauthenticated", message: "token required", retryable: false } };
       return Response.json(body, { status: 401 });
@@ -508,7 +511,8 @@ describe("a page", () => {
     let calls = 0;
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => {
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).includes("background=true")) return Response.json({ v: 1, runs: [] });
         calls++;
         if (calls === 1) {
           const body = { v: 1, error: { code: "internal", message: "the store is down", retryable: true } };

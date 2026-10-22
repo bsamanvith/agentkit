@@ -6,7 +6,7 @@
 // runner's Google Chrome; locally, the Chromium Playwright finds in
 // PLAYWRIGHT_BROWSERS_PATH or its cache.
 import { defineConfig } from "@playwright/test";
-import { modelPort, token } from "./e2e/token";
+import { tasksModelPort, tasksPort, modelPort, token } from "./e2e/token";
 
 const port = 18478;
 const bin = process.env.AGENTKIT_BIN;
@@ -42,6 +42,28 @@ export default defineConfig({
         AGENTKIT_API_TOKEN: token,
         ANTHROPIC_API_KEY: "smoke-dummy-key",
         ANTHROPIC_BASE_URL: `http://127.0.0.1:${modelPort}`,
+      },
+    },
+    // The Tasks tests' (e2e/tasks.spec.ts) own model and server.
+    {
+      command: `node e2e/fake-model.ts ${tasksModelPort}`,
+      url: `http://127.0.0.1:${tasksModelPort}/healthz`,
+      reuseExistingServer: false,
+      timeout: 10_000,
+    },
+    {
+      command: `"${bin}" serve`,
+      url: `http://127.0.0.1:${tasksPort}/readyz`,
+      reuseExistingServer: false,
+      timeout: 30_000,
+      stdout: "pipe",
+      env: {
+        AGENTKIT_ADDR: `127.0.0.1:${tasksPort}`,
+        AGENTKIT_COMPONENTS: "agent,web",
+        AGENTKIT_CONFIG: "e2e/tasks.json",
+        AGENTKIT_API_TOKEN: token,
+        ANTHROPIC_API_KEY: "smoke-dummy-key",
+        ANTHROPIC_BASE_URL: `http://127.0.0.1:${tasksModelPort}`,
       },
     },
   ],

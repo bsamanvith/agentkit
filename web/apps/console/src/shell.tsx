@@ -42,15 +42,19 @@ import {
   type ReactNode,
 } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
+import { Toasts } from "./tasks/context";
+import { waitingCount } from "./tasks/store";
+import { useTasks } from "./tasks/use-tasks";
 import { useApi, useResource, type Resource } from "./api";
 import { ChatsList } from "./chat/list";
 import { RunsContext } from "./chat/use-runs";
 import { composerId, searchId } from "./chat/shared";
 import { LayoutContext, isApple, listStorageKey, modHint, modKey, type Layout } from "./layout";
 import { ListRow } from "./list-row";
+import { TasksList } from "./pages/lazy";
 import { Loading } from "./pages/page";
 import { agentRow, listAgents, ListsContext, listToolsets, toolsetRow, type Lists } from "./lists";
-import { adminSections, sectionOf, sections, type Section } from "./sections";
+import { tasks, adminSections, sectionOf, sections, type Section } from "./sections";
 
 const themeLabels: Record<ThemePreference, string> = { system: "System", light: "Light", dark: "Dark" };
 
@@ -168,16 +172,40 @@ function UserMenu({ variant }: { variant: "rail" | "drawer" }) {
   );
 }
 
+/** A section's badge: Tasks counts the tasks waiting for you (docs/UI.md "Tasks"). */
+function useBadge(section: Section): number {
+  const { runs } = useTasks();
+  return section === tasks ? waitingCount(runs) : 0;
+}
+
+function Badge({ n, className }: { n: number; className?: string }) {
+  if (n === 0) return null;
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "absolute grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-[10px] leading-none font-medium text-primary-foreground tabular-nums",
+        className,
+      )}
+    >
+      {n > 9 ? "9+" : n}
+    </span>
+  );
+}
+
 function RailLink({ section, current }: { section: Section; current: boolean }) {
   const Icon = section.icon;
+  const badge = useBadge(section);
+  const label = badge > 0 ? `${section.label}, ${badge} waiting for you` : section.label;
   return (
     <Link
       to={section.to}
-      aria-label={section.label}
+      aria-label={label}
       aria-current={current ? "page" : undefined}
       className="group relative grid size-10 place-items-center rounded-md text-ak-muted hover:bg-ak-hover hover:text-ak-text aria-[current=page]:bg-ak-select aria-[current=page]:text-ak-text"
     >
       <Icon aria-hidden="true" className="size-4.5" />
+      <Badge n={badge} className="top-0.5 right-0.5" />
       <span aria-hidden="true" className={cn(tip, "top-1/2 left-12 -translate-y-1/2")}>
         {section.label}
       </span>
@@ -338,10 +366,39 @@ function ListColumn({ current, lists }: { current: Section; lists: Lists }) {
         </ListBody>
       </>
     );
+  } else if (current === tasks) {
+    content = (
+      <Suspense
+        fallback={
+          <div className="p-3">
+            <Loading />
+          </div>
+        }
+      >
+        <TasksList />
+      </Suspense>
+    );
   } else {
     content = <Chats />;
   }
   return <div className="flex min-h-0 min-w-0 flex-col border-r bg-ak-bg">{content}</div>;
+}
+
+function DrawerLink({ section, current }: { section: Section; current: boolean }) {
+  const Icon = section.icon;
+  const badge = useBadge(section);
+  return (
+    <Link
+      to={section.to}
+      aria-current={current ? "page" : undefined}
+      className="relative flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-md px-1 py-1.5 text-center text-xs text-ak-muted aria-[current=page]:bg-ak-select aria-[current=page]:text-ak-text"
+    >
+      <Icon aria-hidden="true" className="size-4" />
+      {section.label}
+      {badge > 0 ? <span className="sr-only">, {badge} waiting for you</span> : null}
+      <Badge n={badge} className="top-1 right-[calc(50%-20px)]" />
+    </Link>
+  );
 }
 
 /** Phone: the drawer. */
@@ -366,20 +423,9 @@ function Drawer({ open, current, close }: { open: boolean; current: Section; clo
         )}
       >
         <nav aria-label="Sections" className="grid grid-cols-3 gap-0.5 px-3 pt-3 pb-0.5">
-          {[...sections, ...adminSections].map((s) => {
-            const Icon = s.icon;
-            return (
-              <Link
-                key={s.to}
-                to={s.to}
-                aria-current={s === current ? "page" : undefined}
-                className="flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-md px-1 py-1.5 text-center text-xs text-ak-muted aria-[current=page]:bg-ak-select aria-[current=page]:text-ak-text"
-              >
-                <Icon aria-hidden="true" className="size-4" />
-                {s.label}
-              </Link>
-            );
-          })}
+          {[...sections, ...adminSections].map((s) => (
+            <DrawerLink key={s.to} section={s} current={s === current} />
+          ))}
         </nav>
         {/* On phones the drawer always holds the Chats list; admin lists are pages. */}
         <Chats />
@@ -548,6 +594,7 @@ export function Shell({ children }: { children?: ReactNode }) {
             <Drawer open={drawerOpen} current={current} close={closeDrawer} />
           </div>
         ) : null}
+        <Toasts />
       </ListsContext.Provider>
     </LayoutContext.Provider>
   );

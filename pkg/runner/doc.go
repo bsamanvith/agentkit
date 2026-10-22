@@ -23,7 +23,9 @@
 // not start. A [Recovery] is the dispatcher of some lanes ([WithLanes]): each
 // pass claims the due runs of its lanes in every tenant, while it has a free
 // worker, highest priority first and then the earliest due
-// ([store.Admin.ClaimNext]), and runs them as it resumes any run.
+// ([store.Admin.ClaimNext]), and runs them as it resumes any run. A runner
+// pool's dispatcher takes the pool's slots instead of workers of its own
+// ([WithSlots]); a run records its pool with [InPool].
 //
 // A chat run writes its prompt entry first, before the prompt's event reaches
 // the consumer. It then keeps its turns, one entry per harness

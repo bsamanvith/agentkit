@@ -16,6 +16,20 @@
 // [Router.Factory] makes it a [runner.AgentFactory]. With no configuration
 // there is [Default]: one process pool, the runner as it always ran.
 //
+// # Capacity
+//
+// A pool may have a limit of runs going on at once ([WithLimit]): its
+// [Slots], which a run holds from before it is created or claimed until its
+// execution ends. A chat takes one when its request comes and is refused
+// when none is free (the agent API answers 429); a background pool's
+// dispatcher (runner.Recovery with runner.WithSlots) claims a run of its
+// lane only while it holds a free slot, so its runs wait in the store
+// meanwhile. A pool is a lane of the run queue: a background run is queued
+// in its pool's lane (runner.Lane) and placed in its pool (runner.InPool,
+// stored with the run), and a run placed before goes back to its pool
+// ([Router.Route]). Separate chat and background pools are what keeps
+// background work from ever taking the slots chats need.
+//
 // # Lifecycle
 //
 // A pool owns the agents it makes: [Pool.Close] closes those still open and

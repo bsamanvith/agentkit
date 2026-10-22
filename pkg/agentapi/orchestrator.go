@@ -21,7 +21,8 @@ import (
 type Runs interface {
 	// Start creates an interactive run of conversationID on msg, as
 	// [runner.Runner.Run] with [runner.Interactive] and the options in opts,
-	// which it must apply: a run must never run without its ToolPolicy.
+	// which it must apply: a run must never run without its ToolPolicy, and
+	// it runs in the Pool the server took a slot of.
 	Start(ctx context.Context, conversationID string, msg llm.Message, opts StartOptions) (*runner.Execution, error)
 	// Resume, Decide, Answer, Cancel, Interrupt and Shutdown are as on
 	// [runner.Runner].
@@ -41,6 +42,9 @@ type StartOptions struct {
 	// Interaction narrows the agent's interaction mode for the run and its
 	// resumes ([runner.Interaction]); empty for the agent's.
 	Interaction harness.Interaction
+	// Pool is the runner pool the server placed the run in, and took a slot
+	// of ([runner.InPool]); "" for none.
+	Pool string
 }
 
 // RunOptions are opts as the runner takes them.
@@ -51,6 +55,9 @@ func (o StartOptions) RunOptions() []runner.RunOption {
 	}
 	if o.Interaction != "" {
 		out = append(out, runner.Interaction(o.Interaction))
+	}
+	if o.Pool != "" {
+		out = append(out, runner.InPool(o.Pool))
 	}
 	return out
 }

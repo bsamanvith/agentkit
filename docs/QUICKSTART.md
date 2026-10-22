@@ -229,6 +229,7 @@ Each entry of `agents`:
 | `max_turns`, `max_total_tokens` | 25, unlimited | budgets per run |
 | `tool_policy` | `all` | which tool calls the agent may make (below) |
 | `interaction` | `autonomous` | whether its tool calls may wait for people: `interactive` or `supervised` (an `ask_user` question, or a call the policy wants approved, suspends the run until answered), or `autonomous` (never: `ask_user` is not offered, and such a call is refused) |
+| `isolation` | `process` | the least isolation the agent's runs need: `process`, `sandbox` or `vm`; a run goes only to a runner pool at least that isolated (`runners`, below), and startup fails when there is none. Only `process` pools exist yet |
 | `memory` | none (no memory tool, nothing stored) | the agent's own notes across conversations: one tool, `memory`, with the commands of Claude's memory tool on files under `/memories`. `store.backend` is `memory` (in the process, lost on restart) or `sqlite` with `store.path` (a file; only in the local image, the others refuse it at startup); `store.scope` is `tenant` (default) or `user` (each user of a tenant apart: needs API keys with a `user`); `store.max_file_bytes`, `store.max_scope_bytes`, `store.max_files` default to 16 KiB, 1 MiB and 200. `native_tool: true` sends it to Claude as the native memory tool type. `index` adds a search store (recall over many items): the tools `recall_search` (words, `"exact phrases"`, a metadata filter), `recall_get` and `recall_save`; `index.backend` is `memory` or `sqlite` with `index.path` (it may be the store's file), `index.scope` as the store's, `index.max_items` and `index.max_text_bytes` default to 10,000 and 32 KiB. `index.auto_recall: true` adds the top `index.k` (default 5) results for each new message to that message as a `<recalled source="memory">` block marked as data, never to the system prompt. A section may have a store, an index or both. Not yet for agents on a runner component |
 
 `agent_api`:
@@ -259,6 +260,25 @@ A toolset uses a stored credential when its spec names a slot: `{"name": "crm", 
 ```
 
 The client secret comes from the variable `client_secret_env` names, never the file; `auth_style` is `header` (default) or `params`. Credentials are put in the vault by T045's API (until then, by code: `credentials.Vault.Put`).
+`runners` places runs in runner pools, each with its own limit, so that background work never takes the slots chats need. Without it there is one pool, `default`, with no limit of its own:
+
+```json
+"runners": {
+  "pools": [{"name": "chat", "limit": 16}, {"name": "background", "limit": 4}],
+  "routes": [{"pool": "chat", "runs": "chat"}],
+  "default": "background"
+}
+```
+
+| Field | Default | Meaning |
+|---|---|---|
+| `pools[].name` | required | `^[a-zA-Z0-9_-]{1,64}$`, unique; shown as a run's `pool` (`GET /v1/runs/{id}`) and in the logs |
+| `pools[].isolation` | `process` | only `process` until the sandbox (T106) and VM (T107) pools; anything else fails startup |
+| `pools[].limit` | none | runs going on in the pool at once. A chat past it gets `429 over_capacity` with `Retry-After`; a background run waits in the store until the pool has a free slot |
+| `routes[]` | none | tried in order: `pool`, and the runs it takes: `runs` (`chat` or `background`; both when absent), `agents` (names), `isolation` (agents that need at least that much). A route whose pool is less isolated than the agent needs is passed over |
+| `default` | the only pool | the pool of the runs no route takes |
+
+A pool that background runs can be routed to (the default, and any route that is not `chat` only) gets a dispatcher, which claims the pool's queued runs (its lane of the run queue) only while the pool has a free slot.
 
 The one-agent form still works: an `agent` section (instead of `agents` and `agent_api`) with the fields of both tables except `name` is served as the agent `default`.
 

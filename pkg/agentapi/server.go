@@ -473,11 +473,19 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 		s.unavailable(w, apiErr)
 		return
 	}
+	poolName, freePool, status, apiErr := s.admitPool(ag, runner.Placement{ConversationID: convID, Interactive: true})
+	if apiErr != nil {
+		s.release()
+		s.refuse(w, status, apiErr)
+		return
+	}
+	start.Pool = poolName
 	created := false
 	if convID == "" {
 		convID = s.cfg.newID("conv_")
 		if _, err := s.store.CreateConversation(ctx, store.Conversation{ID: convID, Agent: ag.Name}); err != nil {
 			s.release()
+			freePool()
 			s.internal(w, "creating a conversation", err)
 			return
 		}
@@ -488,6 +496,7 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		cancel(nil)
 		s.release()
+		freePool()
 		if created {
 			if derr := s.store.DeleteConversation(ctx, convID); derr != nil {
 				s.log.Warn("deleting the conversation of a run that did not start", "conversation_id", convID, "err", derr)
@@ -499,8 +508,8 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 	if _, err := s.store.SetTitle(ctx, convID, title(req.Message)); err != nil {
 		s.log.Warn("setting a conversation's title", "conversation_id", convID, "err", err)
 	}
-	s.log.Info("run started", "run_id", x.Run.ID, "conversation_id", convID, "agent", ag.Name)
-	h := s.launch(execCtx, cancel, x, replayed{})
+	s.log.Info("run started", "run_id", x.Run.ID, "conversation_id", convID, "agent", ag.Name, "pool", x.Run.Pool)
+	h := s.launch(execCtx, cancel, x, replayed{}, freePool)
 	s.respond(w, r, h, bus.ID{})
 }
 
@@ -634,7 +643,7 @@ func (s *Server) startError(w http.ResponseWriter, err error, busy string) {
 	case errors.Is(err, flow.ErrShapeChanged):
 		writeError(w, http.StatusConflict, &Error{Code: CodeShapeChanged, Message: err.Error()})
 	case errors.Is(err, pool.ErrNoPool):
-		writeError(w, http.StatusConflict, &Error{Code: CodeInvalidRequest, Message: "this server has no pool isolated enough for the agent: " + err.Error()})
+		writeError(w, http.StatusConflict, noPool(err))
 	case errors.Is(err, runner.ErrNoFlows):
 		writeError(w, http.StatusConflict, &Error{Code: CodeInvalidRequest, Message: "this server runs no flows"})
 	case errors.Is(err, runner.ErrShutdown):
@@ -661,15 +670,17 @@ func (s *Server) RunRecovered(ctx context.Context, x *runner.Execution) {
 	if err != nil {
 		s.log.Error("reading a recovered run's events", "run_id", x.Run.ID, "err", err)
 	}
-	s.log.Info("run recovered", "run_id", x.Run.ID, "conversation_id", x.Run.ConversationID, "turns", seed.turns)
-	h := s.launch(execCtx, cancel, x, seed)
+	s.log.Info("run recovered", "run_id", x.Run.ID, "conversation_id", x.Run.ConversationID, "pool", x.Run.Pool, "turns", seed.turns)
+	// The dispatcher holds the run's pool slot until this returns.
+	h := s.launch(execCtx, cancel, x, seed, nil)
 	<-h.ended
 }
 
 // launch registers the hub of an execution, seeded with the events the run
 // had, and runs the execution in its own goroutine. The admit slot is the
-// execution's: drive releases it.
-func (s *Server) launch(ctx context.Context, cancel context.CancelCauseFunc, x *runner.Execution, seed replayed) *hub {
+// execution's: drive releases it, and with it calls freePool (if not nil),
+// which frees the slot of the run's pool.
+func (s *Server) launch(ctx context.Context, cancel context.CancelCauseFunc, x *runner.Execution, seed replayed, freePool func()) *hub {
 	t, _ := tenancy.From(ctx)
 	h := newHub(x.Run.ID, x.Run.ConversationID, t, x.Run.Interactive, seed.events)
 	em := &emitter{log: s.log, h: h, seq: lastSeq(seed.events)}
@@ -686,15 +697,20 @@ func (s *Server) launch(ctx context.Context, cancel context.CancelCauseFunc, x *
 	}
 	s.hubs[k] = h
 	s.mu.Unlock()
-	go s.drive(ctx, cancel, x, em, seed)
+	go s.drive(ctx, cancel, x, em, seed, freePool)
 	return h
 }
 
 // drive runs an execution to its end, whoever follows it: its events go to
 // the hub, and the last one says how the execution ended.
-func (s *Server) drive(ctx context.Context, cancel context.CancelCauseFunc, x *runner.Execution, em *emitter, seed replayed) {
+func (s *Server) drive(ctx context.Context, cancel context.CancelCauseFunc, x *runner.Execution, em *emitter, seed replayed, freePool func()) {
 	h := em.h
-	freeSlot := sync.OnceFunc(func() { <-s.slots })
+	freeSlot := sync.OnceFunc(func() {
+		<-s.slots
+		if freePool != nil {
+			freePool()
+		}
+	})
 	defer func() { freeSlot(); s.active.Done() }() // s.release, in two steps
 	defer cancel(nil)
 	defer s.obey(ctx, x, h)() // commands sent through other servers
@@ -818,7 +834,7 @@ func (s *Server) drive(ctx context.Context, cancel context.CancelCauseFunc, x *r
 	s.mu.Unlock()
 
 	attrs := []any{
-		"run_id", h.runID, "conversation_id", h.convID, "event", end.Type, "turns", end.Turns,
+		"run_id", h.runID, "conversation_id", h.convID, "pool", x.Run.Pool, "event", end.Type, "turns", end.Turns,
 		"input_tokens", usage.InputTokens, "output_tokens", usage.OutputTokens,
 		"cache_read_tokens", usage.CacheReadTokens, "cache_write_tokens", usage.CacheWriteTokens,
 	}

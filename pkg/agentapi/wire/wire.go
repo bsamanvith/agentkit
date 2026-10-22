@@ -482,12 +482,15 @@ const (
 // Run is a run as GET /v1/runs/{id} returns it, and the response to a POST
 // /v1/runs that asked for JSON.
 type Run struct {
-	V              int       `json:"v"`
-	ID             string    `json:"id"`
-	ConversationID string    `json:"conversation_id"`
-	Agent          string    `json:"agent"` // the conversation's agent
-	Status         string    `json:"status"`
-	CreatedAt      time.Time `json:"created_at"`
+	V              int    `json:"v"`
+	ID             string `json:"id"`
+	ConversationID string `json:"conversation_id"`
+	Agent          string `json:"agent"` // the conversation's agent
+	// Pool is the runner pool the run was placed in: where its agent runs.
+	// Empty for a run nobody placed (from before pools, or a flow run).
+	Pool      string    `json:"pool,omitempty"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
 	// FinishedAt, Answer, Error and Record are set once the run has ended.
 	FinishedAt *time.Time `json:"finished_at,omitempty"`
 	Answer     string     `json:"answer,omitempty"`

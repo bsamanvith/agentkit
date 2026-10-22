@@ -321,7 +321,7 @@ func (s *Store) Create(ctx context.Context, id, conversationID string, opts ...s
 	}
 	r := store.Run{
 		ID: id, ConversationID: conversationID, Status: store.StatusRunning, CreatedAt: now,
-		Interactive: o.Interactive, Lane: o.Lane, Priority: o.Priority, StartAt: c.Start, Lease: c.Lease,
+		Interactive: o.Interactive, Lane: o.Lane, Priority: o.Priority, StartAt: c.Start, Pool: o.Pool, Lease: c.Lease,
 	}
 	if err := backend.CheckTime("the clock's time", r.CreatedAt); err != nil {
 		return store.Run{}, err

@@ -39,6 +39,6 @@ func (*agentWiring) handler() http.Handler { return nil }
 func (*agentWiring) server() *agentapi.Server { return nil }
 
 // serve serves rt on ln: there is no store to recover runs from.
-func (*agentWiring) serve(ctx context.Context, rt *component.Runtime, ln net.Listener, _ *slog.Logger) error {
+func (*agentWiring) serve(ctx context.Context, rt *component.Runtime, ln net.Listener, _ runnersConfig, _ *slog.Logger) error {
 	return rt.Serve(ctx, ln)
 }

@@ -27,6 +27,7 @@ type Recovery struct {
 	lanes    []string
 	limit    int
 	workers  int
+	slots    Slots
 	interval time.Duration
 	execute  func(context.Context, *Execution)
 }
@@ -59,13 +60,37 @@ func WithBatch(n int) RecoveryOption {
 }
 
 // WithWorkers sets how many runs a pass runs at once (default 4). A pass
-// claims a run only when one of its workers is free to run it.
+// claims a run only when one of its workers is free to run it. [WithSlots]
+// takes its place.
 func WithWorkers(n int) RecoveryOption {
 	return func(rc *Recovery) error {
 		if n < 1 {
 			return fmt.Errorf("%w: workers %d", ErrInvalidConfig, n)
 		}
 		rc.workers = n
+		return nil
+	}
+}
+
+// Slots bound how many runs a dispatcher runs at once, shared with whatever
+// else takes them: a runner pool's slots ([WithSlots]), which its chats take
+// too. Acquire waits for a slot until ctx is done; Release gives one back.
+type Slots interface {
+	Acquire(ctx context.Context) error
+	Release()
+}
+
+// WithSlots makes the dispatcher take one of s for each run it runs, in
+// place of workers of its own ([WithWorkers]): it claims a run only while it
+// holds a free slot, and gives the slot back when the run's execution ends.
+// A runner pool's dispatcher takes the pool's slots, so its runs and the
+// pool's chats share the pool's limit.
+func WithSlots(s Slots) RecoveryOption {
+	return func(rc *Recovery) error {
+		if s == nil {
+			return fmt.Errorf("%w: nil slots", ErrInvalidConfig)
+		}
+		rc.slots = s
 		return nil
 	}
 }
@@ -137,13 +162,16 @@ type Report struct {
 // pass.
 func (rc *Recovery) Recover(ctx context.Context) (Report, error) {
 	var (
-		mu   sync.Mutex
-		rep  Report
-		errs []error
-		wg   sync.WaitGroup
-		sem  = make(chan struct{}, rc.workers)
-		seen = map[liveKey]bool{}
+		mu    sync.Mutex
+		rep   Report
+		errs  []error
+		wg    sync.WaitGroup
+		slots = rc.slots
+		seen  = map[liveKey]bool{}
 	)
+	if slots == nil {
+		slots = make(workers, rc.workers)
+	}
 	count := func(n *int, err error) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -153,20 +181,18 @@ func (rc *Recovery) Recover(ctx context.Context) (Report, error) {
 		}
 	}
 	for range rc.limit {
-		select {
-		case sem <- struct{}{}:
-		case <-ctx.Done():
+		if err := slots.Acquire(ctx); err != nil {
 			wg.Wait()
-			return rep, ctx.Err()
+			return rep, err
 		}
 		if rc.r.isClosed() {
-			<-sem
+			slots.Release()
 			break
 		}
 		owner := rc.r.nextOwner()
 		tr, err := rc.admin.ClaimNext(ctx, rc.lanes, owner, rc.r.ttl)
 		if err != nil {
-			<-sem
+			slots.Release()
 			if !errors.Is(err, store.ErrNotFound) {
 				count(&rep.Errors, fmt.Errorf("claim the next run: %w", err))
 			}
@@ -179,13 +205,13 @@ func (rc *Recovery) Recover(ctx context.Context) (Report, error) {
 			// claimed again and again, ahead of the runs behind it. It
 			// keeps this claim's lease, so it is tried again one lease
 			// time later, and the pass goes on to the next run.
-			<-sem
+			slots.Release()
 			count(&rep.Skipped, nil)
 			continue
 		}
 		seen[k] = true
 		wg.Go(func() {
-			defer func() { <-sem }()
+			defer slots.Release()
 			x, err := rc.r.resume(tctx, tr.Run.ID, resumeConfig{claimed: owner})
 			if errors.Is(err, store.ErrFinal) {
 				count(&rep.Skipped, nil)
@@ -231,3 +257,17 @@ func (rc *Recovery) Run(ctx context.Context, report func(Report, error)) error {
 		t.Reset(rc.interval)
 	}
 }
+
+// workers are a dispatcher's own [Slots]: one per worker ([WithWorkers]).
+type workers chan struct{}
+
+func (w workers) Acquire(ctx context.Context) error {
+	select {
+	case w <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (w workers) Release() { <-w }

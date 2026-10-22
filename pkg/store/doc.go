@@ -58,7 +58,8 @@
 // priority first, then the earliest due. Nothing is resumable or claimed
 // before its start time. A run created with [WithLease] is claimed by its
 // creator in the same write, so the queue never hands it to anyone else
-// first.
+// first. A run also keeps the runner pool it was placed in ([WithPool],
+// [Run.Pool]), for operators and for the runner to place it there again.
 //
 // # Checkpoints
 //

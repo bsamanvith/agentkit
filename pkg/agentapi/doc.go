@@ -75,6 +75,7 @@
 //	409 awaiting_decision         the run waits for a decision, not a resume
 //	409 not_pending               the run waits for no decision at that path
 //	413 too_large                 body over the limit (WithMaxBodyBytes)
+//	429 over_capacity             the run's runner pool is at its limit (WithRouter); Retry-After
 //	503 over_capacity             too many runs at once (WithMaxConcurrentRuns); Retry-After
 //	503 shutting_down             the server is draining; Retry-After
 //

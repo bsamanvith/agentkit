@@ -152,7 +152,7 @@ func (s *Server) runView(ctx context.Context, run store.Run) (Run, error) {
 // reading its events (a suspended run's interrupts are its log's last entry).
 func (s *Server) runSummary(ctx context.Context, run store.Run) Run {
 	now := s.cfg.clock.Now()
-	v := Run{V: WireVersion, ID: run.ID, ConversationID: run.ConversationID, Status: runStatus(run, now), CreatedAt: run.CreatedAt, Usage: run.Usage}
+	v := Run{V: WireVersion, ID: run.ID, ConversationID: run.ConversationID, Pool: run.Pool, Status: runStatus(run, now), CreatedAt: run.CreatedAt, Usage: run.Usage}
 	if c, err := s.store.GetConversation(ctx, run.ConversationID); err == nil {
 		v.Agent = c.Agent
 	}
@@ -612,18 +612,17 @@ func (s *Server) resumeConversation(ctx context.Context, w http.ResponseWriter, 
 // resume continues a run that is not final and not going on. busy is the
 // code of a run that is going on.
 func (s *Server) resume(ctx context.Context, w http.ResponseWriter, r *http.Request, run store.Run, busy string) {
-	if acc := accessOf(r); acc.ok {
-		// A resume runs the agent's tools: only for a request that may use
-		// them all.
-		c, err := s.store.GetConversation(ctx, run.ConversationID)
-		if err != nil {
-			s.internal(w, "reading conversation "+quote(run.ConversationID), err)
-			return
-		}
-		if a := s.agents[c.Agent]; a != nil && !acc.agent(a) {
-			writeError(w, http.StatusNotFound, &Error{Code: CodeNotFound, Message: "no agent " + quote(c.Agent)})
-			return
-		}
+	c, err := s.store.GetConversation(ctx, run.ConversationID)
+	if err != nil {
+		s.internal(w, "reading conversation "+quote(run.ConversationID), err)
+		return
+	}
+	a := s.agents[c.Agent]
+	// A resume runs the agent's tools: only for a request that may use them
+	// all.
+	if acc := accessOf(r); acc.ok && a != nil && !acc.agent(a) {
+		writeError(w, http.StatusNotFound, &Error{Code: CodeNotFound, Message: "no agent " + quote(c.Agent)})
+		return
 	}
 	switch {
 	case s.isDraining():
@@ -643,11 +642,17 @@ func (s *Server) resume(ctx context.Context, w http.ResponseWriter, r *http.Requ
 		s.unavailable(w, apiErr)
 		return
 	}
+	freePool, ok := s.admitContinued(ctx, w, run, a)
+	if !ok {
+		s.release()
+		return
+	}
 	execCtx, cancel := execContext(ctx)
 	x, err := s.runs.Resume(execCtx, run.ID)
 	if err != nil {
 		cancel(nil)
 		s.release()
+		freePool()
 		s.startError(w, err, busy)
 		return
 	}
@@ -657,9 +662,37 @@ func (s *Server) resume(ctx context.Context, w http.ResponseWriter, r *http.Requ
 		// own, rather than leave the run claimed.
 		s.log.Error("reading a resumed run's events", "run_id", run.ID, "err", err)
 	}
-	s.log.Info("run resumed", "run_id", run.ID, "conversation_id", run.ConversationID, "turns", seed.turns)
-	h := s.launch(execCtx, cancel, x, seed)
+	s.log.Info("run resumed", "run_id", run.ID, "conversation_id", run.ConversationID, "pool", x.Run.Pool, "turns", seed.turns)
+	h := s.launch(execCtx, cancel, x, seed, freePool)
 	s.respond(w, r, h, lastID(seed.events))
+}
+
+// admitContinued takes a slot of its pool ([Server.admitPool]) for a stored
+// run of agent a that a request continues (a resume, an answer), and
+// returns the function that gives it back. A flow run is in no pool: its
+// agent steps run with it, as when it is decided (decideRun); and a run of
+// an agent the server does not serve takes none (the runner refuses it).
+// When it answers the request itself (429, 409, 500) it reports false.
+func (s *Server) admitContinued(ctx context.Context, w http.ResponseWriter, run store.Run, a *agent) (func(), bool) {
+	if a == nil {
+		return func() {}, true
+	}
+	_, err := s.store.Load(ctx, run.ID)
+	if err == nil {
+		return func() {}, true
+	}
+	if !errors.Is(err, flow.ErrNotFound) {
+		s.internal(w, "reading run "+quote(run.ID)+"'s checkpoint", err)
+		return nil, false
+	}
+	_, free, status, apiErr := s.admitPool(a, runner.Placement{
+		ConversationID: run.ConversationID, RunID: run.ID, Interactive: run.Interactive, Resume: true, Pool: run.Pool,
+	})
+	if apiErr != nil {
+		s.refuse(w, status, apiErr)
+		return nil, false
+	}
+	return free, true
 }
 
 // lastID is the ID of the last of evs, or the zero ID.
@@ -786,7 +819,8 @@ func (s *Server) decideRun(w http.ResponseWriter, r *http.Request) {
 		s.log.Error("reading a decided run's events", "run_id", id, "err", err)
 	}
 	s.log.Info("run decided", "run_id", id, "path", req.Path, "approved", req.Approved)
-	h := s.launch(execCtx, cancel, x, seed)
+	// A flow run: in no pool, its agent steps run with it (E20, T105).
+	h := s.launch(execCtx, cancel, x, seed, nil)
 	if strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
 		s.follow(w, r, h, lastID(seed.events))
 		return
@@ -826,18 +860,17 @@ func (s *Server) inputRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	acc := accessOf(r)
-	if acc.ok {
-		// An approval runs the agent's tools: only for a request that may
-		// use them all, as for a resume.
-		c, err := s.store.GetConversation(ctx, run.ConversationID)
-		if err != nil {
-			s.internal(w, "reading conversation "+quote(run.ConversationID), err)
-			return
-		}
-		if a := s.agents[c.Agent]; a != nil && !acc.agent(a) {
-			writeError(w, http.StatusNotFound, &Error{Code: CodeNotFound, Message: "no run " + quote(id)})
-			return
-		}
+	c, err := s.store.GetConversation(ctx, run.ConversationID)
+	if err != nil {
+		s.internal(w, "reading conversation "+quote(run.ConversationID), err)
+		return
+	}
+	ag := s.agents[c.Agent]
+	// An approval runs the agent's tools: only for a request that may use
+	// them all, as for a resume.
+	if acc.ok && ag != nil && !acc.agent(ag) {
+		writeError(w, http.StatusNotFound, &Error{Code: CodeNotFound, Message: "no run " + quote(id)})
+		return
 	}
 	answers := make([]harness.Answer, len(req.Answers))
 	for i, a := range req.Answers {
@@ -851,11 +884,19 @@ func (s *Server) inputRun(w http.ResponseWriter, r *http.Request) {
 		s.unavailable(w, apiErr)
 		return
 	}
+	// The answered run goes on in its pool: it takes one of the pool's
+	// slots, as a resume does.
+	freePool, ok := s.admitContinued(ctx, w, run, ag)
+	if !ok {
+		s.release()
+		return
+	}
 	execCtx, cancel := execContext(ctx)
 	x, err := s.runs.Answer(execCtx, id, answers...)
 	if err != nil {
 		cancel(nil)
 		s.release()
+		freePool()
 		switch {
 		case errors.Is(err, store.ErrFinal):
 			writeError(w, http.StatusConflict, &Error{Code: CodeRunFinal, RunID: id, Message: "run " + quote(id) + " is final"})
@@ -872,6 +913,7 @@ func (s *Server) inputRun(w http.ResponseWriter, r *http.Request) {
 		_, _ = x.Wait()
 		cancel(nil)
 		s.release()
+		freePool()
 		if v, ok := s.viewByID(ctx, w, id); ok {
 			writeJSON(w, http.StatusOK, v)
 		}
@@ -881,7 +923,7 @@ func (s *Server) inputRun(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.log.Error("reading an answered run's events", "run_id", id, "err", err)
 	}
-	h := s.launch(execCtx, cancel, x, seed)
+	h := s.launch(execCtx, cancel, x, seed, freePool)
 	if strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
 		s.follow(w, r, h, lastID(seed.events))
 		return

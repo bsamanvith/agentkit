@@ -33,6 +33,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
 	"github.com/bsamanvith/agentkit/pkg/runner"
+	"github.com/bsamanvith/agentkit/pkg/runner/pool"
 	"github.com/bsamanvith/agentkit/pkg/store/scoped"
 	"github.com/bsamanvith/agentkit/pkg/tenancy"
 	"github.com/bsamanvith/agentkit/pkg/tool"
@@ -574,6 +575,42 @@ func TestOpenAPIResponses(t *testing.T) {
 	r.waitEnded(suspended)
 	rec.probe(r, "input", 200, "POST", input, answer, "")
 	r.waitEnded(asked.ID)
+
+	// A runner pool at its limit (T105): a chat, new or resumed, gets 429.
+	pm := echo(t)
+	pm.gate = make(chan struct{}, 1)
+	chats, err := pool.NewRouter([]pool.Pool{pool.NewProcess("chat")}, nil, "chat", pool.WithLimit("chat", 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rp := newRig(t, pm, rigConfig{token: token, api: []agentapi.Option{agentapi.WithRouter(chats)}})
+	rp.models = nil
+	waits := rp.start(t.Context(), "stop me", "")
+	waiting := waits.until(agentapi.TypeRunStart, 0).RunID
+	rec.probe(rp, "stop_run_pooled", 200, "POST", "/v1/runs/"+waiting+"/stop", "", "")
+	waits.all()
+	holds := rp.start(t.Context(), "hold on", "")
+	holds.until(agentapi.TypeRunStart, 0)
+	rec.probe(rp, "run_pool_full", 429, "POST", "/v1/runs", `{"message":"one more"}`, "", jsonAccept...)
+	rec.probe(rp, "resume_pool_full", 429, "POST", "/v1/runs/"+waiting+"/resume", "", "")
+	pm.gate <- struct{}{}
+	holds.all()
+	// An answer that lets a suspended chat go on takes a slot too.
+	asks, err := pool.NewRouter([]pool.Pool{pool.NewProcess("chat")}, nil, "chat", pool.WithLimit("chat", 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var noted atomic.Int64
+	ra := newRig(t, script(t, llmtest.ToolCalls(llm.ToolUse{ID: "q1", Name: "ask", Input: json.RawMessage(`{}`)})),
+		rigConfig{token: token, tools: interruptTools(t, &noted), harness: interactive(), api: []agentapi.Option{agentapi.WithRouter(asks)}})
+	ra.models = nil
+	pending := ra.run("pick", "").runID()
+	ra.waitEnded(pending)
+	if !asks.Slots("chat").TryAcquire() {
+		t.Fatal("the asker's pool is full")
+	}
+	rec.probe(ra, "input_pool_full", 429, "POST", "/v1/runs/"+pending+"/input", `{"answers":[{"id":"q1","text":"red"}]}`, "")
+	asks.Slots("chat").Release()
 
 	rec.probe(r, "delete_unauthorized", 401, "DELETE", "/v1/conversations/"+conv, "", "", bearer...)
 	rec.probe(r, "delete", 204, "DELETE", "/v1/conversations/"+conv, "", "")

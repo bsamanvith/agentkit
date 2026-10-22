@@ -44,7 +44,8 @@ A sandbox or VM agent is a thin `runner.Agent` that sends the harness input into
 | Interface | `runner.Agent` is the runner implementation's interface; no second runner. Pools choose the implementation per run. |
 | Default | One `process` pool, `default`. Chat and background pools are both `process` pools until they differ in capacity (T105). |
 | Never downgrade | A run is placed only in a pool at least as isolated as its agent requires. |
-| Flows | Flow runs are not routed yet: their agent steps run in process. Routing them is a T105 question. |
+| Flows | A flow run's agent steps run with the flow run, not routed like chats (T105): a flow is one run, under one lease, and its steps take no slots of their own (a flow waiting on a full chat pool for a step would hold its own slot meanwhile). Flow runs themselves are in no pool yet (`pool` empty); when something starts them over the API, they are placed as background runs, in their pool's lane. |
+| Capacity | Per pool (T105): `pool.WithLimit` gives a pool `Slots`. A chat takes one at the request (429 `over_capacity` when full); a background pool's dispatcher (`runner.WithSlots`) claims only while it holds one, so its runs wait in the store. A pool is a lane: a background run is queued in its pool's lane and stores its pool, and goes back to it on every resume. |
 | Contract for remote runners | E16's runtime contract (T079): job spec in, run events out, tools built in or over MCP back to the server; or `pkg/runner/runnerrpc` (T102) to a runner component in the environment, which already streams harness events and errors on the wire. The sandbox and VM pools pick one in T106. |
 | Lifecycle | A pool owns the agents it makes: `Pool.Close` closes those still open (`pool.Owned` keeps them), `Router.Close` closes every pool, and the agent API's `Shutdown` closes its router after its runs stop. A process pool makes nothing and closes nothing. After Close, asking for an agent fails with `pool.ErrClosed` (which matches `runner.ErrShutdown`). |
 
@@ -58,7 +59,7 @@ A sandbox or VM agent is a thin `runner.Agent` that sends the harness input into
 ## Tasks
 
 - [x] [T104](T104-runner-pools-routing.md) Pool interface and routing: `runner.Placement`, `pkg/runner/pool`, the `process` pool, the agent API on a router, the pools' Close
-- [ ] [T105](T105-pool-capacity-config.md) Pool capacity and config: chat and background pools with their own limits, background pools claim by lane (T099), `runners:` in the serve config, `isolation:` on agents, the pool on each run
+- [x] [T105](T105-pool-capacity-config.md) Pool capacity and config: chat and background pools with their own limits, background pools claim by lane (T099), `runners:` in the serve config, `isolation:` on agents, the pool on each run
 - [ ] [T106](T106-sandbox-pool.md) Sandbox pool: one gVisor (or similar) container per run on the E16 runtime contract
 - [ ] [T107](T107-vm-pool.md) VM pool: one microVM per session, warm across its runs, reclaimed when idle
 

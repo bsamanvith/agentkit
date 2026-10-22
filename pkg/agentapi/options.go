@@ -213,6 +213,14 @@ func WithRunnerOptions(opts ...runner.Option) Option {
 // it the server runs every agent as built, in one process pool
 // ([pool.Default]): the runner as it ran before pools.
 //
+// A pool with a limit ([pool.WithLimit]) holds a slot for each of its runs
+// going on. A chat (POST /v1/runs, or a resume) takes one when the request
+// comes, and is refused with 429 over_capacity when none is free; a
+// background run waits in the store until the pool's dispatcher
+// ([Server.Dispatcher]) has one. So a chat pool's slots are never taken by
+// background work routed to another pool. Each run stores its pool
+// ([store.Run.Pool]), and GET /v1/runs/{id} shows it.
+//
 // The server owns the router: [Server.Shutdown] closes it, and so the agents
 // its pools made, once the runs have stopped; [NewAgents] closes it when it
 // fails to make the server.

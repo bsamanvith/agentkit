@@ -1,6 +1,7 @@
 package client_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/a2a/a2atest"
 	"github.com/bsamanvith/agentkit/pkg/a2a/client"
 	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
+	"github.com/bsamanvith/agentkit/pkg/credentials"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
@@ -327,5 +329,54 @@ func cardAt(u string) a2a.AgentCard {
 		SupportedInterfaces: []a2a.AgentInterface{{URL: u, ProtocolBinding: a2a.BindingJSONRPC, ProtocolVersion: "1.0"}},
 		DefaultInputModes:   []string{"text/plain"}, DefaultOutputModes: []string{"text/plain"},
 		Skills: []a2a.AgentSkill{{ID: "s", Name: "s", Description: "s", Tags: []string{"s"}}},
+	}
+}
+
+// slot is a credential slot's source holding key, or nothing.
+type slot struct{ key string }
+
+func (s slot) Get(context.Context) (credentials.Credential, error) {
+	if s.key == "" {
+		return nil, credentials.ErrNotConnected
+	}
+	return credentials.APIKey{Key: credentials.NewSecret(s.key)}, nil
+}
+
+func (s slot) HTTPClient(context.Context, *http.Client, ...credentials.AuthOption) (*http.Client, error) {
+	return nil, errors.New("not used")
+}
+
+// TestCredentialSlot: with the spec's credential slot, each call sends the
+// caller's credential from it; with none stored, the call says the toolset
+// is not connected; token_env beside a slot is refused.
+func TestCredentialSlot(t *testing.T) {
+	t.Parallel()
+	s := a2atest.NewServer(t, a2atest.PublicCards())
+	settings := `{"agents": [{"name": "helper", "card_url": "` + s.CardURL() + `"}]}`
+	tools, err := buildTools(t, settings, buildOpts{hc: s.Client(), src: slot{key: a2atest.Key}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := ask(t.Context(), t, tools[0], `{"message": "hi"}`)
+	if err != nil || out.Answer != "echo: hi" {
+		t.Fatalf("output %+v, %v", out, err)
+	}
+	for _, r := range s.Requests() {
+		if r.Method == http.MethodPost && r.Header.Get("Authorization") != "Bearer "+a2atest.Key {
+			t.Errorf("%s %s: Authorization %q, want the slot's key", r.Method, r.Path, r.Header.Get("Authorization"))
+		}
+	}
+
+	tools, err = buildTools(t, settings, buildOpts{hc: s.Client(), src: slot{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ask(t.Context(), t, tools[0], `{"message": "hi"}`); !errors.Is(err, credentials.ErrNotConnected) {
+		t.Errorf("no credential in the slot: %v, want ErrNotConnected", err)
+	}
+
+	both := `{"agents": [{"name": "helper", "card_url": "` + s.CardURL() + `", "token_env": "` + keyEnv + `"}]}`
+	if _, err := buildTools(t, both, buildOpts{hc: s.Client(), src: slot{key: a2atest.Key}}); !errors.Is(err, toolset.ErrInvalidSettings) {
+		t.Errorf("token_env and a slot: %v, want ErrInvalidSettings", err)
 	}
 }

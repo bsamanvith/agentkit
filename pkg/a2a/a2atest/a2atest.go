@@ -39,9 +39,10 @@ type Server struct {
 	api *agentapi.Server
 	srv *a2a.Server
 
-	release   chan struct{}
-	releaseMu sync.Once
-	calls     atomic.Int64
+	release     chan struct{}
+	releaseMu   sync.Once
+	publicCards bool
+	calls       atomic.Int64
 
 	mu       sync.Mutex
 	requests []Request
@@ -83,10 +84,20 @@ func (m model) Generate(ctx context.Context, req llm.Request) iter.Seq2[llm.Even
 	}
 }
 
+// Option configures [NewServer].
+type Option func(*Server)
+
+// PublicCards serves the cards to requests without a credential too, as an
+// agent that publishes its card does. Everything else still needs [Key].
+func PublicCards() Option { return func(s *Server) { s.publicCards = true } }
+
 // NewServer starts the server; it stops when the test ends.
-func NewServer(tb testing.TB) *Server {
+func NewServer(tb testing.TB, opts ...Option) *Server {
 	tb.Helper()
 	s := &Server{tb: tb, release: make(chan struct{})}
+	for _, o := range opts {
+		o(s)
+	}
 	none, err := tool.NewRegistry(nil)
 	if err != nil {
 		tb.Fatal(err)
@@ -121,6 +132,10 @@ func NewServer(tb testing.TB) *Server {
 		s.mu.Lock()
 		s.requests = append(s.requests, Request{Method: r.Method, Path: r.URL.Path, Query: r.URL.RawQuery, Header: r.Header.Clone()})
 		s.mu.Unlock()
+		if s.publicCards && r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, a2a.WellKnownPath) && r.Header.Get("Authorization") == "" {
+			r = r.Clone(r.Context())
+			r.Header.Set("Authorization", "Bearer "+Key)
+		}
 		mux.ServeHTTP(w, r)
 	}))
 	tb.Cleanup(func() {

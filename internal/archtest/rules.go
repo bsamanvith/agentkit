@@ -223,12 +223,13 @@ func ModuleRules() Rules {
 				"pkg/store/scoped", "pkg/tool", "pkg/toolset", "internal/testkit",
 			},
 			// The A2A client (T068) and its toolset: the wire types of
-			// pkg/a2a over net/http, never the server's agent API. Its
+			// pkg/a2a and the credential slots of T044
+			// over net/http, never the server's agent API. Its
 			// tests run it against pkg/a2a/a2atest (our own server in
 			// process) and replay a remote agent's cassettes with the
 			// connector kit.
 			"pkg/a2a/client": {
-				"pkg/a2a", "pkg/clock", "pkg/tool", "pkg/toolset", "pkg/a2a/a2atest",
+				"pkg/a2a", "pkg/clock", "pkg/credentials", "pkg/tool", "pkg/toolset", "pkg/a2a/a2atest",
 				"pkg/clock/clocktest", "pkg/toolset/toolsettest", "internal/testkit",
 			},
 			// A remote A2A agent as a flow step (T068).

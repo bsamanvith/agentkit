@@ -13,7 +13,9 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/a2a/a2atest"
 	"github.com/bsamanvith/agentkit/pkg/a2a/client"
 	"github.com/bsamanvith/agentkit/pkg/clock"
+	"github.com/bsamanvith/agentkit/pkg/credentials"
 	"github.com/bsamanvith/agentkit/pkg/tool"
+	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
 const keyEnv = "HELPER_A2A_TOKEN"
@@ -64,6 +66,7 @@ type buildOpts struct {
 	hc    *http.Client
 	clock clock.Clock
 	log   *slog.Logger
+	src   credentials.Source // the spec's credential slot
 }
 
 // buildTools builds the toolset from settings.
@@ -79,7 +82,7 @@ func buildTools(t *testing.T, settings string, o buildOpts) ([]tool.Tool, error)
 	if o.log != nil {
 		opts = append(opts, client.WithLogger(o.log))
 	}
-	return client.Factory(opts...).Build(t.Context(), json.RawMessage(settings))
+	return client.Factory(opts...).Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(settings), Credentials: o.src})
 }
 
 // helperTool is the ask_helper tool of the server's agent.

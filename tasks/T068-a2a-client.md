@@ -67,14 +67,20 @@ needed: the remote agent is our own T067 server in process).
   port). gRPC and unknown bindings are skipped, not refused. Body at most
   1 MiB and JSON. The card URL is https, or http to loopback only.
 - *Credentials.* `token_env` (bearer) or `token_env` + `header` (sent as
-  is). A literal token is an unknown settings field. The credential goes to
+  is), or the spec's credential slot (T044, `"credential": {"slot": ...}`):
+  then each call gets the caller's credential from the slot (an API key as
+  bearer or in `header`, an OAuth2 access token with its type, basic auth),
+  `token_env` beside a slot is refused, a slot with nothing stored is
+  `credentials.ErrNotConnected` as T044 asks, and the cards are read
+  without a credential (building has no caller), so a slot-based remote
+  agent must publish its card (our own server does not: it wants a
+  credential for its cards). A literal token is an unknown settings field. The credential goes to
   the card URL and the picked interface only: interfaces on another origin
   are never used, redirects are never followed (`CheckRedirect` returns the
   3xx as a `StatusError`), and every credential value (and its JSON-escaped
   form, and the token alone inside "Bearer ...") is replaced by
   `[redacted]` in every response body and error text before anything reads
-  it. Nothing logs headers. Credential slots (T044) are not there yet: the
-  setting is env only for now (see "For T044").
+  it. Nothing logs headers.
 - *Building reads the cards* (the description comes from the card), so
   unlike connectors `Build` makes requests, with `connect_timeout` (15s).
   That is why the toolset is not under `connectors/` and does not run
@@ -130,6 +136,7 @@ server (`checkKeyOnlyInAuthorization`): every request carried the key in
 method on both bindings, cancel, TaskNotFound, TaskNotCancelable,
 subscribing to a terminal task), `TestWaitSubscribesOrPolls`,
 `TestLongTaskTimesOutWithItsID`, `TestSettings`, `TestHeaderSetting`,
+`TestCredentialSlot`,
 `TestMalformedResponses`, `TestReplayedRemoteAgent` (cassettes, hermetic
 client), `TestSavedTaskStates`, `TestStepRunsATask`, `FuzzValidateCard`,
 and the Examples.
@@ -148,19 +155,12 @@ task ID (TestResumeFollowsTheSameTask); an unknown saved task started again
 (TestSavedTaskStates); the key also sent in the query (the invariant, in
 five tests); the one-field check on stream events dropped
 (TestMalformedResponses); remote error codes dropped (TestBindings,
-TestMalformedResponses, TestLongTaskTimesOutWithItsID).
+TestMalformedResponses, TestLongTaskTimesOutWithItsID); the credential
+slot ignored (TestCredentialSlot).
 
-**Size.** +131,072 bytes on the agentkit binary, +126,976 on local and dev,
-nothing on api, runner and toolsets (docs/SIZES.md). Dev is projected at
-about 29.89 of 30 MB.
-
-### For T044 (credentials in tools)
-
-The `a2a` toolset takes its credential from `token_env`. A credential slot
-setting (`credential: "<slot>"`, resolved per call for the run's tenant and
-user) belongs next to it; `client.Config.Header` is per client today, so a
-per-user credential needs a header per call (a `Config` hook, or a client
-per credential).
+**Size.** +262,144 bytes on the agentkit binary, +253,952 on local and
+dev, nothing on api, runner and toolsets (docs/SIZES.md). Local about 28.5
+of 29 MB, dev about 30.2 of 32 MB (projected).
 
 ### For a follow-up
 

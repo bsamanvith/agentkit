@@ -14,6 +14,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/pkg/a2a/a2atest"
 	"github.com/bsamanvith/agentkit/pkg/a2a/client"
+	"github.com/bsamanvith/agentkit/pkg/toolset"
 	"github.com/bsamanvith/agentkit/pkg/toolset/toolsettest"
 )
 
@@ -51,7 +52,7 @@ func TestReplayedRemoteAgent(t *testing.T) {
 	}
 	up.Script(toolsettest.Response{Header: http.Header{"Content-Type": {"application/json"}}, Body: card})
 	tools, err := client.Factory(client.WithLookupEnv(env), client.WithHTTPClient(up.Client()), client.WithNewID(fixedIDs())).
-		Build(t.Context(), json.RawMessage(`{"agents": [{"name": "helper", "card_url": "`+up.URL()+`/card", "token_env": "`+keyEnv+`"}]}`))
+		Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(`{"agents": [{"name": "helper", "card_url": "` + up.URL() + `/card", "token_env": "` + keyEnv + `"}]}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +90,7 @@ func TestRecordCassettes(t *testing.T) {
 	}
 	rec := &recorder{t: t, next: s.Client().Transport}
 	tools, err := client.Factory(client.WithLookupEnv(env), client.WithHTTPClient(&http.Client{Transport: rec}), client.WithNewID(fixedIDs())).
-		Build(t.Context(), json.RawMessage(`{"agents": [{"name": "helper", "card_url": "`+s.CardURL()+`", "token_env": "`+keyEnv+`"}]}`))
+		Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(`{"agents": [{"name": "helper", "card_url": "` + s.CardURL() + `", "token_env": "` + keyEnv + `"}]}`)})
 	if err != nil {
 		t.Fatal(err)
 	}

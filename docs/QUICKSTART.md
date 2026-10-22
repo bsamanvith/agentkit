@@ -128,7 +128,7 @@ A toolset of type `a2a` gives an agent one tool per remote [A2A](https://a2a-pro
 ]}}
 ```
 
-The credential (from `token_env`, sent as a bearer token, or in `header`) goes to the card's origin only; a card whose interfaces are elsewhere is refused, and redirects are not followed. A call waits up to `timeout` (default `2m`); a task still working then comes back with its `task_id`, which the model passes again to keep waiting. Results carry a `notice` that they are third-party data. Not in the runner and toolsets images (`noa2a`). In Go flows, `pkg/a2a/a2astep` runs a remote agent as a step that resumes its task by ID.
+The credential (from `token_env`, or the toolset's `credential` slot, sent as a bearer token or in `header`) goes to the card's origin only; a card whose interfaces are elsewhere is refused, and redirects are not followed. A call waits up to `timeout` (default `2m`); a task still working then comes back with its `task_id`, which the model passes again to keep waiting. Results carry a `notice` that they are third-party data. Not in the runner and toolsets images (`noa2a`). In Go flows, `pkg/a2a/a2astep` runs a remote agent as a step that resumes its task by ID.
 
 ### From the terminal: `agentkit chat`, `agentkit ask` and `agentkit create`
 

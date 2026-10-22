@@ -2,7 +2,7 @@
 id: T008
 title: Full CI pipeline (images, integration, smoke)
 epic: E01
-status: review
+status: done
 depends_on: [T001, T006, T007]
 ---
 
@@ -30,7 +30,7 @@ GitHub Actions workflow(s):
 ## Acceptance criteria
 
 - [x] A PR with a failing integration or smoke test, or an oversized image, is red on the matching job. *Each job's steps are make targets or scripts that exit non-zero on failure (`make image-size*`, `scripts/smoke.sh --images`, `go test -tags integration`, `make smoke`), and none sets `continue-on-error`. Shown on GitHub before this task: run 39712187214 (T060) red on `image` at `make image-size`; run 39709474719 (T065) red on `integration`; run 39710099344 (T071) red on `image` at the per-image smoke. `make smoke` moved from the `web` job to a `smoke` job of its own, same command.*
-- [ ] A PR that only changes `tasks/` or `docs/` skips the image and smoke jobs. *The `changes` job runs `scripts/ci-changes.sh HEAD^1 HEAD` (the PR's merge commit against its base); `image` and `smoke` need it and skip only on `code=false`. The rule and the wiring are tested by `scripts/ci-changes.sh --test` (in `make lint`); the skip itself shows only on a docs-only PR on GitHub, not run here.*
+- [x] A PR that only changes `tasks/` or `docs/` skips the image and smoke jobs. *The `changes` job runs `scripts/ci-changes.sh HEAD^1 HEAD` (the PR's merge commit against its base); `image` and `smoke` need it and skip only on `code=false`. The rule and the wiring are tested by `scripts/ci-changes.sh --test` (in `make lint`); shown on GitHub by PR #90 (T087, `docs/` and `tasks/` only), run 39732298170: `image` and `smoke` skipped, `check`, `integration` and `web` ran and passed.*
 - [x] Integration job fails (not skips) if a required env var is missing. *`testkit.IntegrationEnv` fails instead of skipping under `AGENTKIT_REQUIRE_INTEGRATION=1` (test: `TestIntegrationEnv`, internal/testkit), and `scripts/ci-changes.sh --test` fails if check.yml's `integration` job stops setting it.*
 - [x] Whole PR pipeline finishes in under 10 minutes at skeleton level. *Measured on GitHub before this change: runs 39721253532 and 39718728738 took 6.1 and 7.5 minutes wall clock (longest job `check`; `image` 2.5, `web` 2.9). This change puts the `changes` job (a depth-2 checkout, seconds) in front of `image` and `smoke`, which finish well before `check`, and takes `make smoke` out of `web`. Re-check on this PR's run.*
 

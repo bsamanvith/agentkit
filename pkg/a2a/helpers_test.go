@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bsamanvith/agentkit/internal/testkit"
 	"github.com/bsamanvith/agentkit/pkg/a2a"
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
@@ -413,6 +414,18 @@ func (r *rig) send(agent, key string, msg map[string]any, config map[string]any)
 		r.t.Fatal("SendMessage: no task")
 	}
 	return *res.Task
+}
+
+// sendStarted is send with returnImmediately, returning once the run's model
+// call shows it started. Until then the agent API refuses to cancel it (409
+// run_leased, "about to start; retry"), and the model has not counted it: a
+// test that does either would fail on a busy machine.
+func (r *rig) sendStarted(agent, key string, msg map[string]any) a2a.Task {
+	r.t.Helper()
+	before := r.model.calls.Load()
+	task := r.send(agent, key, msg, map[string]any{"returnImmediately": true})
+	testkit.Eventually(r.t, 10*time.Second, func() bool { return r.model.calls.Load() > before })
+	return task
 }
 
 // run reads a run from the agent API.

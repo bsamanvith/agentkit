@@ -36,6 +36,9 @@ memory='github.com/bsamanvith/agentkit/pkg/memory'
 servers='github.com/bsamanvith/agentkit/pkg/mcp/servers'
 # Connecting accounts (T045): the agent API's credential endpoints.
 connect='github.com/bsamanvith/agentkit/pkg/credentials/connect'
+# The WebSocket binding (T091): only the images that serve the agent API
+# link it (the nows tag leaves it out of those too).
+ws='github.com/coder/websocket'
 agent="$stores $busopen $memory $servers $connect"
 
 # What each variant must not link.
@@ -44,8 +47,8 @@ forbidden() {
 	local) echo "$pgx $redis $credpg" ;;
 	dev) echo "$sqlite $credsqlite $agui" ;;
 	api) echo "$anthropic $openai $mcp $sqlite $connectors $skill $agui $credsqlite" ;;
-	runner) echo "$mcp $pgx $sqlite $redis $connectors $a2a $agui $webhook $credsqlite $credpg $agent" ;;
-	toolsets) echo "$anthropic $openai $pgx $sqlite $redis $skill $a2a $agui $webhook $credsqlite $credpg $agent" ;;
+	runner) echo "$mcp $pgx $sqlite $redis $connectors $a2a $agui $webhook $credsqlite $credpg $agent $ws" ;;
+	toolsets) echo "$anthropic $openai $pgx $sqlite $redis $skill $a2a $agui $webhook $credsqlite $credpg $agent $ws" ;;
 	*) echo "check-deps: unknown variant $1" >&2; exit 2 ;;
 	esac
 }

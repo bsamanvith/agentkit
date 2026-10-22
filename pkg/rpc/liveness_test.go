@@ -259,9 +259,11 @@ func TestWriteTimeoutCutsACallerThatStopsReading(t *testing.T) {
 		_ = tc.SetReadBuffer(4096)
 	}
 	fmt.Fprintf(conn, "POST %s HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}", rpc.PathPrefix+big.Name)
-	if _, err := bufio.NewReader(conn).ReadString('\n'); err != nil { // the status line; then nothing more
-		t.Fatal(err)
-	}
+	// The status line, then nothing more. On a busy machine the first
+	// frame's write can outlast the timeout before a byte is sent, and the
+	// server cuts the caller then: the read ends with EOF, and the handler
+	// must stop all the same.
+	_, _ = bufio.NewReader(conn).ReadString('\n')
 	select {
 	case <-stopped:
 	case <-time.After(10 * time.Second):

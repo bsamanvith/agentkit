@@ -62,7 +62,7 @@ func TestTaskIsARunOfTheAgentAPI(t *testing.T) {
 func TestCancelAndTaskErrors(t *testing.T) {
 	t.Parallel()
 	r := newRig(t)
-	waiting := r.send("default", keyA, message("wait"), map[string]any{"returnImmediately": true})
+	waiting := r.sendStarted("default", keyA, message("wait"))
 	if waiting.Status.State != a2a.StateWorking {
 		t.Fatalf("returnImmediately: %s, want working", waiting.Status.State)
 	}

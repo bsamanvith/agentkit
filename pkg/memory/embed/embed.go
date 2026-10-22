@@ -7,8 +7,9 @@
 // injected client and clock, texts sent in batches (BatchSize texts and
 // MaxBatchBytes bytes at most per request), one retry of a 429 after its
 // Retry-After (at most 10 s, 1 s when absent) and none of anything else, a
-// response body capped at MaxBodyBytes, and the key in the Authorization
-// header and nowhere else: never in an error, a log line or a URL.
+// response body capped at MaxBodyBytes, no redirect followed, and the key
+// in the Authorization header and nowhere else: never in an error, a log
+// line or a URL.
 package embed
 
 import (
@@ -171,6 +172,12 @@ func newClient(p provider, cfg Config, opts []Option) (*Client, error) {
 	if c.http == nil {
 		c.http = &http.Client{}
 	}
+	// No redirect is followed: Go keeps the Authorization header on one to
+	// the same host, from https to http too, and an embedding API never
+	// redirects. A 3xx is a bad response (as the credentials token client).
+	hc := *c.http
+	hc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	c.http = &hc
 	switch {
 	case strings.TrimSpace(cfg.Model) == "":
 		return nil, invalid("%s: no model", p.name)
@@ -377,6 +384,9 @@ func (c *Client) statusError(status int, body []byte) error {
 	switch {
 	case status >= 200 && status < 300:
 		return nil
+	case status >= 300 && status < 400:
+		return fmt.Errorf("%w: %s redirected (status %d), which is not followed: give the final URL as the base URL",
+			ErrBadResponse, c.p.name, status)
 	case status == http.StatusUnauthorized || status == http.StatusForbidden:
 		return fmt.Errorf("%w (%s, status %d)", ErrUnauthorized, c.p.name, status)
 	case status == http.StatusTooManyRequests:

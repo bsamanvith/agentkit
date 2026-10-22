@@ -271,3 +271,31 @@ func TestErrorClasses(t *testing.T) {
 		}
 	}
 }
+
+// TestNoRedirect: a redirect is not followed, so the key never goes where
+// the base URL does not point (Go would keep it on a redirect to the same
+// host, from https to http too): the target gets nothing, and the 3xx is
+// ErrBadResponse.
+func TestNoRedirect(t *testing.T) {
+	t.Parallel()
+	var reached atomic.Int32
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached.Add(1)
+	}))
+	t.Cleanup(target.Close)
+	from := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL+"/v1/embeddings", http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(from.Close)
+	c, err := embed.NewOpenAI(embed.Config{Model: "m", Dimensions: 4, BaseURL: from.URL + "/v1", Key: "sekrit"},
+		embed.WithHTTPClient(from.Client()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Embed(t.Context(), []string{"x"}, memory.PurposeQuery); !errors.Is(err, embed.ErrBadResponse) {
+		t.Errorf("Embed through a redirect = %v, want ErrBadResponse", err)
+	}
+	if n := reached.Load(); n != 0 {
+		t.Errorf("the redirect's target got %d requests", n)
+	}
+}

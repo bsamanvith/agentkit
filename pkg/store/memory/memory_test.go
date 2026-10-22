@@ -53,6 +53,19 @@ func TestToolsetStore(t *testing.T) {
 	storetest.RunToolsetStore(t, func(_ *testing.T, clk clock.Clock) store.ToolsetStore { return memory.New(memory.WithClock(clk)) })
 }
 
+func TestRunIndex(t *testing.T) {
+	t.Parallel()
+	storetest.RunRunIndex(t, func(_ *testing.T, clk clock.Clock) storetest.RunIndexStore { return memory.New(memory.WithClock(clk)) })
+}
+
+func TestNotifications(t *testing.T) {
+	t.Parallel()
+	storetest.RunNotifications(t, func(_ *testing.T, clk clock.Clock) (storetest.NotificationStore, store.Admin) {
+		s := memory.New(memory.WithClock(clk))
+		return s, memory.Admin(s)
+	})
+}
+
 func TestCommandLog(t *testing.T) {
 	t.Parallel()
 	storetest.RunCommandLog(t, func(_ *testing.T, clk clock.Clock) storetest.CommandStore { return memory.New(memory.WithClock(clk)) })

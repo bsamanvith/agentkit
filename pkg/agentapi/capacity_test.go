@@ -37,6 +37,14 @@ func (q tenantQueue) ListResumableAll(context.Context, time.Time, int) ([]store.
 	return nil, store.ErrInvalid // the dispatcher only claims
 }
 
+func (q tenantQueue) ClaimNotification(context.Context, string, time.Duration) (store.TenantNotification, error) {
+	return store.TenantNotification{}, store.ErrInvalid // no webhooks here
+}
+
+func (q tenantQueue) RecordDelivery(context.Context, tenancy.Tenant, string, string, store.Delivery) (store.Notification, error) {
+	return store.Notification{}, store.ErrInvalid
+}
+
 func (q tenantQueue) ClaimNext(ctx context.Context, lanes []string, owner string, ttl time.Duration) (store.TenantRun, error) {
 	ctx = tenancy.With(ctx, q.tenant)
 	runs, err := q.st.ListResumable(ctx, q.clk.Now(), 0)

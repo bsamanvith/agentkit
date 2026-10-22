@@ -29,7 +29,7 @@ Today a run lives as long as its HTTP request: closing the stream cancels it (T0
 
 ## Tasks
 
-- [ ] [T071](T071-background-runs.md) Background runs: detached runs, stored event log, resumable event stream, listing, cancel, completion webhooks
+- [x] [T071](T071-background-runs.md) Background runs: detached runs, stored event log, resumable event stream, listing, cancel, completion webhooks
 - [ ] [T072](T072-triggers.md) Triggers: schedules and inbound webhooks that start background runs
 - [ ] [T073](T073-agent-messaging.md) Agent messaging: mailboxes, `agent_message`/`agents_list` tools, wake on reply, permissions and loop limits
 - [ ] [T074](T074-console-background-view.md) Console: background runs and agent threads

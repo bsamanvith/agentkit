@@ -10,14 +10,19 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 )
 
-// RunsQuery selects the runs of [Client.Runs].
+// RunsQuery selects the runs of [Client.Runs]: the tenant's, or a
+// conversation's.
 type RunsQuery struct {
-	// ConversationID lists that conversation's runs. It may be empty only
-	// with Status [wire.StatusSuspended], to list every run waiting for a
-	// decision.
+	// ConversationID lists that conversation's runs; empty lists the
+	// tenant's.
 	ConversationID string
 	// Status keeps the runs of that status; empty keeps all.
 	Status string
+	// Background keeps background runs (tasks) when true, chat runs when
+	// false; nil keeps both.
+	Background *bool
+	// Agent keeps the runs of that agent's conversations; empty keeps all.
+	Agent string
 	// Limit is the page size; 0 is the server's default.
 	Limit int
 	// Cursor is the NextCursor of the previous page.
@@ -33,6 +38,12 @@ func (c *Client) Runs(ctx context.Context, q RunsQuery) (wire.RunList, error) {
 	}
 	if q.Status != "" {
 		v.Set("status", q.Status)
+	}
+	if q.Background != nil {
+		v.Set("background", strconv.FormatBool(*q.Background))
+	}
+	if q.Agent != "" {
+		v.Set("agent", q.Agent)
 	}
 	if q.Limit != 0 {
 		v.Set("limit", strconv.Itoa(q.Limit))

@@ -58,7 +58,8 @@ func scopeOf(pattern string) string {
 	case isAuthRoute(pattern):
 		return ""
 	case pattern == "POST /v1/toolsets" || strings.HasPrefix(pattern, "PATCH /v1/toolsets/") ||
-		strings.HasPrefix(pattern, "DELETE /v1/toolsets/") || strings.HasSuffix(pattern, "/v1/toolsets/{name}/review"):
+		strings.HasPrefix(pattern, "DELETE /v1/toolsets/") || strings.HasSuffix(pattern, "/v1/toolsets/{name}/review"),
+		pattern == "GET /v1/webhooks/secret":
 		return ScopeAdmin
 	case strings.HasPrefix(pattern, http.MethodGet+" "):
 		return ScopeRead

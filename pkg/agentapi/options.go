@@ -16,6 +16,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/runner"
 	"github.com/bsamanvith/agentkit/pkg/runner/pool"
 	"github.com/bsamanvith/agentkit/pkg/store"
+	"github.com/bsamanvith/agentkit/pkg/tenancy"
 )
 
 // Defaults of the options.
@@ -28,6 +29,11 @@ const (
 	DefaultMaxBodyBytes      = 1 << 20
 	DefaultKeepAlive         = 15 * time.Second
 	DefaultReconnectGrace    = 10 * time.Second
+	// DefaultMaxBackgroundRuns is how many background runs (tasks) a tenant
+	// may have going on at once.
+	DefaultMaxBackgroundRuns = 10
+	// DefaultTaskTimeLimit is the wall-clock limit of a background run.
+	DefaultTaskTimeLimit = 2 * time.Hour
 	// MinTokenLength is the shortest bearer token WithToken accepts.
 	MinTokenLength = 16
 )
@@ -38,6 +44,10 @@ const writeTimeout = time.Minute
 
 // retryAfter is the Retry-After of a 503, in seconds.
 const retryAfter = "2"
+
+// retryAfterTask is the Retry-After of a 429 too_many_background_runs, in
+// seconds: a background run ends in minutes, not seconds.
+const retryAfterTask = "30"
 
 // Option configures [New].
 type Option func(*config)
@@ -71,16 +81,22 @@ type config struct {
 	runs           RunsFactory
 	grace          time.Duration
 	graceArmed     func(runID string) // tests: called when a run's grace starts
+	maxBackground  int
+	taskLimit      time.Duration
+	webhooks       *Webhooks
 }
 
 // Store is what the server keeps conversations and runs in: the runner's
-// store, the conversation records, and runs' events and commands (T090).
-// Every backend of package store (memory, sqlite, postgres) is one.
+// store, the conversation records, runs' events and commands (T090), the
+// index of a tenant's runs and runs' webhooks (T071). Every backend of
+// package store (memory, sqlite, postgres) is one.
 type Store interface {
 	runner.Store
 	store.ConversationIndex
 	store.EventLog
 	store.CommandLog
+	store.RunIndex
+	store.NotificationLog
 }
 
 func newConfig(opts []Option) config {
@@ -94,6 +110,8 @@ func newConfig(opts []Option) config {
 		keepAlive:     DefaultKeepAlive,
 		watchBuffer:   defaultWatchBuffer,
 		grace:         DefaultReconnectGrace,
+		maxBackground: DefaultMaxBackgroundRuns,
+		taskLimit:     DefaultTaskTimeLimit,
 		clock:         clock.Real(),
 		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
 		newID:         randomID,
@@ -236,6 +254,42 @@ func WithRouter(rt *pool.Router) Option { return func(c *config) { c.router = rt
 // it ends follows the run on. When it ends, the run is interrupted, as by
 // POST /v1/runs/{id}/stop. 0 interrupts it at once.
 func WithReconnectGrace(d time.Duration) Option { return func(c *config) { c.grace = d } }
+
+// WithMaxBackgroundRuns caps the background runs (tasks, POST /v1/tasks) a
+// tenant has going on at once, queued or running, on this server's store
+// (default [DefaultMaxBackgroundRuns]); past it a new task gets 429
+// too_many_background_runs with Retry-After. n must be at least 1. Replicas
+// count the same runs, but two that start a task at the same instant may
+// both pass the last place.
+func WithMaxBackgroundRuns(n int) Option { return func(c *config) { c.maxBackground = n } }
+
+// WithTaskTimeLimit sets the wall-clock limit of background runs (default
+// [DefaultTaskTimeLimit]): a task still going on d after it started fails
+// with [CodeWallClockLimit], however often it was resumed in between
+// ([runner.WithTimeLimit]). 0 means none. The run timeout ([WithRunTimeout])
+// is for chat runs only. It does not apply to the [Runs] of [WithRuns],
+// whose runner sets its own.
+func WithTaskTimeLimit(d time.Duration) Option { return func(c *config) { c.taskLimit = d } }
+
+// Webhooks are what the server needs to take completion webhooks
+// (POST /v1/tasks with "notify", [Agent.Notify]). Delivering them is not the
+// server's: a [github.com/bsamanvith/agentkit/pkg/webhook.Notifier] over the
+// same store does it, with the same secrets, posting
+// [Server.WebhookPayload].
+type Webhooks struct {
+	// Secret returns the text form of the tenant's signing secret
+	// ("whsec_..."), which GET /v1/webhooks/secret shows the tenant's
+	// admins.
+	Secret func(t tenancy.Tenant) (string, error)
+	// CheckURL refuses a webhook URL the server must not post to, such as
+	// one on a private network (package netguard); nil allows any http or
+	// https URL.
+	CheckURL func(raw string) error
+}
+
+// WithWebhooks lets runs have completion webhooks. Without it, a task that
+// asks for one is refused, and GET /v1/webhooks/secret is 404.
+func WithWebhooks(w Webhooks) Option { return func(c *config) { c.webhooks = &w } }
 
 var idEncoding = base32.StdEncoding.WithPadding(base32.NoPadding)
 

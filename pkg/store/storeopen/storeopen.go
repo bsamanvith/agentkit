@@ -44,7 +44,7 @@ var (
 
 // Store is a whole store: every interface a backend implements. A backend's
 // store must be one transactional store, not several joined: deleting a
-// conversation removes its log, runs, events and checkpoints at once, and a
+// conversation removes its log, runs, events, checkpoints and notifications at once, and a
 // command is appended under the run's lease in the same write.
 type Store interface {
 	store.ConversationStore
@@ -53,6 +53,8 @@ type Store interface {
 	store.EventLog
 	store.CommandLog
 	store.ToolsetStore
+	store.RunIndex
+	store.NotificationLog
 	flow.Checkpointer
 }
 

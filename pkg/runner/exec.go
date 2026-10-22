@@ -360,7 +360,7 @@ func (r *Runner) start(ctx context.Context, tenant tenancy.Tenant, conv string, 
 		if run.Lease.Owner != owner {
 			return nil, fmt.Errorf("run %q: created with lease %+v, not %q's: %w", run.ID, run.Lease, owner, store.ErrLeaseLost)
 		}
-		return &exec{r: r, tenant: tenant, run: run, owner: owner}, nil
+		return &exec{r: r, tenant: tenant, run: run, owner: owner, isChat: chat}, nil
 	}
 }
 
@@ -499,7 +499,7 @@ func (r *Runner) resume(ctx context.Context, runID string, c resumeConfig) (*Exe
 		}
 	}
 
-	x := &exec{r: r, tenant: tenant, owner: c.claimed}
+	x := &exec{r: r, tenant: tenant, owner: c.claimed, isChat: !isFlow}
 	if x.owner == "" {
 		x.owner = r.nextOwner()
 		if _, err := r.store.Claim(ctx, runID, x.owner, r.ttl); err != nil {
@@ -735,6 +735,47 @@ type exec struct {
 	tenant tenancy.Tenant
 	run    store.Run
 	owner  string
+	isChat bool // a chat run, not a flow run
+}
+
+// deadline is when the execution's run reaches its wall-clock limit
+// ([WithTimeLimit]), and whether it has one.
+func (x *exec) deadline() (time.Time, bool) {
+	if x.r.limit == 0 || !x.isChat || x.run.Interactive {
+		return time.Time{}, false
+	}
+	start := x.run.StartAt
+	if start.IsZero() || start.Before(x.run.CreatedAt) {
+		start = x.run.CreatedAt
+	}
+	return start.Add(x.r.limit), true
+}
+
+// limit cancels the run with [ErrTimeLimit] at its deadline, by the runner's
+// clock, at once if it has passed; the returned function stops it.
+func (x *exec) limit(ctx context.Context, cancel context.CancelCauseFunc) (stop func()) {
+	at, ok := x.deadline()
+	if !ok {
+		return func() {}
+	}
+	d := at.Sub(x.r.clk.Now())
+	if d <= 0 {
+		cancel(ErrTimeLimit)
+		return func() {}
+	}
+	quit, done := make(chan struct{}), make(chan struct{})
+	t := x.r.clk.NewTimer(d)
+	go func() {
+		defer close(done)
+		defer t.Stop()
+		select {
+		case <-t.C():
+			cancel(ErrTimeLimit)
+		case <-quit:
+		case <-ctx.Done():
+		}
+	}()
+	return func() { close(quit); <-done }
 }
 
 type outKind uint8
@@ -786,6 +827,7 @@ func (x *exec) drive(ctx context.Context, body func(context.Context, func(Event)
 		}
 	}
 	stopRenewing := x.keepLease(runCtx, cancel)
+	stopLimit := x.limit(runCtx, cancel)
 	stopped := false
 	emit := func(ev Event) bool {
 		if stopped {
@@ -800,6 +842,7 @@ func (x *exec) drive(ctx context.Context, body func(context.Context, func(Event)
 		return true
 	}
 	out := body(runCtx, emit)
+	stopLimit()
 	stopRenewing()
 
 	// The run's end is stored even if ctx is done, but within a deadline
@@ -823,6 +866,14 @@ func (x *exec) drive(ctx context.Context, body func(context.Context, func(Event)
 // final event, or the error that ends the execution.
 func (x *exec) finish(ctx, runCtx context.Context, out outcome) (Event, error) {
 	id := x.run.ID
+	if runCtx.Err() != nil && out.kind != outCompleted && errors.Is(context.Cause(runCtx), ErrTimeLimit) {
+		// Its wall-clock limit passed: failed for good, under the lease.
+		defer x.release(ctx)
+		if err := x.transition(ctx, store.StatusFailed, store.Details{Usage: out.usage, Error: ErrTimeLimit.Error()}); err != nil {
+			return Event{}, fmt.Errorf("run %q: %w; storing the failure: %w", id, ErrTimeLimit, err)
+		}
+		return Event{}, &RunError{Run: x.run, Err: ErrTimeLimit}
+	}
 	if runCtx.Err() != nil && out.kind != outCompleted {
 		// Interrupted: by Cancel, by the consumer, by ctx or by a lost lease.
 		// The run stays as it is, for whoever continues it.

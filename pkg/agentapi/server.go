@@ -91,6 +91,8 @@ type Server struct {
 
 	wmu     sync.Mutex
 	watches map[hubKey]*sharedWatch // runs held elsewhere that this server follows (T103)
+
+	tmu sync.Mutex // held from counting a tenant's tasks to starting one
 }
 
 type hubKey struct{ tenant, runID string }
@@ -119,6 +121,10 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 		return nil, fmt.Errorf("%w: nil clock or ID function", ErrInvalidConfig)
 	case cfg.drainRequested && (cfg.drainStop == nil || cfg.drainAfter < 0):
 		return nil, fmt.Errorf("%w: drain needs a stop channel and a time that is not negative", ErrInvalidConfig)
+	case cfg.maxBackground < 1, cfg.taskLimit < 0:
+		return nil, fmt.Errorf("%w: max background runs must be at least 1, and the task time limit not negative", ErrInvalidConfig)
+	case cfg.webhooks != nil && cfg.webhooks.Secret == nil:
+		return nil, fmt.Errorf("%w: webhooks need their secrets", ErrInvalidConfig)
 	}
 	bearer, err := authenticator(cfg)
 	if err != nil {
@@ -168,6 +174,7 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 		ropts := append([]runner.Option{
 			runner.WithClock(cfg.clock),
 			runner.WithIDs(func() string { return cfg.newID("run_") }),
+			runner.WithTimeLimit(cfg.taskLimit),
 		}, cfg.runnerOpts...)
 		rn, err := runner.New(s.store, factory, ropts...)
 		if err != nil {
@@ -192,6 +199,8 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 		{"POST /v1/runs/{id}/cancel", s.cancelRun},
 		{"POST /v1/runs/{id}/decisions", s.decideRun},
 		{"POST /v1/runs/{id}/input", s.inputRun},
+		{"POST /v1/tasks", s.postTask},
+		{"GET /v1/webhooks/secret", s.webhookSecret},
 		{"POST /v1/conversations", s.createConversation},
 		{"GET /v1/conversations", s.listConversations},
 		{"GET /v1/conversations/{id}", s.getConversation},
@@ -764,8 +773,8 @@ func (s *Server) drive(ctx context.Context, cancel context.CancelCauseFunc, x *r
 	})
 	defer func() { freeSlot(); s.active.Done() }() // s.release, in two steps
 	defer cancel(nil)
-	defer s.obey(ctx, x, h)() // commands sent through other servers
-	if s.cfg.runTimeout > 0 {
+	defer s.obey(ctx, x, h)()                  // commands sent through other servers
+	if s.cfg.runTimeout > 0 && h.interactive { // a task has its wall-clock limit instead
 		t := s.cfg.clock.NewTimer(s.cfg.runTimeout)
 		defer t.Stop()
 		go func() {
@@ -961,6 +970,8 @@ func (s *Server) classify(runID string, err error) *Error {
 		return &Error{Code: CodeModelRejected, Message: msg}
 	case errors.Is(err, flow.ErrShapeChanged):
 		return &Error{Code: CodeShapeChanged, Message: msg}
+	case errors.Is(err, runner.ErrTimeLimit):
+		return &Error{Code: CodeWallClockLimit, Message: msg}
 	default:
 		s.log.Error("run failed with an internal error", "run_id", runID, "err", err)
 		return &Error{Code: CodeInternal, Message: "internal error; see the server log for run " + runID}
@@ -1034,6 +1045,12 @@ func (s *Server) follow(w http.ResponseWriter, r *http.Request, h *hub, after bu
 		stopKeepAlive := out.keepAlive(s.cfg.clock, s.cfg.keepAlive)
 		defer stopKeepAlive()
 	}
+	pump(ctx, out, h, after)
+}
+
+// pump writes the hub's events after the ID after to out, as they come,
+// until the run ends or ctx is done.
+func pump(ctx context.Context, out *sseWriter, h *hub, after bus.ID) {
 	for {
 		evs, _ := h.next(ctx, after)
 		if evs == nil {

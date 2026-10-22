@@ -181,7 +181,7 @@ func ending(run store.Run, r replayed, now time.Time) *Event {
 			e.Answer, e.Final = final.Text(), &final
 		}
 	case store.StatusFailed:
-		e.Error = &Error{Code: CodeRunFailed, Message: run.Error, Retryable: run.Retryable}
+		e.Error = failedError(run)
 	case store.StatusCanceled:
 		e.Error = &Error{Code: CodeCancelled, Message: "the run was canceled"}
 	case store.StatusRejected:
@@ -189,7 +189,9 @@ func ending(run store.Run, r replayed, now time.Time) *Event {
 	case store.StatusSuspended:
 		e.Error = suspendedError(run, r.interrupts)
 	default:
-		if held(run, now) {
+		if held(run, now) || !run.Interactive {
+			// Going on, or a background run nobody holds just now, which
+			// the recovery resumes: it has not ended.
 			return nil
 		}
 		e.Error = interruptedError(run.ID)
@@ -204,6 +206,16 @@ func suspendedError(run store.Run, interrupts bool) *Error {
 		return &Error{Code: CodeSuspended, Message: "the run waits for input (POST /v1/runs/" + run.ID + "/input) to " + strings.Join(run.Pending, ", ")}
 	}
 	return &Error{Code: CodeSuspended, Message: "the run waits for a decision at " + strings.Join(run.Pending, ", ")}
+}
+
+// failedError is the error of a failed run, from the store: a run that
+// passed its wall-clock limit says so; the code of any other failure is not
+// kept.
+func failedError(run store.Run) *Error {
+	if run.Error == runner.ErrTimeLimit.Error() && !run.Retryable {
+		return &Error{Code: CodeWallClockLimit, Message: run.Error}
+	}
+	return &Error{Code: CodeRunFailed, Message: run.Error, Retryable: run.Retryable}
 }
 
 func interruptedError(runID string) *Error {

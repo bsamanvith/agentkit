@@ -162,6 +162,7 @@ func (s *Store) DeleteConversation(ctx context.Context, id string) error {
 		delete(s.runs, rk)
 		delete(s.events, rk)
 		delete(s.checkpoints, rk)
+		delete(s.notifications, rk)
 	}
 	delete(s.convs, k)
 	delete(s.records, k)

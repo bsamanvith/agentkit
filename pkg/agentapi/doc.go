@@ -16,7 +16,7 @@
 // "Authorization: Bearer <token>" (401 otherwise, on every path).
 //
 //	POST   /v1/runs                      {"message", "conversation_id"?, "agent"?}
-//	GET    /v1/runs                      ?conversation_id=&status=&limit=&cursor=: runs, newest first
+//	GET    /v1/runs                      ?conversation_id=&status=&background=&agent=&limit=&cursor=: runs, newest first
 //	GET    /v1/runs/{id}                 a run: status, answer, usage, record
 //	GET    /v1/runs/{id}/events          its events, after Last-Event-ID; then, while it goes on, the new ones
 //	POST   /v1/runs/{id}/stop            interrupt it now, keeping its completed turns
@@ -24,6 +24,8 @@
 //	POST   /v1/runs/{id}/cancel          end it for good
 //	POST   /v1/runs/{id}/decisions       {"path", "approved", "reason"?}: answer a flow run's approval
 //	POST   /v1/runs/{id}/input           {"answers": [{"id", "text"} or {"id", "approved", "reason"?}]}: answer a chat run's interrupts
+//	POST   /v1/tasks                     {"input", "agent"?, "interaction"?, "policy"?, "notify"?}: 202, a background run
+//	GET    /v1/webhooks/secret           the tenant's webhook signing secret (agent:admin)
 //	POST   /v1/conversations             {"agent"?}: 201, an empty conversation
 //	GET    /v1/conversations             ?agent=&limit=&cursor=: the caller's conversations
 //	GET    /v1/conversations/{id}        a conversation's messages
@@ -76,6 +78,7 @@
 //	409 not_pending               the run waits for no decision at that path
 //	413 too_large                 body over the limit (WithMaxBodyBytes)
 //	429 over_capacity             the run's runner pool is at its limit (WithRouter); Retry-After
+//	429 too_many_background_runs  the tenant's tasks at once (WithMaxBackgroundRuns); Retry-After
 //	503 over_capacity             too many runs at once (WithMaxConcurrentRuns); Retry-After
 //	503 shutting_down             the server is draining; Retry-After
 //
@@ -120,6 +123,29 @@
 // A run's events have one seq order. A resumed run's events go on from the
 // interruption: the run_error that ended the stopped stream is replaced, at
 // its seq, by the continuation's next event.
+//
+// # Tasks
+//
+// POST /v1/tasks starts a background run (T071): the run of an agent on an
+// input, in a conversation of its own, answered 202 with the [Run] at once
+// (Location and the Agentkit-Run-Id header name it). The server owns it: no
+// client going away stops it, only POST /v1/runs/{id}/cancel does, and a
+// process that dies mid-run leaves it to the recovery loop, which resumes it
+// once its lease runs out. Any number of clients follow it with GET
+// /v1/runs/{id}/events, coming and going, from any replica, resuming with
+// Last-Event-ID; a watcher of a task whose process stopped waits for the
+// one that takes it up and goes on from there (it may miss text_delta events
+// across the hand-over, whose text the turn_done has). GET /v1/runs lists the
+// tenant's runs, background=true its tasks.
+//
+// A task fails with wall_clock_limit past [WithTaskTimeLimit] (default
+// [DefaultTaskTimeLimit], from its start, across resumes), and with
+// budget_exceeded past its agent's budgets; [WithRunTimeout] is for chat
+// runs only. A tenant has at most [WithMaxBackgroundRuns] tasks going on.
+// With [WithWebhooks], a task's end is posted to its "notify" URL (or its
+// agent's [Agent.Notify]): the body is [Server.WebhookPayload], signed per
+// tenant, and the delivery (by package webhook, which retries for a day) is
+// in the run's "notify".
 //
 // # Store
 //

@@ -65,6 +65,10 @@ var (
 	// [Runner.Shutdown], and is what starting or resuming a run on a runner
 	// that was shut down gives.
 	ErrShutdown = errors.New("runner shut down")
+	// ErrTimeLimit is the cause of a background chat run that was still
+	// going on when its wall-clock limit ([WithTimeLimit]) passed: the run is
+	// failed, and not retryable.
+	ErrTimeLimit = errors.New("run exceeded its wall-clock limit")
 )
 
 // UnfinishedError reports the unfinished run that keeps a conversation from
@@ -296,6 +300,7 @@ type Runner struct {
 	jitter func(n int64) int64
 	cache  *cache
 	flush  int
+	limit  time.Duration
 
 	execs  atomic.Uint64
 	mu     sync.Mutex
@@ -324,6 +329,7 @@ type config struct {
 	rnd       *mrand.Rand
 	cacheSize int
 	flush     int
+	limit     time.Duration
 }
 
 // WithFlows sets the factory of flow runs. Without it, [Runner.RunFlow] and
@@ -459,6 +465,24 @@ func WithFlushEvery(n int) Option {
 	}
 }
 
+// WithTimeLimit sets the wall-clock limit of background chat runs (default
+// none; 0 is none): a run still going on d after it was due to start (its
+// [store.Run.StartAt], when it was created unless it was enqueued for later)
+// is stopped, its turns stored, and failed with [ErrTimeLimit], not
+// retryable, however often it was resumed in between. A run resumed after
+// its limit fails at once. Interactive runs, which stop with their user, and
+// flow runs, which may wait days for an approval, have no such limit. d must
+// not be negative.
+func WithTimeLimit(d time.Duration) Option {
+	return func(c *config) error {
+		if d < 0 {
+			return fmt.Errorf("%w: negative time limit %v", ErrInvalidConfig, d)
+		}
+		c.limit = d
+		return nil
+	}
+}
+
 // New returns a runner over s that runs conversations with the agents from
 // agents.
 func New(s Store, agents AgentFactory, opts ...Option) (*Runner, error) {
@@ -503,6 +527,7 @@ func New(s Store, agents AgentFactory, opts ...Option) (*Runner, error) {
 		jitter: jitter,
 		cache:  newCache(c.cacheSize),
 		flush:  c.flush,
+		limit:  c.limit,
 		live:   map[liveKey]*liveRun{},
 	}, nil
 }

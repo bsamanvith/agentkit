@@ -49,6 +49,10 @@ var (
 	// ErrShuttingDown: 503 shutting_down, the server is draining; retry after
 	// [APIError.RetryAfter], possibly on another replica.
 	ErrShuttingDown = errors.New("server shutting down")
+	// ErrTooManyBackgroundRuns: 429 too_many_background_runs, the tenant has
+	// as many tasks going on as the server allows; retry after
+	// [APIError.RetryAfter].
+	ErrTooManyBackgroundRuns = errors.New("too many background runs")
 )
 
 // Errors of the client itself.
@@ -92,6 +96,8 @@ var codeSentinels = map[string]error{
 	wire.CodeOverCapacity:   ErrOverCapacity,
 	wire.CodeShuttingDown:   ErrShuttingDown,
 
+	wire.CodeTooManyBackgroundRuns: ErrTooManyBackgroundRuns,
+
 	wire.CodeToolsetExists:     ErrToolsetExists,
 	wire.CodeConflict:          ErrConflict,
 	wire.CodeServerUnreachable: ErrServerUnreachable,
@@ -116,7 +122,7 @@ type APIError struct {
 	Message string
 	// Retryable means the same request may succeed later.
 	Retryable bool
-	// RetryAfter is the response's Retry-After (set on 503s), or 0.
+	// RetryAfter is the response's Retry-After (set on 503s and 429s), or 0.
 	RetryAfter time.Duration
 	// RunID is the run the error is about, when there is one: on a busy
 	// conversation (409), the run going on, to follow with [Client.Events].

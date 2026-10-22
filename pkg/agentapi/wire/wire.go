@@ -524,6 +524,12 @@ type Run struct {
 	// its pending turn, each with its answer once it has one. The run
 	// resumes when they all have one.
 	Interrupts []Interrupt `json:"interrupts,omitempty"`
+	// Background is set for a task (POST /v1/tasks): a run that goes on
+	// whoever watches it.
+	Background bool `json:"background,omitempty"`
+	// Notify is the run's webhook and its delivery, for a run that has one
+	// (GET /v1/runs/{id} only).
+	Notify *Notification `json:"notify,omitempty"`
 }
 
 // Interrupt kinds.

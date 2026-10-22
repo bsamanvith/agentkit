@@ -511,6 +511,10 @@ type TenantRun struct {
 // serves requests. The dispatcher resumes each run it claims with that run's
 // tenant in ctx.
 //
+// It also delivers the notifications of runs ([NotificationLog]) of every
+// tenant, for the same reason: the process that tells webhooks a run has
+// ended starts with no tenant (T071).
+//
 // A backend implements Admin on a separate value with no other method,
 // returned by a package-level function that takes its store (as package
 // memory's Admin does). The store must have no method that implements Admin or
@@ -546,6 +550,28 @@ type Admin interface {
 	// checks them ([ErrInvalid]). It needs no tenant in ctx, and ignores
 	// one that is there.
 	ClaimNext(ctx context.Context, lanes []string, owner string, ttl time.Duration) (TenantRun, error)
+	// ClaimNotification claims for owner, for ttl from the store's clock,
+	// the next notification ([Notification]) that is due, and returns it as
+	// claimed, with its tenant. A notification is due when it is pending,
+	// nobody holds its lease, its NextAttemptAt is at or before now (or
+	// zero), and its run has ended: final, or failed and not Retryable. Of
+	// those it takes the earliest NextAttemptAt (zero first), then the
+	// earliest CreatedAt, then the lowest tenant id and run ID (compared as
+	// bytes). It fails with [ErrNotFound] when none is due. Callers claiming
+	// at once never get the same one. owner and ttl are checked as
+	// [Leaser.Claim] checks them ([ErrInvalid]). It needs no tenant in ctx,
+	// and ignores one that is there.
+	ClaimNotification(ctx context.Context, owner string, ttl time.Duration) (TenantNotification, error)
+	// RecordDelivery records an attempt at the notification of run runID of
+	// tenant: it appends d.Attempt, moves the notification to d.State (and
+	// NextAttemptAt), releases owner's lease and returns the notification as
+	// stored. owner must hold the unexpired lease ([ErrLeased] if another
+	// owner does, [ErrLeaseLost] if nobody does). It fails with
+	// [ErrNotFound] for no such notification, with [ErrFinal] for one that
+	// is delivered or failed, and with [ErrInvalid] for a state that is none
+	// of the states, a NextAttemptAt without pending (or pending without
+	// one), an attempt whose At is zero, or an error that is not text.
+	RecordDelivery(ctx context.Context, tenant tenancy.Tenant, runID, owner string, d Delivery) (Notification, error)
 }
 
 // Event is one position of a run's event log.

@@ -162,7 +162,7 @@ Unknown input fields are refused. The exact schemas are pinned in `testdata/gold
   - The same wrapper adds `enum`, `minimum`, `maximum`, `default` and length limits to the input schema.
   - Follow-up: let `tool.Func` recognise `ErrInvalidInput` from the function, so connectors need no wrapper.
 - **Startup log:** `tavily toolset auth` at info, with `mode` (`key` or `keyless`) and `api_key_env`. `newCatalog` takes no logger, so `cmd/agentkit/catalog.go` gives the factory a JSON logger on stderr.
-  - Follow-up, outside this task's files: pass serve's logger through `buildToolsets` → `newCatalog`.
+  - Follow-up, outside this task's files: pass serve's logger through `buildToolsets` → `newCatalog`. Done in the hardening pass after T096: `newCatalog(logger)` (`TestConnectorsLogToServesLogger`; planted: the stderr logger back, which failed it).
 - **Exposure:** `/mcp/` has no auth until T040. QUICKSTART says not to put a keyed toolset on a public address before then. `search.json` is for loopback.
 
 ### Fixtures

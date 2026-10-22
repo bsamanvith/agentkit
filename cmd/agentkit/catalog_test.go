@@ -85,6 +85,36 @@ func TestServeMCPWithAFakeCatalog(t *testing.T) {
 	}
 }
 
+// TestConnectorsLogToServesLogger: the compiled-in connectors log through
+// serve's logger (its format, level and attributes), not a logger of their
+// own on stderr (T046 follow-up).
+func TestConnectorsLogToServesLogger(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"mcp": {"toolsets": [{"name": "web", "type": "tavily", "settings": {"auth": "auto"}}]}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := loadServeConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var logs bytes.Buffer
+	log := slog.New(slog.NewJSONHandler(&logs, nil)).With("component", "serve-test")
+	if _, problems, err := (cli{}).buildToolsets(t.Context(), serveEnv{components: []string{mcpServerName}}, cfg, path, log); err != nil || len(problems) != 0 {
+		t.Fatalf("build: %v %v", err, problems)
+	}
+	found := false
+	for line := range bytes.Lines(logs.Bytes()) {
+		var rec struct{ Msg, Component string }
+		if json.Unmarshal(line, &rec) == nil && rec.Msg == "tavily toolset auth" && rec.Component == "serve-test" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("serve's logger got no tavily auth record:\n%s", &logs)
+	}
+}
+
 // TestServeCoreToolsOverMCP: the built-in math and files toolsets are in the
 // binary's catalog, and serve offers them over MCP like any connector.
 func TestServeCoreToolsOverMCP(t *testing.T) {

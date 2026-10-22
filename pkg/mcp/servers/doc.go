@@ -18,7 +18,9 @@
 // operator allows the host. Only the HTTP transports are used: a web
 // request never makes the server run a command. Header values are fixed,
 // or name a variable of the server's environment that the operator allows
-// ([WithHeaderEnv]); a header that carries a secret must name one, so a
+// ([WithHeaderEnv]); a header that carries a secret must name one, and a
+// value that looks like a key written out (a scheme with a literal, a long
+// token of letters and digits) is refused whatever its name, so a
 // secret is never stored.
 //
 // Tools are named "<toolset>__<tool>", so two servers cannot shadow each

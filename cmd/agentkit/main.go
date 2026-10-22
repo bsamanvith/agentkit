@@ -37,6 +37,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -75,10 +76,11 @@ type cli struct {
 }
 
 // toolsets returns the catalog of connectors: the compiled-in one, or the
-// one a test put in its place (fakes, so no test reaches a paid API).
-func (c cli) toolsets() (*toolset.Catalog, error) {
+// one a test put in its place (fakes, so no test reaches a paid API). The
+// compiled-in connectors log to log.
+func (c cli) toolsets(log *slog.Logger) (*toolset.Catalog, error) {
 	if c.catalog == nil {
-		return newCatalog()
+		return newCatalog(log)
 	}
 	return c.catalog()
 }
@@ -184,7 +186,7 @@ func (m *modelFlags) register(fs *flag.FlagSet) {
 
 // demoTools builds the built-in demo toolset (echo, current_time, calculate).
 func (c cli) demoTools(ctx context.Context) (tool.Registry, error) {
-	catalog, err := c.toolsets()
+	catalog, err := c.toolsets(slog.New(slog.DiscardHandler)) // the demo toolset logs nothing
 	if err != nil {
 		return nil, err
 	}

@@ -389,7 +389,7 @@ func (c cli) buildToolsets(ctx context.Context, env serveEnv, cfg serveConfig, c
 	if env.toolsetsURL != "" {
 		return c.remoteToolsets(ctx, env, specs, log)
 	}
-	catalog, err := c.toolsets()
+	catalog, err := c.toolsets(log)
 	if err != nil {
 		return nil, nil, err
 	}

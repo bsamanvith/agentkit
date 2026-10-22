@@ -35,6 +35,9 @@ var (
 	secretNameRE = regexp.MustCompile(`(?i)authorization|cookie|key|token|secret|auth|password`)
 	envRefRE     = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 	fullRefRE    = regexp.MustCompile(`^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$`)
+	schemeRE     = regexp.MustCompile(`(?i)^\s*(bearer|basic|token|digest)\s+\S`)
+	tokenRE      = regexp.MustCompile(`[A-Za-z0-9_\-+/=.~]{20,}`)
+	uuidRE       = regexp.MustCompile(`(?i)^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$`)
 )
 
 // reservedHeaders are the headers the transport sets itself.
@@ -126,6 +129,8 @@ func (m *Manager) checkHeaders(headers map[string]string) error {
 			return bad("headers: %s: the value is too long or has a line break", name)
 		case secretNameRE.MatchString(name) && !envRefRE.MatchString(value):
 			return bad(`headers: %s carries a secret: take its value from a variable the operator allows, as in "Bearer ${NAME}"`, name)
+		case literalSecret(value):
+			return bad(`headers: %s: the value looks like a key written out: take it from a variable the operator allows, as in "Bearer ${NAME}"`, name)
 		}
 		if _, err := m.expand(value); err != nil {
 			return bad("headers: %s: %v", name, err)
@@ -133,6 +138,28 @@ func (m *Manager) checkHeaders(headers map[string]string) error {
 	}
 	return nil
 }
+
+// literalSecret reports whether a header value, outside its ${NAME}s,
+// looks like a credential whatever the header's name: a scheme with a
+// literal ("Bearer sk-...", "Bearer ${A}x"), or a run of 20 or more token
+// characters with both letters and digits that isn't a UUID. It is the
+// console's rule (literalSecret in web/apps/console/src/pages/mcp-servers.ts),
+// here so that a key pasted under an innocent name (X-Api) is refused from
+// any client, not only the console, and never stored.
+func literalSecret(value string) bool {
+	rest := envRefRE.ReplaceAllString(value, " ")
+	if schemeRE.MatchString(rest) {
+		return true
+	}
+	for _, t := range tokenRE.FindAllString(rest, -1) {
+		if strings.ContainsAny(t, "0123456789") && strings.IndexFunc(t, isASCIILetter) >= 0 && !uuidRE.MatchString(t) {
+			return true
+		}
+	}
+	return false
+}
+
+func isASCIILetter(r rune) bool { return 'a' <= r && r <= 'z' || 'A' <= r && r <= 'Z' }
 
 // expand replaces each ${NAME} in a header value with the variable, which
 // the operator must allow and must be set.

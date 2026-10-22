@@ -63,7 +63,9 @@ type AddToolsetRequest struct {
 	// Headers are sent with every request, with auth "headers". "${NAME}"
 	// in a value is the server's variable NAME, which the operator must
 	// allow; a header that carries a secret (Authorization, or a name with
-	// key, token, secret or auth in it) must take its value from one.
+	// key, token, secret or auth in it) must take its value from one, and a
+	// value that looks like a key written out ("Bearer abc", a long token
+	// of letters and digits) is refused whatever the header's name.
 	Headers map[string]string `json:"headers,omitempty"`
 	// Scope is "tenant" (the default): one connection the tenant shares;
 	// or, with auth "oauth" only, "user": each user connects their own

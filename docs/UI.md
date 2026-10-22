@@ -318,7 +318,7 @@ T096's runtime toolsets, added by an admin from Toolsets (+ in the list header).
    - **No sign-in**.
    - **A header from a server variable**: a header name and a value like `Bearer ${LINEAR_API_KEY}`. Only variables listed in `runtime_toolsets.header_env` are allowed, and the value never passes through the console.
    - **Each person signs in** (T095): MCP OAuth, each person's own account (`auth: oauth`, `scope: user`). Offered only when the server's 401 named MCP OAuth (the 422's `auth` is `oauth`), and then chosen first, with a notice that says so. It adds a row to Connections for the toolset. Saving stores the toolset without its tools: step 3 first asks the admin to **Connect** their own account (POST /v1/credentials/{name}/connect, in a popup, back at /connections/done), with **Check again**, then lists the tools for review.
-   - A server that answers without sign-in skips this step; a header that carries a secret must be a `${VAR}`, checked before it is sent.
+   - A server that answers without sign-in skips this step; a header that carries a secret must be a `${VAR}`, checked before it is sent; a value that looks like a key is refused under any name, by the console and again by the server.
 3. **Review tools:** one card per tool, and every tool needs **Approve** or **Reject**. **Approve the 3 without flags** saves clicks. A card shows:
    - the name;
    - the description **exactly as the model sees it**, with invisible characters shown (⟦U+200B⟧);

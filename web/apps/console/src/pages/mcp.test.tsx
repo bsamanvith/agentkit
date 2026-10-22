@@ -164,8 +164,8 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-const h1 = (name: string) => screen.findByRole("heading", { level: 1, name }, { timeout: 5000 });
-const h2 = (name: string | RegExp) => screen.findByRole("heading", { level: 2, name }, { timeout: 5000 });
+const h1 = (name: string) => screen.findByRole("heading", { level: 1, name });
+const h2 = (name: string | RegExp) => screen.findByRole("heading", { level: 2, name });
 
 describe("Add an MCP server", () => {
   it("probes, asks for sign-in on a 401, never sends a pasted key, and sends the header as a ${VAR}", async () => {
@@ -604,7 +604,7 @@ describe("Add an MCP server", () => {
     ]);
     renderAt("/toolsets/new");
     await userEvent.type(await screen.findByLabelText("Find a server"), "linear");
-    const found = await screen.findByRole("list", { name: "Servers found" }, { timeout: 3000 });
+    const found = await screen.findByRole("list", { name: "Servers found" });
     expect(within(found).getByText("Linear <script>x</script>")).toBeInTheDocument();
     expect(
       within(found).getByRole("button", { name: "Use app.linear/linear at https://other.example/mcp" }),
@@ -634,13 +634,11 @@ describe("Add an MCP server", () => {
     renderAt("/toolsets/new");
     const box = await screen.findByLabelText("Find a server");
     await userEvent.type(box, "linear");
-    expect(
-      await screen.findByText("The registry can't be reached; paste the URL instead.", {}, { timeout: 3000 }),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("The registry can't be reached; paste the URL instead.")).toBeInTheDocument();
     expect(screen.getByLabelText("Server URL")).not.toHaveAttribute("readonly");
     status = 404;
     await userEvent.type(box, "x");
-    await waitFor(() => expect(screen.queryByLabelText("Find a server")).not.toBeInTheDocument(), { timeout: 3000 });
+    await waitFor(() => expect(screen.queryByLabelText("Find a server")).not.toBeInTheDocument());
     // Adding by URL still works without the registry (T097's "Registry down").
     await userEvent.type(screen.getByLabelText("Server URL"), "https://mcp.linear.app/mcp");
     await userEvent.click(screen.getByRole("button", { name: "Connect" }));
@@ -677,7 +675,7 @@ describe("Add an MCP server", () => {
     ]);
     renderAt("/toolsets/new");
     await userEvent.type(await screen.findByLabelText("Find a server"), "acme");
-    const found = await screen.findByRole("list", { name: "Servers found" }, { timeout: 3000 });
+    const found = await screen.findByRole("list", { name: "Servers found" });
     await userEvent.click(within(found).getByRole("button", { name: /Use com\.acme\/acme/ }));
     const url = screen.getByLabelText("Server URL");
     await userEvent.click(screen.getByRole("button", { name: "Connect" }));
@@ -771,7 +769,7 @@ describe("the review page", () => {
       on("POST", "/v1/toolsets/linear/review", () => apiError(409, "conflict", "a tool changed since it was reviewed")),
     ]);
     renderAt("/toolsets/linear/review");
-    const echo = await screen.findByRole("group", { name: "echo" }, { timeout: 5000 });
+    const echo = await screen.findByRole("group", { name: "echo" });
     await userEvent.click(within(echo).getByRole("radio", { name: "Approve" }));
     await userEvent.click(screen.getByRole("button", { name: "Save review" }));
     expect(await screen.findByText(/The server changed a tool while you were reviewing it/)).toBeInTheDocument();

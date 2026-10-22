@@ -81,8 +81,9 @@ type rig struct {
 	ts  *httptest.Server
 	ln  *gateListener
 
-	mu   sync.Mutex
-	http []string // "METHOD /path" of the requests served over HTTP
+	mu     sync.Mutex
+	http   []string // "METHOD /path" of the requests served over HTTP
+	served []string // "METHOD /path" of the requests the binding served
 }
 
 type rigConfig struct {
@@ -121,14 +122,20 @@ func newRig(t *testing.T, m *model, rc rigConfig) *rig {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ws, err := wsapi.New(api.Handler(), append([]wsapi.Option{wsapi.WithHeartbeat(0, 0)}, rc.ws...)...)
+	r := &rig{t: t, api: api}
+	apiHandler := api.Handler()
+	ws, err := wsapi.New(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		r.mu.Lock()
+		r.served = append(r.served, req.Method+" "+req.URL.Path)
+		r.mu.Unlock()
+		apiHandler.ServeHTTP(w, req)
+	}), append([]wsapi.Option{wsapi.WithHeartbeat(0, 0)}, rc.ws...)...)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := &rig{t: t, api: api, ws: ws}
+	r.ws = ws
 	mux := http.NewServeMux()
 	mux.Handle(wire.WSPath, ws.Handler())
-	apiHandler := api.Handler()
 	mux.Handle("/v1/", http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		r.mu.Lock()
 		r.http = append(r.http, req.Method+" "+req.URL.Path)
@@ -154,6 +161,13 @@ func (r *rig) httpRequests() []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return append([]string(nil), r.http...)
+}
+
+// wsRequests are the requests the binding served by the API so far.
+func (r *rig) wsRequests() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.served...)
 }
 
 // httpClient is a client of the API over HTTP and SSE.
@@ -285,7 +299,7 @@ func (l *gateListener) Accept() (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	g := &gateConn{Conn: c, open: closedChan(), done: make(chan struct{})}
+	g := &gateConn{Conn: c, open: closedChan(), done: make(chan struct{}), blocked: make(chan struct{}, 1)}
 	l.mu.Lock()
 	l.conns = append(l.conns, g)
 	l.mu.Unlock()
@@ -319,6 +333,7 @@ type gateConn struct {
 	net.Conn
 	mu       sync.Mutex
 	open     chan struct{}
+	blocked  chan struct{} // a write waits at the gate
 	done     chan struct{}
 	doneOnce sync.Once
 }
@@ -345,10 +360,28 @@ func (g *gateConn) Write(p []byte) (int, error) {
 	g.mu.Unlock()
 	select {
 	case <-ch:
-	case <-g.done:
-		return 0, net.ErrClosed
+	default:
+		select { // a write waits: tell the test
+		case g.blocked <- struct{}{}:
+		default:
+		}
+		select {
+		case <-ch:
+		case <-g.done:
+			return 0, net.ErrClosed
+		}
 	}
 	return g.Conn.Write(p)
+}
+
+// waitBlocked waits until a write of the server's waits at the gate.
+func (g *gateConn) waitBlocked(t *testing.T) {
+	t.Helper()
+	select {
+	case <-g.blocked:
+	case <-time.After(20 * time.Second):
+		t.Fatal("the server never wrote to the held connection")
+	}
 }
 
 func (g *gateConn) Close() error {

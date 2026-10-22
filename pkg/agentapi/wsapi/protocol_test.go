@@ -24,6 +24,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/agentclient/wsclient"
 	"github.com/bsamanvith/agentkit/pkg/auth"
 	"github.com/bsamanvith/agentkit/pkg/auth/login"
+	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
 	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
 )
 
@@ -69,12 +70,25 @@ func TestHelloFirst(t *testing.T) {
 	}
 }
 
-// A connection that says no hello in time is closed (4001).
+// A connection that says no hello in time is closed (4001); one that said
+// it stays.
 func TestHelloTimeout(t *testing.T) {
 	t.Parallel()
-	r := newRig(t, &model{}, rigConfig{ws: []wsapi.Option{wsapi.WithHelloTimeout(20 * time.Millisecond)}})
-	if code := r.dial().closed(); code != wire.WSCloseUnauthorized {
+	clk := clocktest.NewFake(time.Time{})
+	r := newRig(t, &model{}, rigConfig{ws: []wsapi.Option{wsapi.WithClock(clk), wsapi.WithHelloTimeout(time.Minute)}})
+	said := r.dial()
+	said.hello(testToken)
+	silent := r.dial()
+	if err := clk.WaitForTimers(t.Context(), 2); err != nil { // the two deadlines
+		t.Fatal(err)
+	}
+	clk.Advance(time.Minute)
+	if code := silent.closed(); code != wire.WSCloseUnauthorized {
 		t.Errorf("closed with %d, want %d", code, wire.WSCloseUnauthorized)
+	}
+	said.send(wire.WSMessage{Type: wire.WSStop, ID: "1", RunID: "run_nope"})
+	if m := said.must(); m.Status != http.StatusNotFound {
+		t.Errorf("a command after the deadline, on a connection that said hello: %+v", m)
 	}
 }
 
@@ -404,29 +418,65 @@ func TestSlowClientDoesNotBlockTheRun(t *testing.T) {
 	}
 }
 
-// Heartbeats close a connection whose client does not answer pings.
+// Heartbeats close a connection whose client does not answer pings, and
+// keep one that does. The heartbeat and the pong timeout run on the
+// server's clock, a fake one here.
 func TestHeartbeatClosesADeadClient(t *testing.T) {
 	t.Parallel()
-	r := newRig(t, &model{}, rigConfig{ws: []wsapi.Option{wsapi.WithHeartbeat(10*time.Millisecond, 50*time.Millisecond)}})
-	w := r.dial()
-	w.hello(testToken) // and then reads no more, so it never answers a ping
-	testkit.Eventually(t, 20*time.Second, w.conn.isClosed)
+	const every, wait = 30 * time.Second, 10 * time.Second
+	rig := func() (*rig, *clocktest.Fake, chan error) {
+		clk := clocktest.NewFake(time.Time{})
+		r := newRig(t, &model{}, rigConfig{ws: []wsapi.Option{wsapi.WithClock(clk), wsapi.WithHeartbeat(every, wait), wsapi.WithHelloTimeout(time.Hour)}})
+		pings := make(chan error, 8)
+		wsapi.OnPing(r.ws, func(err error) { pings <- err })
+		return r, clk, pings
+	}
+	ping := func(pings chan error) error {
+		t.Helper()
+		select {
+		case err := <-pings:
+			return err
+		case <-time.After(20 * time.Second):
+			t.Fatal("the server sent no ping")
+			return nil
+		}
+	}
 
-	// A client that reads answers them and stays.
+	// A client that reads answers the pings and stays.
+	r, clk, pings := rig()
 	live := r.dial()
 	live.hello(testToken)
 	readCtx := live.c.CloseRead(t.Context())
+	if err := clk.WaitForTimers(t.Context(), 2); err != nil { // the heartbeat and the hello deadline
+		t.Fatal(err)
+	}
 	for range 3 {
-		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-		err := live.c.Ping(ctx)
-		cancel()
-		if err != nil {
-			t.Fatalf("a client that reads was closed: %v", err)
+		clk.Advance(every)
+		if err := ping(pings); err != nil {
+			t.Fatalf("the ping of a client that reads: %v", err)
 		}
 	}
 	if live.conn.isClosed() || readCtx.Err() != nil {
 		t.Error("the heartbeat closed a client that answers")
 	}
+
+	// One that reads no more never answers: past the pong timeout, its
+	// connection is closed.
+	r, clk, pings = rig()
+	dead := r.dial()
+	dead.hello(testToken)
+	if err := clk.WaitForTimers(t.Context(), 2); err != nil {
+		t.Fatal(err)
+	}
+	clk.Advance(every)
+	if err := clk.WaitForTimers(t.Context(), 3); err != nil { // and the pong's
+		t.Fatal(err)
+	}
+	clk.Advance(wait)
+	if err := ping(pings); err == nil {
+		t.Fatal("a ping nobody answered succeeded")
+	}
+	testkit.Eventually(t, 20*time.Second, dead.conn.isClosed)
 }
 
 // Shutdown closes the connections (1001) and refuses new ones (503).

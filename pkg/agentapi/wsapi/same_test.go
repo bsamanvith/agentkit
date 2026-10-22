@@ -193,6 +193,10 @@ func TestSameResultsEitherWay(t *testing.T) {
 					tr.t.Fatal(err)
 				}
 				tr.until("first", s, wire.TypeRunStart)
+				// The fake model answers its calls in order: the stop
+				// must come once the first run's call took "first", or
+				// the resume's would (run_start comes before the call).
+				testkit.Eventually(tr.t, 20*time.Second, func() bool { return m.calls.Load() >= 1 })
 				busy, err := c.Stream(ctx, agentclient.RunRequest{Message: "again", ConversationID: s.ConversationID()})
 				tr.stream("busy", busy, err)
 				run, err := c.Stop(ctx, s.RunID())

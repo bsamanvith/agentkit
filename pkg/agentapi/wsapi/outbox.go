@@ -39,9 +39,11 @@ func newOutbox(limit int, onSlow func()) *outbox {
 // put adds a message that is not part of a stream.
 func (o *outbox) put(m wire.WSMessage) bool { return o.add(m, func() {}) }
 
-// opened adds the result that opens stream m.ID.
-func (o *outbox) opened(m wire.WSMessage) bool {
-	return o.add(m, func() { o.open[m.ID] = "" })
+// opened adds the result that opens stream m.ID, which starts after the
+// event of ID after ("" for the first): a gap before its first event names
+// that event.
+func (o *outbox) opened(m wire.WSMessage, after string) bool {
+	return o.add(m, func() { o.open[m.ID] = after })
 }
 
 // event adds an event of stream m.Sub, of ID id.
@@ -76,6 +78,13 @@ func (o *outbox) add(m wire.WSMessage, added func()) bool {
 	o.signalLocked()
 	o.mu.Unlock()
 	return true
+}
+
+// isShut reports whether the outbox takes no more messages.
+func (o *outbox) isShut() bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.shutDown
 }
 
 // shut takes no more messages: the writer sends those it has, then closes
@@ -149,8 +158,9 @@ var errGone = errors.New("websocket: the client is gone or too slow")
 // (its data, as the API wrote it), then an end. Any other is sent as one
 // result with the status and the body.
 type response struct {
-	c  *conn
-	id string
+	c     *conn
+	id    string
+	after string // a stream's Last-Event-ID
 
 	mu     sync.Mutex
 	header http.Header
@@ -161,8 +171,8 @@ type response struct {
 	failed bool
 }
 
-func newResponse(c *conn, id string) *response {
-	return &response{c: c, id: id, header: http.Header{}}
+func newResponse(c *conn, id, after string) *response {
+	return &response{c: c, id: id, after: after, header: http.Header{}}
 }
 
 func (r *response) Header() http.Header { return r.header }
@@ -186,7 +196,7 @@ func (r *response) writeHeaderLocked(code int) {
 	if !r.c.out.opened(wire.WSMessage{
 		Type: wire.WSResult, ID: r.id, Status: code,
 		RunID: r.header.Get("Agentkit-Run-Id"), ConversationID: r.header.Get("Agentkit-Conversation-Id"),
-	}) {
+	}, r.after) {
 		r.failed = true
 	}
 }

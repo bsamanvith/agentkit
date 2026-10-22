@@ -109,7 +109,8 @@ type Server struct {
 	closed bool
 	wg     sync.WaitGroup // connections being served
 
-	slow func() // tests: called when a client is found slow
+	slow   func()      // tests: called when a client is found slow
+	pinged func(error) // tests: called after each heartbeat's ping
 }
 
 // New returns the WebSocket binding of the API api serves (agentapi's

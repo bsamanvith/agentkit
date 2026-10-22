@@ -219,7 +219,7 @@ func ModuleRules() Rules {
 			"pkg/agentapi/wsapi": {
 				"pkg/agentapi/wire", "pkg/clock",
 				"pkg/agentapi", "pkg/agentclient", "pkg/agentclient/wsclient", "pkg/harness", "pkg/llm", "pkg/llm/llmtest",
-				"pkg/toolset", "pkg/store/scoped", "pkg/auth", "pkg/auth/login", "pkg/clock/clocktest", "pkg/policy", "internal/testkit",
+				"pkg/toolset", "pkg/store/scoped", "pkg/auth", "pkg/auth/login", "pkg/auth/login/logintest", "pkg/clock/clocktest", "pkg/policy", "internal/testkit",
 			},
 			// The client's WebSocket transport speaks the wire format only.
 			"pkg/agentclient/wsclient": {"pkg/agentapi/wire", "pkg/agentclient"},

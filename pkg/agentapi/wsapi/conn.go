@@ -72,6 +72,9 @@ func routeOf(typ string) (route, bool) {
 // its cookies) stand.
 type creds struct{ token, csrf string }
 
+// identity is whom a hello authenticated: a renewal must keep it.
+type identity struct{ tenant, username string }
+
 // op is a command or stream going on.
 type op struct {
 	cancel context.CancelFunc
@@ -92,7 +95,8 @@ type conn struct {
 
 	// Only the reader uses these.
 	creds   creds
-	closing bool // the connection closes: messages are not read any more
+	who     *identity // the first hello's; nil before it
+	closing bool      // the connection closes: messages are not read any more
 
 	mu       sync.Mutex
 	ops      map[string]*op
@@ -142,7 +146,7 @@ func (c *conn) read() {
 		if err != nil {
 			return
 		}
-		if c.closing {
+		if c.closing || c.out.isShut() { // nothing starts on a connection that closes
 			continue
 		}
 		if typ != websocket.MessageText {
@@ -200,9 +204,10 @@ func (c *conn) heartbeat() func() {
 			case <-c.ctx.Done():
 				return
 			}
-			ctx, cancel := context.WithTimeout(c.ctx, c.s.cfg.pongTimeout)
-			err := c.ws.Ping(ctx)
-			cancel()
+			err := c.ping()
+			if c.s.pinged != nil {
+				c.s.pinged(err)
+			}
 			if err != nil {
 				if c.ctx.Err() == nil {
 					c.s.cfg.log.Info("websocket: no pong; closing", "err", err)
@@ -216,6 +221,28 @@ func (c *conn) heartbeat() func() {
 		t.Stop()
 		<-done
 	}
+}
+
+// ping pings the client and waits for its pong, for at most the pong
+// timeout on the server's clock.
+func (c *conn) ping() error {
+	ctx, cancel := context.WithCancel(c.ctx)
+	defer cancel()
+	t := c.s.cfg.clock.NewTimer(c.s.cfg.pongTimeout)
+	defer t.Stop()
+	late := make(chan struct{})
+	go func() {
+		defer close(late)
+		select {
+		case <-t.C():
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	err := c.ws.Ping(ctx)
+	cancel()
+	<-late
+	return err
 }
 
 // helloDeadline closes the connection if no hello succeeded in time.
@@ -290,6 +317,11 @@ func (c *conn) handle(data []byte) {
 	case rt.run && m.RunID == "":
 		c.fail(m.ID, http.StatusBadRequest, wire.CodeInvalidRequest, m.Type+" needs a run_id")
 		return
+	case rt.run && (m.RunID == "." || m.RunID == ".."):
+		// The API's router would clean the path into another route (a
+		// redirect): "." and ".." name no run, as in pkg/a2a and pkg/agui.
+		c.fail(m.ID, http.StatusNotFound, wire.CodeNotFound, fmt.Sprintf("no run %q", m.RunID))
+		return
 	}
 	ctx, cancel := context.WithCancel(c.ctx)
 	c.mu.Lock()
@@ -326,7 +358,11 @@ func (c *conn) handle(data []byte) {
 	if rt.stream {
 		accept = "text/event-stream"
 	}
-	req := c.request(ctx, rt.method, rt.path(m.RunID), m.Body, accept, m.After, c.creds)
+	after := "" // the Last-Event-ID: a subscribe's only
+	if m.Type == wire.WSSubscribe {
+		after = m.After
+	}
+	req := c.request(ctx, rt.method, rt.path(m.RunID), m.Body, accept, after, c.creds)
 	if m.Key != "" {
 		req.Header.Set("Idempotency-Key", m.Key)
 	}
@@ -334,21 +370,37 @@ func (c *conn) handle(data []byte) {
 		defer c.wg.Done()
 		defer c.finished(m.ID)
 		defer cancel()
-		c.serveAPI(req, m.ID)
+		c.serveAPI(req, m.ID, after)
 	}()
 }
 
 // hello authenticates the connection with m's credentials, by the API's
-// GET /v1/auth/me, whose response is the result. A hello that fails closes
-// the connection.
+// GET /v1/auth/me, whose response is the result. A renewal must
+// authenticate the first hello's tenant and user (its scopes may differ):
+// another's is refused with 403, so the streams and commands of one
+// connection are always one principal's. A hello that fails closes the
+// connection.
 func (c *conn) hello(m wire.WSMessage) {
 	cr := creds{token: m.Token, csrf: m.CSRF}
-	rw := newResponse(c, m.ID)
+	rw := newResponse(c, m.ID, "")
 	c.s.api.ServeHTTP(rw, c.request(c.ctx, http.MethodGet, "/v1/auth/me", nil, "application/json", "", cr))
 	ok := rw.status == http.StatusOK
 	if ok {
-		c.creds = cr
-		c.authed.Store(true)
+		var me wire.Me
+		err := json.Unmarshal(rw.body.Bytes(), &me)
+		who := identity{tenant: me.Tenant, username: me.Username}
+		switch {
+		case err != nil:
+			ok = false
+			rw.reset(http.StatusInternalServerError, errorBody(wire.CodeInternal, "the API's /v1/auth/me answered no identity", false))
+		case c.who != nil && *c.who != who:
+			ok = false
+			rw.reset(http.StatusForbidden, errorBody(wire.CodeForbidden, "a renewal must authenticate the tenant and user of the connection's first hello", false))
+		default:
+			c.who = &who
+			c.creds = cr
+			c.authed.Store(true)
+		}
 	}
 	rw.finish()
 	if !ok {
@@ -389,8 +441,9 @@ func (c *conn) finished(id string) {
 
 // serveAPI serves req by the API, and sends its response as id's result,
 // or as its stream.
-func (c *conn) serveAPI(req *http.Request, id string) {
-	rw := newResponse(c, id)
+// after is the Last-Event-ID a stream starts from.
+func (c *conn) serveAPI(req *http.Request, id, after string) {
+	rw := newResponse(c, id, after)
 	defer func() {
 		if p := recover(); p != nil && p != http.ErrAbortHandler { //nolint:errorlint // ErrAbortHandler is panicked as is
 			c.s.cfg.log.Error("websocket: the API handler panicked", "method", req.Method, "path", req.URL.Path, "panic", fmt.Sprint(p))

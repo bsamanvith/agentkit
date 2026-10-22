@@ -28,7 +28,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -240,8 +240,9 @@ func (s *Store) save() error {
 			Blob:           e.data, Deleted: e.data == nil,
 		})
 	}
-	slices.SortFunc(d.Credentials, func(a, b record) int {
-		return strings.Compare(a.Tenant+"\x00"+a.User+"\x00"+a.Slot, b.Tenant+"\x00"+b.User+"\x00"+b.Slot)
+	sort.Slice(d.Credentials, func(i, j int) bool { // not slices.SortFunc: size, docs/SIZES.md
+		a, b := d.Credentials[i], d.Credentials[j]
+		return a.Tenant+"\x00"+a.User+"\x00"+a.Slot < b.Tenant+"\x00"+b.User+"\x00"+b.Slot
 	})
 	body, err := json.MarshalIndent(d, "", "  ")
 	if err != nil {
@@ -427,6 +428,8 @@ func (s *Store) List(ctx context.Context, user string) ([]credentials.Meta, erro
 			out = append(out, e.meta)
 		}
 	}
-	slices.SortFunc(out, func(a, b credentials.Meta) int { return strings.Compare(a.Slot, b.Slot) })
+	// sort.Slice, not slices.SortFunc: one sort for every type, not one
+	// instantiated for Meta (size, docs/SIZES.md).
+	sort.Slice(out, func(i, j int) bool { return out[i].Slot < out[j].Slot })
 	return out, nil
 }

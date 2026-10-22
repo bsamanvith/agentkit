@@ -124,7 +124,7 @@ func (s *Server) getTask(ctx context.Context, agent string, req GetTaskRequest) 
 	if err != nil {
 		return Task{}, err
 	}
-	return taskOf(announced(r), true), nil
+	return taskOf(r, true), nil
 }
 
 func (s *Server) cancelTask(ctx context.Context, agent string, req TaskIDRequest) (Task, error) {
@@ -249,8 +249,7 @@ func (s *Server) sendMessage(ctx context.Context, agent string, req SendMessageR
 			return Task{}, ctx.Err()
 		}
 		if f.final != nil {
-			// The run's last event, not GET /v1/runs: the run's status can
-			// be stored a moment before its last event.
+			// The run's last event, as its stream gave it: no second read.
 			return taskOf(endOf(*f.final, f.runID, f.convID), true), nil
 		}
 	}
@@ -258,18 +257,7 @@ func (s *Server) sendMessage(ctx context.Context, agent string, req SendMessageR
 	if err != nil {
 		return Task{}, err
 	}
-	return taskOf(announced(r), true), nil
-}
-
-// announced is the run as far as its events say: a run whose status is
-// stored as ended, but whose last event is not in its log yet, has no
-// answer yet (the agent API's GET /v1/runs/{id} then has no record of its
-// end), so it is still working for A2A.
-func announced(r wire.Run) wire.Run {
-	if r.Record != nil && r.Record.FinishedAt.IsZero() && terminal(stateOf(r.Status)) {
-		r.Status, r.Answer, r.Error, r.FinishedAt = wire.StatusRunning, "", nil, nil
-	}
-	return r
+	return taskOf(r, true), nil
 }
 
 // emitFunc sends one item of a stream.
@@ -292,7 +280,7 @@ func (s *Server) subscribe(ctx context.Context, agent string, req TaskIDRequest,
 	if err != nil {
 		return err
 	}
-	t := taskOf(announced(r), false)
+	t := taskOf(r, false)
 	if terminal(t.Status.State) {
 		return ErrUnsupported.with("the task is "+t.Status.State+": there is nothing to subscribe to", "taskId", r.ID)
 	}
@@ -340,6 +328,10 @@ func (s *Server) follow(ctx context.Context, runID, convID string, first *Task, 
 				}
 				first = &t
 			}
+		case wire.TypeRetrying, wire.TypeRewind:
+			// The turn in progress (and, for a rewind, later ones) is
+			// dropped and done again: its next text replaces what was sent.
+			turn = -1
 		case wire.TypeTextDelta:
 			if e.Text == "" {
 				continue

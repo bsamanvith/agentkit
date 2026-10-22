@@ -72,8 +72,8 @@ conversations, and runs fail until the runner is back.
 | `agentkit-local` | `image-local` | `nopostgres noredis` | One machine: memory or SQLite |
 | `agentkit-dev` | `image-dev` | `nosqlite` | Deployed replicas: Postgres and Redis |
 | `agentkit-api` | `image-api` | `nomodels noconnectors nomcp nosqlite` | `agent` and `web`, memory or Postgres, Redis; no model SDK, connectors or MCP server |
-| `agentkit-runner` | `image-runner` | `noconnectors nomcp noweb nosqlite nopostgres noredis` | `runner`: the model SDK; no store, bus, console, connectors or MCP server |
-| `agentkit-toolsets` | `image-toolsets` | `nomodels noweb nosqlite nopostgres noredis` | `toolsets` and `mcp-server`: the connectors; no model SDK, store, bus or console |
+| `agentkit-runner` | `image-runner` | `noconnectors nomcp noweb noa2a nosqlite nopostgres noredis` | `runner`: the model SDK; no store, bus, console, connectors, MCP or A2A server |
+| `agentkit-toolsets` | `image-toolsets` | `nomodels noweb noa2a nosqlite nopostgres noredis` | `toolsets` and `mcp-server`: the connectors; no model SDK, store, bus, console or A2A server |
 
 `make images-split` builds the last three. Their sizes and budgets are in
 [SIZES.md](SIZES.md); `make deps-check` (part of `make check`) fails when an
@@ -102,6 +102,7 @@ part out:
 | `noconnectors` | every connector but the demo | the toolsets come from `AGENTKIT_TOOLSETS_URL` |
 | `nomcp` | the MCP server | no `mcp-server` component |
 | `noweb` | the console | no `web` component |
+| `noa2a` | the A2A server | no `a2a` component |
 
 A one-off build takes any mix, for example an API that runs its agents in
 process, with Postgres only and its toolsets from a toolsets pod:

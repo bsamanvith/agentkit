@@ -1,3 +1,5 @@
+//go:build !noa2a
+
 package main
 
 import (
@@ -14,14 +16,9 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/component"
 )
 
-// envA2AURL is the URL the A2A Agent Cards name the server at, such as
-// https://agents.example.com when a proxy terminates TLS in front of it.
-// Unset, a card names the scheme and host of the request that fetched it.
-const envA2AURL = "AGENTKIT_A2A_URL"
-
 // a2aDirectoryName names the component that serves the well-known Agent
 // Card beside the a2a component's /a2a/.
-const a2aDirectoryName = a2a.Name + "-directory"
+const a2aDirectoryName = a2aName + "-directory"
 
 // newA2A is the a2a component (AGENTKIT_COMPONENTS=agent,a2a): every
 // agent of the agent API served as an A2A agent at /a2a/{agent}, and the

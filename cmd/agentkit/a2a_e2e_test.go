@@ -1,3 +1,5 @@
+//go:build !noa2a
+
 package main
 
 // End-to-end test of the a2a component in agentkit serve (T067): the built
@@ -16,6 +18,17 @@ import (
 
 	"github.com/bsamanvith/agentkit/pkg/a2a"
 )
+
+// a2aSays is what serve says of a bad a2a setup: says, in a build with
+// the component.
+func a2aSays(says string) string { return says }
+
+// TestA2AName: serve's name of the component is the package's.
+func TestA2AName(t *testing.T) {
+	if a2aName != a2a.Name {
+		t.Errorf("a2aName = %q, pkg/a2a's Name %q", a2aName, a2a.Name)
+	}
+}
 
 func TestE2EServeA2A(t *testing.T) {
 	t.Parallel()

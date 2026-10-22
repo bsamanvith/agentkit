@@ -16,7 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bsamanvith/agentkit/pkg/a2a"
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/agenttools"
 	"github.com/bsamanvith/agentkit/pkg/auth"
@@ -45,7 +44,7 @@ const (
 )
 
 // knownComponents are the names AGENTKIT_COMPONENTS accepts.
-var knownComponents = []string{mcpServerName, agentapi.Name, web.Name, runnerName, toolsetsName, a2a.Name}
+var knownComponents = []string{mcpServerName, agentapi.Name, web.Name, runnerName, toolsetsName, a2aName}
 
 // serveConfig is the config file of agentkit serve, as loadServeConfig reads
 // it. The file is JSON; YAML (with the same keys) comes with pkg/config.
@@ -196,7 +195,7 @@ func (c cli) serve(ctx context.Context, args []string) error {
 			m, err = c.newRunner(ctx, cfg, built, env, clk, log)
 		case toolsetsName:
 			m, err = c.newToolsets(cfg, built, problems, env, log)
-		case a2a.Name:
+		case a2aName:
 			continue // over the agent API, below
 		default: // in knownComponents but not wired here
 			err = errors.New("component not wired in cmd/agentkit")
@@ -225,10 +224,10 @@ func (c cli) serve(ctx context.Context, args []string) error {
 		}
 		mounts = append(mounts, meta...)
 	}
-	if slices.Contains(env.components, a2a.Name) {
+	if slices.Contains(env.components, a2aName) {
 		m, err := c.newA2A(agents, cfg, authn, log)
 		if err != nil {
-			return fmt.Errorf("%s: %w", a2a.Name, err)
+			return fmt.Errorf("%s: %w", a2aName, err)
 		}
 		mounts = append(m, mounts...) // shut down after the agent API (newA2A)
 	}

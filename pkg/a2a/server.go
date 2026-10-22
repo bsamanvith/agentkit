@@ -268,18 +268,20 @@ func quote(s string) string {
 }
 
 // lookup returns the agent of that name, as the caller sees it: an agent
-// the caller may not use is not found, as in the agent API.
+// the caller may not use is not found, as in the agent API. It reads that
+// one agent (GET /v1/agents/{name}), not the whole catalog, whose every
+// agent's toolsets the API would list.
 func (s *Server) lookup(ctx context.Context, name string) (wire.Agent, error) {
-	agents, err := s.api.Agents(ctx)
+	a, err := s.api.Agent(ctx, name)
 	if err != nil {
+		var ae *agentclient.APIError
+		if ctx.Err() == nil && errors.As(err, &ae) && ae.Status == http.StatusNotFound {
+			return wire.Agent{}, &httpError{status: http.StatusNotFound, msg: "no agent " + quote(name)}
+		}
 		return wire.Agent{}, s.fromAPI(ctx, err, opAgent)
 	}
-	for _, a := range agents {
-		if a.Name == name {
-			return a, nil
-		}
-	}
-	return wire.Agent{}, &httpError{status: http.StatusNotFound, msg: "no agent " + quote(name)}
+	a.System = "" // never shown: the card describes the agent without it
+	return a, nil
 }
 
 // The card of an agent, and the directory.
@@ -328,6 +330,7 @@ func (s *Server) writeCard(w http.ResponseWriter, r *http.Request, a wire.Agent)
 	w.Header().Set("Content-Type", "application/json")
 	// The card depends on the credential (the agents a key may use).
 	w.Header().Set("Cache-Control", "private, max-age=300")
+	w.Header().Set("Vary", "Authorization")
 	w.Header().Set("ETag", `"`+hex.EncodeToString(sum[:16])+`"`)
 	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(body))
 }

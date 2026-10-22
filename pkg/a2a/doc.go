@@ -49,8 +49,8 @@
 // The server calls the agent API in process, handing each call to the API's
 // handler with the A2A request's Authorization header. The API authenticates
 // it as it does its own requests, so A2A requests need the same credentials,
-// act in the credential's tenant, need its scopes (agent:read to read,
-// agent:run to send and cancel) and see only the agents the credential may
-// use. The cards need a credential too. The server never reads or keeps the
+// act in the credential's tenant, need its scopes (agent:read for every
+// request, which reads its agent and the task's events first; agent:run as
+// well to send and cancel) and see only the agents the credential may use. The cards need a credential too. The server never reads or keeps the
 // credential, and it never leaves the process.
 package a2a

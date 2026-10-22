@@ -56,8 +56,9 @@ client (`a2aclient`, which pulls only uuid and x/mod) is a test dependency:
 `TestSDKClientCompletesAStreamedTask` drives a streamed task with it over
 both bindings. Adding it to go.mod raised `golang.org/x/text` (indirect) from
 v0.29.0 to v0.41.0 (no size change). The server adds 172 KB to the agentkit
-binary (180 KB local, 233 KB runner). local is projected about 17 KB over its
-28 MB budget; the budget is unchanged, for the owner to decide (docs/SIZES.md).
+binary (176 KB local, 180 KB api). It is behind a `noa2a` build tag, which
+the runner and toolsets images carry (they never run the agent API), so they
+are unchanged; every image is under its budget (docs/SIZES.md).
 
 **How it is built.** `pkg/a2a` calls the agent API in process: an
 `agentclient.Client` over an `http.RoundTripper` that hands the request to
@@ -93,9 +94,10 @@ server takes credentials, plus `oidc` (the issuer's discovery URL) with JWTs.
   is the task's one artifact, `answer`.
 - `interrupted` (a run whose process died; the API may resume it) shows as
   `TASK_STATE_FAILED`. `suspended` is `TASK_STATE_INPUT_REQUIRED`.
-- The agent API's `GET /v1/runs/{id}` can say `done` a moment before the run's
-  last event is logged, with no answer yet; A2A shows such a run as still
-  working, and the blocking `SendMessage` answers from the run's last event.
+- The agent API's `GET /v1/runs/{id}` could say `done` a moment before the
+  run's last event was logged, with no answer yet. Fixed in the agent API in
+  review (`runView` ends the hub's events as the stored status says;
+  `TestRunViewBeforeItsLastEvent`), so A2A reads runs as they are.
 
 **Tests**, one per criterion: `TestSpecExamples` (the spec's examples, golden
 in `testdata/golden`) and `TestSDKClientCompletesAStreamedTask`;

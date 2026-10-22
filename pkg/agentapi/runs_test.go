@@ -315,3 +315,26 @@ func TestRunViewBeforeItsEnding(t *testing.T) {
 	}
 	s.all()
 }
+
+// TestRunViewBeforeItsLastEvent: between the store's end of a run and its
+// last event reaching the run's log, GET /v1/runs/{id} gives the run as it
+// ended, answer and all, not done with no answer. The store holds the
+// run_done event.
+func TestRunViewBeforeItsLastEvent(t *testing.T) {
+	t.Parallel()
+	clk := clocktest.NewFake(time.Time{})
+	st, opts := testStore(t, clk)
+	se := &slowEndStore{Store: st, reached: make(chan struct{}), release: make(chan struct{})}
+	r := newRig(t, echo(t), rigConfig{clock: clk, store: se, api: opts})
+	s := r.start(t.Context(), "hi", "")
+	s.until(agentapi.TypeRunStart, 0)
+	<-se.reached
+	run := r.getRun(s.runID())
+	close(se.release)
+	if run.Status != agentapi.StatusDone || run.Answer != "echo: hi" || run.FinishedAt == nil || run.Record == nil || run.Record.FinishedAt.IsZero() {
+		t.Errorf("run = %+v, want done, with its answer and end", run)
+	}
+	if s.all(); s.last().Answer != run.Answer {
+		t.Errorf("run_done answer %q, GET /v1/runs/{id} %q", s.last().Answer, run.Answer)
+	}
+}

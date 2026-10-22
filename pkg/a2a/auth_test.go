@@ -140,6 +140,9 @@ func TestAgentCard(t *testing.T) {
 	if status != http.StatusOK || h.Get("Content-Type") != "application/json" {
 		t.Fatalf("card: %d %s", status, h.Get("Content-Type"))
 	}
+	if h.Get("Vary") != "Authorization" || !strings.HasPrefix(h.Get("Cache-Control"), "private") {
+		t.Errorf("a card, which depends on the credential, is cached with Vary %q, Cache-Control %q", h.Get("Vary"), h.Get("Cache-Control"))
+	}
 	var card a2a.AgentCard
 	if err := json.Unmarshal(body, &card); err != nil {
 		t.Fatal(err)

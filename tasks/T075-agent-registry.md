@@ -140,6 +140,20 @@ builder and `pkg/registry` need models, so `nomodels` leaves them out:
 client calls and the two commands). Every image stays under its budget
 (measured on main after T068; local's is 31 MB since #78); docs/SIZES.md has the row.
 
+### Review fixes
+- A stored agent's openai model could name any `base_url` and any
+  `api_key_env`, so a tenant admin could have the server send the value of
+  any of its variables (`ANTHROPIC_API_KEY`, the store's URL) to a server
+  of theirs. Stored agents now use `$OPENAI_BASE_URL` and
+  `OPENAI_API_KEY`, or a pair an agent of the config file uses (`model.base_url`
+  / `model.api_key_env` refused otherwise): `cmd/agentkit`
+  `TestStoredAgentModelServer`.
+- The registry kept the build of a draft (a publish builds first). A
+  draft's number is given again once its item lost every version, so after a
+  publish that lost its draft to a delete, a new item of that name ran the
+  old build as its version 1. Only builds of published versions (never
+  deleted) are kept now: `pkg/registry` `TestDraftBuildsAreNotKept`.
+
 ### For T076 (skills store)
 - Store skills as another kind of `store.ItemStore` (`kind` "skill"); the
   registry's normalize, validate-by-building and LRU are the pattern.

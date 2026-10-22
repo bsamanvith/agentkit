@@ -1,0 +1,13 @@
+{
+  "method": "POST",
+  "path": "/a2a/helper",
+  "body": {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "GetTask",
+    "params": {
+      "id": "run_iw4f2cizyaynqye2rv42o7iyxu"
+    }
+  },
+  "recorded_at": "2026-10-22"
+}

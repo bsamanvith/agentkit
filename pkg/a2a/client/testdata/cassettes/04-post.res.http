@@ -1,0 +1,4 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"jsonrpc":"2.0","id":4,"result":{"id":"run_iw4f2cizyaynqye2rv42o7iyxu","contextId":"conv_aotoaargcosp5r5vhlr2biixem","status":{"state":"TASK_STATE_COMPLETED","timestamp":"2026-10-22T01:52:01.315Z"},"artifacts":[{"artifactId":"answer","name":"answer","parts":[{"text":"echo: hello"}]}]}}

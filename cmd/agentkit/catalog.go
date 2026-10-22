@@ -35,5 +35,5 @@ func newCatalog() (*toolset.Catalog, error) {
 		parallel.Factory(parallel.WithLookupEnv(os.LookupEnv), parallel.WithLogger(logger)),
 		drive.Factory(drive.WithLookupEnv(os.LookupEnv), drive.WithLogger(logger)),
 		calendar.Factory(calendar.WithLookupEnv(os.LookupEnv), calendar.WithLogger(logger)),
-	}, mcpClientFactories(logger)...)...)
+	}, append(mcpClientFactories(logger), a2aClientFactories(logger)...)...)...)
 }

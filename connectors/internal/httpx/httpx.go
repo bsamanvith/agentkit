@@ -25,6 +25,10 @@ const (
 	MaxRetryWait = 10 * time.Second
 	// DefaultRetryWait is the wait when a 429 has no usable Retry-After.
 	DefaultRetryWait = time.Second
+	// RateLimitAdvice ends a rate-limit error the model reads, after any
+	// retry the connector made itself: without it, models often call the
+	// same tool again at once (the tool evals, evals/, measured it).
+	RateLimitAdvice = "do not call it again right away: use another tool that can do the job, or try again in a few minutes"
 	// Redacted replaces a secret in text taken from a response.
 	Redacted = "[redacted]"
 )

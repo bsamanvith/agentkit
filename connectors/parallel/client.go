@@ -115,7 +115,7 @@ func (c *client) statusError(status int, body []byte) error {
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return fmt.Errorf("parallel: rejected the API key (HTTP %d)", status)
 	case http.StatusTooManyRequests:
-		return errors.New("parallel: rate limited (HTTP 429)")
+		return errors.New("parallel: rate limited (HTTP 429); " + httpx.RateLimitAdvice)
 	default:
 		return fmt.Errorf("parallel: upstream error (HTTP %d)", status)
 	}

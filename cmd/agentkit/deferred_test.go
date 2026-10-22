@@ -117,6 +117,19 @@ func TestServeDeferLoadingEmulated(t *testing.T) {
 	}
 }
 
+// TestServeDeferLoadingOpenAI: an OpenAI-compatible model that names no
+// tool_search is emulated: its adapter refuses Deferred, so a native default
+// would fail every request.
+func TestServeDeferLoadingOpenAI(t *testing.T) {
+	t.Parallel()
+	model := llmtest.NewFake(t, llmtest.Text("hi"))
+	runDeferred(t, model, `, "provider": "openai"`, "Hi.")
+	first := model.Requests()[0]
+	if got := toolNames(first); slices.Contains(got, "echo") || !slices.Contains(got, harness.SearchTool) || len(first.Deferred) != 0 {
+		t.Errorf("first request's tools %v (deferred %v), want tool_search, no echo and nothing deferred", got, first.Deferred)
+	}
+}
+
 // TestServeDeferLoadingAll: defer_loading true defers every toolset tool
 // and never the skill tools, which the model needs to load the rest.
 func TestServeDeferLoadingAll(t *testing.T) {

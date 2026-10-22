@@ -110,7 +110,7 @@ func (c cli) newRunner(ctx context.Context, cfg serveConfig, built map[string]to
 			// yet, so every memory call would be refused.
 			return component.Mount{}, fmt.Errorf("%s.memory: the %s component cannot give an agent memory yet; run the agent in the agent API's process", a.label(cfg.legacy), runnerName)
 		}
-		h, sk, ks, err := c.newHarness(ctx, cfg, a, built, nil, nil, clk, log)
+		h, sk, ks, err := c.newHarness(ctx, cfg, a, built, nil, nil, nil, clk, log)
 		if err != nil {
 			return component.Mount{}, err
 		}

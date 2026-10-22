@@ -98,6 +98,13 @@ type agentDef struct {
 	// toolset tool, or a list of toolset names and tool-name globs
 	// (deferred.go). Absent: every tool is sent with every request.
 	DeferLoading deferSpec `json:"defer_loading"`
+	// CanMessage names the agents this one may message (T073, package
+	// agentmsg): it gets the agents_list, agent_message and thread_read
+	// tools. Empty: no tools, though others may still message it. Each
+	// agent named may use only toolsets (and runtime toolsets) this one has,
+	// so that a key that may run this agent never reaches a toolset it may
+	// not use through another.
+	CanMessage []string `json:"can_message"`
 }
 
 // apiConfig is the "agent_api" section of the serve config file: limits of
@@ -117,6 +124,24 @@ type apiConfig struct {
 	// it); TaskTimeLimit fails a task that runs longer, "0s" for no limit.
 	MaxBackgroundRuns int      `json:"max_background_runs"`
 	TaskTimeLimit     duration `json:"task_time_limit"`
+	// Messaging bounds the threads of messages between agents (T073).
+	Messaging messagingConfig `json:"messaging"`
+}
+
+// messagingConfig is "agent_api.messaging": the limits of agent messaging
+// (agentmsg.Limits). Zero takes the default.
+type messagingConfig struct {
+	// MaxHops is the most messages a thread may have (default 8).
+	MaxHops int `json:"max_hops"`
+	// MaxTokens is the most tokens a thread's runs may use (default
+	// 500000).
+	MaxTokens int64 `json:"max_tokens"`
+	// MaxDuration is the longest a thread may go on (default 1h).
+	MaxDuration duration `json:"max_duration"`
+	// SendEvery and SendBurst rate-limit each agent's sends: a burst of
+	// SendBurst, then one every SendEvery (defaults 2s and 10).
+	SendEvery duration `json:"send_every"`
+	SendBurst int      `json:"send_burst"`
 }
 
 // agentModelConfig chooses the model.
@@ -308,10 +333,11 @@ func (d agentDef) check(legacy bool) error {
 }
 
 // newHarness builds an agent's harness: its model, its toolsets merged into
-// one registry with its memory and recall tools (mem, nil without memory),
+// one registry with its memory and recall tools (mem, nil without memory)
+// and its messaging tools (msg, nil without),
 // its skills, auto recall, and its limits. It returns the toolsets the agent names that were skipped
 // (optional ones that failed to build) and the skills it loaded.
-func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built map[string]tool.Registry, admin toolsetAdmin, mem *agentMemory, clk clock.Clock, log *slog.Logger) (*harness.Harness, []string, agentSkills, error) {
+func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built map[string]tool.Registry, admin toolsetAdmin, mem *agentMemory, msg tool.Registry, clk clock.Clock, log *slog.Logger) (*harness.Harness, []string, agentSkills, error) {
 	label := a.label(cfg.legacy)
 	fail := func(err error) (*harness.Harness, []string, agentSkills, error) { return nil, nil, agentSkills{}, err }
 	if err := a.check(cfg.legacy); err != nil {
@@ -363,6 +389,11 @@ func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built 
 			}
 		}
 		tools = joinRegistries(mem.tools, tools)
+	}
+	if msg != nil {
+		if tools, err = withTools(ctx, msg, tools); err != nil {
+			return fail(fmt.Errorf("%s.can_message: %w", label, err))
+		}
 	}
 	if a.UI == a2ui.UIMode {
 		if tools, err = withUI(ctx, tools); err != nil {

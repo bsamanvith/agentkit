@@ -26,6 +26,8 @@
 //	POST   /v1/runs/{id}/input           {"answers": [{"id", "text"} or {"id", "approved", "reason"?}]}: answer a chat run's interrupts
 //	POST   /v1/tasks                     {"input", "agent"?, "interaction"?, "policy"?, "notify"?}: 202, a background run
 //	GET    /v1/webhooks/secret           the tenant's webhook signing secret (agent:admin)
+//	GET    /v1/threads                   ?limit=&cursor=: threads of messages between agents, newest first
+//	GET    /v1/threads/{id}              a thread with its messages
 //	POST   /v1/conversations             {"agent"?}: 201, an empty conversation
 //	GET    /v1/conversations             ?agent=&limit=&cursor=: the caller's conversations
 //	GET    /v1/conversations/{id}        a conversation's messages

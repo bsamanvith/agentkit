@@ -48,6 +48,7 @@ func TestStoredAgentRefused(t *testing.T) {
 		{"skills", `{"model": {"id": "m"}, "skills": [{"path": "skills"}]}`, "skills", "cannot have skills"},
 		{"memory", `{"model": {"id": "m"}, "memory": {}}`, "memory", "cannot have memory"},
 		{"ui", `{"model": {"id": "m"}, "ui": "a2ui"}`, "ui", "cannot show UI"},
+		{"can_message", `{"model": {"id": "m"}, "can_message": ["demo"]}`, "can_message", "cannot message other agents"},
 		{"notify", `{"model": {"id": "m"}, "notify": {"url": "https://example.com/hook"}}`, "notify", "cannot have a webhook"},
 		{"unknown field", `{"model": {"id": "m"}, "tolsets": ["demo-a"]}`, "tolsets", "unknown field"},
 		{"wrong type", `{"model": {"id": "m"}, "max_turns": "many"}`, "max_turns", "want int"},

@@ -649,6 +649,16 @@ func TestOpenAPIResponses(t *testing.T) {
 	rec.probe(r, "webhook_secret", 200, "GET", "/v1/webhooks/secret", "", "")
 	rec.probe(r, "webhook_secret_unauthorized", 401, "GET", "/v1/webhooks/secret", "", "", bearer...)
 	rec.probe(other, "webhook_secret_none", 404, "GET", "/v1/webhooks/secret", "", "")
+	// A thread of messages between agents (T073), in the store the probes
+	// share, of the token's tenant.
+	seedThread(t, st, agentapi.DefaultTenant, "thr_probe")
+	seedThread(t, st, agentapi.DefaultTenant, "thr_probe2")
+	rec.probe(r, "list_threads", 200, "GET", "/v1/threads?limit=1", "", "")
+	rec.probe(r, "list_threads_bad_cursor", 400, "GET", "/v1/threads?cursor=nope", "", "")
+	rec.probe(r, "list_threads_unauthorized", 401, "GET", "/v1/threads", "", "", bearer...)
+	rec.probe(r, "get_thread", 200, "GET", "/v1/threads/thr_probe", "", "")
+	rec.probe(r, "get_thread_unauthorized", 401, "GET", "/v1/threads/thr_probe", "", "", bearer...)
+	rec.probe(r, "get_thread_not_found", 404, "GET", "/v1/threads/nope", "", "")
 
 	rec.probe(r, "delete_unauthorized", 401, "DELETE", "/v1/conversations/"+conv, "", "", bearer...)
 	rec.probe(r, "delete", 204, "DELETE", "/v1/conversations/"+conv, "", "")

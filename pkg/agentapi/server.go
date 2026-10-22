@@ -162,7 +162,7 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 	if s.router == nil {
 		s.router = pool.Default()
 	}
-	factory := s.router.Factory(s.describe)
+	factory := s.withRunContext(s.router.Factory(s.describe))
 	if cfg.runs != nil {
 		if s.runs, err = cfg.runs(s.store, factory); err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
@@ -201,6 +201,8 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 		{"POST /v1/runs/{id}/input", s.inputRun},
 		{"POST /v1/tasks", s.postTask},
 		{"GET /v1/webhooks/secret", s.webhookSecret},
+		{"GET /v1/threads", s.listThreads},
+		{"GET /v1/threads/{id}", s.getThread},
 		{"POST /v1/conversations", s.createConversation},
 		{"GET /v1/conversations", s.listConversations},
 		{"GET /v1/conversations/{id}", s.getConversation},

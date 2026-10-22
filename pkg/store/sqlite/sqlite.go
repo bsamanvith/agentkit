@@ -62,6 +62,7 @@ var (
 	_ store.ItemStore         = (*Store)(nil)
 	_ flow.Checkpointer       = (*Store)(nil)
 	_ store.Admin             = admin{}
+	_ store.MessageAdmin      = admin{}
 )
 
 // busyTimeout is how long a statement waits for another connection's or

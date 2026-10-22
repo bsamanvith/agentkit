@@ -82,6 +82,12 @@ func rlsRig(t *testing.T, opts ...postgres.Option) (owner, app string, s *postgr
 			_, err = s.SaveItem(ctx, store.ItemVersion{Kind: "agent", Name: "ag", Data: json.RawMessage(`{}`)}, 0)
 		}
 		if err == nil {
+			_, err = s.PutTrigger(ctx, store.TriggerRecord{ID: "tr", Data: json.RawMessage(`{}`), HookID: "hk_" + tn, NextFireAt: time.Unix(1, 0)}, 0)
+		}
+		if err == nil {
+			_, err = s.StartFiring(ctx, "tr", store.Firing{ID: "f"}, time.Time{}, time.Time{})
+		}
+		if err == nil {
 			err = s.Save(ctx, run, flow.Checkpoint{
 				Version: flow.CheckpointVersion, RunID: run, Status: flow.StatusRunning,
 				Initial: json.RawMessage(`{}`), Steps: map[string]json.RawMessage{},
@@ -101,7 +107,7 @@ func TestRowLevelSecurity(t *testing.T) {
 	owner, _, s := rlsRig(t)
 	pool := postgres.Pool(s)
 	ctx := tenantCtx(t, "a")
-	for _, table := range []string{"runs", "entries", "events", "checkpoints", "conversations", "commands", "toolsets", "notifications", "items", "item_versions", "threads", "messages"} {
+	for _, table := range []string{"runs", "entries", "events", "checkpoints", "conversations", "commands", "toolsets", "notifications", "items", "item_versions", "threads", "messages", "triggers", "firings"} {
 		var others int
 		if err := pool.QueryRow(ctx, `SELECT count(*) FROM `+table+` WHERE tenant <> 'a'`).Scan(&others); err != nil {
 			t.Fatalf("%s: %v", table, err)
@@ -182,7 +188,19 @@ func TestAdminRole(t *testing.T) {
 	if _, err := postgres.Admin(s).ClaimNext(context.Background(), []string{""}, "w", time.Minute); !errors.Is(err, postgres.ErrAdminRole) {
 		t.Errorf("ClaimNext on the application role: %v, want ErrAdminRole", err)
 	}
+	if _, err := postgres.TriggerAdmin(s).DueTriggers(context.Background(), now, 10); !errors.Is(err, postgres.ErrAdminRole) {
+		t.Errorf("DueTriggers on the application role: %v, want ErrAdminRole", err)
+	}
+	if _, err := postgres.TriggerAdmin(s).TriggerByHook(context.Background(), "hk_b"); !errors.Is(err, postgres.ErrAdminRole) {
+		t.Errorf("TriggerByHook on the application role: %v, want ErrAdminRole", err)
+	}
 	withAdmin := openURL(t, app, postgres.WithMigrate(false), postgres.WithAdminURL(owner))
+	if due, err := postgres.TriggerAdmin(withAdmin).DueTriggers(context.Background(), now, 10); err != nil || len(due) != 2 {
+		t.Errorf("DueTriggers on its own role: %d, %v; want both tenants'", len(due), err)
+	}
+	if tt, err := postgres.TriggerAdmin(withAdmin).TriggerByHook(context.Background(), "hk_b"); err != nil || tt.Tenant.ID() != "b" {
+		t.Errorf("TriggerByHook(hk_b) on its own role = %q, %v; want tenant b's", tt.Tenant.ID(), err)
+	}
 	got, err := postgres.Admin(withAdmin).ListResumableAll(context.Background(), now, 10)
 	if err != nil || len(got) != 2 {
 		t.Fatalf("Admin on its own role: %d runs, %v; want both tenants'", len(got), err)

@@ -39,6 +39,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/tenancy"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 	"github.com/bsamanvith/agentkit/pkg/toolset/toolsettest"
+	"github.com/bsamanvith/agentkit/pkg/trigger"
 )
 
 const specFile = "../../docs/api/openapi.yaml"
@@ -660,6 +661,96 @@ func TestOpenAPIResponses(t *testing.T) {
 	rec.probe(r, "get_thread_unauthorized", 401, "GET", "/v1/threads/thr_probe", "", "", bearer...)
 	rec.probe(r, "get_thread_not_found", 404, "GET", "/v1/threads/nope", "", "")
 
+	// Triggers, and their inbound webhooks: a run of the webhook's trigger
+	// waits at the gate, so that the next delivery is skipped.
+	tm := echo(t)
+	tm.gate = make(chan struct{}, 2)
+	rt := newTrigRig(t, tm, trigConfig{token: token, api: []agentapi.Option{agentapi.WithMaxBackgroundRuns(1)}})
+	sched := `{"id":"daily","prompt":"Summarize {{date}}","schedule":"CRON_TZ=Europe/Paris 0 9 * * 1-5"}`
+	rec.probe(rt, "create_trigger", 201, "POST", "/v1/triggers", sched, "")
+	rec.probe(rt, "create_trigger_invalid", 400, "POST", "/v1/triggers", `{"id":"bad","prompt":"x","schedule":"61 * * * *"}`, "")
+	rec.probe(rt, "create_trigger_unauthorized", 401, "POST", "/v1/triggers", sched, "", bearer...)
+	rec.probe(rt, "create_trigger_no_agent", 404, "POST", "/v1/triggers", `{"id":"x","agent":"nobody","prompt":"x","schedule":"@daily"}`, "")
+	rec.probe(rt, "create_trigger_exists", 409, "POST", "/v1/triggers", sched, "")
+	gh := decodeAs[wire.Trigger](t, rec.probe(rt, "create_trigger_webhook", 201, "POST", "/v1/triggers", `{"id":"gh","prompt":"Triage the issue","webhook":true}`, ""))
+	rec.probe(rt, "list_triggers", 200, "GET", "/v1/triggers", "", "")
+	rec.probe(rt, "list_triggers_unauthorized", 401, "GET", "/v1/triggers", "", "", bearer...)
+	rec.probe(other, "list_triggers_none", 404, "GET", "/v1/triggers", "", "")
+	rec.probe(rt, "get_trigger", 200, "GET", "/v1/triggers/gh", "", "")
+	rec.probe(rt, "get_trigger_unauthorized", 401, "GET", "/v1/triggers/gh", "", "", bearer...)
+	rec.probe(rt, "get_trigger_not_found", 404, "GET", "/v1/triggers/nope", "", "")
+	rec.probe(rt, "update_trigger", 200, "PATCH", "/v1/triggers/daily", `{"prompt":"Summarize the news of {{date}}"}`, "")
+	rec.probe(rt, "update_trigger_invalid", 400, "PATCH", "/v1/triggers/daily", `{"prompt":"{{nope}}"}`, "")
+	rec.probe(rt, "update_trigger_unauthorized", 401, "PATCH", "/v1/triggers/daily", `{"prompt":"x"}`, "", bearer...)
+	rec.probe(rt, "update_trigger_not_found", 404, "PATCH", "/v1/triggers/nope", `{"prompt":"x"}`, "")
+	rec.probe(rt, "update_trigger_conflict", 409, "PATCH", "/v1/triggers/daily", `{"version":99,"prompt":"x"}`, "")
+	rec.probe(rt, "pause_trigger", 200, "POST", "/v1/triggers/daily/pause", "", "")
+	rec.probe(rt, "pause_trigger_unauthorized", 401, "POST", "/v1/triggers/daily/pause", "", "", bearer...)
+	rec.probe(rt, "pause_trigger_not_found", 404, "POST", "/v1/triggers/nope/pause", "", "")
+	rec.probe(rt, "resume_trigger", 200, "POST", "/v1/triggers/daily/resume", "", "")
+	rec.probe(rt, "resume_trigger_unauthorized", 401, "POST", "/v1/triggers/daily/resume", "", "", bearer...)
+	rec.probe(rt, "resume_trigger_not_found", 404, "POST", "/v1/triggers/nope/resume", "", "")
+
+	key, err := trigger.DecodeStandardSecret(gh.Webhook.Secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signed := func(id, body string) []string {
+		at := rt.clock.Now()
+		return []string{
+			trigger.StandardHeaderID, id, trigger.StandardHeaderTimestamp, strconv.FormatInt(at.Unix(), 10),
+			trigger.StandardHeaderSignature, trigger.SignStandard(key, id, at, []byte(body)),
+		}
+	}
+	event := `{"action":"opened","issue":{"number":7}}`
+	started := decodeAs[wire.HookAccepted](t, rec.probe(rt, "hook", 202, "POST", gh.Webhook.Path, event, "", signed("msg_1", event)...))
+	rec.probe(rt, "hook_skipped", 200, "POST", gh.Webhook.Path, event, "", signed("msg_2", event)...)
+	rec.probe(rt, "hook_not_json", 400, "POST", gh.Webhook.Path, "not json", `{"not":"json"}`, signed("msg_3", "not json")...)
+	rec.probe(rt, "hook_unsigned", 401, "POST", gh.Webhook.Path, event, "")
+	rec.probe(rt, "hook_not_found", 404, "POST", "/v1/hooks/hk_nope", event, "", signed("msg_4", event)...)
+	rec.probe(rt, "hook_replayed", 409, "POST", gh.Webhook.Path, event, "", signed("msg_1", event)...)
+	bigHook := `{"x":"` + strings.Repeat("x", agentapi.DefaultHookBodyBytes) + `"}`
+	rec.probe(rt, "hook_too_large", 413, "POST", gh.Webhook.Path, bigHook, `{"x":"too long"}`, signed("msg_5", bigHook)...)
+	// Another trigger's delivery, while gh's run is the tenant's one
+	// background run.
+	gh2 := decodeAs[wire.Trigger](t, rec.probe(rt, "create_trigger_webhook_2", 201, "POST", "/v1/triggers", `{"id":"gh2","prompt":"Triage","webhook":true}`, ""))
+	key2, err := trigger.DecodeStandardSecret(gh2.Webhook.Secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := rt.clock.Now()
+	rec.probe(rt, "hook_too_many", 429, "POST", gh2.Webhook.Path, event, "",
+		trigger.StandardHeaderID, "msg_1", trigger.StandardHeaderTimestamp, strconv.FormatInt(at.Unix(), 10),
+		trigger.StandardHeaderSignature, trigger.SignStandard(key2, "msg_1", at, []byte(event)))
+	// A server at its one run: a delivery finds it over capacity.
+	cm := echo(t)
+	cm.gate = make(chan struct{}, 1)
+	rc := newTrigRig(t, cm, trigConfig{token: token, api: []agentapi.Option{agentapi.WithMaxConcurrentRuns(1)}})
+	hold := rc.task(`{"input":"hold on"}`)
+	gc := rc.create(`{"id":"gh","prompt":"Triage","webhook":true}`)
+	keyc, err := trigger.DecodeStandardSecret(gc.Webhook.Secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec.probe(rc, "hook_over_capacity", 503, "POST", gc.Webhook.Path, event, "",
+		trigger.StandardHeaderID, "msg_1", trigger.StandardHeaderTimestamp, strconv.FormatInt(at.Unix(), 10),
+		trigger.StandardHeaderSignature, trigger.SignStandard(keyc, "msg_1", at, []byte(event)))
+	cm.gate <- struct{}{}
+	rc.waitEnded(hold.ID)
+	tm.gate <- struct{}{}
+	rt.waitEnded(started.Firing.RunID)
+	rec.probe(rt, "list_firings", 200, "GET", "/v1/triggers/gh/firings?limit=5", "", "")
+	rec.probe(rt, "list_firings_invalid", 400, "GET", "/v1/triggers/gh/firings?limit=0", "", "")
+	rec.probe(rt, "list_firings_unauthorized", 401, "GET", "/v1/triggers/gh/firings", "", "", bearer...)
+	rec.probe(rt, "list_firings_not_found", 404, "GET", "/v1/triggers/nope/firings", "", "")
+	if err := rt.srv.SyncTriggers(t.Context(), []agentapi.StaticTrigger{{Tenant: rt.tn, ID: "static", Definition: trigger.Definition{Prompt: "x", Schedule: "@daily"}}}); err != nil {
+		t.Fatal(err)
+	}
+	rec.probe(rt, "delete_trigger_static", 409, "DELETE", "/v1/triggers/static", "", "")
+	rec.probe(rt, "delete_trigger_unauthorized", 401, "DELETE", "/v1/triggers/daily", "", "", bearer...)
+	rec.probe(rt, "delete_trigger", 204, "DELETE", "/v1/triggers/daily", "", "")
+	rec.probe(rt, "delete_trigger_not_found", 404, "DELETE", "/v1/triggers/daily", "", "")
+
 	rec.probe(r, "delete_unauthorized", 401, "DELETE", "/v1/conversations/"+conv, "", "", bearer...)
 	rec.probe(r, "delete", 204, "DELETE", "/v1/conversations/"+conv, "", "")
 	rec.probe(r, "delete_not_found", 404, "DELETE", "/v1/conversations/"+conv, "", "")
@@ -787,8 +878,8 @@ func TestOpenAPIResponses(t *testing.T) {
 	rf := newRig(t, echo(t), rigConfig{api: []agentapi.Option{agentapi.WithAuthenticator(keys)}})
 	rf.token = readKey
 	for _, rt := range rf.srv.Routes() {
-		if strings.Contains(rt, " /v1/auth/") {
-			continue // any credential may sign out and ask who it is
+		if strings.Contains(rt, " /v1/auth/") || strings.Contains(rt, " /v1/hooks/") {
+			continue // any credential may sign out and ask who it is; a webhook's signature is its credential
 		}
 		method, target, _ := strings.Cut(rt, " ")
 		target = strings.NewReplacer("{id}", "x", "{name}", "x", "{slot}", "x", "{version}", "1").Replace(target)
@@ -804,6 +895,7 @@ func TestOpenAPIResponses(t *testing.T) {
 				"POST /v1/tasks":             `{"input":"hi"}`,
 				"PUT /v1/credentials/{slot}": `{"kind":"api_key","api_key":"k"}`, "POST /v1/credentials/{slot}/connect": `{}`,
 				"POST /v1/agents/{name}/versions": `{"definition":{"system":"x"}}`, "POST /v1/agents/{name}/publish": `{"version":1}`,
+				"POST /v1/triggers": `{"id":"x","prompt":"hi","schedule":"@daily"}`, "PATCH /v1/triggers/{id}": `{"prompt":"hi"}`,
 			}[rt]
 			rec.probe(rf, name, 403, method, target, body, "")
 		}

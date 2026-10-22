@@ -181,6 +181,14 @@ func TestItemStore(t *testing.T) {
 	storetest.RunItemStore(t, func(t *testing.T, clk clock.Clock) store.ItemStore { return open(t, clk) })
 }
 
+func TestTriggerStore(t *testing.T) {
+	t.Parallel()
+	storetest.RunTriggerStore(t, func(t *testing.T, clk clock.Clock) (store.TriggerStore, store.TriggerAdmin) {
+		s := open(t, clk)
+		return s, postgres.TriggerAdmin(s)
+	})
+}
+
 // The suites again, with every call going to one of two Stores (two
 // connection pools) on the same schema, in turn, as two processes would. The
 // suites' races (sequence races, concurrent appends, claims and transitions)
@@ -222,6 +230,13 @@ func TestTwoPools(t *testing.T) {
 	t.Run("ItemStore", func(t *testing.T) {
 		t.Parallel()
 		storetest.RunItemStore(t, func(t *testing.T, clk clock.Clock) store.ItemStore { return openPair(t, clk) })
+	})
+	t.Run("TriggerStore", func(t *testing.T) {
+		t.Parallel()
+		storetest.RunTriggerStore(t, func(t *testing.T, clk clock.Clock) (store.TriggerStore, store.TriggerAdmin) {
+			p := openPair(t, clk)
+			return p, pairAdmin{p}
+		})
 	})
 
 	t.Run("ConversationIndex", func(t *testing.T) {
@@ -460,10 +475,46 @@ func (p *pair) UpdateMessage(ctx context.Context, id, owner string, u store.Mess
 	return p.next().UpdateMessage(ctx, id, owner, u)
 }
 
+func (p *pair) PutTrigger(ctx context.Context, t store.TriggerRecord, ifVersion int64) (store.TriggerRecord, error) {
+	return p.next().PutTrigger(ctx, t, ifVersion)
+}
+
+func (p *pair) GetTrigger(ctx context.Context, id string) (store.TriggerRecord, error) {
+	return p.next().GetTrigger(ctx, id)
+}
+
+func (p *pair) ListTriggers(ctx context.Context) ([]store.TriggerRecord, error) {
+	return p.next().ListTriggers(ctx)
+}
+
+func (p *pair) DeleteTrigger(ctx context.Context, id string, ifVersion int64) error {
+	return p.next().DeleteTrigger(ctx, id, ifVersion)
+}
+
+func (p *pair) StartFiring(ctx context.Context, triggerID string, f store.Firing, due, next time.Time) (store.Firing, error) {
+	return p.next().StartFiring(ctx, triggerID, f, due, next)
+}
+
+func (p *pair) EndFiring(ctx context.Context, triggerID, firingID string, end store.FiringEnd) (store.Firing, error) {
+	return p.next().EndFiring(ctx, triggerID, firingID, end)
+}
+
+func (p *pair) ListFirings(ctx context.Context, triggerID string, limit int) ([]store.Firing, error) {
+	return p.next().ListFirings(ctx, triggerID, limit)
+}
+
 type pairAdmin struct{ p *pair }
 
 func (a pairAdmin) ClaimDueMessage(ctx context.Context, owner string, ttl time.Duration) (store.TenantMessage, error) {
 	return postgres.MessageAdmin(a.p.next()).ClaimDueMessage(ctx, owner, ttl)
+}
+
+func (a pairAdmin) DueTriggers(ctx context.Context, now time.Time, limit int) ([]store.TenantTrigger, error) {
+	return postgres.TriggerAdmin(a.p.next()).DueTriggers(ctx, now, limit)
+}
+
+func (a pairAdmin) TriggerByHook(ctx context.Context, hookID string) (store.TenantTrigger, error) {
+	return postgres.TriggerAdmin(a.p.next()).TriggerByHook(ctx, hookID)
 }
 
 func (a pairAdmin) ClaimNotification(ctx context.Context, owner string, ttl time.Duration) (store.TenantNotification, error) {

@@ -56,6 +56,9 @@ type agentWiring struct {
 	// callback serves the connect flows' redirects (/oauth/callback);
 	// nil when the server keeps no credentials.
 	callback http.Handler
+	// triggers finds the triggers the scheduler fires; nil when the API
+	// has none.
+	triggers store.TriggerAdmin
 }
 
 // mounts are what the agent API serves beside /v1/: the OAuth callback,
@@ -89,12 +92,20 @@ func (w *agentWiring) close() {
 
 // buildAgents is newAgents on w's store and bus.
 func (c cli) buildAgents(ctx context.Context, w *agentWiring, cfg serveConfig, built map[string]tool.Registry, problems []toolset.Problem, env serveEnv, authn auth.Authenticator, clk clock.Clock, log *slog.Logger) (component.Mount, error) {
-	m, srv, err := c.newAgents(ctx, cfg, built, problems, env, authn, w.st.Store, w.b, clk, log)
+	topts := triggerOptions(env, w.st.Store, w.st.triggers)
+	m, srv, err := c.newAgents(ctx, cfg, built, problems, env, authn, w.st.Store, w.b, clk, log, topts...)
 	w.srv, w.env = srv, env
 	if ac, ok := m.Component.(*agentComponent); ok {
 		w.callback, w.msg = ac.callback, ac.messenger
 	}
-	return m, err
+	if err != nil {
+		return m, err
+	}
+	if len(topts) > 0 {
+		w.triggers = w.st.triggers
+	}
+	// The config's triggers are stored before the API serves.
+	return m, syncTriggers(ctx, cfg, srv)
 }
 
 // handler is the agent API's handler, which the agentkit toolsets call in
@@ -158,6 +169,14 @@ func (w *agentWiring) serve(ctx context.Context, rt *component.Runtime, ln net.L
 			log.Error("webhooks stopped", "component", agentapi.Name, "err", err)
 		}
 	}()
+	// The schedules of every tenant's triggers, until the recovery stops.
+	scheduled := make(chan struct{})
+	go func() {
+		defer close(scheduled)
+		if err := runScheduler(rctx, w.triggers, agents, log.With("component", agentapi.Name)); err != nil {
+			log.Error("trigger scheduler stopped", "component", agentapi.Name, "err", err)
+		}
+	}()
 	// The messages between agents of every tenant, likewise.
 	var recovered sync.WaitGroup
 	if w.msg != nil {
@@ -184,6 +203,7 @@ func (w *agentWiring) serve(ctx context.Context, rt *component.Runtime, ln net.L
 	stopRecovery()
 	recovered.Wait()
 	<-notified
+	<-scheduled
 	return err
 }
 
@@ -192,7 +212,9 @@ func (w *agentWiring) serve(ctx context.Context, rt *component.Runtime, ln net.L
 type openedStore struct {
 	agentapi.Store
 	admin store.Admin
-	close func()
+	// triggers finds triggers across tenants (store.TriggerAdmin).
+	triggers store.TriggerAdmin
+	close    func()
 }
 
 // openStore opens the store $AGENTKIT_STORE names (package storeopen); an
@@ -212,7 +234,7 @@ func (c cli) openStore(ctx context.Context, clk clock.Clock) (openedStore, error
 	if err != nil {
 		return openedStore{}, fmt.Errorf("%s: %w", envStore, err)
 	}
-	return openedStore{Store: o.Store, admin: o.Admin, close: func() { _ = o.Close() }}, nil
+	return openedStore{Store: o.Store, admin: o.Admin, triggers: o.Triggers, close: func() { _ = o.Close() }}, nil
 }
 
 // openBus opens the bus $AGENTKIT_BUS names (package busopen): nil for one
@@ -313,7 +335,9 @@ func (a *agentComponent) Ready(ctx context.Context) error {
 // served (specs, as built and skipped); and the API on top, mounted at /v1/,
 // on st and the clock clk. ctx is the signal context: when it is done, the
 // drain begins.
-func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]tool.Registry, problems []toolset.Problem, env serveEnv, authn auth.Authenticator, st agentapi.Store, b bus.Bus, clk clock.Clock, log *slog.Logger) (component.Mount, *agentapi.Server, error) {
+//
+// extra are more options of the API (its triggers, from buildAgents).
+func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]tool.Registry, problems []toolset.Problem, env serveEnv, authn auth.Authenticator, st agentapi.Store, b bus.Bus, clk clock.Clock, log *slog.Logger, extra ...agentapi.Option) (component.Mount, *agentapi.Server, error) {
 	specs, err := servedSpecs(env, cfg)
 	if err != nil {
 		return component.Mount{}, nil, err
@@ -449,7 +473,7 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 	if env.runLease > 0 {
 		runnerOpts = append(runnerOpts, runner.WithLease(env.runLease))
 	}
-	var authOpts []agentapi.Option
+	authOpts := slices.Clone(extra)
 	if hooks != nil {
 		authOpts = append(authOpts, agentapi.WithWebhooks(*hooks))
 	}

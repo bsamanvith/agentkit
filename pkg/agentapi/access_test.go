@@ -118,8 +118,9 @@ func TestEveryPathNeedsCredentials(t *testing.T) {
 	}
 	for _, p := range paths {
 		method, path, _ := strings.Cut(p, " ")
-		if p == "GET /v1/auth/config" || p == "POST /v1/auth/login" {
-			// How to sign in, and signing in, need no credentials.
+		if p == "GET /v1/auth/config" || p == "POST /v1/auth/login" || p == "POST /v1/hooks/x" {
+			// How to sign in, signing in, and inbound webhooks (which a
+			// signature authenticates) need no credentials.
 			if resp, body := r.do(method, path, `{"username":"u","password":"p"}`); resp.StatusCode == http.StatusUnauthorized {
 				t.Errorf("%s with no credentials = %d %s, want it served", p, resp.StatusCode, body)
 			}
@@ -189,11 +190,11 @@ func TestScopes(t *testing.T) {
 			path = "/v1/conversations/" + run.ConversationID
 		}
 		resp, body := r.do(method, path, `{"message":"x"}`, as(keyRead)...)
-		// agent:admin, even to read: reviews, the webhook secret, and the
-		// registry's versions.
-		admin := strings.HasSuffix(rt, "/review") || rt == "GET /v1/webhooks/secret" || strings.Contains(rt, "/versions")
+		// agent:admin, even to read: reviews, the webhook secret, the
+		// registry's versions, and triggers.
+		admin := strings.HasSuffix(rt, "/review") || rt == "GET /v1/webhooks/secret" || strings.Contains(rt, "/versions") || strings.Contains(rt, " /v1/triggers")
 		switch {
-		case strings.Contains(rt, " /v1/auth/"): // any credential
+		case strings.Contains(rt, " /v1/auth/"), strings.Contains(rt, " /v1/hooks/"): // any credential, or none
 			if resp.StatusCode == http.StatusForbidden {
 				t.Errorf("read-only %s = 403, want it served", rt)
 			}

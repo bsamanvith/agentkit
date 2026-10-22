@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/auth"
@@ -32,6 +33,10 @@ const maxLoginBody = 4 << 10
 // also pass [login.Login.CheckCSRF], else 403 [CodeCSRF].
 func WithLogin(l *login.Login) Option { return func(c *config) { c.login = l } }
 
+// isHookRoute reports whether pattern is the inbound webhooks' (T072), which a
+// signature authenticates, not a credential.
+func isHookRoute(pattern string) bool { return pattern == "POST /v1/hooks/{id}" }
+
 // isAuthRoute reports whether pattern is one of the /v1/auth/ endpoints,
 // which any principal may call.
 func isAuthRoute(pattern string) bool {
@@ -42,11 +47,13 @@ func isAuthRoute(pattern string) bool {
 	return false
 }
 
-// public reports whether a request needs no credentials: how to sign in, and
-// signing in.
+// public reports whether a request needs no credentials: how to sign in,
+// signing in, and an inbound webhook (T072), which its signature
+// authenticates.
 func public(r *http.Request) bool {
 	return r.Method == http.MethodGet && r.URL.Path == "/v1/auth/config" ||
-		r.Method == http.MethodPost && r.URL.Path == "/v1/auth/login"
+		r.Method == http.MethodPost && r.URL.Path == "/v1/auth/login" ||
+		r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/hooks/")
 }
 
 // authConfig answers GET /v1/auth/config: the sign-in methods.

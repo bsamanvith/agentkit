@@ -198,11 +198,20 @@ func newRig(t *testing.T, m *model, cfg rigConfig) *rig {
 		cfg.store, tenantOpts = testStore(t, cfg.clock)
 	}
 	var ids atomic.Int64
+	// Webhook IDs are unique across tenants: on a shared store (Postgres),
+	// each rig's, and each run's of the suite, are its own.
+	hookStamp := fmt.Sprintf("hk_%d_%d_", time.Now().UnixNano(), rigs.Add(1))
+	newID := func(prefix string) string {
+		if prefix == "hk_" {
+			return fmt.Sprintf("%s%03d", hookStamp, ids.Add(1))
+		}
+		return fmt.Sprintf("%s%03d", prefix, ids.Add(1))
+	}
 	opts := []agentapi.Option{
 		agentapi.WithStore(cfg.store), agentapi.WithClock(cfg.clock), agentapi.WithKeepAlive(0), agentapi.WithRunTimeout(0),
 		// The rig's clock stands still, so lists order by ID: make it the
 		// order of creation.
-		agentapi.WithNewID(func(prefix string) string { return fmt.Sprintf("%s%03d", prefix, ids.Add(1)) }),
+		agentapi.WithNewID(newID),
 		// A retry waits on the clock; a test that wants one turns it on.
 		agentapi.WithRunnerOptions(runner.WithInteractiveRetry(runner.RetryPolicy{MaxAttempts: 1, BaseDelay: time.Second, MaxDelay: time.Second})),
 	}

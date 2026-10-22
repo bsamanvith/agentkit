@@ -125,6 +125,9 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 		return nil, fmt.Errorf("%w: max background runs must be at least 1, and the task time limit not negative", ErrInvalidConfig)
 	case cfg.webhooks != nil && cfg.webhooks.Secret == nil:
 		return nil, fmt.Errorf("%w: webhooks need their secrets", ErrInvalidConfig)
+	case cfg.triggers != nil && (cfg.triggers.Store == nil || (cfg.triggers.ByHook == nil) != (cfg.triggers.Secret == nil) ||
+		cfg.triggers.MaxBodyBytes < 0 || cfg.triggers.Tolerance < 0 || cfg.triggers.Tolerance > store.FiringKeep/2):
+		return nil, fmt.Errorf("%w: triggers need a store, and their webhooks both ByHook and Secret, a body limit that is not negative, and a tolerance from 0 to %v (half of how long a store keeps a delivery's ID)", ErrInvalidConfig, store.FiringKeep/2)
 	}
 	bearer, err := authenticator(cfg)
 	if err != nil {
@@ -203,6 +206,15 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 		{"GET /v1/webhooks/secret", s.webhookSecret},
 		{"GET /v1/threads", s.listThreads},
 		{"GET /v1/threads/{id}", s.getThread},
+		{"POST /v1/triggers", s.postTrigger},
+		{"GET /v1/triggers", s.listTriggers},
+		{"GET /v1/triggers/{id}", s.getTrigger},
+		{"PATCH /v1/triggers/{id}", s.patchTrigger},
+		{"DELETE /v1/triggers/{id}", s.deleteTrigger},
+		{"POST /v1/triggers/{id}/pause", s.pauseTrigger},
+		{"POST /v1/triggers/{id}/resume", s.resumeTrigger},
+		{"GET /v1/triggers/{id}/firings", s.listFirings},
+		{"POST /v1/hooks/{id}", s.postHook},
 		{"POST /v1/conversations", s.createConversation},
 		{"GET /v1/conversations", s.listConversations},
 		{"GET /v1/conversations/{id}", s.getConversation},
@@ -698,33 +710,59 @@ func execContext(req context.Context) (context.Context, context.CancelCauseFunc)
 // startError answers a run the runner would not start or resume. busy is the
 // code of a run that is going on.
 func (s *Server) startError(w http.ResponseWriter, err error, busy string) {
+	s.writeRefusal(w, s.startErrorOf(err, busy))
+}
+
+// refusal is a request the server turns away: the status, the error, and
+// the Retry-After ("" for none).
+type refusal struct {
+	status     int
+	err        *Error
+	retryAfter string
+}
+
+func (s *Server) writeRefusal(w http.ResponseWriter, rf *refusal) {
+	if rf.retryAfter != "" {
+		w.Header().Set("Retry-After", rf.retryAfter)
+	}
+	writeError(w, rf.status, rf.err)
+}
+
+// internalRefusal logs what failed and refuses with 500, as internal does.
+func (s *Server) internalRefusal(what string, err error) *refusal {
+	s.log.Error(what, "err", err)
+	return &refusal{status: http.StatusInternalServerError, err: &Error{Code: CodeInternal, Message: what + " failed; see the server log"}}
+}
+
+// startErrorOf is the refusal of a run the runner would not start or
+// resume, as startError answers it.
+func (s *Server) startErrorOf(err error, busy string) *refusal {
 	var unfinished *runner.UnfinishedError
 	switch {
 	case errors.As(err, &unfinished):
-		writeError(w, http.StatusConflict, &Error{Code: CodeBusy, RunID: unfinished.RunID, Retryable: true, Message: "run " + quote(unfinished.RunID) + " of this conversation is going on; wait for it to end, or stop it"})
+		return &refusal{status: http.StatusConflict, err: &Error{Code: CodeBusy, RunID: unfinished.RunID, Retryable: true, Message: "run " + quote(unfinished.RunID) + " of this conversation is going on; wait for it to end, or stop it"}}
 	case errors.Is(err, store.ErrLeased):
-		writeError(w, http.StatusConflict, &Error{Code: busy, Retryable: true, Message: "the run is going on: " + err.Error()})
+		return &refusal{status: http.StatusConflict, err: &Error{Code: busy, Retryable: true, Message: "the run is going on: " + err.Error()}}
 	case errors.Is(err, store.ErrNotFound):
-		writeError(w, http.StatusNotFound, &Error{Code: CodeNotFound, Message: err.Error()})
+		return &refusal{status: http.StatusNotFound, err: &Error{Code: CodeNotFound, Message: err.Error()}}
 	case errors.Is(err, runner.ErrInvalidInput):
-		writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: err.Error()})
+		return &refusal{status: http.StatusBadRequest, err: &Error{Code: CodeInvalidRequest, Message: err.Error()}}
 	case errors.Is(err, store.ErrFinal), errors.Is(err, runner.ErrNotStarted):
-		writeError(w, http.StatusConflict, &Error{Code: CodeRunFinal, Message: err.Error()})
+		return &refusal{status: http.StatusConflict, err: &Error{Code: CodeRunFinal, Message: err.Error()}}
 	case errors.Is(err, runner.ErrAwaitingDecision):
-		writeError(w, http.StatusConflict, &Error{Code: CodeAwaitingDecision, Message: "the run waits for a decision (POST /v1/runs/{id}/decisions)"})
+		return &refusal{status: http.StatusConflict, err: &Error{Code: CodeAwaitingDecision, Message: "the run waits for a decision (POST /v1/runs/{id}/decisions)"}}
 	case errors.Is(err, runner.ErrNotPending):
-		writeError(w, http.StatusConflict, &Error{Code: CodeNotPending, Message: err.Error()})
+		return &refusal{status: http.StatusConflict, err: &Error{Code: CodeNotPending, Message: err.Error()}}
 	case errors.Is(err, flow.ErrShapeChanged):
-		writeError(w, http.StatusConflict, &Error{Code: CodeShapeChanged, Message: err.Error()})
+		return &refusal{status: http.StatusConflict, err: &Error{Code: CodeShapeChanged, Message: err.Error()}}
 	case errors.Is(err, pool.ErrNoPool):
-		writeError(w, http.StatusConflict, noPool(err))
+		return &refusal{status: http.StatusConflict, err: noPool(err)}
 	case errors.Is(err, runner.ErrNoFlows):
-		writeError(w, http.StatusConflict, &Error{Code: CodeInvalidRequest, Message: "this server runs no flows"})
+		return &refusal{status: http.StatusConflict, err: &Error{Code: CodeInvalidRequest, Message: "this server runs no flows"}}
 	case errors.Is(err, runner.ErrShutdown):
-		s.unavailable(w, shuttingDown())
-	default:
-		s.internal(w, "starting the run", err)
+		return &refusal{status: http.StatusServiceUnavailable, err: shuttingDown(), retryAfter: retryAfter}
 	}
+	return s.internalRefusal("starting the run", err)
 }
 
 // RunRecovered runs an execution the runner's recovery loop resumed as the

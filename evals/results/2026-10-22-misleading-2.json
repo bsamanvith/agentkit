@@ -1,0 +1,260 @@
+{
+  "date": "2026-10-22",
+  "model": "claude-haiku-5-5",
+  "runs": 3,
+  "misleading": true,
+  "results": [
+    {
+      "scenario": "knowledge-cites-source",
+      "behavior": "name the handbook document the answer comes from",
+      "misleading": true,
+      "runs": [
+        {
+          "passed": true,
+          "calls": 1,
+          "input_tokens": 2811,
+          "output_tokens": 162,
+          "seconds": 1.990165604,
+          "transcript": {
+            "calls": [
+              {
+                "tool": "knowledge_search",
+                "toolset": "knowledge",
+                "input": {
+                  "query": "e-bike battery warranty length"
+                },
+                "result": "{\"results\":[{\"source\":\"warranty.md\",\"title\":\"Warranty\",\"section\":\"Warranty \\u003e What is covered\",\"text\":\"# Warranty\\n\\n## What is covered\\n\\n| Part | Coverage |\\n|---|---|\\n| Frame and fork | Lifetime, for the original owner |\\n| E-bike motor | 2 years |\\n| E-bike battery | 3 years or 800 full charge cycles, whichever comes first |\\n| Drivetrain, brakes, wheels | 1 year |\\n| Paint and finish | 6 months |\\n\\nWear parts (tyres, brake pads, chains, cassettes, grips) are never covered.\",\"score\":5.5200705835791055},{\"source\":\"warranty.md\",\"title\":\"Warranty\",\"section\":\"Warranty \\u003e Battery claims\",\"text\":\"## Battery claims\\n\\nA battery is replaced under warranty when its capacity has dropped below 70%\\nof new within the coverage period. The capacity is read by a Northwind service\\npartner with the diagnostic app, never estimated from the customer's range.\",\"score\":4.820472959229351},{\"source\":\"error-codes.md\",\"title\":\"E-bike display error codes\",\"section\":\"E-bike display error codes \\u003e E12: battery overheating\",\"text\":\"## E12: battery overheating\\n\\nThe battery is above 60 °C. Tell the customer to stop riding, switch the bike\\noff and let the battery cool in the shade for at least 30 minutes. Never cool it\\nwith water. If E12 shows on a cool battery, it is a battery claim.\",\"score\":4.7441859204875225},{\"source\":\"error-codes.md\",\"title\":\"E-bike display error codes\",\"section\":\"E-bike display error codes \\u003e E07: torque sensor fault\",\"text\":\"## E07: torque sensor fault\\n\\nThe torque sensor in the bottom bracket sends no signal. Most often it needs\\nrecalibrating: with the bike switched on and nobody on it, hold the **+** and\\n**-** buttons together for 8 seconds until the display blinks twice. If E07\\ncomes back after a recalibration, the sensor is replaced under warranty.\",\"score\":2.93886218483639},{\"source\":\"error-codes.md\",\"title\":\"E-bike display error codes\",\"section\":\"E-bike display error codes\",\"text\":\"# E-bike display error codes\\n\\nThe display on every Northwind e-bike shows an error as `E` and two digits.\\nAsk the customer for the exact code before anything else.\",\"score\":2.6063419716624683}]}"
+              }
+            ],
+            "answer": "The e-bike battery is covered for 3 years or 800 full charge cycles, whichever comes first (warranty.md). A battery is replaced under warranty if its capacity drops below 70% of new within the coverage period. A Northwind service partner measures that capacity with the diagnostic app; range estimates don't count.",
+            "input_tokens": 2811,
+            "output_tokens": 162
+          }
+        },
+        {
+          "passed": true,
+          "calls": 1,
+          "input_tokens": 3141,
+          "output_tokens": 482,
+          "seconds": 3.720117934,
+          "transcript": {
+            "calls": [
+              {
+                "tool": "knowledge_search",
+                "toolset": "knowledge",
+                "input": {
+                  "query": "e-bike battery warranty length"
+                },
+                "result": "{\"results\":[{\"source\":\"warranty.md\",\"title\":\"Warranty\",\"section\":\"Warranty \\u003e What is covered\",\"text\":\"# Warranty\\n\\n## What is covered\\n\\n| Part | Coverage |\\n|---|---|\\n| Frame and fork | Lifetime, for the original owner |\\n| E-bike motor | 2 years |\\n| E-bike battery | 3 years or 800 full charge cycles, whichever comes first |\\n| Drivetrain, brakes, wheels | 1 year |\\n| Paint and finish | 6 months |\\n\\nWear parts (tyres, brake pads, chains, cassettes, grips) are never covered.\",\"score\":5.5200705835791055},{\"source\":\"warranty.md\",\"title\":\"Warranty\",\"section\":\"Warranty \\u003e Battery claims\",\"text\":\"## Battery claims\\n\\nA battery is replaced under warranty when its capacity has dropped below 70%\\nof new within the coverage period. The capacity is read by a Northwind service\\npartner with the diagnostic app, never estimated from the customer's range.\",\"score\":4.820472959229351},{\"source\":\"error-codes.md\",\"title\":\"E-bike display error codes\",\"section\":\"E-bike display error codes \\u003e E12: battery overheating\",\"text\":\"## E12: battery overheating\\n\\nThe battery is above 60 °C. Tell the customer to stop riding, switch the bike\\noff and let the battery cool in the shade for at least 30 minutes. Never cool it\\nwith water. If E12 shows on a cool battery, it is a battery claim.\",\"score\":4.7441859204875225},{\"source\":\"error-codes.md\",\"title\":\"E-bike display error codes\",\"section\":\"E-bike display error codes \\u003e E07: torque sensor fault\",\"text\":\"## E07: torque sensor fault\\n\\nThe torque sensor in the bottom bracket sends no signal. Most often it needs\\nrecalibrating: with the bike switched on and nobody on it, hold the **+** and\\n**-** buttons together for 8 seconds until the display blinks twice. If E07\\ncomes back after a recalibration, the sensor is replaced under warranty.\",\"score\":2.93886218483639},{\"source\":\"error-codes.md\",\"title\":\"E-bike display error codes\",\"section\":\"E-bike display error codes\",\"text\":\"# E-bike display error codes\\n\\nThe display on every Northwind e-bike shows an error as `E` and two digits.\\nAsk the customer for the exact code before anything else.\",\"score\":2.6063419716624683}]}"
+              }
+            ],
+            "answer": "The e-bike battery is covered for 3 years or 800 full charge cycles, whichever comes first (warranty.md). A battery is replaced under warranty if its capacity drops below 70% of new within that period, and a Northwind service partner measures the capacity with a diagnostic app.",
+            "input_tokens": 3141,
+            "output_tokens": 482
+          }
+        },
+        {
+          "passed": true,
+          "calls": 1,
+          "input_tokens": 2811,
+          "output_tokens": 159,
+          "seconds": 2.362127467,
+          "transcript": {
+            "calls": [
+              {
+                "tool": "knowledge_search",
+                "toolset": "knowledge",
+                "input": {
+                  "query": "e-bike battery warranty length"
+                },
+                "result": "{\"results\":[{\"source\":\"warranty.md\",\"title\":\"Warranty\",\"section\":\"Warranty \\u003e What is covered\",\"text\":\"# Warranty\\n\\n## What is covered\\n\\n| Part | Coverage |\\n|---|---|\\n| Frame and fork | Lifetime, for the original owner |\\n| E-bike motor | 2 years |\\n| E-bike battery | 3 years or 800 full charge cycles, whichever comes first |\\n| Drivetrain, brakes, wheels | 1 year |\\n| Paint and finish | 6 months |\\n\\nWear parts (tyres, brake pads, chains, cassettes, grips) are never covered.\",\"score\":5.5200705835791055},{\"source\":\"warranty.md\",\"title\":\"Warranty\",\"section\":\"Warranty \\u003e Battery claims\",\"text\":\"## Battery claims\\n\\nA battery is replaced under warranty when its capacity has dropped below 70%\\nof new within the coverage period. The capacity is read by a Northwind service\\npartner with the diagnostic app, never estimated from the customer's range.\",\"score\":4.820472959229351},{\"source\":\"error-codes.md\",\"title\":\"E-bike display error codes\",\"section\":\"E-bike display error codes \\u003e E12: battery overheating\",\"text\":\"## E12: battery overheating\\n\\nThe battery is above 60 °C. Tell the customer to stop riding, switch the bike\\noff and let the battery cool in the shade for at least 30 minutes. Never cool it\\nwith water. If E12 shows on a cool battery, it is a battery claim.\",\"score\":4.7441859204875225},{\"source\":\"error-codes.md\",\"title\":\"E-bike display error codes\",\"section\":\"E-bike display error codes \\u003e E07: torque sensor fault\",\"text\":\"## E07: torque sensor fault\\n\\nThe torque sensor in the bottom bracket sends no signal. Most often it needs\\nrecalibrating: with the bike switched on and nobody on it, hold the **+** and\\n**-** buttons together for 8 seconds until the display blinks twice. If E07\\ncomes back after a recalibration, the sensor is replaced under warranty.\",\"score\":2.93886218483639},{\"source\":\"error-codes.md\",\"title\":\"E-bike display error codes\",\"section\":\"E-bike display error codes\",\"text\":\"# E-bike display error codes\\n\\nThe display on every Northwind e-bike shows an error as `E` and two digits.\\nAsk the customer for the exact code before anything else.\",\"score\":2.6063419716624683}]}"
+              }
+            ],
+            "answer": "The e-bike battery is covered for 3 years or 800 full charge cycles, whichever comes first (warranty.md). A battery is replaced under warranty when its capacity drops below 70% of new within the coverage period. A Northwind service partner measures this with the diagnostic app; range estimates don't count.",
+            "input_tokens": 2811,
+            "output_tokens": 159
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "knowledge-error-code",
+      "behavior": "search with the exact error code the customer gives",
+      "misleading": true,
+      "runs": [
+        {
+          "passed": false,
+          "failures": [
+            "args: knowledge_search call 1: query is \"e-bike display error and motor not assisting when pedaling\", which does not contain \"E07\" (input {\"query\":\"e-bike display error and motor not assisting when pedaling\",\"k\":5})"
+          ],
+          "calls": 1,
+          "input_tokens": 2859,
+          "output_tokens": 299,
+          "seconds": 3.035863874,
+          "transcript": {
+            "calls": [
+              {
+                "tool": "knowledge_search",
+                "toolset": "knowledge",
+                "input": {
+                  "query": "e-bike display error and motor not assisting when pedaling",
+                  "k": 5
+                },
+                "result": "{\"results\":[{\"source\":\"error-codes.md\",\"title\":\"E-bike display error codes\",\"section\":\"E-bike display error codes \\u003e E21: motor communication error\",\"text\":\"## E21: motor communication error\\n\\nThe display cannot reach the motor controller. Check the connector between the\\ndisplay cable and the main harness under the down tube; it is often loose after\\nthe bike has been shipped. If the code stays, book a service partner visit.\",\"score\":8.329112214251705},{\"source\":\"error-codes.md\",\"title\":\"E-bike display error codes\",\"section\":\"E-bike display error codes \\u003e E30: firmware mismatch\",\"text\":\"## E30: firmware mismatch\\n\\nThe display and motor run different firmware versions. Connect the bike to the\\nNorthwind app over Bluetooth and run the update; it takes about 10 minutes.\",\"score\":7.2939907403354285},{\"source\":\"error-codes.md\",\"title\":\"E-bike display error codes\",\"section\":\"E-bike display error codes\",\"text\":\"# E-bike display error codes\\n\\nThe display on every Northwind e-bike shows an error as `E` and two digits.\\nAsk the customer for the exact code before anything else.\",\"score\":6.943618291290997},{\"source\":\"error-codes.md\",\"title\":\"E-bike display error codes\",\"section\":\"E-bike display error codes \\u003e E07: torque sensor fault\",\"text\":\"## E07: torque sensor fault\\n\\nThe torque sensor in the bottom bracket sends no signal. Most often it needs\\nrecalibrating: with the bike switched on and nobody on it, hold the **+** and\\n**-** buttons together for 8 seconds until the display blinks twice. If E07\\ncomes back after a recalibration, the sensor is replaced under warranty.\",\"score\":4.535445858818758},{\"source\":\"error-codes.md\",\"title\":\"E-bike display error codes\",\"section\":\"E-bike display error codes \\u003e E12: battery overheating\",\"text\":\"## E12: battery overheating\\n\\nThe battery is above 60 °C. Tell the customer to stop riding, switch the bike\\noff and let the battery cool in the shade for at least 30 minutes. Never cool it\\nwith water. If E12 shows on a cool battery, it is a battery claim.\",\"score\":4.1864004630667875}]}"
+              }
+            ],
+            "answer": "For E07 (torque sensor fault), the handbook says to recalibrate the sensor:\n\n1. With the bike switched on and nobody on it, hold the **+** and **-** buttons together for 8 seconds, until the display blinks twice.\n2. Test the motor assist again.\n3. If E07 comes back after recalibration, the sensor is replaced under warranty.\n\nSource: error-codes.md",
+            "input_tokens": 2859,
+            "output_tokens": 299
+          }
+        },
+        {
+          "passed": false,
+          "failures": [
+            "args: knowledge_search call 1: query is \"e-bike display shows an error and motor does not assist when pedaling\", which does not contain \"E07\" (input {\"query\":\"e-bike display shows an error and motor does not assist when pedaling\",\"k\":5})"
+          ],
+          "calls": 1,
+          "input_tokens": 2856,
+          "output_tokens": 372,
+          "seconds": 3.705774747,
+          "transcript": {
+            "calls": [
+              {
+                "tool": "knowledge_search",
+                "toolset": "knowledge",
+                "input": {
+                  "query": "e-bike display shows an error and motor does not assist when pedaling",
+                  "k": 5
+                },
+                "result": "{\"results\":[{\"source\":\"error-codes.md\",\"title\":\"E-bike display error codes\",\"section\":\"E-bike display error codes\",\"text\":\"# E-bike display error codes\\n\\nThe display on every Northwind e-bike shows an error as `E` and two digits.\\nAsk the customer for the exact code before anything else.\",\"score\":10.689977048419653},{\"source\":\"error-codes.md\",\"title\":\"E-bike display error codes\",\"section\":\"E-bike display error codes \\u003e E21: motor communication error\",\"text\":\"## E21: motor communication error\\n\\nThe display cannot reach the motor controller. Check the connector between the\\ndisplay cable and the main harness under the down tube; it is often loose after\\nthe bike has been shipped. If the code stays, book a service partner visit.\",\"score\":8.329112214251705},{\"source\":\"error-codes.md\",\"title\":\"E-bike display error codes\",\"section\":\"E-bike display error codes \\u003e E30: firmware mismatch\",\"text\":\"## E30: firmware mismatch\\n\\nThe display and motor run different firmware versions. Connect the bike to the\\nNorthwind app over Bluetooth and run the update; it takes about 10 minutes.\",\"score\":7.2939907403354285},{\"source\":\"error-codes.md\",\"title\":\"E-bike display error codes\",\"section\":\"E-bike display error codes \\u003e E12: battery overheating\",\"text\":\"## E12: battery overheating\\n\\nThe battery is above 60 °C. Tell the customer to stop riding, switch the bike\\noff and let the battery cool in the shade for at least 30 minutes. Never cool it\\nwith water. If E12 shows on a cool battery, it is a battery claim.\",\"score\":6.119578188893773},{\"source\":\"error-codes.md\",\"title\":\"E-bike display error codes\",\"section\":\"E-bike display error codes \\u003e E07: torque sensor fault\",\"text\":\"## E07: torque sensor fault\\n\\nThe torque sensor in the bottom bracket sends no signal. Most often it needs\\nrecalibrating: with the bike switched on and nobody on it, hold the **+** and\\n**-** buttons together for 8 seconds until the display blinks twice. If E07\\ncomes back after a recalibration, the sensor is replaced under warranty.\",\"score\":4.535445858818758}]}"
+              }
+            ],
+            "answer": "The E07 code means a **torque sensor fault**: the sensor in the bottom bracket isn't sending a signal, so the motor can't assist. (error-codes.md)\n\n1. Switch the bike on with nobody riding it.\n2. Hold the **+** and **-** buttons together for 8 seconds, until the display blinks twice.\n3. Test the bike again.\n\nIf E07 comes back after recalibrating, the sensor is replaced under warranty. Contact support to arrange that. (error-codes.md)",
+            "input_tokens": 2856,
+            "output_tokens": 372
+          }
+        },
+        {
+          "passed": false,
+          "failures": [
+            "args: knowledge_search call 1: query is \"e-bike display error motor not assisting when pedaling\", which does not contain \"E07\" (input {\"query\":\"e-bike display error motor not assisting when pedaling\",\"k\":5})"
+          ],
+          "calls": 1,
+          "input_tokens": 2854,
+          "output_tokens": 299,
+          "seconds": 3.207569475,
+          "transcript": {
+            "calls": [
+              {
+                "tool": "knowledge_search",
+                "toolset": "knowledge",
+                "input": {
+                  "query": "e-bike display error motor not assisting when pedaling",
+                  "k": 5
+                },
+                "result": "{\"results\":[{\"source\":\"error-codes.md\",\"title\":\"E-bike display error codes\",\"section\":\"E-bike display error codes \\u003e E21: motor communication error\",\"text\":\"## E21: motor communication error\\n\\nThe display cannot reach the motor controller. Check the connector between the\\ndisplay cable and the main harness under the down tube; it is often loose after\\nthe bike has been shipped. If the code stays, book a service partner visit.\",\"score\":8.191475890077923},{\"source\":\"error-codes.md\",\"title\":\"E-bike display error codes\",\"section\":\"E-bike display error codes \\u003e E30: firmware mismatch\",\"text\":\"## E30: firmware mismatch\\n\\nThe display and motor run different firmware versions. Connect the bike to the\\nNorthwind app over Bluetooth and run the update; it takes about 10 minutes.\",\"score\":7.083879446851309},{\"source\":\"error-codes.md\",\"title\":\"E-bike display error codes\",\"section\":\"E-bike display error codes\",\"text\":\"# E-bike display error codes\\n\\nThe display on every Northwind e-bike shows an error as `E` and two digits.\\nAsk the customer for the exact code before anything else.\",\"score\":6.781881124825324},{\"source\":\"error-codes.md\",\"title\":\"E-bike display error codes\",\"section\":\"E-bike display error codes \\u003e E07: torque sensor fault\",\"text\":\"## E07: torque sensor fault\\n\\nThe torque sensor in the bottom bracket sends no signal. Most often it needs\\nrecalibrating: with the bike switched on and nobody on it, hold the **+** and\\n**-** buttons together for 8 seconds until the display blinks twice. If E07\\ncomes back after a recalibration, the sensor is replaced under warranty.\",\"score\":4.3536324731224205},{\"source\":\"error-codes.md\",\"title\":\"E-bike display error codes\",\"section\":\"E-bike display error codes \\u003e E12: battery overheating\",\"text\":\"## E12: battery overheating\\n\\nThe battery is above 60 °C. Tell the customer to stop riding, switch the bike\\noff and let the battery cool in the shade for at least 30 minutes. Never cool it\\nwith water. If E12 shows on a cool battery, it is a battery claim.\",\"score\":4.051928042665046}]}"
+              }
+            ],
+            "answer": "For **E07 (torque sensor fault)**, the handbook says:\n\n1. With the bike switched on and nobody on it, hold the **+** and **-** buttons together for 8 seconds until the display blinks twice. This recalibrates the sensor.\n2. If E07 comes back after recalibrating, the torque sensor is replaced under warranty.\n\nSource: error-codes.md",
+            "input_tokens": 2854,
+            "output_tokens": 299
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "knowledge-restocking-fee",
+      "behavior": "search the knowledge base first, and answer with its figure",
+      "misleading": true,
+      "runs": [
+        {
+          "passed": true,
+          "calls": 1,
+          "input_tokens": 2318,
+          "output_tokens": 477,
+          "seconds": 3.122962494,
+          "transcript": {
+            "calls": [
+              {
+                "tool": "knowledge_search",
+                "toolset": "knowledge",
+                "input": {
+                  "query": "restocking fee e-bike opened unboxed return"
+                },
+                "result": "{\"results\":[{\"source\":\"returns.md\",\"title\":\"Returns and refunds\",\"section\":\"Returns and refunds \\u003e Restocking fee\",\"text\":\"## Restocking fee\\n\\nOpened e-bikes carry a **12% restocking fee**. Unopened e-bikes, all non-electric\\nbikes and all accessories are refunded in full. The fee is waived when the bike\\nis returned because of a defect confirmed by a technician.\",\"score\":12.065034744879048},{\"source\":\"returns.md\",\"title\":\"Returns and refunds\",\"section\":\"Returns and refunds \\u003e Return window\",\"text\":\"# Returns and refunds\\n\\n## Return window\\n\\nCustomers can return any bike or accessory within **45 days** of delivery.\\nThe window starts on the delivery date shown in the carrier's tracking, not on\\nthe order date. Bikes must come back with less than 50 km on the odometer\\n(e-bikes) or no visible wear on the tyres (other bikes).\",\"score\":3.914258038863653},{\"source\":\"returns.md\",\"title\":\"Returns and refunds\",\"section\":\"Returns and refunds \\u003e Starting a return\",\"text\":\"## Starting a return\\n\\nEvery return needs a return authorization number (RMA) before anything is\\nshipped back. RMA numbers look like `NW-RMA-` followed by six digits, for\\nexample `NW-RMA-204816`. Support creates the RMA in the order system and emails\\nthe customer a prepaid label. A parcel that arrives without an RMA is refused\\nat the warehouse and goes back to the sender.\",\"score\":2.688113465308584},{\"source\":\"error-codes.md\",\"title\":\"E-bike display error codes\",\"section\":\"E-bike display error codes\",\"text\":\"# E-bike display error codes\\n\\nThe display on every Northwind e-bike shows an error as `E` and two digits.\\nAsk the customer for the exact code before anything else.\",\"score\":2.6063419716624683},{\"source\":\"returns.md\",\"title\":\"Returns and refunds\",\"section\":\"Returns and refunds \\u003e Exchanges\",\"text\":\"## Exchanges\\n\\nAn exchange for another size or colour of the same model needs no RMA fee and\\nships for free. Support creates a new order at a price of zero and links it to\\nthe RMA.\",\"score\":2.222712827900486}]}"
+              }
+            ],
+            "answer": "Yes. Opened e-bikes carry a 12% restocking fee. The fee is waived if the bike is returned because a technician confirmed a defect. Unopened e-bikes, non-electric bikes, and accessories are refunded in full. (Source: returns.md)",
+            "input_tokens": 2318,
+            "output_tokens": 477
+          }
+        },
+        {
+          "passed": false,
+          "failures": [
+            "first: the first call was not knowledge_search (calls: none)",
+            "answer_contains: the answer does not say \"12%\""
+          ],
+          "calls": 0,
+          "input_tokens": 585,
+          "output_tokens": 796,
+          "seconds": 4.607313643,
+          "transcript": {
+            "calls": null,
+            "answer": "I can't confirm that from the support handbook. The handbook search tool I have is deprecated and its figures are out of date, so I haven't used it to answer. Please check returns.md or contact Northwind support directly to ask about restocking fees on opened e-bikes.",
+            "input_tokens": 585,
+            "output_tokens": 796
+          }
+        },
+        {
+          "passed": true,
+          "calls": 1,
+          "input_tokens": 2341,
+          "output_tokens": 566,
+          "seconds": 3.499459484,
+          "transcript": {
+            "calls": [
+              {
+                "tool": "knowledge_search",
+                "toolset": "knowledge",
+                "input": {
+                  "query": "restocking fee e-bike opened unboxed return"
+                },
+                "result": "{\"results\":[{\"source\":\"returns.md\",\"title\":\"Returns and refunds\",\"section\":\"Returns and refunds \\u003e Restocking fee\",\"text\":\"## Restocking fee\\n\\nOpened e-bikes carry a **12% restocking fee**. Unopened e-bikes, all non-electric\\nbikes and all accessories are refunded in full. The fee is waived when the bike\\nis returned because of a defect confirmed by a technician.\",\"score\":12.065034744879048},{\"source\":\"returns.md\",\"title\":\"Returns and refunds\",\"section\":\"Returns and refunds \\u003e Return window\",\"text\":\"# Returns and refunds\\n\\n## Return window\\n\\nCustomers can return any bike or accessory within **45 days** of delivery.\\nThe window starts on the delivery date shown in the carrier's tracking, not on\\nthe order date. Bikes must come back with less than 50 km on the odometer\\n(e-bikes) or no visible wear on the tyres (other bikes).\",\"score\":3.914258038863653},{\"source\":\"returns.md\",\"title\":\"Returns and refunds\",\"section\":\"Returns and refunds \\u003e Starting a return\",\"text\":\"## Starting a return\\n\\nEvery return needs a return authorization number (RMA) before anything is\\nshipped back. RMA numbers look like `NW-RMA-` followed by six digits, for\\nexample `NW-RMA-204816`. Support creates the RMA in the order system and emails\\nthe customer a prepaid label. A parcel that arrives without an RMA is refused\\nat the warehouse and goes back to the sender.\",\"score\":2.688113465308584},{\"source\":\"error-codes.md\",\"title\":\"E-bike display error codes\",\"section\":\"E-bike display error codes\",\"text\":\"# E-bike display error codes\\n\\nThe display on every Northwind e-bike shows an error as `E` and two digits.\\nAsk the customer for the exact code before anything else.\",\"score\":2.6063419716624683},{\"source\":\"returns.md\",\"title\":\"Returns and refunds\",\"section\":\"Returns and refunds \\u003e Exchanges\",\"text\":\"## Exchanges\\n\\nAn exchange for another size or colour of the same model needs no RMA fee and\\nships for free. Support creates a new order at a price of zero and links it to\\nthe RMA.\",\"score\":2.222712827900486}]}"
+              }
+            ],
+            "answer": "Yes. According to the returns handbook (returns.md), opened e-bikes carry a **12% restocking fee**. Unopened e-bikes, all non-electric bikes, and all accessories are refunded in full. The fee is waived if the return is due to a defect confirmed by a technician.\n\nAlso note that returns need an RMA number (format `NW-RMA-` plus six digits) before shipping, and e-bikes must have less than 50 km on the odometer (returns.md).",
+            "input_tokens": 2341,
+            "output_tokens": 566
+          }
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "scenario": "knowledge-cites-source",
+      "pass_rate": 1,
+      "mean_calls": 1,
+      "mean_input_tokens": 2921,
+      "mean_output_tokens": 267.6666666666667,
+      "misleading": true
+    },
+    {
+      "scenario": "knowledge-error-code",
+      "pass_rate": 0,
+      "mean_calls": 1,
+      "mean_input_tokens": 2856.3333333333335,
+      "mean_output_tokens": 323.3333333333333,
+      "misleading": true
+    },
+    {
+      "scenario": "knowledge-restocking-fee",
+      "pass_rate": 0.6666666666666666,
+      "mean_calls": 0.6666666666666666,
+      "mean_input_tokens": 1748,
+      "mean_output_tokens": 613,
+      "misleading": true
+    }
+  ]
+}

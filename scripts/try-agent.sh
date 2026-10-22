@@ -9,7 +9,8 @@
 #   scripts/try-agent.sh --agent search
 #                                    talk to that agent (default: the config's default
 #                                    agent); the config then defaults to search.json,
-#                                    which has two agents, "default" and "search"
+#                                    which has the agents "default", "search", "workspace"
+#                                    and "support" (answers from the sample knowledge base)
 #
 # Needs: Go (any recent version; the right toolchain is fetched from go.mod) or
 # Docker for --docker, curl, and an Anthropic key in ANTHROPIC_API_KEY (or
@@ -27,7 +28,7 @@ while [ $# -gt 0 ]; do
     --docker) use_docker=1 ;;
     --agent) [ $# -ge 2 ] || { echo "--agent needs a name" >&2; exit 2; }; agent="$2"; shift ;;
     --agent=*) agent="${1#--agent=}" ;;
-    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1 (try --help)" >&2; exit 2 ;;
   esac
   shift
@@ -71,10 +72,12 @@ if [ "$use_docker" = 1 ]; then
   echo "==> building the image (make image)"
   make image >/dev/null
   container="agentkit-try-$$"
-  # Skill folders sit next to the config, and its paths are relative to it.
+  # Skill folders and knowledge bases sit next to the config, and its paths
+  # are relative to it.
   skills=()
   config_dir="$(cd "$(dirname "$config")" && pwd)"
   [ ! -d "$config_dir/skills" ] || skills=(-v "$config_dir/skills:/etc/agentkit/skills:ro")
+  [ ! -d "$config_dir/knowledge" ] || skills+=(-v "$config_dir/knowledge:/etc/agentkit/knowledge:ro")
   echo "==> starting container $container on port $port"
   docker run -d --rm --name "$container" --stop-timeout 20 -p "${port}:8080" ${skills[@]+"${skills[@]}"} \
     -e ANTHROPIC_API_KEY="$key" -e AGENTKIT_API_TOKEN="$token" \

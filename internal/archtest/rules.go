@@ -374,6 +374,14 @@ func ModuleRules() Rules {
 				"pkg/tenancy", "pkg/tool", "pkg/harness", "pkg/llm", "pkg/llm/anthropic", "pkg/clock",
 				"pkg/clock/clocktest", "pkg/llm/llmtest", "internal/testkit", "pkg/toolset/toolsettest",
 			},
+			// The knowledge base (T112) is a toolset factory over the search
+			// store's in-memory backend and embedding clients: memory, the
+			// tool abstraction and the factory contract, never the harness or
+			// the server. Its tests add the fake embedder and the fake model.
+			"pkg/knowledge": {
+				"pkg/memory", "pkg/memory/inmem", "pkg/memory/embed", "pkg/tenancy", "pkg/tool", "pkg/toolset",
+				"pkg/memory/memorytest", "pkg/harness", "pkg/llm", "pkg/llm/llmtest", "internal/testkit",
+			},
 			// Completion webhooks (T071): signing, and delivering the
 			// store's notifications through its Admin, never a backend but
 			// in its tests.

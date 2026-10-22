@@ -168,53 +168,9 @@ func TestChat(t *testing.T) {
 		skipOrFail(t, "AGENTKIT_SMOKE_CHAT=0")
 	}
 	tg := newTarget(t)
-	tg.client.Timeout = 2 * time.Minute
-	resp := tg.do(t, http.MethodPost, "/v1/runs",
-		`{"message":"Please echo the word pineapple with the echo tool, then say what it returned."}`, true)
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(resp.Body)
-		t.Fatalf("api: POST /v1/runs: %s: %s", resp.Status, b)
-	}
-	conv := resp.Header.Get("Agentkit-Conversation-Id")
-
-	var types []string
-	var last string
-	sc := bufio.NewScanner(resp.Body)
-	sc.Buffer(make([]byte, 0, 64<<10), 4<<20)
-	for sc.Scan() {
-		data, ok := strings.CutPrefix(sc.Text(), "data: ")
-		if !ok {
-			continue
-		}
-		var ev struct {
-			Type    string `json:"type"`
-			IsError bool   `json:"is_error"`
-		}
-		if err := json.Unmarshal([]byte(data), &ev); err != nil {
-			t.Fatalf("api: run event: %v in %s", err, data)
-		}
-		types, last = append(types, ev.Type), data
-		if ev.Type == "tool_result" && ev.IsError {
-			t.Errorf("toolsets: the echo tool failed: %s", data)
-		}
-		if ev.Type == "run_done" || ev.Type == "run_error" {
-			break
-		}
-	}
-	if err := sc.Err(); err != nil {
-		t.Fatalf("api: reading the run's stream: %v (events: %v)", err, types)
-	}
-	switch {
-	case len(types) == 0:
-		t.Fatal("api: the run's stream had no events")
-	case types[len(types)-1] == "run_error":
-		t.Fatalf("runner: the run failed: %s", last)
-	case types[len(types)-1] != "run_done":
-		t.Fatalf("api: the stream ended before the run did (events: %v)", types)
-	}
-	if !slices.Contains(types, "tool_result") {
-		t.Errorf("runner: no tool was called (events: %v)", types)
+	conv, events := tg.run(t, `{"message":"Please echo the word pineapple with the echo tool, then say what it returned."}`)
+	if !slices.ContainsFunc(events, func(ev runEvent) bool { return ev.Type == "tool_result" }) {
+		t.Errorf("runner: no tool was called (events: %v)", types(events))
 	}
 
 	// The store kept both sides of the exchange.
@@ -223,7 +179,117 @@ func TestChat(t *testing.T) {
 	if len(c.Messages) < 2 {
 		t.Errorf("store: conversation %s has %d messages, want the prompt and the answer", conv, len(c.Messages))
 	}
-	tg.do(t, http.MethodDelete, "/v1/conversations/"+conv, "", true).Body.Close()
+}
+
+// TestKnowledge asks the support agent a question its knowledge base (the
+// handbook toolset, pkg/knowledge, on the toolsets component) answers: the
+// model searches it, and the answer has the handbook's figure. The fake model
+// searches when a message says "handbook"; a real one is told to by the
+// agent's prompt. AGENTKIT_SMOKE_CHAT=0 skips it, as it calls the model.
+func TestKnowledge(t *testing.T) {
+	if os.Getenv("AGENTKIT_SMOKE_CHAT") == "0" {
+		skipOrFail(t, "AGENTKIT_SMOKE_CHAT=0")
+	}
+	tg := newTarget(t)
+	_, events := tg.run(t, `{"agent":"support","message":"Using the handbook: what is the restocking fee for an opened e-bike?"}`)
+	searched := false
+	var answer strings.Builder
+	for _, ev := range events {
+		switch ev.Type {
+		case "tool_result":
+			if strings.HasSuffix(ev.Name, "knowledge_search") || strings.Contains(ev.Content, "returns.md") {
+				searched = true
+			}
+		case "tool_call":
+			if strings.HasSuffix(ev.Name, "knowledge_search") {
+				searched = true
+			}
+		case "text_delta":
+			answer.WriteString(ev.Text)
+		}
+	}
+	if !searched {
+		t.Errorf("runner: the agent did not search the handbook (events: %v)", types(events))
+	}
+	if !strings.Contains(answer.String(), "12%") {
+		t.Errorf("toolsets: the answer does not give the handbook's 12%% fee: %q", answer.String())
+	}
+}
+
+// runEvent is what the suite reads of a run's event.
+type runEvent struct {
+	Type    string `json:"type"`
+	Name    string `json:"name"`
+	Text    string `json:"text"`
+	Content string `json:"content"`
+	IsError bool   `json:"is_error"`
+}
+
+func types(events []runEvent) []string {
+	out := make([]string, len(events))
+	for i, ev := range events {
+		out[i] = ev.Type
+	}
+	return out
+}
+
+// run starts a run with body (POST /v1/runs), reads its stream to the end
+// and returns its conversation, deleted when t ends, and its events. A run
+// that fails, or a tool call that does, fails t.
+func (tg target) run(t *testing.T, body string) (string, []runEvent) {
+	t.Helper()
+	tg.client.Timeout = 2 * time.Minute
+	resp := tg.do(t, http.MethodPost, "/v1/runs", body, true)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("api: POST /v1/runs: %s: %s", resp.Status, b)
+	}
+	conv := resp.Header.Get("Agentkit-Conversation-Id")
+	t.Cleanup(func() {
+		req, err := http.NewRequest(http.MethodDelete, tg.url+"/v1/conversations/"+conv, nil)
+		if err != nil {
+			return
+		}
+		req.Header.Set("Authorization", "Bearer "+tg.token)
+		if resp, err := tg.client.Do(req); err == nil {
+			resp.Body.Close()
+		}
+	})
+
+	var events []runEvent
+	var last string
+	sc := bufio.NewScanner(resp.Body)
+	sc.Buffer(make([]byte, 0, 64<<10), 4<<20)
+	for sc.Scan() {
+		data, ok := strings.CutPrefix(sc.Text(), "data: ")
+		if !ok {
+			continue
+		}
+		var ev runEvent
+		if err := json.Unmarshal([]byte(data), &ev); err != nil {
+			t.Fatalf("api: run event: %v in %s", err, data)
+		}
+		events, last = append(events, ev), data
+		if ev.Type == "tool_result" && ev.IsError {
+			t.Errorf("toolsets: a tool failed: %s", data)
+		}
+		if ev.Type == "run_done" || ev.Type == "run_error" {
+			break
+		}
+	}
+	if err := sc.Err(); err != nil {
+		t.Fatalf("api: reading the run's stream: %v (events: %v)", err, types(events))
+	}
+	switch {
+	case len(events) == 0:
+		t.Fatal("api: the run's stream had no events")
+	case events[len(events)-1].Type == "run_error":
+		t.Fatalf("runner: the run failed: %s", last)
+	case events[len(events)-1].Type != "run_done":
+		t.Fatalf("api: the stream ended before the run did (events: %v)", types(events))
+	}
+	return conv, events
 }
 
 func TestMain(m *testing.M) {

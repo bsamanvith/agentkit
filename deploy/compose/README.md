@@ -80,11 +80,13 @@ images are distroless, with no shell or curl). The ports are bound to
   Compose config `agentkit`. It is the same file the cluster's ConfigMap is
   made from and `make smoke` runs on, so edit it there; then `make
   compose-up` (or `scripts/compose-local.sh up` with `SKIP_BUILD=1`).
-- **Files a toolset reads** (a knowledge folder, say) go under
-  `/etc/agentkit` beside the config, as a bind mount on `toolsets`, relative
-  to `compose.yaml`; the comment there shows the one line to add:
-  `volumes: [../local/agent/knowledge:/etc/agentkit/knowledge:ro]`. The files
-  must be readable by uid 65532.
+- **Files a toolset reads** go under `/etc/agentkit` beside the config, as a
+  bind mount on `toolsets`, relative to `compose.yaml`. The one there is the
+  `handbook` knowledge base's documents, the sample Northwind Bikes handbook
+  that the agent `support` answers from:
+  `volumes: [../local/agent/knowledge:/etc/agentkit/knowledge:ro]`. Edit the
+  folder and restart `toolsets` to change them. The files must be readable by
+  uid 65532.
 - **Secrets**: `deploy/compose/.env` (mode 600, ignored by git) holds random
   RPC and API tokens, the Postgres password and the model key, as
   `AGK_RPC_TOKEN`, `AGK_API_TOKEN`, `AGK_PG_PASSWORD` and

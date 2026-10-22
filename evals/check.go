@@ -116,6 +116,14 @@ func Check(c Checks, tr Transcript) []string {
 			failf("after: %s", msg)
 		}
 	}
+	for _, want := range c.AnswerContains {
+		if !strings.Contains(strings.ToLower(tr.Answer), strings.ToLower(want)) {
+			failf("answer_contains: the answer does not say %q", want)
+		}
+	}
+	if c.CitesSource && !citesSource(tr) {
+		failf("cites_source: the answer names no document a knowledge result came from")
+	}
 	if c.OneProvider {
 		providers := map[string]bool{}
 		for _, call := range tr.Calls {
@@ -218,6 +226,36 @@ func citesResult(tr Transcript) bool {
 				if sameURL(a, u) {
 					return true
 				}
+			}
+		}
+	}
+	return false
+}
+
+// citesSource reports whether the answer names, by its source ("returns.md"),
+// a document of a knowledge_search or knowledge_read result. A title or a
+// file name without its extension is not enough: they are words an answer
+// has anyway ("warranty").
+func citesSource(tr Transcript) bool {
+	answer := strings.ToLower(tr.Answer)
+	for _, call := range tr.Calls {
+		if call.IsError || !strings.HasPrefix(call.Tool, "knowledge_") {
+			continue
+		}
+		var out struct {
+			Source  string                    `json:"source"`
+			Results []struct{ Source string } `json:"results"`
+		}
+		if json.Unmarshal([]byte(call.Result), &out) != nil {
+			continue
+		}
+		sources := []string{out.Source}
+		for _, r := range out.Results {
+			sources = append(sources, r.Source)
+		}
+		for _, src := range sources {
+			if src != "" && strings.Contains(answer, strings.ToLower(src)) {
+				return true
 			}
 		}
 	}

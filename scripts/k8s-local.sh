@@ -75,6 +75,12 @@ up() {
 		echo "k8s-local: no ANTHROPIC_API_KEY: the console works, runs fail with model_auth until you set it and run up again" >&2
 	fi
 
+	# The handbook knowledge base's documents (deploy/k8s/base/split.yaml).
+	# The toolsets component reads them once, when it starts: restart it
+	# when they changed.
+	local kb
+	kb="$(kn create configmap agentkit-knowledge --from-file=deploy/local/agent/knowledge \
+		--dry-run=client -o yaml | kn apply -f -)"
 	# Postgres first: the API's init container migrates it.
 	kn apply -k "$overlay" -l app.kubernetes.io/component=postgres
 	kn rollout status statefulset/postgres --timeout=180s
@@ -83,6 +89,8 @@ up() {
 	# restart to pick them up.
 	if [ "${SKIP_BUILD:-}" != 1 ] || [ "$keychanged" = changed ]; then
 		kn rollout restart "${deployments[@]/#/deployment/}"
+	elif [[ "$kb" == *configured* ]]; then
+		kn rollout restart deployment/toolsets
 	fi
 	for d in "${deployments[@]}"; do
 		kn rollout status "deployment/$d" --timeout=180s

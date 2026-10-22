@@ -19,6 +19,31 @@ var Providers = map[string][]string{
 	"parallel": {"/v1/search", "/v1/extract"},
 }
 
+// Knowledge is the toolset type a scenario may offer besides the
+// connectors: the knowledge base of pkg/knowledge over KnowledgeRoot, with
+// no upstream to fake.
+const Knowledge = "knowledge"
+
+// KnowledgeRoot is the knowledge base the scenarios search, relative to the
+// repository root: the sample handbook the support agent answers from.
+const KnowledgeRoot = "deploy/local/agent/knowledge"
+
+// toolsOf are the tools of a toolset a scenario offers.
+func toolsOf(ts string) []string {
+	if ts == Knowledge {
+		return []string{"knowledge_search", "knowledge_list", "knowledge_read"}
+	}
+	return []string{ts + "_search", ts + "_extract"}
+}
+
+// The agents a scenario may run: the deployed search agent (the default)
+// and the support agent, which answers from the knowledge base
+// (deploy/local/agent/search.json has both).
+const (
+	AgentSearch  = "search"
+	AgentSupport = "support"
+)
+
 // Scenario is one evals/connectors/*.json file: a prompt, the connectors
 // offered, what their faked upstreams answer, and the checks on the run.
 type Scenario struct {
@@ -29,8 +54,11 @@ type Scenario struct {
 	Behavior string `json:"behavior"`
 	// Prompt is the user message.
 	Prompt string `json:"prompt"`
-	// Toolsets are the connectors offered, by type (tavily, exa, parallel);
-	// each is a toolset of that name.
+	// Agent is whose system prompt the run has: AgentSearch (the default)
+	// or AgentSupport.
+	Agent string `json:"agent,omitempty"`
+	// Toolsets are the connectors offered, by type (tavily, exa, parallel,
+	// or knowledge); each is a toolset of that name.
 	Toolsets []string `json:"toolsets"`
 	// PrefixToolNames names the tools "<toolset>__<tool>". Checks name
 	// tools without the prefix either way.
@@ -88,6 +116,12 @@ type Checks struct {
 	After *AfterCheck `json:"after,omitempty"`
 	// OneProvider: every call goes to the tools of one toolset.
 	OneProvider bool `json:"one_provider,omitempty"`
+	// AnswerContains: the answer has each of these texts,
+	// case-insensitively (a figure the tools gave, say).
+	AnswerContains []string `json:"answer_contains,omitempty"`
+	// CitesSource: the answer names a document a knowledge result came
+	// from, by its source ("returns.md").
+	CitesSource bool `json:"cites_source,omitempty"`
 }
 
 // ArgCheck checks a field of the input of the calls of Tool: the first call
@@ -180,12 +214,17 @@ func (s *Scenario) validate(root string) error {
 	if len(s.Toolsets) == 0 {
 		return fmt.Errorf("no toolsets")
 	}
+	if s.Agent != "" && s.Agent != AgentSearch && s.Agent != AgentSupport {
+		return fmt.Errorf("agent %q: %q or %q", s.Agent, AgentSearch, AgentSupport)
+	}
 	tools := map[string]bool{}
 	for _, ts := range s.Toolsets {
-		if _, ok := Providers[ts]; !ok {
-			return fmt.Errorf("toolset %q: one of tavily, exa, parallel", ts)
+		if _, ok := Providers[ts]; !ok && ts != Knowledge {
+			return fmt.Errorf("toolset %q: one of tavily, exa, parallel, knowledge", ts)
 		}
-		tools[ts+"_search"], tools[ts+"_extract"] = true, true
+		for _, n := range toolsOf(ts) {
+			tools[n] = true
+		}
 	}
 	for ts, names := range s.Include {
 		if !slices.Contains(s.Toolsets, ts) || len(names) == 0 {
@@ -281,6 +320,14 @@ func (c Checks) validate(tools map[string]bool) error {
 			return err
 		}
 	}
+	if c.CitesSource && !tools["knowledge_search"] {
+		return fmt.Errorf("cites_source needs the knowledge toolset")
+	}
+	for _, a := range c.AnswerContains {
+		if strings.TrimSpace(a) == "" {
+			return fmt.Errorf("answer_contains has an empty text")
+		}
+	}
 	for _, a := range c.Args {
 		if err := known(a.Tool); err != nil {
 			return err
@@ -306,7 +353,8 @@ func (c Checks) validate(tools map[string]bool) error {
 		}
 	}
 	if c.MaxCalls == nil && len(c.Called) == 0 && len(c.NotCalled) == 0 && c.First == "" &&
-		len(c.Args) == 0 && !c.CitesResultURL && c.After == nil && !c.OneProvider {
+		len(c.Args) == 0 && !c.CitesResultURL && c.After == nil && !c.OneProvider &&
+		len(c.AnswerContains) == 0 && !c.CitesSource {
 		return fmt.Errorf("no checks")
 	}
 	return nil

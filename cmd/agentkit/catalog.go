@@ -13,6 +13,8 @@ import (
 	"github.com/bsamanvith/agentkit/connectors/parallel"
 	"github.com/bsamanvith/agentkit/connectors/tavily"
 	"github.com/bsamanvith/agentkit/pkg/coretools"
+	"github.com/bsamanvith/agentkit/pkg/knowledge"
+	"github.com/bsamanvith/agentkit/pkg/memory/embed"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
@@ -20,13 +22,17 @@ import (
 // behind a build tag will add its factory here from a small file of its own,
 // so config naming a connector that was not compiled in fails at startup
 // (toolset.ErrUnknownType lists the types that were). Connectors log to
-// logger (serve's), their auth mode at startup among other things.
-func newCatalog(logger *slog.Logger) (*toolset.Catalog, error) {
+// logger (serve's), their auth mode at startup among other things. A
+// knowledge base's relative root is relative to configDir, the config
+// file's folder, so a config ships with its documents next to it.
+func newCatalog(logger *slog.Logger, configDir string) (*toolset.Catalog, error) {
 	return toolset.NewCatalog(append([]toolset.Factory{
 		toolset.Demo(),
 		coretools.Math(),
 		coretools.Files(),
 		coretools.User(),
+		knowledge.Factory(knowledge.WithBaseDir(configDir), knowledge.WithLookupEnv(os.LookupEnv),
+			knowledge.WithEmbedOptions(embed.WithLogger(logger))),
 		tavily.Factory(tavily.WithLookupEnv(os.LookupEnv), tavily.WithLogger(logger)),
 		exa.Factory(exa.WithLookupEnv(os.LookupEnv)),
 		gmail.Factory(gmail.WithLookupEnv(os.LookupEnv), gmail.WithLogger(logger)),

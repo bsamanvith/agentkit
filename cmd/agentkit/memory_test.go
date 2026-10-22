@@ -41,7 +41,16 @@ type memoryServer struct {
 
 func startAgents(t *testing.T, config string, models map[string]*llmtest.Fake) (*memoryServer, error) {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "agentkit.json")
+	return startAgentsIn(t, t.TempDir(), config, models, func() (*toolset.Catalog, error) {
+		return toolset.NewCatalog(toolset.Demo(), memoryNamedFactory{})
+	})
+}
+
+// startAgentsIn is startAgents with the config file in dir and the toolsets
+// of catalog.
+func startAgentsIn(t *testing.T, dir, config string, models map[string]*llmtest.Fake, catalog func() (*toolset.Catalog, error)) (*memoryServer, error) {
+	t.Helper()
+	path := filepath.Join(dir, "agentkit.json")
 	if err := os.WriteFile(path, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -51,10 +60,8 @@ func startAgents(t *testing.T, config string, models map[string]*llmtest.Fake) (
 	}
 	s := &memoryServer{flags: map[string]modelFlags{}}
 	c := cli{
-		getenv: func(string) string { return "" },
-		catalog: func() (*toolset.Catalog, error) {
-			return toolset.NewCatalog(toolset.Demo(), memoryNamedFactory{})
-		},
+		getenv:  func(string) string { return "" },
+		catalog: catalog,
 		newModel: func(f modelFlags) (llm.Model, error) {
 			s.mu.Lock()
 			s.flags[f.model] = f

@@ -77,10 +77,11 @@ type cli struct {
 
 // toolsets returns the catalog of connectors: the compiled-in one, or the
 // one a test put in its place (fakes, so no test reaches a paid API). The
-// compiled-in connectors log to log.
-func (c cli) toolsets(log *slog.Logger) (*toolset.Catalog, error) {
+// compiled-in connectors log to log; configDir is the config file's folder
+// ("" for none), which a knowledge base's relative root is relative to.
+func (c cli) toolsets(log *slog.Logger, configDir string) (*toolset.Catalog, error) {
 	if c.catalog == nil {
-		return newCatalog(log)
+		return newCatalog(log, configDir)
 	}
 	return c.catalog()
 }
@@ -186,7 +187,7 @@ func (m *modelFlags) register(fs *flag.FlagSet) {
 
 // demoTools builds the built-in demo toolset (echo, current_time, calculate).
 func (c cli) demoTools(ctx context.Context) (tool.Registry, error) {
-	catalog, err := c.toolsets(slog.New(slog.DiscardHandler)) // the demo toolset logs nothing
+	catalog, err := c.toolsets(slog.New(slog.DiscardHandler), "") // the demo toolset logs nothing
 	if err != nil {
 		return nil, err
 	}

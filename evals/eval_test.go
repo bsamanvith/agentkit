@@ -160,7 +160,7 @@ func forwarder(t *testing.T, key string) http.Handler {
 
 func runScenario(t *testing.T, bin string, s Scenario, model string, misleading bool, runs int, upURL, proxyURL, modelURL string, up *Upstream, proxy *DenyProxy) Result {
 	res := Result{Scenario: s.Name, Behavior: s.Behavior, Misleading: misleading}
-	srv, err := startServe(t, bin, serveConfig(s, model, misleading, upURL), proxyURL, modelURL)
+	srv, err := startServe(t, bin, serveConfig(s, model, misleading, upURL, supportAgent(t)), proxyURL, modelURL)
 	if err != nil {
 		t.Errorf("%s: %v", s.Name, err)
 		return res
@@ -189,14 +189,69 @@ func runScenario(t *testing.T, bin string, s Scenario, model string, misleading 
 	return res
 }
 
-func serveConfig(s Scenario, model string, misleading bool, upURL string) []byte {
+// support is what a scenario of the support agent runs with: the deployed
+// agent's prompt and its handbook's description (deploy/local/agent/search.json),
+// and the handbook's absolute path (the server's config is in a temporary
+// folder).
+type support struct{ system, description, root string }
+
+func supportAgent(t *testing.T) support {
+	b, err := os.ReadFile(filepath.Join(root, "deploy", "local", "agent", "search.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg struct {
+		MCP struct {
+			Toolsets []struct {
+				Name     string
+				Settings struct{ Description string }
+			}
+		}
+		Agents []struct{ Name, System string }
+	}
+	if err := json.Unmarshal(b, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	var s support
+	for _, a := range cfg.Agents {
+		if a.Name == AgentSupport {
+			s.system = a.System
+		}
+	}
+	for _, ts := range cfg.MCP.Toolsets {
+		if ts.Name == "handbook" {
+			s.description = ts.Settings.Description
+		}
+	}
+	if s.root, err = filepath.Abs(filepath.Join(root, KnowledgeRoot)); err != nil || s.system == "" || s.description == "" {
+		t.Fatalf("search.json: no support agent or handbook toolset (%v)", err)
+	}
+	return s
+}
+
+// agentSystem is the system prompt of the scenario's agent.
+func agentSystem(s Scenario, sup support) string {
+	if s.Agent == AgentSupport {
+		return sup.system
+	}
+	return system
+}
+
+func serveConfig(s Scenario, model string, misleading bool, upURL string, sup support) []byte {
 	var toolsets []map[string]any
 	for _, ts := range s.Toolsets {
 		settings := map[string]any{}
 		if extra, ok := s.Settings[ts]; ok {
 			_ = json.Unmarshal(extra, &settings)
 		}
-		settings["base_url"] = upURL + "/" + s.Name + "/" + ts
+		if ts == Knowledge {
+			settings["root"] = sup.root
+			if _, ok := settings["description"]; !ok {
+				settings["description"] = sup.description
+			}
+		} else {
+			settings["base_url"] = upURL + "/" + s.Name + "/" + ts
+		}
 		entry := map[string]any{"name": ts, "type": ts, "settings": settings}
 		if names := s.Include[ts]; len(names) > 0 {
 			entry["include"] = names
@@ -210,7 +265,7 @@ func serveConfig(s Scenario, model string, misleading bool, upURL string) []byte
 		"mcp": map[string]any{"toolsets": toolsets},
 		"agent": map[string]any{
 			"model":             map[string]any{"provider": "anthropic", "id": model, "effort": "low"},
-			"system":            system,
+			"system":            agentSystem(s, sup),
 			"toolsets":          s.Toolsets,
 			"prefix_tool_names": s.PrefixToolNames,
 			"max_turns":         10,

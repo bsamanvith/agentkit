@@ -62,3 +62,10 @@ since Postgres keeps the password it started with; a different
 `ANTHROPIC_API_KEY` on a later `up` replaces the stored key. To change the
 agents or toolsets, edit `base/config.json` (shared with Compose and
 `make smoke`) and run `make k8s-up`.
+
+The agent `support` answers from the `handbook` knowledge base, the sample
+Northwind Bikes handbook in `deploy/local/agent/knowledge`. `up` stores those
+documents in the ConfigMap `agentkit-knowledge`, which the toolsets pod
+mounts at `/etc/agentkit/knowledge`, and restarts the toolsets when they
+changed. To serve your own documents, put Markdown files in that folder (it
+must stay flat: a ConfigMap has no subfolders) and run `make k8s-up`.

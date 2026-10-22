@@ -9,6 +9,13 @@
 # AGENTKIT_BUS to redis:// for more replicas) to keep it. Every pod mounts
 # the same config, the ConfigMap agentkit-config that kustomization.yaml makes
 # from config.json.
+#
+# The toolsets pod also mounts the ConfigMap "agentkit-knowledge" at
+# /etc/agentkit/knowledge: the documents of the "handbook" knowledge base
+# (pkg/knowledge), a flat folder of Markdown files. scripts/k8s-local.sh
+# makes it from deploy/local/agent/knowledge, the sample Northwind Bikes
+# handbook. Without it the folder is empty and the handbook toolset, which is
+# optional, is skipped (GET /v1/toolsets says why).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -43,8 +50,12 @@ spec:
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities: {drop: [ALL]}
-          volumeMounts: [{name: config, mountPath: /etc/agentkit, readOnly: true}]
-      volumes: [{name: config, configMap: {name: agentkit-config}}]
+          volumeMounts:
+            - {name: config, mountPath: /etc/agentkit, readOnly: true}
+            - {name: knowledge, mountPath: /etc/agentkit/knowledge, readOnly: true}
+      volumes:
+        - {name: config, configMap: {name: agentkit-config}}
+        - {name: knowledge, configMap: {name: agentkit-knowledge, optional: true}}
 ---
 apiVersion: v1
 kind: Service

@@ -29,6 +29,14 @@ func (s *skillSource) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// configDir is the folder of the config file at path, "" for no file.
+func configDir(path string) string {
+	if path == "" {
+		return ""
+	}
+	return filepath.Dir(path)
+}
+
 // resolveSkillPaths makes the agents' relative skill paths relative to the
 // config file's folder, so a config ships with its skills next to it.
 func resolveSkillPaths(agents []agentDef, configPath string) {

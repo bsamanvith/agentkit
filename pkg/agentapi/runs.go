@@ -20,6 +20,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/runner"
 	"github.com/bsamanvith/agentkit/pkg/store"
 	"github.com/bsamanvith/agentkit/pkg/stream"
+	"github.com/bsamanvith/agentkit/pkg/tenancy"
 )
 
 // runStatus is the run's status on the wire, at now.
@@ -316,15 +317,19 @@ var errReleased = errors.New("the run is no longer held")
 
 // watchRun sends emit the events of a run another process runs, after the
 // ID after, from the log and the bus, until its last event. When the process
-// lets the run go without that event reaching the bus (it crashed, or was
-// stopped), it ends with the run's stored events and the last event its
-// status says; when another process takes it over, it follows that one.
-// Readers share one per run through [Server.joinView] (T103).
+// lets the run go, the watch first reads what the bus has of it on the
+// subscription it has ([tail]), or on another if that one lags: the holder
+// lets a run go before it publishes its last event, and a stopped run's is
+// streamed, not stored. Without that event (the process crashed, or was
+// slow to publish it), it ends with the run's stored events and the last
+// event its status says; when another process takes it over, it follows
+// that one. Readers share one per run through [Server.joinView] (T103).
 func (s *Server) watchRun(ctx context.Context, run store.Run, after bus.ID, emit func(Event)) {
 	poll := s.poll()
 	for {
 		wctx, cancel := context.WithCancelCause(ctx)
-		stopCheck := s.checkHeld(wctx, cancel, run.ID, poll)
+		tl := &tail{after: after, cancel: cancel}
+		stopCheck := s.checkHeld(wctx, tl, run.ID, poll)
 		for se, err := range stream.Watch(wctx, s.store, s.bus, run.ID, after, isTerminal, stream.WithClock(s.cfg.clock), stream.WithPoll(poll)) {
 			if err != nil {
 				if !errors.Is(context.Cause(wctx), errReleased) && ctx.Err() == nil {
@@ -344,6 +349,7 @@ func (s *Server) watchRun(ctx context.Context, run store.Run, after bus.ID, emit
 				cancel(nil)
 				return
 			}
+			tl.emitted(after)
 		}
 		stopCheck()
 		released := errors.Is(context.Cause(wctx), errReleased)
@@ -359,7 +365,7 @@ func (s *Server) watchRun(ctx context.Context, run store.Run, after bus.ID, emit
 		if held(cur, s.cfg.clock.Now()) {
 			continue // taken over: follow its new process
 		}
-		if s.pending(ctx, run.ID, &after, emit) {
+		if tl.short() && s.pending(ctx, run.ID, &after, emit) {
 			return
 		}
 		rp, err := s.storedEnding(ctx, cur, poll)
@@ -445,9 +451,11 @@ func (s *Server) storedEnding(ctx context.Context, run store.Run, poll time.Dura
 	}
 }
 
-// checkHeld cancels ctx with errReleased once nobody holds the run, checking
-// every d; the returned function stops it and waits for it.
-func (s *Server) checkHeld(ctx context.Context, cancel context.CancelCauseFunc, runID string, d time.Duration) func() {
+// checkHeld checks every d that the run is held. Once nobody holds it, it
+// has tl stop the watch at the topic's newest message, or after endingWait
+// if the watch's subscription does not get there; the returned function
+// stops it and waits for it.
+func (s *Server) checkHeld(ctx context.Context, tl *tail, runID string, d time.Duration) func() {
 	t := time.NewTicker(d) // real time, as obey's poll
 	stop, done := make(chan struct{}), make(chan struct{})
 	go func() {
@@ -462,16 +470,108 @@ func (s *Server) checkHeld(ctx context.Context, cancel context.CancelCauseFunc, 
 				return
 			}
 			run, err := s.store.Get(ctx, runID)
-			if err == nil && !held(run, s.cfg.clock.Now()) {
-				cancel(errReleased)
+			if err != nil || held(run, s.cfg.clock.Now()) {
+				continue
+			}
+			last, ok := s.lastOnBus(ctx, runID)
+			if !ok {
+				tl.giveUp()
 				return
 			}
+			tl.letGo(last)
+			wait := time.NewTimer(endingWait) // real time, as the poll
+			defer wait.Stop()
+			select {
+			case <-wait.C:
+				tl.giveUp()
+			case <-stop:
+			case <-ctx.Done():
+			}
+			return
 		}
 	}()
 	var once sync.Once
 	return func() {
 		once.Do(func() { close(stop) })
 		<-done
+	}
+}
+
+// lastOnBus is the ID of the newest message on the run's topic.
+func (s *Server) lastOnBus(ctx context.Context, runID string) (bus.ID, bool) {
+	t, err := tenancy.Require(ctx)
+	if err != nil {
+		return bus.ID{}, false
+	}
+	topic, err := bus.RunTopic(t, runID)
+	if err != nil {
+		return bus.ID{}, false
+	}
+	last, err := s.bus.Last(ctx, topic)
+	if err != nil {
+		if ctx.Err() == nil {
+			s.log.Error("reading what the bus has of a run let go", "run_id", runID, "err", err)
+		}
+		return bus.ID{}, false
+	}
+	return last, true
+}
+
+// tail stops a watch of a run let go once it has emitted what the bus had
+// of the run then: the messages the holder published before and just after
+// it let the run go, deltas among them, which the log does not have (T090:
+// a follower numbers a turn's text as its holder did only from the bus).
+// The watch reads them on the subscription it has: one that stopped at once
+// would need another to read them, and a run's viewers share one (T103).
+// Only when that subscription does not bring them in time does the watch
+// read them with another ([Server.pending]).
+type tail struct {
+	cancel context.CancelCauseFunc
+
+	mu       sync.Mutex
+	after    bus.ID // the last event the watch emitted
+	draining bool   // the run was let go: stop at last
+	last     bus.ID // the topic's newest message when the run was let go
+	behind   bool   // the watch stopped before it got to last
+}
+
+// giveUp stops the watch short of what the bus has of the run.
+func (tl *tail) giveUp() {
+	tl.mu.Lock()
+	defer tl.mu.Unlock()
+	if tl.draining && tl.after.Compare(tl.last) >= 0 {
+		return // it got there
+	}
+	tl.behind = true
+	tl.cancel(errReleased)
+}
+
+// short reports whether the watch stopped short of what the bus had.
+func (tl *tail) short() bool {
+	tl.mu.Lock()
+	defer tl.mu.Unlock()
+	return tl.behind
+}
+
+// emitted records that the watch emitted the event id, and stops it if the
+// run was let go and that was the last the bus had.
+func (tl *tail) emitted(id bus.ID) {
+	tl.mu.Lock()
+	defer tl.mu.Unlock()
+	tl.after = id
+	if tl.draining && id.Compare(tl.last) >= 0 {
+		tl.cancel(errReleased)
+	}
+}
+
+// letGo records that the run was let go when the bus had up to last, and
+// stops the watch if it has emitted that already.
+func (tl *tail) letGo(last bus.ID) {
+	tl.mu.Lock()
+	defer tl.mu.Unlock()
+	tl.draining, tl.last = true, last
+	if tl.after.Compare(last) >= 0 {
+		tl.cancel(errReleased)
 	}
 }
 

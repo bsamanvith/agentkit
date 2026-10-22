@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -167,7 +168,11 @@ func TestConnectAccounts(t *testing.T) {
 	if resp.StatusCode != http.StatusOK || json.Unmarshal(body, &started) != nil {
 		t.Fatalf("connect = %d %s", resp.StatusCode, body)
 	}
-	nf := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	// The browser that started the flow finishes it: it keeps the binding
+	// cookie the API set, which the callback (same host) needs.
+	jar, _ := cookiejar.New(nil)
+	jar.SetCookies(resp.Request.URL, resp.Cookies())
+	nf := &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err = nf.Get(started.AuthorizeURL)
 	if err != nil {
 		t.Fatal(err)

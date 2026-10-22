@@ -2,6 +2,7 @@ package connect
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"html"
 	"net/http"
@@ -23,8 +24,10 @@ const maxQuery = 8 << 10
 // Callback serves GET [CallbackPath], where the provider sends the browser
 // back with a code (or an error) and the state. It needs no
 // authentication: the state names the flow, and the flow's own tenant and
-// user, never the request's, are where the tokens are stored. The state is
-// used up on the first request that names it, even one that fails.
+// user, never the request's, are where the tokens are stored. The browser
+// must carry the cookie [Service.Connect] set (the flow is bound to it), or
+// the callback refuses it with a page. The state is used up on the first
+// request that names it, even one that fails, and the cookie is cleared.
 func (s *Service) Callback() http.Handler {
 	return http.HandlerFunc(s.callback)
 }
@@ -59,6 +62,17 @@ func (s *Service) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log := s.log.With("slot", f.Slot, "tenant", f.Tenant, "user", f.User)
+	name := CookieName(state)
+	http.SetCookie(w, &http.Cookie{Name: name, Value: "", Path: f.CookiePath, MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: overTLS(r)})
+	if !boundTo(r, name, f.Binding) {
+		// Not the browser that started the flow: someone else's
+		// authorization URL (RFC 9700 §4.7). Nothing is exchanged, and the
+		// flow's return URL is not followed.
+		log.WarnContext(ctx, "connect flow finished in a browser that did not start it")
+		page(w, http.StatusForbidden, "This sign-in was not started in this browser, so the account was not connected. "+
+			"If you meant to connect it, start connecting the account again here, and finish in this same browser.")
+		return
+	}
 	switch {
 	case !now.Before(f.Expires):
 		log.InfoContext(ctx, "connect flow expired")
@@ -80,6 +94,26 @@ func (s *Service) callback(w http.ResponseWriter, r *http.Request) {
 	}
 	log.InfoContext(ctx, "account connected")
 	s.finish(w, r, f, wire.CallbackConnected)
+}
+
+// boundTo reports whether r carries the cookie name whose value's SHA-256
+// is want (a flow's Binding), compared in constant time. A flow with no
+// binding (kept before flows had one) matches no browser.
+func boundTo(r *http.Request, name, want string) bool {
+	c, err := r.Cookie(name)
+	if err != nil || c.Value == "" || want == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(bindingHash(c.Value)), []byte(want)) == 1
+}
+
+// overTLS reports whether r came over TLS, to this server or to a proxy
+// that says so (X-Forwarded-Proto: https), as the agent API decides the
+// binding cookie's Secure. Believing any proxy is safe here: Secure only
+// narrows where the cookie goes.
+func overTLS(r *http.Request) bool {
+	p := r.Header.Values("X-Forwarded-Proto")
+	return r.TLS != nil || (len(p) == 1 && strings.EqualFold(strings.TrimSpace(p[0]), "https"))
 }
 
 // reasonError is a failure whose message is safe to log: no body, no value.

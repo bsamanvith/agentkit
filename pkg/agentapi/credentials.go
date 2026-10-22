@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"slices"
+	"strings"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/auth"
@@ -50,9 +51,12 @@ type Credentials interface {
 	// Delete removes the credential ([ErrCredentialNotFound] if none).
 	Delete(ctx context.Context, user, slot string) error
 	// Connect starts connecting an account to slot with OAuth2: it
-	// returns the provider's page to send the browser to. The callback
-	// stores the tokens for user in the tenant of ctx.
-	Connect(ctx context.Context, user, slot string, req wire.ConnectRequest) (wire.ConnectResponse, error)
+	// returns the provider's page to send the browser to, and the cookie
+	// that binds the flow to the browser that asked (RFC 9700 §4.7), which
+	// the API sets on its answer, Secure when the request came over TLS.
+	// The callback stores the tokens for user in the tenant of ctx, and
+	// only for a browser that carries the cookie.
+	Connect(ctx context.Context, user, slot string, req wire.ConnectRequest) (wire.ConnectResponse, *http.Cookie, error)
 	// Status is the credential's status for GET /v1/toolsets: one of
 	// wire.CredentialConnected, CredentialNotConnected and
 	// CredentialNeedsReconnect.
@@ -200,13 +204,25 @@ func (s *Server) connectCredential(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	resp, err := s.cfg.credentials.Connect(ctx, user, slot, req)
+	resp, cookie, err := s.cfg.credentials.Connect(ctx, user, slot, req)
 	if err != nil {
 		s.credentialsError(w, "connecting credential "+quote(slot), err)
 		return
 	}
+	if cookie != nil {
+		cookie.Secure = cookie.Secure || overTLS(r)
+		http.SetCookie(w, cookie) // writeJSON says no-store
+	}
 	resp.V = WireVersion
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// overTLS reports whether r came over TLS, to this server or to a proxy
+// that says so (X-Forwarded-Proto: https). Any proxy is believed: it only
+// decides a cookie's Secure, which narrows where the cookie goes.
+func overTLS(r *http.Request) bool {
+	p := r.Header.Values("X-Forwarded-Proto")
+	return r.TLS != nil || (len(p) == 1 && strings.EqualFold(strings.TrimSpace(p[0]), "https"))
 }
 
 func (s *Server) credentialsError(w http.ResponseWriter, what string, err error) {

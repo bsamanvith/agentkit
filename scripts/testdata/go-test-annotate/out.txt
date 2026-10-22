@@ -1,0 +1,14 @@
+ok  	ex/passed	0.1s
+--- FAIL: TestBroken (0.00s)
+    x_test.go:4: got 1, want: 2
+--- FAIL: TestParent (0.00s)
+    --- FAIL: TestParent/child (0.00s)
+        x_test.go:9: child broke
+FAIL
+FAIL	ex/failed	0.2s
+panic: boom
+
+goroutine 7 [running]:
+ex/panicked.TestPanics(0xc0)
+FAIL	ex/panicked	0.1s
+FAIL	ex/nobuild [setup failed]

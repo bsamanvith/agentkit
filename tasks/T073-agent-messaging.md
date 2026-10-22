@@ -123,6 +123,7 @@ Review of PR #83 (each fix has a test that failed before it):
 - **Wake-up runs were free.** A reply's or notice's run was marked done at delivery, so its usage never reached the thread's token budget. Every delivered message now stays `running` until its run ends and adds the run's tokens; only a request sends a reply. Test: `TestAWakeUpCountsInTheThreadsTokens`.
 - **`can_message` lent toolsets.** A key may run an agent only if it may use all of the agent's toolsets (`access.agent`), but a key that may run A could use B's toolsets through A's messages. `agentmsg.New` now refuses `can_message` to an agent with a toolset (or runtime toolset) the sender does not have. Tests: `TestNoMessagingToMoreToolsets`, `TestServeAgentMessagingRefused` ("toolsets").
 - **Exactly-once under clock skew.** `delivered` stopped looking at entries older than the message's first delivery, stamped by possibly another replica's clock; a prompt stamped by a clock behind it was missed and the message ran twice. It now looks back `maxClockSkew` (1 minute) further. Test: `TestDeliveredOnceAcrossSkewedClocks`.
+- **Stored agents (T075, merged first) and `can_message`.** The messenger knows only the config file's agents, so a stored agent with `can_message` would have got no tools without a word; the registry now refuses the field, as it refuses memory and UI. Test: `TestStoredAgentRefused` ("can_message").
 - **Test gap:** no test caught a waiting sender taking another conversation's stop notice (M20). Test: `TestAWaitTakesOnlyItsOwnNotice`.
 
 Considered and left as they are:

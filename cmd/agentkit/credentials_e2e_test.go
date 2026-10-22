@@ -1,3 +1,5 @@
+//go:build !noagent
+
 package main
 
 // End-to-end test of credentials in tools (T044): toolsets whose specs name

@@ -85,10 +85,26 @@ Each planted alone (`scratchpad/t086/mutate.py`), then `go test -count=1` on the
 
 Also caught while writing the tests: `steered` events marshaled without their `steering` (the wire form is per type), and replayed turn text placed before `steered`.
 
+### Review fixes (PR #89)
+
+Each with a test that failed before the fix.
+
+- **Toolsets:** `POST /v1/tasks/{id}/messages` and `/resume` did not check that the key may use every toolset of the task's agent, as a message to the conversation, an answer and `/v1/runs/{id}/resume` do; a narrow key could steer a task into tools it may not use, or withdraw its pause. Now 404 as for no task (`mayDirect`); pause stays open, as stop is. `TestSteeringNeedsTheAgentsToolsets`.
+- **Background limit:** a paused task resumed through `POST /v1/runs/{id}/resume` or an empty message to its conversation was not counted against the tenant's background runs. The count now sits in `relaunch` for every paused task (`backgroundLimit`, shared with `POST /v1/tasks`). `TestResumingAPausedTaskCountsAgainstTheLimit`.
+- **Resume after the wait:** `/resume` waited for a just-paused task to let its lease go, then relaunched it from the run read before the wait, so it answered 409 `run_leased` for a task free to resume. It reads the run again. `TestResumeWaitsForThePausedTaskToLetGo`.
+- **List filter:** `GET /v1/runs?status=paused` answered 400 although the spec lists `paused`. `TestPausedTasksAreListedByStatus`.
+- **Pause lost on a stop:** an execution stopped (Shutdown, a stop, the consumer) right after it consumed its pause was left running, the pause gone, so recovery ran it on. A pause acted on is stored under the lease, unless the lease is lost. `TestAPauseTakenAsTheExecutionStopsIsKept`.
+- **Resume racing the pause:** a resume sent while the run consumed its pause found the run still running, so its sender left it to the run, which then paused with the resume unread. The run reads its commands again after consuming a pause (`resumedSince`); what is left is the one write that stores the pause. `TestAResumeSentAsThePauseIsTakenWithdrawsIt`.
+- **Flaky test:** `TestTaskPauseAndResume` wanted the resumed task `running`, but its model answers at once (14 failures in 100 runs with `-race`); it accepts done too.
+- Spec: the two 404s, and 429 `too_many_background_runs` on `/v1/runs/{id}/resume` and `POST /v1/runs`.
+
+Checked and left: the SQL of `ListResumable`, `ListResumableAll`, `ClaimNext` (and the `runs_queue`, `runs_resumable` partial indexes) names `running` and `failed` explicitly in Postgres, SQLite and memory, so `paused` is skipped with no migration; no table has a CHECK on `status` or `kind`. Mixed results and text in one user message is valid for Anthropic, and the OpenAI-compatible adapter sends the results as `tool` messages and then the text as one `user` message. Mutations planted in review, each caught: dedupe off by one (`TestSteeringReachesARunAcrossACrash`), a resume not withdrawing a pause (`TestResumeWithdrawsAPauseNotActedOn`), `obey` consuming the runner's commands (`TestTaskSteering` and four more), any block after results (`TestInvalidInputIsRejectedBeforeAnyModelCall`). One survived: `obey` acting on a stop behind steering at once, not at the boundary; no test pins that ordering at the API (a deterministic one needs a hook into `obey`'s poll).
+
 ### Owner questions
 
 - Should the wall-clock limit stop while a task is paused? Now it keeps counting, so a long pause can fail the task when it is resumed.
 - Should a pause expire, or be listed in the console (the paused tasks)? Nothing resumes one on its own.
+- A stop sent through another replica behind a pause stays pending once the task pauses, and interrupts the task's next execution right after a resume (recovery then takes it up). Should a pause consume the stops behind it, or should a stop on a task wait less than its next boundary?
 
 ### For T087 and the console (E14)
 

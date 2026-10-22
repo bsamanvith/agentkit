@@ -128,14 +128,9 @@ func (s *Server) startTask(ctx context.Context, t taskStart) (store.Run, *refusa
 	// Counting the tenant's tasks and starting this one are one step here:
 	// two requests at once cannot both take the last place.
 	s.tmu.Lock()
-	n, err := s.backgroundRuns(ctx)
-	if err != nil {
+	if rf := s.backgroundLimit(ctx); rf != nil {
 		s.tmu.Unlock()
-		return store.Run{}, s.internalRefusal("counting the background runs", err)
-	}
-	if n >= s.cfg.maxBackground {
-		s.tmu.Unlock()
-		return store.Run{}, &refusal{status: http.StatusTooManyRequests, retryAfter: retryAfterTask, err: &Error{Code: CodeTooManyBackgroundRuns, Retryable: true, Message: fmt.Sprintf("%d background runs are going on, the most a tenant may have; retry once one has ended", n)}}
+		return store.Run{}, rf
 	}
 	if apiErr := s.admit(); apiErr != nil {
 		s.tmu.Unlock()
@@ -198,6 +193,20 @@ func (s *Server) startTask(ctx context.Context, t taskStart) (store.Run, *refusa
 		return store.Run{}, s.internalRefusal("storing the task's webhook", notifyErr)
 	}
 	return x.Run, nil
+}
+
+// backgroundLimit refuses one more background run of the tenant when it has
+// as many going on as the server allows (429), or when they cannot be
+// counted; nil lets it start. The caller holds s.tmu until it has started it.
+func (s *Server) backgroundLimit(ctx context.Context) *refusal {
+	n, err := s.backgroundRuns(ctx)
+	if err != nil {
+		return s.internalRefusal("counting the background runs", err)
+	}
+	if n >= s.cfg.maxBackground {
+		return &refusal{status: http.StatusTooManyRequests, retryAfter: retryAfterTask, err: &Error{Code: CodeTooManyBackgroundRuns, Retryable: true, Message: fmt.Sprintf("%d background runs are going on, the most a tenant may have; retry once one has ended", n)}}
+	}
+	return nil
 }
 
 // backgroundRuns counts the tenant's background runs going on (queued or

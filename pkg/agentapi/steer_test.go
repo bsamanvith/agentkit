@@ -205,8 +205,10 @@ func TestTaskPauseAndResume(t *testing.T) {
 		t.Fatalf("after a restart the task is %s, want paused", run.Status)
 	}
 
-	if run := c.taskCommand(task.ID, "resume", http.StatusAccepted); run.Status != agentapi.StatusRunning {
-		t.Errorf("resumed, the task is %s, want running", run.Status)
+	// The model answers at once: the task may be done by the time the
+	// resume answers.
+	if run := c.taskCommand(task.ID, "resume", http.StatusAccepted); run.Status != agentapi.StatusRunning && run.Status != agentapi.StatusDone {
+		t.Errorf("resumed, the task is %s, want running (or done already)", run.Status)
 	}
 	if run := c.waitTask(task.ID); run.Status != agentapi.StatusDone || run.Answer != "Done, without the PDF." || run.Turns != 2 {
 		t.Fatalf("task = %s, want done in 2 turns", jsonOf(run))

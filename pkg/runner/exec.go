@@ -886,8 +886,12 @@ func (x *exec) finish(ctx, runCtx context.Context, out outcome) (Event, error) {
 		}
 		return Event{}, &RunError{Run: x.run, Err: ErrTimeLimit}
 	}
-	if runCtx.Err() != nil && out.kind != outCompleted {
+	_, gone := errors.AsType[leaseLost](context.Cause(runCtx))
+	if runCtx.Err() != nil && out.kind != outCompleted && (out.kind != outPaused || gone) {
 		// Interrupted: by Cancel, by the consumer, by ctx or by a lost lease.
+		// A pause acted on (its command consumed) is stored all the same,
+		// under the lease: otherwise it would be lost, and the run go on
+		// once resumed by recovery.
 		// The run stays as it is, for whoever continues it.
 		cause := context.Cause(runCtx)
 		x.release(ctx)

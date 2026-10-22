@@ -3,7 +3,6 @@ package agentapi
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -49,7 +48,7 @@ func (s *Server) steerTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	run, ok := s.task(ctx, w, r.PathValue("id"))
-	if !ok {
+	if !ok || !s.mayDirect(ctx, w, r, run) {
 		return
 	}
 	stored, ok := s.sendTask(ctx, w, run, cmd)
@@ -91,7 +90,7 @@ func (s *Server) resumeTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	run, ok := s.task(ctx, w, r.PathValue("id"))
-	if !ok {
+	if !ok || !s.mayDirect(ctx, w, r, run) {
 		return
 	}
 	if run.Status != store.StatusPaused {
@@ -114,22 +113,13 @@ func (s *Server) resumeTask(w http.ResponseWriter, r *http.Request) {
 	if ctx.Err() != nil {
 		return
 	}
-	// A resumed task counts against the tenant's background runs again.
-	s.tmu.Lock()
-	n, err := s.backgroundRuns(ctx)
-	if err != nil {
-		s.tmu.Unlock()
-		s.internal(w, "counting the background runs", err)
+	// Read again: the run read before the wait may still show the lease
+	// let go since, which relaunch would take for a run going on.
+	if run, ok = s.task(ctx, w, run.ID); !ok {
 		return
 	}
-	if n >= s.cfg.maxBackground {
-		s.tmu.Unlock()
-		w.Header().Set("Retry-After", retryAfterTask)
-		writeError(w, http.StatusTooManyRequests, &Error{Code: CodeTooManyBackgroundRuns, Retryable: true, Message: fmt.Sprintf("%d background runs are going on, the most a tenant may have; retry once one has ended", n)})
-		return
-	}
+	// relaunch counts a paused task against the tenant's background runs.
 	h, _, ok := s.relaunch(ctx, w, r, run, CodeRunLeased)
-	s.tmu.Unlock()
 	if !ok {
 		return
 	}
@@ -156,6 +146,32 @@ func (s *Server) task(ctx context.Context, w http.ResponseWriter, id string) (st
 	}
 	writeError(w, http.StatusNotFound, &Error{Code: CodeNotFound, Message: "no task " + quote(id) + ": run " + quote(id) + " is not a task"})
 	return run, false
+}
+
+// mayDirect reports whether the request's principal may direct the task: a
+// steering message or a resume runs the agent's tools, as a message to the
+// conversation or a resume of it does, so only for a request that may use
+// them all. It answers 404 otherwise, as for no task.
+func (s *Server) mayDirect(ctx context.Context, w http.ResponseWriter, r *http.Request, run store.Run) bool {
+	acc := accessOf(r)
+	if !acc.ok {
+		return true
+	}
+	c, err := s.store.GetConversation(ctx, run.ConversationID)
+	if err != nil {
+		s.internal(w, "reading conversation "+quote(run.ConversationID), err)
+		return false
+	}
+	a, err := s.agentFor(ctx, c.Agent, run.AgentVersion)
+	if err != nil && !errors.Is(err, errNoAgent) {
+		s.internal(w, "reading agent "+quote(c.Agent), err)
+		return false
+	}
+	if a != nil && !acc.agent(a) {
+		writeError(w, http.StatusNotFound, &Error{Code: CodeNotFound, Message: "no task " + quote(run.ID) + ": run " + quote(run.ID) + " is not a task"})
+		return false
+	}
+	return true
 }
 
 // commandKey is the request's idempotency key, or a new one.

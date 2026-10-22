@@ -170,7 +170,36 @@ func (x *exec) deliver(ctx context.Context, t *turns, b boundary) (paused bool, 
 	if err := r.cmds.ConsumeCommands(ctx, x.run.ID, x.owner, b.through); err != nil {
 		return false, nil // the steering is stored; the run goes on
 	}
+	if b.pause && x.resumedSince(ctx) {
+		return false, nil
+	}
 	return b.pause, nil
+}
+
+// resumedSince reports whether a resume was sent after the pause the run
+// has just consumed, before the run is paused: one that a request sent
+// while the run still showed running, which would otherwise wait unread
+// with the run paused. The pauses and resumes pending are consumed, the
+// last of them deciding, as at a boundary. A resume sent after this read
+// finds the run paused (but for the one write that pauses it), and its
+// sender continues it.
+func (x *exec) resumedSince(ctx context.Context) bool {
+	cmds, err := x.r.cmds.PendingCommands(ctx, x.run.ID, store.MaxPageLimit)
+	if err != nil {
+		return false
+	}
+	var through int64
+	resumed := false
+	for _, c := range cmds {
+		if c.Type != CommandPause && c.Type != CommandResume {
+			break // steering, or not the runner's: read at the next boundary
+		}
+		through, resumed = c.Seq, c.Type == CommandResume
+	}
+	if through == 0 || x.r.cmds.ConsumeCommands(ctx, x.run.ID, x.owner, through) != nil {
+		return false
+	}
+	return resumed
 }
 
 // continuable reports whether a turn leaves the run where the model is

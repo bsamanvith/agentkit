@@ -711,6 +711,18 @@ func (s *Server) relaunch(ctx context.Context, w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusConflict, &Error{Code: busy, RunID: run.ID, Retryable: true, Message: "run " + quote(run.ID) + " is going on; wait for it to end, or stop it"})
 		return nil, replayed{}, false
 	}
+	if run.Status == store.StatusPaused && !run.Interactive {
+		// A paused task counts against the tenant's background runs again,
+		// however it is resumed (POST /v1/tasks/{id}/resume or
+		// /v1/runs/{id}/resume, an empty message): counting and resuming
+		// are one step, as for POST /v1/tasks.
+		s.tmu.Lock()
+		defer s.tmu.Unlock()
+		if rf := s.backgroundLimit(ctx); rf != nil {
+			s.writeRefusal(w, rf)
+			return nil, replayed{}, false
+		}
+	}
 	if apiErr := s.admit(); apiErr != nil {
 		s.unavailable(w, apiErr)
 		return nil, replayed{}, false
@@ -1020,7 +1032,7 @@ func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	status := q.Get("status")
-	if status != "" && !slices.Contains([]string{StatusRunning, StatusInterrupted, StatusDone, StatusFailed, StatusCanceled, StatusRejected, StatusSuspended}, status) {
+	if _, ok := storeStatus[status]; status != "" && !ok {
 		writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "no run status " + quote(status)})
 		return
 	}

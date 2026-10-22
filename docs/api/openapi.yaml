@@ -121,7 +121,7 @@
             }
           },
           "429": {
-            "description": "over_capacity: the run's runner pool is running as many runs as its limit (retryable).",
+            "description": "over_capacity: the run's runner pool is running as many runs as its limit (retryable); too_many_background_runs: an empty message resumes a paused task, and the tenant has as many background runs going on as the server allows (retryable).",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait.",
@@ -514,7 +514,7 @@
             }
           },
           "429": {
-            "description": "over_capacity: the run's runner pool is running as many runs as its limit (retryable).",
+            "description": "over_capacity: the run's runner pool is running as many runs as its limit (retryable); too_many_background_runs: the run is a paused task, and the tenant has as many background runs going on as the server allows (retryable).",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait.",
@@ -2385,7 +2385,7 @@
             }
           },
           "404": {
-            "description": "not_found: no such task (no run with that ID, or one that is not a task).",
+            "description": "not_found: no such task (no run with that ID, or one that is not a task), or a task whose agent has a toolset the credential may not use.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2599,7 +2599,7 @@
             }
           },
           "404": {
-            "description": "not_found: no such task (no run with that ID, or one that is not a task).",
+            "description": "not_found: no such task (no run with that ID, or one that is not a task), or a task whose agent has a toolset the credential may not use.",
             "content": {
               "application/json": {
                 "schema": {

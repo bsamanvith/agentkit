@@ -21,7 +21,7 @@ const runColumns = `id, conversation, status,
 	input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
 	error, retryable, next_attempt_at, attempts, pending,
 	created_at, finished_at, lease_owner, lease_expires, interactive,
-	lane, priority, start_at, pool, agent_version`
+	lane, priority, start_at, pool, agent_version, user_id`
 
 // final is the SQL list of final statuses (store.Status.Final).
 const final = `('completed', 'rejected', 'canceled')`
@@ -69,13 +69,13 @@ func (s *Store) Create(ctx context.Context, id, conversationID string, opts ...s
 		}
 		expires, _ := storeTime(c.Lease.Expires) // checked by CheckCreate
 		_, insertErr := s.pool.Exec(ctx, `INSERT INTO runs (tenant, id, conversation, status, created_at, interactive,
-			lane, priority, start_at, pool, agent_version, lease_owner, lease_expires)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`, tenant, id, conversationID, string(store.StatusRunning), at, o.Interactive,
-			o.Lane, o.Priority, c.Start.UnixNano(), o.Pool, o.AgentVersion, c.Lease.Owner, expires)
+			lane, priority, start_at, pool, agent_version, user_id, lease_owner, lease_expires)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`, tenant, id, conversationID, string(store.StatusRunning), at, o.Interactive,
+			o.Lane, o.Priority, c.Start.UnixNano(), o.Pool, o.AgentVersion, o.User, c.Lease.Owner, expires)
 		if insertErr == nil {
 			run = store.Run{
 				ID: id, ConversationID: conversationID, Status: store.StatusRunning, CreatedAt: now,
-				Interactive: o.Interactive, Lane: o.Lane, Priority: o.Priority, StartAt: c.Start, Pool: o.Pool, AgentVersion: o.AgentVersion, Lease: c.Lease,
+				Interactive: o.Interactive, Lane: o.Lane, Priority: o.Priority, StartAt: c.Start, Pool: o.Pool, AgentVersion: o.AgentVersion, User: o.User, Lease: c.Lease,
 			}
 			return nil
 		}
@@ -564,7 +564,7 @@ func scanRun(row pgx.Row, pre ...any) (store.Run, error) {
 		&r.Usage.InputTokens, &r.Usage.OutputTokens, &r.Usage.CacheReadTokens, &r.Usage.CacheWriteTokens,
 		&r.Error, &r.Retryable, &next, &r.Attempts, &pending,
 		&created, &finished, &r.Lease.Owner, &expires, &r.Interactive,
-		&r.Lane, &priority, &start, &r.Pool, &r.AgentVersion)...)
+		&r.Lane, &priority, &start, &r.Pool, &r.AgentVersion, &r.User)...)
 	if err != nil {
 		return store.Run{}, err
 	}

@@ -332,8 +332,8 @@ func (rec *recorder) stream(r *rig, name, method, target string) {
 
 // strictSpec writes a copy of the spec in which no object takes properties
 // it does not list (the published spec leaves them open: the API grows), and
-// with an operation POST /x-test/event answering an Event, to check stream
-// events against.
+// with an operation POST /x-test/event answering an Event, and one POST
+// /x-test/user-event answering a UserEvent, to check stream events against.
 func strictSpec(t *testing.T, raw []byte) string {
 	t.Helper()
 	var doc map[string]any
@@ -362,6 +362,11 @@ func strictSpec(t *testing.T, raw []byte) string {
 	doc["paths"].(map[string]any)["/x-test/event"] = map[string]any{"post": map[string]any{"responses": map[string]any{
 		"200": map[string]any{"description": "an event", "content": map[string]any{"application/json": map[string]any{
 			"schema": map[string]any{"$ref": "#/components/schemas/Event"},
+		}}},
+	}}}
+	doc["paths"].(map[string]any)["/x-test/user-event"] = map[string]any{"post": map[string]any{"responses": map[string]any{
+		"200": map[string]any{"description": "a notification", "content": map[string]any{"application/json": map[string]any{
+			"schema": map[string]any{"$ref": "#/components/schemas/UserEvent"},
 		}}},
 	}}}
 	b, err := json.Marshal(doc)
@@ -484,6 +489,30 @@ func TestOpenAPIResponses(t *testing.T) {
 	rec.probe(r, "run_events_bad_request", 400, "GET", "/v1/runs/"+run.ID+"/events", "", "", "Last-Event-ID", "x")
 	rec.probe(r, "run_events_unauthorized", 401, "GET", "/v1/runs/"+run.ID+"/events", "", "", bearer...)
 	rec.probe(r, "run_events_not_found", 404, "GET", "/v1/runs/nope/events", "", "")
+
+	// The caller's notifications, on a server of their own: a run's, and a
+	// resync. Each event fits UserEvent.
+	ue := newRig(t, echo(t), rigConfig{token: token})
+	ue.models = nil // its run is posted raw
+	notes := ue.notifications("user_events", "", "")
+	run2 := ue.chatAs(token, "hi")
+	userEvents := notes.untilEnded(run2.ID)
+	userEvents = append(userEvents, ue.notifications("user_events_resync", "", "1").next())
+	rec.probed["GET /v1/events 200"] = true
+	for i, n := range userEvents {
+		data, err := json.Marshal(n)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ev := &http.Response{StatusCode: 200, ProtoMajor: 1, ProtoMinor: 1, Header: http.Header{"Content-Type": {"application/json"}}}
+		rec.write(fmt.Sprintf("user_event_%02d", i+1), toolsettest.CassetteRequest{Method: "POST", Path: "/x-test/user-event"}, ev, data)
+	}
+	rec.probe(ue, "user_events_bad_request", 400, "GET", "/v1/events", "", "", "Last-Event-ID", "x")
+	rec.probe(ue, "user_events_unauthorized", 401, "GET", "/v1/events", "", "", bearer...)
+	for i := 2; i < agentapi.MaxCallerNotificationStreams; i++ { // with the two above, as many as the caller may have
+		ue.notifications(fmt.Sprintf("user_events_%d", i), "", "")
+	}
+	rec.probe(ue, "user_events_over_capacity", 503, "GET", "/v1/events", "", "")
 
 	// Runs stopped while they wait for the model: interrupted. The first is
 	// resumed; the second waits for the probes of a full server.

@@ -304,6 +304,11 @@ type Run struct {
 	// [WithAgentVersion], 0 for an agent that is not versioned, and never
 	// changes.
 	AgentVersion int64
+	// User is the user the run was started for (T090): whose notifications
+	// say how it goes. It is set by [WithUser], "" for a run started for
+	// nobody in particular (an open server, a credential with no user), and
+	// never changes.
+	User string
 }
 
 // Due returns the time from which a background run that is running, or
@@ -346,6 +351,8 @@ type CreateOptions struct {
 	Pool string
 	// AgentVersion is set by [WithAgentVersion].
 	AgentVersion int64
+	// User is set by [WithUser].
+	User string
 	// LeaseOwner and LeaseTTL are set by [WithLease]; an empty owner means
 	// the run is created unclaimed.
 	LeaseOwner string
@@ -394,6 +401,12 @@ func WithPool(pool string) CreateOption {
 // ([Run.AgentVersion]). It must not be negative.
 func WithAgentVersion(v int64) CreateOption {
 	return func(o *CreateOptions) { o.AgentVersion = v }
+}
+
+// WithUser records the user the run is started for ([Run.User]). The id
+// is text (see Text in the package documentation).
+func WithUser(id string) CreateOption {
+	return func(o *CreateOptions) { o.User = id }
 }
 
 // WithPriority creates the run with priority p ([Run.Priority]): of the due
@@ -487,10 +500,10 @@ type RunStore interface {
 	// unfinished run: creating another while one is not final is
 	// [ErrUnfinished]. opts set properties stored with the run
 	// ([Interactive], [WithLane], [WithPriority], [WithStartAt],
-	// [WithPool], [WithAgentVersion], [WithLease]; a lane or pool that is
-	// not text, a negative agent version, a priority out of range, a
-	// start time the store cannot keep or a lease Claim would refuse is
-	// [ErrInvalid]); a retry returns the run as first stored, whatever its
+	// [WithPool], [WithAgentVersion], [WithUser], [WithLease]; a lane,
+	// pool or user that is not text, a negative agent version, a priority
+	// out of range, a start time the store cannot keep or a lease Claim
+	// would refuse is [ErrInvalid]); a retry returns the run as first stored, whatever its
 	// opts.
 	Create(ctx context.Context, id, conversationID string, opts ...CreateOption) (Run, error)
 	// Get returns the run, or [ErrNotFound].

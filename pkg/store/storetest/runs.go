@@ -572,7 +572,7 @@ func RunRunStore(t *testing.T, newStore func(t *testing.T, clk clock.Clock) stor
 		}
 	})
 
-	// A run's lane, priority and start time are stored with it as Create
+	// A run's lane, priority, start time, pool, agent version and user are stored with it as Create
 	// was given them, and a retry returns them as first stored. Without a
 	// start time the run starts when it is created.
 	t.Run("QueueOptionsAreStored", func(t *testing.T) {
@@ -585,19 +585,19 @@ func RunRunStore(t *testing.T, newStore func(t *testing.T, clk clock.Clock) stor
 			opts []store.CreateOption
 		}{
 			{"plain", nil},
-			{"queued", []store.CreateOption{store.WithLane("batch é"), store.WithPriority(-3), store.WithStartAt(later), store.WithPool("background é"), store.WithAgentVersion(7)}},
+			{"queued", []store.CreateOption{store.WithLane("batch é"), store.WithPriority(-3), store.WithStartAt(later), store.WithPool("background é"), store.WithAgentVersion(7), store.WithUser("ann é")}},
 			{"extremes", []store.CreateOption{store.WithPriority(store.MaxPriority), store.WithStartAt(r.clk.Now().Add(-time.Hour))}},
 			{"lowest", []store.CreateOption{store.WithPriority(store.MinPriority), store.Interactive()}},
 		} {
 			run := r.mustCreate(ctx, c.id, "c-"+c.id, c.opts...) // the rig checks what comes back
-			if c.id == "plain" && (!run.StartAt.Equal(run.CreatedAt) || run.Lane != "" || run.Priority != 0 || run.Pool != "" || run.AgentVersion != 0) {
+			if c.id == "plain" && (!run.StartAt.Equal(run.CreatedAt) || run.Lane != "" || run.Priority != 0 || run.Pool != "" || run.AgentVersion != 0 || run.User != "") {
 				t.Errorf("a plain run has lane %q, priority %d, start %v, pool %q; want the default lane, 0, its creation %v and no pool",
 					run.Lane, run.Priority, run.StartAt, run.Pool, run.CreatedAt)
 			}
 		}
-		again := r.mustCreate(ctx, "queued", "c-queued", store.WithLane("other"), store.WithPriority(9), store.WithPool("other"), store.WithAgentVersion(8))
-		if again.Lane != "batch é" || again.Priority != -3 || !again.StartAt.Equal(later) || again.Pool != "background é" || again.AgentVersion != 7 {
-			t.Errorf("Create again = lane %q, priority %d, start %v, pool %q; want the run as first stored", again.Lane, again.Priority, again.StartAt, again.Pool)
+		again := r.mustCreate(ctx, "queued", "c-queued", store.WithLane("other"), store.WithPriority(9), store.WithPool("other"), store.WithAgentVersion(8), store.WithUser("bob"))
+		if again.Lane != "batch é" || again.Priority != -3 || !again.StartAt.Equal(later) || again.Pool != "background é" || again.AgentVersion != 7 || again.User != "ann é" {
+			t.Errorf("Create again = lane %q, priority %d, start %v, pool %q, user %q; want the run as first stored", again.Lane, again.Priority, again.StartAt, again.Pool, again.User)
 		}
 
 		for name, opt := range map[string]store.CreateOption{
@@ -605,6 +605,8 @@ func RunRunStore(t *testing.T, newStore func(t *testing.T, clk clock.Clock) stor
 			"a lane with a NUL":            store.WithLane("a\x00b"),
 			"a pool that is not UTF-8":     store.WithPool("a\xffb"),
 			"a pool with a NUL":            store.WithPool("a\x00b"),
+			"a user that is not UTF-8":     store.WithUser("a\xffb"),
+			"a user with a NUL":            store.WithUser("a\x00b"),
 			"a negative agent version":     store.WithAgentVersion(-1),
 			"a priority above the maximum": store.WithPriority(store.MaxPriority + 1),
 			"a priority below the minimum": store.WithPriority(store.MinPriority - 1),

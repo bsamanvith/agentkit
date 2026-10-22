@@ -169,7 +169,9 @@ func Interaction(m harness.Interaction) RunOption {
 // and nobody runs it (interrupted, or failed): Run then cancels it, as
 // [Runner.Cancel] does (with the marker reply if it never answered), and
 // starts the new run in its place. Of two messages racing to replace it, one
-// starts a run and the other gets the UnfinishedError.
+// starts a run and the other gets the UnfinishedError. Every run the runner
+// creates (here, by [Runner.Enqueue], or of a flow) is stored as the run of
+// the user ctx acts for, if any ([tenancy.User], [store.Run.User]).
 func (r *Runner) Run(ctx context.Context, conversationID string, msg llm.Message, opts ...RunOption) (*Execution, error) {
 	var c runConfig
 	for _, opt := range opts {
@@ -340,6 +342,10 @@ func (r *Runner) RunFlow(ctx context.Context, conversationID string, input *flow
 func (r *Runner) start(ctx context.Context, tenant tenancy.Tenant, conv string, chat bool, opts ...store.CreateOption) (*exec, error) {
 	if r.isClosed() {
 		return nil, ErrShutdown
+	}
+	if u, ok := tenancy.User(ctx); ok {
+		// The run is for the user ctx acts for ([store.Run.User]).
+		opts = append(slices.Clip(opts), store.WithUser(u))
 	}
 	for replaced := false; ; replaced = true {
 		owner := r.nextOwner()

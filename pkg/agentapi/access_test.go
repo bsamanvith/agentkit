@@ -189,6 +189,10 @@ func TestScopes(t *testing.T) {
 		if strings.HasPrefix(rt, "DELETE /v1/conversations/") {
 			path = "/v1/conversations/" + run.ConversationID
 		}
+		if rt == "GET /v1/events" { // a stream with no end: served, it opens
+			r.notifications("read-only", keyRead, "").cancel()
+			continue
+		}
 		resp, body := r.do(method, path, `{"message":"x"}`, as(keyRead)...)
 		// agent:admin, even to read: reviews, the webhook secret, the
 		// registry's versions, triggers, and the MCP Registry's search.

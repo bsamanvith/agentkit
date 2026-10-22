@@ -88,11 +88,32 @@ func userTopic(ctx context.Context, userID string) (bus.Topic, error) {
 	return topic, nil
 }
 
+// LastNotification returns the ID of the newest notification kept for user
+// userID in ctx's tenant, or the zero ID when none is: [WatchUser] from it
+// follows the notifications from now on. Read it before telling a client
+// the watch is on (an HTTP response's headers), so nothing sent after is
+// missed.
+func LastNotification(ctx context.Context, b bus.Bus, userID string) (bus.ID, error) {
+	if b == nil {
+		return bus.ID{}, fmt.Errorf("%w: nil bus", ErrInvalid)
+	}
+	topic, err := userTopic(ctx, userID)
+	if err != nil {
+		return bus.ID{}, err
+	}
+	last, err := b.Last(ctx, topic)
+	if err != nil {
+		return bus.ID{}, fmt.Errorf("stream: last notification: %w", err)
+	}
+	return last, nil
+}
+
 // WatchUser follows the notifications of user userID in ctx's tenant after
-// the given ID, or from now for the zero ID. When the ones after the given
-// ID are no longer kept, or some are lost on the way, it sends a
-// [TypeResync] event and goes on from the topic's newest. The sequence ends
-// only with an error: ctx's when it is done, a bus error, or [ErrInvalid].
+// the given ID, or from the first for the zero ID (from now: after
+// [LastNotification]). When the ones after the given ID are no longer kept,
+// or some are lost on the way, it sends a [TypeResync] event and goes on
+// from the topic's newest. The sequence ends only with an error: ctx's when
+// it is done, a bus error, or [ErrInvalid].
 func WatchUser(ctx context.Context, b bus.Bus, userID string, from bus.ID) iter.Seq2[Event, error] {
 	return func(yield func(Event, error) bool) {
 		if b == nil {
@@ -105,12 +126,6 @@ func WatchUser(ctx context.Context, b bus.Bus, userID string, from bus.ID) iter.
 			return
 		}
 		cursor := from
-		if cursor.IsZero() {
-			if cursor, err = b.Last(ctx, topic); err != nil {
-				yield(Event{}, fmt.Errorf("stream: watch user: %w", err))
-				return
-			}
-		}
 		for {
 			err := followUser(ctx, b, topic, &cursor, yield)
 			if errors.Is(err, errStop) {

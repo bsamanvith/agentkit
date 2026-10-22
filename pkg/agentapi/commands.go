@@ -75,14 +75,17 @@ func (s *Server) command(ctx context.Context, w http.ResponseWriter, r *http.Req
 		// so the answer is the run canceled (one of the two finds it final).
 		// A cancel holds the run while it stores it canceled: the other one
 		// finds it leased then, and waits for it once more.
-		_, err := s.runs.Cancel(ctx, id)
+		canceled, err := s.runs.Cancel(ctx, id)
 		if errors.Is(err, store.ErrLeased) {
 			s.awaitReleased(ctx, id)
-			_, err = s.runs.Cancel(ctx, id)
+			canceled, err = s.runs.Cancel(ctx, id)
 		}
 		if err != nil && !errors.Is(err, store.ErrFinal) {
 			s.commandError(w, id, err)
 			return
+		}
+		if err == nil { // canceled here, perhaps with nobody executing it
+			s.notifyStatus(ctx, canceled, StatusCanceled, &Error{Code: CodeCancelled})
 		}
 	}
 	s.afterCommand(ctx, w, r, id)
@@ -94,10 +97,16 @@ func (s *Server) command(ctx context.Context, w http.ResponseWriter, r *http.Req
 // the run is leased then, but by this server, and the runner does not yet
 // know the execution to stop it. Such an execution is stopped through its
 // context instead, and once it has ended, released, the command is done.
+//
+// Either one tells the run's user, as the end of an execution does: the run
+// may have had none.
 func (s *Server) cancel(ctx context.Context, id string) (store.Run, error) {
 	run, err := s.runs.Cancel(ctx, id)
 	if errors.Is(err, store.ErrLeased) && s.stopOwn(ctx, id, runner.ErrCanceled) {
 		run, err = s.runs.Cancel(ctx, id)
+	}
+	if err == nil {
+		s.notifyStatus(ctx, run, StatusCanceled, &Error{Code: CodeCancelled})
 	}
 	return run, err
 }
@@ -106,6 +115,9 @@ func (s *Server) interrupt(ctx context.Context, id string) (store.Run, error) {
 	run, err := s.runs.Interrupt(ctx, id)
 	if errors.Is(err, store.ErrLeased) && s.stopOwn(ctx, id, runner.ErrInterrupted) {
 		run, err = s.runs.Interrupt(ctx, id)
+	}
+	if err == nil {
+		s.notifyStatus(ctx, run, runStatus(run, s.cfg.clock.Now()), nil)
 	}
 	return run, err
 }

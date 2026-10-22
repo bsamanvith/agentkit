@@ -156,7 +156,7 @@ fi
 step "integration: bus, store, stream, credentials" \
 	go test -race -shuffle=on -count=1 -tags integration ./pkg/bus/... ./pkg/store/... ./pkg/stream/... ./pkg/credentials/...
 step "integration: migrate, replicas and credentials" \
-	go test -race -count=1 -tags integration -run '^(TestMigrate|TestE2EServeReplicas|TestCredentials)' ./cmd/agentkit/
+	go test -race -count=1 -tags integration -run '^(TestMigrate|TestE2EServeReplicas|TestE2ESteeringAcrossReplicas|TestCredentials)' ./cmd/agentkit/
 step "agent API suite on SQLite" \
 	env AGENTAPI_TEST_STORE=sqlite go test -race -count=1 ./pkg/agentapi/...
 step "agent API suite on Postgres" \

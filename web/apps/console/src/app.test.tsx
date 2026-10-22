@@ -560,6 +560,8 @@ describe("a page", () => {
         if (String(input).includes("background=true")) return Response.json({ v: 1, runs: [] });
         const me = openMe(input);
         if (me) return me;
+        // The agent's own page (its system prompt): not the list either.
+        if (String(input).includes("/v1/agents/")) return Response.json({ v: 1, ...agents.agents[0] });
         calls++;
         if (calls === 1) {
           const body = { v: 1, error: { code: "internal", message: "the store is down", retryable: true } };
@@ -661,7 +663,7 @@ describe("a page that throws", () => {
     expect(document.title).toBe("This page couldn't be shown · agentkit");
 
     const sections = screen.getByRole("navigation", { name: "Sections" });
-    await userEvent.click(within(sections).getByRole("link", { name: "Agents" }));
+    await userEvent.click(await within(sections).findByRole("link", { name: "Agents" }));
     expect(await researcher()).toBeInTheDocument();
     expect(screen.queryByText("the page broke")).not.toBeInTheDocument();
   });
@@ -729,7 +731,7 @@ describe("the shell", () => {
     expect(await researcher()).toBeInTheDocument();
     await waitFor(() => expect(document.title).toBe("researcher · agentkit"));
     const sections = screen.getByRole("navigation", { name: "Sections" });
-    expect(within(sections).getByRole("link", { name: "Agents" })).toHaveAttribute("aria-current", "page");
+    expect(await within(sections).findByRole("link", { name: "Agents" })).toHaveAttribute("aria-current", "page");
     const list = screen.getByRole("navigation", { name: "Agents" });
     expect(within(list).getByRole("link", { name: /researcher/ })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "Chat with researcher" })).toHaveAttribute("href", "/new?agent=researcher");
@@ -898,7 +900,7 @@ describe("on a phone", () => {
     renderAt("/new");
     await screen.findByRole("heading", { level: 1, name: "New chat" });
     await userEvent.click(screen.getByRole("button", { name: "Menu" }));
-    await userEvent.click(screen.getByRole("link", { name: "Agents" }));
+    await userEvent.click(await screen.findByRole("link", { name: "Agents" }));
 
     expect(await screen.findByRole("heading", { level: 1, name: "Agents" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Menu" })).toHaveAttribute("aria-expanded", "false");

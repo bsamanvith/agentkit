@@ -454,19 +454,31 @@ export function Shell({ children }: { children?: ReactNode }) {
   const hasList = current.to !== "/connections"; // one page, no list
   const [listShown, setListShown] = useState(initialListShown);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const { prompt } = useApi();
+  const { prompt, me, loadMe } = useApi();
+  // Who is signed in is read once per sign-in (the API provider); again when
+  // the tab regains focus, so a role change shows up (docs/UI.md "403").
+  useEffect(() => {
+    if (prompt !== null) return;
+    const onFocus = () => loadMe();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [prompt, loadMe]);
+  // The admin sections (Rail, Drawer: mayAdmin) show only once /me says the
+  // caller is an admin (docs/UI.md "Rules"). A direct link still loads its
+  // list until the caller is known not to be one; the page shows the 403 then.
+  const mayList = me === null || mayAdmin(me);
   const menuButton = useRef<HTMLElement | null>(null);
   const drawer = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
-  const agents = useResource(listAgents, "agents", current.to !== "/agents");
-  const toolsets = useResource(listToolsets, "toolsets", current.to !== "/toolsets");
+  const agents = useResource(listAgents, "agents", current.to !== "/agents" || !mayList);
+  const toolsets = useResource(listToolsets, "toolsets", current.to !== "/toolsets" || !mayList);
   const lists = useMemo<Lists>(
     () => ({
-      agents: current.to === "/agents" ? agents : null,
-      toolsets: current.to === "/toolsets" ? toolsets : null,
+      agents: current.to === "/agents" && mayList ? agents : null,
+      toolsets: current.to === "/toolsets" && mayList ? toolsets : null,
     }),
-    [current, agents, toolsets],
+    [current, mayList, agents, toolsets],
   );
 
   const toggleList = useCallback(() => {

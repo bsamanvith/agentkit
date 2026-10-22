@@ -639,3 +639,63 @@ describe("background runs and threads (T074)", () => {
     await expect(client.getThread("t1")).rejects.toBeInstanceOf(BadResponseError);
   });
 });
+
+describe("the catalog and credentials (T064)", () => {
+  const jsonFetch = (body: unknown, seen: Request[], status = 200) =>
+    (async (input: RequestInfo | URL, init?: RequestInit) => {
+      seen.push(new Request(new URL(String(input), "http://test.invalid"), init));
+      return Response.json(body, { status });
+    }) as typeof fetch;
+
+  it("gets an agent, and a toolset's tools, by escaped name", async () => {
+    const seen: Request[] = [];
+    const agent = { v: 1, name: "a/b", toolsets: [], system: "s" };
+    expect(await new AgentClient({ fetch: jsonFetch(agent, seen) }).getAgent("a/b")).toMatchObject({ system: "s" });
+    const tools = { v: 1, toolset: "web", status: "ready", tools: [{ name: "t", description: "", input_schema: {} }] };
+    expect(await new AgentClient({ fetch: jsonFetch(tools, seen) }).listTools("we b")).toMatchObject({
+      status: "ready",
+      tools: [{ name: "t" }],
+    });
+    expect(seen.map((r) => new URL(r.url).pathname)).toEqual(["/v1/agents/a%2Fb", "/v1/toolsets/we%20b/tools"]);
+    await expect(new AgentClient({ fetch: jsonFetch({ v: 1 }, seen) }).getAgent("x")).rejects.toBeInstanceOf(
+      BadResponseError,
+    );
+  });
+
+  it("puts a key, deletes it with its scope, and starts a connect flow", async () => {
+    const seen: Request[] = [];
+    const info = { v: 1, slot: "mail", scope: "user", status: "connected", oauth: false, toolsets: ["mail"] };
+    const c = new AgentClient({ fetch: jsonFetch(info, seen), token: () => "tok" });
+    expect(await c.putCredential("mail", { scope: "user", kind: "api_key", api_key: "k" })).toMatchObject({
+      status: "connected",
+    });
+    await c.deleteCredential("mail", "user");
+    expect(seen.map((r) => `${r.method} ${new URL(r.url).pathname}${new URL(r.url).search}`)).toEqual([
+      "PUT /v1/credentials/mail",
+      "DELETE /v1/credentials/mail?scope=user",
+    ]);
+    expect(await seen[0]?.json()).toEqual({ scope: "user", kind: "api_key", api_key: "k" });
+
+    const flow = { v: 1, authorize_url: "https://idp.example/authorize?state=s", expires_at: "2026-10-22T10:00:00Z" };
+    const started = await new AgentClient({ fetch: jsonFetch(flow, seen) }).connectCredential("mail", {
+      return_url: "https://console.example/connections/done",
+    });
+    expect(started.authorize_url).toBe(flow.authorize_url);
+    await expect(
+      new AgentClient({ fetch: jsonFetch({ v: 1 }, seen) }).connectCredential("mail", {}),
+    ).rejects.toBeInstanceOf(BadResponseError);
+    // The page opens it in a window of its own origin: only http(s), never script.
+    for (const authorize_url of ["javascript:alert(1)", "data:text/html,x", "/relative", "JavaScript:alert(1)"]) {
+      await expect(
+        new AgentClient({ fetch: jsonFetch({ v: 1, authorize_url }, seen) }).connectCredential("mail", {}),
+        authorize_url,
+      ).rejects.toBeInstanceOf(BadResponseError);
+    }
+  });
+
+  it("says the server keeps no credentials with a 404", async () => {
+    const body = { v: 1, error: { code: "not_found", message: "this server keeps no credentials" } };
+    const err = await new AgentClient({ fetch: jsonFetch(body, [], 404) }).listCredentials().catch((e: unknown) => e);
+    expect(err).toMatchObject({ status: 404, code: "not_found" });
+  });
+});

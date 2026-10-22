@@ -2,17 +2,16 @@
 // list column and the page read the same load (one request on a slow link,
 // not two).
 
-import { listField, type Agent, type AgentClient } from "@agentkit/agent-ui/api";
+import type { Agent, AgentClient, Toolset } from "@agentkit/agent-ui/api";
 import type { StatusTone } from "@agentkit/ui";
 import { createContext, useContext } from "react";
 import type { Resource } from "./api";
 import { readiness } from "./pages/readiness";
 
-export type Toolset = { name: string; type: string; status: string; reason?: string; tool_count: number };
+export type { Toolset };
 
 export const listAgents = (c: AgentClient, signal: AbortSignal) => c.listAgents({ signal });
-export const listToolsets = async (c: AgentClient, signal: AbortSignal): Promise<Toolset[]> =>
-  listField<Toolset>(await c.getJSON<unknown>("/v1/toolsets", { signal }), "toolsets", "/v1/toolsets");
+export const listToolsets = (c: AgentClient, signal: AbortSignal) => c.listToolsets({ signal });
 
 /** The section's list, or null in a section that doesn't load it. */
 export type Lists = { agents: Resource<Agent[]> | null; toolsets: Resource<Toolset[]> | null };
@@ -27,6 +26,8 @@ export function useLists(): Lists {
 export function toolsetStatus(t: Toolset): { tone: StatusTone; text: string } {
   if (t.status === "ready") return { tone: "ok", text: "Ready" };
   if (t.status === "unavailable") return { tone: "bad", text: "Unavailable" };
+  if (t.status === "review_needed") return { tone: "warn", text: "Review needed" };
+  if (t.status === "disabled") return { tone: "neutral", text: "Disabled" };
   return { tone: "warn", text: "Skipped" };
 }
 

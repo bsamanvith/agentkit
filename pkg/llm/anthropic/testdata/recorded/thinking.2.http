@@ -1,0 +1,55 @@
+HTTP/1.1 200 OK
+Content-Type: text/event-stream; charset=utf-8
+Request-Id: req_replay
+
+event: message_start
+data: {"type":"message_start","message":{"model":"claude-haiku-5-5","id":"msg_011CgH12pWw2dsQmqLagFyRa","type":"message","role":"assistant","content":[],"container":null,"stop_reason":null,"stop_sequence":null,"stop_details":null,"usage":{"input_tokens":126,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":5,"service_tier":"standard","inference_geo":"global","speed":"standard"},"diagnostics":null}     }
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}              }
+
+event: ping
+data: {"type": "ping"}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Checking 60-69,"}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" I find 61 and 67"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" are prime, gi"}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"ving two"} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" more, so the count r"}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"ises to 19."} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"\n\n"}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"CAQSsgUKEAgTGAI4AUIIdGhpbmtpbmcSDLbtW5SwaFV+t8wbFBoM3TDZF74BT9gMzsKWIjAz0piWzmGDCfvb5hAghnAwEL8hNbh9Jd4k8yNbPvKhLF9bl0OUfSBRFOJXz+ipIawqzwRfF/lx0s200YyyIaC5Q0J/ov3gHIk94jIeHfVDjtZK9GAiDndePexr6OlzP1MZETk3DixERfWn5EQXO9yOj1kBHn01/HRL5CoTwjcK3B025XU9N/0qkXonb2GRzt3MkQegSEQTJCNDF4aAklZ9e7XOIb3pu8z8DJgT9xzh2mXjjqKQJ2IT/42wWrBv+jl3TNEiA0zLSHS1lC2+wCmthdwru9g+GJVVbxzCKX3Xxjl54aukZXnHpR7czFtqCJL5l6Z79VM28NEJALDqC+Ao8S6+tJyMBHefxbsMcFovTXxPtHSxFmAEDxQPfJxhAfLPnZLtOtFaPmB5vBs//GG0myRJTqk4Se9R6vRr6kjpk2NkcRDaXiZ1qfYFLqU52YFyXalPBqiZKX5IFF2K5ZYBkuZWlqa1Al4wd2gp3Njnq4vDVPkkZP9SwBGz4nVpEiA3ClrAUiIT6DcmLSJguOI1SwXbZfgkLaZO2hIYnCbiP9gi6x7p+YQmTXlSmk4RND+CWIsXL+/1vwFYVG2fdtCY6fwDFWFL1e/XJLGxVscTCxieAzQnIWU0e3Gl1tPxXj41+vACFx7ofhae/AsnozeDbFoNHuON0BCbJ8YR8oMHFJ4AFWjKusc702i7/gNoPsM9y2BkCAGWkkKe/4vwCGCKFc1R0VQztriFGAdqsBnECHAFWYgFT++UL7V1vFVRsnqrdzM86FQAtFe2Ke6tDZaIqr/ejDAuIe6m5Yg3rJiT+dT34v8hjL+VdDuwVsmCtEqzDsWYt1xJxGQtYq6erKAwgxQYAQ=="}   }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0             }
+
+event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"19"}              }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1     }
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null,"stop_details":null,"container":null},"usage":{"input_tokens":126,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":27,"output_tokens_details":{"thinking_tokens":24},"iterations":[{"input_tokens":126,"output_tokens":27,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"type":"message","model":null}]} }
+
+event: message_stop
+data: {"type":"message_stop"            }
+

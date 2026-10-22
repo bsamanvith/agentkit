@@ -2,4 +2,4 @@ HTTP/1.1 400 Bad Request
 Content-Type: application/json
 Request-Id: req_replay
 
-{"type": "error", "error": {"type": "invalid_request_error", "message": "prompt is too long: 1050000 tokens > 1000000 maximum"}, "request_id": "req_replay"}
+{"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long: 4900057 tokens > 1000000 maximum"},"request_id":"req_replay"}

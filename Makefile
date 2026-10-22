@@ -71,6 +71,13 @@ test-live: ## Live tests against real model providers (ANTHROPIC_API_KEY, or ANT
 	fi
 	ANTHROPIC_API_KEY="$${ANTHROPIC_API_KEY:-$$ANTHROPIC_KEY}" $(GO) test $(TESTFLAGS) -tags live -count=1 ./...
 
+.PHONY: record-anthropic
+record-anthropic: ## Re-record the Anthropic adapter's fixtures from the real API (ANTHROPIC_API_KEY or ANTHROPIC_KEY; review the diff)
+	@[ -n "$${ANTHROPIC_API_KEY:-$$ANTHROPIC_KEY}" ] || { echo "record-anthropic: set ANTHROPIC_API_KEY (or ANTHROPIC_KEY)" >&2; exit 1; }
+	mkdir -p pkg/llm/anthropic/testdata/recorded
+	AGENTKIT_ANTHROPIC_RECORD=1 ANTHROPIC_API_KEY="$${ANTHROPIC_API_KEY:-$$ANTHROPIC_KEY}" $(GO) test -count=1 -run 'TestRecorded' ./pkg/llm/anthropic/
+	$(GO) test -count=1 ./pkg/llm/anthropic/
+
 .PHONY: record-cassettes
 record-cassettes: ## Re-record connector cassettes from the real APIs (needs the providers' keys; review the diff, then make golden)
 	AGENTKIT_RECORD_CASSETTES=1 $(GO) test -tags live -count=1 -run 'RecordCassettes' ./...

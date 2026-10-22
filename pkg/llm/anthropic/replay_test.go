@@ -29,6 +29,10 @@ type replay struct {
 	mu        sync.Mutex
 	responses [][]byte
 	requests  []recorded
+
+	// record, when set, forwards each request to the real API with key and
+	// writes the response to the next of files instead (see record_test.go).
+	record *recorder
 }
 
 type recorded struct {
@@ -63,6 +67,10 @@ func (rp *replay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rp.requests = append(rp.requests, recorded{header: r.Header.Clone(), body: body})
 	n := len(rp.requests)
 	rp.mu.Unlock()
+	if rp.record != nil {
+		rp.record.serve(w, r, body, n)
+		return
+	}
 	if n > len(rp.responses) {
 		rp.t.Errorf("replay: request %d, but only %d responses recorded", n, len(rp.responses))
 		http.Error(w, "no response recorded", http.StatusTeapot)

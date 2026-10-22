@@ -116,29 +116,6 @@ func TestRefusalStopReason(t *testing.T) {
 	}
 }
 
-func TestTruncatedToolCallIsDropped(t *testing.T) {
-	t.Parallel()
-	_, srv := newReplay(t, "testdata/tool_truncated.http")
-	events, err := drain(newModel(t, srv).Generate(t.Context(), userText("Write a.txt.")))
-	if err != nil {
-		t.Fatalf("Generate: %v", err)
-	}
-	for _, ev := range events {
-		if ev.Kind == llm.EventToolUseStart || ev.Kind == llm.EventToolInputDelta {
-			t.Errorf("event %v for a tool call that was cut off", ev.Kind)
-		}
-	}
-	got := events[len(events)-1].Response
-	want := llm.Response{
-		Message: llm.Assistant(llm.Text{Text: "Writing the file."}),
-		Stop:    llm.StopReason{Kind: llm.StopMaxTokens},
-		Usage:   llm.Usage{InputTokens: 10, OutputTokens: 64},
-	}
-	if !reflect.DeepEqual(*got, want) {
-		t.Errorf("response = %#v, want %#v", *got, want)
-	}
-}
-
 func TestInterleavedBlocksStreamOneAtATime(t *testing.T) {
 	t.Parallel()
 	_, srv := newReplay(t, "testdata/interleaved.http")

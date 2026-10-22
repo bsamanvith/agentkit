@@ -74,13 +74,15 @@ Runs that outlive the request that started them. Decisions: [E14](E14-background
 - Restart: `TestE2ETaskSurvivesARestart` (real binary, replay model, kill, restart, reconnect with `Last-Event-ID`, one signed delivery), `TestTaskWatchedAcrossARestart` (replicas, shared bus).
 - Cancel: `TestTaskCancel`; the foreground disconnect: `TestClientDisconnect` (unchanged, still interrupted after the grace).
 - Webhooks: `pkg/webhook` `TestDeliveryIsSignedAndVerified`, `TestRetriedAfterA500` (fake clock), `TestNeverSentTwice`, `TestGivesUpAfterTheWindow`, `TestWaitsForTheRunToEnd`; storetest `TestNotifications`; `TestTaskNotify`.
-- Limits: `TestTaskLimit` (9 at once, limit 3, other tenant), `TestTaskLimitCountsTasksOnly`, `TestTaskWallClockLimit`, `TestTaskLimitsLeaveChats`, runner `timelimit_test.go`. Listing: `TestListTasks`, agentclient `TestTasks`.
+- Limits: `TestTaskLimit` (9 at once, limit 3, other tenant), `TestTaskLimitCountAndStartAreOneStep` (the count-and-start race, deterministic), `TestTaskLimitCountsTasksOnly`, `TestTaskWallClockLimit`, `TestTaskLimitsLeaveChats`, runner `timelimit_test.go`. Listing: `TestListTasks`, agentclient `TestTasks`.
 
 ### Mutation list
 
 Caught: the run timeout applied to tasks (TestTaskLimitsLeaveChats hangs to the suite timeout); the reconnect grace applied to tasks (TestTaskRunsDetached, also by hang); no `goesOn` skip in the watch (TestTaskWatchedAcrossARestart); limit `>` for `>=` (TestTaskLimit); no `wall_clock_limit` classification, live or stored (TestTaskWallClockLimit); the limit counting chats (TestTaskLimitCountsTasksOnly, added for it); a wrong signature (three webhook tests); notifications not idempotent, delivery ignoring the lease (storetest TestNotifications).
 
-Survived (40 and 20 runs): no lock around count-and-start (the window is microseconds on the memory store; a deterministic test needs a store hook); `WebhookPayload` not waiting for the stored ending (the race the wait covers is rare in-process); the `goesOn` skip in `pending` (reached only when a release is seen before the bus event). Kept as defense; follow-up below.
+Caught in review: no lock around count-and-start (TestTaskLimitCountAndStartAreOneStep, a store that holds the first count until a second has read).
+
+Survived (40 and 20 runs): `WebhookPayload` not waiting for the stored ending (the race the wait covers is rare in-process); the `goesOn` skip in `pending` (reached only when a release is seen before the bus event). Kept as defense; follow-up below.
 
 ### Owner questions
 
@@ -92,4 +94,4 @@ Survived (40 and 20 runs): no lock around count-and-start (the window is microse
 ### For T072/T073/T074
 
 - Start background work with `StartOptions{Background: true}` through `Runs.Start`; it gets recovery, the wall-clock limit and webhooks for free. `Server.WebhookPayload` is the body for any run-ended hook.
-- Follow-ups: a store hook to test the limit race; a test of `WebhookPayload` against a run whose ending is stored late.
+- Follow-ups: a test of `WebhookPayload` against a run whose ending is stored late.

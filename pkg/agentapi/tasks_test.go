@@ -16,7 +16,9 @@ import (
 	"github.com/bsamanvith/agentkit/internal/testkit"
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
+	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
 	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
+	"github.com/bsamanvith/agentkit/pkg/store"
 	"github.com/bsamanvith/agentkit/pkg/store/scoped"
 	"github.com/bsamanvith/agentkit/pkg/tenancy"
 )
@@ -256,6 +258,68 @@ func TestTaskLimit(t *testing.T) {
 		var run agentapi.Run
 		return json.Unmarshal(b, &run) == nil && run.Status == agentapi.StatusDone
 	})
+}
+
+// racingStore holds the first count of a tenant's background runs, once
+// read, until a second count has read too, or for a while: a server that lets two requests
+// count at once lets both read the same count.
+type racingStore struct {
+	agentapi.Store
+	mu            sync.Mutex
+	counts        int
+	first, second chan struct{}
+}
+
+func (s *racingStore) ListRuns(ctx context.Context, f store.RunFilter, p store.Page) (store.RunPage, error) {
+	page, err := s.Store.ListRuns(ctx, f, p)
+	if f.Kind == store.BackgroundRuns && p.Cursor == "" {
+		s.mu.Lock()
+		s.counts++
+		n := s.counts
+		s.mu.Unlock()
+		switch n {
+		case 1:
+			close(s.first)
+			// Waiting for what must not happen: a correct server only
+			// waits here, a broken one may get past it.
+			t := time.NewTimer(500 * time.Millisecond)
+			select {
+			case <-s.second:
+			case <-t.C:
+			}
+			t.Stop()
+		case 2:
+			close(s.second)
+		}
+	}
+	return page, err
+}
+
+// Limits: counting a tenant's tasks and starting one are one step. While
+// one request counts, another cannot count too, so of two requests for the
+// last place one gets it and the other 429.
+func TestTaskLimitCountAndStartAreOneStep(t *testing.T) {
+	t.Parallel()
+	m := echo(t)
+	m.gate = make(chan struct{})
+	clk := clocktest.NewFake(time.Time{})
+	base, tenant := testStore(t, clk)
+	st := &racingStore{Store: base, first: make(chan struct{}), second: make(chan struct{})}
+	r := newRig(t, m, rigConfig{clock: clk, store: st, api: append(tenant, agentapi.WithMaxBackgroundRuns(1))})
+	codes := make(chan int, 2)
+	post := func(input string) {
+		resp, _ := r.do(http.MethodPost, "/v1/tasks", `{"input":"`+input+`"}`)
+		codes <- resp.StatusCode
+	}
+	go post("one")
+	<-st.first // the first request is counting
+	go post("two")
+	got := map[int]int{<-codes: 1}
+	got[<-codes]++
+	if got[http.StatusAccepted] != 1 || got[http.StatusTooManyRequests] != 1 {
+		t.Fatalf("two tasks for the last place = %v, want one 202 and one 429", got)
+	}
+	m.gate <- struct{}{}
 }
 
 // Limits: the background limit counts tasks only; a chat run going on takes

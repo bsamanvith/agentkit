@@ -224,7 +224,7 @@ func AutoRecall(x Index, opts ...RecallOption) (harness.PrepareFunc, error) {
 		mode = x.Modes()[0]
 	}
 	return func(ctx context.Context, msg llm.Message) ([]llm.Block, error) {
-		text := recallQuery(msg.Text(), mode)
+		text := recallQuery(messageText(msg), mode)
 		if text == "" {
 			return nil, nil
 		}
@@ -239,6 +239,18 @@ func AutoRecall(x Index, opts ...RecallOption) (harness.PrepareFunc, error) {
 	}, nil
 }
 
+// messageText is the text of msg's text blocks, one per line, so that words
+// at the end of one block and the start of the next stay apart.
+func messageText(msg llm.Message) string {
+	var parts []string
+	for _, b := range msg.Content {
+		if t, ok := b.(llm.Text); ok {
+			parts = append(parts, t.Text)
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
 // recallQuery is the query auto recall makes of a message's text.
 func recallQuery(text string, mode Mode) string {
 	if mode != ModeKeyword {
@@ -247,13 +259,14 @@ func recallQuery(text string, mode Mode) string {
 	var words []string
 	n := 0
 	for _, w := range Tokenize(text) {
-		if len(words) == MaxQueryParts || n+len(w)+1 > MaxQueryBytes {
+		if len(words) == MaxQueryParts {
 			break
 		}
-		if !slices.Contains(words, w) {
-			words = append(words, w)
-			n += len(w) + 1
+		if slices.Contains(words, w) || n+len(w)+1 > MaxQueryBytes {
+			continue // a repeat, or a word too long for what is left
 		}
+		words = append(words, w)
+		n += len(w) + 1
 	}
 	return strings.Join(words, " ")
 }

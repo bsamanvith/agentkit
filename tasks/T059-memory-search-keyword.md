@@ -107,7 +107,7 @@ Each bug was planted alone (a script applied it, ran the package's tests and res
 
 ### Sizes
 
-No new dependency; FTS5 is in `modernc.org/sqlite` already. Binary +204,800 bytes, the variants +168 to +205 KB, all under budget; local (about 27.81 of 28 MB) and toolsets (about 17.70 of 18) are close (docs/SIZES.md row).
+No new dependency; FTS5 is in `modernc.org/sqlite` already. Binary +200,704 bytes, the variants +164 to +205 KB (rebased on main at `5f75d75`). Local (about 28.04 MB projected) crosses its 28 MB budget by about 42 KB, so its budget is now 29 MB; toolsets (about 17.93 of 18) is close (docs/SIZES.md row).
 
 ### For T060 (semantic and hybrid)
 

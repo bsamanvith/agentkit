@@ -123,3 +123,61 @@ func TestPrepareErrorFailsTheRun(t *testing.T) {
 		t.Errorf("a nil hook: %v, want ErrInvalidConfig", err)
 	}
 }
+
+// TestPrepareSkipsAnsweredPendingTurn: a run that answers a pending turn has
+// no new message, so the hook is not called again, and the message the
+// first run prepared reaches the model unchanged.
+func TestPrepareSkipsAnsweredPendingTurn(t *testing.T) {
+	leakcheck(t)
+	calls := 0
+	hook := harness.WithPrepare(func(context.Context, llm.Message) ([]llm.Block, error) {
+		calls++
+		return []llm.Block{llm.Text{Text: "recalled"}}, nil
+	})
+	// last is the result of the run's last event (done or suspended).
+	last := func(h *harness.Harness, in harness.Input) harness.Result {
+		t.Helper()
+		var res *harness.Result
+		for ev, err := range h.Run(t.Context(), in) {
+			if err != nil {
+				t.Fatal(err)
+			}
+			if ev.Result != nil {
+				res = ev.Result
+			}
+		}
+		if res == nil {
+			t.Fatal("no result")
+		}
+		return *res
+	}
+	it := newInterruptTools(t)
+	fake := llmtest.NewFake(t, llmtest.ToolCalls(use("q1", "ask", `{"question":"which?"}`)))
+	h, err := harness.New(fake, it.reg, harness.WithInteraction(harness.Interactive), hook)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := last(h, prompt("paint it"))
+	if res.Pending == nil {
+		t.Fatalf("the run did not suspend: %+v", res)
+	}
+	want := llm.User(llm.Text{Text: "recalled"}, llm.Text{Text: "paint it"})
+	diff(t, "the suspended run's user turn", want, res.Transcript[0])
+
+	fake2 := llmtest.NewFake(t, llmtest.Text("red it is"))
+	h2, err := harness.New(fake2, it.reg, harness.WithInteraction(harness.Interactive), hook)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res2 := last(h2, harness.Input{
+		Transcript: res.Transcript, Pending: saved(t, res.Pending),
+		Answers: []harness.Answer{{ID: "q1", Text: "red"}},
+	})
+	if res2.Final.Text() != "red it is" {
+		t.Errorf("final %q", res2.Final.Text())
+	}
+	if calls != 1 {
+		t.Errorf("hook called %d times across the run and its answer, want 1", calls)
+	}
+	diff(t, "the answered run's user turn", want, fake2.Requests()[0].Messages[0])
+}

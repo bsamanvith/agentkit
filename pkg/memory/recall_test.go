@@ -298,6 +298,26 @@ func TestAutoRecallQuery(t *testing.T) {
 	if q := x.queries[1].Text; len(memory.Tokenize(q)) != memory.MaxQueryParts {
 		t.Errorf("long message query has %d words, want %d", len(memory.Tokenize(q)), memory.MaxQueryParts)
 	}
+	// Two text blocks stay two words apart; a word too long for a query is
+	// skipped, not the end of the query.
+	x.queries = nil
+	huge := strings.Repeat("h", memory.MaxQueryBytes)
+	for _, msg := range []llm.Message{
+		llm.User(llm.Text{Text: "metric"}, llm.Text{Text: "units"}),
+		harness.UserText(huge + " metric units"),
+	} {
+		if _, err := recall(ctx, msg); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(x.queries) != 2 {
+		t.Errorf("%d searches, want 2", len(x.queries))
+	}
+	for i, q := range x.queries {
+		if q.Text != "metric units" {
+			t.Errorf("query %d = %.40q, want %q", i, q.Text, "metric units")
+		}
+	}
 	if _, err := recall(context.Background(), harness.UserText("anything")); !errors.Is(err, memory.ErrNoTenant) {
 		t.Errorf("a failed search: %v, want ErrNoTenant", err)
 	}

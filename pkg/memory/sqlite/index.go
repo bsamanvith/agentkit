@@ -208,6 +208,8 @@ func (x *Index) Put(ctx context.Context, it memory.Item) error {
 
 // Search implements memory.Index. FTS5 finds the scope's items that match;
 // the scope's statistics come from its own rows; keyword.Rank scores them.
+// A query with a phrase also counts the items with each of its parts, one
+// FTS5 query each; one without takes those counts from its candidates.
 func (x *Index) Search(ctx context.Context, q memory.Query) ([]memory.Result, error) {
 	o, err := x.owner(ctx)
 	if err != nil {
@@ -235,9 +237,14 @@ func (x *Index) Search(ctx context.Context, q memory.Query) ([]memory.Result, er
 		o.Tenant, o.User).Scan(&st.Docs, &st.Tokens); err != nil {
 		return nil, fmt.Errorf("memory/sqlite: %w", err)
 	}
-	for i, p := range parts {
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) `+inScope, ftsPhrase(p), o.Tenant, o.User).Scan(&st.DF[i]); err != nil {
-			return nil, fmt.Errorf("memory/sqlite: %w", err)
+	// With a phrase, the candidates are the items with every phrase, so a
+	// part's count needs its own query; with none, they are the items with
+	// any term, and the counts come from them below.
+	if len(kq.Phrases) > 0 {
+		for i, p := range parts {
+			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) `+inScope, ftsPhrase(p), o.Tenant, o.User).Scan(&st.DF[i]); err != nil {
+				return nil, fmt.Errorf("memory/sqlite: %w", err)
+			}
 		}
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT i.id, i.text, i.metadata, i.time `+inScope, matchExpr(kq), o.Tenant, o.User)
@@ -251,7 +258,15 @@ func (x *Index) Search(ctx context.Context, q memory.Query) ([]memory.Result, er
 		if err != nil {
 			return nil, err
 		}
-		docs = append(docs, keyword.Doc{Item: it, Tokens: memory.Tokenize(it.Text)})
+		d := keyword.Doc{Item: it, Tokens: memory.Tokenize(it.Text)}
+		if len(kq.Phrases) == 0 {
+			for i, p := range parts {
+				if keyword.Count(d.Tokens, p) > 0 {
+					st.DF[i]++
+				}
+			}
+		}
+		docs = append(docs, d)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("memory/sqlite: %w", err)

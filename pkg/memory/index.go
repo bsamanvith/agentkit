@@ -103,9 +103,9 @@ type Result struct {
 	Score float64
 	// Mode is the mode that found the item.
 	Mode Mode
-	// Highlights are the parts of the query the item matched, in the
-	// query's order: words, and phrases with their words joined by a
-	// space. Nil when the mode does not say.
+	// Highlights are the parts of the query the item matched: its phrases
+	// (their words joined by a space), then its words, each in the
+	// query's order. Nil when the mode does not say.
 	Highlights []string
 }
 
@@ -261,6 +261,8 @@ func ResolveQuery(q Query, modes []Mode) (Query, error) {
 		q.K = DefaultK
 	}
 	switch {
+	case q.Text == "":
+		return q, fmt.Errorf("%w: empty query", ErrInvalid)
 	case !utf8.ValidString(q.Text):
 		return q, fmt.Errorf("%w: query is not UTF-8", ErrInvalid)
 	case len(q.Text) > MaxQueryBytes:

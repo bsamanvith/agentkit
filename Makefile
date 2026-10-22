@@ -107,13 +107,14 @@ perf: ## The nightly perf report locally: every Benchmark* COUNT=6 times into bi
 	scripts/perf-report.sh
 
 .PHONY: lint
-lint: $(GOLANGCI) ## Run golangci-lint, then the skills and task-file lint (scripts/lint-skills.sh) and its fixtures, and scripts/test-timing.sh's, scripts/ci-changes.sh's and scripts/perf-report.sh's
+lint: $(GOLANGCI) ## Run golangci-lint, then the skills and task-file lint (scripts/lint-skills.sh) and its fixtures, and scripts/test-timing.sh's, scripts/ci-changes.sh's, scripts/perf-report.sh's and scripts/go-test-annotate.sh's
 	$(GOLANGCI) run ./...
 	scripts/lint-skills.sh
 	scripts/lint-skills.sh --test >/dev/null
 	scripts/test-timing.sh --test >/dev/null
 	scripts/ci-changes.sh --test >/dev/null
 	scripts/perf-report.sh --test >/dev/null
+	scripts/go-test-annotate.sh --test >/dev/null
 
 .PHONY: fmt
 fmt: $(GOLANGCI) ## Format code in place

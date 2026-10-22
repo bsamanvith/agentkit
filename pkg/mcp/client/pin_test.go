@@ -59,12 +59,12 @@ func TestPins(t *testing.T) {
 		t.Errorf("no pins: tools = %v, want all four", n)
 	}
 
-	_, err := client.Factory().Build(t.Context(), json.RawMessage(settingsFor(ts.URL, pinsJSON(map[string]string{"search": zero}))))
+	_, err := client.Factory().Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(settingsFor(ts.URL, pinsJSON(map[string]string{"search": zero})))})
 	if err == nil || !strings.Contains(err.Error(), "no tools") {
 		t.Errorf("nothing matches its pin: %v", err)
 	}
 	for _, bad := range []string{"sha1:abc", "sha256:" + strings.Repeat("A", 64), fps["search"] + "0", ""} {
-		_, err := client.Factory().Build(t.Context(), json.RawMessage(settingsFor(ts.URL, pinsJSON(map[string]string{"search": bad}))))
+		_, err := client.Factory().Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(settingsFor(ts.URL, pinsJSON(map[string]string{"search": bad})))})
 		if !errors.Is(err, toolset.ErrInvalidSettings) {
 			t.Errorf("pin %q: %v, want ErrInvalidSettings", bad, err)
 		}

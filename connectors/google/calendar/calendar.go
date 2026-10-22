@@ -130,7 +130,8 @@ func decodeSettings(raw json.RawMessage) (settings, error) {
 	return s, nil
 }
 
-func (f *factory) Build(_ context.Context, raw json.RawMessage) ([]tool.Tool, error) {
+func (f *factory) Build(_ context.Context, in toolset.BuildInput) ([]tool.Tool, error) {
+	raw := in.Settings
 	s, err := decodeSettings(raw)
 	if err != nil {
 		return nil, err

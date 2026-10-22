@@ -17,6 +17,7 @@ import (
 	"github.com/bsamanvith/agentkit/connectors/parallel"
 	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
 	"github.com/bsamanvith/agentkit/pkg/tool"
+	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
 // FuzzDecodeSearch serves hostile bodies to parallel_search: whatever the
@@ -69,7 +70,9 @@ func fuzzDecode(f *testing.F, toolName, input string, cassettes ...string) {
 		parallel.WithLookupEnv(lookup(map[string]string{"PARALLEL_API_KEY": canary})),
 		parallel.WithClock(clocktest.NewFake(time.Time{})),
 		parallel.WithLogger(slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))),
-	).Build(f.Context(), json.RawMessage(settings))
+	).Build(
+
+		f.Context(), toolset.BuildInput{Settings: json.RawMessage(settings)})
 	if err != nil {
 		f.Fatal(err)
 	}

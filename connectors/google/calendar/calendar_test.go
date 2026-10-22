@@ -80,7 +80,7 @@ func build(t *testing.T, f *fake, settings string, opts ...calendar.Option) tool
 	if settings == "" {
 		settings = "{}"
 	}
-	tools, err := calendar.Factory(opts...).Build(t.Context(), json.RawMessage(settings))
+	tools, err := calendar.Factory(opts...).Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(settings)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -323,7 +323,7 @@ func TestSettings(t *testing.T) {
 		"unknown":     `{"read_write":true}`,
 		"calendar":    `{"default_calendar_id":" "}`,
 	} {
-		_, err := calendar.Factory(lookup).Build(t.Context(), json.RawMessage(settings))
+		_, err := calendar.Factory(lookup).Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(settings)})
 		if !errors.Is(err, toolset.ErrInvalidSettings) {
 			t.Errorf("%s: Build(%s) = %v, want ErrInvalidSettings", name, settings, err)
 		}
@@ -331,7 +331,7 @@ func TestSettings(t *testing.T) {
 			t.Errorf("%s: the error echoes the token: %v", name, err)
 		}
 	}
-	if _, err := calendar.Factory().Build(t.Context(), json.RawMessage(`{}`)); err == nil {
+	if _, err := calendar.Factory().Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(`{}`)}); err == nil {
 		t.Error("Build with no token and no variable succeeded")
 	}
 }

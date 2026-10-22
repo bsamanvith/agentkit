@@ -24,6 +24,7 @@ func Simulate(t *testing.T, newStore func(t *testing.T) credentials.BlobStore, s
 	type entry struct {
 		version int64
 		data    string
+		marked  bool // NeedsReconnect
 	}
 	model := map[mkey]entry{} // current credentials
 	last := map[mkey]int64{}  // last version ever
@@ -51,7 +52,9 @@ func Simulate(t *testing.T, newStore func(t *testing.T) credentials.BlobStore, s
 		switch op := rng.IntN(10); {
 		case op < 4: // put
 			v := pick()
-			m, err := r.store.Put(ctx, k.user, k.slot, blob(data, t0.Add(time.Duration(step)*time.Second)), v)
+			b := blob(data, t0.Add(time.Duration(step)*time.Second))
+			b.NeedsReconnect = rng.IntN(3) == 0
+			m, err := r.store.Put(ctx, k.user, k.slot, b, v)
 			switch {
 			case v == 0 && exists:
 				if !is(err, credentials.ErrExists) {
@@ -62,10 +65,10 @@ func Simulate(t *testing.T, newStore func(t *testing.T) credentials.BlobStore, s
 					t.Fatalf("%s: put if %d (current %d, exists %v): %v, want ErrConflict", where, v, cur.version, exists, err)
 				}
 			default:
-				if err != nil || m.Version != last[k]+1 {
-					t.Fatalf("%s: put if %d: %+v, %v; want version %d", where, v, m, err, last[k]+1)
+				if err != nil || m.Version != last[k]+1 || m.NeedsReconnect != b.NeedsReconnect {
+					t.Fatalf("%s: put if %d: %+v, %v; want version %d, NeedsReconnect %v", where, v, m, err, last[k]+1, b.NeedsReconnect)
 				}
-				model[k], last[k] = entry{m.Version, data}, m.Version
+				model[k], last[k] = entry{m.Version, data, b.NeedsReconnect}, m.Version
 			}
 		case op < 6: // delete
 			v := pick()
@@ -87,7 +90,7 @@ func Simulate(t *testing.T, newStore func(t *testing.T) credentials.BlobStore, s
 			}
 		case op < 8: // get
 			b, err := r.store.Get(ctx, k.user, k.slot)
-			if exists && (err != nil || b.Version != cur.version || string(b.Data) != cur.data) ||
+			if exists && (err != nil || b.Version != cur.version || string(b.Data) != cur.data || b.NeedsReconnect != cur.marked) ||
 				!exists && !is(err, credentials.ErrNotFound) {
 				t.Fatalf("%s: get = v%d %q, %v; model %+v (exists %v)", where, b.Version, b.Data, err, cur, exists)
 			}
@@ -102,7 +105,7 @@ func Simulate(t *testing.T, newStore func(t *testing.T) credentials.BlobStore, s
 					want++
 					found := false
 					for _, m := range metas {
-						found = found || m.Slot == mk.slot && m.Version == e.version
+						found = found || m.Slot == mk.slot && m.Version == e.version && m.NeedsReconnect == e.marked
 					}
 					if !found {
 						t.Fatalf("%s: list %+v misses %+v", where, metas, mk)
@@ -139,7 +142,7 @@ func Simulate(t *testing.T, newStore func(t *testing.T) credentials.BlobStore, s
 			if len(wins) != 1 || wins[0].Version != last[k]+1 {
 				t.Fatalf("%s: race on v%d: winners %+v, want exactly one at v%d", where, cur.version, wins, last[k]+1)
 			}
-			model[k], last[k] = entry{wins[0].Version, winData}, wins[0].Version
+			model[k], last[k] = entry{wins[0].Version, winData, false}, wins[0].Version
 		}
 	}
 }

@@ -2,7 +2,6 @@ package coretools
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -42,7 +41,8 @@ type askIn struct {
 	Choices  []string `json:"choices,omitempty" jsonschema:"the answers to choose from, if the user should pick one (2 to 10); leave out for a free answer"`
 }
 
-func (userFactory) Build(_ context.Context, settings json.RawMessage) ([]tool.Tool, error) {
+func (userFactory) Build(_ context.Context, in toolset.BuildInput) ([]tool.Tool, error) {
+	settings := in.Settings
 	if err := toolset.DecodeSettings(settings, &struct{}{}); err != nil {
 		return nil, err
 	}

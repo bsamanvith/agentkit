@@ -199,7 +199,7 @@ func TestSettings(t *testing.T) {
 		{"bad transport", `{"url": "https://x.example", "transport": "ws"}`, "auto, http, sse or stdio"},
 		{"result limit", `{"url": "https://x.example", "max_result_bytes": 1073741824}`, "max_result_bytes"},
 	} {
-		_, err := client.Factory(client.WithLookupEnv(lookup)).Build(t.Context(), json.RawMessage(tc.settings))
+		_, err := client.Factory(client.WithLookupEnv(lookup)).Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(tc.settings)})
 		if !errors.Is(err, toolset.ErrInvalidSettings) || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: %v, want ErrInvalidSettings saying %q", tc.name, err, tc.want)
 		}
@@ -239,7 +239,7 @@ func TestHeaderSecret(t *testing.T) {
 		http.Error(w, "bad key "+r.Header.Get("Authorization"), http.StatusUnauthorized)
 	}))
 	defer refusing.Close()
-	_, err = client.Factory(client.WithLookupEnv(lookup)).Build(t.Context(), json.RawMessage(settingsFor(refusing.URL, `"headers": {"Authorization": "Bearer ${TOKEN}"}`)))
+	_, err = client.Factory(client.WithLookupEnv(lookup)).Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(settingsFor(refusing.URL, `"headers": {"Authorization": "Bearer ${TOKEN}"}`))})
 	if err == nil {
 		t.Fatal("Build against a refusing server succeeded")
 	}

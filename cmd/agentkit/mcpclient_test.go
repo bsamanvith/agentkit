@@ -157,7 +157,7 @@ func TestMCPToolsCommand(t *testing.T) {
 		t.Fatalf("pins block %q: %v", block, err)
 	}
 	pins, _ := json.Marshal(got.Pins)
-	tools, err := client.Factory().Build(t.Context(), json.RawMessage(`{"url": "`+ts.URL+`/mcp/a", "pins": `+string(pins)+`}`))
+	tools, err := client.Factory().Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(`{"url": "` + ts.URL + `/mcp/a", "pins": ` + string(pins) + `}`)})
 	if err != nil || len(tools) != 1 {
 		t.Fatalf("building with the printed pins: %d tools, %v", len(tools), err)
 	}

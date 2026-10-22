@@ -35,6 +35,7 @@ func RunVault(t *testing.T, newStore func(t *testing.T) credentials.BlobStore) {
 		{"tenants", vaultTenants},
 		{"listing", vaultListing},
 		{"invalid", vaultInvalid},
+		{"needs_reconnect", vaultNeedsReconnect},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -408,5 +409,58 @@ func vaultInvalid(t *testing.T, r *vaultRig) {
 	}
 	if _, err := r.vault.Put(ctx, "", "crm", allKinds()[0], -1); err == nil {
 		t.Error("ifVersion -1 accepted")
+	}
+}
+
+// MarkNeedsReconnect marks one version, keeps the value, and the next write
+// clears the mark.
+func vaultNeedsReconnect(t *testing.T, r *vaultRig) {
+	ctx := r.ctx(tenantA)
+	cred := allKinds()[2]
+	if _, err := r.vault.MarkNeedsReconnect(ctx, user1, "mail", 1); !is(err, credentials.ErrNotFound) {
+		t.Errorf("mark of nothing: %v, want ErrNotFound", err)
+	}
+	m1, err := r.vault.Put(ctx, user1, "mail", cred, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m2, err := r.vault.Put(ctx, user1, "mail", cred, m1.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range []int64{0, m1.Version, m2.Version + 1} {
+		if _, err := r.vault.MarkNeedsReconnect(ctx, user1, "mail", v); !is(err, credentials.ErrConflict) {
+			t.Errorf("mark if %d of version %d: %v, want ErrConflict", v, m2.Version, err)
+		}
+	}
+	if _, err := r.vault.MarkNeedsReconnect(r.ctx(tenantB), user1, "mail", m2.Version); !is(err, credentials.ErrNotFound) {
+		t.Errorf("B marks A's: %v, want ErrNotFound", err)
+	}
+	m3, err := r.vault.MarkNeedsReconnect(ctx, user1, "mail", m2.Version)
+	if err != nil || !m3.NeedsReconnect || m3.Version <= m2.Version || !m3.CreatedAt.Equal(m1.CreatedAt) || m3.Kind != cred.Kind() {
+		t.Fatalf("mark = %+v, %v", m3, err)
+	}
+	got, gm, err := r.vault.Get(ctx, user1, "mail")
+	if err != nil || reveal(got) != reveal(cred) || !sameMeta(gm, m3) {
+		t.Errorf("Get after the mark = %s %+v, %v", reveal(got), gm, err)
+	}
+	if list, _ := r.vault.List(ctx, user1); len(list) != 1 || !list[0].NeedsReconnect {
+		t.Errorf("List after the mark = %+v", list)
+	}
+	if _, err := r.vault.MarkNeedsReconnect(ctx, user1, "mail", m2.Version); !is(err, credentials.ErrConflict) {
+		t.Errorf("a second mark of the version before: %v, want ErrConflict", err)
+	}
+	m4, err := r.vault.Put(ctx, user1, "mail", cred, m3.Version)
+	if err != nil || m4.NeedsReconnect {
+		t.Errorf("write after the mark = %+v, %v; want the mark cleared", m4, err)
+	}
+	if _, gm, _ := r.vault.Get(ctx, user1, "mail"); gm.NeedsReconnect {
+		t.Error("Get still says NeedsReconnect after a write")
+	}
+	if _, err := r.vault.MarkNeedsReconnect(ctx, user1, "bad slot", 1); !is(err, credentials.ErrInvalidKey) {
+		t.Errorf("mark of a bad slot: %v", err)
+	}
+	if _, err := r.vault.MarkNeedsReconnect(t.Context(), user1, "mail", m4.Version); !is(err, tenancy.ErrNoTenant) {
+		t.Errorf("mark with no tenant: %v", err)
 	}
 }

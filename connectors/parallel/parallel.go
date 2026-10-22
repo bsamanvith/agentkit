@@ -298,7 +298,8 @@ func isLoopback(host string) bool {
 }
 
 // Build implements [toolset.Factory]. It makes no network request.
-func (f *factory) Build(_ context.Context, raw json.RawMessage) ([]tool.Tool, error) {
+func (f *factory) Build(_ context.Context, in toolset.BuildInput) ([]tool.Tool, error) {
+	raw := in.Settings
 	c, err := f.decode(raw)
 	if err != nil {
 		return nil, err

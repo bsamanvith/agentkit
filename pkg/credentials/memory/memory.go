@@ -70,7 +70,7 @@ func (s *Store) Put(ctx context.Context, user, slot string, b credentials.Blob, 
 	case ifVersion != 0 && (!exists || cur.Version != ifVersion):
 		return credentials.Meta{}, fmt.Errorf("credential %q: version %d: %w", slot, ifVersion, credentials.ErrConflict)
 	}
-	b.User, b.Slot, b.NeedsReconnect = user, slot, false
+	b.User, b.Slot = user, slot
 	b.Version = s.last[k] + 1
 	b.CreatedAt = b.UpdatedAt
 	if exists {

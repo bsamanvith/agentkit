@@ -1,6 +1,6 @@
 // Package postgres is a [credentials.BlobStore] in the Postgres store's
 // database (package store/postgres): a credential_blobs table that the
-// store's migration 0011 creates, on the store's connection pool. It is the
+// store's migrations 0011 and 0012 create, on the store's connection pool. It is the
 // backend for replicas: every process sharing the database shares the
 // credentials.
 //
@@ -88,9 +88,9 @@ func (s *Store) Get(ctx context.Context, user, slot string) (credentials.Blob, e
 		created, updated int64
 		expiry           *int64
 	)
-	err = s.pool.QueryRow(ctx, `SELECT kind, version, blob, created_at, updated_at, expiry FROM credential_blobs
+	err = s.pool.QueryRow(ctx, `SELECT kind, version, blob, created_at, updated_at, expiry, needs_reconnect FROM credential_blobs
 		WHERE tenant = $1 AND user_id = $2 AND slot = $3 AND blob IS NOT NULL`, tn, user, slot).
-		Scan(&b.Kind, &b.Version, &b.Data, &created, &updated, &expiry)
+		Scan(&b.Kind, &b.Version, &b.Data, &created, &updated, &expiry, &b.NeedsReconnect)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return credentials.Blob{}, fmt.Errorf("credential %q: %w", slot, credentials.ErrNotFound)
 	}
@@ -130,27 +130,29 @@ func (s *Store) Put(ctx context.Context, user, slot string, b credentials.Blob, 
 	if data == nil {
 		data = []byte{} // NULL marks a tombstone
 	}
-	m := credentials.Meta{Slot: slot, User: user, Kind: b.Kind, Expiry: b.Expiry.UTC()}
+	m := credentials.Meta{Slot: slot, User: user, Kind: b.Kind, Expiry: b.Expiry.UTC(), NeedsReconnect: b.NeedsReconnect}
 	var created, updated int64
 	if ifVersion == 0 {
 		err = s.pool.QueryRow(ctx, `INSERT INTO credential_blobs
-			(tenant, user_id, slot, version, kind, blob, created_at, updated_at, expiry)
-			VALUES ($1, $2, $3, 1, $4, $5, $6, $6, $7)
+			(tenant, user_id, slot, version, kind, blob, created_at, updated_at, expiry, needs_reconnect)
+			VALUES ($1, $2, $3, 1, $4, $5, $6, $6, $7, $8)
 			ON CONFLICT (tenant, user_id, slot) DO UPDATE SET
 				version = credential_blobs.version + 1, kind = excluded.kind, blob = excluded.blob,
-				created_at = excluded.created_at, updated_at = excluded.updated_at, expiry = excluded.expiry
+				created_at = excluded.created_at, updated_at = excluded.updated_at, expiry = excluded.expiry,
+				needs_reconnect = excluded.needs_reconnect
 			WHERE credential_blobs.blob IS NULL
 			RETURNING version, created_at, updated_at`,
-			tn, user, slot, string(b.Kind), data, at, expiry).Scan(&m.Version, &created, &updated)
+			tn, user, slot, string(b.Kind), data, at, expiry, b.NeedsReconnect).Scan(&m.Version, &created, &updated)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return credentials.Meta{}, fmt.Errorf("credential %q: %w", slot, credentials.ErrExists)
 		}
 	} else {
 		err = s.pool.QueryRow(ctx, `UPDATE credential_blobs SET
-				version = version + 1, kind = $1, blob = $2, updated_at = GREATEST($3::BIGINT, created_at), expiry = $4
+				version = version + 1, kind = $1, blob = $2, updated_at = GREATEST($3::BIGINT, created_at), expiry = $4,
+				needs_reconnect = $9
 			WHERE tenant = $5 AND user_id = $6 AND slot = $7 AND version = $8 AND blob IS NOT NULL
 			RETURNING version, created_at, updated_at`,
-			string(b.Kind), data, at, expiry, tn, user, slot, ifVersion).Scan(&m.Version, &created, &updated)
+			string(b.Kind), data, at, expiry, tn, user, slot, ifVersion, b.NeedsReconnect).Scan(&m.Version, &created, &updated)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return credentials.Meta{}, fmt.Errorf("credential %q: version %d: %w", slot, ifVersion, credentials.ErrConflict)
 		}
@@ -190,7 +192,7 @@ func (s *Store) List(ctx context.Context, user string) ([]credentials.Meta, erro
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.pool.Query(ctx, `SELECT slot, kind, version, created_at, updated_at, expiry FROM credential_blobs
+	rows, err := s.pool.Query(ctx, `SELECT slot, kind, version, created_at, updated_at, expiry, needs_reconnect FROM credential_blobs
 		WHERE tenant = $1 AND user_id = $2 AND blob IS NOT NULL ORDER BY slot`, tn, user)
 	if err != nil {
 		return nil, fmt.Errorf("credentials: postgres: list: %w", err)
@@ -201,7 +203,7 @@ func (s *Store) List(ctx context.Context, user string) ([]credentials.Meta, erro
 		m := credentials.Meta{User: user}
 		var created, updated int64
 		var expiry *int64
-		if err := rows.Scan(&m.Slot, &m.Kind, &m.Version, &created, &updated, &expiry); err != nil {
+		if err := rows.Scan(&m.Slot, &m.Kind, &m.Version, &created, &updated, &expiry, &m.NeedsReconnect); err != nil {
 			return nil, fmt.Errorf("credentials: postgres: list: %w", err)
 		}
 		m.CreatedAt, m.UpdatedAt, m.Expiry = sqltime.Load(created), sqltime.Load(updated), loadNull(expiry)

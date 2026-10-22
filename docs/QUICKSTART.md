@@ -240,7 +240,7 @@ Each entry of `agents`:
 | `max_runs`, `max_conversations`, `retention` | 1000, 1000, `24h` | recent runs whose events are kept in memory to stream; older ones are read from the store |
 | `max_body_bytes` | 1 MiB | limit on a run's request body |
 
-`credentials` (where connectors' stored credentials go; T044 puts them to use): the vault keeps only sealed blobs, AES-256-GCM under `AGENTKIT_CREDENTIALS_KEY`, never plaintext.
+`credentials` (where connectors' stored credentials go): the vault keeps only sealed blobs, AES-256-GCM under `AGENTKIT_CREDENTIALS_KEY`, never plaintext.
 
 | `backend` | `path` | For |
 |---|---|---|
@@ -248,6 +248,17 @@ Each entry of `agents`:
 | `file` | the file, required | one process: the whole store in one JSON file, created `0600` (a file others may read is refused), written atomically, locked so a second process fails to open it |
 | `sqlite` | the SQLite file; default the store's (`AGENTKIT_STORE=sqlite:...`) | one machine, local image only: a `credential_blobs` table beside the store's |
 | `postgres` | none: `AGENTKIT_STORE` must be `postgres://` | replicas, dev and cloud images: a `credential_blobs` table in the store's database, migrated with it, under its row-level security |
+
+A toolset uses a stored credential when its spec names a slot: `{"name": "crm", "type": "...", "credential": {"slot": "salesforce", "scope": "tenant"}}`. `scope` is `tenant` (default: the tenant's shared connection) or `user` (each caller's own, so API keys need a `user`). Each call picks the caller's credential at that moment; with none (or one that needs reconnecting), the tool answers "crm is not connected for this account" and the run carries on. A spec naming a slot with no vault (no `AGENTKIT_CREDENTIALS_KEY`) fails startup, or is skipped if `optional`. OAuth2 tokens are refreshed a minute before they expire, once per account across concurrent calls, and written back with compare-and-swap, so replicas on one `postgres` vault share one token chain; a refresh the provider refuses (`invalid_grant`) marks the credential `needs_reconnect`. Refreshing needs the slot's OAuth2 client:
+
+```json
+"credentials": {"backend": "postgres", "oauth2": [
+  {"slot": "gmail", "token_url": "https://oauth2.googleapis.com/token", "client_id": "123.apps.googleusercontent.com",
+   "client_secret_env": "GMAIL_CLIENT_SECRET", "auth_style": "header"}
+]}
+```
+
+The client secret comes from the variable `client_secret_env` names, never the file; `auth_style` is `header` (default) or `params`. Credentials are put in the vault by T045's API (until then, by code: `credentials.Vault.Put`).
 
 The one-agent form still works: an `agent` section (instead of `agents` and `agent_api`) with the fields of both tables except `name` is served as the agent `default`.
 

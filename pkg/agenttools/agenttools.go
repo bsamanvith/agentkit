@@ -2,7 +2,6 @@ package agenttools
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -110,7 +109,8 @@ func (f *Factory) Type() string { return Type }
 
 // Build validates the settings and returns the five tools. It makes no
 // request.
-func (f *Factory) Build(_ context.Context, raw json.RawMessage) ([]tool.Tool, error) {
+func (f *Factory) Build(_ context.Context, in toolset.BuildInput) ([]tool.Tool, error) {
+	raw := in.Settings
 	var s Settings
 	if err := toolset.DecodeSettings(raw, &s); err != nil {
 		return nil, err

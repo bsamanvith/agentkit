@@ -19,7 +19,8 @@ import (
 type fixtureFactory struct{ typ string }
 
 func (f fixtureFactory) Type() string { return f.typ }
-func (f fixtureFactory) Build(_ context.Context, settings json.RawMessage) ([]tool.Tool, error) {
+func (f fixtureFactory) Build(_ context.Context, in toolset.BuildInput) ([]tool.Tool, error) {
+	settings := in.Settings
 	var s struct {
 		Fail bool `json:"fail"`
 	}
@@ -191,7 +192,7 @@ type countingFactory struct {
 }
 
 func (f *countingFactory) Type() string { return "counting" }
-func (f *countingFactory) Build(context.Context, json.RawMessage) ([]tool.Tool, error) {
+func (f *countingFactory) Build(context.Context, toolset.BuildInput) ([]tool.Tool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.n++
@@ -408,7 +409,7 @@ func TestDemoConformance(t *testing.T) {
 // shows its calls with.
 func TestDemoToolsAreClassified(t *testing.T) {
 	t.Parallel()
-	tools, err := toolset.Demo().Build(t.Context(), nil)
+	tools, err := toolset.Demo().Build(t.Context(), toolset.BuildInput{Settings: nil})
 	if err != nil {
 		t.Fatal(err)
 	}

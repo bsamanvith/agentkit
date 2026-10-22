@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/bsamanvith/agentkit/connectors/parallel"
+	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
 func TestLive(t *testing.T) {
@@ -23,7 +24,9 @@ func TestLive(t *testing.T) {
 	tools, err := parallel.Factory(
 		parallel.WithLookupEnv(os.LookupEnv),
 		parallel.WithLogger(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))),
-	).Build(t.Context(), nil)
+	).Build(
+
+		t.Context(), toolset.BuildInput{Settings: nil})
 	if err != nil {
 		t.Fatal(err)
 	}

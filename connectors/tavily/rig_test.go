@@ -23,6 +23,7 @@ import (
 	"github.com/bsamanvith/agentkit/connectors/tavily"
 	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
 	"github.com/bsamanvith/agentkit/pkg/tool"
+	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
 // canary is the key the tests put in the environment. It must never appear
@@ -228,7 +229,7 @@ func newRig(t testing.TB, o rigOpts) *rig {
 		tavily.WithClock(r.clock),
 		tavily.WithLogger(log),
 	}, o.extra...)
-	tools, err := tavily.Factory(opts...).Build(t.Context(), json.RawMessage(settingsOr(o.settings)))
+	tools, err := tavily.Factory(opts...).Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(settingsOr(o.settings))})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}

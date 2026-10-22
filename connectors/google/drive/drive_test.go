@@ -67,7 +67,7 @@ func newRig(t *testing.T, settings string, h func(w http.ResponseWriter, r *http
 	if settings == "" {
 		settings = "{}"
 	}
-	tools, err := fac.Build(context.Background(), json.RawMessage(settings))
+	tools, err := fac.Build(context.Background(), toolset.BuildInput{Settings: json.RawMessage(settings)})
 	if err != nil {
 		t.Fatalf("Build(%s): %v", settings, err)
 	}
@@ -167,7 +167,7 @@ func TestSettings(t *testing.T) {
 		"download too big":      `{"max_download_bytes": 99999999}`,
 		"base_url over http":    `{"base_url": "http://drive.example.com"}`,
 	} {
-		if _, err := fac.Build(context.Background(), json.RawMessage(s)); !errors.Is(err, toolset.ErrInvalidSettings) {
+		if _, err := fac.Build(context.Background(), toolset.BuildInput{Settings: json.RawMessage(s)}); !errors.Is(err, toolset.ErrInvalidSettings) {
 			t.Errorf("%s: err = %v, want ErrInvalidSettings", name, err)
 		}
 	}

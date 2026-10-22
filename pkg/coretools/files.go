@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -141,7 +140,8 @@ type (
 	}
 )
 
-func (filesFactory) Build(_ context.Context, settings json.RawMessage) ([]tool.Tool, error) {
+func (filesFactory) Build(_ context.Context, in toolset.BuildInput) ([]tool.Tool, error) {
+	settings := in.Settings
 	var s filesSettings
 	if err := toolset.DecodeSettings(settings, &s); err != nil {
 		return nil, err

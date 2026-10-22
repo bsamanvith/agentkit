@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/bsamanvith/agentkit/connectors/tavily"
+	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
 // TestDefinitions pins the tool definitions models and MCP clients see: the
@@ -18,7 +19,7 @@ func TestDefinitions(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			tools, err := tavily.Factory().Build(t.Context(), json.RawMessage(settings))
+			tools, err := tavily.Factory().Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(settings)})
 			if err != nil {
 				t.Fatal(err)
 			}

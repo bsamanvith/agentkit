@@ -22,6 +22,14 @@
 // Writes are compare-and-swap on [Meta.Version]: 0 creates, n replaces
 // version n. Versions never repeat for a key, even after a delete.
 //
+// Tools reach credentials through a [Source], which [Sources] hands out per
+// toolset: it can read one slot only, picks the tenant (and, for
+// [ScopeUser], the user) from the call's context, refreshes OAuth2 tokens
+// within a margin of their expiry (once per credential in a process,
+// written back with compare-and-swap, invalid_grant marking
+// NeedsReconnect), fetches client credentials tokens, and adds the
+// credential to an http.Client. A missing credential is [ErrNotConnected].
+//
 // credentials/memory is the reference backend; credentials/file keeps the
 // blobs in one file for one process, credentials/sqlite in the SQLite store's
 // file (local images), credentials/postgres in the Postgres store's database

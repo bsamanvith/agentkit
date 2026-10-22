@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
 // TestInProcessStreams: the response arrives once the handler sends its
@@ -162,7 +164,7 @@ func TestForwardingStaysAtTheAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = f.Close() }()
-	tools, err := f.Build(t.Context(), json.RawMessage(`{"url":"`+api.URL+`"}`))
+	tools, err := f.Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(`{"url":"` + api.URL + `"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +200,7 @@ func TestAgentRunLeavesWithTheCaller(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = f.Close() }()
-	tools, err := f.Build(t.Context(), nil)
+	tools, err := f.Build(t.Context(), toolset.BuildInput{Settings: nil})
 	if err != nil {
 		t.Fatal(err)
 	}

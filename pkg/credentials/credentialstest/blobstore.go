@@ -29,6 +29,7 @@ func RunBlobStore(t *testing.T, newStore func(t *testing.T) credentials.BlobStor
 		{"no_tenant", blobNoTenant},
 		{"copies", blobCopies},
 		{"one_writer_wins", blobOneWriterWins},
+		{"needs_reconnect", blobNeedsReconnect},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -235,5 +236,41 @@ func blobOneWriterWins(t *testing.T, r *rig) {
 	}
 	if got, _ := r.store.Get(ctx, "", "crm"); won != 1 || got.Version != 2 {
 		t.Errorf("%d writers won, version %d; want exactly one, version 2", won, got.Version)
+	}
+}
+
+// NeedsReconnect is stored as Put gives it, in Get and List, and a write
+// without it clears it.
+func blobNeedsReconnect(t *testing.T, r *rig) {
+	ctx := r.ctx(tenantA)
+	s := r.store
+	marked := blob("one", t0)
+	marked.NeedsReconnect = true
+	if m := put(ctx, t, s, user1, "crm", marked, 0); !m.NeedsReconnect {
+		t.Errorf("create with NeedsReconnect = %+v", m)
+	}
+	check := func(when string, want bool) {
+		t.Helper()
+		got, err := s.Get(ctx, user1, "crm")
+		list, lerr := s.List(ctx, user1)
+		if err != nil || lerr != nil || got.NeedsReconnect != want || len(list) != 1 || list[0].NeedsReconnect != want {
+			t.Errorf("%s: Get %+v, %v; List %+v, %v; want NeedsReconnect %v", when, got.Meta, err, list, lerr, want)
+		}
+	}
+	check("created marked", true)
+	put(ctx, t, s, user1, "crm", blob("two", t0), 1)
+	check("replaced unmarked", false)
+	m := put(ctx, t, s, user1, "crm", marked, 2)
+	if !m.NeedsReconnect || m.Version != 3 {
+		t.Errorf("replace with NeedsReconnect = %+v", m)
+	}
+	check("replaced marked", true)
+	if err := s.Delete(ctx, user1, "crm", 0); err != nil {
+		t.Fatal(err)
+	}
+	put(ctx, t, s, user1, "crm", blob("again", t0), 0)
+	check("recreated after a delete", false)
+	if got, _ := s.Get(r.ctx(tenantB), user1, "crm"); got.NeedsReconnect {
+		t.Error("another tenant sees the mark")
 	}
 }

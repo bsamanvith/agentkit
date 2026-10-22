@@ -105,7 +105,7 @@ func TestSettingsRejected(t *testing.T) {
 			t.Parallel()
 			env := c.env
 			lookup := func(k string) (string, bool) { v, ok := env[k]; return v, ok }
-			_, err := tavily.Factory(tavily.WithLookupEnv(lookup)).Build(t.Context(), json.RawMessage(c.settings))
+			_, err := tavily.Factory(tavily.WithLookupEnv(lookup)).Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(c.settings)})
 			if !errors.Is(err, toolset.ErrInvalidSettings) {
 				t.Fatalf("Build = %v, want ErrInvalidSettings", err)
 			}
@@ -151,7 +151,7 @@ func TestBaseURLSetting(t *testing.T) {
 	up := newUpstream(t)
 	up.queue(reply{status: http.StatusOK, body: fixture(t, "search-go-release")})
 	settings := `{"auth": "keyless", "base_url": "` + up.srv.URL + `/"}`
-	tools, err := tavily.Factory(tavily.WithBaseURL("http://127.0.0.1:9")).Build(t.Context(), json.RawMessage(settings))
+	tools, err := tavily.Factory(tavily.WithBaseURL("http://127.0.0.1:9")).Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(settings)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestBaseURLSetting(t *testing.T) {
 		t.Errorf("requests %+v, want one to /search on the base_url", q)
 	}
 	for _, u := range []string{"https://tavily.example/v1", "http://localhost:8080", "http://127.0.0.2", "http://[::1]:9000/"} {
-		if _, err := tavily.Factory().Build(t.Context(), json.RawMessage(`{"base_url": "`+u+`"}`)); err != nil {
+		if _, err := tavily.Factory().Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(`{"base_url": "` + u + `"}`)}); err != nil {
 			t.Errorf("base_url %s: %v", u, err)
 		}
 	}

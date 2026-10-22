@@ -135,7 +135,7 @@ func newRig(t *testing.T, settings string) *rig {
 func newRigWith(t *testing.T, o rigOption) *rig {
 	t.Helper()
 	r := &rig{t: t, up: newUpstream(t), clock: clocktest.NewFake(start), logs: &lockedBuffer{}}
-	tools, err := r.factory(o).Build(t.Context(), json.RawMessage(o.settings))
+	tools, err := r.factory(o).Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(o.settings)})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}

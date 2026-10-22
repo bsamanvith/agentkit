@@ -23,6 +23,7 @@ import (
 	"github.com/bsamanvith/agentkit/connectors/google/common"
 	"github.com/bsamanvith/agentkit/connectors/google/gmail"
 	"github.com/bsamanvith/agentkit/pkg/tool"
+	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
 // upstream is a fake Gmail: handler answers each request, and every request
@@ -71,7 +72,7 @@ func toolbox(t *testing.T, u *upstream, settings string, opts ...gmail.Option) m
 		gmail.WithBaseURL(u.srv.URL), gmail.WithHTTPClient(u.srv.Client()),
 		gmail.WithLookupEnv(func(string) (string, bool) { return "test-token", true }),
 	}, opts...)
-	tools, err := gmail.Factory(opts...).Build(t.Context(), json.RawMessage(settings))
+	tools, err := gmail.Factory(opts...).Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(settings)})
 	if err != nil {
 		t.Fatalf("Build(%s): %v", settings, err)
 	}
@@ -531,16 +532,16 @@ func TestTokenComesFromTheSourcePerCallAndNeverFromTheEnvironmentWhenGiven(t *te
 func TestBuildNeedsATokenAndRefusesBadSettings(t *testing.T) {
 	t.Parallel()
 	noEnv := func(string) (string, bool) { return "", false }
-	if _, err := gmail.Factory(gmail.WithLookupEnv(noEnv)).Build(t.Context(), nil); err == nil || !strings.Contains(err.Error(), "GOOGLE_ACCESS_TOKEN") {
+	if _, err := gmail.Factory(gmail.WithLookupEnv(noEnv)).Build(t.Context(), toolset.BuildInput{Settings: nil}); err == nil || !strings.Contains(err.Error(), "GOOGLE_ACCESS_TOKEN") {
 		t.Errorf("no token: %v", err)
 	}
 	// With a source, no variable is needed.
 	src := common.TokenSourceFunc(func(context.Context) (string, error) { return "t", nil })
-	if _, err := gmail.Factory(gmail.WithLookupEnv(noEnv), gmail.WithTokenSource(src)).Build(t.Context(), nil); err != nil {
+	if _, err := gmail.Factory(gmail.WithLookupEnv(noEnv), gmail.WithTokenSource(src)).Build(t.Context(), toolset.BuildInput{Settings: nil}); err != nil {
 		t.Errorf("with a source: %v", err)
 	}
 	for _, s := range []string{`{"max_body_chars": 5}`, `{"max_body_chars": 1000000}`, `{"allow_send": "yes"}`, `{"access_token": "ya29.x"}`} {
-		if _, err := gmail.Factory(gmail.WithLookupEnv(func(string) (string, bool) { return "t", true })).Build(t.Context(), json.RawMessage(s)); err == nil {
+		if _, err := gmail.Factory(gmail.WithLookupEnv(func(string) (string, bool) { return "t", true })).Build(t.Context(), toolset.BuildInput{Settings: json.RawMessage(s)}); err == nil {
 			t.Errorf("settings %s accepted", s)
 		}
 	}

@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/bsamanvith/agentkit/pkg/credentials"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 )
 
@@ -34,6 +35,13 @@ var (
 	ErrDuplicateType = errors.New("duplicate factory type")
 	// ErrInvalidFactory reports a nil factory or one with an unusable type.
 	ErrInvalidFactory = errors.New("invalid factory")
+	// ErrInvalidCredentialRef reports a spec's credential with an invalid
+	// slot name or scope.
+	ErrInvalidCredentialRef = errors.New("invalid toolset credential")
+	// ErrNoCredentials reports a spec naming a credential slot that [Build]
+	// has no source for: no [WithSources], or one that refused the slot
+	// (no vault is configured, say).
+	ErrNoCredentials = errors.New("no source for the toolset's credential")
 )
 
 var namePattern = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`)
@@ -43,11 +51,52 @@ type Factory interface {
 	// Type is the name config uses to select this factory (the Spec's Type).
 	// It must match ^[a-zA-Z0-9_-]{1,64}$.
 	Type() string
-	// Build decodes and validates settings (raw JSON, possibly empty) and
-	// returns the connector's tools. Unknown settings fields must be an
+	// Build decodes and validates in.Settings (raw JSON, possibly empty)
+	// and returns the connector's tools. Unknown settings fields must be an
 	// error: use [DecodeSettings]. Build is called once per spec, so two
 	// instances never share state unless the factory shares it.
-	Build(ctx context.Context, settings json.RawMessage) ([]tool.Tool, error)
+	Build(ctx context.Context, in BuildInput) ([]tool.Tool, error)
+}
+
+// BuildInput is what a [Factory] builds one toolset from.
+type BuildInput struct {
+	// Settings is the spec's settings, the factory's own copy.
+	Settings json.RawMessage
+	// Credentials is the source of the spec's credential slot, nil when
+	// the spec names none. Tools call its Get or HTTPClient with their
+	// call's context, which carries the caller's tenant and user; a
+	// missing credential is credentials.ErrNotConnected, which a tool
+	// returns as it is (the model reads "<toolset> is not connected for
+	// this account").
+	Credentials credentials.Source
+}
+
+// SourceProvider gives a toolset the [credentials.Source] of its slot.
+// *credentials.Sources is one.
+type SourceProvider interface {
+	Source(toolset, slot string, scope credentials.Scope) (credentials.Source, error)
+}
+
+// SourceFunc is a [SourceProvider] as a function.
+type SourceFunc func(toolset, slot string, scope credentials.Scope) (credentials.Source, error)
+
+// Source implements [SourceProvider].
+func (f SourceFunc) Source(toolset, slot string, scope credentials.Scope) (credentials.Source, error) {
+	return f(toolset, slot, scope)
+}
+
+// BuildOption configures [Build].
+type BuildOption func(*buildOptions)
+
+type buildOptions struct {
+	sources SourceProvider
+}
+
+// WithSources gives the specs that name a credential slot their sources.
+// Without it, such a spec fails with [ErrNoCredentials] (or is skipped, if
+// optional).
+func WithSources(p SourceProvider) BuildOption {
+	return func(o *buildOptions) { o.sources = p }
 }
 
 // DecodeSettings strictly decodes raw settings into v, a pointer to the
@@ -167,8 +216,14 @@ func (p Problem) Error() string { return "skipped " + p.Err.Error() }
 // A toolset that fails while being built (the factory returns an error,
 // settings are invalid, a filter matches nothing) fails the build if it is
 // required. If Optional, it is left out of the result and reported as a
-// [Problem]. A cancelled ctx always fails the build.
-func Build(ctx context.Context, catalog *Catalog, specs []Spec) (map[string]tool.Registry, []Problem, error) {
+// [Problem]. So does a spec whose credential slot has no source
+// ([ErrNoCredentials]); a malformed slot or scope is a mistake in the spec.
+// A cancelled ctx always fails the build.
+func Build(ctx context.Context, catalog *Catalog, specs []Spec, opts ...BuildOption) (map[string]tool.Registry, []Problem, error) {
+	var o buildOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
 	seen := make(map[string]bool, len(specs))
 	factories := make([]Factory, len(specs))
 	for i, s := range specs {
@@ -192,6 +247,11 @@ func Build(ctx context.Context, catalog *Catalog, specs []Spec) (map[string]tool
 		if err := checkGlobs(s.Include, s.Exclude); err != nil {
 			return nil, nil, &Error{Toolset: s.Name, Type: s.Type, Err: err}
 		}
+		if c := s.Credential; c != nil {
+			if err := errors.Join(credentials.CheckSlot(c.Slot), credentials.CheckScope(c.Scope)); err != nil {
+				return nil, nil, &Error{Toolset: s.Name, Type: s.Type, Err: fmt.Errorf("%w: %w", ErrInvalidCredentialRef, err)}
+			}
+		}
 	}
 
 	registries := make(map[string]tool.Registry, len(specs))
@@ -200,7 +260,7 @@ func Build(ctx context.Context, catalog *Catalog, specs []Spec) (map[string]tool
 		if err := ctx.Err(); err != nil {
 			return nil, problems, err
 		}
-		reg, err := buildOne(ctx, factories[i], s)
+		reg, err := buildOne(ctx, factories[i], s, o.sources)
 		if err == nil {
 			registries[s.Name] = reg
 			continue
@@ -217,9 +277,23 @@ func Build(ctx context.Context, catalog *Catalog, specs []Spec) (map[string]tool
 	return registries, problems, nil
 }
 
-func buildOne(ctx context.Context, f Factory, s Spec) (tool.Registry, error) {
+func buildOne(ctx context.Context, f Factory, s Spec, sources SourceProvider) (tool.Registry, error) {
 	// Each instance gets its own copy of the settings bytes.
-	tools, err := f.Build(ctx, bytes.Clone(s.Settings))
+	in := BuildInput{Settings: bytes.Clone(s.Settings)}
+	if c := s.Credential; c != nil {
+		if sources == nil {
+			return nil, fmt.Errorf("%w: slot %q (no credential vault)", ErrNoCredentials, c.Slot)
+		}
+		src, err := sources.Source(s.Name, c.Slot, c.Scope)
+		if err != nil {
+			if errors.Is(err, ErrNoCredentials) {
+				return nil, err
+			}
+			return nil, fmt.Errorf("%w: slot %q: %w", ErrNoCredentials, c.Slot, err)
+		}
+		in.Credentials = src
+	}
+	tools, err := f.Build(ctx, in)
 	if err != nil {
 		return nil, err
 	}

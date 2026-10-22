@@ -31,6 +31,10 @@ func ModuleRules() Rules {
 				"github.com/modelcontextprotocol/go-sdk/auth", "github.com/modelcontextprotocol/go-sdk/oauthex",
 				"golang.org/x/oauth2", "github.com/modelcontextprotocol/go-sdk/mcp",
 			},
+			// Credential sources (T044) refresh OAuth2 tokens and run the
+			// client credentials grant with x/oauth2, in this package only
+			// (E07's decision): connectors get a Source, never the library.
+			"pkg/credentials": {"golang.org/x/oauth2", "golang.org/x/oauth2/clientcredentials"},
 			// JWT bearer tokens (T041): go-jose for JWS and JWK sets, in
 			// this package only (E07's decision). Its fake provider signs
 			// with it.
@@ -276,7 +280,8 @@ func ModuleRules() Rules {
 			"pkg/netguard": {},
 			// The credential vault (T042) knows tenants and nothing else:
 			// backends and the conformance suites add only the vault itself.
-			"pkg/credentials":                 {"pkg/tenancy", "pkg/credentials/credentialstest", "pkg/credentials/memory"},
+			// Its sources (T044) read token expiry against the clock.
+			"pkg/credentials":                 {"pkg/tenancy", "pkg/clock", "pkg/credentials/credentialstest", "pkg/credentials/memory"},
 			"pkg/credentials/memory":          {"pkg/credentials", "pkg/tenancy", "pkg/credentials/credentialstest"},
 			"pkg/credentials/credentialstest": {"pkg/credentials", "pkg/tenancy"},
 			// The SQL backends (T043) keep their table in the store's own

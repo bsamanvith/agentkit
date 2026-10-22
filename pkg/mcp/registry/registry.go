@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/bsamanvith/agentkit/pkg/clock"
 )
@@ -37,6 +38,12 @@ const (
 	maxPages = 3
 	// maxBodyBytes caps a page of the registry's answer.
 	maxBodyBytes = 4 << 20
+	// maxURLLength caps a URL kept from an answer (POST /v1/toolsets takes
+	// no longer one).
+	maxURLLength = 2048
+	// maxRemotes and maxHeaders cap what one server's entry keeps.
+	maxRemotes = 8
+	maxHeaders = 20
 )
 
 // The remote transports a [Remote] has, as the registry names them.
@@ -150,9 +157,19 @@ func New(base string, opts ...Option) (*Client, error) {
 		return nil, errors.New("registry: the cache's TTL must not be negative and its size must be positive")
 	}
 	if c.hc == nil {
-		c.hc = &http.Client{Timeout: DefaultTimeout}
+		c.hc = &http.Client{Timeout: DefaultTimeout, CheckRedirect: c.sameOrigin}
 	}
 	return c, nil
+}
+
+// sameOrigin follows a redirect only on the registry's own scheme and
+// host: the registry is called outside the SSRF guard because its URL is
+// the operator's, so its answers must not send the server anywhere else.
+func (c *Client) sameOrigin(req *http.Request, via []*http.Request) error {
+	if len(via) >= 5 || req.URL.Scheme != c.base.Scheme || req.URL.Host != c.base.Host {
+		return http.ErrUseLastResponse // answered as a status that is not 200
+	}
+	return nil
 }
 
 // URL returns the registry's URL.
@@ -323,7 +340,23 @@ type entry struct {
 	} `json:"_meta"`
 }
 
-var variable = regexp.MustCompile(`\{([^{}]+)\}`)
+// variable is a "{variable}" of a remote's URL. A URL with braces that are
+// not one is left out.
+var variable = regexp.MustCompile(`\{([A-Za-z0-9_.-]{1,64})\}`)
+
+// webURL is raw when it is an http(s) URL of a host, of a sane length, and
+// "" otherwise: a registry's links are shown to admins, so no javascript:
+// or data: URL passes.
+func webURL(raw string) string {
+	if len(raw) > maxURLLength || strings.ContainsFunc(raw, func(r rune) bool { return !unicode.IsPrint(r) || r == ' ' }) {
+		return "" // no controls, spaces, or format characters (bidi overrides)
+	}
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil {
+		return ""
+	}
+	return raw
+}
 
 // server is the entry as a [Server], false when agentkit cannot add it.
 func (e entry) server() (Server, bool) {
@@ -336,13 +369,17 @@ func (e entry) server() (Server, bool) {
 	}
 	s := Server{
 		Name: e.Server.Name, Title: e.Server.Title, Description: e.Server.Description, Version: e.Server.Version,
-		WebsiteURL: e.Server.WebsiteURL, RepositoryURL: e.Server.Repository.URL, Status: status,
+		WebsiteURL: webURL(e.Server.WebsiteURL), RepositoryURL: webURL(e.Server.Repository.URL), Status: status,
 	}
 	for _, r := range e.Server.Remotes {
+		if len(s.Remotes) == maxRemotes {
+			break
+		}
 		if r.Type != TransportStreamableHTTP && r.Type != TransportSSE {
 			continue
 		}
-		if u, err := url.Parse(variable.ReplaceAllString(r.URL, "x")); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+		filled := variable.ReplaceAllString(r.URL, "x")
+		if strings.ContainsAny(filled, "{}") || webURL(filled) == "" || len(r.URL) > maxURLLength {
 			continue
 		}
 		rm := Remote{Transport: r.Type, URL: r.URL}
@@ -352,7 +389,7 @@ func (e entry) server() (Server, bool) {
 			}
 		}
 		for _, h := range r.Headers {
-			if h.Name != "" {
+			if h.Name != "" && len(rm.Headers) < maxHeaders {
 				rm.Headers = append(rm.Headers, Header{Name: h.Name, Description: h.Description, Required: h.IsRequired, Secret: h.IsSecret})
 			}
 		}

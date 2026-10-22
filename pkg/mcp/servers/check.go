@@ -1,10 +1,12 @@
 package servers
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"net/url"
 	"regexp"
 	"slices"
 	"strings"
@@ -170,15 +172,27 @@ func (m *Manager) settings(r record) (http.Header, string, error) {
 	return header, hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// clientConfig is how the client reaches a record's server: through the
-// guard, with the 401s noted.
-func (m *Manager) clientConfig(r record, header http.Header) client.Config {
+// clientConfig is how the client reaches a record's server of ctx's
+// tenant: through the guard, with the 401s noted. A redirect must pass the
+// guard and the tenant's allowlist, and must stay on the server's origin
+// when the toolset sends headers, which the client adds to every request.
+func (m *Manager) clientConfig(ctx context.Context, r record, header http.Header) client.Config {
 	guarded := m.guard.Client(nil)
+	tenant := context.WithoutCancel(ctx) // only its tenant is read
+	origin, _ := url.Parse(r.URL)
 	return client.Config{
 		URL: r.URL, Transport: client.Transport(r.Transport), Header: header,
 		HTTPClient: &http.Client{
-			Transport:     &authSniffer{base: guarded.Transport},
-			CheckRedirect: guarded.CheckRedirect,
+			Transport: &authSniffer{base: guarded.Transport},
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if err := guarded.CheckRedirect(req, via); err != nil {
+					return err
+				}
+				if len(header) > 0 && (origin == nil || req.URL.Scheme != origin.Scheme || req.URL.Host != origin.Host) {
+					return fmt.Errorf("a redirect to another origin (%s), which would get the toolset's headers, is not followed", req.URL.Host)
+				}
+				return m.checkAllowed(tenant, req.URL.String())
+			},
 		},
 		ConnectTimeout: m.connectTimeout,
 	}

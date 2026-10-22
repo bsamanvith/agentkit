@@ -134,7 +134,7 @@ func (m *Manager) connFor(ctx context.Context, name string, r record) (*conn, er
 	if cn != nil {
 		go func() { <-cn.ready; cn.close() }()
 	}
-	m.connect(ctx, fresh, m.clientConfig(r, header))
+	m.connect(ctx, fresh, m.clientConfig(ctx, r, header))
 	return fresh, fresh.err
 }
 
@@ -156,7 +156,7 @@ func (m *Manager) dial(ctx context.Context, r record) (*conn, error) {
 		return nil, err
 	}
 	cn := &conn{key: settings, where: r.URL, ready: make(chan struct{})}
-	m.connect(ctx, cn, m.clientConfig(r, header))
+	m.connect(ctx, cn, m.clientConfig(ctx, r, header))
 	if cn.err != nil {
 		return nil, cn.err
 	}
@@ -236,6 +236,9 @@ func connectError(err error, sniff *authSniffer) error {
 			return fmt.Errorf("%w: the server asks for MCP OAuth sign-in, which servers added at run time do not support yet (T095); a server that takes a key can be added with auth \"headers\"", agentapi.ErrAuthRequired)
 		}
 		return fmt.Errorf("%w: the server answered 401 Unauthorized; add it with auth \"headers\" and the header it expects", agentapi.ErrAuthRequired)
+	}
+	if errors.Is(err, agentapi.ErrURLNotAllowed) { // a redirect off the allowlist
+		return err
 	}
 	if errors.Is(err, netguard.ErrBlocked) {
 		return fmt.Errorf("%w: %w", agentapi.ErrToolsetInvalid, err)

@@ -3,14 +3,17 @@ package registry_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -267,6 +270,91 @@ func TestSearchUnavailable(t *testing.T) {
 			t.Errorf("err %v, want context.Canceled", err)
 		}
 	})
+}
+
+// The registry is called outside the SSRF guard, so its answers must not
+// send the server elsewhere: a redirect off the registry's origin is not
+// followed, and the search fails; one on it is.
+func TestSearchRedirects(t *testing.T) {
+	t.Parallel()
+	var elsewhere atomic.Int64
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		elsewhere.Add(1)
+		_, _ = w.Write([]byte(`{"servers":[]}`))
+	}))
+	t.Cleanup(other.Close)
+	r := newReplay(t, "/moved")
+	r.setFail(func(w http.ResponseWriter, req *http.Request) {
+		switch req.URL.Path {
+		case "/off/v0.1/servers":
+			http.Redirect(w, req, other.URL+"/latest/meta-data", http.StatusFound)
+		case "/on/v0.1/servers":
+			http.Redirect(w, req, "/moved/v0.1/servers?"+req.URL.RawQuery, http.StatusFound)
+		default:
+			_, _ = w.Write([]byte(`{"servers":[{"server":{"name":"a/b","remotes":[{"type":"sse","url":"https://a.example/sse"}]}}]}`))
+		}
+	})
+	off, err := registry.New(r.ts.URL + "/off")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := off.Search(t.Context(), "linear", 20); !errors.Is(err, registry.ErrUnavailable) {
+		t.Errorf("a redirect to another host: %v, want ErrUnavailable", err)
+	}
+	if n := elsewhere.Load(); n != 0 {
+		t.Errorf("the other host got %d requests", n)
+	}
+	on, err := registry.New(r.ts.URL + "/on")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := on.Search(t.Context(), "linear", 20); err != nil || len(got) != 1 {
+		t.Errorf("a redirect on the registry's host: %v, %v", names(got), err)
+	}
+}
+
+// What the registry says is third-party text: links that are not http(s)
+// are dropped, and so are remotes whose URL could mislead (format
+// characters, odd braces, over the length an add takes); an entry keeps at
+// most a few remotes.
+func TestSearchSanitizesURLs(t *testing.T) {
+	t.Parallel()
+	remote := func(u string) string { return `{"type":"streamable-http","url":` + strconv.Quote(u) + `}` }
+	var many []string
+	for i := range 20 {
+		many = append(many, remote(fmt.Sprintf("https://m%d.example/mcp", i)))
+	}
+	body := `{"servers":[
+		{"server":{"name":"a/links","websiteUrl":"javascript:alert(1)","repository":{"url":"data:text/html,x"},"remotes":[` + remote("https://ok.example/mcp") + `]}},
+		{"server":{"name":"a/good","websiteUrl":"https://good.example","repository":{"url":"https://github.com/a/good"},"remotes":[` + remote("https://good.example/mcp") + `]}},
+		{"server":{"name":"a/bidi","remotes":[` + remote("https://evil.example/\u202emcp") + `]}},
+		{"server":{"name":"a/braces","remotes":[` + remote("https://{a b}.example/mcp") + `,` + remote("https://x.example/{bad") + `]}},
+		{"server":{"name":"a/long","remotes":[` + remote("https://x.example/"+strings.Repeat("a", 2100)) + `]}},
+		{"server":{"name":"a/js","remotes":[` + remote("javascript://x.example/%0aalert(1)") + `]}},
+		{"server":{"name":"a/many","remotes":[` + strings.Join(many, ",") + `]}}
+	]}`
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(body)) }))
+	t.Cleanup(ts.Close)
+	c, err := registry.New(ts.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.Search(t.Context(), "a", 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"a/links", "a/good", "a/many"}; !slices.Equal(names(got), want) {
+		t.Fatalf("servers %q, want %q", names(got), want)
+	}
+	if got[0].WebsiteURL != "" || got[0].RepositoryURL != "" {
+		t.Errorf("links kept: %q, %q", got[0].WebsiteURL, got[0].RepositoryURL)
+	}
+	if got[1].WebsiteURL != "https://good.example" || got[1].RepositoryURL != "https://github.com/a/good" {
+		t.Errorf("good links dropped: %+v", got[1])
+	}
+	if n := len(got[2].Remotes); n == 0 || n > 10 {
+		t.Errorf("a server with 20 remotes keeps %d", n)
+	}
 }
 
 func TestSearchInvalid(t *testing.T) {

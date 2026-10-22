@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/bsamanvith/agentkit/pkg/tenancy"
 )
@@ -23,7 +24,12 @@ import (
 //   - path, when left out, is any path; in a path, "*" matches any run of
 //     characters, "/" included ("/mcp/*").
 //
-// Hosts compare case-insensitively; a URL's query is not compared.
+// Hosts compare case-insensitively and must be ASCII (an IDN in its xn--
+// form); a URL's query is not compared. While a list applies, a URL whose
+// path has a "." or ".." segment or a backslash, encoded or not, is
+// refused: a server may resolve it to a path no pattern covers. So is a
+// redirect to a URL the list does not include ([Manager.Add]'s client
+// checks each one).
 type Allowlist struct {
 	all     []allowPattern
 	tenants map[string][]allowPattern
@@ -85,6 +91,8 @@ func parsePattern(raw string) (allowPattern, error) {
 	switch rest, sub := strings.CutPrefix(host, "*."); {
 	case host == "":
 		return allowPattern{}, errors.New("no host")
+	case !ascii(host):
+		return allowPattern{}, errors.New("write an internationalized host in its ASCII (xn--) form")
 	case host != "*" && strings.Contains(rest, "*"), sub && rest == "":
 		return allowPattern{}, errors.New(`a host is a name, "*.domain" or "*"`)
 	}
@@ -113,7 +121,7 @@ func (a *Allowlist) Allows(ctx context.Context, raw string) bool {
 		return true
 	}
 	u, err := url.Parse(raw)
-	if err != nil || u.Host == "" || u.User != nil {
+	if err != nil || u.Host == "" || u.User != nil || !ascii(u.Hostname()) || dotSegments(u.Path) {
 		return false
 	}
 	scheme, host := strings.ToLower(u.Scheme), strings.ToLower(u.Hostname())
@@ -139,6 +147,32 @@ func (a *Allowlist) patterns(ctx context.Context) []allowPattern {
 		}
 	}
 	return a.all
+}
+
+// ascii reports whether s is all ASCII. A host that is not is refused
+// rather than compared after a case mapping that may differ from the HTTP
+// client's IDNA conversion (U+212A, the Kelvin sign, lowers to "k").
+func ascii(s string) bool {
+	for i := range len(s) {
+		if s[i] >= utf8.RuneSelf {
+			return false
+		}
+	}
+	return true
+}
+
+// dotSegments reports whether a decoded path has a "." or ".." segment or
+// a backslash, which a server may resolve ("/mcp/../admin" is "/admin").
+func dotSegments(path string) bool {
+	if strings.Contains(path, `\`) {
+		return true
+	}
+	for seg := range strings.SplitSeq(path, "/") {
+		if seg == "." || seg == ".." {
+			return true
+		}
+	}
+	return false
 }
 
 func hostMatch(pattern, host string) bool {

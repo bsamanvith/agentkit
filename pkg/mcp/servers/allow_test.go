@@ -30,7 +30,7 @@ func TestAllowlistPatterns(t *testing.T) {
 		{
 			pattern: "https://*.example.com/mcp/*",
 			allow:   []string{"https://a.example.com/mcp/x", "https://a.b.example.com/mcp/x/y"},
-			refuse:  []string{"https://example.com/mcp/x", "https://a.example.com/other", "https://evil.com/x.example.com/mcp/", "https://evil.com?.example.com/mcp/", "https://aexample.com/mcp/x"},
+			refuse:  []string{"https://example.com/mcp/x", "https://a.example.com/other", "https://evil.com/x.example.com/mcp/", "https://evil.com?.example.com/mcp/", "https://aexample.com/mcp/x", "https://evilexample.com/mcp/x"},
 		},
 		{
 			pattern: "https://mcp.example.com/mcp",
@@ -41,6 +41,27 @@ func TestAllowlistPatterns(t *testing.T) {
 			pattern: "http://mcp.internal:8080/*",
 			allow:   []string{"http://mcp.internal:8080/", "http://mcp.internal:8080/a/b"},
 			refuse:  []string{"https://mcp.internal:8080/", "http://mcp.internal/", "http://mcp.internal:8081/"},
+		},
+		{
+			// Bypasses: userinfo, a trailing dot, an odd port, dot segments
+			// (plain, encoded, behind an encoded slash), a backslash, a
+			// prefix that is not a segment.
+			pattern: "https://mcp.example.com/mcp/*",
+			allow:   []string{"https://mcp.example.com/mcp/x", "https://MCP.EXAMPLE.COM/mcp/a/b", "https://mcp.example.com:/mcp/x"},
+			refuse: []string{
+				"https://mcp.example.com@evil.com/mcp/x", `https://evil.com\@mcp.example.com/mcp/x`, "https://mcp.example.com./mcp/x",
+				"https://mcp.example.com:0443/mcp/x", "https://mcp.example.com/mcp/../admin", "https://mcp.example.com/mcp/%2e%2e/admin",
+				"https://mcp.example.com/mcp/..%2fadmin", "https://mcp.example.com/mcp/./x", `https://mcp.example.com/mcp/..\admin`,
+				"https://mcp.example.com/mcp/..%5cadmin", "https://mcp.example.com/mcpx", "https://mcp.example.com/mcp%2f..%2fadmin",
+				"https://mcp.example.com%2eevil.com/mcp/x",
+			},
+		},
+		{
+			// Hosts are ASCII: an IDN is compared in its xn-- form, and a
+			// host that lowers to ASCII (the Kelvin sign) is refused.
+			pattern: "*.kubernetes.io",
+			allow:   []string{"https://xn--80ak6aa92e.kubernetes.io/"},
+			refuse:  []string{"https://x.\u212Aubernetes.io/", "https://\u0430pple.kubernetes.io/"},
 		},
 		{
 			pattern: "https://*",
@@ -64,7 +85,7 @@ func TestAllowlistPatterns(t *testing.T) {
 			}
 		}
 	}
-	for _, bad := range []string{"ftp://x", "https://a*b.com", "https://*.", "https://x/?q", "https://u@x", "https://x#f", "", "https://*.a*.com"} {
+	for _, bad := range []string{"ftp://x", "https://a*b.com", "https://*.", "https://x/?q", "https://u@x", "https://x#f", "", "https://*.a*.com", "https://bücher.example"} {
 		if _, err := servers.NewAllowlist([]string{bad}, nil); err == nil {
 			t.Errorf("pattern %q accepted", bad)
 		}
@@ -121,6 +142,56 @@ func TestAddOutsideAllowlist(t *testing.T) {
 	}
 	if ts := r.add(ctxOf(t, "lab"), "linear"); ts.Name != "linear" || hits.Load() == 0 {
 		t.Errorf("a tenant whose list has the URL: %+v, %d requests", ts, hits.Load())
+	}
+}
+
+// A redirect is followed only to a URL the tenant's list includes, and,
+// for a toolset that sends headers, only on the server's own origin: the
+// client adds the headers to every request.
+func TestAddRedirects(t *testing.T) {
+	t.Parallel()
+	var hits, withKey atomic.Int64
+	r := &rig{t: t, st: memory.New(), env: map[string]string{"LINEAR_KEY": "s3cret"}, allow: []string{"127.0.0.1"}}
+	r.f = newFake(t, func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			hits.Add(1)
+			if req.Header.Get("Authorization") != "" {
+				withKey.Add(1)
+			}
+			h.ServeHTTP(w, req)
+		})
+	})
+	front := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		http.Redirect(w, req, r.f.ts.URL+req.URL.Path, http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(front.Close)
+	add := func(m *servers.Manager, req wire.AddToolsetRequest) error {
+		req.Type, req.URL = "mcp", front.URL+"/mcp"
+		_, err := m.Add(ctxOf(t, "acme"), "key-admin", req)
+		return err
+	}
+
+	only, err := servers.NewAllowlist([]string{front.URL + "/*"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := add(r.manager(servers.WithAllowlist(only)), wire.AddToolsetRequest{Name: "a"}); !errors.Is(err, agentapi.ErrURLNotAllowed) {
+		t.Errorf("a redirect off the allowlist: %v, want ErrURLNotAllowed", err)
+	}
+	if n := hits.Load(); n != 0 {
+		t.Errorf("the server off the allowlist got %d requests", n)
+	}
+
+	m := r.manager()
+	err = add(m, wire.AddToolsetRequest{Name: "b", Auth: wire.AuthHeaders, Headers: map[string]string{"Authorization": "Bearer ${LINEAR_KEY}"}})
+	if !errors.Is(err, agentapi.ErrServerUnreachable) {
+		t.Errorf("a redirect to another origin with headers: %v, want ErrServerUnreachable", err)
+	}
+	if n := withKey.Load(); n != 0 {
+		t.Errorf("the other origin got the toolset's header %d times", n)
+	}
+	if err := add(m, wire.AddToolsetRequest{Name: "c"}); err != nil || hits.Load() == 0 {
+		t.Errorf("a redirect with no headers and no allowlist: %v (%d requests)", err, hits.Load())
 	}
 }
 

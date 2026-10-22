@@ -1,7 +1,7 @@
 // What the Tasks pages share that isn't a component.
 
 import { usageText } from "@agentkit/agent-ui";
-import { ApiError, type AgentClient, type Me, type Run, type Thread, type ThreadMessage } from "@agentkit/agent-ui/api";
+import { ApiError, type AgentClient, type Run, type Thread, type ThreadMessage } from "@agentkit/agent-ui/api";
 import { useEffect, useEffectEvent, useState } from "react";
 import { useApi } from "../api";
 
@@ -113,6 +113,7 @@ export function usePolled<T>(
     if (prompt !== null) return;
     const ctl = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let shown: (() => void) | undefined;
     const once = () => {
       run(ctl.signal).then(
         (data) => {
@@ -140,11 +141,14 @@ export function usePolled<T>(
     };
     const again = () => {
       if (document.visibilityState === "hidden") {
-        const shown = () => {
-          document.removeEventListener("visibilitychange", shown);
+        const show = () => {
+          if (document.visibilityState === "hidden") return;
+          document.removeEventListener("visibilitychange", show);
+          shown = undefined;
           if (!ctl.signal.aborted) once();
         };
-        document.addEventListener("visibilitychange", shown);
+        shown = show;
+        document.addEventListener("visibilitychange", show);
         return;
       }
       once();
@@ -153,6 +157,7 @@ export function usePolled<T>(
     return () => {
       ctl.abort();
       clearTimeout(timer);
+      if (shown) document.removeEventListener("visibilitychange", shown);
     };
   }, [id, ms, prompt, accepted, unauthorized]);
 
@@ -184,15 +189,6 @@ export function segmentOf(pathname: string): Segment {
   if (pathname === "/tasks/threads" || pathname.startsWith("/tasks/threads/")) return "threads";
   if (pathname === "/tasks/triggers") return "triggers";
   return "tasks";
-}
-
-/**
- * Whether the caller may see triggers (agent:admin). Unknown (who isn't
- * loaded yet) counts as yes: hiding is a convenience, the API answers 403.
- */
-export function mayAdmin(me: Me | null): boolean {
-  if (!me?.credential) return true;
-  return me.roles.includes("admin") || me.scopes.includes("*") || me.scopes.includes("agent:admin");
 }
 
 /** The task (/tasks/{run_id}) or thread (/tasks/threads/{id}) in the URL; "" when none. */

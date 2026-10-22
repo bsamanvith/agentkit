@@ -19,7 +19,6 @@ import { useTasks, useTaskStore } from "./use-tasks";
 import {
   agentName,
   confirmCancel,
-  mayAdmin,
   participants,
   segmentOf,
   selectedOf,
@@ -29,6 +28,7 @@ import {
   tokensText,
   usePolled,
 } from "./shared";
+import { mayAdmin } from "../sections";
 import { groupOf, runStatus, type Group } from "./store";
 
 const groups: [Group, string][] = [

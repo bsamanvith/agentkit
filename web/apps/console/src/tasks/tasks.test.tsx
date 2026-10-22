@@ -129,6 +129,104 @@ describe("the store", () => {
     store.clear();
     expect(store.get()).toMatchObject({ runs: null, error: null, toasts: [] });
   });
+
+  it("shows at most three toasts, the newest, and keeps every one unread", async () => {
+    const ids = ["r1", "r2", "r3", "r4", "r5"];
+    const { store } = storeOver([ids.map((id) => run(id, "running")), ids.map((id) => run(id, "done"))]);
+    await store.refresh();
+    await store.refresh();
+    expect(store.get().toasts.map((t) => t.runId)).toEqual(["r3", "r4", "r5"]);
+    expect([...store.get().unread].sort()).toEqual(ids);
+  });
+
+  it("works without storage: blocked, or holding something else", async () => {
+    const blocked = () => {
+      throw new DOMException("blocked", "SecurityError");
+    };
+    vi.stubGlobal("localStorage", { getItem: blocked, setItem: blocked, removeItem: blocked });
+    const { store } = storeOver([[run("r1", "running")], [run("r1", "done")]]);
+    await store.refresh();
+    await store.refresh();
+    expect([...store.get().unread]).toEqual(["r1"]);
+    store.markRead("r1");
+    expect(store.get().unread.size).toBe(0);
+    store.clear();
+    vi.unstubAllGlobals();
+
+    localStorage.setItem(unreadStorageKey, "{not json");
+    expect(storeOver([]).store.get().unread.size).toBe(0);
+    localStorage.setItem(unreadStorageKey, JSON.stringify(["r9", 7]));
+    expect([...storeOver([]).store.get().unread]).toEqual(["r9"]);
+  });
+
+  it("canceling a run that had already ended shows how it ended, without an error or news", async () => {
+    const { ApiError } = await import("@agentkit/agent-ui/api");
+    const { store, client } = storeOver([[run("r1", "running")], [run("r1", "done")]], () => {
+      throw new ApiError(409, { code: "run_final", message: "run r1 is final" });
+    });
+    (client as unknown as { getRun: unknown }).getRun = vi.fn(async () => run("r1", "done"));
+    await store.refresh();
+    const got = await store.cancel("r1");
+    expect(got.status).toBe("done");
+    expect(store.get().runs?.[0]?.status).toBe("done");
+    await store.refresh();
+    expect(store.get().toasts).toEqual([]);
+
+    // Another 409 (the run is about to start elsewhere) is the caller's to show.
+    vi.mocked(client.cancelRun).mockRejectedValueOnce(new ApiError(409, { code: "run_leased", message: "retry" }));
+    await expect(store.cancel("r1")).rejects.toMatchObject({ status: 409, code: "run_leased" });
+  });
+
+  it("doesn't load while the tab is hidden, loads when it shows, and stops for good on stop()", async () => {
+    vi.useFakeTimers();
+    let state: DocumentVisibilityState = "hidden";
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => state });
+    const show = (s: DocumentVisibilityState) => {
+      state = s;
+      document.dispatchEvent(new Event("visibilitychange"));
+    };
+    try {
+      const listRuns = vi.fn(async () => ({ runs: [], nextCursor: undefined }));
+      const client = { listRuns } as unknown as AgentClient;
+      const store = new TaskStore({ client: () => client, unauthorized: vi.fn(), accepted: vi.fn() }, 5000);
+      store.start();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(listRuns).toHaveBeenCalledTimes(1);
+      // Hidden: no load, however long.
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(listRuns).toHaveBeenCalledTimes(1);
+      show("hidden");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(listRuns).toHaveBeenCalledTimes(1);
+      // Shown: a load now, then every 5 s.
+      show("visible");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(listRuns).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(listRuns).toHaveBeenCalledTimes(3);
+
+      // Stopped while hidden, then started again: the old wait is gone, so
+      // showing the tab doesn't load out of turn.
+      state = "hidden";
+      await vi.advanceTimersByTimeAsync(5000);
+      store.stop();
+      store.start();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(listRuns).toHaveBeenCalledTimes(4);
+      state = "visible";
+      show("visible");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(listRuns).toHaveBeenCalledTimes(4);
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(listRuns).toHaveBeenCalledTimes(5);
+      store.stop();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(listRuns).toHaveBeenCalledTimes(5);
+    } finally {
+      delete (document as { visibilityState?: unknown }).visibilityState;
+      vi.useRealTimers();
+    }
+  });
 });
 
 /** An events() that yields each script's events in turn, returning whether the end event came. */

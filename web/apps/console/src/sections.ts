@@ -1,4 +1,18 @@
+import type { Me } from "@agentkit/agent-ui/api";
 import { Bot, ListChecks, KeyRound, MessagesSquare, Wrench, type LucideIcon } from "lucide-react";
+
+/**
+ * Whether the console shows admin navigation (the admin sections, the
+ * Triggers tab): only once GET /v1/auth/me says the caller is an admin, or
+ * holds agent:admin, or the server has no credentials (everyone may do
+ * everything). Unknown is no. Hiding is a convenience: the API answers 403
+ * (docs/UI.md "Rules").
+ */
+export function mayAdmin(me: Me | null): boolean {
+  if (!me) return false;
+  if (!me.credential) return true;
+  return me.roles.includes("admin") || me.scopes.includes("*") || me.scopes.includes("agent:admin");
+}
 
 export type Section = { to: string; label: string; icon: LucideIcon; admin?: boolean };
 

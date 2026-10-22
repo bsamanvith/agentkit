@@ -58,11 +58,14 @@ export type FollowOptions = {
 
 const sleep = (ms: number, signal: AbortSignal) =>
   new Promise<void>((resolve) => {
-    const t = setTimeout(resolve, ms);
-    signal.addEventListener("abort", () => {
+    // One listener per wait, removed when it ends: a long follow doesn't pile them up.
+    const done = () => {
       clearTimeout(t);
+      signal.removeEventListener("abort", done);
       resolve();
-    });
+    };
+    const t = setTimeout(done, ms);
+    signal.addEventListener("abort", done, { once: true });
   });
 
 /**

@@ -53,6 +53,7 @@ Named **Tasks** after T087's docs/UI.md (it renamed Activity). In `web/apps/cons
 - Our own toast, not Sonner: the CSP forbids inline styles.
 - The list polls rather than streams: there is no list stream in the API, and 5 s is enough for a background view. The first load is a baseline (no news), so opening the console doesn't announce old runs. A run canceled from this tab, or the one being viewed, makes no news.
 - "Written in" comes from the request's `run_id` for a reply, or the latest earlier message to the sender's conversation. The API doesn't record the sender's run (see gaps).
+- Admin navigation (the Agents and Toolsets rail sections, the Triggers tab) shows only once `GET /v1/auth/me` says the caller is an admin, holds `agent:admin` or `*`, or the server has no credentials; unknown is no (docs/UI.md "Rules"). The API provider now reads `/v1/auth/me` once per sign-in (it used to wait for the account menu). The API still answers 403 regardless.
 - Cancel asks with `window.confirm` (UI.md: "Cancel… asks first").
 - The browser test is Playwright, not chromedp: the console's e2e suite (T066) is Playwright. The tasks tests run against a second server and fake model (ports 18480/18481, `e2e/tasks.json`: boss may message worker), so their held answers don't disturb the chat tests.
 
@@ -61,7 +62,7 @@ Named **Tasks** after T087's docs/UI.md (it renamed Activity). In `web/apps/cons
 - Watching: `e2e/tasks.spec.ts` "a background run outlives the page" (start a task, page closed, a new page lists it as Running, replays the stored step, follows the held answer live to Done; server status checked).
 - Threads: `e2e/tasks.spec.ts` "a thread between two agents shows both sides in order" (hop order, sender, links; the worker's run page has the Result). Unit: thread order and links in `tasks.test.tsx`.
 - Cancel: `e2e/tasks.spec.ts` "Cancel in the list ends the run on the server" (confirm accepted, row Canceled, server `canceled`). Unit: the list's confirm and cancel, and the task page's Cancel….
-- Also in `tasks.test.tsx` (26) and agent-ui `client.test.ts`/`thread.test.ts`: news rules, baseline, unread persistence, toasts, badge, follow's reconnect and early end, triggers pause and resume.
+- Also in `tasks.test.tsx` (30) and agent-ui `client.test.ts`/`thread.test.ts`: news rules, baseline, unread persistence, toasts (at most three), storage blocked or garbled, Cancel of a run that had already ended (409 `run_final`: shows how it ended, no error), no load while the tab is hidden (and no extra load from a wait left by `stop()`), badge, follow's reconnect and early end, triggers pause and resume.
 
 ### Mutation list
 
@@ -80,10 +81,16 @@ Each planted alone, then the named tests run (vitest); all were killed.
 11. Thread messages reversed: thread page test.
 12. Badge counts nothing: badge test.
 13. `promptOf` ignores the prompt: thread.test `promptOf`.
+14. The list polls while the tab is hidden: store hidden-tab test.
+15. Reading or writing `localStorage` unguarded: store storage test.
+16. Four toasts kept: store toast test.
+17. A 409 `run_final` on Cancel rethrown: store cancel-409 test.
+
+Not killed, and why: `stop()` not removing the hidden tab's listener changes no behavior (the next load removes it, and a stopped store ignores it); it was a leak only.
 
 ### Sizes
 
-- Console first load 221,698 → 224,714 B (budget 240,000). The tasks pages are a lazy chunk.
+- Console first load 221,698 → 224,554 B (budget 240,000), measured after the pre-gzipped dist (#93). The tasks pages are a lazy chunk.
 - api binary (`nomodels noconnectors nomcp nosqlite`, `-s -w -trimpath`) 19,611,808 → 19,644,576 B (+32,768 B, the embedded dist). Under 100 KB and within the api budget: no SIZES row.
 
 ### API gaps (for T086/T087/T077)

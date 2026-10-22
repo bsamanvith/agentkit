@@ -108,6 +108,8 @@ export class TaskStore {
   #hooks: Hooks;
   #timer: ReturnType<typeof setTimeout> | undefined;
   #ctl: AbortController | undefined;
+  /** The visibilitychange listener that loads again when a hidden tab shows. */
+  #onShow: (() => void) | undefined;
   #running = false;
   /** The status of each run at the last load; the first load sets it without news. */
   #seen: Map<string, string> | undefined;
@@ -151,7 +153,13 @@ export class TaskStore {
   stop() {
     this.#running = false;
     clearTimeout(this.#timer);
+    this.#unwatch();
     this.#ctl?.abort();
+  }
+
+  #unwatch() {
+    if (this.#onShow) document.removeEventListener("visibilitychange", this.#onShow);
+    this.#onShow = undefined;
   }
 
   /** Forgets everything (sign out, another user). */
@@ -170,6 +178,7 @@ export class TaskStore {
   /** Loads the runs now (and schedules the next load). */
   async refresh(): Promise<void> {
     clearTimeout(this.#timer);
+    this.#unwatch();
     this.#ctl?.abort();
     const ctl = new AbortController();
     this.#ctl = ctl;
@@ -191,11 +200,14 @@ export class TaskStore {
     if (this.#running && this.#ctl === ctl) {
       this.#timer = setTimeout(() => {
         if (typeof document !== "undefined" && document.visibilityState === "hidden") {
-          // Not while the tab is hidden: look again when it shows.
+          // Not while the tab is hidden: look again when it shows. One
+          // listener at a time; stop() and the next load remove it.
           const again = () => {
-            document.removeEventListener("visibilitychange", again);
+            if (document.visibilityState === "hidden") return;
+            this.#unwatch();
             if (this.#running) void this.refresh();
           };
+          this.#onShow = again;
           document.addEventListener("visibilitychange", again);
           return;
         }
@@ -256,7 +268,9 @@ export class TaskStore {
 
   /**
    * Cancels the run (POST /v1/runs/{id}/cancel), puts what the server says
-   * in the list, and loads the list again. Rejects with the server's error.
+   * in the list, and loads the list again. A run that ended before the
+   * cancel reached it (409 run_final) resolves with the run as it ended.
+   * Rejects with the server's other errors.
    */
   async cancel(id: string): Promise<Run> {
     this.#canceled.add(id);
@@ -265,7 +279,9 @@ export class TaskStore {
       run = await this.#hooks.client().cancelRun(id);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) this.#hooks.unauthorized();
-      throw e;
+      if (!(e instanceof ApiError && e.status === 409 && e.code === "run_final")) throw e;
+      // It had ended already: show how.
+      run = await this.#hooks.client().getRun(id);
     }
     const runs = this.#state.runs?.map((r) => (r.id === id ? { ...r, ...run } : r)) ?? null;
     this.#seen?.set(id, run.status);

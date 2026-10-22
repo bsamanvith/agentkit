@@ -54,7 +54,7 @@ import { ListRow } from "./list-row";
 import { TasksList } from "./pages/lazy";
 import { Loading } from "./pages/page";
 import { agentRow, listAgents, ListsContext, listToolsets, toolsetRow, type Lists } from "./lists";
-import { tasks, adminSections, sectionOf, sections, type Section } from "./sections";
+import { tasks, adminSections, mayAdmin, sectionOf, sections, type Section } from "./sections";
 
 const themeLabels: Record<ThemePreference, string> = { system: "System", light: "Light", dark: "Dark" };
 
@@ -215,6 +215,7 @@ function RailLink({ section, current }: { section: Section; current: boolean }) 
 
 /** Laptop and desktop: the rail. */
 function Rail({ current }: { current: Section }) {
+  const admin = mayAdmin(useApi().me);
   return (
     <nav aria-label="Sections" className="flex min-h-0 flex-col items-center gap-1 border-r bg-ak-bg py-3">
       <div
@@ -226,10 +227,14 @@ function Rail({ current }: { current: Section }) {
       {sections.map((s) => (
         <RailLink key={s.to} section={s} current={s === current} />
       ))}
-      <div role="separator" className="my-1.5 h-px w-6 flex-none bg-ak-line-strong" />
-      {adminSections.map((s) => (
-        <RailLink key={s.to} section={s} current={s === current} />
-      ))}
+      {admin ? (
+        <>
+          <div role="separator" className="my-1.5 h-px w-6 flex-none bg-ak-line-strong" />
+          {adminSections.map((s) => (
+            <RailLink key={s.to} section={s} current={s === current} />
+          ))}
+        </>
+      ) : null}
       <div className="flex-1" />
       <UserMenu variant="rail" />
     </nav>
@@ -403,6 +408,7 @@ function DrawerLink({ section, current }: { section: Section; current: boolean }
 
 /** Phone: the drawer. */
 function Drawer({ open, current, close }: { open: boolean; current: Section; close: (returnFocus: boolean) => void }) {
+  const admin = mayAdmin(useApi().me);
   // Picking anything in it (a section, a conversation, New chat) closes it.
   const onClick = (e: MouseEvent) => {
     if ((e.target as Element).closest("a")) close(false);
@@ -423,7 +429,7 @@ function Drawer({ open, current, close }: { open: boolean; current: Section; clo
         )}
       >
         <nav aria-label="Sections" className="grid grid-cols-3 gap-0.5 px-3 pt-3 pb-0.5">
-          {[...sections, ...adminSections].map((s) => (
+          {[...sections, ...(admin ? adminSections : [])].map((s) => (
             <DrawerLink key={s.to} section={s} current={s === current} />
           ))}
         </nav>

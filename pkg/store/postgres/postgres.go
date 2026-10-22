@@ -68,6 +68,7 @@ var (
 	_ store.ItemStore         = (*Store)(nil)
 	_ flow.Checkpointer       = (*Store)(nil)
 	_ store.Admin             = admin{}
+	_ store.MessageAdmin      = admin{}
 )
 
 // Option configures a [Store].

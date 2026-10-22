@@ -1,6 +1,7 @@
 package agentapi
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base32"
 	"io"
@@ -86,11 +87,13 @@ type config struct {
 	maxBackground  int
 	taskLimit      time.Duration
 	webhooks       *Webhooks
+	runContext     func(context.Context, RunContext) context.Context
 }
 
 // Store is what the server keeps conversations and runs in: the runner's
 // store, the conversation records, runs' events and commands (T090), the
-// index of a tenant's runs and runs' webhooks (T071). Every backend of
+// index of a tenant's runs and runs' webhooks (T071), and the messages
+// between agents (T073). Every backend of
 // package store (memory, sqlite, postgres) is one.
 type Store interface {
 	runner.Store
@@ -99,6 +102,7 @@ type Store interface {
 	store.CommandLog
 	store.RunIndex
 	store.NotificationLog
+	store.MessageLog
 }
 
 func newConfig(opts []Option) config {

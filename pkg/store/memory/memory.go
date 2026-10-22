@@ -33,8 +33,10 @@ var (
 	_ store.RunIndex          = (*Store)(nil)
 	_ store.NotificationLog   = (*Store)(nil)
 	_ store.ItemStore         = (*Store)(nil)
+	_ store.MessageLog        = (*Store)(nil)
 	_ flow.Checkpointer       = (*Store)(nil)
 	_ store.Admin             = admin{}
+	_ store.MessageAdmin      = admin{}
 )
 
 // Option configures a [Store].
@@ -67,6 +69,8 @@ type Store struct {
 
 	notifications map[key]store.Notification // by run id
 	items         map[key]*storedItem        // by itemID
+	messages      map[key]store.Message      // by message id
+	threads       map[key]store.Thread       // by thread id
 }
 
 // key scopes an id by tenant: the same id in two tenants is two things.
@@ -95,6 +99,8 @@ func New(opts ...Option) *Store {
 
 		notifications: map[key]store.Notification{},
 		items:         map[key]*storedItem{},
+		messages:      map[key]store.Message{},
+		threads:       map[key]store.Thread{},
 	}
 	for _, o := range opts {
 		o(s)

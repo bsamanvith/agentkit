@@ -92,6 +92,9 @@ func (c cli) storedAgentBuilder(cfg serveConfig, built map[string]tool.Registry,
 		if a.UI != "" {
 			refuse("ui", "an agent stored through the API cannot show UI yet; define it in the config file")
 		}
+		if len(a.CanMessage) > 0 {
+			refuse("can_message", "an agent stored through the API cannot message other agents yet; define it in the config file")
+		}
 		if a.Notify != nil {
 			refuse("notify", "an agent stored through the API cannot have a webhook yet; name one per task (notify in POST /v1/tasks)")
 		}
@@ -142,7 +145,7 @@ func (c cli) storedAgentBuilder(cfg serveConfig, built map[string]tool.Registry,
 		if len(fields) > 0 {
 			return agentapi.Agent{}, &agentapi.DefinitionError{Fields: fields}
 		}
-		h, _, _, err := c.newHarness(ctx, cfg, a, built, admin, nil, clk, log)
+		h, _, _, err := c.newHarness(ctx, cfg, a, built, admin, nil, nil, clk, log)
 		if err != nil {
 			if cerr := ctx.Err(); cerr != nil {
 				return agentapi.Agent{}, cerr

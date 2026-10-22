@@ -146,3 +146,11 @@ func TestConversationIndex(t *testing.T) {
 		return memory.New(memory.WithClock(clk))
 	})
 }
+
+func TestMessageLog(t *testing.T) {
+	t.Parallel()
+	storetest.RunMessageLog(t, func(_ *testing.T, clk clock.Clock) (store.MessageLog, store.MessageAdmin) {
+		s := memory.New(memory.WithClock(clk))
+		return s, memory.MessageAdmin(s)
+	})
+}

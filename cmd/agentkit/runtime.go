@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -77,4 +78,23 @@ func (j joined) Invoke(ctx context.Context, name string, input json.RawMessage) 
 		return j.b.Invoke(ctx, name, input)
 	}
 	return out, err
+}
+
+// withTools offers the tools of extra, then those of tools, failing when
+// both have a tool of the same name.
+func withTools(ctx context.Context, extra, tools tool.Registry) (tool.Registry, error) {
+	defs, err := tools.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	mine, err := extra.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range mine {
+		if slices.ContainsFunc(defs, func(o tool.Definition) bool { return o.Name == d.Name }) {
+			return nil, fmt.Errorf("a toolset of the agent has a tool named %q, the name of a messaging tool", d.Name)
+		}
+	}
+	return joinRegistries(extra, tools), nil
 }

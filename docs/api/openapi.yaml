@@ -3159,6 +3159,151 @@
           }
         }
       }
+    },
+    "/v1/threads": {
+      "get": {
+        "operationId": "listThreads",
+        "summary": "List threads of messages between agents",
+        "description": "The tenant's threads of messages between agents (agent messaging: the agent_message tool), newest first, without their messages.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Threads per page.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "The previous page's next_cursor.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of threads.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: a bad limit or cursor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/threads/{id}": {
+      "get": {
+        "operationId": "getThread",
+        "summary": "Read a thread of messages between agents",
+        "description": "The thread, with its messages in order: who sent each to whom, its state and the run of its recipient that processed it.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The thread.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Thread"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such thread in the tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -5432,6 +5577,168 @@
           "published",
           "latest",
           "versions"
+        ]
+      },
+      "Thread": {
+        "type": "object",
+        "description": "A thread of messages between agents. GET /v1/threads lists it without messages.",
+        "properties": {
+          "v": {
+            "const": 1
+          },
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "stopped"
+            ],
+            "description": "open takes messages; stopped was stopped over a limit (error says which) and takes none."
+          },
+          "error": {
+            "$ref": "#/components/schemas/Error",
+            "description": "Why a stopped thread was stopped: hop_limit, token_budget or time_budget."
+          },
+          "hops": {
+            "type": "integer",
+            "description": "The number of messages in the thread."
+          },
+          "tokens": {
+            "type": "integer",
+            "description": "The tokens the runs the thread started used so far."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThreadMessage"
+            },
+            "description": "The messages in order (GET /v1/threads/{id} only)."
+          }
+        },
+        "required": [
+          "v",
+          "id",
+          "status",
+          "hops",
+          "tokens",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "ThreadMessage": {
+        "type": "object",
+        "description": "One message of a thread.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "hop": {
+            "type": "integer",
+            "description": "Its position in the thread, from 1."
+          },
+          "from": {
+            "type": "string",
+            "description": "The sender: agent:<name>, or agentkit for the notices the server sends."
+          },
+          "to": {
+            "type": "string",
+            "description": "The recipient: agent:<name>."
+          },
+          "from_conversation": {
+            "type": "string",
+            "description": "The sender's conversation, where a reply goes."
+          },
+          "to_conversation": {
+            "type": "string",
+            "description": "The conversation its recipient processes it in."
+          },
+          "kind": {
+            "enum": [
+              "request",
+              "reply",
+              "notice"
+            ],
+            "description": "request asks for an answer, which comes back as a reply; a notice (a stopped thread) expects nothing."
+          },
+          "text": {
+            "type": "string"
+          },
+          "data": {
+            "description": "JSON beside the text: a notice's or a failed request's {code, message}."
+          },
+          "in_reply_to": {
+            "type": "string",
+            "description": "The request a reply answers."
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "done"
+            ],
+            "description": "queued: not processed yet; running: a run of its recipient is answering it; done: processed."
+          },
+          "run_id": {
+            "type": "string",
+            "description": "The run of its recipient that processed it."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "delivered_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was first handed to its recipient."
+          },
+          "processed_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "hop",
+          "from",
+          "to",
+          "to_conversation",
+          "kind",
+          "text",
+          "state",
+          "created_at"
+        ]
+      },
+      "ThreadList": {
+        "type": "object",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "threads": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Thread"
+            },
+            "description": "Newest first, without messages."
+          },
+          "next_cursor": {
+            "type": "string",
+            "description": "Fetches the next page (?cursor=); absent on the last page. Opaque."
+          }
+        },
+        "required": [
+          "v",
+          "threads"
         ]
       }
     }

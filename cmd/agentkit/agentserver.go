@@ -19,6 +19,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
+	"github.com/bsamanvith/agentkit/pkg/agentmsg"
 	"github.com/bsamanvith/agentkit/pkg/auth"
 	"github.com/bsamanvith/agentkit/pkg/auth/login"
 	"github.com/bsamanvith/agentkit/pkg/bus"
@@ -50,7 +51,8 @@ type agentWiring struct {
 	b        bus.Bus
 	closeBus func()
 	srv      *agentapi.Server
-	env      serveEnv // for the recovery loop and the webhooks
+	env      serveEnv            // for the recovery loop and the webhooks
+	msg      *agentmsg.Messenger // agent messaging; nil when off
 	// callback serves the connect flows' redirects (/oauth/callback);
 	// nil when the server keeps no credentials.
 	callback http.Handler
@@ -89,8 +91,8 @@ func (w *agentWiring) close() {
 func (c cli) buildAgents(ctx context.Context, w *agentWiring, cfg serveConfig, built map[string]tool.Registry, problems []toolset.Problem, env serveEnv, authn auth.Authenticator, clk clock.Clock, log *slog.Logger) (component.Mount, error) {
 	m, srv, err := c.newAgents(ctx, cfg, built, problems, env, authn, w.st.Store, w.b, clk, log)
 	w.srv, w.env = srv, env
-	if ac, ok := m.Component.(*agentComponent); ok && ac.callback != nil {
-		w.callback = ac.callback
+	if ac, ok := m.Component.(*agentComponent); ok {
+		w.callback, w.msg = ac.callback, ac.messenger
 	}
 	return m, err
 }
@@ -156,7 +158,15 @@ func (w *agentWiring) serve(ctx context.Context, rt *component.Runtime, ln net.L
 			log.Error("webhooks stopped", "component", agentapi.Name, "err", err)
 		}
 	}()
+	// The messages between agents of every tenant, likewise.
 	var recovered sync.WaitGroup
+	if w.msg != nil {
+		recovered.Go(func() {
+			if err := runMessaging(rctx, w.msg, st.admin, agents, log.With("component", agentapi.Name)); err != nil {
+				log.Error("agent messaging stopped", "component", agentapi.Name, "err", err)
+			}
+		})
+	}
 	for i, rc := range dispatchers {
 		name := dispatched[i]
 		recovered.Go(func() {
@@ -245,6 +255,9 @@ type agentComponent struct {
 	callback http.Handler
 	// skillReport lists the agents' skills in /readyz (Report).
 	skillReport
+	// messenger is agent messaging, which serve's dispatcher delivers; nil
+	// when no agent may message another.
+	messenger *agentmsg.Messenger
 }
 
 // Shutdown drains the API, then closes the connections to the MCP servers
@@ -328,6 +341,13 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 	if err != nil {
 		return component.Mount{}, nil, err
 	}
+	msgr, err := newMessenger(cfg, st, clk)
+	if err != nil {
+		if admin != nil {
+			_ = admin.Close()
+		}
+		return component.Mount{}, nil, err
+	}
 	var agents []agentapi.Agent
 	var (
 		skipped []string
@@ -381,6 +401,10 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 				// runner yet, so its memory calls would all be refused.
 				return fail(fmt.Errorf("%s.memory: an agent that runs on the runner at $%s cannot have memory yet", a.label(cfg.legacy), envRunnerURL))
 			}
+			if len(a.CanMessage) > 0 {
+				// The sender does not cross to the runner.
+				return fail(fmt.Errorf("%s.can_message: an agent that runs on the runner at $%s cannot message other agents yet", a.label(cfg.legacy), envRunnerURL))
+			}
 			if err := a.check(cfg.legacy); err != nil {
 				return fail(err)
 			}
@@ -398,7 +422,11 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 			if mem != nil {
 				closers = append(closers, mem.close)
 			}
-			h, sk, ks, err := c.newHarness(ctx, cfg, a, built, admin, mem, clk, log)
+			msgTools, err := messagingTools(msgr, a.Name)
+			if err != nil {
+				return fail(fmt.Errorf("%s.can_message: %w", a.label(cfg.legacy), err))
+			}
+			h, sk, ks, err := c.newHarness(ctx, cfg, a, built, admin, mem, msgTools, clk, log)
 			if err != nil {
 				return fail(err)
 			}
@@ -446,6 +474,9 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 	if reg != nil {
 		authOpts = append(authOpts, agentapi.WithAgentRegistry(reg))
 	}
+	if msgr != nil {
+		authOpts = append(authOpts, messagingRunContext())
+	}
 	rt, err := cfg.Runners.router(cfg.Agents, isolations, cfg.legacy)
 	if err != nil {
 		return fail(err)
@@ -473,7 +504,7 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 	if err != nil {
 		return fail(err)
 	}
-	ac := &agentComponent{Server: srv, skipped: skipped, skillReport: skills, runner: remote, runnerURL: env.runnerURL, agents: agentNames(cfg), toolsetsURL: env.toolsetsURL, admin: admin, closers: closers, callback: callback}
+	ac := &agentComponent{Server: srv, skipped: skipped, skillReport: skills, runner: remote, runnerURL: env.runnerURL, agents: agentNames(cfg), toolsetsURL: env.toolsetsURL, admin: admin, closers: closers, callback: callback, messenger: msgr}
 	for _, name := range slices.Sorted(maps.Keys(built)) {
 		if r, ok := built[name].(remoteToolset); ok {
 			ac.toolsets = r

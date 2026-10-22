@@ -152,6 +152,14 @@ func TestNotifications(t *testing.T) {
 	})
 }
 
+func TestMessageLog(t *testing.T) {
+	t.Parallel()
+	storetest.RunMessageLog(t, func(t *testing.T, clk clock.Clock) (store.MessageLog, store.MessageAdmin) {
+		s := open(t, clk)
+		return s, sqlite.MessageAdmin(s)
+	})
+}
+
 func TestCommandLog(t *testing.T) {
 	t.Parallel()
 	storetest.RunCommandLog(t, func(t *testing.T, clk clock.Clock) storetest.CommandStore { return open(t, clk) })
@@ -223,6 +231,13 @@ func TestTwoHandles(t *testing.T) {
 	t.Run("Notifications", func(t *testing.T) {
 		t.Parallel()
 		storetest.RunNotifications(t, func(t *testing.T, clk clock.Clock) (storetest.NotificationStore, store.Admin) {
+			p := openPair(t, clk)
+			return p, pairAdmin{p}
+		})
+	})
+	t.Run("MessageLog", func(t *testing.T) {
+		t.Parallel()
+		storetest.RunMessageLog(t, func(t *testing.T, clk clock.Clock) (store.MessageLog, store.MessageAdmin) {
 			p := openPair(t, clk)
 			return p, pairAdmin{p}
 		})
@@ -408,7 +423,43 @@ func (p *pair) DeleteItemVersion(ctx context.Context, kind, name string, version
 	return p.next().DeleteItemVersion(ctx, kind, name, version)
 }
 
+func (p *pair) SendMessage(ctx context.Context, m store.Message) (store.Message, error) {
+	return p.next().SendMessage(ctx, m)
+}
+
+func (p *pair) GetMessage(ctx context.Context, id string) (store.Message, error) {
+	return p.next().GetMessage(ctx, id)
+}
+
+func (p *pair) ThreadMessages(ctx context.Context, threadID string, after, limit int) ([]store.Message, error) {
+	return p.next().ThreadMessages(ctx, threadID, after, limit)
+}
+
+func (p *pair) GetThread(ctx context.Context, id string) (store.Thread, error) {
+	return p.next().GetThread(ctx, id)
+}
+
+func (p *pair) ListThreads(ctx context.Context, pg store.Page) (store.ThreadPage, error) {
+	return p.next().ListThreads(ctx, pg)
+}
+
+func (p *pair) StopThread(ctx context.Context, id, code, reason string) (store.Thread, error) {
+	return p.next().StopThread(ctx, id, code, reason)
+}
+
+func (p *pair) ClaimMessage(ctx context.Context, id, owner string, ttl time.Duration) (store.Message, error) {
+	return p.next().ClaimMessage(ctx, id, owner, ttl)
+}
+
+func (p *pair) UpdateMessage(ctx context.Context, id, owner string, u store.MessageUpdate) (store.Message, error) {
+	return p.next().UpdateMessage(ctx, id, owner, u)
+}
+
 type pairAdmin struct{ p *pair }
+
+func (a pairAdmin) ClaimDueMessage(ctx context.Context, owner string, ttl time.Duration) (store.TenantMessage, error) {
+	return sqlite.MessageAdmin(a.p.next()).ClaimDueMessage(ctx, owner, ttl)
+}
 
 func (a pairAdmin) ClaimNotification(ctx context.Context, owner string, ttl time.Duration) (store.TenantNotification, error) {
 	return sqlite.Admin(a.p.next()).ClaimNotification(ctx, owner, ttl)
@@ -435,6 +486,9 @@ func TestAdminIsASeparateValue(t *testing.T) {
 	var rs store.RunStore = s
 	if _, ok := rs.(store.Admin); ok {
 		t.Error("the tenant-scoped store is also a store.Admin")
+	}
+	if _, ok := rs.(store.MessageAdmin); ok {
+		t.Error("the tenant-scoped store is also a store.MessageAdmin")
 	}
 	admin := reflect.TypeFor[store.Admin]()
 	for m := range reflect.TypeOf(s).Methods() {

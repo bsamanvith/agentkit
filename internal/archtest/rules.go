@@ -328,6 +328,16 @@ func ModuleRules() Rules {
 			// store's notifications through its Admin, never a backend but
 			// in its tests.
 			"pkg/webhook": {"pkg/store", "pkg/tenancy", "pkg/clock", "pkg/store/memory", "pkg/clock/clocktest"},
+			// Agent messaging (T073): the store's message log and
+			// conversations, the tool abstraction, and the wire run the agent
+			// API reports; it starts runs through an interface the agent API
+			// meets, never importing the server or a backend but in its tests,
+			// which run real agents on the agent API over the memory store
+			// (whose MessageAdmin the dispatcher needs) and the fake model.
+			"pkg/agentmsg": {
+				"pkg/store", "pkg/tenancy", "pkg/clock", "pkg/tool", "pkg/llm", "pkg/runner", "pkg/agentapi/wire",
+				"pkg/agentapi", "pkg/harness", "pkg/store/memory", "pkg/llm/llmtest", "pkg/clock/clocktest", "internal/testkit",
+			},
 			// The SSRF guard is the standard library only.
 			"pkg/netguard": {},
 			// The credential vault (T042) knows tenants and nothing else:

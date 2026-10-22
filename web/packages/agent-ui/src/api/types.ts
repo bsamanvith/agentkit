@@ -104,6 +104,81 @@ export type Agent = {
   ui?: string;
 };
 
+/**
+ * Where a toolset's credential comes from, and whether it is there
+ * (GET /v1/toolsets). Never its value: env and slot are names.
+ */
+export type ToolsetCredential = {
+  /** configured, missing, keyless, not_needed; for a slot the caller's: connected, not_connected, needs_reconnect. */
+  status: string;
+  /** The environment variable the server reads the key from. */
+  env?: string;
+  /** The credential slot the toolset uses. */
+  slot?: string;
+  /** "tenant" (shared) or "user" (each user's own). */
+  scope?: string;
+};
+
+/** GET /v1/toolsets: one toolset, ready or skipped with the reason. */
+export type Toolset = {
+  name: string;
+  type: string;
+  /** ready, skipped, unavailable, review_needed, disabled. */
+  status: string;
+  reason?: string;
+  /** Where the server serves it over MCP, relative to its base URL; absent when it doesn't. */
+  mcp_path?: string;
+  tool_count: number;
+  credential?: ToolsetCredential;
+  /** Added at run time (POST /v1/toolsets). */
+  runtime?: boolean;
+};
+
+/** What a tool shows in transcripts (tool metadata). */
+export type ToolDisplay = { title?: string; icon?: string; present?: string; past?: string };
+
+/** GET /v1/toolsets/{name}/tools: a tool's definition and what its metadata says. */
+export type Tool = {
+  name: string;
+  description: string;
+  input_schema: unknown;
+  output_schema?: unknown;
+  kind?: string;
+  risk?: string;
+  classified?: boolean;
+  interrupts?: boolean;
+  requires_approval?: boolean;
+  tags?: string[];
+  display?: ToolDisplay;
+};
+
+/** GET /v1/toolsets/{name}/tools. A skipped toolset has no tools. */
+export type ToolList = { toolset: string; status: string; tools: Tool[] };
+
+/** GET /v1/credentials: a slot as the caller sees it. It never holds a value. */
+export type CredentialInfo = {
+  slot: string;
+  /** "tenant" or "user". */
+  scope: string;
+  /** connected, not_connected, needs_reconnect. */
+  status: string;
+  /** api_key, basic, client_credentials, oauth2: the stored one's. */
+  kind?: string;
+  /** An account can be connected (POST /v1/credentials/{slot}/connect). */
+  oauth: boolean;
+  toolsets: string[];
+  version?: number;
+  created_at?: string;
+  updated_at?: string;
+  expiry?: string;
+};
+
+/** PUT /v1/credentials/{slot}: the console sets API keys only. */
+export type PutCredentialRequest = { scope?: string; kind: "api_key"; api_key: string };
+
+/** POST /v1/credentials/{slot}/connect's answer: where to send the browser. */
+export type ConnectResponse = { authorize_url: string; expires_at: string };
+
 export type ConversationSummary = {
   id: string;
   agent: string;

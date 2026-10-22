@@ -54,7 +54,7 @@ Both talk to the public agent API (`/v1`, HTTP + SSE; [E09](E09-agent-api.md)). 
 - [x] [T078](T078-web-workspace.md) Web workspace: React + TS + shadcn/ui, packages `ui` / `agent-ui` / `apps/console`, embedding, CI (`make web`, `make web-check`, `make web-smoke`; read its "For T055, T064 and T066" and "Found out of scope" Notes, and `web/README.md`, first)
 - [x] [T070](T070-console-ux-design.md) Console UX design session: layout, navigation, states, components, mockup v3 (before T055). Approved by the owner on 2026-10-12, with the review's fixes; the same day, Connections (per-user credentials, org later) replaced the Credentials page (Decision 11). Read its Notes, "Review (2026-10-12)", "For T055" and "Found out of scope", first
 - [ ] [T055](T055-web-client.md) Console chat, agent picker, conversation list, on T078's shell (read its "From T078's handoff" section; interrupted runs per T100)
-- [ ] [T064](T064-console-admin-pages.md) Console admin pages: agents, toolsets and tools, credentials (editing agents and skills: E15's T075 and T077)
+- [x] [T064](T064-console-admin-pages.md) Console admin pages: agents, toolsets and tools, credentials (editing agents and skills: E15's T075 and T077)
 
 Later, from T078's review (small, take them when the console's numbers call for them):
 - Brotli for the embedded assets (about 22 KB less);

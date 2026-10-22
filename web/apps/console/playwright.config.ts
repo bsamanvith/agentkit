@@ -6,7 +6,16 @@
 // runner's Google Chrome; locally, the Chromium Playwright finds in
 // PLAYWRIGHT_BROWSERS_PATH or its cache.
 import { defineConfig } from "@playwright/test";
-import { tasksModelPort, tasksPort, modelPort, token } from "./e2e/token";
+import {
+  adminPort,
+  modelPort,
+  providerCanary,
+  providerPort,
+  serverKeyCanary,
+  tasksModelPort,
+  tasksPort,
+  token,
+} from "./e2e/token";
 
 const port = 18478;
 const bin = process.env.AGENTKIT_BIN;
@@ -64,6 +73,32 @@ export default defineConfig({
         AGENTKIT_API_TOKEN: token,
         ANTHROPIC_API_KEY: "smoke-dummy-key",
         ANTHROPIC_BASE_URL: `http://127.0.0.1:${tasksModelPort}`,
+      },
+    },
+    // The admin pages' tests (e2e/admin.spec.ts): a fake OAuth2 provider and
+    // a server with local users, a credential vault and the MCP server.
+    {
+      command: `node e2e/fake-provider.ts ${providerPort} ${providerCanary}`,
+      url: `http://127.0.0.1:${providerPort}/healthz`,
+      reuseExistingServer: false,
+      timeout: 10_000,
+    },
+    {
+      command: `"${bin}" serve`,
+      url: `http://127.0.0.1:${adminPort}/readyz`,
+      reuseExistingServer: false,
+      timeout: 30_000,
+      stdout: "pipe",
+      env: {
+        AGENTKIT_ADDR: `127.0.0.1:${adminPort}`,
+        AGENTKIT_COMPONENTS: "agent,web,mcp-server",
+        AGENTKIT_CONFIG: "e2e/admin.json",
+        // The vault's key ring, for these tests only (the memory backend: nothing is kept).
+        AGENTKIT_CREDENTIALS_KEY: "e2e:ZioRPt9Lvn72IhkndjYpyWCJUjzmiBUs1HX8fZGrYZc=",
+        MAIL_CLIENT_SECRET: "e2e-mail-client-secret",
+        EXA_API_KEY: serverKeyCanary,
+        ANTHROPIC_API_KEY: "smoke-dummy-key",
+        ANTHROPIC_BASE_URL: `http://127.0.0.1:${modelPort}`,
       },
     },
   ],

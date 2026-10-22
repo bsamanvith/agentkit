@@ -19,4 +19,5 @@ export const ThreadPage = lazy(() => tasks().then((m) => ({ default: m.ThreadPag
 export const TriggersPage = lazy(() => tasks().then((m) => ({ default: m.TriggersPage })));
 /** The list column of Tasks: in the same chunk as its pages. */
 export const TasksList = lazy(() => tasks().then((m) => ({ default: m.TasksList })));
+export const ConnectDonePage = lazy(() => admin().then((m) => ({ default: m.ConnectDonePage })));
 export const NotFoundPage = lazy(() => admin().then((m) => ({ default: m.NotFoundPage })));

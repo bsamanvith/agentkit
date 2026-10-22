@@ -9,8 +9,14 @@ import {
   decodeConversation,
   type Agent,
   type AuthConfig,
+  type ConnectResponse,
   type Conversation,
   type ConversationSummary,
+  type CredentialInfo,
+  type PutCredentialRequest,
+  type Tool,
+  type ToolList,
+  type Toolset,
   type Me,
   type Run,
   type RunEvent,
@@ -82,6 +88,16 @@ export const csrfHeader = "X-Agentkit-CSRF";
 
 const safeMethods = ["GET", "HEAD", "OPTIONS"];
 
+/** Whether s is an absolute http or https URL. */
+function isWebURL(s: string): boolean {
+  try {
+    const u = new URL(s);
+    return u.protocol === "https:" || u.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
 export class AgentClient {
   readonly #base: string;
   readonly #token: () => string | undefined;
@@ -145,6 +161,77 @@ export class AgentClient {
   /** GET /v1/agents: the agents the caller can use, the default first. */
   async listAgents(opts: RequestOptions = {}): Promise<Agent[]> {
     return listField<Agent>(await this.getJSON<unknown>("/v1/agents", opts), "agents", "/v1/agents");
+  }
+
+  /** GET /v1/agents/{name}: the agent, with its system prompt for admins only. */
+  async getAgent(name: string, opts: RequestOptions = {}): Promise<Agent> {
+    const path = `/v1/agents/${encodeURIComponent(name)}`;
+    const a = await this.getJSON<Partial<Agent> | null>(path, opts);
+    if (typeof a?.name !== "string" || !Array.isArray(a.toolsets)) {
+      throw new BadResponseError(`${path}: the response is not an agent`);
+    }
+    return a as Agent;
+  }
+
+  /** GET /v1/toolsets: every configured toolset, ready or skipped with the reason. */
+  async listToolsets(opts: RequestOptions = {}): Promise<Toolset[]> {
+    return listField<Toolset>(await this.getJSON<unknown>("/v1/toolsets", opts), "toolsets", "/v1/toolsets");
+  }
+
+  /** GET /v1/toolsets/{name}/tools: its tools with their schemas (none when it was skipped). */
+  async listTools(toolset: string, opts: RequestOptions = {}): Promise<ToolList> {
+    const path = `/v1/toolsets/${encodeURIComponent(toolset)}/tools`;
+    const body = await this.getJSON<unknown>(path, opts);
+    const b = body as { toolset?: unknown; status?: unknown } | null;
+    return {
+      toolset: typeof b?.toolset === "string" ? b.toolset : toolset,
+      status: typeof b?.status === "string" ? b.status : "",
+      tools: listField<Tool>(body, "tools", path),
+    };
+  }
+
+  /** GET /v1/credentials: the slots and the caller's status; 404 when the server keeps no credentials. */
+  async listCredentials(opts: RequestOptions = {}): Promise<CredentialInfo[]> {
+    return listField<CredentialInfo>(
+      await this.getJSON<unknown>("/v1/credentials", opts),
+      "credentials",
+      "/v1/credentials",
+    );
+  }
+
+  /** PUT /v1/credentials/{slot}: stores a key, replacing the one there. The key is sent once. */
+  async putCredential(slot: string, req: PutCredentialRequest, opts: RequestOptions = {}): Promise<CredentialInfo> {
+    const path = `/v1/credentials/${encodeURIComponent(slot)}`;
+    const resp = await this.#send("PUT", path, JSON.stringify(req), "application/json", opts.signal);
+    return (await this.#json(resp, path)) as CredentialInfo;
+  }
+
+  /** DELETE /v1/credentials/{slot}: removes it (the caller's own, or with credentials:admin the tenant's). */
+  async deleteCredential(slot: string, scope?: string, opts: RequestOptions = {}): Promise<void> {
+    const qs = scope ? `?scope=${encodeURIComponent(scope)}` : "";
+    const path = `/v1/credentials/${encodeURIComponent(slot)}${qs}`;
+    const resp = await this.#send("DELETE", path, undefined, "application/json", opts.signal);
+    await resp.body?.cancel();
+  }
+
+  /**
+   * POST /v1/credentials/{slot}/connect: starts connecting an account with
+   * OAuth2, and returns the provider's page to open. The answer sets a
+   * cookie that binds the flow to this browser, so open the page here.
+   */
+  async connectCredential(
+    slot: string,
+    req: { scope?: string; return_url?: string },
+    opts: RequestOptions = {},
+  ): Promise<ConnectResponse> {
+    const path = `/v1/credentials/${encodeURIComponent(slot)}/connect`;
+    const resp = await this.#send("POST", path, JSON.stringify(req), "application/json", opts.signal);
+    const c = (await this.#json(resp, path)) as Partial<ConnectResponse> | null;
+    if (typeof c?.authorize_url !== "string" || !isWebURL(c.authorize_url)) {
+      // The page opens it in a window of its own origin: never a javascript: or data: URL.
+      throw new BadResponseError(`${path}: the response has no http(s) authorize_url`);
+    }
+    return { authorize_url: c.authorize_url, expires_at: typeof c.expires_at === "string" ? c.expires_at : "" };
   }
 
   /** GET /v1/conversations: one page of the caller's conversations, newest first. */

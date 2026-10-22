@@ -9,3 +9,16 @@ export const modelPort = 18479;
 // don't meet the other tests'.
 export const tasksPort = 18480;
 export const tasksModelPort = 18481;
+// The admin pages' server (admin.spec.ts, e2e/admin.json): local users, a
+// credential vault, and the fake OAuth2 provider (fake-provider.ts).
+export const adminPort = 18482;
+export const providerPort = 18483;
+export const users = {
+  admin: { username: "ada", password: "admin-pass-t064" },
+  user: { username: "uma", password: "user-pass-t064" },
+};
+// Values that must never reach a page: the server's Exa key, a key typed
+// into the Connections dialog, and the provider's tokens.
+export const serverKeyCanary = "t064-server-key-canary-5e1d";
+export const typedKeyCanary = "t064-typed-key-canary-90ab";
+export const providerCanary = "t064-provider-canary-c3f7";

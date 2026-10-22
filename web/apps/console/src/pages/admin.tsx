@@ -1,13 +1,31 @@
 import { Status } from "@agentkit/ui";
 import { Button } from "@agentkit/ui/components/button";
-import { Bot, ChevronRight, Info, KeyRound, Wrench, type LucideIcon } from "lucide-react";
+import { ApiError } from "@agentkit/agent-ui/api";
+import { Bot, ChevronRight, Info, Wrench, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, Navigate, useParams } from "react-router";
-import type { Resource } from "../api";
+import { isAdmin } from "../access";
+import { useApi, type Resource } from "../api";
 import { useLayout } from "../layout";
 import { ListRow } from "../list-row";
 import { agentRow, toolsetRow, useLists, type RowInfo } from "../lists";
+import { AgentDetail } from "./agent";
 import { Empty, Loaded, Page } from "./page";
+import { Forbidden } from "./parts";
+import { ToolsetDetail } from "./toolset";
+
+export { ConnectDonePage, ConnectionsPage } from "./connections";
+
+/**
+ * Whether to show the 403 page instead: the caller is known not to be an
+ * admin, or the API refused the list (a stale tab after a role change). A
+ * CSRF refusal is never this (the client retries it).
+ */
+function useForbidden(res: Resource<unknown> | null): boolean {
+  const { me } = useApi();
+  if (me && !isAdmin(me)) return true;
+  return res?.state === "failed" && res.error instanceof ApiError && res.error.status === 403;
+}
 
 type Kind = {
   title: string;
@@ -51,6 +69,8 @@ function SectionPage<T extends { name: string }>({
   row: (item: T) => RowInfo;
 }) {
   const { phone } = useLayout();
+  const forbidden = useForbidden(res);
+  if (forbidden) return <Forbidden />;
   if (res === null) return null; // the shell loads the section on screen
   if (res.state === "ready" && res.data.length === 0) {
     return (
@@ -93,20 +113,24 @@ export function ToolsetsPage() {
 
 /**
  * An item's page, /agents/{name} or /toolsets/{name}: its head bar (name,
- * status, action) and what the list says about it. T064 builds the rest.
+ * status, action) and its detail.
  */
 function ItemPage<T extends { name: string }>({
   kind,
   res,
   row,
   action,
+  detail,
 }: {
   kind: Kind;
   res: Resource<T[]> | null;
   row: (item: T) => RowInfo;
   action?: (item: T) => ReactNode;
+  detail: (item: T) => ReactNode;
 }) {
   const { name = "" } = useParams();
+  const forbidden = useForbidden(res);
+  if (forbidden) return <Forbidden />;
   if (res === null) return null;
   const back = { to: kind.base, label: kind.title.toLowerCase() };
   if (res.state !== "ready") {
@@ -147,8 +171,10 @@ function ItemPage<T extends { name: string }>({
         </>
       }
     >
-      <p className="text-ak-text-2">{info.sub}</p>
-      <p className="text-ak-muted">Details are not built yet.</p>
+      {/* Keyed: another item's page starts afresh (its disclosures closed). */}
+      <div key={item.name} className="contents">
+        {detail(item)}
+      </div>
     </Page>
   );
 }
@@ -159,6 +185,7 @@ export function AgentPage() {
       kind={kinds.agents}
       res={useLists().agents}
       row={agentRow}
+      detail={(a) => <AgentDetail agent={a} />}
       action={(a) => (
         <Button asChild size="sm">
           <Link to={`/new?agent=${encodeURIComponent(a.name)}`}>Chat with {a.name}</Link>
@@ -169,17 +196,13 @@ export function AgentPage() {
 }
 
 export function ToolsetPage() {
-  return <ItemPage kind={kinds.toolsets} res={useLists().toolsets} row={toolsetRow} />;
-}
-
-/** Connections (T064 with E07's T044/T045): one page, no list. */
-export function ConnectionsPage() {
   return (
-    <Page title="Connections" heading="body" body="bare">
-      <Empty icon={KeyRound} title="Connections">
-        <p className="text-ak-muted">Connecting your own keys and accounts comes with the credentials API.</p>
-      </Empty>
-    </Page>
+    <ItemPage
+      kind={kinds.toolsets}
+      res={useLists().toolsets}
+      row={toolsetRow}
+      detail={(t) => <ToolsetDetail toolset={t} />}
+    />
   );
 }
 

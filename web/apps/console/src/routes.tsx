@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { RouteObject } from "react-router";
 import { RouteError } from "./pages/error";
 import {
@@ -5,6 +6,7 @@ import {
   AgentPage,
   AgentsPage,
   ChatPage,
+  ConnectDonePage,
   ConnectionsPage,
   NotFoundPage,
   RunPage,
@@ -26,6 +28,17 @@ export function inShell(pages: RouteObject[]): RouteObject[] {
   ];
 }
 
+// Where a connect flow comes back from the provider (often in a popup): no shell.
+const connectDone: RouteObject = {
+  path: "/connections/done",
+  errorElement: <RouteError />,
+  element: (
+    <Suspense fallback={null}>
+      <ConnectDonePage />
+    </Suspense>
+  ),
+};
+
 // Every view has a URL (docs/UI.md "Routes"). The server answers every
 // extension-less path with index.html, so these work on reload.
 export const routes: RouteObject[] = inShell([
@@ -43,4 +56,4 @@ export const routes: RouteObject[] = inShell([
   { path: "/tasks/:id", element: <RunPage /> },
   { path: "/tasks/threads/:id", element: <ThreadPage /> },
   { path: "*", element: <NotFoundPage /> },
-]);
+]).concat(connectDone);

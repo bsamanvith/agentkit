@@ -134,7 +134,7 @@ A **connector** is a toolset that calls an outside service: Exa, Parallel, GitHu
 - **Connecting an account (OAuth):**
   - **Connect** asks for `POST /v1/credentials/{slot}/connect`, with the console's `/connections/done` as the return URL, and opens the provider in a **popup**.
   - While it is open, the row reads "Waiting for GitHub… Finish in the window that opened", with **Cancel**.
-  - The popup ends at `/connections/done`, which tells the page that opened it (`postMessage`, same origin only) and closes.
+  - The popup ends at `/connections/done`, which tells the page that opened it and closes. It uses a `BroadcastChannel`, which is same-origin by construction, rather than `postMessage` to `window.opener`, because a provider's opener policy can cut the opener. The page reads only `{slot, result}` strings from the message, then reads the status again from the API.
   - **Results:**
     - connected: "Connected as @samanvith";
     - denied at the provider: "You didn't allow access. Nothing was saved.";

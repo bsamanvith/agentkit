@@ -1,0 +1,67 @@
+{
+  "mcp": {
+    "toolsets": [
+      { "name": "demo", "type": "demo" },
+      { "name": "exa", "type": "exa" },
+      { "name": "parallel", "type": "parallel", "optional": true },
+      {
+        "name": "crm",
+        "type": "a2a",
+        "settings": { "agents": [{ "name": "crm", "card_url": "http://127.0.0.1:18483/no-card" }] },
+        "credential": { "slot": "crm", "scope": "user" },
+        "optional": true
+      },
+      {
+        "name": "mail",
+        "type": "a2a",
+        "settings": { "agents": [{ "name": "mail", "card_url": "http://127.0.0.1:18483/no-card" }] },
+        "credential": { "slot": "mail", "scope": "user" },
+        "optional": true
+      }
+    ]
+  },
+  "agents": [
+    {
+      "name": "researcher",
+      "description": "Searches the web and cites its sources.",
+      "system": "You are the admin pages' test agent. Its model is e2e/fake-model.ts.",
+      "toolsets": ["demo", "exa", "parallel", "crm", "mail"]
+    },
+    {
+      "name": "default",
+      "description": "Echoes with the demo tools.",
+      "system": "The second test agent.",
+      "toolsets": ["demo"]
+    }
+  ],
+  "auth": {
+    "users": [
+      {
+        "username": "ada",
+        "password_hash": "$argon2id$v=19$m=19456,t=2,p=1$2OgKvobnk2nfou4bHP9Rzw$2je9UU6OKhis7YK57di8GLCHNmuilH2fjCxyjlrJHgA",
+        "tenant": "default",
+        "roles": ["admin"]
+      },
+      {
+        "username": "uma",
+        "password_hash": "$argon2id$v=19$m=19456,t=2,p=1$6O66JJKi5gSzJvuYh5Wsbg$yIbneZkvzhO4rUJ7VX5uuHJBRrIDyCmKEIoLtUx/Lw0",
+        "tenant": "default",
+        "roles": ["user"]
+      }
+    ]
+  },
+  "credentials": {
+    "oauth2": [
+      {
+        "slot": "mail",
+        "auth_url": "http://127.0.0.1:18483/authorize",
+        "token_url": "http://127.0.0.1:18483/token",
+        "client_id": "mail-app",
+        "client_secret_env": "MAIL_CLIENT_SECRET",
+        "scopes": ["mail.read"],
+        "redirect_url": "http://127.0.0.1:18482/oauth/callback"
+      }
+    ],
+    "return_urls": ["http://127.0.0.1:18482/connections/done"]
+  }
+}

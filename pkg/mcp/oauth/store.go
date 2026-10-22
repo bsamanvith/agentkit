@@ -57,6 +57,8 @@ type Pending struct {
 	ClientID  string
 	Secret    Secret
 	AuthStyle int
+	// AuthParams are the profile's extra authorization parameters.
+	AuthParams map[string]string
 }
 
 // StateStore keeps pending flows by their state value.

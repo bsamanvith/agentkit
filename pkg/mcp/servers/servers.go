@@ -15,6 +15,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/mcp/client"
+	"github.com/bsamanvith/agentkit/pkg/mcp/oauth"
 	mcpregistry "github.com/bsamanvith/agentkit/pkg/mcp/registry"
 	"github.com/bsamanvith/agentkit/pkg/netguard"
 	"github.com/bsamanvith/agentkit/pkg/store"
@@ -85,6 +86,7 @@ type Manager struct {
 	maxToolsets    int
 	allow          *Allowlist
 	registry       *mcpregistry.Client
+	oauth          *oauth.Connector
 
 	mu     sync.Mutex
 	conns  map[connKey]*conn
@@ -141,7 +143,13 @@ type record struct {
 	Headers   map[string]string `json:"headers,omitempty"` // values as given: fixed, or "${NAME}"
 	Scope     string            `json:"scope"`
 	Enabled   bool              `json:"enabled"`
-	Server    wire.ServerInfo   `json:"server"`
+	// Issuer is the authorization server of auth "oauth", pinned when the
+	// toolset was added; OAuthClientID and OAuthClientSecret ("${NAME}")
+	// a pre-registered client.
+	Issuer            string          `json:"issuer,omitempty"`
+	OAuthClientID     string          `json:"oauth_client_id,omitempty"`
+	OAuthClientSecret string          `json:"oauth_client_secret,omitempty"`
+	Server            wire.ServerInfo `json:"server"`
 	// Tools are the decisions on tools, by the server's name.
 	Tools map[string]review `json:"tools"`
 }
@@ -169,14 +177,23 @@ func (m *Manager) load(ctx context.Context, name string) (store.ToolsetRecord, r
 	case err != nil:
 		return rec, record{}, err
 	}
-	var r record
-	if err := json.Unmarshal(rec.Data, &r); err != nil {
+	r, err := decode(rec.Data)
+	if err != nil {
 		return rec, record{}, fmt.Errorf("toolset %q: stored data: %w", name, err)
+	}
+	return rec, r, nil
+}
+
+// decode reads a stored record.
+func decode(data []byte) (record, error) {
+	var r record
+	if err := json.Unmarshal(data, &r); err != nil {
+		return record{}, err
 	}
 	if r.Tools == nil {
 		r.Tools = map[string]review{}
 	}
-	return rec, r, nil
+	return r, nil
 }
 
 // save writes r over version ifVersion of the toolset (0: a new one).
@@ -218,6 +235,9 @@ func (m *Manager) Add(ctx context.Context, by string, req wire.AddToolsetRequest
 	case len(all) >= m.maxToolsets:
 		return wire.ServerToolset{}, fmt.Errorf("%w: a tenant may add %d toolsets; remove one first", agentapi.ErrToolsetInvalid, m.maxToolsets)
 	}
+	if r.Auth == wire.AuthOAuth {
+		return m.addOAuth(ctx, by, req.Name, r)
+	}
 	k, err := key(ctx, req.Name)
 	if err != nil {
 		return wire.ServerToolset{}, err
@@ -235,7 +255,7 @@ func (m *Manager) Add(ctx context.Context, by string, req wire.AddToolsetRequest
 	}
 	m.keep(k, cn)
 	m.log.Info("mcp server added", "tenant", k.tenant.ID(), "toolset", req.Name, "server", cn.where, "by", by)
-	return m.view(rec, r, cn, nil), nil
+	return m.show(ctx, rec, r, cn, nil), nil
 }
 
 // List implements [agentapi.ToolsetAdmin]. It connects to the servers it
@@ -250,14 +270,14 @@ func (m *Manager) List(ctx context.Context) ([]wire.ServerToolset, error) {
 	var wg sync.WaitGroup
 	for i, rec := range all {
 		wg.Go(func() {
-			var r record
-			if err := json.Unmarshal(rec.Data, &r); err != nil {
+			r, err := decode(rec.Data)
+			if err != nil {
 				m.log.Error("mcp server: stored data", "toolset", rec.Name, "err", err)
 				out[i] = wire.ServerToolset{V: agentapi.WireVersion, Name: rec.Name, Type: Type, Status: wire.ToolsetUnavailable, Reason: "its stored data cannot be read; see the server log", Tools: []wire.ReviewTool{}}
 				return
 			}
 			cn, err := m.connFor(ctx, rec.Name, r)
-			out[i] = m.view(rec, r, cn, err)
+			out[i] = m.show(ctx, rec, r, cn, err)
 		})
 	}
 	wg.Wait()
@@ -274,7 +294,7 @@ func (m *Manager) Get(ctx context.Context, name string) (wire.ServerToolset, err
 	if ctx.Err() != nil {
 		return wire.ServerToolset{}, ctx.Err()
 	}
-	return m.view(rec, r, cn, err), nil
+	return m.show(ctx, rec, r, cn, err), nil
 }
 
 // Review implements [agentapi.ToolsetAdmin]. Each decision names the
@@ -290,7 +310,11 @@ func (m *Manager) Review(ctx context.Context, name, by string, req wire.ReviewRe
 		return wire.ServerToolset{}, fmt.Errorf("%w: no decisions", agentapi.ErrToolsetInvalid)
 	}
 	cn, err := m.connFor(ctx, name, r)
-	if err != nil {
+	var ce *connectionError
+	if errors.As(err, &ce) {
+		// The tools are listed, and so reviewed, through a connection.
+		return wire.ServerToolset{}, &agentapi.AuthRequiredError{Auth: wire.AuthOAuth, Reason: ce.Error() + "; its tools are reviewed through a connection"}
+	} else if err != nil {
 		return wire.ServerToolset{}, err
 	}
 	live := cn.listed()
@@ -316,7 +340,7 @@ func (m *Manager) Review(ctx context.Context, name, by string, req wire.ReviewRe
 	if err != nil {
 		return wire.ServerToolset{}, err
 	}
-	return m.view(rec, r, cn, nil), nil
+	return m.show(ctx, rec, r, cn, nil), nil
 }
 
 // decide applies a decision on a tool the server lists as t (nil: it does
@@ -368,6 +392,9 @@ func (m *Manager) Update(ctx context.Context, name string, req wire.UpdateToolse
 	if req.Enabled != nil {
 		r.Enabled = *req.Enabled
 	}
+	if req.Headers != nil && r.Auth == wire.AuthOAuth {
+		return wire.ServerToolset{}, fmt.Errorf(`%w: a toolset with auth "oauth" takes no headers`, agentapi.ErrToolsetInvalid)
+	}
 	if req.Headers != nil {
 		if err := m.checkHeaders(req.Headers); err != nil {
 			return wire.ServerToolset{}, err
@@ -382,7 +409,7 @@ func (m *Manager) Update(ctx context.Context, name string, req wire.UpdateToolse
 		return wire.ServerToolset{}, err
 	}
 	cn, err := m.connFor(ctx, name, r)
-	return m.view(rec, r, cn, err), nil
+	return m.show(ctx, rec, r, cn, err), nil
 }
 
 // Delete implements [agentapi.ToolsetAdmin], and closes the toolset's
@@ -399,12 +426,18 @@ func (m *Manager) Delete(ctx context.Context, name string) error {
 	case err != nil:
 		return err
 	}
+	// Every connection of the toolset: the tenant's, and each user's.
 	m.mu.Lock()
-	cn := m.conns[k]
-	delete(m.conns, k)
+	var gone []*conn
+	for ck, cn := range m.conns {
+		if ck.tenant == k.tenant && ck.name == k.name {
+			gone = append(gone, cn)
+			delete(m.conns, ck)
+		}
+	}
 	m.mu.Unlock()
-	if cn != nil {
-		cn.close()
+	for _, cn := range gone {
+		go func() { <-cn.ready; cn.close() }()
 	}
 	return nil
 }

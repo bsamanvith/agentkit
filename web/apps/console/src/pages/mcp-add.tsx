@@ -7,9 +7,11 @@
 //    toolset with every tool off. Nothing is stored if the probe fails.
 // 2. Sign-in, when the server refused agentkit (422 auth_required) or the
 //    registry says it takes headers: a header whose value is a ${VAR} of
-//    the server's environment, never a secret. Per-user OAuth is shown as
-//    not available yet (T095): the API refuses scope user.
-// 3. Review: every tool needs Approve or Reject (POST …/review).
+//    the server's environment, never a secret; or, when the 422 says
+//    auth "oauth", each person signs in with MCP OAuth (scope user, T095).
+// 3. Review: every tool needs Approve or Reject (POST …/review). An OAuth
+//    server lists its tools through a connection: the admin connects their
+//    own account first (POST /v1/credentials/{name}/connect, in a popup).
 // 4. Use it: stored agents get a new version with the toolset in their
 //    runtime_toolsets, a draft unless the admin publishes it at once.
 
@@ -25,7 +27,7 @@ import { Button } from "@agentkit/ui/components/button";
 import { Input } from "@agentkit/ui/components/input";
 import { cn } from "@agentkit/ui/lib/utils";
 import { Check, KeyRound, Search, TriangleAlert } from "lucide-react";
-import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router";
 import { useApi, useResource } from "../api";
 import { listAgents, useLists } from "../lists";
@@ -46,10 +48,10 @@ import {
   needsDecision,
   urlProblem,
   urlWarning,
-  wantsOAuth,
   type FormError,
 } from "./mcp-servers";
 import { ErrorLine, ReviewCards } from "./mcp-review";
+import { connectChannel, connectPopupKey, connectWindow, resultText } from "./connections-model";
 
 const stepNames = ["Server", "Sign-in", "Review tools", "Use it"];
 
@@ -67,6 +69,8 @@ type Wizard = {
   headers: Header[];
   /** The server's 401, as the API put it; null when it didn't ask. */
   asked: string | null;
+  /** The 401 named MCP OAuth (the 422's auth "oauth"). */
+  oauth: boolean;
   /** The registry's word on headers the server takes. */
   hinted: RegistryHeader[];
   ts: ServerToolset | null;
@@ -81,6 +85,7 @@ const fresh = (): Wizard => ({
   template: "",
   headers: [],
   asked: null,
+  oauth: false,
   hinted: [],
   ts: null,
 });
@@ -322,7 +327,7 @@ function ServerStep({
       (err: unknown) => {
         setBusy(false);
         const f = addError(err);
-        if (f.authRequired) return set({ name, step: 2, asked: f.message });
+        if (f.authRequired) return set({ name, step: 2, asked: f.message, oauth: !!f.oauth });
         setErrors(
           f.field === "name" ? { name: f.message } : f.field === "url" ? { url: f.message } : { form: f.message },
         );
@@ -447,15 +452,15 @@ function SignInStep({
   onAdded: (ts: ServerToolset) => void;
 }) {
   const { client } = useApi();
-  const [mode, setMode] = useState<"none" | "headers">(
-    w.asked || w.hinted.some((h) => h.required) ? "headers" : "none",
+  const [mode, setMode] = useState<"none" | "headers" | "user">(
+    w.oauth ? "user" : w.asked || w.hinted.some((h) => h.required) ? "headers" : "none",
   );
   const [rowErrors, setRowErrors] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const headers = w.headers.length > 0 ? w.headers : [{ name: "Authorization", value: "Bearer ${API_KEY}" }];
   const setHeaders = (h: Header[]) => set({ headers: h });
-  const oauth = w.asked !== null && wantsOAuth(w.asked);
+  const oauth = w.asked !== null && w.oauth;
   const submit = (e: FormEvent) => {
     e.preventDefault();
     setError("");
@@ -476,8 +481,9 @@ function SignInStep({
         name: w.name,
         url: w.url.trim(),
         transport: w.transport,
-        auth: sent ? "headers" : "none",
+        auth: mode === "user" ? "oauth" : sent ? "headers" : "none",
         ...(sent ? { headers: sent } : {}),
+        ...(mode === "user" ? { scope: "user" } : {}),
       })
       .then(
         (ts) => onAdded(ts),
@@ -502,8 +508,8 @@ function SignInStep({
       )}
       {oauth ? (
         <Callout tone="info" title="It signs people in with MCP OAuth.">
-          agentkit can&apos;t sign in to a server added at run time with OAuth yet, so nobody can connect it on
-          Connections. If the server also takes an API key, send it in a header.
+          With Each person signs in, everyone connects their own account on Connections, and the agents use it only for
+          their runs. You connect yours next, to list its tools.
         </Callout>
       ) : null}
       <fieldset className="flex flex-col gap-2">
@@ -525,8 +531,10 @@ function SignInStep({
             [
               "user",
               "Each person signs in",
-              "Not available yet: per-user OAuth for servers added at run time needs T095. It will add a Connect row on Connections.",
-              true,
+              oauth
+                ? "MCP OAuth: each person connects their own account on Connections. Someone who hasn't gets “not connected” from its tools, never someone else's account."
+                : "For a server that signs people in with MCP OAuth; this one didn't ask for it.",
+              !oauth,
             ],
           ] as const
         ).map(([value, label, desc, disabled]) => (
@@ -543,7 +551,7 @@ function SignInStep({
               value={value}
               checked={mode === value}
               disabled={disabled}
-              onChange={() => value !== "user" && setMode(value)}
+              onChange={() => setMode(value)}
               className="mt-1"
             />
             <span className="flex flex-col gap-0.5">
@@ -620,9 +628,15 @@ function SignInStep({
       {error ? <ErrorLine>{error}</ErrorLine> : null}
       <div className="flex flex-wrap gap-2">
         <Button type="submit" disabled={busy}>
-          {busy ? "Listing tools…" : "Connect and list tools"}
+          {busy
+            ? mode === "user"
+              ? "Saving…"
+              : "Listing tools…"
+            : mode === "user"
+              ? "Save"
+              : "Connect and list tools"}
         </Button>
-        <Button type="button" variant="outline" onClick={() => set({ step: 1, asked: null })}>
+        <Button type="button" variant="outline" onClick={() => set({ step: 1, asked: null, oauth: false })}>
           Back
         </Button>
       </div>
@@ -631,7 +645,15 @@ function SignInStep({
 }
 
 /** Step 3: every tool needs a decision. */
-function ReviewStep({ ts, onReviewed }: { ts: ServerToolset; onReviewed: (ts: ServerToolset) => void }) {
+function ReviewStep({
+  ts,
+  onReviewed,
+  onFresh,
+}: {
+  ts: ServerToolset;
+  onReviewed: (ts: ServerToolset) => void;
+  onFresh: (ts: ServerToolset) => void;
+}) {
   const { client } = useApi();
   const { reloadToolsets } = useLists();
   const navigate = useNavigate();
@@ -643,6 +665,17 @@ function ReviewStep({ ts, onReviewed }: { ts: ServerToolset; onReviewed: (ts: Se
   const [stale, setStale] = useState(false);
   const asked = current.tools.filter(needsDecision);
   const left = undecided(current.tools, choices).length;
+  const unconnected = current.auth === "oauth" && current.connection !== "connected";
+  const reload = () =>
+    client.getToolsetReview(current.name).then(
+      (fresh) => {
+        setError("");
+        setCurrent(fresh);
+        setChoices(initialChoices(fresh.tools));
+        onFresh(fresh);
+      },
+      (e: unknown) => setError(e instanceof ApiError ? `${e.message} (${e.code})` : "Couldn't reach agentkit."),
+    );
   const save = () => {
     setBusy(true);
     setError("");
@@ -686,6 +719,23 @@ function ReviewStep({ ts, onReviewed }: { ts: ServerToolset; onReviewed: (ts: Se
       },
     );
   };
+  if (unconnected) {
+    return (
+      <>
+        <ConnectBox name={current.name} status={current.connection} onConnected={() => void reload()} />
+        {error ? <ErrorLine>{error}</ErrorLine> : null}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" disabled={busy} onClick={remove}>
+            Cancel and remove it
+          </Button>
+        </div>
+        <p className="text-xs text-ak-muted">
+          {current.name} is saved with every tool off. Leaving this page keeps it so: its page offers Review once you
+          have connected.
+        </p>
+      </>
+    );
+  }
   return (
     <>
       <p className="text-(length:--ak-text-sm) text-ak-text-2">
@@ -714,6 +764,99 @@ function ReviewStep({ ts, onReviewed }: { ts: ServerToolset; onReviewed: (ts: Se
       <p className="text-xs text-ak-muted">
         {current.name} is saved with every tool off. Leaving this page keeps it so: its page offers Review.
       </p>
+    </>
+  );
+}
+
+/**
+ * Connects the admin's own account to an MCP OAuth server, in a popup
+ * (POST /v1/credentials/{name}/connect, back at /connections/done, which
+ * reports on the connect channel), so its tools can be listed. "Check
+ * again" reads the review once more, for a popup that couldn't report.
+ */
+function ConnectBox({
+  name,
+  status,
+  onConnected,
+}: {
+  name: string;
+  status: string | undefined;
+  onConnected: () => void;
+}) {
+  const { client } = useApi();
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  // A popup's result, from /connections/done.
+  const onResult = useEffectEvent((e: MessageEvent<unknown>) => {
+    const d = e.data as { slot?: unknown; result?: unknown } | null;
+    if (d?.slot !== name || typeof d.result !== "string") return;
+    setBusy(false);
+    if (d.result === "connected") {
+      setNote("");
+      onConnected();
+    } else setNote(resultText({ slot: name, result: d.result }).text);
+  });
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const ch = new BroadcastChannel(connectChannel);
+    ch.onmessage = (e: MessageEvent<unknown>) => onResult(e);
+    return () => ch.close();
+  }, []);
+  const connect = () => {
+    setNote("");
+    let popup: Window | null;
+    try {
+      sessionStorage.setItem(connectPopupKey, "1");
+    } catch {
+      // Storage blocked: the popup knows itself by its opener or name.
+    }
+    try {
+      popup = window.open("", connectWindow, "popup,width=520,height=680");
+    } finally {
+      try {
+        sessionStorage.removeItem(connectPopupKey);
+      } catch {
+        // As above.
+      }
+    }
+    setBusy(true);
+    client.connectCredential(name, { scope: "user", return_url: `${window.location.origin}/connections/done` }).then(
+      ({ authorize_url }) => {
+        if (popup && !popup.closed) {
+          popup.location.href = authorize_url;
+          return;
+        }
+        setBusy(false);
+        setNote("The sign-in window was blocked. Allow popups, or connect on Connections, then Check again.");
+      },
+      (e: unknown) => {
+        popup?.close();
+        setBusy(false);
+        setNote(
+          e instanceof ApiError ? `Couldn't start connecting: ${e.message} (${e.code}).` : "Couldn't reach agentkit.",
+        );
+      },
+    );
+  };
+  return (
+    <>
+      <Callout icon={KeyRound} tone="info" title="Connect your account to list its tools.">
+        {status === "needs_reconnect"
+          ? "Your connection to it was refused; connect again. "
+          : "agentkit reads the tools through a connection, and it has none of yours yet. "}
+        You sign in at the server&apos;s own sign-in page; agentkit keeps the token, and the console never sees it.
+      </Callout>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="button" disabled={busy} onClick={connect}>
+          {busy ? "Waiting for sign-in…" : `Connect ${name}`}
+        </Button>
+        <Button type="button" variant="outline" onClick={onConnected}>
+          Check again
+        </Button>
+      </div>
+      <div role="status" aria-live="polite" className="text-(length:--ak-text-sm) text-ak-warn">
+        {note}
+      </div>
     </>
   );
 }
@@ -916,11 +1059,13 @@ export function McpAddPage() {
     set({ ts, step: 3 });
   };
   const title =
-    w.step === 3 && w.ts
-      ? `${w.ts.name} offers ${w.ts.tools.length} ${w.ts.tools.length === 1 ? "tool" : "tools"}`
-      : w.step === 5 && w.ts
-        ? `${w.ts.name} is ready`
-        : (headings[w.step - 1] ?? "");
+    w.step === 3 && w.ts && w.ts.auth === "oauth" && w.ts.connection !== "connected"
+      ? `Connect ${w.ts.name}`
+      : w.step === 3 && w.ts
+        ? `${w.ts.name} offers ${w.ts.tools.length} ${w.ts.tools.length === 1 ? "tool" : "tools"}`
+        : w.step === 5 && w.ts
+          ? `${w.ts.name} is ready`
+          : (headings[w.step - 1] ?? "");
   return (
     <Page title="Add an MCP server" back={{ to: "/toolsets", label: "toolsets" }}>
       <Steps step={Math.min(w.step, 4)} />
@@ -929,7 +1074,9 @@ export function McpAddPage() {
       </h2>
       {w.step === 1 ? <ServerStep w={w} set={set} taken={taken} onAdded={added} /> : null}
       {w.step === 2 ? <SignInStep w={w} set={set} onAdded={added} /> : null}
-      {w.step === 3 && w.ts ? <ReviewStep ts={w.ts} onReviewed={(ts) => set({ ts, step: 4 })} /> : null}
+      {w.step === 3 && w.ts ? (
+        <ReviewStep ts={w.ts} onReviewed={(ts) => set({ ts, step: 4 })} onFresh={(ts) => set({ ts })} />
+      ) : null}
       {w.step === 4 && w.ts ? (
         <UseStep
           ts={w.ts}

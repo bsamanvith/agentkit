@@ -43,6 +43,22 @@
 // handler, where agentkit needs a redirect between two requests and a token
 // per owner.
 //
-// Tokens are [Secret]s: they print, log and marshal as "[redacted]". The
-// stores here keep them in memory; the vault (T042) seals them at rest.
+// The agent API's connect flows (package credentials/connect) keep their
+// own state, bound to the browser, so they use the flow in its parts
+// instead: [Connector.Start] (discovery and registration, a [Pending] to
+// keep sealed, [EncodePending]), [Connector.AuthCodeURL], and
+// [Connector.Finish] with what the callback got. [Connector.Issuer] finds a
+// server's authorization server when a toolset is added, which is then
+// pinned ([Profile].Issuer): a pre-registered client is sent only there.
+// A token is used only for the server it was issued for (its URL or
+// origin, and its issuer), so a toolset removed and added again under the
+// same name elsewhere is not connected.
+//
+// Tokens are [Secret]s: they print, log and marshal as "[redacted]".
+// [MemoryStore] keeps them in memory; [VaultStore] in the credential vault
+// (T042), sealed at rest: a connection as an OAuth2 credential at the
+// server's slot (the toolset's name) for the owner, with its client, and a
+// registered client per tenant and issuer at a reserved slot
+// ([ClientSlotPrefix]). Swap is the vault's compare-and-swap, and
+// "reconnect needed" its NeedsReconnect mark.
 package oauth

@@ -44,6 +44,12 @@ type AuthServerOptions struct {
 	Extra map[string]any
 	// HTTPClient fetches client metadata documents.
 	HTTPClient *http.Client
+	// OIDC serves the metadata at OpenID Connect's well-known location
+	// only (/.well-known/openid-configuration), not RFC 8414's.
+	OIDC bool
+	// OnRegister, if set, is called in each dynamic registration request
+	// before it is answered; a test can hold the request there.
+	OnRegister func()
 }
 
 // AuthServer is a fake authorization server.
@@ -86,7 +92,11 @@ func NewAuthServer(t testing.TB, opts AuthServerOptions) *AuthServer {
 		a.clients[id] = client{secret: sec}
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /.well-known/oauth-authorization-server", a.metadata)
+	if opts.OIDC {
+		mux.HandleFunc("GET /.well-known/openid-configuration", a.metadata)
+	} else {
+		mux.HandleFunc("GET /.well-known/oauth-authorization-server", a.metadata)
+	}
 	mux.HandleFunc("GET /authorize", a.authorize)
 	mux.HandleFunc("POST /token", a.token)
 	mux.HandleFunc("POST /register", a.register)
@@ -126,6 +136,9 @@ func (a *AuthServer) register(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.RedirectURIs) == 0 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_client_metadata"})
 		return
+	}
+	if a.opts.OnRegister != nil {
+		a.opts.OnRegister()
 	}
 	a.mu.Lock()
 	a.Registrations++

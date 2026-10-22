@@ -48,6 +48,7 @@ a `pool.Pool` whose agents are `runnerrpc` clients.
 | `AGENTKIT_RPC_TOKEN` | all | The bearer token between components, 16 bytes or more. The runner and toolsets components require it on an address that is not loopback, and their callers send it. |
 | `AGENTKIT_API_TOKEN` | `agent`, `mcp-server` | The bearer token clients send to `/v1/` and `/mcp/`. Required on an address that is not loopback, and checked whenever it is set. |
 | `AGENTKIT_A2A_URL` | `a2a` | The origin the Agent Cards name (`https://agents.example.com`), when a proxy in front changes it. Unset, a card names the scheme and host of the request that fetched it. |
+| `AGENTKIT_PUBLIC_URL` | `agent` | The server's public origin (`https://agents.example.com`), for MCP OAuth on toolsets added at run time (T095): authorization servers redirect to `/oauth/callback` there, and over https `/oauth/client-metadata.json` there is agentkit's client ID. Unset, those toolsets can't use `auth: oauth`. Needs the credential vault. |
 | `AGENTKIT_DEPENDENCY_WAIT` | `agent`, `runner` | How long startup waits for the toolsets component to answer (default `60s`): pods start in any order. |
 
 Every container gets the same config file: the agents and `mcp.toolsets`.

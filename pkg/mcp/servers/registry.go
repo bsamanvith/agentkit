@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
+	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/mcp/client"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 )
@@ -27,7 +28,12 @@ func (m *Manager) offered(ctx context.Context, name string) ([]offer, error) {
 		return nil, err
 	}
 	cn, err := m.connFor(ctx, name, r)
-	if err != nil {
+	var ce *connectionError
+	if errors.As(err, &ce) {
+		// Not connected (or broken): the approved tools are offered as
+		// approved, and their calls say so.
+		return m.approvedOffers(name, r, ce), nil
+	} else if err != nil {
 		return nil, err
 	}
 	live := cn.listed()
@@ -51,6 +57,32 @@ func (m *Manager) offered(ctx context.Context, name string) ([]offer, error) {
 		out = append(out, offer{def: def, t: t, cn: cn})
 	}
 	return out, nil
+}
+
+// approvedOffers are the approved tools of an OAuth toolset the caller
+// cannot use now, as approved, each failing with ce.
+func (m *Manager) approvedOffers(name string, r record, ce *connectionError) []offer {
+	var out []offer
+	for _, toolName := range slices.Sorted(maps.Keys(r.Tools)) {
+		rv := r.Tools[toolName]
+		t := approvedTool(rv)
+		if rv.Approved == "" || t == nil || t.Name != toolName {
+			continue
+		}
+		def, err := client.Definition(t)
+		if err != nil {
+			m.log.Warn("mcp server: an approved tool cannot be offered", "toolset", name, "tool", toolName, "err", err)
+			continue
+		}
+		if rv.Kind != "" {
+			def.Kind = rv.Kind
+		}
+		if rv.Risk != "" {
+			def.Risk = rv.Risk
+		}
+		out = append(out, offer{def: def, unusable: ce})
+	}
+	return out
 }
 
 // Registry is the tools of the named toolsets for a harness, as
@@ -118,11 +150,30 @@ func (g *registry) Invoke(ctx context.Context, name string, input json.RawMessag
 		return nil, &tool.Error{Tool: name, Kind: tool.ErrToolFailed, Err: errors.New(
 			"this tool is off: its toolset was disabled, or the MCP server changed or dropped the tool since an admin approved it; it stays off until reviewed")}
 	}
+	if ce := offered[i].unusable; ce != nil {
+		return nil, callError(name, ce)
+	}
 	w, err := offered[i].cn.wrap(offered[i].t)
 	if err != nil {
 		return nil, &tool.Error{Tool: name, Kind: tool.ErrToolFailed, Err: err}
 	}
-	return w.Invoke(ctx, input)
+	out, err := w.Invoke(ctx, input)
+	if err != nil && ctx.Err() == nil {
+		// A connection that broke during the call (its token refused and
+		// not refreshed): said plainly, never with the server's answer.
+		if _, r, lerr := g.m.load(ctx, ts); lerr == nil && r.Auth == wire.AuthOAuth {
+			if ce, ok := asConnection(err, ts, r.Scope); ok {
+				return nil, callError(name, ce)
+			}
+			// The transport may not keep the cause: the connection says it.
+			if _, _, cerr := g.m.connected(ctx, ts, r); cerr != nil {
+				if ce, ok := asConnection(cerr, ts, r.Scope); ok {
+					return nil, callError(name, ce)
+				}
+			}
+		}
+	}
+	return out, err
 }
 
 // split cuts "<toolset>__<tool>" for one of the registry's toolsets; a

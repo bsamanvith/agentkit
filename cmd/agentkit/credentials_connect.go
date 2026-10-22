@@ -20,8 +20,9 @@ import (
 // /v1/credentials, and connecting accounts) over the vault, for the slots
 // the served toolsets name; nil when there is no vault. The slots of
 // credentials.oauth2 with an auth_url can be connected; an entry for a
-// slot no served toolset uses is left out.
-func (c cli) newConnect(cfg serveConfig, specs []toolset.Spec, env serveEnv, log *slog.Logger) (*connect.Service, error) {
+// slot no served toolset uses is left out. dyn, when not nil, adds the
+// toolsets added at run time with auth "oauth" (T095), each its own slot.
+func (c cli) newConnect(cfg serveConfig, specs []toolset.Spec, env serveEnv, dyn connect.Dynamic, log *slog.Logger) (*connect.Service, error) {
 	if env.vaultParts == nil {
 		return nil, nil
 	}
@@ -58,7 +59,7 @@ func (c cli) newConnect(cfg serveConfig, specs []toolset.Spec, env serveEnv, log
 	}
 	svc, err := connect.New(connect.Config{
 		Vault: env.vaultParts.vault, Store: env.vaultParts.store, Sealer: env.vaultParts.sealer,
-		Slots: slots, Apps: apps, ReturnURLs: cfg.Credentials.ReturnURLs,
+		Slots: slots, Apps: apps, Dynamic: dyn, ReturnURLs: cfg.Credentials.ReturnURLs,
 		CheckTokenURL: func(raw string) error { _, err := guard.CheckURL(raw); return err },
 		Logger:        log.With("component", "credentials"),
 	})
@@ -77,3 +78,16 @@ func (o oauthCallback) Name() string                   { return "oauth-callback"
 func (o oauthCallback) Handler() http.Handler          { return o.h }
 func (o oauthCallback) Ready(context.Context) error    { return nil }
 func (o oauthCallback) Shutdown(context.Context) error { return nil }
+
+// oauthClientMetadataPath is where the MCP OAuth client's metadata is
+// served (oauth.ClientMetadataPath, which this file does not import).
+const oauthClientMetadataPath = "/oauth/client-metadata.json"
+
+// oauthClientMetadata serves the MCP OAuth client's metadata document:
+// public, always ready, nothing to shut down.
+type oauthClientMetadata struct{ h http.Handler }
+
+func (o oauthClientMetadata) Name() string                   { return "oauth-client-metadata" }
+func (o oauthClientMetadata) Handler() http.Handler          { return o.h }
+func (o oauthClientMetadata) Ready(context.Context) error    { return nil }
+func (o oauthClientMetadata) Shutdown(context.Context) error { return nil }

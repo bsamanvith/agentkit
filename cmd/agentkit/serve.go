@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/url"
 	"os"
 	"regexp"
 	"slices"
@@ -140,6 +141,10 @@ type serveEnv struct {
 	// vaultParts is the vault with its backend and sealer, which the
 	// agent API's connect flows keep their state in; nil without a vault.
 	vaultParts *vaultParts
+	// publicURL is the server's public base URL ($AGENTKIT_PUBLIC_URL):
+	// the toolsets added at run time with auth "oauth" need it for their
+	// redirect URI and client ID. "" when unset.
+	publicURL string
 }
 
 func (c cli) serve(ctx context.Context, args []string) error {
@@ -466,11 +471,22 @@ func (c cli) serveEnv() (serveEnv, error) {
 		}
 		e.credentialKeys = r
 	}
+	if v := c.env(envPublicURL); v != "" {
+		u, err := url.Parse(v)
+		if !secureURL(v) || err != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
+			return e, fmt.Errorf("$%s: %q is not an origin such as https://agents.example.com (http only on a loopback host)", envPublicURL, v)
+		}
+		e.publicURL = strings.TrimRight(v, "/")
+	}
 	if err := c.webhookEnv(&e); err != nil {
 		return e, err
 	}
 	return e, nil
 }
+
+// envPublicURL is the server's public origin, which the MCP servers'
+// authorization servers redirect browsers back to (T095).
+const envPublicURL = "AGENTKIT_PUBLIC_URL"
 
 // envCredentialsKey is the credential vault's key ring:
 // "<id>:<base64 of 32 bytes>[,<id>:<base64>...]", the first key sealing.

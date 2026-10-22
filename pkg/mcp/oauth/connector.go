@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/url"
 	"slices"
@@ -41,7 +42,12 @@ type Config struct {
 
 	Tokens  TokenStore
 	Clients ClientStore
-	States  StateStore
+	// States keeps the flows of [Connector.Begin] until
+	// [Connector.Complete]. It may be nil when flows are kept elsewhere,
+	// with [Connector.Start] and [Connector.Finish] (the agent API's
+	// connect flows, package credentials/connect); Begin and Complete then
+	// fail.
+	States StateStore
 
 	// HTTPClient makes every request to MCP and authorization servers; nil
 	// is http.DefaultClient. T096's SSRF-guarded client goes here.
@@ -80,8 +86,8 @@ func New(cfg Config) (*Connector, error) {
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
 		return nil, errors.New("oauth: PublicURL must be an absolute http(s) URL")
 	}
-	if cfg.Tokens == nil || cfg.Clients == nil || cfg.States == nil {
-		return nil, errors.New("oauth: Tokens, Clients and States are required")
+	if cfg.Tokens == nil || cfg.Clients == nil {
+		return nil, errors.New("oauth: Tokens and Clients are required")
 	}
 	base := strings.TrimRight(cfg.PublicURL, "/")
 	c := &Connector{
@@ -271,19 +277,73 @@ func challengeParam(cs []oauthex.Challenge, name string) string {
 	return ""
 }
 
+// errNoStates is Begin's and Complete's error without a [StateStore].
+var errNoStates = errors.New("oauth: no state store: flows are kept by the caller (Start and Finish)")
+
 // Begin starts connecting owner's account to srv and returns the URL to
 // send the user's browser to. returnTo is handed back by Complete, for the
-// console to go back to; it is not checked here.
+// console to go back to; it is not checked here. The flow is kept in the
+// [StateStore] under a new random state.
 func (c *Connector) Begin(ctx context.Context, owner Owner, srv Server, returnTo string) (string, error) {
+	if c.cfg.States == nil {
+		return "", errNoStates
+	}
+	p, err := c.Start(ctx, owner, srv)
+	if err != nil {
+		return "", err
+	}
+	p.ReturnTo = returnTo
+	state := rand.Text()
+	if err := c.cfg.States.PutState(ctx, state, p); err != nil {
+		return "", fmt.Errorf("oauth: saving state: %w", err)
+	}
+	return c.AuthCodeURL(p, state), nil
+}
+
+// Issuer discovers srv's authorization server, as Start would, and returns
+// its issuer: a server that cannot be signed in to fails here, with
+// [ErrDiscovery]. A profile with fixed endpoints discovers nothing and
+// returns its Issuer.
+func (c *Connector) Issuer(ctx context.Context, srv Server) (string, error) {
 	if err := checkServer(srv); err != nil {
 		return "", err
+	}
+	if srv.Profile.AuthURL != "" {
+		return srv.Profile.Issuer, nil
+	}
+	d, err := c.discover(ctx, srv)
+	if err != nil {
+		return "", err
+	}
+	if srv.Profile.Issuer != "" && !sameIssuer(srv.Profile.Issuer, d.asm.Issuer) {
+		return "", fmt.Errorf("%w: server %q: its authorization server is now %q, not %q", ErrDiscovery, srv.Name, d.asm.Issuer, srv.Profile.Issuer)
+	}
+	return d.asm.Issuer, nil
+}
+
+func sameIssuer(a, b string) bool { return strings.TrimRight(a, "/") == strings.TrimRight(b, "/") }
+
+// Start prepares a flow connecting owner's account to srv: discovery, the
+// client (pre-registered, CIMD or registered now), the scopes and a PKCE
+// verifier. It keeps nothing: the caller keeps the flow, sealed, since it
+// holds the verifier and the client's secret ([EncodePending]), sends the
+// browser to [Connector.AuthCodeURL] with a state of its own, and finishes
+// with [Connector.Finish]. Expires is StateTTL from now.
+func (c *Connector) Start(ctx context.Context, owner Owner, srv Server) (Pending, error) {
+	if err := checkServer(srv); err != nil {
+		return Pending{}, err
+	}
+	if owner.Tenant == "" || (srv.Scope != ScopeTenant && owner.User == "") {
+		return Pending{}, ErrNoUser
+	}
+	if srv.Scope == ScopeTenant && owner.User != "" {
+		return Pending{}, errors.New("oauth: a tenant's connection belongs to no user")
 	}
 	prof := srv.Profile
 	now := c.clk.Now()
 	p := Pending{
 		Owner:    owner,
 		Server:   srv.Name,
-		ReturnTo: returnTo,
 		Created:  now,
 		Expires:  now.Add(c.cfg.StateTTL),
 		Resource: srv.URL,
@@ -298,7 +358,7 @@ func (c *Connector) Begin(ctx context.Context, owner Owner, srv Server, returnTo
 	} else {
 		d, err := c.discover(ctx, srv)
 		if err != nil {
-			return "", err
+			return Pending{}, err
 		}
 		p.AuthURL, p.TokenURL = d.asm.AuthorizationEndpoint, d.asm.TokenEndpoint
 		p.Issuer, p.IssParam = d.asm.Issuer, d.asm.AuthorizationResponseIssParameterSupported
@@ -315,7 +375,7 @@ func (c *Connector) Begin(ctx context.Context, owner Owner, srv Server, returnTo
 		}
 		addRefresh = slices.Contains(d.asm.ScopesSupported, prof.refreshScope())
 		if err := c.register(ctx, owner, srv, d.asm, &p); err != nil {
-			return "", err
+			return Pending{}, err
 		}
 	}
 	if prof.AuthURL != "" {
@@ -329,27 +389,30 @@ func (c *Connector) Begin(ctx context.Context, owner Owner, srv Server, returnTo
 	if prof.OmitResource {
 		p.Resource = ""
 	}
-
-	verifier := oauth2.GenerateVerifier()
-	p.Verifier = NewSecret(verifier)
-	state := rand.Text()
-	if err := c.cfg.States.PutState(ctx, state, p); err != nil {
-		return "", fmt.Errorf("oauth: saving state: %w", err)
+	if len(prof.AuthParams) > 0 {
+		p.AuthParams = maps.Clone(prof.AuthParams)
 	}
+	p.Verifier = NewSecret(oauth2.GenerateVerifier())
+	return p, nil
+}
 
-	opts := []oauth2.AuthCodeOption{oauth2.S256ChallengeOption(verifier)}
+// AuthCodeURL is the authorization URL of the flow p for state: the PKCE
+// S256 challenge of p's verifier, resource (RFC 8707) and the profile's
+// parameters.
+func (c *Connector) AuthCodeURL(p Pending, state string) string {
+	opts := []oauth2.AuthCodeOption{oauth2.S256ChallengeOption(p.Verifier.Reveal())}
 	if p.Resource != "" {
 		opts = append(opts, oauth2.SetAuthURLParam("resource", p.Resource))
 	}
-	keys := make([]string, 0, len(prof.AuthParams))
-	for k := range prof.AuthParams {
+	keys := make([]string, 0, len(p.AuthParams))
+	for k := range p.AuthParams {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		opts = append(opts, oauth2.SetAuthURLParam(k, prof.AuthParams[k]))
+		opts = append(opts, oauth2.SetAuthURLParam(k, p.AuthParams[k]))
 	}
-	return c.config(p).AuthCodeURL(state, opts...), nil
+	return c.config(p).AuthCodeURL(state, opts...)
 }
 
 func checkServer(srv Server) error {
@@ -372,7 +435,7 @@ func (c *Connector) register(ctx context.Context, owner Owner, srv Server, asm *
 	prof := srv.Profile
 	switch {
 	case prof.ClientID != "":
-		if prof.Issuer != "" && strings.TrimRight(prof.Issuer, "/") != strings.TrimRight(asm.Issuer, "/") {
+		if prof.Issuer != "" && !sameIssuer(prof.Issuer, asm.Issuer) {
 			return fmt.Errorf("oauth: server %q: authorization server %q is not the client's issuer", srv.Name, asm.Issuer)
 		}
 		p.ClientID, p.Secret = prof.ClientID, prof.ClientSecret
@@ -469,6 +532,9 @@ type Result struct {
 // token. lookup returns the server the flow was for, by name, so its profile
 // applies to the token.
 func (c *Connector) Complete(ctx context.Context, owner Owner, cb Callback, lookup func(name string) (Server, error)) (Result, error) {
+	if c.cfg.States == nil {
+		return Result{}, errNoStates
+	}
 	if cb.State == "" {
 		return Result{}, ErrBadState
 	}
@@ -482,28 +548,62 @@ func (c *Connector) Complete(ctx context.Context, owner Owner, cb Callback, look
 		return Result{}, ErrBadState
 	}
 	res := Result{Server: p.Server, ReturnTo: p.ReturnTo}
-	if cb.Error != "" {
-		return res, fmt.Errorf("%w: %s", ErrDenied, safeCode(cb.Error))
-	}
-	// RFC 9207: a response from another issuer is a mix-up attack. Without
-	// a known issuer (a profile's fixed endpoints) there is nothing to check.
-	if (p.IssParam || (cb.Iss != "" && p.Issuer != "")) && cb.Iss != p.Issuer {
-		return res, fmt.Errorf("%w: issuer mismatch", ErrBadState)
-	}
-	if cb.Code == "" {
-		return res, fmt.Errorf("%w: no code", ErrDenied)
+	if err := c.check(p, cb); err != nil {
+		return res, err
 	}
 	srv, err := lookup(p.Server)
 	if err != nil {
 		return res, fmt.Errorf("oauth: server %q: %w", p.Server, err)
 	}
+	return res, c.exchange(ctx, p, cb, srv)
+}
+
+// Finish finishes the flow p that [Connector.Start] prepared, with what
+// the authorization server sent back to the callback: it exchanges the code
+// and stores the token for p's owner. The caller has checked the state:
+// that it is p's, used once, unexpired and bound to the browser and the
+// principal that started it. Finish checks again that p has not expired,
+// that it is for srv, and the issuer (RFC 9207).
+func (c *Connector) Finish(ctx context.Context, p Pending, cb Callback, srv Server) error {
+	if !c.clk.Now().Before(p.Expires) {
+		return ErrBadState
+	}
+	if p.Server != srv.Name {
+		return fmt.Errorf("%w: the flow is for another server", ErrBadState)
+	}
+	if err := c.check(p, cb); err != nil {
+		return err
+	}
+	return c.exchange(ctx, p, cb, srv)
+}
+
+// check checks a callback against its flow: no error, the issuer, a code.
+func (c *Connector) check(p Pending, cb Callback) error {
+	if cb.Error != "" {
+		return fmt.Errorf("%w: %s", ErrDenied, safeCode(cb.Error))
+	}
+	// RFC 9207: a response from another issuer is a mix-up attack. Without
+	// a known issuer (a profile's fixed endpoints) there is nothing to check.
+	if (p.IssParam || (cb.Iss != "" && p.Issuer != "")) && cb.Iss != p.Issuer {
+		return fmt.Errorf("%w: issuer mismatch", ErrBadState)
+	}
+	if cb.Code == "" {
+		return fmt.Errorf("%w: no code", ErrDenied)
+	}
+	return nil
+}
+
+// exchange trades the callback's code for a token and stores it for p's
+// owner.
+func (c *Connector) exchange(ctx context.Context, p Pending, cb Callback, srv Server) error {
+	owner := p.Owner
 	opts := []oauth2.AuthCodeOption{oauth2.VerifierOption(p.Verifier.Reveal())}
 	if p.Resource != "" {
 		opts = append(opts, oauth2.SetAuthURLParam("resource", p.Resource))
 	}
 	tok, err := c.config(p).Exchange(context.WithValue(ctx, oauth2.HTTPClient, c.http), cb.Code, opts...)
 	if err != nil {
-		return res, fmt.Errorf("oauth: server %q: code exchange: %w", p.Server, tokenError(err))
+		return fmt.Errorf("oauth: server %q: code exchange: %w", p.Server, tokenError(err))
 	}
 	t := Token{
 		TokenURL:     p.TokenURL,
@@ -515,13 +615,13 @@ func (c *Connector) Complete(ctx context.Context, owner Owner, cb Callback, look
 		Scopes:       p.Scopes,
 	}
 	if err := c.fill(&t, tok, srv.Profile); err != nil {
-		return res, err
+		return err
 	}
 	if err := c.cfg.Tokens.Put(ctx, Key{owner, p.Server}, t); err != nil {
-		return res, fmt.Errorf("oauth: storing token: %w", err)
+		return fmt.Errorf("oauth: storing token: %w", err)
 	}
 	c.log.InfoContext(ctx, "mcp oauth: connected", "server", p.Server, "tenant", owner.Tenant, "user", owner.User)
-	return res, nil
+	return nil
 }
 
 // fill copies a token response into t, applying the profile.
@@ -600,17 +700,57 @@ func (e *TokenError) Error() string { return "token endpoint: " + e.Code }
 // connection.
 func (c *Connector) Token(ctx context.Context, owner Owner, srv Server) (Secret, error) {
 	k := Key{owner, srv.Name}
-	t, err := c.cfg.Tokens.Get(ctx, k)
+	t, err := c.load(ctx, k, srv)
 	if err != nil {
-		return Secret{}, c.missing(srv, err)
-	}
-	if t.ReconnectNeeded {
-		return Secret{}, fmt.Errorf("%s: %w", srv.Name, ErrReconnectNeeded)
+		return Secret{}, err
 	}
 	if c.fresh(t) {
 		return t.Access, nil
 	}
 	return c.refresh(ctx, k, srv, Secret{})
+}
+
+// Connected says whether owner has a usable connection to srv, without
+// refreshing it: nil, [ErrNotConnected] or [ErrReconnectNeeded].
+func (c *Connector) Connected(ctx context.Context, owner Owner, srv Server) error {
+	_, err := c.load(ctx, Key{owner, srv.Name}, srv)
+	return err
+}
+
+// load reads k's connection to srv: none, one marked for reconnecting, or
+// one issued for another server is no usable connection.
+func (c *Connector) load(ctx context.Context, k Key, srv Server) (Token, error) {
+	t, err := c.cfg.Tokens.Get(ctx, k)
+	if err != nil {
+		return Token{}, c.missing(srv, err)
+	}
+	if !issuedFor(t, srv) {
+		// A connection kept under the name of a server that was removed and
+		// added again with another URL or authorization server: never sent
+		// to the new one.
+		return Token{}, fmt.Errorf("%s: %w", srv.Name, ErrNotConnected)
+	}
+	if t.ReconnectNeeded {
+		return Token{}, fmt.Errorf("%s: %w", srv.Name, ErrReconnectNeeded)
+	}
+	return t, nil
+}
+
+// issuedFor reports whether t was issued for srv: for its URL, or its
+// origin (protected resource metadata at the root names that), and by its
+// pinned issuer if it has one.
+func issuedFor(t Token, srv Server) bool {
+	if srv.Profile.Issuer != "" && t.Issuer != "" && !sameIssuer(srv.Profile.Issuer, t.Issuer) {
+		return false
+	}
+	if t.Resource == "" || t.Resource == srv.URL {
+		return true
+	}
+	u, err := url.Parse(srv.URL)
+	if err != nil {
+		return false
+	}
+	return strings.TrimRight(t.Resource, "/") == u.Scheme+"://"+u.Host
 }
 
 func (c *Connector) missing(srv Server, err error) error {
@@ -632,12 +772,9 @@ func (c *Connector) fresh(t Token) bool {
 // fresh, unless another caller already replaced it.
 func (c *Connector) refresh(ctx context.Context, k Key, srv Server, rejected Secret) (Secret, error) {
 	return c.refreshes.do(ctx, k, func(ctx context.Context) (Secret, error) {
-		t, err := c.cfg.Tokens.Get(ctx, k)
+		t, err := c.load(ctx, k, srv)
 		if err != nil {
-			return Secret{}, c.missing(srv, err)
-		}
-		if t.ReconnectNeeded {
-			return Secret{}, fmt.Errorf("%s: %w", srv.Name, ErrReconnectNeeded)
+			return Secret{}, err
 		}
 		if rejected.IsZero() && c.fresh(t) {
 			return t.Access, nil // refreshed by someone else meanwhile

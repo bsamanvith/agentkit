@@ -45,6 +45,9 @@ type setup struct {
 	scope   oauth.Scope
 	// store, if set, is shared with another env (a second replica).
 	store *oauth.MemoryStore
+	// tokens and clients, if set, replace the store's.
+	tokens  oauth.TokenStore
+	clients oauth.ClientStore
 }
 
 // newEnv starts agentkit's public endpoint (TLS, for CIMD), a fake
@@ -64,9 +67,17 @@ func newEnv(t *testing.T, s setup) *env {
 	if e.store == nil {
 		e.store = &oauth.MemoryStore{}
 	}
+	var tokens oauth.TokenStore = e.store
+	var clients oauth.ClientStore = e.store
+	if s.tokens != nil {
+		tokens = s.tokens
+	}
+	if s.clients != nil {
+		clients = s.clients
+	}
 	c, err := oauth.New(oauth.Config{
 		PublicURL: e.public.URL,
-		Tokens:    e.store, Clients: e.store, States: e.store,
+		Tokens:    tokens, Clients: clients, States: e.store,
 		Clock:  e.clk,
 		Logger: slog.New(slog.NewJSONHandler(e.logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
 	})

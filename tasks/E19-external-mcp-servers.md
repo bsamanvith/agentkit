@@ -53,8 +53,8 @@ Known problems to learn from:
 ## Tasks
 
 - [x] [T094](T094-mcp-client-toolset.md) `pkg/mcp/client` and the `mcp` toolset type: connect, list, call, pin, annotations, from config
-- [ ] [T095](T095-mcp-oauth-client.md) MCP OAuth for external servers: discovery, CIMD, DCR fallback, PKCE + resource, tokens in the vault
-- [ ] [T096](T096-mcp-servers-api-console.md) Add servers at runtime: API and console (add by URL, probe, connect, review tools, assign to agents), SSRF guard
+- [x] [T095](T095-mcp-oauth-client.md) MCP OAuth for external servers: discovery, CIMD, DCR fallback, PKCE + resource, tokens in the vault
+- [x] [T096](T096-mcp-servers-api-console.md) Add servers at runtime: API and console (add by URL, probe, connect, review tools, assign to agents), SSRF guard
 - [x] [T097](T097-mcp-registry-search.md) Search the MCP Registry from the add form (later)
 
 Order:

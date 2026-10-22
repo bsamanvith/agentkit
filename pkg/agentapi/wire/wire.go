@@ -428,6 +428,10 @@ type Error struct {
 	// Fields says what is wrong with which field of a refused definition
 	// (CodeInvalidDefinition).
 	Fields []FieldError `json:"fields,omitempty"`
+	// Auth is the sign-in an MCP server asks for (CodeAuthRequired):
+	// AuthOAuth (MCP OAuth: it answered 401 naming its protected resource
+	// metadata) or AuthHeaders (a credential in a header, such as a key).
+	Auth string `json:"auth,omitempty"`
 }
 
 func (e *Error) Error() string { return e.Code + ": " + e.Message }

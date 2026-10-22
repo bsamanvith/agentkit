@@ -39,9 +39,10 @@ var (
 // do what is checked before: a method is only called for a slot and scope
 // the server knows, by a caller allowed to.
 type Credentials interface {
-	// Scopes returns the scopes ("tenant", "user") the server's toolsets
-	// use slot with; none for a slot the server does not know.
-	Scopes(slot string) []string
+	// Scopes returns the scopes ("tenant", "user") the toolsets of the
+	// tenant of ctx use slot with: the server's, and those the tenant added
+	// at run time; none for a slot it does not know.
+	Scopes(ctx context.Context, slot string) []string
 	// List returns every slot and scope the server knows, as user sees
 	// them: the tenant's shared credentials, and user's own ones (none
 	// when user is ""). It never holds a value.
@@ -91,8 +92,8 @@ func (s *Server) credentialsOn(w http.ResponseWriter) bool {
 // for the tenant's (which needs [ScopeCredentialsAdmin]), the caller's user
 // for their own. scope may be "" when the server uses slot with one scope.
 // It writes the answer and returns false when the request may not go on.
-func (s *Server) credentialOwner(w http.ResponseWriter, r *http.Request, slot, scope string) (string, bool) {
-	scopes := s.cfg.credentials.Scopes(slot)
+func (s *Server) credentialOwner(ctx context.Context, w http.ResponseWriter, r *http.Request, slot, scope string) (string, bool) {
+	scopes := s.cfg.credentials.Scopes(ctx, slot)
 	switch {
 	case len(scopes) == 0:
 		writeError(w, http.StatusNotFound, &Error{Code: CodeNotFound, Message: "no toolset of this server uses a credential slot " + quote(slot)})
@@ -149,11 +150,11 @@ func (s *Server) putCredential(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slot := r.PathValue("slot")
-	user, ok := s.credentialOwner(w, r, slot, req.Scope)
+	ctx, ok := s.scope(w, r)
 	if !ok {
 		return
 	}
-	ctx, ok := s.scope(w, r)
+	user, ok := s.credentialOwner(ctx, w, r, slot, req.Scope)
 	if !ok {
 		return
 	}
@@ -171,11 +172,11 @@ func (s *Server) deleteCredential(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slot := r.PathValue("slot")
-	user, ok := s.credentialOwner(w, r, slot, r.URL.Query().Get("scope"))
+	ctx, ok := s.scope(w, r)
 	if !ok {
 		return
 	}
-	ctx, ok := s.scope(w, r)
+	user, ok := s.credentialOwner(ctx, w, r, slot, r.URL.Query().Get("scope"))
 	if !ok {
 		return
 	}
@@ -196,11 +197,11 @@ func (s *Server) connectCredential(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slot := r.PathValue("slot")
-	user, ok := s.credentialOwner(w, r, slot, req.Scope)
+	ctx, ok := s.scope(w, r)
 	if !ok {
 		return
 	}
-	ctx, ok := s.scope(w, r)
+	user, ok := s.credentialOwner(ctx, w, r, slot, req.Scope)
 	if !ok {
 		return
 	}

@@ -2,7 +2,7 @@
 id: T096
 title: "Add MCP servers at runtime: API and console (add by URL, probe, connect, review and pin tools, assign to agents), SSRF guard"
 epic: E19
-status: review
+status: done
 depends_on: [T094, T062, T040, T082]
 ---
 
@@ -51,7 +51,7 @@ The easy path the owner asked for: an admin pastes a URL, agentkit probes it, th
   - the review shows the diff, and approval restores the tool.
 - [x] **New tool:** a tool the server adds later starts disabled.
 - [x] **SSRF:** URLs resolving to `127.0.0.1`, `10.x`, `169.254.169.254`, `::1`, `::ffff:127.0.0.1`, and a DNS name that rebinds to a private address between check and connect are all refused; an allowlisted internal host is accepted.
-- [ ] **Scopes** (needs T095 and T044; part 2 refuses `scope: user`):
+- [x] **Scopes** (needs T095 and T044; part 2 refuses `scope: user`):
   - a `user`-scoped server uses each user's own connection;
   - a user who hasn't connected gets "not connected" as a tool error, never another user's token.
 - [x] **Authorization:**
@@ -125,6 +125,8 @@ The easy path the owner asked for: an admin pastes a URL, agentkit probes it, th
   - Size after the review: first load 226,421 bytes; admin chunk 21,551 gzipped; `pkg/web/dist` 311,270 bytes (+752).
 
 ## For T095 (per-user OAuth)
+
+Done in T095 (2026-10-22): **Scopes** is ticked and the status is `done`. `scope: user` with `auth: oauth` is accepted. Each user's own connection is used, and a user who hasn't connected gets "not connected" as a tool error that never reaches the server (`pkg/mcp/servers` `TestOAuthUserScope`, `TestOAuthTenantScope`; `cmd/agentkit` `TestMCPOAuthE2E`). The console's step 2 enables "Each person signs in" from the 422's `auth` field, and step 3 connects the admin's account first. The two notes below are done.
 
 - The add form's step 2 has "Each person signs in" disabled. Once `scope: user` and `auth: oauth` are accepted, enable it, send them, and the user's Connect row comes from `GET /v1/credentials` like any slot (Connections already connects OAuth slots in a popup).
 - Say "the server wants OAuth" in the `422 auth_required` body (a field), so the console needn't read the message.

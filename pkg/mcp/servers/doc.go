@@ -24,4 +24,17 @@
 // Tools are named "<toolset>__<tool>", so two servers cannot shadow each
 // other. A toolset's connection is made when it is first used and kept,
 // one per tenant and toolset, until its settings change or it is removed.
+//
+// A toolset with auth "oauth" ([WithOAuth], T095) signs in with MCP OAuth
+// (package mcp/oauth): its authorization server is found and pinned when
+// it is added, and it is not probed then, since its tools are listed
+// through a connection. Its scope says whose: "tenant", one connection the
+// tenant shares, or "user", each user's own. The connection is made in the
+// agent API's connect flow ([Manager.Dynamic], one slot per toolset) and
+// kept in the vault; whose it is and that it is usable is checked on every
+// use, and a connection is kept per tenant, toolset and user. A user who
+// has not connected is offered the approved tools and gets "not
+// connected" from them, without the server being called; a refused
+// refresh gives "reconnect needed", and a missing scope "needs more
+// access".
 package servers

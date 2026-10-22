@@ -54,4 +54,15 @@
 // here differs from that package's in that the callback is the server's,
 // not the console's, and the tokens go to the vault for a slot instead of
 // to an MCP server's token store.
+//
+// [Dynamic] adds slots that are not in the config: the MCP toolsets added
+// at run time with auth "oauth" (package mcp/servers, T095), one slot per
+// toolset, named after it. Connecting one uses the same flow, state,
+// browser binding, single use and expiry as above; only the authorization
+// URL and the exchange are Dynamic's (its Begin and Complete), and what
+// Begin hands back to finish with (the PKCE verifier, the client) is kept
+// sealed in the flow. A dynamic slot never shadows a slot of the config,
+// names starting with "_" are reserved, and the authorization URL must be
+// a web address. A toolset removed while its flow is pending stores
+// nothing.
 package connect

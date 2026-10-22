@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	sdkauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
@@ -19,16 +20,19 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/tool"
 )
 
-// connKey names a toolset of a tenant.
+// connKey names a toolset of a tenant, and for a toolset whose users each
+// connect their own account (auth "oauth", scope "user"), the user.
 type connKey struct {
 	tenant tenancy.Tenant
 	name   string
+	user   string
 }
 
 // conn is the connection to a toolset's server, made with the settings
 // that hash to key. ready is closed once it is made or has failed (err).
 type conn struct {
 	key   string
+	name  string // the toolset
 	where string // the server, for logs
 	ready chan struct{}
 	err   error
@@ -113,6 +117,21 @@ func (m *Manager) connFor(ctx context.Context, name string, r record) (*conn, er
 	if err != nil {
 		return nil, err
 	}
+	var auth sdkauth.OAuthHandler
+	if r.Auth == wire.AuthOAuth {
+		if m.oauth == nil {
+			return nil, fmt.Errorf("%w: this server does not sign in to MCP servers with OAuth (it needs AGENTKIT_PUBLIC_URL and a credentials vault)", agentapi.ErrServerUnreachable)
+		}
+		// Whose connection, and that there is one: checked every time,
+		// never cached, so a connection made or removed takes effect at
+		// once.
+		owner, srv, err := m.connected(ctx, name, r)
+		if err != nil {
+			return nil, err
+		}
+		k.user = owner.User
+		auth = m.oauth.OAuthHandler(owner, srv)
+	}
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
@@ -128,13 +147,15 @@ func (m *Manager) connFor(ctx context.Context, name string, r record) (*conn, er
 			return nil, ctx.Err()
 		}
 	}
-	fresh := &conn{key: settings, where: r.URL, ready: make(chan struct{})}
+	fresh := &conn{key: settings, name: name, where: r.URL, ready: make(chan struct{})}
 	m.conns[k] = fresh
 	m.mu.Unlock()
 	if cn != nil {
 		go func() { <-cn.ready; cn.close() }()
 	}
-	m.connect(ctx, fresh, m.clientConfig(ctx, r, header))
+	cfg := m.clientConfig(ctx, r, header)
+	cfg.OAuthHandler = auth
+	m.connect(ctx, fresh, cfg, r)
 	return fresh, fresh.err
 }
 
@@ -156,7 +177,7 @@ func (m *Manager) dial(ctx context.Context, r record) (*conn, error) {
 		return nil, err
 	}
 	cn := &conn{key: settings, where: r.URL, ready: make(chan struct{})}
-	m.connect(ctx, cn, m.clientConfig(ctx, r, header))
+	m.connect(ctx, cn, m.clientConfig(ctx, r, header), r)
 	if cn.err != nil {
 		return nil, cn.err
 	}
@@ -182,7 +203,7 @@ func (m *Manager) keep(k connKey, cn *conn) {
 // connect makes cn: connects, lists the tools, and watches for changes.
 // It is bounded by the connect timeout, not by ctx, so a caller that gives
 // up does not fail the others waiting.
-func (m *Manager) connect(ctx context.Context, cn *conn, cfg client.Config) {
+func (m *Manager) connect(ctx context.Context, cn *conn, cfg client.Config, r record) {
 	defer close(cn.ready)
 	sniff := cfg.HTTPClient.Transport.(*authSniffer)
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), m.connectTimeout)
@@ -196,7 +217,7 @@ func (m *Manager) connect(ctx context.Context, cn *conn, cfg client.Config) {
 	}
 	cn.at = m.clk.Now()
 	if err != nil {
-		cn.err = connectError(err, sniff)
+		cn.err = m.connectError(err, sniff, cn.name, r)
 		m.log.Warn("mcp server: cannot connect", "server", cn.where, "err", err)
 		return
 	}
@@ -230,12 +251,20 @@ func (m *Manager) watch(cn *conn) {
 }
 
 // connectError says why a connection failed, as the API shows it.
-func connectError(err error, sniff *authSniffer) error {
-	if challenge, ok := sniff.unauthorized(); ok {
-		if strings.Contains(strings.ToLower(challenge), "resource_metadata") {
-			return fmt.Errorf("%w: the server asks for MCP OAuth sign-in, which servers added at run time do not support yet (T095); a server that takes a key can be added with auth \"headers\"", agentapi.ErrAuthRequired)
+func (m *Manager) connectError(err error, sniff *authSniffer, name string, r record) error {
+	if r.Auth == wire.AuthOAuth {
+		if ce, ok := asConnection(err, name, r.Scope); ok {
+			return ce
 		}
-		return fmt.Errorf("%w: the server answered 401 Unauthorized; add it with auth \"headers\" and the header it expects", agentapi.ErrAuthRequired)
+	} else if challenge, ok := sniff.unauthorized(); ok {
+		if strings.Contains(strings.ToLower(challenge), "resource_metadata") {
+			reason := `the server asks for MCP OAuth sign-in: add it with auth "oauth"`
+			if m.oauth == nil {
+				reason += ", which this server can do once it has a public URL (AGENTKIT_PUBLIC_URL) and a credentials vault"
+			}
+			return &agentapi.AuthRequiredError{Auth: wire.AuthOAuth, Reason: reason}
+		}
+		return &agentapi.AuthRequiredError{Auth: wire.AuthHeaders, Reason: `the server answered 401 Unauthorized; add it with auth "headers" and the header it expects`}
 	}
 	if errors.Is(err, agentapi.ErrURLNotAllowed) { // a redirect off the allowlist
 		return err

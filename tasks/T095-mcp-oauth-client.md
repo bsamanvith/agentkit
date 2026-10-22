@@ -2,7 +2,7 @@
 id: T095
 title: "MCP OAuth for external servers: discovery, CIMD, DCR fallback, PKCE + resource, tokens in the vault"
 epic: E19
-status: in-progress
+status: done
 depends_on: [T094, T042, T044]
 ---
 
@@ -42,17 +42,17 @@ Most hosted MCP servers (Linear, Notion, GitHub, Atlassian, ...) sign users in w
 
 All criteria run against a **fake authorization server and fake MCP server** in tests, with a separate live check (`-tags live`) noted for one public server if a test account exists.
 
-- [ ] **Discovery:** both the header and the well-known fallback are found; an RFC 8414 or OIDC issuer mismatch is refused.
-- [ ] **CIMD:** the authorization server fetches our metadata document, and the flow completes with the URL as `client_id`.
-- [ ] **DCR fallback:**
+- [x] **Discovery:** both the header and the well-known fallback are found; an RFC 8414 or OIDC issuer mismatch is refused.
+- [x] **CIMD:** the authorization server fetches our metadata document, and the flow completes with the URL as `client_id`.
+- [x] **DCR fallback:**
   - used only when neither a pre-registered client nor CIMD is supported;
   - the registered client is reused, not re-registered per user.
-- [ ] **PKCE + resource:** the fake authorization server rejects a flow without the S256 challenge, or with a wrong `resource`.
-- [ ] **State:** reused, expired or other-principal state is refused (fuzz the callback parameters).
-- [ ] **Refresh:** two concurrent calls with an expired token refresh once; `invalid_grant` gives "reconnect needed".
-- [ ] **Canary (E07):** a seeded token value appears in no log, event, error, API response or checkpoint.
-- [ ] **Cross-tenant:** tenant A's tokens or registered client never serve B.
-- [ ] **Mutation list** recorded.
+- [x] **PKCE + resource:** the fake authorization server rejects a flow without the S256 challenge, or with a wrong `resource`.
+- [x] **State:** reused, expired or other-principal state is refused (fuzz the callback parameters).
+- [x] **Refresh:** two concurrent calls with an expired token refresh once; `invalid_grant` gives "reconnect needed".
+- [x] **Canary (E07):** a seeded token value appears in no log, event, error, API response or checkpoint.
+- [x] **Cross-tenant:** tenant A's tokens or registered client never serve B.
+- [x] **Mutation list** recorded.
 
 ## References
 
@@ -98,3 +98,74 @@ Owner request (2026-10-15): "add oauth support for things while users are connec
 - A `-tags live` check against one public server.
 - A deterministic test for the DCR singleflight.
 
+### Phase 2 (2026-10-22): the vault, `serve`, and per-user toolsets
+
+**What runs now.** An admin adds an MCP server at run time with `auth: oauth` and `scope: user` (or `tenant`); each person connects their own account through the agent API's connect flow; the agent calls the server with that person's token. Wired in `serve` when the agent component has a credential vault and `AGENTKIT_PUBLIC_URL` is set (`cmd/agentkit/toolsetadmin.go`): `oauth.New` over `oauth.VaultStore`, the runtime toolsets' SSRF guard as its HTTP client, `servers.WithOAuth`, the connect flow's `Dynamic` slots, and `/oauth/client-metadata.json` mounted beside `/oauth/callback` (served only on an https public URL, as CIMD needs).
+
+Decisions:
+- **The connect flow is T045's, not a second one.** `connect.Dynamic` (new) gives the flow slots that aren't in the config: one per OAuth toolset, named after it. State, the browser-binding cookie, single use, expiry and the return-URL allowlist are `connect.Service`'s. Only the authorization URL and the exchange come from `pkg/mcp/oauth`, split into `Start` (discovery and registration, a `Pending`), `AuthCodeURL` and `Finish`. The `Pending` (PKCE verifier, client secret) is sealed inside the flow blob (`EncodePending`). `Begin`/`Complete` with their own `StateStore` stay for other users of the package; `serve` passes no `States`.
+- **Tokens are vault credentials.** A connection is an `OAuth2` credential at the toolset's slot for its owner, with a new `Client` field (client, token URL, issuer, resource) so a refresh needs nothing else, and `Extra`. A registered (DCR) client is a new `OAuth2Client` credential per tenant and issuer at a reserved slot, `_mcp-client-<sha256(issuer)[:20]>`; connect refuses slots starting with `_`, and dynamic slots never shadow config slots. The store's tenant is always the key's, never the context's.
+- **Refresh is this package's singleflight plus the vault's compare-and-swap** (`Put` with the version read), not T044's `Sources`, which are built from the config's `credentials.oauth2` apps. `invalid_grant` is the vault's `MarkNeedsReconnect`, so `GET /v1/credentials` and `GET /v1/toolsets` say `needs_reconnect` as they do for T044's slots.
+- **The authorization server is pinned when the toolset is added** (`Connector.Issuer`, kept as `issuer`). A pre-registered client (`oauth_client`, its secret a `${NAME}` from `header_env`) is sent only there. A token is used only for the server it was issued for: its URL or origin and its issuer (`issuedFor`). A toolset removed and added again under the same name elsewhere is not connected.
+- **OAuth toolsets aren't probed when added.** Their tools are listed through the caller's connection, so the admin connects first and then reviews. A user who hasn't connected is offered the approved definitions and gets "not connected: connect your account to … on the Connections page" from a call, which never reaches the server. Whose connection, and that it is usable, is checked on every use; connections are cached per tenant, toolset and user. A refused refresh during a call is re-read from the store and said as "reconnect needed".
+- **SSE is refused for OAuth**, and so are headers: the SDK's `OAuthHandler` is on the Streamable HTTP transport (`client.Config.OAuthHandler`).
+- **`422 auth_required` says which sign-in** in a structured field (`error.auth`: `oauth` when the 401 names protected resource metadata, else `headers`), so the console no longer reads the message.
+- **Console:** step 2 offers "Each person signs in" when `error.auth` is `oauth` and sends `auth: oauth`, `scope: user`. Step 3 asks the admin to **Connect** (a popup through `POST /v1/credentials/{name}/connect`, back at `/connections/done`, which reports on the existing channel) with **Check again**, then shows the review. Connections lists the toolset's slot like any other OAuth slot.
+
+Criteria covered:
+- Discovery: phase 1's tests, plus `TestDiscoveryOIDC` (OIDC only, and its issuer mismatch refused) and `TestIssuer`.
+- CIMD, DCR fallback and reuse: phase 1's tests. DCR is now per tenant in the vault and shared by replicas (`TestVaultStore`). The DCR singleflight's key is checked deterministically: `TestDCRFlightPerTenant` holds one registration with `OnRegister`.
+- PKCE + resource: phase 1's tests, and `TestStartFinish` (another verifier refused).
+- State: phase 1's `TestState`, `FuzzComplete`; for the connect flow, `TestDynamic` (no cookie, another flow's cookie, expired, denied, no code, two codes, another state, used once, the toolset removed meanwhile, the flow sealed), `FuzzDynamicCallback`, `TestStartFinish` and `TestOAuthDynamicComplete` (another user's or toolset's flow).
+- Refresh: `TestVaultStore` (8 concurrent calls make 1 refresh through the vault, a second replica agrees, `invalid_grant` marks `needs_reconnect`, connecting again clears it); `TestOAuthReconnect` (the tool error and the toolset's `connection`).
+- Canary: phase 1's `TestCanary`; end to end, `cmd/agentkit` `TestMCPOAuthE2E`. That test runs serve's wiring, the API, the connect flow with a cookie jar, the fake authorization server and an SDK server, and agent runs as two users. It finds no access or refresh token in the logs (debug), any API response (run events included) or the agent store's SQLite files. The vault's sealing is `TestVaultStore`'s "sealed at rest".
+- Cross-tenant: phase 1's `TestCrossTenant`; `TestVaultStore` (the key's tenant, never the context's; a DCR client per tenant); `TestOAuthUserScope` (the same user ID in another tenant is another owner); `TestDynamic` (another tenant's slot).
+- T096's Scopes: `TestOAuthUserScope`, `TestOAuthTenantScope`, `TestMCPOAuthE2E`.
+- Also: `TestIssuedFor`, `TestOAuthReAdded`, `TestOAuthAddErrors`; `TestServeRejectsBadSetup` (`AGENTKIT_PUBLIC_URL` must be an https origin, http only on loopback); the console's `mcp.test.tsx` (the OAuth add, connect and check-again path; per-user sign-in offered only on `auth: oauth`; `addError` reads the field, not the words) and `client.test.ts`; `make web-smoke` (28 passed).
+
+**Live check.** No test account for a public MCP server here, so there is no `-tags live` run. The fake authorization server and the SDK server cover the flow.
+
+**Mutation list, phase 2** (each planted, the named test run, then reverted; a build failure counted as no result):
+- Caught (14):
+  - the DCR flight keyed without the tenant (`TestDCRFlightPerTenant`);
+  - `issuedFor` off (`TestIssuedFor`, `TestOAuthReAdded`);
+  - the origin compared without its scheme (`TestIssuedFor`);
+  - the vault store in the context's tenant (`TestVaultStore`);
+  - Swap without its version (`TestVaultStore`);
+  - `dynamic.Complete` without the owner check (`TestOAuthDynamicComplete`);
+  - a connection used without checking it (`TestOAuthUserScope`);
+  - an unconnected user's offer invoked (`TestOAuthUserScope`);
+  - no re-check after a failed call (`TestOAuthReconnect`);
+  - a dynamic slot shadowing a config slot (`TestDynamic`);
+  - `_` slots not reserved (`TestDynamic`);
+  - any scheme accepted for the authorization URL (`TestDynamic`);
+  - a flow completed for a removed toolset (`TestDynamic`);
+  - the 422 without `auth` (`TestMCPOAuthE2E`).
+- Also caught (3):
+  - an access token logged on connect (`TestCanary`, `TestMCPOAuthE2E`);
+  - a literal client secret accepted (`TestOAuthAddErrors`);
+  - scope `user` without OAuth (`TestOAuthAddErrors`).
+- Not caught (1):
+  - `dynamic.Complete` without its toolset check. `Finish` makes the same check (`ErrBadState`), so this is an equivalent mutant: the check is kept as defence in depth.
+- Phase 1's miss (the DCR flight key) is now caught.
+
+**Security review** (token leaks, open redirects, state binding):
+- Tokens and client secrets are `Secret`s and sealed in the vault; tool errors and API responses carry statuses, never values (the canary above).
+- **Fixed during the review:** the authorization URL comes from an authorization server's metadata and the console sends a same-origin popup to it, so connect now refuses one that isn't http(s) with a host (`javascript:` would have run as the console). The SDK's own check refuses only `javascript:`, `data:` and `vbscript:`.
+- The return URL is the existing allowlist. The callback is T045's: cookie-bound, single use, sealed.
+- `dynamic.Complete` checks the flow's owner and toolset against the callback's.
+- A token goes only to the server and issuer it was issued for.
+- Discovery and registration go through the SSRF guard.
+
+**Size:** +241,664 bytes on the all-in-one binary, +249,856 on local and dev, +32,768 on api (docs/SIZES.md). dev is now 4,096 bytes under its budget.
+
+### For T044 / E07
+
+- `Sources` (T044) could take a vault-backed refresher per slot, so the config's `credentials.oauth2` apps and MCP OAuth toolsets share one refresh path. Today they share the vault's compare-and-swap and `NeedsReconnect`, not the code.
+- `x/oauth2` can't send `resource` on a refresh (phase 1). A server that requires it on refresh would need our own refresh request.
+
+### For E19 (later)
+
+- MCP OAuth for **toolsets of the config** (`mcp.toolsets` with `type: mcp`): this task wires it for toolsets added at run time only. The config path would pass `OAuthHandler` from `pkg/mcp/client` with a slot from the config.
+- A `-tags live` check against a public server once there is a test account.
+- The server-side check of header values that look like keys (T096's open owner question) applies to `oauth_client.client_secret` too; it must already be a `${NAME}`.

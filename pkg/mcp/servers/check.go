@@ -34,6 +34,7 @@ var (
 	headerNameRE = regexp.MustCompile("^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,128}$")
 	secretNameRE = regexp.MustCompile(`(?i)authorization|cookie|key|token|secret|auth|password`)
 	envRefRE     = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
+	fullRefRE    = regexp.MustCompile(`^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$`)
 )
 
 // reservedHeaders are the headers the transport sets itself.
@@ -72,9 +73,14 @@ func (m *Manager) checkAdd(req wire.AddToolsetRequest) (record, error) {
 		r.Scope = scopeTenant
 	case scopeTenant:
 	case scopeUser:
-		return bad(`scope "user" (each user connects their own account) comes with MCP OAuth; add the server with scope "tenant"`)
+		if req.Auth != wire.AuthOAuth {
+			return bad(`scope "user" (each user connects their own account) needs auth "oauth"`)
+		}
 	default:
-		return bad("scope %q must be tenant", req.Scope)
+		return bad("scope %q must be tenant or user", req.Scope)
+	}
+	if req.OAuthClient != nil && req.Auth != wire.AuthOAuth {
+		return bad(`oauth_client needs auth "oauth"`)
 	}
 	switch r.Auth {
 	case "", wire.AuthNone:
@@ -91,9 +97,11 @@ func (m *Manager) checkAdd(req wire.AddToolsetRequest) (record, error) {
 		}
 		r.Headers = req.Headers
 	case wire.AuthOAuth:
-		return bad(`auth "oauth" (MCP OAuth) is not supported for servers added at run time yet`)
+		if err := m.checkOAuth(req, &r); err != nil {
+			return record{}, err
+		}
 	default:
-		return bad("auth %q must be none or headers", req.Auth)
+		return bad("auth %q must be none, headers or oauth", req.Auth)
 	}
 	return r, nil
 }
@@ -152,6 +160,10 @@ func (m *Manager) expand(value string) (string, error) {
 func (m *Manager) settings(r record) (http.Header, string, error) {
 	h := sha256.New()
 	fmt.Fprintf(h, "%d:%s|%d:%s|", len(r.URL), r.URL, len(r.Transport), r.Transport)
+	if r.Auth == wire.AuthOAuth {
+		fmt.Fprintf(h, "oauth|%d:%s|%d:%s|%d:%s|%d:%s|", len(r.Scope), r.Scope, len(r.Issuer), r.Issuer,
+			len(r.OAuthClientID), r.OAuthClientID, len(r.OAuthClientSecret), r.OAuthClientSecret)
+	}
 	var header http.Header
 	names := make([]string, 0, len(r.Headers))
 	for name := range r.Headers {

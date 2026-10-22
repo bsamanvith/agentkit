@@ -457,7 +457,13 @@ export function reviewErrorText(e: unknown): string {
 }
 
 /** Where an error of POST /v1/toolsets belongs on the add form, and what to say. */
-export type FormError = { field: "url" | "name" | "headers" | "form"; message: string; authRequired?: boolean };
+export type FormError = {
+  field: "url" | "name" | "headers" | "form";
+  message: string;
+  authRequired?: boolean;
+  /** auth_required with auth "oauth": the server signs people in with MCP OAuth. */
+  oauth?: boolean;
+};
 
 /** The add form's reading of an error from POST /v1/toolsets. */
 export function addError(e: unknown): FormError {
@@ -466,7 +472,7 @@ export function addError(e: unknown): FormError {
   const said = `${e.message} (${e.code})`;
   switch (e.code) {
     case "auth_required":
-      return { field: "headers", message: said, authRequired: true };
+      return { field: "headers", message: said, authRequired: true, oauth: e.auth === "oauth" };
     case "toolset_exists":
       return { field: "name", message: said };
     case "url_not_allowed":
@@ -483,9 +489,4 @@ export function addError(e: unknown): FormError {
   }
   if (e.status === 400) return { field: /header|\$\{/i.test(e.message) ? "headers" : "url", message: said };
   return { field: "form", message: said };
-}
-
-/** Whether an auth_required answer says the server signs people in with MCP OAuth. */
-export function wantsOAuth(message: string): boolean {
-  return /oauth/i.test(message);
 }

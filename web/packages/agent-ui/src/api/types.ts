@@ -17,6 +17,8 @@ export type WireError = {
   retryable?: boolean;
   category?: string;
   explanation?: string;
+  /** auth_required: the sign-in the MCP server asks for, "oauth" (MCP OAuth) or "headers". */
+  auth?: string;
 };
 
 /** GET /v1/auth/config: how to sign in ("password", "token"; none on an open server). */
@@ -145,9 +147,11 @@ export type AddToolsetRequest = {
   url: string;
   /** "auto" (the default), "http" (Streamable HTTP) or "sse". */
   transport?: string;
-  /** "none" (the default) or "headers". */
+  /** "none" (the default), "headers" or "oauth" (MCP OAuth: the tools are listed once an account is connected). */
   auth?: string;
   headers?: Record<string, string>;
+  /** "tenant" (the default): one shared connection; "user", with auth "oauth": each person connects their own. */
+  scope?: string;
 };
 
 /** A tool's definition as its MCP server sends it, raw: hostile text, shown only as text. */
@@ -189,6 +193,11 @@ export type ServerToolset = {
   header_names?: string[];
   scope: string;
   enabled: boolean;
+  /** auth "oauth": the authorization server accounts are connected at. */
+  issuer?: string;
+  oauth_client_id?: string;
+  /** auth "oauth": the caller's connection (connected, not_connected, needs_reconnect); its slot is the toolset's name. */
+  connection?: string;
   /** ready, review_needed, disabled, unavailable. */
   status: string;
   reason?: string;

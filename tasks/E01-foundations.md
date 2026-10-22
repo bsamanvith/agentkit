@@ -25,7 +25,7 @@ Put [docs/ENGINEERING.md](../docs/ENGINEERING.md) into practice. Split in two ph
 
 ## CI follow-ups
 
-- [ ] [T034](T034-nightly-ci.md) Nightly perf report in CI, non-gating and with no secrets (live tests run in Claude sessions)
+- [x] [T034](T034-nightly-ci.md) Nightly perf report in CI, non-gating and with no secrets (live tests run in Claude sessions)
 
 ## When first needed
 

@@ -10,6 +10,7 @@ import {
   type AddToolsetRequest,
   type Agent,
   type AgentVersion,
+  type AgentVersionList,
   type AuthConfig,
   type ConnectResponse,
   type Conversation,
@@ -252,10 +253,21 @@ export class AgentClient {
     };
   }
 
-  /** GET /v1/agents/{name}/versions (agent:admin): a stored agent's versions, oldest first. */
-  async listAgentVersions(name: string, opts: RequestOptions = {}): Promise<AgentVersion[]> {
+  /**
+   * GET /v1/agents/{name}/versions (agent:admin): a stored agent's versions,
+   * oldest first, with the highest number given (latest, which a deleted
+   * draft keeps) and the published one (0 for none).
+   */
+  async listAgentVersions(name: string, opts: RequestOptions = {}): Promise<AgentVersionList> {
     const path = `/v1/agents/${encodeURIComponent(name)}/versions`;
-    return listField<AgentVersion>(await this.getJSON<unknown>(path, opts), "versions", path);
+    const body = await this.getJSON<Partial<AgentVersionList> | null>(path, opts);
+    const versions = listField<AgentVersion>(body, "versions", path);
+    const highest = versions.reduce((n, v) => Math.max(n, v.version), 0);
+    return {
+      latest: typeof body?.latest === "number" ? body.latest : highest,
+      published: typeof body?.published === "number" ? body.published : 0,
+      versions,
+    };
   }
 
   /** POST /v1/agents/{name}/versions (agent:admin): a new version; 409 conflict when if_latest isn't the latest. */

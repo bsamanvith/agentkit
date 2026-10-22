@@ -325,7 +325,7 @@ T096's runtime toolsets, added by an admin from Toolsets (+ in the list header).
    - flags ("3 invisible characters", "Tells the model to call another tool");
    - the class agentkit will use: kind and risk selects. The server's hints (`readOnlyHint`) are "a claim, not a check", and an unclassified tool is a medium-risk write;
    - the input schema, on demand.
-4. **Use it:** pick stored agents (config agents are greyed). Each gets a new draft with the toolset added, which changes nothing until it is published, or a published version with "Publish the new versions now" (off by default, until the builder can publish).
+4. **Use it:** pick stored agents (config agents are greyed). Each gets a new draft with the toolset added, which changes nothing until it is published, or a published version with "Publish the new versions now" (off by default, until the builder can publish). The new version builds on the agent's newest one and is saved only if nobody saved another meanwhile; on top of someone's unpublished draft it stays a draft, so publishing here never publishes their changes unseen.
 
 - **Pinned and reviewed:** approved definitions are pinned. When the server changes a tool or adds one, the toolset shows **Review needed** (in the list, on the agents' readiness, and as a notice with **Review** on its page), and only those tools are off.
 - **The review page** (`/toolsets/{name}/review`): each changed tool as a diff (approved → now, description and schema) and each new tool as a card, with Approve or Reject, then **Save review** (`POST /v1/toolsets/{name}/review`).

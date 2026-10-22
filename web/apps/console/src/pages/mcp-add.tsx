@@ -35,6 +35,7 @@ import { Callout, Forbidden } from "./parts";
 import {
   addError,
   decisions,
+  fillsTemplate,
   headerProblem,
   initialChoices,
   reviewErrorText,
@@ -61,6 +62,8 @@ type Wizard = {
   /** The admin typed a name: the URL no longer sets it. */
   named: boolean;
   transport: string;
+  /** The registry remote's URL picked, with its {variables}; "" for a pasted one. */
+  template: string;
   headers: Header[];
   /** The server's 401, as the API put it; null when it didn't ask. */
   asked: string | null;
@@ -75,6 +78,7 @@ const fresh = (): Wizard => ({
   name: "",
   named: false,
   transport: "auto",
+  template: "",
   headers: [],
   asked: null,
   hinted: [],
@@ -335,6 +339,7 @@ function ServerStep({
           const hinted = r.headers ?? [];
           set({
             url: r.url,
+            template: r.url,
             transport: r.transport === "sse" ? "sse" : "http",
             name: s.suggested_name && !taken.includes(s.suggested_name) ? s.suggested_name : w.name,
             named: false,
@@ -362,12 +367,12 @@ function ServerStep({
               onChange={(e) => {
                 const url = e.target.value;
                 if (errors.url) setErrors({ ...errors, url: undefined }); // a new URL, a new answer
+                // Filling in a registry remote's {variables} keeps what the registry said of it.
+                const filling = w.template !== "" && fillsTemplate(w.template, url);
                 set({
                   url,
-                  transport: "auto",
-                  hinted: [],
-                  headers: [],
-                  ...(w.named ? {} : { name: nameFromURL(url) }),
+                  ...(filling ? {} : { template: "", transport: "auto", hinted: [], headers: [] }),
+                  ...(w.named || filling ? {} : { name: nameFromURL(url) }),
                 });
               }}
               placeholder="https://mcp.example.com/mcp"
@@ -634,6 +639,8 @@ function ReviewStep({ ts, onReviewed }: { ts: ServerToolset; onReviewed: (ts: Se
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [current, setCurrent] = useState(ts);
+  /** A conflict's fresh review couldn't be read: what is shown is not what the server lists. */
+  const [stale, setStale] = useState(false);
   const asked = current.tools.filter(needsDecision);
   const left = undecided(current.tools, choices).length;
   const save = () => {
@@ -645,14 +652,24 @@ function ReviewStep({ ts, onReviewed }: { ts: ServerToolset; onReviewed: (ts: Se
         onReviewed(done);
       },
       (e: unknown) => {
-        setBusy(false);
         setError(reviewErrorText(e));
-        if (e instanceof ApiError && e.status === 409) {
-          void client.getToolsetReview(current.name).then((fresh) => {
+        if (!(e instanceof ApiError && e.status === 409)) return setBusy(false);
+        // Stay busy until the fresh review replaces the one shown: until then
+        // only decisions on what the server no longer lists could be sent.
+        client.getToolsetReview(current.name).then(
+          (fresh) => {
             setCurrent(fresh);
             setChoices(initialChoices(fresh.tools));
-          });
-        }
+            setBusy(false);
+          },
+          () => {
+            setStale(true);
+            setBusy(false);
+            setError(
+              "The server changed a tool while you were reviewing it, and the new list couldn't be read. Open the toolset and review it there.",
+            );
+          },
+        );
       },
     );
   };
@@ -686,7 +703,7 @@ function ReviewStep({ ts, onReviewed }: { ts: ServerToolset; onReviewed: (ts: Se
       <ReviewCards ts={current} choices={choices} setChoices={setChoices} only={asked} />
       {error ? <ErrorLine>{error}</ErrorLine> : null}
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="button" disabled={busy || left > 0 || asked.length === 0} onClick={save}>
+        <Button type="button" disabled={busy || stale || left > 0 || asked.length === 0} onClick={save}>
           {busy ? "Saving…" : "Save and continue"}
         </Button>
         <Button type="button" variant="outline" disabled={busy} onClick={remove}>
@@ -701,9 +718,17 @@ function ReviewStep({ ts, onReviewed }: { ts: ServerToolset; onReviewed: (ts: Se
   );
 }
 
-type Result = { agent: string; ok: true; version: AgentVersion } | { agent: string; ok: false; error: string };
+type Result =
+  { agent: string; ok: true; version: AgentVersion; heldBack?: number } | { agent: string; ok: false; error: string };
 
-/** Adds the toolset to a stored agent's runtime_toolsets, as a new version on top of its latest. */
+/**
+ * Adds the toolset to a stored agent's runtime_toolsets, as a new version on
+ * top of its newest one, saved only if no one saved another meanwhile
+ * (if_latest: the server's latest number, which a deleted draft keeps). It
+ * publishes only on top of the published version: on top of someone's
+ * unpublished draft it saves a draft (heldBack), so publishing here never
+ * publishes their changes unseen.
+ */
 async function addTo(
   client: ReturnType<typeof useApi>["client"],
   agent: string,
@@ -711,22 +736,25 @@ async function addTo(
   publish: boolean,
 ): Promise<Result> {
   try {
-    const versions = await client.listAgentVersions(agent);
-    const latest = versions.reduce<AgentVersion | undefined>(
+    const list = await client.listAgentVersions(agent);
+    const newest = list.versions.reduce<AgentVersion | undefined>(
       (a, v) => (!a || v.version > a.version ? v : a),
       undefined,
     );
-    if (!latest) return { agent, ok: false, error: "it has no version to start from" };
-    const def = { ...latest.definition };
+    if (!newest) return { agent, ok: false, error: "it has no version to start from" };
+    const def = { ...newest.definition };
     const rt = Array.isArray(def.runtime_toolsets) ? (def.runtime_toolsets as unknown[]).map(String) : [];
     def.runtime_toolsets = rt.includes(toolset) ? rt : [...rt, toolset];
+    const onPublished = newest.published || newest.version === list.published;
     const version = await client.saveAgentVersion(agent, {
       definition: def,
       message: `Add the toolset ${toolset}`,
-      if_latest: latest.version,
-      publish,
+      if_latest: list.latest,
+      publish: publish && onPublished,
     });
-    return { agent, ok: true, version };
+    return publish && !onPublished
+      ? { agent, ok: true, version, heldBack: newest.version }
+      : { agent, ok: true, version };
   } catch (e) {
     return {
       agent,
@@ -840,7 +868,9 @@ function DoneStep({ ts, results }: { ts: ServerToolset; results: Result[] }) {
               {r.ok
                 ? r.version.published
                   ? `: published v${r.version.version}, which uses it from its next run.`
-                  : `: draft v${r.version.version}. Publish it to use ${ts.name}.`
+                  : r.heldBack !== undefined
+                    ? `: draft v${r.version.version}, not published: it builds on v${r.heldBack}, a draft no one has published. Publish it to use ${ts.name}.`
+                    : `: draft v${r.version.version}. Publish it to use ${ts.name}.`
                 : `: not changed, ${r.error}.`}
             </li>
           ))}

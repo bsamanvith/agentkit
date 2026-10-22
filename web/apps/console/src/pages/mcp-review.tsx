@@ -11,7 +11,7 @@ import { ApiError, type ReviewTool, type ServerToolset } from "@agentkit/agent-u
 import { Status } from "@agentkit/ui";
 import { Button } from "@agentkit/ui/components/button";
 import { Ban, Check, CircleAlert, ShieldAlert } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { useApi, useResource } from "../api";
 import { useLists } from "../lists";
@@ -32,8 +32,8 @@ import {
   lines,
   needsDecision,
   schemaText,
+  reviewFlags,
   serverClaims,
-  toolFlags,
   visible,
   words,
   type DiffPart,
@@ -91,24 +91,35 @@ const selectClass =
 export function ToolCard({
   toolset,
   tool: t,
-  others,
+  flags,
   choice,
   onChange,
 }: {
   toolset: string;
   tool: ReviewTool;
-  others: string[];
+  /** toolFlags of the tool, worked out once for the review. */
+  flags: string[];
   choice: Choice;
   onChange: (c: Choice) => void;
 }) {
   const [schema, setSchema] = useState(false);
-  const flags = toolFlags(t, others);
   const tag = statusTag[t.status];
   const raw = t.current?.description ?? "";
   const shown = t.description ?? "";
   const claims = serverClaims(t.current);
   const changed = t.status === "changed" && t.approved !== undefined;
-  const schemaChanged = changed && schemaText(t.approved) !== schemaText(t.current);
+  // Worked out once per tool, not at each click: a server's text can be long.
+  const { approved, current } = t;
+  const diffs = useMemo(() => {
+    if (!changed) return null;
+    const before = schemaText(approved);
+    const after = schemaText(current);
+    return {
+      description: diffTokens(words(visible(approved?.description ?? "")), words(visible(raw))),
+      schema: before === after ? null : diffTokens(lines(before), lines(after)),
+    };
+  }, [changed, approved, current, raw]);
+  const shownRaw = useMemo(() => (raw !== shown && !changed ? visible(raw) : ""), [raw, shown, changed]);
   const id = `tool-${t.name}`;
   const decide = (d: "approve" | "reject") => onChange({ ...choice, decision: d });
   return (
@@ -169,18 +180,8 @@ export function ToolCard({
           {visible(t.current.title)}
         </p>
       ) : null}
-      {changed ? (
-        <Diff
-          label="Description, approved → now"
-          parts={diffTokens(words(visible(t.approved?.description ?? "")), words(visible(raw)))}
-        />
-      ) : null}
-      {schemaChanged ? (
-        <Diff
-          label="Schema, approved → now"
-          parts={diffTokens(lines(schemaText(t.approved)), lines(schemaText(t.current)))}
-        />
-      ) : null}
+      {diffs ? <Diff label="Description, approved → now" parts={diffs.description} /> : null}
+      {diffs?.schema ? <Diff label="Schema, approved → now" parts={diffs.schema} /> : null}
       <div className="flex flex-col gap-1">
         <span className="text-xs font-medium text-ak-muted">Description, exactly as the model sees it</span>
         <p
@@ -189,10 +190,10 @@ export function ToolCard({
         >
           {shown || <span className="text-ak-muted">(none)</span>}
         </p>
-        {raw !== shown && !changed ? (
+        {shownRaw ? (
           <p className="text-xs break-words whitespace-pre-wrap text-ak-muted">
             <span>The server sent: </span>
-            <span className="font-mono text-ak-text-2">{visible(raw)}</span>
+            <span className="font-mono text-ak-text-2">{shownRaw}</span>
           </p>
         ) : null}
       </div>
@@ -268,8 +269,9 @@ export function ReviewCards({
   setChoices: (c: Choices) => void;
   only: ReviewTool[];
 }) {
-  const others = ts.tools.map((t) => t.name);
-  const quick = only.filter((t) => !choices[t.name]?.decision && toolFlags(t, others).length === 0);
+  const flags = useMemo(() => reviewFlags(ts.tools), [ts.tools]);
+  const flagsOf = (t: ReviewTool) => flags.get(t.name) ?? [];
+  const quick = only.filter((t) => !choices[t.name]?.decision && flagsOf(t).length === 0);
   return (
     <>
       {quick.length > 0 ? (
@@ -294,7 +296,7 @@ export function ReviewCards({
           key={t.name}
           toolset={ts.name}
           tool={t}
-          others={others}
+          flags={flagsOf(t)}
           choice={choices[t.name] ?? { kind: "write", risk: "medium" }}
           onChange={(c) => setChoices({ ...choices, [t.name]: c })}
         />

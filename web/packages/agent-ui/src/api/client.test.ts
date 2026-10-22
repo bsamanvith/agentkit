@@ -748,11 +748,20 @@ describe("toolsets added at run time and the MCP Registry (T096, T097)", () => {
   it("lists a stored agent's versions and saves a new one", async () => {
     const seen: Request[] = [];
     const list = { v: 1, versions: [{ name: "h", version: 1, published: true, definition: {}, created_at: "" }] };
-    expect(await new AgentClient({ fetch: jsonFetch(list, seen) }).listAgentVersions("h")).toHaveLength(1);
+    expect(await new AgentClient({ fetch: jsonFetch(list, seen) }).listAgentVersions("h")).toMatchObject({
+      latest: 1,
+      published: 0,
+    });
+    // A deleted draft keeps its number: latest is the server's, not the highest listed.
+    const after = { ...list, latest: 4, published: 1 };
+    expect(await new AgentClient({ fetch: jsonFetch(after, seen) }).listAgentVersions("h")).toMatchObject({
+      latest: 4,
+      published: 1,
+    });
     const saved = { v: 1, name: "h", version: 2, published: false, definition: {}, created_at: "" };
     const c = new AgentClient({ fetch: jsonFetch(saved, seen) });
     expect((await c.saveAgentVersion("h", { definition: {}, if_latest: 1 })).version).toBe(2);
-    expect(`${seen[1]!.method} ${new URL(seen[1]!.url).pathname}`).toBe("POST /v1/agents/h/versions");
+    expect(`${seen[2]!.method} ${new URL(seen[2]!.url).pathname}`).toBe("POST /v1/agents/h/versions");
     await expect(
       new AgentClient({ fetch: jsonFetch({ v: 1 }, seen) }).saveAgentVersion("h", { definition: {} }),
     ).rejects.toBeInstanceOf(BadResponseError);

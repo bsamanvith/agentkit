@@ -120,6 +120,15 @@ export type AgentVersion = {
   created_at: string;
 };
 
+/** GET /v1/agents/{name}/versions. */
+export type AgentVersionList = {
+  /** The highest version number given so far: what if_latest compares with, even after that draft was deleted. */
+  latest: number;
+  /** The version new runs use; 0 for none. */
+  published: number;
+  versions: AgentVersion[];
+};
+
 /** POST /v1/agents/{name}/versions. */
 export type SaveAgentRequest = {
   definition: Record<string, unknown>;

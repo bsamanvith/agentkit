@@ -44,6 +44,28 @@ export function urlProblem(raw: string): string {
   return "";
 }
 
+/**
+ * Whether url is template (a registry remote's URL) with each {variable}
+ * replaced by anything, even nothing while it is being typed over (the
+ * server and urlProblem judge the URL itself). Matched piece by piece,
+ * never as a regular expression built from the registry's text.
+ */
+export function fillsTemplate(template: string, url: string): boolean {
+  const pieces = template.split(/\{[^{}]*\}/);
+  const s = url.trim();
+  const first = pieces[0] ?? "";
+  const last = pieces.at(-1) ?? "";
+  if (pieces.length === 1) return s === template;
+  if (!s.startsWith(first) || !s.endsWith(last) || s.length < first.length + last.length) return false;
+  let at = first.length;
+  for (const piece of pieces.slice(1, -1)) {
+    const found = s.indexOf(piece, at);
+    if (found < 0) return false;
+    at = found + piece.length;
+  }
+  return at <= s.length - last.length;
+}
+
 /** A warning for a URL the server refuses unless the operator allows its host; "" otherwise. */
 export function urlWarning(raw: string): string {
   let u: URL;
@@ -132,10 +154,25 @@ export function headerProblem(name: string, value: string): string {
   if (!name.trim()) return "Name the header.";
   if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name.trim())) return "A header name has letters, digits and - only.";
   if (!value.trim()) return "Give the header a value.";
-  if (secretHeader(name) && headerVariables(value).length === 0) {
+  if ((secretHeader(name) && headerVariables(value).length === 0) || literalSecret(value)) {
     return "Use a server variable, like Bearer ${API_KEY}. The value itself never goes through the console.";
   }
   return "";
+}
+
+/**
+ * Whether a header value, outside its ${VAR}s, looks like a credential
+ * whatever the header's name: a scheme with a literal ("Bearer sk-…",
+ * "Bearer ${A}x"), or a long token of letters and digits that isn't a
+ * UUID. The server checks only names, so this is what keeps a key pasted
+ * under an innocent name (X-Api) from being sent and stored.
+ */
+export function literalSecret(value: string): boolean {
+  const rest = value.replace(/\$\{[A-Za-z_][A-Za-z0-9_]*\}/g, " ");
+  if (/^\s*(bearer|basic|token|digest)\s+\S/i.test(rest)) return true;
+  return (rest.match(/[A-Za-z0-9_\-+/=.~]{20,}/g) ?? []).some(
+    (t) => /[0-9]/.test(t) && /[A-Za-z]/.test(t) && !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(t),
+  );
 }
 
 /**
@@ -171,13 +208,32 @@ export function hiddenCount(s: string): number {
   return n;
 }
 
+/** A tool name split into its words, for namedIn. */
+type ToolName = { name: string; parts: string[]; word: boolean };
+
+const toolNames = (names: string[]): ToolName[] =>
+  names.map((name) => {
+    const parts = name.match(/[A-Za-z0-9_]+/g) ?? [];
+    return { name, parts, word: parts.length === 1 && parts[0] === name };
+  });
+
 /**
  * Why a tool needs a closer look (docs/UI.md "Review tools"), as sentences:
  * invisible characters, telling the model to call another tool or to act
  * on its instructions, a description cut short. others are the other tools
- * of the server.
+ * of the server. For every tool of a review, reviewFlags does the same once.
  */
 export function toolFlags(t: ReviewTool, others: string[]): string[] {
+  return flagsOf(t, toolNames(others));
+}
+
+/** toolFlags of every tool, by name: linear in the tools' text, whatever their number. */
+export function reviewFlags(tools: ReviewTool[]): Map<string, string[]> {
+  const names = toolNames(tools.map((t) => t.name));
+  return new Map(tools.map((t) => [t.name, flagsOf(t, names)]));
+}
+
+function flagsOf(t: ReviewTool, names: ToolName[]): string[] {
   const raw = t.current?.description ?? "";
   const shown = t.description ?? "";
   const flags: string[] = [];
@@ -188,8 +244,9 @@ export function toolFlags(t: ReviewTool, others: string[]): string[] {
     );
   }
   const text = `${t.current?.title ?? ""}\n${shown}`;
-  const named = others.filter(
-    (o) => o !== t.name && new RegExp(`(^|[^A-Za-z0-9_])${escapeRe(o)}($|[^A-Za-z0-9_])`).test(text),
+  const named = namedIn(
+    text,
+    names.filter((n) => n.name !== t.name),
   );
   if (named.length > 0 || /\b(call|invoke|run|use)\b[^.\n]{0,40}\btools?\b/i.test(text)) {
     flags.push(`Tells the model to call another tool${named.length ? ` (${named.join(", ")})` : ""}.`);
@@ -202,8 +259,32 @@ export function toolFlags(t: ReviewTool, others: string[]): string[] {
   return flags;
 }
 
-function escapeRe(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const wordChar = /[A-Za-z0-9_]/;
+
+/**
+ * The names that text mentions as whole words (not inside a longer word of
+ * letters, digits and _). A server may list thousands of tools with long
+ * titles, so this is not a search per name: a name that is one word is a
+ * set lookup, and only a name with other characters (a-b, a.b) whose words
+ * are all in the text is searched for.
+ */
+function namedIn(text: string, names: ToolName[]): string[] {
+  const words = new Set(text.match(/[A-Za-z0-9_]+/g) ?? []);
+  const found: string[] = [];
+  for (const { name, parts, word } of names) {
+    if (parts.length === 0 || !parts.every((p) => words.has(p))) continue;
+    if (word) {
+      found.push(name);
+      continue;
+    }
+    for (let at = text.indexOf(name); at >= 0; at = text.indexOf(name, at + 1)) {
+      if (!wordChar.test(text[at - 1] ?? "") && !wordChar.test(text[at + name.length] ?? "")) {
+        found.push(name);
+        break;
+      }
+    }
+  }
+  return found;
 }
 
 /** What the server claims about a tool (its annotations' hints that are true), never a check. */
@@ -216,52 +297,71 @@ export function serverClaims(def: ToolDefinition | undefined): string[] {
 export type DiffPart = { op: "same" | "add" | "del"; text: string };
 
 /**
+ * The most cells diffTokens' table may have (4 bytes each). The table is
+ * quadratic, and a server's text is hostile: past this the changed middle
+ * is shown whole, removed then added, rather than freeze the page.
+ */
+export const maxDiffCells = 1_000_000;
+
+/**
  * The difference between two lists of tokens, as runs of kept, removed and
- * added text (a longest common subsequence). Past a size it gives up on
- * detail: all of a removed, all of b added.
+ * added text: the common start and end, then a longest common subsequence
+ * of the middle. A middle over maxDiffCells gives up on detail: all of a's
+ * removed, all of b's added. Linear in time and memory but for that table.
  */
 export function diffTokens(a: string[], b: string[]): DiffPart[] {
-  const n = a.length;
-  const m = b.length;
-  if (n * m > 4_000_000) {
-    return [
-      ...(n ? [{ op: "del" as const, text: a.join("") }] : []),
-      ...(m ? [{ op: "add" as const, text: b.join("") }] : []),
-    ];
-  }
-  // lcs[i][j]: the longest common subsequence of a[i:] and b[j:].
-  const lcs = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
-  for (let i = n - 1; i >= 0; i--) {
-    const row = lcs[i] as Uint32Array;
-    const next = lcs[i + 1] as Uint32Array;
-    for (let j = m - 1; j >= 0; j--) {
-      row[j] = a[i] === b[j] ? (next[j + 1] as number) + 1 : Math.max(next[j] as number, row[j + 1] as number);
-    }
-  }
   const out: DiffPart[] = [];
   const push = (op: DiffPart["op"], text: string) => {
+    if (!text) return;
     const last = out.at(-1);
     if (last?.op === op) last.text += text;
     else out.push({ op, text });
   };
-  let i = 0;
-  let j = 0;
-  while (i < n || j < m) {
-    if (i < n && j < m && a[i] === b[j]) {
-      push("same", a[i] as string);
-      i++;
-      j++;
-    } else if (
-      i < n &&
-      (j === m || ((lcs[i + 1] as Uint32Array)[j] as number) >= ((lcs[i] as Uint32Array)[j + 1] as number))
-    ) {
-      push("del", a[i] as string); // removals before additions, as a reader expects
-      i++;
-    } else {
-      push("add", b[j] as string);
-      j++;
+  let start = 0;
+  while (start < a.length && start < b.length && a[start] === b[start]) start++;
+  let endA = a.length;
+  let endB = b.length;
+  while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) {
+    endA--;
+    endB--;
+  }
+  push("same", a.slice(0, start).join(""));
+  const x = a.slice(start, endA);
+  const y = b.slice(start, endB);
+  const n = x.length;
+  const m = y.length;
+  if (n === 0 || m === 0 || (n + 1) * (m + 1) > maxDiffCells) {
+    push("del", x.join(""));
+    push("add", y.join(""));
+  } else {
+    // lcs[i*w+j]: the longest common subsequence of x[i:] and y[j:].
+    const w = m + 1;
+    const lcs = new Uint32Array((n + 1) * w);
+    for (let i = n - 1; i >= 0; i--) {
+      for (let j = m - 1; j >= 0; j--) {
+        lcs[i * w + j] =
+          x[i] === y[j]
+            ? (lcs[(i + 1) * w + j + 1] as number) + 1
+            : Math.max(lcs[(i + 1) * w + j] as number, lcs[i * w + j + 1] as number);
+      }
+    }
+    let i = 0;
+    let j = 0;
+    while (i < n || j < m) {
+      if (i < n && j < m && x[i] === y[j]) {
+        push("same", x[i] as string);
+        i++;
+        j++;
+      } else if (i < n && (j === m || (lcs[(i + 1) * w + j] as number) >= (lcs[i * w + j + 1] as number))) {
+        push("del", x[i] as string); // removals before additions, as a reader expects
+        i++;
+      } else {
+        push("add", y[j] as string);
+        j++;
+      }
     }
   }
+  push("same", a.slice(endA).join(""));
   return out;
 }
 

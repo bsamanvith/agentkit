@@ -16,8 +16,13 @@ import {
   changeWords,
   decisions,
   diffTokens,
+  fillsTemplate,
   headerProblem,
   hiddenCount,
+  lines,
+  literalSecret,
+  maxDiffCells,
+  reviewFlags,
   initialChoices,
   isPrivateHost,
   nameFromURL,
@@ -286,6 +291,103 @@ describe("Add an MCP server", () => {
     });
   });
 
+  it("saves on the server's latest number, and never publishes over someone's unpublished draft", async () => {
+    const calls = fakeServer(asAdmin, [
+      on("POST", "/v1/toolsets", () => json(201, server([echoTool], { auth: "none" }))),
+      on("POST", "/v1/toolsets/linear/review", () =>
+        json(200, server([{ ...echoTool, status: "approved" }], { status: "ready" })),
+      ),
+      // v3 is published, v4 is someone's draft, and v5 was a draft that was deleted.
+      on("GET", "/v1/agents/helper/versions", () =>
+        json(200, {
+          v: 1,
+          name: "helper",
+          published: 3,
+          latest: 5,
+          versions: [
+            { name: "helper", version: 3, published: true, definition: { system: "Old." }, created_at: "" },
+            {
+              name: "helper",
+              version: 4,
+              published: false,
+              definition: { system: "Work in progress." },
+              created_at: "",
+            },
+          ],
+        }),
+      ),
+      on("POST", "/v1/agents/helper/versions", () =>
+        json(201, { v: 1, name: "helper", version: 6, published: false, definition: {}, created_at: "" }),
+      ),
+    ]);
+    renderAt("/toolsets/new");
+    await userEvent.type(await screen.findByLabelText("Server URL"), "https://mcp.linear.app/mcp");
+    await userEvent.click(screen.getByRole("button", { name: "Connect" }));
+    await h2("linear offers 1 tool");
+    await userEvent.click(screen.getByRole("button", { name: "Approve the 1 without flags" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save and continue" }));
+    await h2("Which agents use it?");
+    await userEvent.click(await screen.findByRole("checkbox", { name: /helper/ }));
+    await userEvent.click(screen.getByRole("checkbox", { name: /Publish the new versions now/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Add to 1 agent" }));
+    expect(await screen.findByText(/draft v6, not published: it builds on v4/)).toBeInTheDocument();
+    const saved = calls.find((c) => c.path === "/v1/agents/helper/versions" && c.method === "POST");
+    expect(JSON.parse(saved?.body ?? "")).toEqual({
+      definition: { system: "Work in progress.", runtime_toolsets: ["linear"] },
+      message: "Add the toolset linear",
+      if_latest: 5,
+      publish: false,
+    });
+  });
+
+  it("on a conflict in step 3, saves nothing and reviews what the server lists now", async () => {
+    let reads = 0;
+    const calls = fakeServer(asAdmin, [
+      on("POST", "/v1/toolsets", () => json(201, server([echoTool], { auth: "none" }))),
+      on("POST", "/v1/toolsets/linear/review", () => apiError(409, "conflict", "a tool changed since it was reviewed")),
+      on("GET", "/v1/toolsets/linear/review", () => {
+        reads++;
+        return json(200, server([{ ...echoTool, fingerprint: "sha256:echo2", description: "Echoes, and more." }]));
+      }),
+    ]);
+    renderAt("/toolsets/new");
+    await userEvent.type(await screen.findByLabelText("Server URL"), "https://mcp.linear.app/mcp");
+    await userEvent.click(screen.getByRole("button", { name: "Connect" }));
+    await h2("linear offers 1 tool");
+    await userEvent.click(screen.getByRole("button", { name: "Approve the 1 without flags" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save and continue" }));
+    expect(await screen.findByText(/The server changed a tool while you were reviewing it/)).toBeInTheDocument();
+    expect(await screen.findByText("Echoes, and more.")).toBeInTheDocument();
+    expect(reads).toBe(1);
+    // The fresh review starts undecided; deciding again sends the fingerprint now shown.
+    const save = screen.getByRole("button", { name: "Save and continue" });
+    expect(save).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Approve the 1 without flags" }));
+    await userEvent.click(save);
+    const posts = () => calls.filter((c) => c.path === "/v1/toolsets/linear/review" && c.method === "POST");
+    await waitFor(() => expect(posts()).toHaveLength(2));
+    expect(
+      posts().map((c) => (JSON.parse(c.body) as { tools: { fingerprint: string }[] }).tools[0]?.fingerprint),
+    ).toEqual(["sha256:echo1", "sha256:echo2"]);
+  });
+
+  it("on a conflict whose fresh review can't be read, offers no save of what it showed", async () => {
+    fakeServer(asAdmin, [
+      on("POST", "/v1/toolsets", () => json(201, server([echoTool], { auth: "none" }))),
+      on("POST", "/v1/toolsets/linear/review", () => apiError(409, "conflict", "a tool changed since it was reviewed")),
+      on("GET", "/v1/toolsets/linear/review", () => apiError(500, "internal", "down")),
+    ]);
+    renderAt("/toolsets/new");
+    await userEvent.type(await screen.findByLabelText("Server URL"), "https://mcp.linear.app/mcp");
+    await userEvent.click(screen.getByRole("button", { name: "Connect" }));
+    await h2("linear offers 1 tool");
+    await userEvent.click(screen.getByRole("button", { name: "Approve the 1 without flags" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save and continue" }));
+    expect(await screen.findByText(/the new list couldn't be read/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save and continue" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel and remove it" })).toBeEnabled();
+  });
+
   it("shows a server's names, titles, descriptions and schemas as text, invisible characters made visible", async () => {
     fakeServer(asAdmin, [on("POST", "/v1/toolsets", () => json(201, server([echoTool, docsTool])))]);
     const { container } = renderAt("/toolsets/new");
@@ -423,10 +525,11 @@ describe("Add an MCP server", () => {
 
   it("hides the search when the server has no registry, and says so when the registry is down", async () => {
     let status = 502;
-    fakeServer(asAdmin, [
+    const calls = fakeServer(asAdmin, [
       on("GET", "/v1/mcp-registry/search", () =>
         apiError(status, status === 502 ? "registry_unavailable" : "not_found", "x"),
       ),
+      on("POST", "/v1/toolsets", () => json(201, server([echoTool], { auth: "none" }))),
     ]);
     renderAt("/toolsets/new");
     const box = await screen.findByLabelText("Find a server");
@@ -438,7 +541,55 @@ describe("Add an MCP server", () => {
     status = 404;
     await userEvent.type(box, "x");
     await waitFor(() => expect(screen.queryByLabelText("Find a server")).not.toBeInTheDocument(), { timeout: 3000 });
-    expect(screen.getByLabelText("Server URL")).toBeInTheDocument();
+    // Adding by URL still works without the registry (T097's "Registry down").
+    await userEvent.type(screen.getByLabelText("Server URL"), "https://mcp.linear.app/mcp");
+    await userEvent.click(screen.getByRole("button", { name: "Connect" }));
+    expect(await h2("linear offers 1 tool")).toBeInTheDocument();
+    expect(calls.filter((c) => c.method === "POST" && c.path === "/v1/toolsets")).toHaveLength(1);
+  });
+
+  it("keeps what the registry said of a remote while its {variables} are filled in", async () => {
+    fakeServer(asAdmin, [
+      on("GET", "/v1/mcp-registry/search", () =>
+        json(200, {
+          v: 1,
+          query: "acme",
+          registry: "r",
+          restricted: false,
+          servers: [
+            {
+              name: "com.acme/acme",
+              suggested_name: "acme",
+              status: "active",
+              remotes: [
+                {
+                  transport: "sse",
+                  url: "https://{tenant}.acme.example/sse",
+                  variables: ["tenant"],
+                  allowed: true,
+                  headers: [{ name: "X-Api-Key", required: true, secret: true }],
+                },
+              ],
+            },
+          ],
+        }),
+      ),
+    ]);
+    renderAt("/toolsets/new");
+    await userEvent.type(await screen.findByLabelText("Find a server"), "acme");
+    const found = await screen.findByRole("list", { name: "Servers found" }, { timeout: 3000 });
+    await userEvent.click(within(found).getByRole("button", { name: /Use com\.acme\/acme/ }));
+    const url = screen.getByLabelText("Server URL");
+    await userEvent.click(screen.getByRole("button", { name: "Connect" }));
+    expect(screen.getByText(/Fill in \{tenant\} in the URL first/)).toBeInTheDocument();
+    // Typed over {tenant}, a key at a time: every step still fills the remote's URL.
+    await userEvent.type(url, "north", { initialSelectionStart: 8, initialSelectionEnd: 16 });
+    expect(url).toHaveValue("https://north.acme.example/sse");
+    expect(screen.getByLabelText("Name")).toHaveValue("acme");
+    await userEvent.click(screen.getByRole("button", { name: "Connect" }));
+    await h2("How does agentkit sign in?");
+    expect(screen.getByRole("textbox", { name: "Header" })).toHaveValue("X-Api-Key");
+    expect(screen.getByRole("textbox", { name: "Value" })).toHaveValue("${X_API_KEY}");
   });
 });
 
@@ -669,6 +820,44 @@ describe("the add form's checks", () => {
     expect(headerProblem("X-Workspace", " ")).toBe("Give the header a value.");
   });
 
+  it("refuses a value that looks like a key whatever the header's name", () => {
+    for (const v of [
+      `Bearer ${pasted}`,
+      "Bearer ${API_KEY}x",
+      "basic dXNlcjpwYXNz",
+      "sk-live-4f9a8b7c6d5e4f3a2b1c",
+      "${A} ghp_0123456789abcdefghijABCDEF",
+    ]) {
+      expect(literalSecret(v), v).toBe(true);
+      expect(headerProblem("X-Api", v), v).toMatch(/Use a server variable/);
+    }
+    for (const v of [
+      "Bearer ${API_KEY}",
+      "${TOKEN}",
+      "acme",
+      "application/vnd.api+json; charset=utf-8",
+      "123e4567-e89b-12d3-a456-426614174000",
+      "2026-10-22",
+    ]) {
+      expect(literalSecret(v), v).toBe(false);
+    }
+  });
+
+  it("knows a registry remote's URL with its variables filled in", () => {
+    const t = "https://{tenant}.example.com/{region}/mcp";
+    expect(fillsTemplate(t, "https://acme.example.com/eu/mcp")).toBe(true);
+    expect(fillsTemplate(t, " https://acme.example.com/eu/mcp ")).toBe(true);
+    expect(fillsTemplate(t, "https://.example.com/eu/mcp")).toBe(true); // being typed over
+    expect(fillsTemplate(t, "https://{tenant}.example.com/eu/mcp")).toBe(true);
+    expect(fillsTemplate(t, "http://acme.example.com/eu/mcp")).toBe(false);
+    expect(fillsTemplate(t, "https://acme.example.com/eu/mc")).toBe(false);
+    expect(fillsTemplate("https://{a}/x/{b}/y", "https://h/y")).toBe(false);
+    expect(fillsTemplate(t, "https://acme.evil.com/eu/mcp")).toBe(false);
+    expect(fillsTemplate(t, "https://acme.example.com/eu/mcp/x")).toBe(false);
+    expect(fillsTemplate("https://a.example/mcp", "https://a.example/mcp")).toBe(true);
+    expect(fillsTemplate("https://a.example/mcp", "https://b.example/mcp")).toBe(false);
+  });
+
   it("reads the API's errors for the form", () => {
     expect(addError(new ApiError(422, { code: "auth_required", message: "401" }))).toMatchObject({
       field: "headers",
@@ -722,6 +911,25 @@ describe("a tool's text", () => {
     expect(toolFlags(t("Long…[truncated 9 characters]"), ["a"])).toContain(
       "Its description is cut short: it is longer than the model is given.",
     );
+    // Names with other characters than letters, digits and _: whole, not inside a longer word.
+    expect(toolFlags(t("First, search-docs."), ["a", "search-docs"])[0]).toBe(
+      "Tells the model to call another tool (search-docs).",
+    );
+    expect(toolFlags(t("See docs.v2 then."), ["a", "docs.v2"])[0]).toMatch(/\(docs\.v2\)/);
+    expect(toolFlags(t("Not xsearch-docs, nor search-docs_2."), ["a", "search-docs"])).toEqual([]);
+    expect(toolFlags(t("search and docs, apart."), ["a", "search-docs"])).toEqual([]);
+  });
+
+  it("works out every tool's flags once for a review, as toolFlags does", () => {
+    const tools: ReviewTool[] = [
+      { name: "a", status: "new", description: "Then call b.", kind: "write", risk: "medium" },
+      { name: "b", status: "new", description: "Plain.", kind: "write", risk: "medium" },
+      { name: "c-d", status: "new", description: "Use a, then b.", kind: "write", risk: "medium" },
+    ];
+    const all = reviewFlags(tools);
+    const names = tools.map((x) => x.name);
+    for (const x of tools) expect(all.get(x.name), x.name).toEqual(toolFlags(x, names));
+    expect(all.get("c-d")).toEqual(["Tells the model to call another tool (a, b)."]);
   });
 
   it("diffs by words, removals before additions", () => {
@@ -736,6 +944,43 @@ describe("a tool's text", () => {
     expect(diffTokens(big, [...big].reverse())).toEqual([
       { op: "del", text: big.join("") },
       { op: "add", text: [...big].reverse().join("") },
+    ]);
+  });
+
+  it("keeps a big schema's diff to what changed, and gives up on detail past its cap", () => {
+    // One line changed in 50,000: the common start and end are kept, not tabled.
+    const schema = Array.from({ length: 50_000 }, (_, i) => `  "f${i}": 1,\n`).join("");
+    const after = schema.replace('"f10": 1', '"g10": 1');
+    expect(diffTokens(lines(schema), lines(after))).toEqual([
+      { op: "same", text: lines(schema).slice(0, 10).join("") },
+      { op: "del", text: '  "f10": 1,\n' },
+      { op: "add", text: '  "g10": 1,\n' },
+      { op: "same", text: lines(schema).slice(11).join("") },
+    ]);
+    const late = schema.replace('"f49990": 1', '"g49990": 1');
+    expect(diffTokens(lines(schema), lines(late))).toEqual([
+      { op: "same", text: lines(schema).slice(0, 49990).join("") },
+      { op: "del", text: '  "f49990": 1,\n' },
+      { op: "add", text: '  "g49990": 1,\n' },
+      { op: "same", text: lines(schema).slice(49991).join("") },
+    ]);
+    // Nothing on one side: no table at all.
+    const many = Array.from({ length: 200_000 }, (_, i) => `w${i} `);
+    expect(diffTokens(many, [])).toEqual([{ op: "del", text: many.join("") }]);
+    expect(diffTokens(["x"], ["x", ...many])).toEqual([
+      { op: "same", text: "x" },
+      { op: "add", text: many.join("") },
+    ]);
+    // A changed middle just under the cap is diffed; just over, shown whole.
+    const side = Math.floor(Math.sqrt(maxDiffCells)) - 1;
+    const a = Array.from({ length: side }, (_, i) => `a${i} `);
+    const b = Array.from({ length: side }, (_, i) => (i % 2 ? `a${i} ` : `b${i} `));
+    expect(diffTokens(a, b).length).toBeGreaterThan(2);
+    const a2 = [...a, "a+ "];
+    const b2 = [...b, "b+ "];
+    expect(diffTokens(a2, b2)).toEqual([
+      { op: "del", text: a2.join("") },
+      { op: "add", text: b2.join("") },
     ]);
   });
 

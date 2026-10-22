@@ -1,0 +1,7 @@
+{
+  "behavior": "one provider among three offered",
+  "prompt": "What is the latest Go release? One quick search is enough; cite the source.",
+  "toolsets": ["tavily", "exa", "parallel"],
+  "prefix_tool_names": true,
+  "checks": {"one_provider": true, "max_calls": 2, "cites_result_url": true}
+}

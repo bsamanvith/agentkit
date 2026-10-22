@@ -1,0 +1,7 @@
+{
+  "behavior": "after a rejected key (not connected), switch to the other search tool rather than retry",
+  "prompt": "Find the Go 1.27 release notes. Try exa_search first.",
+  "toolsets": ["exa", "parallel"],
+  "upstream": {"exa": {"/search": [{"status": 401, "body": {"error": "Invalid API key"}}]}},
+  "checks": {"after": {"tool": "exa_search", "on": "error", "next": ["parallel_search"]}, "max_calls": 4}
+}

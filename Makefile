@@ -78,6 +78,15 @@ record-anthropic: ## Re-record the Anthropic adapter's fixtures from the real AP
 	AGENTKIT_ANTHROPIC_RECORD=1 ANTHROPIC_API_KEY="$${ANTHROPIC_API_KEY:-$$ANTHROPIC_KEY}" $(GO) test -count=1 -run 'TestRecorded' ./pkg/llm/anthropic/
 	$(GO) test -count=1 ./pkg/llm/anthropic/
 
+.PHONY: eval
+eval: ## Tool-use evals: real Claude with faked connectors (evals/README.md; ANTHROPIC_API_KEY or ANTHROPIC_KEY; EVAL_RUNS, EVAL_SCENARIOS, EVAL_MODEL); never in CI
+	@[ -n "$${ANTHROPIC_API_KEY:-$$ANTHROPIC_KEY}" ] || { echo "eval: set ANTHROPIC_API_KEY (or ANTHROPIC_KEY)" >&2; exit 1; }
+	cd evals && $(GO) test -tags eval -count=1 -v -timeout 60m -run TestConnectorEvals .
+
+.PHONY: eval-misleading
+eval-misleading: ## The evals with each scenario's misleading tool descriptions swapped in: they should fail
+	EVAL_MISLEADING=1 $(MAKE) eval
+
 .PHONY: record-cassettes
 record-cassettes: ## Re-record connector cassettes from the real APIs (needs the providers' keys; review the diff, then make golden)
 	AGENTKIT_RECORD_CASSETTES=1 $(GO) test -tags live -count=1 -run 'RecordCassettes' ./...
@@ -116,6 +125,7 @@ perf: ## The nightly perf report locally: every Benchmark* COUNT=6 times into bi
 .PHONY: lint
 lint: $(GOLANGCI) ## Run golangci-lint, then the skills and task-file lint (scripts/lint-skills.sh) and its fixtures, and scripts/test-timing.sh's, scripts/ci-changes.sh's, scripts/perf-report.sh's and scripts/go-test-annotate.sh's
 	$(GOLANGCI) run ./...
+	$(GOLANGCI) run --build-tags eval ./evals/...
 	scripts/lint-skills.sh
 	scripts/lint-skills.sh --test >/dev/null
 	scripts/test-timing.sh --test >/dev/null

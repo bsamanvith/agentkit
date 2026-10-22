@@ -1,0 +1,6 @@
+{
+  "behavior": "a recency filter for recent news",
+  "prompt": "What Go programming language news came out in the last few days? Only very recent items.",
+  "toolsets": ["tavily"],
+  "checks": {"called": ["tavily_search"], "args": [{"tool": "tavily_search", "field": "time_range", "one_of": ["day", "week", "d", "w"]}]}
+}

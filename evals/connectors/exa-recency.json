@@ -1,0 +1,6 @@
+{
+  "behavior": "a published-date filter",
+  "prompt": "Find articles about the Go 1.27 release published on or after 2026-10-01.",
+  "toolsets": ["exa"],
+  "checks": {"called": ["exa_search"], "args": [{"tool": "exa_search", "field": "start_published_date", "at_least": "2026-10-01"}]}
+}

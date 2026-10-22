@@ -1,0 +1,7 @@
+{
+  "behavior": "an open question goes to search, not extract",
+  "prompt": "Find a few good articles about improving retrieval precision for RAG.",
+  "toolsets": ["exa"],
+  "upstream": {"exa": {"/search": [{"cassette": "connectors/exa/testdata/cassettes/search-defaults.res.http"}]}},
+  "checks": {"first": "exa_search", "max_calls": 3, "cites_result_url": true}
+}

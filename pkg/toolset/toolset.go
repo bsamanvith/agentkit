@@ -29,7 +29,8 @@ var (
 	// validate. Factories wrap it; [DecodeSettings] does so for them.
 	ErrInvalidSettings = errors.New("invalid toolset settings")
 	// ErrInvalidFilter reports an include/exclude list that is malformed,
-	// has a pattern matching no tool, or leaves the toolset empty.
+	// has a pattern matching no tool, or leaves the toolset empty; or a
+	// descriptions entry naming no kept tool, or empty.
 	ErrInvalidFilter = errors.New("invalid toolset filter")
 	// ErrDuplicateType reports two factories with the same type in one catalog.
 	ErrDuplicateType = errors.New("duplicate factory type")
@@ -298,6 +299,10 @@ func buildOne(ctx context.Context, f Factory, s Spec, sources SourceProvider) (t
 		return nil, err
 	}
 	tools, err = filterTools(tools, s.Include, s.Exclude)
+	if err != nil {
+		return nil, err
+	}
+	tools, err = describeTools(tools, s.Descriptions)
 	if err != nil {
 		return nil, err
 	}

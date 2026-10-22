@@ -28,6 +28,12 @@ type Spec struct {
 	// Include is applied. Each glob must match a tool, to catch typos that
 	// would leave a tool exposed.
 	Exclude []string `json:"exclude,omitempty"`
+	// Descriptions replaces the descriptions of the named tools, after
+	// Include and Exclude: a way to tune how a model uses a connector's
+	// tools without changing its code (the tool evals in evals/ swap in
+	// misleading ones this way, to prove their checks can fail). Each name
+	// must be a tool the toolset keeps, and each description non-empty.
+	Descriptions map[string]string `json:"descriptions,omitempty"`
 	// Optional makes a toolset that fails to build be skipped and reported as
 	// a [Problem] instead of failing [Build].
 	Optional bool `json:"optional,omitempty"`

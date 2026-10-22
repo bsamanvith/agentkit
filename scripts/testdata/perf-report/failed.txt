@@ -1,0 +1,21 @@
+goos: linux
+goarch: amd64
+pkg: github.com/bsamanvith/agentkit/pkg/mcp/server
+cpu: Intel(R) Xeon(R) Processor @ 2.10GHz
+BenchmarkCallTool-4   	     200	   1005077 ns/op	  329519 B/op	     304 allocs/op
+BenchmarkCallTool-4   	     200	    563985 ns/op	  329036 B/op	     303 allocs/op
+BenchmarkCallTool-4   	     200	    737791 ns/op	  328307 B/op	     303 allocs/op
+PASS
+ok  	github.com/bsamanvith/agentkit/pkg/mcp/server	0.533s
+goos: linux
+goarch: amd64
+pkg: github.com/bsamanvith/agentkit/pkg/bus/memory
+cpu: Intel(R) Xeon(R) Processor @ 2.10GHz
+BenchmarkBroken-4   	panic: boom in BenchmarkBroken
+
+goroutine 7 [running]:
+github.com/bsamanvith/agentkit/pkg/bus/memory.BenchmarkBroken(0xc000132000)
+	/src/pkg/bus/memory/memory_test.go:42 +0x25
+exit status 2
+FAIL	github.com/bsamanvith/agentkit/pkg/bus/memory	0.012s
+FAIL

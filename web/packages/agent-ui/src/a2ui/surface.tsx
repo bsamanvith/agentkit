@@ -273,7 +273,14 @@ function childNodes({ ctx, scope, depth, seen }: Draw, value: unknown): ReactNod
     if (!Array.isArray(items)) return [];
     const id = t.componentId;
     return items.map((_, i) => (
-      <Node key={i} ctx={ctx} id={id} scope={{ ...scope, base: `${at}/${i}` }} depth={depth + 1} seen={seen} />
+      <Node
+        key={i}
+        ctx={ctx}
+        id={id}
+        scope={{ ...scope, base: `${at === "/" ? "" : at}/${i}` }}
+        depth={depth + 1}
+        seen={seen}
+      />
     ));
   }
   return [];
@@ -357,6 +364,7 @@ function drawComponent(c: Component, d: Draw, ariaLabel: string | undefined): Re
         return (
           <svg
             viewBox="0 0 24 24"
+            role={ariaLabel ? "img" : undefined}
             aria-hidden={ariaLabel ? undefined : true}
             aria-label={ariaLabel}
             className="size-5 fill-current text-ak-text-2"
@@ -365,9 +373,13 @@ function drawComponent(c: Component, d: Draw, ariaLabel: string | undefined): Re
           </svg>
         );
       }
-      const Icon = icons[asText(resolve(name, scope))];
+      // A bound name is the agent's data: only the table's own keys, never
+      // Object.prototype's ("constructor" would be drawn as a component).
+      const n = asText(resolve(name, scope));
+      const Icon = Object.hasOwn(icons, n) ? icons[n] : undefined;
       return Icon ? (
         <Icon
+          role={ariaLabel ? "img" : undefined}
           aria-hidden={ariaLabel ? undefined : true}
           aria-label={ariaLabel}
           className="size-5 flex-none text-ak-text-2"

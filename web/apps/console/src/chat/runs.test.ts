@@ -189,6 +189,15 @@ describe("RunStore", () => {
     expect(store.drafts.get("c1")).toBe("");
   });
 
+  it("a deleted conversation's surface edits go with it", () => {
+    const surface = { id: "s", revision: 1 };
+    store.edits.set("c1", surface, "/topic", "go");
+    store.edits.set("c2", surface, "/topic", "stay");
+    store.forget("c1");
+    expect(store.edits.get("c1", surface).size).toBe(0);
+    expect(store.edits.get("c2", surface).get("/topic")).toBe("stay");
+  });
+
   it("forgets the surfaces' edits with everything else", () => {
     const surface = { id: "s", revision: 1 };
     store.edits.set("c1", surface, "/topic", "go");

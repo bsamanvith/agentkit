@@ -152,6 +152,37 @@ describe("parseActionText", () => {
     expect(parseActionText("<ui_action>\nnot json\n</ui_action>")).toBeUndefined();
     expect(parseActionText('<ui_action>\n{"version":"v0.9","action":{"name":1}}\n</ui_action>')).toBeUndefined();
   });
+
+  it("refuses what a2ui.ParseActionText refuses: the person's own words, not an action", () => {
+    const wrap = (action: object, extra: object = {}) =>
+      `<ui_action>\n${JSON.stringify({ version: "v0.9", action, ...extra })}\n</ui_action>`;
+    const ok = { name: "n", surfaceId: "s", sourceComponentId: "c", timestamp: "2026-10-22T10:00:00Z", context: {} };
+    // What ActionText writes: <, > and & escaped, the timestamp in UTC.
+    expect(
+      parseActionText(
+        '<ui_action>\n{"version":"v0.9","action":{"name":"n","surfaceId":"s","sourceComponentId":"c","timestamp":"2026-10-22T10:00:00Z","context":{"q":"\\u003cb\\u003e"}}}\n</ui_action>',
+      ),
+    ).toEqual({
+      name: "n",
+      surfaceId: "s",
+      componentId: "c",
+      timestamp: "2026-10-22T10:00:00Z",
+      context: { q: "<b>" },
+    });
+    expect(parseActionText(wrap(ok))).toBeDefined();
+    for (const bad of [
+      { ...ok, name: " " },
+      { ...ok, surfaceId: "" },
+      { ...ok, sourceComponentId: "a b" },
+      { ...ok, context: null },
+      { ...ok, context: [1] },
+      { ...ok, timestamp: "yesterday" },
+      { ...ok, extra: 1 },
+    ]) {
+      expect(parseActionText(wrap(bad)), JSON.stringify(bad)).toBeUndefined();
+    }
+    expect(parseActionText(wrap(ok, { extra: 1 }))).toBeUndefined();
+  });
 });
 
 describe("safeUrl", () => {
@@ -170,6 +201,24 @@ describe("safeUrl", () => {
     ["https://example.com/\nx", false],
     ["ftp://example.com/", false],
     ["", false],
+    // Where the browser's URL parser forgives and Go's url.Parse refuses.
+    [" https://example.com", false],
+    ["https://example.com ", false],
+    ["https://exa mple.com/", false],
+    ["http://\\evil.com", false],
+    ["https://example.com\\@evil.com", false],
+    ["https://@example.com", false],
+    ["https://ex%41mple.com", false],
+    ["https://example.com/%zz", false],
+    ["https://example.com/%", false],
+    ["jav\tascript:alert(1)", false],
+    ["javascript&#58;alert(1)", false],
+    ["https://example.com/a b?q=%41#x", true],
+    ["https://a`b.com/", false],
+    ["https://a{b.com/", false],
+    ["https://a}b.com/", false],
+    ["https://a|b.com/", false],
+    ["https://a^b.com/", false],
   ])("%j is %s", (u, want) => expect(safeUrl(u)).toBe(want));
   it("takes strings only", () => expect(safeUrl({ path: "/x" })).toBe(false));
 });
@@ -180,10 +229,17 @@ describe("data", () => {
     expect(getAt(d, "/a/b~1c/1/~0x")).toBe(2);
     expect(getAt(d, "")).toBe(d);
     expect(getAt(d, "/a/missing/deeper")).toBeUndefined();
+    // Only the model's own keys: a path can't reach Object.prototype.
+    for (const p of ["/constructor", "/__proto__", "/a/toString", "/a/b~1c/length"])
+      expect(getAt(d, p)).toBeUndefined();
     const set = setAt(d, "/a/new/x", 1);
     expect(set).toEqual({ a: { "b/c": [1, { "~x": 2 }], new: { x: 1 } } });
     expect(d).toEqual({ a: { "b/c": [1, { "~x": 2 }] } });
     expect(setAt([1, 2, 3], "/1", undefined)).toEqual([1, 3]);
+    expect(setAt([1], "/1", 2)).toEqual([1, 2]);
+    // An index past the end changes nothing (RFC 6901): no sparse array a later copy would fill.
+    const far = setAt({ a: [] }, "/a/99999999", 1) as { a: unknown[] };
+    expect(far.a).toHaveLength(0);
     expect(joinPath("/items/2", "name")).toBe("/items/2/name");
     expect(joinPath("/items/2", "/abs")).toBe("/abs");
     expect(joinPath("", "name")).toBe("/name");
@@ -200,6 +256,20 @@ describe("data", () => {
     expect(edits.get("c", { id: "s", revision: 3 })).toBe(edits.get("c", { id: "s", revision: 3 }));
     expect(calls).toBe(1);
     expect(withEdits({ q: "", n: 1 }, edits.get("c", { id: "s", revision: 3 }))).toEqual({ q: "go", n: 1 });
+  });
+
+  it("forgets one conversation's edits and keeps the others'", () => {
+    const edits = new SurfaceEdits();
+    edits.set("c", { id: "s", revision: 1 }, "/q", "go");
+    edits.set("c", { id: "t", revision: 1 }, "/q", "go");
+    edits.set("d", { id: "s", revision: 1 }, "/q", "stay");
+    let calls = 0;
+    edits.subscribe(() => calls++);
+    edits.forget("c");
+    expect(edits.get("c", { id: "s", revision: 1 }).size).toBe(0);
+    expect(edits.get("c", { id: "t", revision: 1 }).size).toBe(0);
+    expect(edits.get("d", { id: "s", revision: 1 }).get("/q")).toBe("stay");
+    expect(calls).toBe(1);
   });
 });
 
@@ -238,6 +308,19 @@ describe("dynamic values", () => {
     expect(call("openUrl", { url: "https://x.y" }, scope)).toBeUndefined();
     expect(formatDate("2026-02-02T15:17:00", "E MMM d, yyyy h:mm a")).toBe("Mon Feb 2, 2026 3:17 PM");
     expect(formatDate("not a date", "yyyy")).toBe("not a date");
+  });
+
+  it("formats a date without a time as that day, west of UTC too", () => {
+    const tz = process.env.TZ;
+    process.env.TZ = "America/Los_Angeles";
+    try {
+      // new Date("2026-02-10") is UTC midnight: 9 Feb in California.
+      expect(formatDate("2026-02-10", "d MMM yyyy")).toBe("10 Feb 2026");
+      expect(formatDate("2026-02-10T09:30", "d MMM H:mm")).toBe("10 Feb 9:30");
+    } finally {
+      if (tz === undefined) delete process.env.TZ;
+      else process.env.TZ = tz;
+    }
   });
 
   it("lists the messages of failing checks, in both of the spec's forms", () => {

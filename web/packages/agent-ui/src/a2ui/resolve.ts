@@ -157,7 +157,13 @@ const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", 
 
 /** formatDate with a Unicode (TR35) pattern's common fields: y M d E H h m s a and 'quoted text'. */
 export function formatDate(value: unknown, pattern: string): string {
-  const d = typeof value === "string" || typeof value === "number" ? new Date(value) : undefined;
+  // A date alone ("2026-02-10") is that day here: new Date reads it as UTC midnight.
+  const day = typeof value === "string" ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(value) : null;
+  const d = day
+    ? new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3]))
+    : typeof value === "string" || typeof value === "number"
+      ? new Date(value)
+      : undefined;
   if (!d || Number.isNaN(d.getTime())) return asText(value);
   const pad = (x: number, w: number) => String(x).padStart(w, "0");
   return pattern.replace(/'([^']*)'|y+|Y+|M+|d+|E+|H+|h+|m+|s+|a+/g, (tok, quoted: string | undefined) => {

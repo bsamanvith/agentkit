@@ -42,7 +42,8 @@ describe("A2UISurface", () => {
     ];
     expect(new Set(all.map((c) => c.component))).toEqual(new Set(drawn));
     render(<A2UISurface surface={surface(all)} onAction={() => {}} />);
-    expect(screen.getByRole("heading", { name: "Title" })).toBeInTheDocument();
+    // h2 under the thread's own headings: level 4.
+    expect(screen.getByRole("heading", { name: "Title" })).toHaveAttribute("aria-level", "4");
     expect(screen.getByRole("img", { name: "A picture" })).toHaveAttribute("src", `${location.origin}/a.png`);
     expect(screen.getByLabelText("Search icon")).toBeInTheDocument();
     expect(screen.getByRole("listitem")).toHaveTextContent("Listed");
@@ -71,7 +72,7 @@ describe("A2UISurface", () => {
     expect(container.querySelector("img, script, strong")).toBeNull();
     expect(container.textContent).toContain(hostile);
     // A heading drops its Markdown marker only.
-    expect(screen.getByRole("heading")).toHaveTextContent(`**${hostile}**`);
+    expect(screen.getByRole("heading").textContent).toBe(`**${hostile}**`);
   });
 
   it("drops unsafe and outside URLs, bound or computed, and keeps safe links", () => {
@@ -135,7 +136,7 @@ describe("A2UISurface", () => {
         ])}
       />,
     );
-    expect(screen.getByRole("img", { name: "ok" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "ok" })).toHaveAttribute("referrerpolicy", "no-referrer");
     expect(screen.queryByRole("img", { name: "no" })).toBeNull();
     expect(allow).toHaveBeenCalledTimes(2);
   });
@@ -172,6 +173,16 @@ describe("A2UISurface", () => {
     expect(screen.getAllByText("leaf")).toHaveLength(1);
   });
 
+  it("cuts a tree deeper than a2ui.MaxDepth", () => {
+    const cards = Array.from({ length: 40 }, (_, i) => ({ id: `c${i}`, component: "Card", child: `c${i + 1}` }));
+    const { container } = render(
+      <A2UISurface surface={surface([col("c0"), ...cards, { id: "c40", component: "Text", text: "bottom" }])} />,
+    );
+    expect(screen.queryByText("bottom")).toBeNull();
+    // The root's column, then cards down to depth 32.
+    expect(container.querySelectorAll(".rounded-xl")).toHaveLength(32);
+  });
+
   it("draws a template once per item, binding relative paths to the item", () => {
     render(
       <A2UISurface
@@ -185,6 +196,48 @@ describe("A2UISurface", () => {
       />,
     );
     expect(screen.getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Ann (core)", "Bea (core)"]);
+  });
+
+  it("draws a template over the whole model ('/') once per item", () => {
+    render(
+      <A2UISurface
+        surface={surface(
+          [
+            { id: "root", component: "List", children: { componentId: "item", path: "/" } },
+            { id: "item", component: "Text", text: { path: "name" } },
+          ],
+          [{ name: "Ann" }, { name: "Bea" }],
+        )}
+      />,
+    );
+    expect(screen.getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Ann", "Bea"]);
+  });
+
+  it("names an icon drawn from an SVG path for screen readers", () => {
+    render(
+      <A2UISurface
+        surface={surface([
+          col("i"),
+          { id: "i", component: "Icon", name: { svgPath: "M0 0h24v24H0z" }, accessibility: { label: "Logo" } },
+        ])}
+      />,
+    );
+    expect(screen.getByRole("img", { name: "Logo" })).toBeInTheDocument();
+  });
+
+  it("draws nothing for a bound icon name that isn't an icon, Object's own names too", () => {
+    render(
+      <A2UISurface
+        surface={surface(
+          [
+            { id: "root", component: "List", children: { componentId: "i", path: "/names" } },
+            { id: "i", component: "Icon", name: { path: "" }, accessibility: { label: "Icon" } },
+          ],
+          { names: ["constructor", "toString", "valueOf", "__proto__", "nope", "search"] },
+        )}
+      />,
+    );
+    expect(screen.getAllByRole("img", { name: "Icon" })).toHaveLength(1);
   });
 
   it("sends an action with its context resolved from the data and the person's edits", async () => {

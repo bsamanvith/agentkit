@@ -106,8 +106,11 @@ export function setAt(data: unknown, path: string, value: unknown): unknown {
     if (i === tokens.length) return value;
     const t = tokens[i] as string;
     if (Array.isArray(node) && /^\d+$/.test(t)) {
-      const out = [...node];
       const n = Number(t);
+      // Past the end is no element (RFC 6901): setting it would make a sparse
+      // array of that length, which the next copy fills.
+      if (n > node.length) return node;
+      const out = [...node];
       if (i === tokens.length - 1 && value === undefined) out.splice(n, 1);
       else out[n] = put(node[n], i + 1);
       return out;
@@ -187,6 +190,9 @@ export function foldSurfaces(turns: readonly SurfaceSource[]): Map<string, Surfa
 
 // ---- Actions as text (a2ui.ActionText) ----
 
+const onlyKeys = (o: Record<string, unknown>, keys: readonly string[]) => Object.keys(o).every((k) => keys.includes(k));
+const isId = (v: unknown): v is string => typeof v === "string" && /^\S+$/u.test(v);
+
 const actionOpen = "<ui_action>\n";
 const actionClose = "\n</ui_action>";
 
@@ -203,17 +209,25 @@ export function parseActionText(text: string): UIAction | undefined {
   } catch {
     return undefined;
   }
-  if (!isObject(m) || m.version !== a2uiVersion || !isObject(m.action)) return undefined;
+  // As strict as a2ui.ParseActionText: no other field, a name and IDs, a
+  // context that is an object and a timestamp that is a time.
+  if (!isObject(m) || !onlyKeys(m, ["version", "action"]) || m.version !== a2uiVersion) return undefined;
   const a = m.action;
-  if (typeof a.name !== "string" || typeof a.surfaceId !== "string" || typeof a.sourceComponentId !== "string") {
+  if (!isObject(a) || !onlyKeys(a, ["name", "surfaceId", "sourceComponentId", "timestamp", "context"]))
+    return undefined;
+  if (typeof a.name !== "string" || a.name.trim() === "" || !isId(a.surfaceId) || !isId(a.sourceComponentId)) {
+    return undefined;
+  }
+  if (a.context !== undefined && !isObject(a.context)) return undefined;
+  if (a.timestamp !== undefined && (typeof a.timestamp !== "string" || Number.isNaN(Date.parse(a.timestamp)))) {
     return undefined;
   }
   return {
     surfaceId: a.surfaceId,
     componentId: a.sourceComponentId,
     name: a.name,
-    context: isObject(a.context) ? a.context : {},
-    ...(typeof a.timestamp === "string" ? { timestamp: a.timestamp } : {}),
+    context: a.context ?? {},
+    ...(a.timestamp !== undefined ? { timestamp: a.timestamp } : {}),
   };
 }
 
@@ -228,6 +242,11 @@ export function parseActionText(text: string): UIAction | undefined {
 export function safeUrl(s: unknown): s is string {
   // eslint-disable-next-line no-control-regex
   if (typeof s !== "string" || !/^https?:\/\/[^/?#]/i.test(s) || /[\u0000-\u001f\u007f]/.test(s)) return false;
+  // What the browser's parser forgives and url.Parse refuses: a space, "\",
+  // "@" (empty user info), "%" or one of ` { } | ^ in the host part, and a
+  // "%" that isn't an escape.
+  const authority = s.slice(s.indexOf("//") + 2).split(/[/?#]/, 1)[0] ?? "";
+  if (/[\s\\@%`{}|^]/.test(authority) || /%(?![0-9a-f]{2})/i.test(s)) return false;
   let u: URL;
   try {
     u = new URL(s);
@@ -269,6 +288,12 @@ export class SurfaceEdits {
     const values = new Map(this.get(scope, surface));
     values.set(path, value);
     this.#edits.set(`${scope}\n${surface.id}`, { revision: surface.revision, values });
+    for (const fn of this.#listeners) fn();
+  }
+
+  /** Drops a scope's edits (its conversation was deleted). */
+  forget(scope: string) {
+    for (const k of this.#edits.keys()) if (k.startsWith(`${scope}\n`)) this.#edits.delete(k);
     for (const fn of this.#listeners) fn();
   }
 

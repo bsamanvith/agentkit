@@ -151,6 +151,49 @@ Browser (`make web-smoke`):
 - Images not checked by `allowImage`: the unsafe test.
 - Surfaces usable while the run goes on: the first test's `busy` check.
 
+### Review fixes (2026-10-22)
+
+Each fix has a test that failed before it.
+
+- `safeUrl` accepted what `url.Parse` refuses and the browser forgives: a
+  space, `\`, `@` (empty user info), `%`, `` ` ``, `{`, `}` in the host part,
+  and a `%` that isn't an escape. Now refused (`model.test.ts` safeUrl
+  table). Compared with `a2ui.SafeURL` on about 560 URLs (every ASCII
+  character in the host, path, port and scheme, entity and whitespace
+  tricks): nothing it refuses passes here. What is stricter here (a port
+  over 65535, `http://:80/`, a bad escape in the query, a no-break space in
+  the host) only drops a link the server allowed.
+- `parseActionText` took text `a2ui.ParseActionText` refuses (other
+  fields, an empty name, IDs with spaces, a context that isn't an object, a
+  timestamp that isn't a time): a typed message that looked like one was
+  drawn as an action and marked its surface sent. Now as strict
+  (`model.test.ts` "refuses what a2ui.ParseActionText refuses").
+- A bound Icon name was looked up on the icon table's prototype too:
+  `"constructor"` in the data model drew `Object` as a component and threw,
+  taking the console down (no error boundary). Own keys only
+  (`surface.test.tsx` "draws nothing for a bound icon name…").
+- A template over the whole model (`path: "/"`) gave its items `//0`, so
+  relative bindings read nothing (`surface.test.tsx` "draws a template over
+  the whole model").
+- `setAt` past an array's end made a sparse array of that length (an edit
+  at `/a/99999999`); now changes nothing, as RFC 6901 has no such element.
+- `formatDate` of a date alone (`2026-02-10`) showed the day before west of
+  UTC (`new Date` reads it as UTC midnight); now that local day.
+- An Icon drawn from an SVG path with a label had no role, so screen
+  readers skipped its name; both icon kinds are `role="img"` when labelled.
+- Deleting a conversation kept its surfaces' edits (`SurfaceEdits.forget`,
+  called by `RunStore.forget`; `runs.test.ts`).
+- Tests that passed with the code broken: the heading test matched a
+  substring, so not dropping `#` passed (now exact); nothing checked the
+  heading's level, the image's `referrerpolicy`, the depth cut, or that a
+  path can't read `Object.prototype` (`getAt`). Each now has a test, and
+  each mutation fails one.
+
+Not changed: `regex` checks and `validationRegexp` run the agent's pattern
+with the browser's engine (RE2 on the server isn't involved, so the syntax
+and the cost differ); a pattern with catastrophic backtracking can stall
+the tab on a long value. An owner question under "For later".
+
 ### Size
 
 No dependency. The renderer is a lazy chunk (`surface-*.js`, 30.7 KB,
@@ -163,6 +206,9 @@ that needs a docs/SIZES.md row).
 
 ### For later
 
+- Owner: whether surface checks' regular expressions need a guard (a
+  length cap on the value, or refusing patterns with nested quantifiers in
+  pkg/a2ui), since the browser's engine backtracks.
 - Owner: which image origins surfaces may show (a list in the server
   config, added to the CSP's `img-src` and passed as `allowImage`).
 - T067/T069: the renderer takes any surface; another app passes its own

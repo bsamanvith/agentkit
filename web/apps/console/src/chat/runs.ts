@@ -183,6 +183,7 @@ export class RunStore {
   forget(id: string) {
     this.#states.delete(id);
     this.drafts.set(id, "");
+    this.edits.forget(id);
     this.#list++;
     this.#emit();
   }

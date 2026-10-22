@@ -450,6 +450,37 @@ func TestRefresh(t *testing.T) {
 	})
 }
 
+// racingStore loses every Swap to a connection made meanwhile to another
+// server under the same name (a toolset removed and added again).
+type racingStore struct {
+	*oauth.MemoryStore
+	other string
+}
+
+func (r *racingStore) Swap(ctx context.Context, k oauth.Key, old, t oauth.Token) error {
+	nt := old
+	nt.Access, nt.Resource = oauth.NewSecret("token-for-another-server"), r.other
+	if err := r.Put(ctx, k, nt); err != nil {
+		return err
+	}
+	return oauth.ErrConflict
+}
+
+// A refresh that loses its compare-and-swap uses the winner's token only
+// if it was issued for the same server.
+func TestRefreshConflictKeepsTheServer(t *testing.T) {
+	t.Parallel()
+	mem := &oauth.MemoryStore{}
+	rs := &racingStore{MemoryStore: mem, other: "https://other.example/mcp"}
+	e := newEnv(t, setup{as: spec, store: mem, tokens: rs})
+	e.connect(t, alice)
+	e.clk.Advance(2 * time.Hour)
+	s, err := e.c.Token(t.Context(), alice, e.srv)
+	if s.Reveal() == "token-for-another-server" || !errors.Is(err, oauth.ErrNotConnected) {
+		t.Fatalf("Token after losing to another server's connection: %v, want ErrNotConnected and no token", err)
+	}
+}
+
 func TestNeedsMoreAccess(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, setup{as: spec, res: oauthtest.ResourceOptions{RequireScope: "crm.write"}, profile: oauth.Profile{Scopes: []string{"crm.read"}}})

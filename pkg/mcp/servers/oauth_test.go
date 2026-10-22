@@ -222,6 +222,22 @@ func TestOAuthUserScope(t *testing.T) {
 	if _, err := invoke(ctxOf(t, "acme"), reg, "crm__whoami"); err == nil || !strings.Contains(err.Error(), "not connected") {
 		t.Errorf("a call with no user: %v", err)
 	}
+	// Even when the tenant has a connection at the slot (left from a
+	// toolset of that name that was tenant-scoped): a user-scoped toolset
+	// never falls back to it.
+	shared, _, err := o.vault.Get(admin, "admin", "crm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := o.vault.Put(admin, "", "crm", shared, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := invoke(ctxOf(t, "acme"), reg, "crm__whoami"); err == nil || !strings.Contains(err.Error(), "not connected") {
+		t.Errorf("a call with no user, with a tenant connection stored: %v", err)
+	}
+	if o.p.calls.Load() != before {
+		t.Fatal("a call with no user reached the server")
+	}
 
 	// alice connects: her calls use her token, the admin's still theirs.
 	o.connectAs(t, "acme", "alice", "crm")

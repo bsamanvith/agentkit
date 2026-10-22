@@ -360,6 +360,13 @@ func (c *Connector) Start(ctx context.Context, owner Owner, srv Server) (Pending
 		if err != nil {
 			return Pending{}, err
 		}
+		// The authorization server pinned when the server was added is the
+		// only one the browser is sent to and the only one that registers
+		// a client or gets a code: protected resource metadata that names
+		// another one now is refused, whatever client would be used.
+		if prof.Issuer != "" && !sameIssuer(prof.Issuer, d.asm.Issuer) {
+			return Pending{}, fmt.Errorf("%w: server %q: its authorization server is now %q, not %q", ErrDiscovery, srv.Name, d.asm.Issuer, prof.Issuer)
+		}
 		p.AuthURL, p.TokenURL = d.asm.AuthorizationEndpoint, d.asm.TokenEndpoint
 		p.Issuer, p.IssParam = d.asm.Issuer, d.asm.AuthorizationResponseIssParameterSupported
 		if d.resource != "" {
@@ -570,6 +577,9 @@ func (c *Connector) Finish(ctx context.Context, p Pending, cb Callback, srv Serv
 	}
 	if p.Server != srv.Name {
 		return fmt.Errorf("%w: the flow is for another server", ErrBadState)
+	}
+	if srv.Profile.Issuer != "" && p.Issuer != "" && !sameIssuer(srv.Profile.Issuer, p.Issuer) {
+		return fmt.Errorf("%w: the flow is for another authorization server", ErrBadState)
 	}
 	if err := c.check(p, cb); err != nil {
 		return err
@@ -804,13 +814,12 @@ func (c *Connector) refresh(ctx context.Context, k Key, srv Server, rejected Sec
 			return Secret{}, err
 		}
 		if err := c.cfg.Tokens.Swap(ctx, k, t, nt); errors.Is(err, ErrConflict) {
-			// Another replica stored a newer token first: use it.
-			cur, err := c.cfg.Tokens.Get(ctx, k)
+			// Another replica stored a newer token first: use it, if it is
+			// still for srv (not a connection made meanwhile to a server
+			// added again under the same name).
+			cur, err := c.load(ctx, k, srv)
 			if err != nil {
-				return Secret{}, c.missing(srv, err)
-			}
-			if cur.ReconnectNeeded {
-				return Secret{}, fmt.Errorf("%s: %w", srv.Name, ErrReconnectNeeded)
+				return Secret{}, err
 			}
 			return cur.Access, nil
 		} else if err != nil {

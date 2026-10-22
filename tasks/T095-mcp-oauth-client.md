@@ -157,7 +157,15 @@ Criteria covered:
 - A token goes only to the server and issuer it was issued for.
 - Discovery and registration go through the SSRF guard.
 
-**Size:** +241,664 bytes on the all-in-one binary, +249,856 on local and dev, +32,768 on api (docs/SIZES.md). dev is now 4,096 bytes under its budget.
+**Size:** +245,760 bytes on the all-in-one binary (+241,664 before the review's fixes), +249,856 on local and dev, +32,768 on api (docs/SIZES.md). dev is now 4,096 bytes under its budget.
+
+**Review of #108 (2026-10-22).** Fixed on the branch:
+- The pin covered only a pre-registered client: with CIMD or DCR, `Start` sent the browser to (and registered a client at) whatever authorization server the MCP server's metadata named now. `Start` refuses one other than the pinned issuer, and `Finish` checks the flow's issuer against the pin (`TestIssuer`, `TestStartFinish` "another issuer pinned").
+- A refresh that lost its compare-and-swap took the winner's token with a bare `Get`, so a connection made meanwhile to a server added again under the same name could be sent to the old one. It goes through `load` (`issuedFor`) now (`TestRefreshConflictKeepsTheServer`).
+- `credentials.Sources` refuses an `OAuth2` with its own `Client` and an `OAuth2Client`: a config toolset whose slot has a runtime toolset's name never sends that MCP server's token (`TestSourceNeverSendsAnMCPConnection`).
+- New checks for what was already right: a user-scoped toolset called with no user never falls back to a tenant connection stored at the slot (`TestOAuthUserScope`); the console never navigates the sign-in window to a `javascript:` URL (`mcp.test.tsx`; the API client refuses it).
+
+Mutations of the review (each planted, the named tests run, reverted; a build failure counted as no result), all caught: the pin check in `Start` and in `Finish`; the conflict path's `Get`; `Sources` taking an MCP connection; `ownerIn` falling back to the tenant (caught only by the new `TestOAuthUserScope` case); the connection cache keyed without the user; `issuedFor` without its issuer; `dynamic.Complete` without the owner; a dynamic slot shadowing a config slot; the RFC 9207 check weakened to `iss` present. Not caught: `owner()`'s scope check in `dynamic.Begin`, an equivalent mutant (the API's `credentialOwner` and `Start` make the same check).
 
 ### For T044 / E07
 

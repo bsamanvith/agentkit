@@ -540,6 +540,39 @@ describe("Add an MCP server", () => {
     expect(screen.getByRole("button", { name: "Save and continue" })).toBeInTheDocument();
   });
 
+  it("never sends the sign-in window to an authorization URL that is not a web address", async () => {
+    const oauthServer = (over: Partial<ServerToolset>) =>
+      server([], { name: "notion", auth: "oauth", header_names: undefined, scope: "user", ...over });
+    fakeServer(asAdmin, [
+      (req, body) => {
+        const path = new URL(req.url).pathname;
+        if (req.method === "POST" && path === "/v1/toolsets")
+          return JSON.parse(body).auth === "oauth"
+            ? json(201, oauthServer({ connection: "not_connected", status: "unavailable", reason: "not connected" }))
+            : json(422, { v: 1, error: { code: "auth_required", message: "401", auth: "oauth" } });
+        if (req.method === "POST" && path === "/v1/credentials/notion/connect")
+          return json(200, { v: 1, authorize_url: "javascript:alert(document.domain)" });
+        return undefined;
+      },
+    ]);
+    const popup = { closed: false, close: vi.fn(), location: { href: "" } };
+    vi.stubGlobal(
+      "open",
+      vi.fn(() => popup),
+    );
+    renderAt("/toolsets/new");
+    await userEvent.type(await screen.findByLabelText("Server URL"), "https://mcp.notion.com/mcp");
+    await userEvent.click(screen.getByRole("button", { name: "Connect" }));
+    await h2("How does agentkit sign in?");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await h2("Connect notion")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Connect notion" }));
+    // The API client refuses it (it is never a javascript: or data: URL).
+    expect(await screen.findByText("Couldn't reach agentkit.")).toBeInTheDocument();
+    expect(popup.close).toHaveBeenCalled();
+    expect(popup.location.href).toBe("");
+  });
+
   it("fills the form from a registry search; a URL not allowed can't be picked", async () => {
     const calls = fakeServer(asAdmin, [
       on("GET", "/v1/mcp-registry/search", () =>

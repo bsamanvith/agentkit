@@ -57,6 +57,18 @@ func TestIssuer(t *testing.T) {
 	if _, err := e.c.Start(t.Context(), alice, pinned); err == nil {
 		t.Fatal("Start sent a pre-registered client to an authorization server it is not pinned to")
 	}
+	// Without a pre-registered client too (CIMD or DCR): the browser is
+	// never sent to, and no client registered at, another authorization
+	// server than the pinned one.
+	dcr := newEnv(t, setup{as: oauthtest.AuthServerOptions{DCR: true}})
+	pinned = dcr.srv
+	pinned.Profile = oauth.Profile{Issuer: "https://as.example"}
+	if _, err := dcr.c.Start(t.Context(), alice, pinned); !errors.Is(err, oauth.ErrDiscovery) {
+		t.Fatalf("Start with another issuer pinned: %v, want ErrDiscovery", err)
+	}
+	if _, err := dcr.store.GetClient(t.Context(), alice.Tenant, dcr.as.URL); !errors.Is(err, oauth.ErrNotFound) {
+		t.Fatalf("a client was registered at an authorization server the server is not pinned to: %v", err)
+	}
 }
 
 // Two tenants registering at the same moment each register their own
@@ -153,6 +165,9 @@ func TestStartFinish(t *testing.T) {
 	for name, spoil := range map[string]func(*env, *oauth.Pending, *oauth.Callback, *oauth.Server){
 		"expired":        func(e *env, _ *oauth.Pending, _ *oauth.Callback, _ *oauth.Server) { e.clk.Advance(11 * time.Minute) },
 		"another server": func(_ *env, _ *oauth.Pending, _ *oauth.Callback, s *oauth.Server) { s.Name = "other" },
+		"another issuer pinned": func(_ *env, _ *oauth.Pending, _ *oauth.Callback, s *oauth.Server) {
+			s.Profile.Issuer = "https://as.example"
+		},
 		"issuer mixed up": func(_ *env, _ *oauth.Pending, cb *oauth.Callback, _ *oauth.Server) {
 			cb.Iss = "https://attacker.example"
 		},

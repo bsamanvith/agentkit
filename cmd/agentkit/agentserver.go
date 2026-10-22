@@ -370,7 +370,7 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 				}
 			}
 		} else {
-			mem, err := openMemory(ctx, a, cfg.legacy, clk)
+			mem, err := openMemory(ctx, a, cfg.legacy, clk, c.env)
 			if err != nil {
 				return fail(err)
 			}

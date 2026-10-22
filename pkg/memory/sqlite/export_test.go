@@ -17,3 +17,10 @@ func SetIndexSchemaVersion(ctx context.Context, x *Index, v int) error {
 	_, err := x.w.ExecContext(ctx, `UPDATE memory_index_meta SET value = ? WHERE key = 'schema'`, v)
 	return err
 }
+
+// MakeIndexVersion1 turns the index into what T059 wrote: schema version 1,
+// with no vectors table.
+func MakeIndexVersion1(ctx context.Context, x *Index) error {
+	_, err := x.w.ExecContext(ctx, `DROP TABLE memory_vectors; UPDATE memory_index_meta SET value = 1 WHERE key = 'schema'`)
+	return err
+}

@@ -31,17 +31,19 @@ func TestIndexConformance(t *testing.T) {
 	})
 }
 
-// TestIndexMatchesInMemory: the relevance set's items and queries, and some
-// more, give the same results as the in-memory index, scores included.
+// TestIndexMatchesInMemory: the relevance sets' items and queries, and some
+// more, give the same results as the in-memory index in every mode, scores
+// included.
 func TestIndexMatchesInMemory(t *testing.T) {
 	t.Parallel()
-	x := openIndex(t, filepath.Join(t.TempDir(), "index.db"), memory.IndexConfig{})
-	ref, err := inmem.NewIndex(memory.IndexConfig{})
+	e := memorytest.NewFakeEmbedder(memorytest.DefaultFakeModel, memorytest.DefaultFakeDim)
+	x := openIndex(t, filepath.Join(t.TempDir(), "index.db"), memory.IndexConfig{Embedder: e})
+	ref, err := inmem.NewIndex(memory.IndexConfig{Embedder: e})
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx := memorytest.Ctx(t, "t", "")
-	set := memorytest.KeywordRelevance()
+	set := memorytest.HybridRelevance()
 	for _, it := range set.Items {
 		for _, idx := range []memory.Index{x, ref} {
 			if err := idx.Put(ctx, it); err != nil {
@@ -54,18 +56,62 @@ func TestIndexMatchesInMemory(t *testing.T) {
 		queries = append(queries, q.Query.Text)
 	}
 	for _, text := range queries {
-		q := memory.Query{Text: text, K: memory.MaxK}
-		got, err := x.Search(ctx, q)
-		if err != nil {
-			t.Fatal(err)
+		for _, mode := range x.Modes() {
+			q := memory.Query{Text: text, K: memory.MaxK, Mode: mode}
+			got, err := x.Search(ctx, q)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want, err := ref.Search(ctx, q)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if fmt.Sprint(got) != fmt.Sprint(want) {
+				t.Errorf("%s %s:\nsqlite %v\ninmem  %v", mode, text, got, want)
+			}
 		}
-		want, err := ref.Search(ctx, q)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if fmt.Sprint(got) != fmt.Sprint(want) {
-			t.Errorf("%s:\nsqlite %v\ninmem  %v", text, got, want)
-		}
+	}
+}
+
+// TestIndexEmbedderChange: the file keeps each vector's model and
+// dimension; another embedder is refused until Reembed.
+func TestIndexEmbedderChange(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "index.db")
+	memorytest.RunEmbedderChange(t, func(t *testing.T, cfg memory.IndexConfig) memory.Index {
+		return openIndex(t, path, cfg)
+	})
+}
+
+// TestIndexUpgradesVersion1: a file T059 wrote (no vectors) opens, keeps its
+// items and keyword search, and needs Reembed for semantic search.
+func TestIndexUpgradesVersion1(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "index.db")
+	ctx := memorytest.Ctx(t, "t", "")
+	old := openIndex(t, path, memory.IndexConfig{})
+	if err := old.Put(ctx, memory.Item{ID: "a", Text: "nut allergy"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlite.MakeIndexVersion1(t.Context(), old); err != nil {
+		t.Fatal(err)
+	}
+	e := memorytest.NewFakeEmbedder(memorytest.DefaultFakeModel, memorytest.DefaultFakeDim)
+	x := openIndex(t, path, memory.IndexConfig{Embedder: e})
+	if res, err := x.Search(ctx, memory.Query{Text: "allergy", Mode: memory.ModeKeyword}); err != nil || len(res) != 1 {
+		t.Errorf("keyword search after the upgrade = %v, %v", res, err)
+	}
+	if _, err := x.Search(ctx, memory.Query{Text: "peanuts", Mode: memory.ModeSemantic}); !errors.Is(err, memory.ErrEmbedderMismatch) {
+		t.Errorf("semantic search of an item with no vector = %v, want ErrEmbedderMismatch", err)
+	}
+	if n, err := x.Reembed(t.Context()); err != nil || n != 1 {
+		t.Fatalf("Reembed = %d, %v", n, err)
+	}
+	if res, err := x.Search(ctx, memory.Query{Text: "peanuts", Mode: memory.ModeSemantic}); err != nil || len(res) != 1 {
+		t.Errorf("semantic search after Reembed = %v, %v", res, err)
+	}
+	if _, err := sqlite.OpenIndex(t.Context(), path, memory.IndexConfig{}); err != nil {
+		t.Errorf("reopening the upgraded file: %v", err)
 	}
 }
 

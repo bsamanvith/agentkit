@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math"
 	"math/rand/v2"
 	"reflect"
 	"slices"
@@ -23,9 +24,55 @@ type NewIndex func(t *testing.T, cfg memory.IndexConfig) memory.Index
 // RunIndex runs the conformance suite of memory.Index against the indexes
 // newIndex makes. Every search a test makes goes through [CheckSearch], so
 // the invariants of a result list (at most K, ordered, no duplicates, the
-// filter kept, each item what Get returns) hold everywhere. The keyword
-// tests and the [KeywordRelevance] set run when the index has ModeKeyword.
+// filter kept, each item what Get returns, hybrid scores the fusion of the
+// other two modes) hold everywhere. The keyword tests and the
+// [KeywordRelevance] set run when the index has ModeKeyword.
+//
+// The suite runs three times: as newIndex makes indexes (keyword only,
+// without an embedder), and in "Semantic" and "Hybrid", where it puts a
+// [FakeEmbedder] and the modes [semantic] and [hybrid, keyword, semantic] in
+// the config; there the semantic tests, [SemanticRelevance] and
+// [HybridRelevance] run too, and a backend must honor
+// memory.IndexConfig.Embedder and Modes.
 func RunIndex(t *testing.T, newIndex NewIndex) {
+	t.Helper()
+	runIndex(t, newIndex)
+	for _, v := range []struct {
+		name  string
+		modes []memory.Mode
+	}{
+		{"Semantic", []memory.Mode{memory.ModeSemantic}},
+		{"Hybrid", []memory.Mode{memory.ModeHybrid, memory.ModeKeyword, memory.ModeSemantic}},
+	} {
+		t.Run(v.name, func(t *testing.T) {
+			t.Parallel()
+			runIndex(t, WithEmbedder(newIndex, v.modes))
+		})
+	}
+}
+
+// WithEmbedder returns a NewIndex that makes indexes of newIndex with modes
+// and, unless the test gives its own, a new FakeEmbedder (DefaultFakeModel,
+// DefaultFakeDim) each. It fails the test when an index does not have
+// exactly those modes.
+func WithEmbedder(newIndex NewIndex, modes []memory.Mode) NewIndex {
+	return func(t *testing.T, cfg memory.IndexConfig) memory.Index {
+		t.Helper()
+		if cfg.Embedder == nil {
+			cfg.Embedder = NewFakeEmbedder(DefaultFakeModel, DefaultFakeDim)
+		}
+		if cfg.Modes == nil {
+			cfg.Modes = modes
+		}
+		x := newIndex(t, cfg)
+		if got := x.Modes(); !slices.Equal(got, cfg.Modes) {
+			t.Fatalf("an index made with modes %v has modes %v: the backend ignores IndexConfig.Modes", cfg.Modes, got)
+		}
+		return x
+	}
+}
+
+func runIndex(t *testing.T, newIndex NewIndex) {
 	t.Helper()
 	t.Run("PutGetDelete", func(t *testing.T) { t.Parallel(); testIndexBasics(t, newIndex) })
 	t.Run("InvalidInput", func(t *testing.T) { t.Parallel(); testIndexInvalid(t, newIndex) })
@@ -39,23 +86,52 @@ func RunIndex(t *testing.T, newIndex NewIndex) {
 	t.Run("UnsupportedMode", func(t *testing.T) { t.Parallel(); testIndexModes(t, newIndex) })
 	t.Run("Canceled", func(t *testing.T) { t.Parallel(); testIndexCanceled(t, newIndex) })
 	t.Run("Concurrent", func(t *testing.T) { t.Parallel(); testIndexConcurrent(t, newIndex) })
-	probe := newIndex(t, memory.IndexConfig{})
-	if slices.Contains(probe.Modes(), memory.ModeKeyword) {
+	modes := newIndex(t, memory.IndexConfig{}).Modes()
+	if slices.Contains(modes, memory.ModeKeyword) {
 		t.Run("KeywordSyntax", func(t *testing.T) { t.Parallel(); testKeywordSyntax(t, newIndex) })
 		t.Run("KeywordRelevance", func(t *testing.T) {
 			t.Parallel()
 			RunRelevance(t, newIndex(t, memory.IndexConfig{}), KeywordRelevance())
 		})
-		t.Run("KeywordSimulation", func(t *testing.T) { t.Parallel(); testKeywordSimulation(t, newIndex) })
 	}
+	if slices.Contains(modes, memory.ModeSemantic) {
+		t.Run("SemanticScores", func(t *testing.T) { t.Parallel(); testSemanticScores(t, newIndex) })
+		t.Run("EmbedderCalls", func(t *testing.T) { t.Parallel(); testEmbedderCalls(t, newIndex) })
+		t.Run("EmbedderFails", func(t *testing.T) { t.Parallel(); testEmbedderFails(t, newIndex) })
+		t.Run("EmbedderMismatch", func(t *testing.T) { t.Parallel(); testEmbedderLies(t, newIndex) })
+		t.Run("SemanticUpsert", func(t *testing.T) { t.Parallel(); testSemanticUpsert(t, newIndex) })
+		t.Run("SemanticRelevance", func(t *testing.T) {
+			t.Parallel()
+			RunRelevance(t, newIndex(t, memory.IndexConfig{}), SemanticRelevance())
+		})
+	}
+	if slices.Contains(modes, memory.ModeHybrid) {
+		t.Run("HybridRelevance", func(t *testing.T) {
+			t.Parallel()
+			RunRelevance(t, newIndex(t, memory.IndexConfig{}), HybridRelevance())
+		})
+	}
+	t.Run("Simulation", func(t *testing.T) { t.Parallel(); testIndexSimulation(t, newIndex) })
 }
 
 // CheckSearch runs q on x in ctx and checks the invariants of its results:
 // at most K (DefaultK for 0), ordered best first (score, then the newest,
 // then ID), each ID once, each in q's mode (the index's default when q has
 // none), each matching q's filter, and each item exactly what Get returns.
-// It returns the results and the error.
+// It returns the results and the error. Each result's Found is its mode
+// (in a hybrid search, keyword, semantic or both); semantic scores are
+// cosines, within [-1, 1], with no highlights. A hybrid search on an index
+// that also has the other two modes is compared with the fusion of their
+// searches (see memory.ModeHybrid), worked out here.
 func CheckSearch(ctx context.Context, t testing.TB, x memory.Index, q memory.Query) ([]memory.Result, error) {
+	t.Helper()
+	return checkSearch(ctx, t, x, q, true)
+}
+
+// checkSearch is CheckSearch; fuse false skips the comparison of a hybrid
+// search with the other modes' (whose items may change meanwhile in a test
+// of concurrent writes).
+func checkSearch(ctx context.Context, t testing.TB, x memory.Index, q memory.Query, fuse bool) ([]memory.Result, error) {
 	t.Helper()
 	res, err := x.Search(ctx, q)
 	if err != nil {
@@ -94,8 +170,106 @@ func CheckSearch(ctx context.Context, t testing.TB, x memory.Index, q memory.Que
 		if err != nil || !SameItem(got, r.Item) {
 			t.Errorf("Search(%+v): result %+v, but Get = %+v, %v", q, r.Item, got, err)
 		}
+		checkFound(t, q, mode, r)
+	}
+	modes := x.Modes()
+	if fuse && mode == memory.ModeHybrid && slices.Contains(modes, memory.ModeKeyword) && slices.Contains(modes, memory.ModeSemantic) {
+		checkFusion(ctx, t, x, q, k, res)
 	}
 	return res, nil
+}
+
+func checkFound(t testing.TB, q memory.Query, mode memory.Mode, r memory.Result) {
+	t.Helper()
+	switch mode {
+	case memory.ModeHybrid:
+		if !slices.Equal(r.Found, []memory.Mode{memory.ModeKeyword}) && !slices.Equal(r.Found, []memory.Mode{memory.ModeSemantic}) &&
+			!slices.Equal(r.Found, []memory.Mode{memory.ModeKeyword, memory.ModeSemantic}) {
+			t.Errorf("Search(%+v): hybrid result %q found by %v, want keyword, semantic or both in that order", q, r.Item.ID, r.Found)
+		}
+	default:
+		if !slices.Equal(r.Found, []memory.Mode{mode}) {
+			t.Errorf("Search(%+v): result %q found by %v, want [%s]", q, r.Item.ID, r.Found, mode)
+		}
+	}
+	if mode == memory.ModeSemantic {
+		if r.Score < -1-1e-5 || r.Score > 1+1e-5 || math.IsNaN(r.Score) {
+			t.Errorf("Search(%+v): semantic result %q has score %v, outside [-1, 1]: are the vectors normalized?", q, r.Item.ID, r.Score)
+		}
+		if r.Highlights != nil {
+			t.Errorf("Search(%+v): semantic result %q has highlights %v", q, r.Item.ID, r.Highlights)
+		}
+	}
+}
+
+// checkFusion compares hybrid results with the reciprocal rank fusion
+// (k = 60) of the top MaxK of a keyword and a semantic search, worked out
+// here: ranks from 1, tied scores sharing the rank of the first.
+func checkFusion(ctx context.Context, t testing.TB, x memory.Index, q memory.Query, k int, got []memory.Result) {
+	t.Helper()
+	var lists [2][]memory.Result
+	if text := memory.HybridKeywordText(q.Text); text != "" {
+		kw, err := checkSearch(ctx, t, x, memory.Query{Text: text, K: memory.MaxK, Filter: q.Filter, Mode: memory.ModeKeyword}, false)
+		if err != nil {
+			t.Errorf("hybrid Search(%+v): the keyword search of %q failed: %v", q, text, err)
+			return
+		}
+		lists[0] = kw
+	}
+	sem, err := checkSearch(ctx, t, x, memory.Query{Text: q.Text, K: memory.MaxK, Filter: q.Filter, Mode: memory.ModeSemantic}, false)
+	if err != nil {
+		t.Errorf("hybrid Search(%+v): the semantic search failed: %v", q, err)
+		return
+	}
+	lists[1] = sem
+	want := fuseModel(lists[0], lists[1], k)
+	ok := len(got) == len(want)
+	for i := 0; ok && i < len(got); i++ {
+		g, w := got[i], want[i]
+		ok = g.Item.ID == w.Item.ID && math.Abs(g.Score-w.Score) < 1e-12 &&
+			slices.Equal(g.Found, w.Found) && slices.Equal(g.Highlights, w.Highlights)
+	}
+	if !ok {
+		t.Errorf("hybrid Search(%+v):\ngot  %v\nwant %v (the fusion of keyword %v and semantic %v)",
+			q, describeFused(got), describeFused(want), describe(lists[0]), describe(lists[1]))
+	}
+}
+
+// fuseModel is reciprocal rank fusion with k = 60, written apart from the
+// backends'.
+func fuseModel(kw, sem []memory.Result, k int) []memory.Result {
+	var out []memory.Result
+	at := map[string]int{}
+	for li, list := range [][]memory.Result{kw, sem} {
+		mode := []memory.Mode{memory.ModeKeyword, memory.ModeSemantic}[li]
+		for i, r := range list {
+			rank := i + 1
+			for rank > 1 && list[rank-2].Score == r.Score {
+				rank--
+			}
+			j, ok := at[r.Item.ID]
+			if !ok {
+				j = len(out)
+				at[r.Item.ID] = j
+				out = append(out, memory.Result{Item: r.Item, Mode: memory.ModeHybrid})
+			}
+			if mode == memory.ModeKeyword {
+				out[j].Highlights = r.Highlights
+			}
+			out[j].Score += 1.0 / (60 + float64(rank))
+			out[j].Found = append(out[j].Found, mode)
+		}
+	}
+	slices.SortStableFunc(out, keyword.Compare)
+	return out[:min(k, len(out))]
+}
+
+func describeFused(res []memory.Result) string {
+	s := make([]string, len(res))
+	for i, r := range res {
+		s[i] = fmt.Sprintf("%s:%.6f%v", r.Item.ID, r.Score, r.Found)
+	}
+	return "[" + strings.Join(s, " ") + "]"
 }
 
 // SameItem reports whether a and b are the same item (nil and empty
@@ -138,6 +312,12 @@ func (r *irig) search(q memory.Query) []memory.Result {
 		r.t.Fatalf("Search(%+v): %v", q, err)
 	}
 	return res
+}
+
+// kwIDs is ids in ModeKeyword.
+func (r *irig) kwIDs(text string, k int) []string {
+	r.t.Helper()
+	return IDs(r.search(memory.Query{Text: text, K: k, Mode: memory.ModeKeyword}))
 }
 
 func (r *irig) ids(text string, k int) []string {
@@ -378,13 +558,13 @@ func testIndexUpsert(t *testing.T, newIndex NewIndex) {
 	if !r.keyword() {
 		return
 	}
-	if ids := r.ids("kafka", 5); len(ids) != 0 {
+	if ids := r.kwIDs("kafka", 5); len(ids) != 0 {
 		t.Errorf("old text still found: %v", ids)
 	}
-	if ids := r.ids("redis", 5); !slices.Equal(ids, []string{"n"}) {
+	if ids := r.kwIDs("redis", 5); !slices.Equal(ids, []string{"n"}) {
 		t.Errorf("new text: %v, want [n]", ids)
 	}
-	res := r.search(memory.Query{Text: "words", Filter: map[string]string{"kind": "old"}})
+	res := r.search(memory.Query{Text: "words", Filter: map[string]string{"kind": "old"}, Mode: memory.ModeKeyword})
 	if len(res) != 0 {
 		t.Errorf("old metadata still filters: %v", IDs(res))
 	}
@@ -409,7 +589,7 @@ func testIndexDelete(t *testing.T, newIndex NewIndex) {
 	}
 	r.put(memory.Item{ID: "a", Text: "nothing in common"})
 	if r.keyword() {
-		if ids := r.ids("rotate", 5); len(ids) != 0 {
+		if ids := r.kwIDs("rotate", 5); len(ids) != 0 {
 			t.Errorf("a re-added item is found by its old text: %v", ids)
 		}
 	}
@@ -571,7 +751,7 @@ func testIndexConcurrent(t *testing.T, newIndex NewIndex) {
 						t.Error(err)
 						return
 					}
-					if _, err := CheckSearch(ctx, t, x, memory.Query{Text: "shared words", K: 3}); err != nil {
+					if _, err := checkSearch(ctx, t, x, memory.Query{Text: "shared words", K: 3}, false); err != nil {
 						t.Error(err)
 						return
 					}
@@ -616,43 +796,60 @@ func testKeywordSyntax(t *testing.T, newIndex NewIndex) {
 		{`"blue green" "with a canary"`, []string{"both"}},
 		{`green "deployment for`, []string{"phrase"}}, // a quote left open runs to the end
 	} {
-		got := r.ids(c.q, 10)
+		got := r.kwIDs(c.q, 10)
 		if !slices.Equal(got, c.want) {
 			t.Errorf("%s: %v, want %v", c.q, got, c.want)
 		}
 	}
-	res := r.search(memory.Query{Text: `"green deployment" canary zebra`, K: 10})
+	res := r.search(memory.Query{Text: `"green deployment" canary zebra`, K: 10, Mode: memory.ModeKeyword})
 	if len(res) == 0 || !slices.Equal(res[0].Highlights, []string{"green deployment", "canary"}) {
 		t.Errorf("highlights = %+v, want [green deployment canary] on the first", res)
 	}
 }
 
-// testKeywordSimulation runs random puts, deletes and searches in three
-// scopes and compares every search with BM25 over a model of the scope.
-func testKeywordSimulation(t *testing.T, newIndex NewIndex) {
+// testIndexSimulation runs random puts, deletes and searches in three scopes
+// and compares every search with a model of the scope: BM25 for keyword,
+// cosine over the fake embedder's vectors for semantic, and (in CheckSearch)
+// the fusion of both for hybrid.
+func testIndexSimulation(t *testing.T, newIndex NewIndex) {
+	semantic := slices.Contains(newIndex(t, memory.IndexConfig{}).Modes(), memory.ModeSemantic)
 	for seed := range uint64(4) {
 		t.Run(fmt.Sprint("seed", seed+1), func(t *testing.T) {
 			t.Parallel()
-			x := newIndex(t, memory.IndexConfig{Scope: memory.ScopeUser, MaxItems: 5})
-			SimulateKeyword(t, x, 5, seed+1, 120)
+			cfg := memory.IndexConfig{Scope: memory.ScopeUser, MaxItems: 5}
+			var e memory.Embedder
+			if semantic {
+				e = NewFakeEmbedder(DefaultFakeModel, DefaultFakeDim)
+				cfg.Embedder = e
+			}
+			SimulateIndex(t, newIndex(t, cfg), e, 5, seed+1, 120)
 		})
 	}
 }
 
 var (
 	simIDs    = []string{"a", "b", "c", "d", "e", "f"}
-	simTexts  = []string{"red fox", "red red fox jumps", "the lazy dog", "fox and dog", "a red dog", "quick brown fox", "dog"}
-	simQuery  = []string{"fox", "red", `"red fox"`, "dog fox", `"lazy dog" red`, "cat", `"fox red"`, "the"}
+	simTexts  = []string{"red fox", "red red fox jumps", "the lazy dog", "fox and dog", "a red dog", "quick brown fox", "dog", "puppy retriever"}
+	simQuery  = []string{"fox", "red", `"red fox"`, "dog fox", `"lazy dog" red`, "cat", `"fox red"`, "the", "pet"}
 	simLabels = []map[string]string{nil, {"k": "a"}, {"k": "b"}, {"k": "a", "j": "1"}}
 )
 
 type simOwner struct{ tenant, user string }
 
-// SimulateKeyword runs n random operations chosen by seed on x, an empty
-// ScopeUser keyword index holding at most maxItems per scope, in three
-// scopes, and checks after each one that Get matches a model of every
-// scope, and that each search returns what BM25 ranks over the model.
+// SimulateKeyword is SimulateIndex on a keyword index (no embedder).
 func SimulateKeyword(t testing.TB, x memory.Index, maxItems int, seed uint64, n int) {
+	t.Helper()
+	SimulateIndex(t, x, nil, maxItems, seed, n)
+}
+
+// SimulateIndex runs n random operations chosen by seed on x, an empty ScopeUser
+// index holding at most maxItems per scope, in three scopes, and checks
+// after each one that Get matches a model of every scope, and that each
+// search, in a mode of x chosen at random, returns what the model ranks:
+// BM25 in ModeKeyword; in ModeSemantic, the top K by the cosine of e's
+// vectors (e is x's embedder; nil for none), scores within 1e-5; hybrid
+// searches are checked by CheckSearch.
+func SimulateIndex(t testing.TB, x memory.Index, e memory.Embedder, maxItems int, seed uint64, n int) {
 	t.Helper()
 	rng := rand.New(rand.NewPCG(seed, seed^0x9e3779b97f4a7c15))
 	owners := []simOwner{{"s1", "u1"}, {"s1", "u2"}, {"s2", "u1"}}
@@ -660,6 +857,7 @@ func SimulateKeyword(t testing.TB, x memory.Index, maxItems int, seed uint64, n 
 	for _, o := range owners {
 		model[o] = map[string]memory.Item{}
 	}
+	modes := x.Modes()
 	for step := range n {
 		o := owners[rng.IntN(len(owners))]
 		ctx := Ctx(t, o.tenant, o.user)
@@ -693,15 +891,28 @@ func SimulateKeyword(t testing.TB, x memory.Index, maxItems int, seed uint64, n 
 			}
 			delete(m, id)
 		default:
-			q := memory.Query{Text: simQuery[rng.IntN(len(simQuery))], K: 1 + rng.IntN(4), Filter: simLabels[rng.IntN(len(simLabels))]}
+			q := memory.Query{
+				Text: simQuery[rng.IntN(len(simQuery))], K: 1 + rng.IntN(4), Filter: simLabels[rng.IntN(len(simLabels))],
+				Mode: modes[rng.IntN(len(modes))],
+			}
 			what = fmt.Sprintf("search %+v", q)
 			got, err := CheckSearch(ctx, t, x, q)
+			if errors.Is(err, memory.ErrInvalid) && q.Mode == memory.ModeKeyword && memory.HybridKeywordText(q.Text) == "" {
+				break // a keyword query with no word
+			}
 			if err != nil {
 				t.Errorf("seed %d step %d: %s: %v", seed, step, what, err)
 				break
 			}
-			if want := modelSearch(m, q); !sameResults(got, want) {
-				t.Errorf("seed %d step %d: %s:\ngot  %v\nwant %v", seed, step, what, describe(got), describe(want))
+			switch q.Mode {
+			case memory.ModeKeyword:
+				if want := modelSearch(m, q); !sameResults(got, want) {
+					t.Errorf("seed %d step %d: %s:\ngot  %v\nwant %v", seed, step, what, describe(got), describe(want))
+				}
+			case memory.ModeSemantic:
+				if msg := checkSemanticModel(t, e, m, q, got); msg != "" {
+					t.Errorf("seed %d step %d: %s: %s", seed, step, what, msg)
+				}
 			}
 		}
 		for _, o := range owners {
@@ -717,6 +928,54 @@ func SimulateKeyword(t testing.TB, x memory.Index, maxItems int, seed uint64, n 
 			t.FailNow()
 		}
 	}
+}
+
+// checkSemanticModel returns what is wrong with got, a semantic search of
+// q over items, or "": each result's score is the cosine of e's vectors of
+// its text and q's (within 1e-5), and the results are the top K of the
+// items in the filter (ties within 1e-5 either way).
+func checkSemanticModel(t testing.TB, e memory.Embedder, items map[string]memory.Item, q memory.Query, got []memory.Result) string {
+	t.Helper()
+	cos := func(a, b string) float64 {
+		vs, err := e.Embed(t.Context(), []string{a, b}, memory.PurposeDocument)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var dot, na, nb float64
+		for i := range vs[0] {
+			x, y := float64(vs[0][i]), float64(vs[1][i])
+			dot, na, nb = dot+x*y, na+x*x, nb+y*y
+		}
+		if na == 0 || nb == 0 {
+			return 0
+		}
+		return dot / math.Sqrt(na*nb)
+	}
+	var scores []float64
+	want := map[string]float64{}
+	for id, it := range items {
+		if memory.MatchesFilter(it.Metadata, q.Filter) {
+			want[id] = cos(q.Text, it.Text)
+			scores = append(scores, want[id])
+		}
+	}
+	if len(got) != min(q.K, len(scores)) {
+		return fmt.Sprintf("%d results, want %d", len(got), min(q.K, len(scores)))
+	}
+	slices.Sort(scores)
+	slices.Reverse(scores)
+	for _, r := range got {
+		w, ok := want[r.Item.ID]
+		switch {
+		case !ok:
+			return fmt.Sprintf("result %q is not an item of the filter", r.Item.ID)
+		case math.Abs(r.Score-w) > 1e-5:
+			return fmt.Sprintf("result %q scores %v, its cosine is %v", r.Item.ID, r.Score, w)
+		case w < scores[len(got)-1]-1e-5:
+			return fmt.Sprintf("result %q (cosine %v) is not in the top %d %v", r.Item.ID, w, len(got), scores)
+		}
+	}
+	return ""
 }
 
 // modelSearch is BM25 over the items of one scope.

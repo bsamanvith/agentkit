@@ -287,9 +287,11 @@ func ModuleRules() Rules {
 			// harness on Claude. The search store (T059) adds the clock that
 			// dates saved items and the harness's prepare hook (auto
 			// recall), tested on the fake model with a golden request.
+			// The embedding clients (T060) are tested as connectors are, on
+			// the connector kit's cassette upstream (embed/embedtest).
 			"pkg/memory": {
 				"pkg/tenancy", "pkg/tool", "pkg/harness", "pkg/llm", "pkg/llm/anthropic", "pkg/clock",
-				"pkg/clock/clocktest", "pkg/llm/llmtest", "internal/testkit",
+				"pkg/clock/clocktest", "pkg/llm/llmtest", "internal/testkit", "pkg/toolset/toolsettest",
 			},
 			// Completion webhooks (T071): signing, and delivering the
 			// store's notifications through its Admin, never a backend but

@@ -1,0 +1,14 @@
+{
+  "method": "POST",
+  "path": "/v1/embeddings",
+  "body": {
+    "model": "text-embedding-3-small",
+    "input": [
+      "alpha",
+      "beta"
+    ],
+    "encoding_format": "float",
+    "dimensions": 8
+  },
+  "synthetic": true
+}

@@ -58,6 +58,37 @@ type memoryIndexConfig struct {
 	// K is how many results auto recall adds, and recall_search returns
 	// when the model gives no k (0: memory.DefaultK).
 	K int `json:"k"`
+	// Embedder makes the vectors of semantic and hybrid search; none for
+	// keyword search only. Changing its model or dimensions needs
+	// `agentkit memory reembed` before semantic search works again.
+	Embedder *memoryEmbedderConfig `json:"embedder"`
+	// Modes are the search modes ("keyword", "semantic", "hybrid"), the
+	// default first: by default ["keyword"] without an embedder and
+	// ["hybrid", "keyword", "semantic"] with one.
+	Modes []string `json:"modes"`
+}
+
+// memoryEmbedderConfig chooses the embedding API (pkg/memory/embed).
+//
+//	"embedder": {"type": "voyage", "model": "voyage-3.5-lite"}
+//	"embedder": {"type": "openai", "model": "nomic-embed-text", "dimensions": 768,
+//	             "base_url": "http://127.0.0.1:11434/v1", "api_key_env": ""}
+type memoryEmbedderConfig struct {
+	// Type is "openai" (OpenAI's API and every server that copies it) or
+	// "voyage" (Voyage AI).
+	Type  string `json:"type"`
+	Model string `json:"model"`
+	// Dimensions of the vectors: 0 for a known model's default (embed.Config).
+	Dimensions int `json:"dimensions"`
+	// BaseURL is the API's, ending before /embeddings; empty for the
+	// provider's.
+	BaseURL string `json:"base_url"`
+	// APIKeyEnv names the environment variable with the key: by default
+	// OPENAI_API_KEY or VOYAGE_API_KEY. With "openai", an unset variable
+	// sends no key (a local server).
+	APIKeyEnv *string `json:"api_key_env"`
+	// BatchSize caps the texts of one request (0: embed.DefaultBatchSize).
+	BatchSize int `json:"batch_size"`
 }
 
 // agentMemory is what an agent's memory section gives it (openMemory, in

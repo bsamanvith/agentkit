@@ -1,0 +1,24 @@
+{
+  "method": "POST",
+  "path": "/a2a/helper",
+  "body": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "SendMessage",
+    "params": {
+      "message": {
+        "messageId": "msg-1",
+        "role": "ROLE_USER",
+        "parts": [
+          {
+            "text": "hello"
+          }
+        ]
+      },
+      "configuration": {
+        "returnImmediately": true
+      }
+    }
+  },
+  "recorded_at": "2026-10-22"
+}

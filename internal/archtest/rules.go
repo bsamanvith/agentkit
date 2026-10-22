@@ -222,6 +222,21 @@ func ModuleRules() Rules {
 				"pkg/agentapi", "pkg/auth", "pkg/harness", "pkg/llm", "pkg/llm/llmtest", "pkg/llm/anthropic",
 				"pkg/store/scoped", "pkg/tool", "pkg/toolset", "internal/testkit",
 			},
+			// The A2A client (T068) and its toolset: the wire types of
+			// pkg/a2a over net/http, never the server's agent API. Its
+			// tests run it against pkg/a2a/a2atest (our own server in
+			// process) and replay a remote agent's cassettes with the
+			// connector kit.
+			"pkg/a2a/client": {
+				"pkg/a2a", "pkg/clock", "pkg/tool", "pkg/toolset", "pkg/a2a/a2atest",
+				"pkg/clock/clocktest", "pkg/toolset/toolsettest", "internal/testkit",
+			},
+			// A remote A2A agent as a flow step (T068).
+			"pkg/a2a/a2astep": {"pkg/a2a", "pkg/a2a/client", "pkg/flow", "pkg/a2a/a2atest"},
+			// Our A2A server in process, for tests of A2A clients.
+			"pkg/a2a/a2atest": {
+				"pkg/a2a", "pkg/agentapi", "pkg/auth", "pkg/harness", "pkg/llm", "pkg/llm/llmtest", "pkg/store/scoped", "pkg/tool",
+			},
 			// The event bus knows tenants (for topic names) and the clock,
 			// nothing else: the store, the runner and the API build on it
 			// (E18). Its tests use the env gating helper.

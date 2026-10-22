@@ -1,0 +1,13 @@
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+
+data: {"jsonrpc":"2.0","id":3,"result":{"task":{"id":"run_iw4f2cizyaynqye2rv42o7iyxu","contextId":"conv_aotoaargcosp5r5vhlr2biixem","status":{"state":"TASK_STATE_WORKING","timestamp":"2026-10-22T01:52:01.313Z"}}}}
+
+data: {"jsonrpc":"2.0","id":3,"result":{"artifactUpdate":{"taskId":"run_iw4f2cizyaynqye2rv42o7iyxu","contextId":"conv_aotoaargcosp5r5vhlr2biixem","artifact":{"artifactId":"answer","name":"answer","parts":[{"text":"echo: he"}]}}}}
+
+data: {"jsonrpc":"2.0","id":3,"result":{"artifactUpdate":{"taskId":"run_iw4f2cizyaynqye2rv42o7iyxu","contextId":"conv_aotoaargcosp5r5vhlr2biixem","artifact":{"artifactId":"answer","name":"answer","parts":[{"text":"llo"}]},"append":true}}}
+
+data: {"jsonrpc":"2.0","id":3,"result":{"artifactUpdate":{"taskId":"run_iw4f2cizyaynqye2rv42o7iyxu","contextId":"conv_aotoaargcosp5r5vhlr2biixem","artifact":{"artifactId":"answer","name":"answer","parts":[{"text":"echo: hello"}]},"lastChunk":true}}}
+
+data: {"jsonrpc":"2.0","id":3,"result":{"statusUpdate":{"taskId":"run_iw4f2cizyaynqye2rv42o7iyxu","contextId":"conv_aotoaargcosp5r5vhlr2biixem","status":{"state":"TASK_STATE_COMPLETED","timestamp":"2026-10-22T01:52:01.315Z"}}}}
+

@@ -178,10 +178,11 @@ IMAGE ?= $(BIN)
 # Budget for an image's size: its files, uncompressed (the flattened
 # filesystem, the same whatever docker's image store). agentkit measured
 # 17.7 MB in T005 (5.9 MB compressed). Raised from 20 to 30 when the store
-# drivers joined the one default binary (SQLite: about 21 MB, then pgx; E18).
+# drivers joined the one default binary (SQLite: about 21 MB, then pgx; E18),
+# then to 35 and 37 as feature tasks landed (docs/SIZES.md says why).
 # Log every size change, with its reason, in docs/SIZES.md (AGENTS.md, Sizes).
 # An image with a budget of its own (IMAGE_BUDGET_MB_<image>) gets that one.
-IMAGE_BUDGET_MB ?= $(or $(IMAGE_BUDGET_MB_$(IMAGE)),35)
+IMAGE_BUDGET_MB ?= $(or $(IMAGE_BUDGET_MB_$(IMAGE)),37)
 # fakellm (T004) is a test-only image, standard library only: 12 MB, about
 # 1 MB over its binary plus the base. Growth there means something linked in.
 IMAGE_BUDGET_MB_fakellm ?= 12

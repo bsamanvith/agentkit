@@ -254,7 +254,7 @@ func (c *Component) Handler() http.Handler { return http.HandlerFunc(c.serve) }
 // reserved are the paths of other components: a request there that no
 // component took is a 404, never the app, whatever its method. They are
 // matched on the cleaned path, so //v1/x and /a/../v1/x are reserved too.
-var reserved = []string{"/v1", "/mcp", "/rpc"}
+var reserved = []string{"/v1", "/mcp", "/rpc", "/agui", "/a2a", "/.well-known"}
 
 func isReserved(clean string) bool {
 	for _, prefix := range reserved {

@@ -5,13 +5,87 @@ package main
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/fstest"
 
 	"github.com/bsamanvith/agentkit/pkg/harness"
+	"github.com/bsamanvith/agentkit/pkg/skill"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 )
+
+// TestLiveDeferredSkillLoad: real Claude, natively, loads a skill that lists
+// a deferred tool and calls the tool. The skill_load result carries the
+// skill's text and a tool_reference block in one tool_result, a shape the
+// tool search docs do not show (their custom search returns references
+// alone); this is the test that the API takes it.
+func TestLiveDeferredSkillLoad(t *testing.T) {
+	t.Parallel()
+	requireCredentials(t)
+	skills, err := skill.Load(fstest.MapFS{
+		"s/logistics/SKILL.md": &fstest.MapFile{Data: []byte("---\nname: logistics\ndescription: Answer questions about shipments.\n" +
+			"tools: [shipments_*]\n---\nCall shipments_list and report the shipments that are in transit.\n")},
+	}, "s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cat, err := skill.NewCatalog(skills...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tools, err := cat.Toolset()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var called atomic.Bool
+	for _, name := range []string{"shipments_list", "shipments_archive", "invoices_list", "invoices_archive"} {
+		tl, err := tool.Func(name, "Works on the company's "+strings.Split(name, "_")[0]+".", func(context.Context, struct{}) (string, error) {
+			if name == "shipments_list" {
+				called.Store(true)
+				return `[{"id":"SHP-7","status":"in transit"}]`, nil
+			}
+			return "[]", nil
+		}, tool.WithMetadata(tool.Metadata{Kind: tool.KindRead, Risk: tool.RiskLow}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		tools = append(tools, tl)
+	}
+	reg, err := tool.NewRegistry(tools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model, err := newClaude(modelFlags{model: defaultModelID, effort: "low"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := harness.New(model, reg,
+		harness.WithMaxTurns(6),
+		harness.WithSystem("You are an operations assistant. Before anything else, load the skill \"logistics\" with skill_load and follow it."),
+		harness.WithDeferLoading(func(name string) bool { return strings.Contains(name, "_") && !strings.HasPrefix(name, "skill_") }),
+		harness.WithNativeToolSearch(),
+		harness.WithToolLoader(skill.LoadTool, cat.ToolsOf),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := harness.Collect(h.Run(t.Context(), harness.Input{Message: harness.UserText("Which shipments are in transit?")}))
+	if err != nil {
+		t.Fatal(err) // a 400 here means the mixed tool_result is refused
+	}
+	var loaded []string
+	for _, tr := range res.Record.Turns {
+		loaded = append(loaded, tr.Loaded...)
+	}
+	if !slices.Contains(loaded, "shipments_list") {
+		t.Errorf("loaded %v, want skill_load to have loaded shipments_list", loaded)
+	}
+	if !called.Load() {
+		t.Error("Claude did not call shipments_list after loading the skill")
+	}
+}
 
 // TestLiveDeferredTool: real Claude, given 30 deferred tools and a task only
 // one of them does, finds it with tool_search and calls it: natively (the

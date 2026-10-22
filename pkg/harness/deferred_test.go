@@ -327,3 +327,91 @@ func (p proxy) Definition() tool.Definition { return p.def.Clone() }
 func (p proxy) Invoke(ctx context.Context, in json.RawMessage) (json.RawMessage, error) {
 	return p.reg.Invoke(ctx, p.def.Name, in)
 }
+
+// Natively too, a deferred tool the model calls before loading it does not
+// run: the provider holds its definition back, and the harness refuses it.
+func TestDeferredNativeNotLoadedIsRefused(t *testing.T) {
+	leakcheck(t)
+	r := &ran{}
+	fake := llmtest.NewFake(t, llmtest.ToolCalls(use("c1", "svc_maps_lookup", `{}`)), llmtest.Text("ok"))
+	h := newHarness(t, fake, manyTools(t, r), harness.WithDeferLoading(deferSvc), harness.WithNativeToolSearch())
+	if _, _, err := run(t, h, prompt("Where?")); err != nil {
+		t.Fatal(err)
+	}
+	if got := results(t, fake.Requests()[1].Messages[2])[0]; !got.IsError || len(got.Loads) != 0 {
+		t.Errorf("result %+v, want an error that loads nothing", got)
+	}
+	diff(t, "tools that ran", []string(nil), r.list())
+}
+
+// A search finds only tools not loaded yet, at most 20 however many it is
+// asked for; a loader loads only what is not loaded yet.
+func TestDeferredSearchSkipsLoaded(t *testing.T) {
+	leakcheck(t)
+	r := &ran{}
+	reg := joinTools(t, manyTools(t, r), classified(t, r, "skill_load", tool.Metadata{Kind: tool.KindRead, Risk: tool.RiskLow}))
+	listed := func(json.RawMessage) []string { return []string{"svc_weather_*"} }
+	fake := llmtest.NewFake(t,
+		llmtest.ToolCalls(use("c1", harness.SearchTool, `{"query":"svc_weather_lookup","max_results":1}`)),
+		llmtest.ToolCalls(use("c2", harness.SearchTool, `{"query":"weather"}`)),
+		llmtest.ToolCalls(use("c3", harness.SearchTool, `{"query":"svc","max_results":100}`)),
+		llmtest.ToolCalls(use("c4", "skill_load", `{}`)),
+		llmtest.Text("ok"),
+	)
+	h := newHarness(t, fake, reg, harness.WithDeferLoading(deferSvc), harness.WithToolLoader("skill_load", listed))
+	if _, _, err := run(t, h, prompt("find")); err != nil {
+		t.Fatal(err)
+	}
+	reqs := fake.Requests()
+	diff(t, "what the second search loaded", []string{"svc_weather_update"}, results(t, reqs[2].Messages[4])[0].Loads)
+	if got := results(t, reqs[3].Messages[6])[0].Loads; len(got) != 20 || slices.ContainsFunc(got, func(n string) bool { return strings.HasPrefix(n, "svc_weather") }) {
+		t.Errorf("third search loaded %v, want 20 tools, none loaded already", got)
+	}
+	diff(t, "what skill_load loaded", []string(nil), results(t, reqs[4].Messages[8])[0].Loads)
+}
+
+// A result marked as an error loads nothing, from a transcript too.
+func TestDeferredErrorResultLoadsNothing(t *testing.T) {
+	leakcheck(t)
+	r := &ran{}
+	given := harness.Transcript{
+		harness.UserText("earlier"),
+		llm.Assistant(use("c1", "now", `{}`)),
+		llm.User(llm.ToolResult{ToolUseID: "c1", Content: "x", IsError: true, Loads: []string{"svc_news_lookup"}}),
+	}
+	fake := llmtest.NewFake(t, llmtest.Text("ok"))
+	h := newHarness(t, fake, manyTools(t, r), harness.WithDeferLoading(deferSvc))
+	if _, _, err := run(t, h, harness.Input{Transcript: given}); err != nil {
+		t.Fatal(err)
+	}
+	diff(t, "tools of the first request", []string{"echo", "now", harness.SearchTool}, names(fake.Requests()[0].Tools))
+}
+
+// A loader call that waits for approval loads its tools once a person
+// approves it, in the resumed run.
+func TestDeferredLoaderAfterApproval(t *testing.T) {
+	leakcheck(t)
+	r := &ran{}
+	reg := joinTools(t, manyTools(t, r), classified(t, r, "skill_load", tool.Metadata{Kind: tool.KindWrite, Risk: tool.RiskMedium}))
+	listed := func(json.RawMessage) []string { return []string{"svc_github_lookup"} }
+	fake := llmtest.NewFake(t,
+		llmtest.ToolCalls(use("c1", "skill_load", `{}`)),
+		llmtest.ToolCalls(use("c2", "svc_github_lookup", `{}`)),
+		llmtest.Text("Done."),
+	)
+	opts := []harness.Option{
+		harness.WithDeferLoading(deferSvc), harness.WithToolLoader("skill_load", listed),
+		harness.WithInteraction(harness.Supervised), harness.WithToolPolicy(policy.MustPreset(policy.ApproveWrites), nil),
+	}
+	h := newHarness(t, fake, reg, opts...)
+	_, res, err := run(t, h, prompt("Look it up."))
+	if err != nil || res.Pending == nil {
+		t.Fatalf("err %v, pending %v", err, res.Pending)
+	}
+	_, res2, err := run(t, h, harness.Input{Transcript: res.Transcript, Pending: saved(t, res.Pending), Answers: []harness.Answer{{ID: "c1", Approved: true}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	diff(t, "what the approved skill loaded", []string{"svc_github_lookup"}, loadedOf(res2.Record))
+	diff(t, "tools that ran", []string{"skill_load", "svc_github_lookup"}, r.list())
+}

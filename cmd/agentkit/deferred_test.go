@@ -117,6 +117,40 @@ func TestServeDeferLoadingEmulated(t *testing.T) {
 	}
 }
 
+// TestServeDeferLoadingAll: defer_loading true defers every toolset tool
+// and never the skill tools, which the model needs to load the rest.
+func TestServeDeferLoadingAll(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	writeToolSkill(t, dir)
+	model := llmtest.NewFake(t, llmtest.Text("hi"))
+	config := strings.Replace(deferConfig, `["calc*", "echo"]`, "true", 1)
+	m, err := newSkillAgents(t, dir, strings.Replace(config, "%s", "", 1), model)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(m.Component.Handler())
+	t.Cleanup(ts.Close)
+	client, err := agentclient.New(ts.URL, agentclient.WithHTTPClient(ts.Client()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Run(t.Context(), agentclient.RunRequest{Message: "Hi.", Agent: "a"}); err != nil {
+		t.Fatal(err)
+	}
+	deferred := model.Requests()[0].Deferred
+	for _, name := range []string{"echo", "calculate", "current_time"} {
+		if !slices.Contains(deferred, name) {
+			t.Errorf("deferred %v, want %s among them", deferred, name)
+		}
+	}
+	for _, name := range []string{skill.LoadTool, skill.ReadTool, harness.SearchTool} {
+		if slices.Contains(deferred, name) {
+			t.Errorf("deferred %v, want %s sent in full", deferred, name)
+		}
+	}
+}
+
 // TestDeferLoadingConfigErrors: an entry that names nothing of the agent,
 // and native search on an OpenAI-compatible model, fail startup.
 func TestDeferLoadingConfigErrors(t *testing.T) {

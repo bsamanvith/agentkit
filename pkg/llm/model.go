@@ -43,7 +43,8 @@ type Request struct {
 	// until a [ToolResult.Loads] names them (its native deferred loading,
 	// such as Claude's defer_loading): the model sees their definitions
 	// only from then on. The harness sets it only for a model wired for
-	// native tool search; an adapter without it must not be given any.
+	// native tool search; an adapter without it refuses a request that names
+	// any, with [ErrInvalidRequest].
 	Deferred []string
 	// MaxTokens limits the output tokens of the reply. Zero means the
 	// adapter's default.

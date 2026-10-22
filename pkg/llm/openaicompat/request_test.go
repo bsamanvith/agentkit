@@ -290,6 +290,7 @@ func TestInvalidRequests(t *testing.T) {
 		"unknown reasoning field":    {Messages: []llm.Message{user, llm.Assistant(llm.Opaque{Provider: openaicompat.Provider, Data: json.RawMessage(`{"thinking":"x"}`)}), user}},
 		"schema not an object":       {Messages: []llm.Message{user}, Tools: []tool.Definition{{Name: "t", InputSchema: json.RawMessage(`[1]`)}}},
 		"negative max tokens":        {Messages: []llm.Message{user}, MaxTokens: -1},
+		"deferred tools":             {Messages: []llm.Message{user}, Tools: []tool.Definition{{Name: "t"}, {Name: "u"}}, Deferred: []string{"u"}},
 		"invalid effort":             {Messages: []llm.Message{user}, Provider: openaicompat.Options{ReasoningEffort: "High Effort"}},
 	}
 	for name, req := range cases {

@@ -77,6 +77,8 @@ func TestServeRejectsBadSetup(t *testing.T) {
 		// The a2a component (T067).
 		"a2a: without the agent API": {env: map[string]string{envComponents: "a2a"}, config: good, code: 1, says: a2aSays("a2a: needs the agent component")},
 		"a2a: bad public URL":        {env: map[string]string{envComponents: "agent,a2a", envA2AURL: "agents.example.com/a2a"}, config: good, code: 1, says: a2aSays(envA2AURL)},
+		// The agui component (T069).
+		"agui: without the agent API": {env: map[string]string{envComponents: "agui"}, config: good, code: 1, says: aguiSays("agui: needs the agent component")},
 		// Several agents.
 		"agents: and agent":               {env: map[string]string{envComponents: "agent"}, config: `{"agent":{},"agents":[{"name":"a"}]}`, code: 1, says: `"agent" is the one-agent form`},
 		"agents: agent_api and agent":     {env: map[string]string{envComponents: "agent"}, config: `{"agent":{},"agent_api":{}}`, code: 1, says: `"agent" is the one-agent form`},

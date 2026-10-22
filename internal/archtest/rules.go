@@ -233,6 +233,17 @@ func ModuleRules() Rules {
 				"pkg/agentapi", "pkg/auth", "pkg/harness", "pkg/llm", "pkg/llm/llmtest", "pkg/llm/anthropic",
 				"pkg/store/scoped", "pkg/tool", "pkg/toolset", "internal/testkit",
 			},
+			// The AG-UI server (T069), like the A2A server: the agent API's
+			// client in process, never the server, the harness, a store or
+			// pkg/a2ui (A2UI messages pass through as JSON; checked by its
+			// TestServerUsesNotTheAgentAPIServer). Its tests run it over the
+			// real agent API on the fake model, with a tool policy that
+			// holds calls and the A2UI tool, and over a fake agent API.
+			"pkg/agui": {
+				"pkg/agentapi/wire", "pkg/agentclient", "pkg/clock", "pkg/llm", "pkg/clock/clocktest",
+				"pkg/agentapi", "pkg/auth", "pkg/harness", "pkg/a2ui", "pkg/llm/llmtest", "pkg/policy",
+				"pkg/store/scoped", "pkg/tool",
+			},
 			// The A2A client (T068) and its toolset: the wire types of
 			// pkg/a2a and the credential slots of T044
 			// over net/http, never the server's agent API. Its

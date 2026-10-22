@@ -16,6 +16,7 @@ that goes over the wire (T102).
 | Toolsets | `toolsets` | `/rpc/toolsets/` | The connectors of `mcp.toolsets`, to runners and agent APIs (`pkg/tool/toolrpc`) |
 | MCP server | `mcp-server` | `/mcp/<name>` | The same toolsets over MCP, for Claude Code and other MCP clients (`pkg/mcp/server`) |
 | A2A | `a2a` (with `agent`) | `/a2a/<agent>`, `/.well-known/agent-card.json` | Each agent as an A2A v1.0 agent: its Agent Card, the message and task methods over its runs (task = run, contextId = conversation), JSON-RPC and HTTP+JSON. It calls the agent API in process with each request's own credential, so `/v1`'s keys, tokens, tenants, scopes and agent visibility apply unchanged (`pkg/a2a`) |
+| AG-UI | `agui` (with `agent`) | `/agui/<agent>` | Each agent to AG-UI 1.0 frontends (CopilotKit, `@ag-ui/client`): a `RunAgentInput` POST answered with the run's AG-UI events over SSE (thread = conversation), tool calls, A2UI surfaces as `a2ui-surface` activity snapshots, surface actions, and questions and approvals as interrupts resumed on the same run. It calls the agent API in process with each request's own credential, as `a2a` does (`pkg/agui`) |
 
 How they connect:
 
@@ -70,10 +71,10 @@ conversations, and runs fail until the runner is back.
 |---|---|---|---|
 | `agentkit` | `image` | none | Everything: every component, every store and bus, the CLI |
 | `agentkit-local` | `image-local` | `nopostgres noredis` | One machine: memory or SQLite |
-| `agentkit-dev` | `image-dev` | `nosqlite` | Deployed replicas: Postgres and Redis |
-| `agentkit-api` | `image-api` | `nomodels noconnectors nomcp nosqlite` | `agent` and `web`, memory or Postgres, Redis; no model SDK, connectors or MCP server |
-| `agentkit-runner` | `image-runner` | `noconnectors nomcp noweb noa2a nosqlite nopostgres noredis noagent` | `runner`: the model SDK; no agent API, store, bus, console, connectors, MCP or A2A server |
-| `agentkit-toolsets` | `image-toolsets` | `nomodels noweb noa2a nosqlite nopostgres noredis noagent` | `toolsets` and `mcp-server`: the connectors; no model SDK, agent API, store, bus, console or A2A server |
+| `agentkit-dev` | `image-dev` | `noagui nosqlite` | Deployed replicas: Postgres and Redis; no AG-UI server |
+| `agentkit-api` | `image-api` | `nomodels noconnectors nomcp noagui nosqlite` | `agent` and `web`, memory or Postgres, Redis; no model SDK, connectors, MCP or AG-UI server (`agui` runs on the `agentkit` and `agentkit-local` images) |
+| `agentkit-runner` | `image-runner` | `noconnectors nomcp noweb noa2a noagui nosqlite nopostgres noredis noagent` | `runner`: the model SDK; no agent API, store, bus, console, connectors, MCP, A2A or AG-UI server |
+| `agentkit-toolsets` | `image-toolsets` | `nomodels noweb noa2a noagui nosqlite nopostgres noredis noagent` | `toolsets` and `mcp-server`: the connectors; no model SDK, agent API, store, bus, console, A2A or AG-UI server |
 
 `make images-split` builds the last three. Their sizes and budgets are in
 [SIZES.md](SIZES.md); `make deps-check` (part of `make check`) fails when an
@@ -103,7 +104,8 @@ part out:
 | `nomcp` | the MCP server | no `mcp-server` component |
 | `noweb` | the console | no `web` component |
 | `noa2a` | the A2A server | no `a2a` component |
-| `noagent` | the agent API: its store and bus, the agents' memory, the toolsets added at run time, `migrate` | no `agent` component, so no `a2a` (it calls the agent API in process); the `runner` component still runs agents, and an `agentkit` toolset calls an agent API at its `settings.url` |
+| `noagui` | the AG-UI server | no `agui` component |
+| `noagent` | the agent API: its store and bus, the agents' memory, the toolsets added at run time, `migrate` | no `agent` component, so no `a2a` or `agui` (they call the agent API in process); the `runner` component still runs agents, and an `agentkit` toolset calls an agent API at its `settings.url` |
 
 A one-off build takes any mix, for example an API that runs its agents in
 process, with Postgres only and its toolsets from a toolsets pod:

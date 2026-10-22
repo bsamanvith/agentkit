@@ -39,7 +39,7 @@ Our own agent API (`/v1`, HTTP + SSE) stays the primary interface. The protocols
 - [x] [T066](T066-console-a2ui-renderer.md) Console: render A2UI surfaces with the console's own components, send actions back
 - [ ] [T067](T067-a2a-server.md) A2A server: Agent Cards, message and task methods over our runs, streaming
 - [x] [T068](T068-a2a-client.md) A2A client: remote agents as tools and flow steps
-- [ ] [T069](T069-ag-ui-adapter.md) AG-UI adapter (later, if a CopilotKit-style frontend is wanted)
+- [x] [T069](T069-ag-ui-adapter.md) AG-UI adapter (later, if a CopilotKit-style frontend is wanted)
 
 Order:
 - all of this comes after the console basics (T055) and the agents API (T062);

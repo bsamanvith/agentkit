@@ -175,6 +175,15 @@ web-smoke: ## Browser smoke test (Playwright) against agentkit serve; uses insta
 	$(GO) build -o bin/agentkit-e2e ./cmd/agentkit
 	AGENTKIT_BIN=$(CURDIR)/bin/agentkit-e2e $(PNPM) --dir web e2e
 
+# AG-UI's reference client (T069): @ag-ui/client and its A2UI middleware,
+# pinned in pkg/agui/testdata/client, against pkg/agui on the fake model.
+# Without them TestReferenceClient skips; here it must run.
+NPM ?= npm
+.PHONY: agui-client
+agui-client: ## Run AG-UI's reference client (npm ci, then TestReferenceClient) against pkg/agui
+	$(NPM) ci --ignore-scripts --no-audit --no-fund --prefix pkg/agui/testdata/client
+	AGENTKIT_REQUIRE_AGUI_CLIENT=1 $(GO) test -race -count=1 -run '^TestReferenceClient$$' ./pkg/agui
+
 # Images (see Dockerfile). BIN picks the binary in cmd/, TAGS its build tags.
 DOCKER ?= docker
 comma := ,
@@ -201,21 +210,22 @@ IMAGE_BUDGET_MB_fakellm ?= 12
 # (cmd/agentkit/backends.go). `make image-<variant>` builds agentkit-<variant>;
 # `make image` is the all-in-one, which runs any set of components.
 #   local     one machine: memory or SQLite, no Postgres, no Redis, no migrate
-#   dev       deployed replicas: memory or Postgres, and Redis; no SQLite
+#   dev       deployed replicas: memory or Postgres, and Redis; no SQLite,
+#             no AG-UI server (size budget)
 # The split deployment (T102, docs/COMPONENTS.md), one image per component:
 #   api       agent API and console; agents run on a runner, no model SDK,
-#             no connectors, no MCP server
+#             no connectors, no MCP or AG-UI server (AG-UI: size budget)
 #   runner    the agents' turn loops: the model SDK; toolsets come from the
-#             toolsets component; no agent API, store, bus, console, MCP or
-#             A2A server
+#             toolsets component; no agent API, store, bus, console, MCP,
+#             A2A or AG-UI server
 #   toolsets  the connectors, to runners (/rpc/toolsets/) and over MCP; no
-#             model SDK, agent API, store, bus, console or A2A server
+#             model SDK, agent API, store, bus, console, A2A or AG-UI server
 VARIANTS := local dev api runner toolsets
 TAGS_local := nopostgres noredis
-TAGS_dev := nosqlite
-TAGS_api := nomodels noconnectors nomcp nosqlite
-TAGS_runner := noconnectors nomcp noweb noa2a nosqlite nopostgres noredis noagent
-TAGS_toolsets := nomodels noweb noa2a nosqlite nopostgres noredis noagent
+TAGS_dev := noagui nosqlite
+TAGS_api := nomodels noconnectors nomcp noagui nosqlite
+TAGS_runner := noconnectors nomcp noweb noa2a noagui nosqlite nopostgres noredis noagent
+TAGS_toolsets := nomodels noweb noa2a noagui nosqlite nopostgres noredis noagent
 IMAGE_BUDGET_MB_local ?= 31
 IMAGE_BUDGET_MB_dev ?= 32
 IMAGE_BUDGET_MB_api ?= 23

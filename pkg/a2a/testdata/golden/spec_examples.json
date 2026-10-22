@@ -1,0 +1,732 @@
+{
+  "11.4-send": {
+    "task": {
+      "id": "run_8",
+      "contextId": "conv_7",
+      "status": {
+        "state": "TASK_STATE_COMPLETED",
+        "timestamp": "<time>"
+      },
+      "artifacts": [
+        {
+          "artifactId": "answer",
+          "name": "answer",
+          "parts": [
+            {
+              "text": "echo: Hello"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "11.6-not-found": {
+    "error": {
+      "code": 404,
+      "status": "NOT_FOUND",
+      "message": "Task not found",
+      "details": [
+        {
+          "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+          "reason": "TASK_NOT_FOUND",
+          "domain": "a2a-protocol.org",
+          "metadata": {
+            "taskId": "task-123",
+            "timestamp": "<time>"
+          }
+        }
+      ]
+    }
+  },
+  "6.1-send": {
+    "task": {
+      "id": "run_2",
+      "contextId": "conv_1",
+      "status": {
+        "state": "TASK_STATE_COMPLETED",
+        "timestamp": "<time>"
+      },
+      "artifacts": [
+        {
+          "artifactId": "answer",
+          "name": "answer",
+          "parts": [
+            {
+              "text": "echo: What is the weather today?"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "6.2-stream": [
+    {
+      "task": {
+        "id": "run_4",
+        "contextId": "conv_3",
+        "status": {
+          "state": "TASK_STATE_WORKING",
+          "timestamp": "<time>"
+        }
+      }
+    },
+    {
+      "artifactUpdate": {
+        "taskId": "run_4",
+        "contextId": "conv_3",
+        "artifact": {
+          "artifactId": "answer",
+          "name": "answer",
+          "parts": [
+            {
+              "text": "echo: Wr"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "artifactUpdate": {
+        "taskId": "run_4",
+        "contextId": "conv_3",
+        "artifact": {
+          "artifactId": "answer",
+          "name": "answer",
+          "parts": [
+            {
+              "text": "ite a de"
+            }
+          ]
+        },
+        "append": true
+      }
+    },
+    {
+      "artifactUpdate": {
+        "taskId": "run_4",
+        "contextId": "conv_3",
+        "artifact": {
+          "artifactId": "answer",
+          "name": "answer",
+          "parts": [
+            {
+              "text": "tailed r"
+            }
+          ]
+        },
+        "append": true
+      }
+    },
+    {
+      "artifactUpdate": {
+        "taskId": "run_4",
+        "contextId": "conv_3",
+        "artifact": {
+          "artifactId": "answer",
+          "name": "answer",
+          "parts": [
+            {
+              "text": "eport on"
+            }
+          ]
+        },
+        "append": true
+      }
+    },
+    {
+      "artifactUpdate": {
+        "taskId": "run_4",
+        "contextId": "conv_3",
+        "artifact": {
+          "artifactId": "answer",
+          "name": "answer",
+          "parts": [
+            {
+              "text": " climate"
+            }
+          ]
+        },
+        "append": true
+      }
+    },
+    {
+      "artifactUpdate": {
+        "taskId": "run_4",
+        "contextId": "conv_3",
+        "artifact": {
+          "artifactId": "answer",
+          "name": "answer",
+          "parts": [
+            {
+              "text": " change"
+            }
+          ]
+        },
+        "append": true
+      }
+    },
+    {
+      "artifactUpdate": {
+        "taskId": "run_4",
+        "contextId": "conv_3",
+        "artifact": {
+          "artifactId": "answer",
+          "name": "answer",
+          "parts": [
+            {
+              "text": "echo: Write a detailed report on climate change"
+            }
+          ]
+        },
+        "lastChunk": true
+      }
+    },
+    {
+      "statusUpdate": {
+        "taskId": "run_4",
+        "contextId": "conv_3",
+        "status": {
+          "state": "TASK_STATE_COMPLETED",
+          "timestamp": "<time>"
+        }
+      }
+    }
+  ],
+  "6.4-version": {
+    "error": {
+      "code": 400,
+      "status": "INVALID_ARGUMENT",
+      "message": "the A2A protocol version \"0.5\" is not supported; this agent speaks 1.0",
+      "details": [
+        {
+          "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+          "reason": "VERSION_NOT_SUPPORTED",
+          "domain": "a2a-protocol.org",
+          "metadata": {
+            "supportedVersions": "1.0"
+          }
+        }
+      ]
+    }
+  },
+  "6.5-list-context": {
+    "tasks": [
+      {
+        "id": "run_2",
+        "contextId": "conv_1",
+        "status": {
+          "state": "TASK_STATE_COMPLETED",
+          "timestamp": "<time>"
+        }
+      }
+    ],
+    "nextPageToken": "",
+    "pageSize": 10,
+    "totalSize": 1
+  },
+  "6.5-list-invalid": {
+    "error": {
+      "code": 400,
+      "status": "INVALID_ARGUMENT",
+      "message": "pageSize must be between 1 and 100"
+    }
+  },
+  "6.5-list-page": {
+    "tasks": [
+      {
+        "id": "run_15",
+        "contextId": "conv_13",
+        "status": {
+          "state": "TASK_STATE_COMPLETED",
+          "timestamp": "<time>"
+        }
+      },
+      {
+        "id": "run_14",
+        "contextId": "conv_13",
+        "status": {
+          "state": "TASK_STATE_COMPLETED",
+          "timestamp": "<time>"
+        }
+      }
+    ],
+    "nextPageToken": "",
+    "pageSize": 10,
+    "totalSize": 12
+  },
+  "6.5-list-working": {
+    "tasks": [
+      {
+        "id": "run_27",
+        "contextId": "conv_26",
+        "status": {
+          "state": "TASK_STATE_WORKING",
+          "timestamp": "<time>"
+        }
+      }
+    ],
+    "nextPageToken": "",
+    "pageSize": 20,
+    "totalSize": 1
+  },
+  "6.6-push": {
+    "error": {
+      "code": 400,
+      "status": "INVALID_ARGUMENT",
+      "message": "Push Notification is not supported",
+      "details": [
+        {
+          "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+          "reason": "PUSH_NOTIFICATION_NOT_SUPPORTED",
+          "domain": "a2a-protocol.org"
+        }
+      ]
+    }
+  },
+  "6.7-file": {
+    "error": {
+      "code": 415,
+      "status": "INVALID_ARGUMENT",
+      "message": "file parts are not supported: send text or data",
+      "details": [
+        {
+          "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+          "reason": "CONTENT_TYPE_NOT_SUPPORTED",
+          "domain": "a2a-protocol.org",
+          "metadata": {
+            "mediaType": "image/png"
+          }
+        }
+      ]
+    }
+  },
+  "6.8-data": {
+    "task": {
+      "id": "run_6",
+      "contextId": "conv_5",
+      "status": {
+        "state": "TASK_STATE_COMPLETED",
+        "timestamp": "<time>"
+      },
+      "artifacts": [
+        {
+          "artifactId": "answer",
+          "name": "answer",
+          "parts": [
+            {
+              "text": "echo: Show me a list of my open IT tickets"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "8.5-card": {
+    "name": "default",
+    "description": "Answers questions with the demo tools.",
+    "supportedInterfaces": [
+      {
+        "url": "https://agents.example.com/a2a/default",
+        "protocolBinding": "JSONRPC",
+        "protocolVersion": "1.0"
+      },
+      {
+        "url": "https://agents.example.com/a2a/default",
+        "protocolBinding": "HTTP+JSON",
+        "protocolVersion": "1.0"
+      }
+    ],
+    "version": "1.2.3",
+    "capabilities": {
+      "streaming": true,
+      "pushNotifications": false,
+      "extendedAgentCard": false
+    },
+    "securitySchemes": {
+      "bearer": {
+        "httpAuthSecurityScheme": {
+          "scheme": "Bearer"
+        }
+      }
+    },
+    "securityRequirements": [
+      {
+        "schemes": {
+          "bearer": {
+            "list": []
+          }
+        }
+      }
+    ],
+    "defaultInputModes": [
+      "text/plain",
+      "application/json"
+    ],
+    "defaultOutputModes": [
+      "text/plain"
+    ],
+    "skills": [
+      {
+        "id": "default",
+        "name": "default",
+        "description": "Answers questions with the demo tools.",
+        "tags": [
+          "agent"
+        ]
+      },
+      {
+        "id": "toolset:demo",
+        "name": "demo",
+        "description": "The tools of the toolset demo: calculate, current_time, echo.",
+        "tags": [
+          "toolset",
+          "calculate",
+          "current_time",
+          "echo"
+        ]
+      }
+    ]
+  },
+  "9.4.1-SendMessage": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "task": {
+        "id": "run_10",
+        "contextId": "conv_9",
+        "status": {
+          "state": "TASK_STATE_COMPLETED",
+          "timestamp": "<time>"
+        },
+        "artifacts": [
+          {
+            "artifactId": "answer",
+            "name": "answer",
+            "parts": [
+              {
+                "text": "echo: What is the weather today?"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "9.4.2-SendStreamingMessage": [
+    {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "task": {
+          "id": "run_12",
+          "contextId": "conv_11",
+          "status": {
+            "state": "TASK_STATE_WORKING",
+            "timestamp": "<time>"
+          }
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "artifactUpdate": {
+          "taskId": "run_12",
+          "contextId": "conv_11",
+          "artifact": {
+            "artifactId": "answer",
+            "name": "answer",
+            "parts": [
+              {
+                "text": "echo: Wr"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "artifactUpdate": {
+          "taskId": "run_12",
+          "contextId": "conv_11",
+          "artifact": {
+            "artifactId": "answer",
+            "name": "answer",
+            "parts": [
+              {
+                "text": "ite a de"
+              }
+            ]
+          },
+          "append": true
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "artifactUpdate": {
+          "taskId": "run_12",
+          "contextId": "conv_11",
+          "artifact": {
+            "artifactId": "answer",
+            "name": "answer",
+            "parts": [
+              {
+                "text": "tailed r"
+              }
+            ]
+          },
+          "append": true
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "artifactUpdate": {
+          "taskId": "run_12",
+          "contextId": "conv_11",
+          "artifact": {
+            "artifactId": "answer",
+            "name": "answer",
+            "parts": [
+              {
+                "text": "eport on"
+              }
+            ]
+          },
+          "append": true
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "artifactUpdate": {
+          "taskId": "run_12",
+          "contextId": "conv_11",
+          "artifact": {
+            "artifactId": "answer",
+            "name": "answer",
+            "parts": [
+              {
+                "text": " climate"
+              }
+            ]
+          },
+          "append": true
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "artifactUpdate": {
+          "taskId": "run_12",
+          "contextId": "conv_11",
+          "artifact": {
+            "artifactId": "answer",
+            "name": "answer",
+            "parts": [
+              {
+                "text": " change"
+              }
+            ]
+          },
+          "append": true
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "artifactUpdate": {
+          "taskId": "run_12",
+          "contextId": "conv_11",
+          "artifact": {
+            "artifactId": "answer",
+            "name": "answer",
+            "parts": [
+              {
+                "text": "echo: Write a detailed report on climate change"
+              }
+            ]
+          },
+          "lastChunk": true
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "statusUpdate": {
+          "taskId": "run_12",
+          "contextId": "conv_11",
+          "status": {
+            "state": "TASK_STATE_COMPLETED",
+            "timestamp": "<time>"
+          }
+        }
+      }
+    }
+  ],
+  "9.4.3-GetTask": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "result": {
+      "id": "run_2",
+      "contextId": "conv_1",
+      "status": {
+        "state": "TASK_STATE_COMPLETED",
+        "timestamp": "<time>"
+      },
+      "artifacts": [
+        {
+          "artifactId": "answer",
+          "name": "answer",
+          "parts": [
+            {
+              "text": "echo: What is the weather today?"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "9.4.4-ListTasks": {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "result": {
+      "tasks": [
+        {
+          "id": "run_27",
+          "contextId": "conv_26",
+          "status": {
+            "state": "TASK_STATE_WORKING",
+            "timestamp": "<time>"
+          }
+        }
+      ],
+      "nextPageToken": "",
+      "pageSize": 50,
+      "totalSize": 1
+    }
+  },
+  "9.4.5-CancelTask": {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "result": {
+      "id": "run_29",
+      "contextId": "conv_28",
+      "status": {
+        "state": "TASK_STATE_CANCELED",
+        "message": {
+          "messageId": "run_29-status",
+          "contextId": "conv_28",
+          "taskId": "run_29",
+          "role": "ROLE_AGENT",
+          "parts": [
+            {
+              "text": "the run was canceled"
+            }
+          ]
+        },
+        "timestamp": "<time>"
+      }
+    }
+  },
+  "9.4.6-SubscribeToTask": [
+    {
+      "jsonrpc": "2.0",
+      "id": 5,
+      "result": {
+        "task": {
+          "id": "run_27",
+          "contextId": "conv_26",
+          "status": {
+            "state": "TASK_STATE_WORKING",
+            "timestamp": "<time>"
+          }
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 5,
+      "result": {
+        "statusUpdate": {
+          "taskId": "run_27",
+          "contextId": "conv_26",
+          "status": {
+            "state": "TASK_STATE_CANCELED",
+            "message": {
+              "messageId": "run_27-status",
+              "contextId": "conv_26",
+              "taskId": "run_27",
+              "role": "ROLE_AGENT",
+              "parts": [
+                {
+                  "text": "the run was canceled"
+                }
+              ]
+            },
+            "timestamp": "<time>"
+          }
+        }
+      }
+    }
+  ],
+  "9.4.8-GetExtendedAgentCard": {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "error": {
+      "code": -32004,
+      "message": "this agent has no extended agent card",
+      "data": [
+        {
+          "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+          "reason": "UNSUPPORTED_OPERATION",
+          "domain": "a2a-protocol.org"
+        }
+      ]
+    }
+  },
+  "9.5-method-not-found": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "error": {
+      "code": -32601,
+      "message": "Method not found: \"invalid/method\""
+    }
+  },
+  "9.5-task-not-found": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "error": {
+      "code": -32001,
+      "message": "Task not found",
+      "data": [
+        {
+          "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+          "reason": "TASK_NOT_FOUND",
+          "domain": "a2a-protocol.org",
+          "metadata": {
+            "taskId": "nonexistent-task-id",
+            "timestamp": "<time>"
+          }
+        }
+      ]
+    }
+  }
+}

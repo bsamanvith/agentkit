@@ -102,9 +102,15 @@ func withEnding(run store.Run, rp replayed, now time.Time) []Event {
 
 // runView is the run as GET /v1/runs/{id} returns it, from its events.
 func (s *Server) runView(ctx context.Context, run store.Run) (Run, error) {
-	evs, _, err := s.eventsOf(ctx, run)
+	evs, h, err := s.eventsOf(ctx, run)
 	if err != nil {
 		return Run{}, err
+	}
+	if h != nil && run.Status != store.StatusRunning {
+		// The run's end is stored a moment before its last event reaches
+		// its log: end its events as its status says, as for a run no hub
+		// follows, so the view has its answer (or error) and end.
+		evs = withEnding(run, summarize(evs), s.cfg.clock.Now())
 	}
 	v := s.runSummary(ctx, run)
 	if len(evs) == 0 { // a run whose execution has not announced it yet

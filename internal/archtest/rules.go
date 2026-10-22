@@ -48,7 +48,15 @@ func ModuleRules() Rules {
 			// MCP servers added at run time (T096): the SDK's tool type
 			// for definitions; its tests run SDK servers as the fakes.
 			"pkg/mcp/servers": {"github.com/modelcontextprotocol/go-sdk/mcp"},
-			"pkg/tool":        {"github.com/google/jsonschema-go/jsonschema"},
+			// The A2A server (T067) is written on net/http; its tests run
+			// the official SDK's client against it, on both bindings. That
+			// its own code never links the SDK is checked by its
+			// TestServerUsesNoSDKNorTheAgentAPIServer.
+			"pkg/a2a": {
+				"github.com/a2aproject/a2a-go/v2/a2a", "github.com/a2aproject/a2a-go/v2/a2aclient",
+				"github.com/a2aproject/a2a-go/v2/a2aclient/agentcard",
+			},
+			"pkg/tool": {"github.com/google/jsonschema-go/jsonschema"},
 			// The SQLite store's driver: pure Go, so binaries stay static
 			// (T029). It also names the driver's error type, for SQLITE_BUSY.
 			"pkg/store/sqlite": {"modernc.org/sqlite"},
@@ -183,6 +191,17 @@ func ModuleRules() Rules {
 				"pkg/mcp/servers", "pkg/mcp/server", "pkg/netguard",
 				// A tool policy that holds a call for approval (T084).
 				"pkg/policy",
+			},
+			// The A2A server (T067) reaches runs through the agent API's
+			// client, in process, so the API applies its own auth; it
+			// never imports the server, the harness or a store (checked
+			// by its TestServerUsesNoSDKNorTheAgentAPIServer). Its tests
+			// run it over the real agent API on the fake model, and its
+			// live test on Claude.
+			"pkg/a2a": {
+				"pkg/agentapi/wire", "pkg/agentclient", "pkg/clock",
+				"pkg/agentapi", "pkg/auth", "pkg/harness", "pkg/llm", "pkg/llm/llmtest", "pkg/llm/anthropic",
+				"pkg/store/scoped", "pkg/tool", "pkg/toolset", "internal/testkit",
 			},
 			// The event bus knows tenants (for topic names) and the clock,
 			// nothing else: the store, the runner and the API build on it

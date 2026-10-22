@@ -15,6 +15,7 @@ that goes over the wire (T102).
 | Runner | `runner` | `/rpc/runner/` | The agents' turn loops: a harness per agent, its model and its tools (`pkg/harness`, `pkg/runner/runnerrpc`) |
 | Toolsets | `toolsets` | `/rpc/toolsets/` | The connectors of `mcp.toolsets`, to runners and agent APIs (`pkg/tool/toolrpc`) |
 | MCP server | `mcp-server` | `/mcp/<name>` | The same toolsets over MCP, for Claude Code and other MCP clients (`pkg/mcp/server`) |
+| A2A | `a2a` (with `agent`) | `/a2a/<agent>`, `/.well-known/agent-card.json` | Each agent as an A2A v1.0 agent: its Agent Card, the message and task methods over its runs (task = run, contextId = conversation), JSON-RPC and HTTP+JSON. It calls the agent API in process with each request's own credential, so `/v1`'s keys, tokens, tenants, scopes and agent visibility apply unchanged (`pkg/a2a`) |
 
 How they connect:
 
@@ -45,6 +46,7 @@ a `pool.Pool` whose agents are `runnerrpc` clients.
 | `AGENTKIT_TOOLSETS_URL` | `agent`, `runner`, `mcp-server` | Take the toolsets from the toolsets component at this URL instead of building them. Every toolset the config names must be served there. |
 | `AGENTKIT_RPC_TOKEN` | all | The bearer token between components, 16 bytes or more. The runner and toolsets components require it on an address that is not loopback, and their callers send it. |
 | `AGENTKIT_API_TOKEN` | `agent`, `mcp-server` | The bearer token clients send to `/v1/` and `/mcp/`. Required on an address that is not loopback, and checked whenever it is set. |
+| `AGENTKIT_A2A_URL` | `a2a` | The origin the Agent Cards name (`https://agents.example.com`), when a proxy in front changes it. Unset, a card names the scheme and host of the request that fetched it. |
 | `AGENTKIT_DEPENDENCY_WAIT` | `agent`, `runner` | How long startup waits for the toolsets component to answer (default `60s`): pods start in any order. |
 
 Every container gets the same config file: the agents and `mcp.toolsets`.
@@ -70,8 +72,8 @@ conversations, and runs fail until the runner is back.
 | `agentkit-local` | `image-local` | `nopostgres noredis` | One machine: memory or SQLite |
 | `agentkit-dev` | `image-dev` | `nosqlite` | Deployed replicas: Postgres and Redis |
 | `agentkit-api` | `image-api` | `nomodels noconnectors nomcp nosqlite` | `agent` and `web`, memory or Postgres, Redis; no model SDK, connectors or MCP server |
-| `agentkit-runner` | `image-runner` | `noconnectors nomcp noweb nosqlite nopostgres noredis` | `runner`: the model SDK; no store, bus, console, connectors or MCP server |
-| `agentkit-toolsets` | `image-toolsets` | `nomodels noweb nosqlite nopostgres noredis` | `toolsets` and `mcp-server`: the connectors; no model SDK, store, bus or console |
+| `agentkit-runner` | `image-runner` | `noconnectors nomcp noweb noa2a nosqlite nopostgres noredis` | `runner`: the model SDK; no store, bus, console, connectors, MCP or A2A server |
+| `agentkit-toolsets` | `image-toolsets` | `nomodels noweb noa2a nosqlite nopostgres noredis` | `toolsets` and `mcp-server`: the connectors; no model SDK, store, bus, console or A2A server |
 
 `make images-split` builds the last three. Their sizes and budgets are in
 [SIZES.md](SIZES.md); `make deps-check` (part of `make check`) fails when an
@@ -100,6 +102,7 @@ part out:
 | `noconnectors` | every connector but the demo | the toolsets come from `AGENTKIT_TOOLSETS_URL` |
 | `nomcp` | the MCP server | no `mcp-server` component |
 | `noweb` | the console | no `web` component |
+| `noa2a` | the A2A server | no `a2a` component |
 
 A one-off build takes any mix, for example an API that runs its agents in
 process, with Postgres only and its toolsets from a toolsets pod:

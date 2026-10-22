@@ -138,6 +138,12 @@ below. Also `TestCatalogMatchesSpec` (drift against the spec's catalog),
 - An unknown `ui` mode accepted by `NewAgents`:
   `TestNewAgentsRejectsBadConfig`; by the config: `TestServeRejectsBadUI`.
 - `withUI` not adding the tool: `TestServeUIAgent`.
+- A surface deleted and created again in one call keeping the deleted
+  one's components: `TestInvalidMessages/recreated_without_its_tree`.
+- A child template's path not checked as a JSON pointer:
+  `TestInvalidMessages/template_path_not_a_pointer`.
+- `ActionText` not escaping `<`, so a name or context value closes the
+  `<ui_action>` tag: `TestActionText`.
 
 Equivalent, so not listed: dropping `TypeUI` from `kept`'s partial-turn
 types (a `ui` event always follows a `tool_result`, which already marks the

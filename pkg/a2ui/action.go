@@ -61,7 +61,9 @@ func (a Action) Check() error {
 
 // ActionText is the text of the user message that tells the agent about a:
 // the action message as JSON (version, then the action, its timestamp in
-// UTC and an absent context as {}), between <ui_action> tags. It fails when
+// UTC, an absent context as {}, and <, > and & in strings escaped as
+// <, > and &, so that nothing in it closes the tags),
+// between <ui_action> tags. It fails when
 // a does not pass [Action.Check].
 func ActionText(a Action) (string, error) {
 	if err := a.Check(); err != nil {
@@ -77,9 +79,11 @@ func ActionText(a Action) (string, error) {
 		}
 		a.Context = buf.Bytes()
 	}
+	// The encoder escapes <, > and & in strings (<...), so no name or
+	// context value can write a tag: the text between the tags is all the
+	// action's, and "</ui_action>" occurs once, at the end.
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
 	if err := enc.Encode(actionMessage{Version: Version, Action: a}); err != nil {
 		return "", fmt.Errorf("%w: %w", ErrInvalid, err)
 	}

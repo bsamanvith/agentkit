@@ -205,8 +205,12 @@ type ref struct {
 // validate checks decoded messages (vs, from raws) as one batch.
 func validate(vs []any, raws [][]byte, prefix func(int) string) error {
 	var c checker
-	surfaces := map[string]*surface{}
-	var order []string           // surfaces with components, in the order seen
+	surfaces := map[string]*surface{} // by ID, the components since the surface's last deletion
+	type tree struct {
+		id string
+		s  *surface
+	}
+	var order []tree             // the trees to check, in the order seen
 	state := map[string]string{} // surface → its last lifecycle message: created, deleted, updated
 	for i, v := range vs {
 		at := prefix(i)
@@ -232,6 +236,9 @@ func validate(vs []any, raws [][]byte, prefix func(int) string) error {
 			state[id] = "created"
 		case kind == kindDelete:
 			state[id] = "deleted"
+			// A surface created again after this starts with no components:
+			// those before are checked as the tree that was deleted.
+			delete(surfaces, id)
 		case prev == "deleted":
 			c.fail(at+"/"+kind, ErrInvalid, "surface %q is deleted earlier in this call: create it again first", id)
 		default:
@@ -244,13 +251,13 @@ func validate(vs []any, raws [][]byte, prefix func(int) string) error {
 		if s == nil {
 			s = &surface{defs: map[string]def{}, first: at + "/" + kind}
 			surfaces[id] = s
-			order = append(order, id)
+			order = append(order, tree{id, s})
 		}
 		maps.Copy(s.defs, comps)
 	}
 	if !c.full() {
-		for _, id := range order {
-			c.tree(id, surfaces[id])
+		for _, t := range order {
+			c.tree(t.id, t.s)
 		}
 	}
 	if len(c.errs) > 0 {
@@ -660,7 +667,11 @@ func (c *checker) children(at string, v any) []ref {
 		}
 		return refs
 	case map[string]any:
-		return c.object(at, v, map[string]prop{"componentId": req(kID), "path": req(kLiteralString)}, "a child template")
+		refs := c.object(at, v, map[string]prop{"componentId": req(kID), "path": req(kLiteralString)}, "a child template")
+		if s, ok := v["path"].(string); ok && len(s) <= MaxStringBytes {
+			c.pointer(at+"/path", s, false)
+		}
+		return refs
 	}
 	c.fail(at, ErrInvalid, "children must be a list of component IDs, or a template {\"componentId\": ..., \"path\": \"/list\"}")
 	return nil
@@ -819,7 +830,8 @@ func (c *checker) url(at, s string) {
 
 // SafeURL reports whether s is an absolute http or https URL with a host:
 // the URLs a surface may show literally. A renderer applies the same rule to
-// URLs bound from the data model.
+// every URL it only knows when it draws: one bound from the data model, or
+// one a function call computes (formatString can build any string).
 func SafeURL(s string) bool {
 	u, err := url.Parse(s)
 	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" && u.User == nil &&

@@ -35,7 +35,9 @@
 // ui_render call, against the spec and the catalog. It rejects an unknown
 // component type or property, a wrong property type, a reference to a
 // component that is not defined (a dangling child), a cycle, an unsafe
-// literal URL (only absolute http and https URLs pass), and anything over
+// literal URL (only absolute http and https URLs pass; a URL bound to the
+// data model or computed by a function call is the renderer's to check,
+// with [SafeURL]), and anything over
 // the size limits ([MaxMessageBytes] and the others). Each problem is a
 // [*ValidationError] with the JSON pointer of the offending field and a
 // sentinel ([ErrUnknownComponent], [ErrUnknownProperty],

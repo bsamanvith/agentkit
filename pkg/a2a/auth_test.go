@@ -18,7 +18,7 @@ func TestAuth(t *testing.T) {
 	t.Parallel()
 	r := newRig(t)
 	task := r.send("default", keyA, message("secret of a"), nil)
-	waiting := r.send("default", keyA, message("wait"), map[string]any{"returnImmediately": true})
+	waiting := r.sendStarted("default", keyA, message("wait"))
 
 	t.Run("credentials", func(t *testing.T) {
 		rpcBody := `{"jsonrpc":"2.0","id":1,"method":"GetTask","params":{"id":"` + task.ID + `"}}`

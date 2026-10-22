@@ -221,7 +221,7 @@ func TestSpecExamples(t *testing.T) {
 	vars["secondPage"] = pageToken(10)
 	check("6.5-list-page")
 
-	waiting := r.send("default", keyA, message("wait for me"), map[string]any{"returnImmediately": true})
+	waiting := r.sendStarted("default", keyA, message("wait for me"))
 	vars["waitingTask"], vars["waitingContext"], vars["firstPage"] = waiting.ID, waiting.ContextID, pageToken(0)
 	check("6.5-list-working")
 	check("9.4.4-ListTasks")
@@ -230,7 +230,7 @@ func TestSpecExamples(t *testing.T) {
 	r.whenStreamOpens(func() { r.cancelRun(keyA, waiting.ID) })
 	check("9.4.6-SubscribeToTask")
 
-	other := r.send("default", keyA, message("wait again"), map[string]any{"returnImmediately": true})
+	other := r.sendStarted("default", keyA, message("wait again"))
 	vars["otherWaitingTask"] = other.ID
 	check("9.4.5-CancelTask")
 

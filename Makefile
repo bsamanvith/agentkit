@@ -93,10 +93,11 @@ fuzz: ## Run every fuzz target for FUZZTIME (default 10s)
 	scripts/fuzz.sh $(FUZZTIME)
 
 .PHONY: lint
-lint: $(GOLANGCI) ## Run golangci-lint, then the skills and task-file lint (scripts/lint-skills.sh) and its fixtures
+lint: $(GOLANGCI) ## Run golangci-lint, then the skills and task-file lint (scripts/lint-skills.sh) and its fixtures, and scripts/test-timing.sh's
 	$(GOLANGCI) run ./...
 	scripts/lint-skills.sh
 	scripts/lint-skills.sh --test >/dev/null
+	scripts/test-timing.sh --test >/dev/null
 
 .PHONY: fmt
 fmt: $(GOLANGCI) ## Format code in place

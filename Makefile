@@ -155,7 +155,7 @@ web-check: ## Web: lint, format, typecheck, unit tests, audit, build; fail if pk
 	$(PNPM) --dir web format:check
 	$(PNPM) --dir web typecheck
 	$(PNPM) --dir web test
-	$(PNPM) --dir web audit --audit-level high
+	PNPM=$(PNPM) web/scripts/audit.sh
 	web/scripts/check-build.sh
 	web/scripts/check-size.sh
 

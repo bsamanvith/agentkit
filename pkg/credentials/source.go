@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/oauth2"
 
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/tenancy"
@@ -186,7 +189,9 @@ func WithTokenTimeout(d time.Duration) SourcesOption { return func(s *Sources) {
 func WithLogger(l *slog.Logger) SourcesOption { return func(s *Sources) { s.log = l } }
 
 // WithTokenClient sets the HTTP client token endpoints are called with
-// (default http.DefaultClient).
+// (default http.DefaultClient's transport). Whichever it is, redirects are
+// not followed: a 307 or 308 would send the refresh token and the client
+// secret, which are in the request body, to wherever it points.
 func WithTokenClient(c *http.Client) SourcesOption { return func(s *Sources) { s.tokenClient = c } }
 
 // NewSources returns the sources over v.
@@ -214,6 +219,12 @@ func NewSources(v Vault, opts ...SourcesOption) (*Sources, error) {
 			return nil, fmt.Errorf("credentials: OAuth2 app of slot %q: unknown auth style %d", slot, app.AuthStyle)
 		}
 	}
+	if s.clock == nil || s.log == nil || s.tokenClient == nil {
+		return nil, errors.New("credentials: NewSources: nil clock, logger or token client")
+	}
+	tc := *s.tokenClient
+	tc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	s.tokenClient = &tc
 	if s.margin < 0 || s.timeout <= 0 {
 		return nil, errors.New("credentials: NewSources: the margin must not be negative and the timeout must be positive")
 	}
@@ -366,14 +377,32 @@ func (s *source) get(ctx context.Context, k flightKey) (Credential, error) {
 		if s.p.fresh(c) {
 			return c, nil
 		}
-		return s.p.once(ctx, k, func(ctx context.Context) (Credential, error) { return s.refresh(ctx, k) })
+		if _, app := s.p.apps[k.slot]; (!app || c.RefreshToken.IsZero()) && s.p.usable(c) {
+			return c, nil // cannot be refreshed: used until it expires
+		}
+		return s.own(s.p.once(ctx, k, func(ctx context.Context) (Credential, error) { return s.refresh(ctx, k) }))
 	case ClientCredentials:
 		if tok, ok := s.p.cached(k, meta.Version); ok {
 			return tok, nil
 		}
-		return s.p.once(ctx, k, func(ctx context.Context) (Credential, error) { return s.clientToken(ctx, k) })
+		return s.own(s.p.once(ctx, k, func(ctx context.Context) (Credential, error) { return s.clientToken(ctx, k) }))
 	}
 	return cred, nil
+}
+
+// own names this source's toolset in an error of a flight that another
+// toolset sharing the slot started: flights are per credential, not per
+// toolset.
+func (s *source) own(c Credential, err error) (Credential, error) {
+	var nc *NotConnectedError
+	var se *SourceError
+	switch {
+	case errors.As(err, &nc) && nc.Toolset != s.toolset:
+		return nil, s.notConnected()
+	case errors.As(err, &se) && se.Toolset != s.toolset:
+		return nil, &SourceError{Toolset: s.toolset, Reason: se.Reason, Err: se.Err}
+	}
+	return c, err
 }
 
 func (s *Sources) cached(k flightKey, version int64) (OAuth2, bool) {
@@ -410,8 +439,11 @@ func (s *source) HTTPClient(ctx context.Context, base *http.Client, opts ...Auth
 	c.Transport = &authTransport{src: s, key: k, cfg: cfg, next: next}
 	check := base.CheckRedirect
 	c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		if len(via) > 0 && req.URL.Host != via[0].URL.Host {
+		if len(via) > 0 && !strings.EqualFold(req.URL.Host, via[0].URL.Host) {
 			return fmt.Errorf("credentials: %s: refusing a redirect to another host, which would get the credential", s.toolset)
+		}
+		if len(via) > 0 && via[0].URL.Scheme == "https" && req.URL.Scheme != "https" {
+			return fmt.Errorf("credentials: %s: refusing a redirect from https to %s, which would send the credential in the clear", s.toolset, req.URL.Scheme)
 		}
 		if check != nil {
 			return check(req, via)
@@ -464,12 +496,6 @@ func (t *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 // tokenType is the scheme an access token is sent with: "Bearer" unless the
-// token endpoint named another (RFC 6750 says the scheme is case
-// insensitive; some servers are not).
-func tokenType(t string) string {
-	switch t {
-	case "", "bearer", "BEARER":
-		return "Bearer"
-	}
-	return t
-}
+// token endpoint named another, in x/oauth2's canonical case (RFC 6750 says
+// the scheme is case insensitive; some servers are not).
+func tokenType(t string) string { return (&oauth2.Token{TokenType: t}).Type() }

@@ -666,3 +666,103 @@ func TestHTTPClientSendsTheCredential(t *testing.T) {
 		t.Errorf("redirect to another host: %v, credential sent there: %v", err, leaked)
 	}
 }
+
+// A redirect from https to http on the same host is refused: the transport
+// would send the credential in the clear.
+func TestHTTPClientRefusesADowngradeRedirect(t *testing.T) {
+	t.Parallel()
+	r := newSrcRig(t)
+	ctx := scopeCtx(t, "tenant-a", "")
+	r.put(ctx, "", "key", credentials.APIKey{Key: secret("k")})
+	tls := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Same host and port as the TLS server, plain http.
+		http.Redirect(w, r, "http://"+r.Host+"/down", http.StatusFound)
+	}))
+	defer tls.Close()
+	c, err := r.source(r.sources, "key", "").HTTPClient(ctx, tls.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := call(t, c, tls.URL+"/up"); err == nil || !strings.Contains(err.Error(), "in the clear") {
+		t.Errorf("https to http redirect: %v, want it refused", err)
+	}
+}
+
+// Two toolsets sharing a slot: a caller that joins the refresh another
+// toolset started gets an error naming its own toolset. (Should B load the
+// credential after A marked it, it is not connected on its own: the test
+// passes either way, and catches the bug whenever B joins A's refresh.)
+func TestSharedSlotErrorsNameTheCaller(t *testing.T) {
+	t.Parallel()
+	reached, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	ts := credentialstest.NewTokenServer(t, credentialstest.TokenServerOptions{
+		Hook: func(http.ResponseWriter, *http.Request, url.Values) bool {
+			once.Do(func() { close(reached) })
+			<-release
+			return false
+		},
+	})
+	r := newSrcRig(t, credentials.WithOAuth2App("mail", credentials.OAuth2App{ClientID: ts.ClientID, ClientSecret: credentials.NewSecret(ts.ClientSecret), TokenURL: ts.URL}))
+	ctx := scopeCtx(t, "tenant-a", "")
+	r.put(ctx, "", "mail", expiring("rt-unknown")) // invalid_grant
+	srcs := map[string]credentials.Source{}
+	for _, name := range []string{"mail-a", "mail-b"} {
+		src, err := r.sources.Source(name, "mail", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		srcs[name] = src
+	}
+	errs := make(chan error, 1)
+	go func() {
+		_, err := srcs["mail-a"].Get(ctx)
+		errs <- err
+	}()
+	<-reached // mail-a's refresh is at the token endpoint
+	time.AfterFunc(100*time.Millisecond, func() { close(release) })
+	_, errB := srcs["mail-b"].Get(ctx)
+	notConnected(t, <-errs, "mail-a")
+	notConnected(t, errB, "mail-b")
+}
+
+// A token endpoint that redirects is not followed: a 307 would resend the
+// refresh token and the client secret (in the form) to another host.
+func TestTokenEndpointRedirectNotFollowed(t *testing.T) {
+	t.Parallel()
+	got := make(chan string, 4)
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		got <- string(b) + r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusTeapot)
+	}))
+	t.Cleanup(elsewhere.Close)
+	ts := credentialstest.NewTokenServer(t, credentialstest.TokenServerOptions{
+		Hook: func(w http.ResponseWriter, r *http.Request, _ url.Values) bool {
+			http.Redirect(w, r, elsewhere.URL+"/token", http.StatusTemporaryRedirect)
+			return true
+		},
+	})
+	for _, style := range []credentials.AuthStyle{credentials.AuthInHeader, credentials.AuthInParams} {
+		r := newSrcRig(t, credentials.WithOAuth2App("crm", credentials.OAuth2App{ClientID: ts.ClientID, ClientSecret: secret("client"), TokenURL: ts.URL, AuthStyle: style}),
+			credentials.WithTokenClient(&http.Client{}))
+		ctx := scopeCtx(t, "tenant-a", "")
+		expired := expiring("rt-" + canary)
+		expired.Expiry = time.Now().Add(-time.Second)
+		r.put(ctx, "", "crm", expired)
+		_, err := r.source(r.sources, "crm", "").Get(ctx)
+		var se *credentials.SourceError
+		if !errors.As(err, &se) || !strings.Contains(err.Error(), "307") {
+			t.Errorf("style %d: %v, want a SourceError naming the 307", style, err)
+		}
+		r.put(ctx, "", "api", credentials.ClientCredentials{ClientID: "c", ClientSecret: secret("cc"), TokenURL: ts.URL})
+		if _, err := r.source(r.sources, "api", "").Get(ctx); err == nil {
+			t.Errorf("style %d: client credentials through a redirect succeeded", style)
+		}
+	}
+	select {
+	case b := <-got:
+		t.Errorf("the redirect was followed; the other host got %q", b)
+	default:
+	}
+}

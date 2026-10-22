@@ -427,3 +427,26 @@ func TestCredentialSlotNeedsAVault(t *testing.T) {
 		}
 	}
 }
+
+// TestOAuth2TokenURL: the client secret and refresh tokens go to token_url,
+// so it is https, or http only on a loopback host.
+func TestOAuth2TokenURL(t *testing.T) {
+	t.Parallel()
+	vault := credentials.NewVault(memory.New(), credentials.NewSealer(testRing(t)))
+	c := cli{getenv: func(string) string { return "s3cret" }}
+	for u, ok := range map[string]bool{
+		"https://oauth2.example.com/token": true,
+		"http://127.0.0.1:8080/token":      true,
+		"http://[::1]/token":               true,
+		"http://localhost/token":           true,
+		"http://oauth2.example.com/token":  false,
+		"ftp://127.0.0.1/token":            false,
+		"https:///token":                   false,
+	} {
+		cfg := credentialsConfig{OAuth2: []oauth2AppConfig{{Slot: "mail", TokenURL: u, ClientID: "app", ClientSecretEnv: "SECRET"}}}
+		_, err := c.credentialSources(vault, cfg, slog.New(slog.DiscardHandler))
+		if (err == nil) != ok {
+			t.Errorf("token_url %q: %v, want accepted %v", u, err, ok)
+		}
+	}
+}

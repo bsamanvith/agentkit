@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"net"
 	"net/url"
 	"slices"
 	"strings"
@@ -161,8 +162,11 @@ func (c cli) credentialSources(vault credentials.Vault, cfg credentialsConfig, l
 		if secret == "" {
 			return nil, fmt.Errorf("%s: $%s (client_secret_env) is not set", where, a.ClientSecretEnv)
 		}
-		if u, err := url.Parse(a.TokenURL); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
-			return nil, fmt.Errorf("%s: token_url %q is not an http(s) URL", where, a.TokenURL)
+		// The client secret and refresh tokens go to it: https, or http only
+		// on a loopback host.
+		if u, err := url.Parse(a.TokenURL); err != nil || u.Host == "" ||
+			u.Scheme != "https" && (u.Scheme != "http" || !isLoopback(net.JoinHostPort(u.Hostname(), "0"))) {
+			return nil, fmt.Errorf("%s: token_url %q: want an https URL (http only on a loopback host)", where, a.TokenURL)
 		}
 		opts = append(opts, credentials.WithOAuth2App(a.Slot, credentials.OAuth2App{
 			ClientID: a.ClientID, ClientSecret: credentials.NewSecret(secret), TokenURL: a.TokenURL, AuthStyle: style,

@@ -3379,7 +3379,7 @@
             }
           },
           "400": {
-            "description": "invalid_request: the body is not JSON, or the webhook-id is not ^[a-zA-Z0-9_.:-]{1,128}$.",
+            "description": "invalid_request: the body is not JSON in UTF-8, or the webhook-id is not ^[a-zA-Z0-9_.:-]{1,128}$.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3409,7 +3409,7 @@
             }
           },
           "409": {
-            "description": "replayed: the trigger has taken a delivery with this webhook-id; trigger_paused: the trigger is paused. No run was started.",
+            "description": "replayed: the trigger has taken a delivery with this webhook-id (kept for at least 10 minutes, so for as long as a replay's timestamp is accepted), unless its firing failed or was lost (pending for over 10 minutes), which a retry fires again; trigger_paused: the trigger is paused; conversation_busy, invalid_request: the trigger's conversation has a run going on, or its agent is not served here. No run was started.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3420,6 +3420,42 @@
           },
           "413": {
             "description": "too_large: the body is over the server's limit (64 KiB by default).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "too_many_background_runs: the tenant has as many background runs going on as the server allows; over_capacity: the runner pool the run is placed in is at its limit. Retryable: the firing is recorded as failed, and a retry with the same webhook-id fires it again.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "over_capacity: too many runs; shutting_down: the server is draining. Retryable with the same webhook-id.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {

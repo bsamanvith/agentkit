@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"time"
+	"unicode/utf8"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/harness"
@@ -515,8 +516,10 @@ func (s *Server) postHook(w http.ResponseWriter, r *http.Request) {
 	case !deliveryID.MatchString(id):
 		writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "webhook-id " + quote(id) + " must match " + deliveryID.String()})
 		return
-	case !json.Valid(body):
-		writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "the body is not JSON"})
+	case !json.Valid(body) || !utf8.Valid(body):
+		// encoding/json takes bytes that are not UTF-8 inside strings; the
+		// run's message must be text.
+		writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "the body is not JSON in UTF-8"})
 		return
 	}
 	ctx := tenancy.With(context.WithoutCancel(r.Context()), tt.Tenant)

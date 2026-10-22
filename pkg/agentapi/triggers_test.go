@@ -552,6 +552,7 @@ func TestWebhookRefusals(t *testing.T) {
 		{name: "replayed later", path: tr.Webhook.Path, secret: tr.Webhook.Secret, id: "msg_1", at: now.Add(time.Minute), body: `{"n":1}`, want: 409, code: wire.CodeReplayed},
 		{name: "oversized", path: tr.Webhook.Path, secret: tr.Webhook.Secret, id: "msg_2", at: now, body: big, want: 413, code: agentapi.CodeTooLarge},
 		{name: "not JSON", path: tr.Webhook.Path, secret: tr.Webhook.Secret, id: "msg_2", at: now, body: `hello`, want: 400, code: agentapi.CodeInvalidRequest},
+		{name: "not UTF-8", path: tr.Webhook.Path, secret: tr.Webhook.Secret, id: "msg_2", at: now, body: "{\"a\":\"\xff\"}", want: 400, code: agentapi.CodeInvalidRequest},
 		{name: "bad delivery id", path: tr.Webhook.Path, secret: tr.Webhook.Secret, id: "msg 2<", at: now, body: `{}`, want: 400, code: agentapi.CodeInvalidRequest},
 		{name: "unknown webhook", path: "/v1/hooks/hk_nobody", secret: tr.Webhook.Secret, id: "msg_2", at: now, body: `{}`, want: 404, code: agentapi.CodeNotFound},
 	} {

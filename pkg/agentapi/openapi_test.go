@@ -665,7 +665,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	// waits at the gate, so that the next delivery is skipped.
 	tm := echo(t)
 	tm.gate = make(chan struct{}, 2)
-	rt := newTrigRig(t, tm, trigConfig{token: token})
+	rt := newTrigRig(t, tm, trigConfig{token: token, api: []agentapi.Option{agentapi.WithMaxBackgroundRuns(1)}})
 	sched := `{"id":"daily","prompt":"Summarize {{date}}","schedule":"CRON_TZ=Europe/Paris 0 9 * * 1-5"}`
 	rec.probe(rt, "create_trigger", 201, "POST", "/v1/triggers", sched, "")
 	rec.probe(rt, "create_trigger_invalid", 400, "POST", "/v1/triggers", `{"id":"bad","prompt":"x","schedule":"61 * * * *"}`, "")
@@ -711,6 +711,32 @@ func TestOpenAPIResponses(t *testing.T) {
 	rec.probe(rt, "hook_replayed", 409, "POST", gh.Webhook.Path, event, "", signed("msg_1", event)...)
 	bigHook := `{"x":"` + strings.Repeat("x", agentapi.DefaultHookBodyBytes) + `"}`
 	rec.probe(rt, "hook_too_large", 413, "POST", gh.Webhook.Path, bigHook, `{"x":"too long"}`, signed("msg_5", bigHook)...)
+	// Another trigger's delivery, while gh's run is the tenant's one
+	// background run.
+	gh2 := decodeAs[wire.Trigger](t, rec.probe(rt, "create_trigger_webhook_2", 201, "POST", "/v1/triggers", `{"id":"gh2","prompt":"Triage","webhook":true}`, ""))
+	key2, err := trigger.DecodeStandardSecret(gh2.Webhook.Secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := rt.clock.Now()
+	rec.probe(rt, "hook_too_many", 429, "POST", gh2.Webhook.Path, event, "",
+		trigger.StandardHeaderID, "msg_1", trigger.StandardHeaderTimestamp, strconv.FormatInt(at.Unix(), 10),
+		trigger.StandardHeaderSignature, trigger.SignStandard(key2, "msg_1", at, []byte(event)))
+	// A server at its one run: a delivery finds it over capacity.
+	cm := echo(t)
+	cm.gate = make(chan struct{}, 1)
+	rc := newTrigRig(t, cm, trigConfig{token: token, api: []agentapi.Option{agentapi.WithMaxConcurrentRuns(1)}})
+	hold := rc.task(`{"input":"hold on"}`)
+	gc := rc.create(`{"id":"gh","prompt":"Triage","webhook":true}`)
+	keyc, err := trigger.DecodeStandardSecret(gc.Webhook.Secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec.probe(rc, "hook_over_capacity", 503, "POST", gc.Webhook.Path, event, "",
+		trigger.StandardHeaderID, "msg_1", trigger.StandardHeaderTimestamp, strconv.FormatInt(at.Unix(), 10),
+		trigger.StandardHeaderSignature, trigger.SignStandard(keyc, "msg_1", at, []byte(event)))
+	cm.gate <- struct{}{}
+	rc.waitEnded(hold.ID)
 	tm.gate <- struct{}{}
 	rt.waitEnded(started.Firing.RunID)
 	rec.probe(rt, "list_firings", 200, "GET", "/v1/triggers/gh/firings?limit=5", "", "")

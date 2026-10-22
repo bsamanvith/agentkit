@@ -1,15 +1,16 @@
 name: live
 
 # The live tier (docs/ENGINEERING.md 2.2): make test-live against the real
-# providers, nightly and on demand (Actions > live > Run workflow), never on
-# a pull request. Its keys come from repository secrets. ANTHROPIC_API_KEY is
+# providers, on demand only (Actions > live > Run workflow), never on a pull
+# request. There is no schedule: the owner keeps no Anthropic key in GitHub
+# (T034), so live tests run in Claude sessions; a fork or a repository that
+# adds the secrets can dispatch this by hand. Its keys come from repository
+# secrets. ANTHROPIC_API_KEY is
 # required: without it (a secret that does not exist reads as empty) make
 # test-live LIVE_REQUIRED=1 fails and says so, rather than passing with every
 # test skipped. The other providers' keys are optional; their tests skip
 # without them.
 on:
-  schedule:
-    - cron: "23 3 * * *"
   workflow_dispatch:
 
 permissions:

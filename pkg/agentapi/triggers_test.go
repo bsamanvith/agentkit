@@ -810,6 +810,46 @@ func TestWebhookReplayAfterManyDeliveries(t *testing.T) {
 	}
 }
 
+// TestTriggerStoredAgent: a trigger may run an agent of the registry
+// (T075), whose published version its firing runs.
+func TestTriggerStoredAgent(t *testing.T) {
+	t.Parallel()
+	var ts store.TriggerStore
+	r := registryRig(t, func(st agentapi.Store) []agentapi.Option {
+		ts = st.(store.TriggerStore)
+		return []agentapi.Option{agentapi.WithTriggers(agentapi.Triggers{Store: ts})}
+	})
+	r.save("support", `{"system": "v1"}`, true)
+	if resp, b := r.do(http.MethodPost, "/v1/triggers", `{"id":"s","agent":"support","prompt":"Report","schedule":"@hourly"}`); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("a trigger of a stored agent = %d %s, want 201", resp.StatusCode, b)
+	}
+	var me wire.Me
+	if code := r.get("/v1/auth/me", &me); code != http.StatusOK {
+		t.Fatalf("GET /v1/auth/me = %d", code)
+	}
+	tn, err := tenancy.NewTenant(me.Tenant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := tenancy.With(t.Context(), tn)
+	tr, err := ts.GetTrigger(ctx, "s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.clock.Advance(tr.NextFireAt.Sub(r.clock.Now()))
+	r.model.gate <- struct{}{}
+	if err := r.srv.FireDue(t.Context(), store.TenantTrigger{Tenant: tn, Trigger: tr}); err != nil {
+		t.Fatal(err)
+	}
+	fs, err := ts.ListFirings(ctx, "s", 1)
+	if err != nil || len(fs) != 1 || fs[0].State != store.FiringStarted {
+		t.Fatalf("firings %+v, %v; want one started", fs, err)
+	}
+	if run := r.waitTask(fs[0].RunID); run.Agent != "support" || run.AgentVersion != 1 || !strings.HasPrefix(run.Answer, "v1 | ") {
+		t.Errorf("the firing's run = agent %q version %d, %q; want support's version 1", run.Agent, run.AgentVersion, run.Answer)
+	}
+}
+
 // TestStaticTriggers: the config's triggers are stored as static: the API
 // pauses and resumes them and changes nothing else; a sync replaces those
 // that changed (keeping paused) and removes those no longer given.

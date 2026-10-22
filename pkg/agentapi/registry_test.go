@@ -51,7 +51,8 @@ type testDefinition struct {
 // registryRig serves the config agent "default" and the agents of a
 // registry over the rig's store, built on one model that answers with the
 // system prompt it was sent, so a run's answer says which version ran.
-func registryRig(t *testing.T) *rig {
+// extra, if given, are more options of the server, on its store.
+func registryRig(t *testing.T, extra ...func(agentapi.Store) []agentapi.Option) *rig {
 	t.Helper()
 	ten := func(name string) tenancy.Tenant {
 		tn, err := tenancy.NewTenant(fmt.Sprintf("%s%d", name, time.Now().UnixNano()))
@@ -110,7 +111,7 @@ func registryRig(t *testing.T) *rig {
 		t.Fatal(err)
 	}
 	agents := []agentapi.Agent{{Name: agentapi.DefaultAgent, System: "config", Harness: agentHarness(t, m, registry(t), harness.WithSystem("config"), harness.WithClock(clk))}}
-	r := newRig(t, m, rigConfig{agents: agents, clock: clk, store: st, api: []agentapi.Option{
+	api := []agentapi.Option{
 		agentapi.WithTenant(nil), // the principal's
 		agentapi.WithAuthenticator(authn),
 		agentapi.WithToolsets(
@@ -118,7 +119,11 @@ func registryRig(t *testing.T) *rig {
 			agentapi.Toolset{Name: "b", Type: "demo", Tools: sets["b"]},
 		),
 		agentapi.WithAgentRegistry(reg),
-	}})
+	}
+	for _, e := range extra {
+		api = append(api, e(st)...)
+	}
+	r := newRig(t, m, rigConfig{agents: agents, clock: clk, store: st, api: api})
 	r.models, r.token = nil, keyAdminA
 	return r
 }

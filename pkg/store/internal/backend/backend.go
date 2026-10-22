@@ -89,7 +89,7 @@ func CheckEntry(e store.Entry) (Stored, error) {
 		return Stored{}, fmt.Errorf("%w: entry seq %d is not positive", store.ErrInvalid, e.Seq)
 	}
 	switch e.Kind {
-	case store.KindPrompt, store.KindTurn, store.KindInterrupt:
+	case store.KindPrompt, store.KindTurn, store.KindInterrupt, store.KindSteer:
 		if e.Covers != 0 {
 			return Stored{}, fmt.Errorf("%w: a %s entry covers nothing, got covers %d", store.ErrInvalid, e.Kind, e.Covers)
 		}

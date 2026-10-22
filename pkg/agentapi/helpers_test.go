@@ -658,6 +658,10 @@ func (r *rig) check() {
 				for _, m := range e.Record.Messages {
 					announced[conv] = append(announced[conv], m.Message)
 				}
+			case e.Type == agentapi.TypeSteered:
+				for _, text := range e.Steering {
+					announced[conv] = append(announced[conv], harness.UserText(text))
+				}
 			}
 		}
 	}
@@ -675,7 +679,12 @@ func (r *rig) check() {
 		}
 		var got, said []llm.Message
 		for _, m := range c.Messages {
-			got = append(got, m.Message)
+			if n := len(got); m.Steer && n > 0 && got[n-1].Role == llm.RoleUser {
+				// Steering: for the model, on the user message before it.
+				got[n-1] = llm.Message{Role: llm.RoleUser, Content: append(slices.Clone(got[n-1].Content), m.Message.Content...)}
+			} else {
+				got = append(got, m.Message)
+			}
 			if m.Message.Role != llm.RoleAssistant || m.Message.Text() != runner.CanceledText {
 				said = append(said, m.Message) // a run replaced before it answered gets a marker no stream announces
 			}
@@ -843,6 +852,15 @@ func checkStream(t *testing.T, events []agentapi.Event) {
 				if k[0] == turn+1 {
 					delete(calls, k)
 				}
+			}
+		case agentapi.TypeSteered:
+			// At a turn boundary: nothing of the next turn has come yet.
+			inTurn := deltas[turn+1] != ""
+			for k := range calls {
+				inTurn = inTurn || k[0] == turn+1
+			}
+			if inTurn || len(e.Steering) == 0 || slices.Contains(e.Steering, "") {
+				t.Errorf("event %d: steered %+v inside turn %d, or without its messages", i, e, turn+1)
 			}
 		default:
 			t.Errorf("event %d of unknown type %q", i, e.Type)

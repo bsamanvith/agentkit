@@ -134,6 +134,8 @@ func runClaimNext(t *testing.T, newStore func(t *testing.T, clk clock.Clock) (st
 		r.mustMove(b, "failed-for-good", store.StatusRunning, store.StatusFailed, store.Details{Error: "boom"})
 		r.mustCreate(b, "suspended", "c5")
 		r.mustMove(b, "suspended", store.StatusRunning, store.StatusSuspended, store.Details{Pending: []string{"main/ask"}})
+		r.mustCreate(b, "paused", "c9")
+		r.mustMove(b, "paused", store.StatusRunning, store.StatusPaused, store.Details{})
 		r.mustCreate(b, "done", "c6")
 		r.mustMove(b, "done", store.StatusRunning, store.StatusCompleted, store.Details{})
 		r.mustCreate(a, "chat", "c7", store.Interactive())

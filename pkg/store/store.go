@@ -65,6 +65,11 @@ const (
 	// that finishes it holds the reply again with its results. Like a
 	// compaction, it adds nothing to [Conversation.Messages].
 	KindInterrupt Kind = "interrupt"
+	// KindSteer holds what a person sent a running run (steering, T086):
+	// user messages the run's writer delivered at a turn boundary, after a
+	// turn's tool results and before the next model call. It is part of the
+	// context, and its messages count in [Conversation.Messages].
+	KindSteer Kind = "steer"
 )
 
 // Entry is one position of a conversation's log.
@@ -211,6 +216,9 @@ const (
 	StatusRunning Status = "running"
 	// StatusSuspended: waiting for an approval; Run.Pending holds the paths.
 	StatusSuspended Status = "suspended"
+	// StatusPaused: stopped at a turn boundary because a person asked
+	// (T086). Nothing resumes it until someone does; it is not final.
+	StatusPaused Status = "paused"
 	// StatusFailed: stopped by an error. It continues if Retryable once
 	// NextAttemptAt is due, or when an operator resumes it.
 	StatusFailed Status = "failed"
@@ -227,15 +235,18 @@ func (s Status) Final() bool {
 
 // CanMoveTo reports whether a run may move from s to to:
 //
-//	running   → suspended, failed, completed, rejected, canceled
+//	running   → suspended, paused, failed, completed, rejected, canceled
 //	suspended → running, rejected, canceled
+//	paused    → running, canceled
 //	failed    → running, canceled
 //
 // A final status moves nowhere.
 func (s Status) CanMoveTo(to Status) bool {
 	switch s {
 	case StatusRunning:
-		return to == StatusSuspended || to == StatusFailed || to.Final()
+		return to == StatusSuspended || to == StatusPaused || to == StatusFailed || to.Final()
+	case StatusPaused:
+		return to == StatusRunning || to == StatusCanceled
 	case StatusSuspended:
 		return to == StatusRunning || to == StatusRejected || to == StatusCanceled
 	case StatusFailed:

@@ -36,6 +36,6 @@ This is harness and runner work. The console screens are designed in T087 and bu
 - [x] [T083](T083-tool-policy.md) Tool policy engine: rules, presets, agent and environment policies, decisions in events
 - [ ] [T084](T084-interrupts-approvals.md) Interrupts and approvals: interaction modes, `ask_user`, approval holds, suspend and answer
 - [ ] [T085](T085-deferred-tool-loading.md) Deferred tool loading and skills that load tools
-- [ ] [T086](T086-task-steering.md) Steering a running task
+- [x] [T086](T086-task-steering.md) Steering a running task
 
 Order: T082 first (small, unblocks the rest). Then T083 and T085 in parallel. T084 after T083 and T030 (suspend and resume need the runner). T086 after T071.

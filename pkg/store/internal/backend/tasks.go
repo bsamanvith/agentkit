@@ -11,7 +11,7 @@ import (
 
 // statuses are every run status.
 var statuses = []store.Status{
-	store.StatusRunning, store.StatusSuspended, store.StatusFailed,
+	store.StatusRunning, store.StatusSuspended, store.StatusPaused, store.StatusFailed,
 	store.StatusCompleted, store.StatusRejected, store.StatusCanceled,
 }
 

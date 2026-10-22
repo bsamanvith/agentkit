@@ -2,11 +2,15 @@ package agentclient_test
 
 import (
 	"errors"
+	"slices"
 	"testing"
+	"time"
 
+	"github.com/bsamanvith/agentkit/internal/testkit"
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/agentclient"
+	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
 	"github.com/bsamanvith/agentkit/pkg/tenancy"
 )
@@ -76,5 +80,60 @@ func TestTasks(t *testing.T) {
 	}
 	if secret, err := r.client.WebhookSecret(ctx); err != nil || secret != "whsec_"+agentapi.DefaultTenant {
 		t.Errorf("WebhookSecret = %q, %v", secret, err)
+	}
+}
+
+// Steering a task through the client (T086): a message and a pause sent
+// while its model call waits reach it at the boundary after that turn; it
+// pauses (PauseTask again says so), ResumeTask continues it, the model reads
+// the message after the tool result, and once done a message or a resume is
+// ErrRunState; no task is ErrNotFound.
+func TestSteerTask(t *testing.T) {
+	t.Parallel()
+	m := &model{replies: []llmtest.Reply{
+		llmtest.ToolCalls(call("toolu_1", "echo", `{"text":"x"}`)), llmtest.Text("Done, without the PDF."),
+	}, gate: make(chan struct{})}
+	r := newRig(t, m)
+	ctx := t.Context()
+	task, err := r.client.StartTask(ctx, wire.TaskRequest{Input: "report"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	testkit.Eventually(t, 30*time.Second, func() bool { return len(m.requests()) == 1 })
+	msg, err := r.client.SteerTask(ctx, task.ID, "skip the PDF")
+	if err != nil || msg.RunID != task.ID || msg.Seq != 1 || msg.Text != "skip the PDF" {
+		t.Fatalf("SteerTask = %+v, %v", msg, err)
+	}
+	if run, err := r.client.PauseTask(ctx, task.ID); err != nil || run.Status != wire.StatusRunning {
+		t.Fatalf("PauseTask = %s, %v; want running until the boundary", run.Status, err)
+	}
+	m.gate <- struct{}{}
+	if run := r.waitEnded(task.ID); run.Status != wire.StatusPaused {
+		t.Fatalf("task %s, want paused", run.Status)
+	}
+	if run, err := r.client.PauseTask(ctx, task.ID); err != nil || run.Status != wire.StatusPaused {
+		t.Errorf("PauseTask on a paused task = %s, %v", run.Status, err)
+	}
+	if run, err := r.client.ResumeTask(ctx, task.ID); err != nil || run.Status != wire.StatusRunning {
+		t.Fatalf("ResumeTask = %s, %v", run.Status, err)
+	}
+	m.gate <- struct{}{}
+	if run := r.waitEnded(task.ID); run.Status != wire.StatusDone || run.Answer != "Done, without the PDF." {
+		t.Fatalf("task %s %q, want done", run.Status, run.Answer)
+	}
+	reqs := m.requests()
+	last := reqs[1].Messages[len(reqs[1].Messages)-1]
+	isResult := func(b llm.Block) bool { _, ok := b.(llm.ToolResult); return ok }
+	if txt, ok := last.Content[len(last.Content)-1].(llm.Text); !ok || txt.Text != "skip the PDF" || !slices.ContainsFunc(last.Content, isResult) {
+		t.Errorf("the model read %+v last, want the tool result then the message", last)
+	}
+	if _, err := r.client.SteerTask(ctx, task.ID, "too late"); !errors.Is(err, agentclient.ErrRunState) {
+		t.Errorf("SteerTask after the end: %v, want ErrRunState", err)
+	}
+	if _, err := r.client.ResumeTask(ctx, task.ID); !errors.Is(err, agentclient.ErrRunState) {
+		t.Errorf("ResumeTask after the end: %v, want ErrRunState", err)
+	}
+	if _, err := r.client.SteerTask(ctx, "nope", "hi"); !errors.Is(err, agentclient.ErrNotFound) {
+		t.Errorf("SteerTask on no task: %v, want ErrNotFound", err)
 	}
 }

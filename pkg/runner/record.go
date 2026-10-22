@@ -28,6 +28,20 @@ type Record struct {
 	// Interrupt is set on an interrupt entry ([store.KindInterrupt]): a turn
 	// that waits for people.
 	Interrupt *InterruptRecord `json:"interrupt,omitempty"`
+	// Steer is set on a steer entry ([store.KindSteer]).
+	Steer *SteerRecord `json:"steer,omitempty"`
+}
+
+// SteerRecord is the record of a steer entry: the steering messages the run
+// delivered at a turn boundary.
+type SteerRecord struct {
+	// At is when they were delivered.
+	At time.Time `json:"at"`
+	// Commands are the [store.Command.Seq]s of the steering commands the
+	// entry's messages came from, one per message, in order. A command
+	// named here is delivered, and never again, whether or not it was
+	// consumed.
+	Commands []int64 `json:"commands"`
 }
 
 // InterruptRecord is the record of an interrupt entry, whose one message is

@@ -19,11 +19,14 @@ import (
 // allows, restated for the suite.
 var (
 	allStatuses = []store.Status{
-		store.StatusRunning, store.StatusSuspended, store.StatusFailed,
+		store.StatusRunning, store.StatusSuspended, store.StatusPaused, store.StatusFailed,
 		store.StatusCompleted, store.StatusRejected, store.StatusCanceled,
 	}
 	allowedMoves = map[[2]store.Status]bool{
 		{store.StatusRunning, store.StatusSuspended}:  true,
+		{store.StatusRunning, store.StatusPaused}:     true,
+		{store.StatusPaused, store.StatusRunning}:     true,
+		{store.StatusPaused, store.StatusCanceled}:    true,
 		{store.StatusRunning, store.StatusFailed}:     true,
 		{store.StatusRunning, store.StatusCompleted}:  true,
 		{store.StatusRunning, store.StatusRejected}:   true,
@@ -443,6 +446,8 @@ func RunRunStore(t *testing.T, newStore func(t *testing.T, clk clock.Clock) stor
 		}
 		run("suspended")
 		r.mustMove(ctx, "suspended", store.StatusRunning, store.StatusSuspended, store.Details{Pending: []string{"main/ask"}})
+		run("paused")
+		r.mustMove(ctx, "paused", store.StatusRunning, store.StatusPaused, store.Details{})
 		run("due")
 		fail("due", store.Details{Retryable: true, NextAttemptAt: t0.Add(5 * time.Second)})
 		run("due-now")
@@ -961,7 +966,7 @@ func RunRunStore(t *testing.T, newStore func(t *testing.T, clk clock.Clock) stor
 			t.Parallel()
 			r := newRunRig(t, newStore)
 			ctx := r.ctx(tenantA)
-			for _, s := range []store.Status{store.StatusSuspended, store.StatusFailed} {
+			for _, s := range []store.Status{store.StatusSuspended, store.StatusPaused, store.StatusFailed} {
 				id := string(s)
 				r.mustCreate(ctx, id, id)
 				r.moveTo(ctx, id, s)

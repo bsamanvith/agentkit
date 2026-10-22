@@ -118,6 +118,29 @@
 // pool (as built, in a sandbox, in a VM of its own); whichever runs the
 // agent, the runner keeps the run's persistence ([E20]).
 //
+// # Steering
+//
+// With [WithCommands], a chat run reads its pending commands
+// ([store.CommandLog]) at every turn boundary: after a turn's tool results
+// are stored and before the next model call (or after the model's answer),
+// and when a resumed run starts. No model or tool call is in flight there.
+// The runner's commands ([SteerCommand], [PauseCommand], [ResumeCommand])
+// are read in order up to the first that is not its own (a stop or cancel,
+// which the run's consumer acts on). Steering messages read at one boundary
+// are stored together as one steer entry ([store.KindSteer]), announced in
+// one [EventSteered], and the agent goes on from the transcript with them
+// on the last user message (after the results the model has not seen yet),
+// so roles still alternate; after the model's answer they are the next
+// message, which the model answers. The entry's record names the commands
+// it delivered, so a crash between storing it and consuming them delivers
+// nothing twice.
+//
+// A pause makes the run paused ([store.StatusPaused]) at the boundary:
+// nothing claims or recovers it until [Runner.Resume] (a resume command
+// sent before the boundary withdraws the pause instead). A pause read with
+// the model's answer is ignored, and the run completes. Turn budgets count
+// per agent segment, as after a retry.
+//
 // # Leases and cancellation
 //
 // Every execution holds its run's lease, renews it from the runner's clock and

@@ -188,6 +188,8 @@ func ending(run store.Run, r replayed, now time.Time) *Event {
 		e.Error = &Error{Code: CodeRejected, Message: run.Error}
 	case store.StatusSuspended:
 		e.Error = suspendedError(run, r.interrupts)
+	case store.StatusPaused:
+		e.Error = pausedError(run.ID)
 	default:
 		if held(run, now) || !run.Interactive {
 			// Going on, or a background run nobody holds just now, which
@@ -197,6 +199,11 @@ func ending(run store.Run, r replayed, now time.Time) *Event {
 		e.Error = interruptedError(run.ID)
 	}
 	return e
+}
+
+// pausedError is the error that ends an execution of a paused task.
+func pausedError(runID string) *Error {
+	return &Error{Code: CodePaused, Message: "the task is paused; POST /v1/tasks/" + runID + "/resume continues it"}
 }
 
 // suspendedError is the error of a suspended run: a flow run waits for
@@ -261,9 +268,13 @@ func (s *Server) conversationMessages(ctx context.Context, id string) ([]TimedMe
 				copy(times, rec.Turn.MessageTimes)
 			case rec.Canceled != nil:
 				times[0] = rec.Canceled.At
+			case rec.Steer != nil:
+				for i := range times {
+					times[i] = rec.Steer.At
+				}
 			}
 			for i, m := range e.Messages {
-				out = append(out, TimedMessage{At: times[i], Message: m})
+				out = append(out, TimedMessage{At: times[i], Message: m, Steer: e.Kind == store.KindSteer})
 			}
 		}
 		if page.Next == "" {

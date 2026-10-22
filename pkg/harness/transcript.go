@@ -21,7 +21,9 @@ import (
 //
 // A valid transcript alternates user and assistant messages starting with a
 // user message, and every tool call is answered in the next message by results
-// in the order of the calls. It does not have to start with a user's own
+// in the order of the calls. That message may go on with text after its
+// results: what a person said while the tools ran (steering), which the model
+// reads before it goes on. It does not have to start with a user's own
 // question: a summary of earlier history is a valid start.
 type Transcript []llm.Message
 
@@ -40,8 +42,8 @@ func (t Transcript) Clone() Transcript {
 // Validate checks that t can be sent to a model and saved: roles alternate
 // starting with the user; every message is well formed ([shapeProblem]);
 // every assistant message that calls tools is followed by a user message of
-// results for exactly those calls in the same order; and results and calls
-// appear nowhere else. A transcript that fails wraps [ErrInvalidInput].
+// results for exactly those calls in the same order, then nothing but text;
+// and results and calls appear nowhere else. A transcript that fails wraps [ErrInvalidInput].
 //
 // It checks structure only. Whether a provider accepts the content (an empty
 // reply, say) is for its adapter.
@@ -145,10 +147,18 @@ func checkResults(i int, m llm.Message, calls []llm.ToolUse) error {
 		}
 		return nil
 	}
-	if len(m.Content) != len(calls) {
+	if len(m.Content) < len(calls) {
 		return invalidInput("message %d has %d blocks, want %d tool results", i, len(m.Content), len(calls))
 	}
 	for j, b := range m.Content {
+		if j >= len(calls) {
+			// After the results, text only: what a person added at the turn
+			// boundary (steering).
+			if _, ok := b.(llm.Text); !ok {
+				return invalidInput("message %d block %d after the tool results is not text", i, j)
+			}
+			continue
+		}
 		r, ok := b.(llm.ToolResult)
 		if !ok || r.ToolUseID != calls[j].ID {
 			return invalidInput("message %d block %d is not the result of tool call %q", i, j, calls[j].ID)

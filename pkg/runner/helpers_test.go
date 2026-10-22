@@ -9,6 +9,7 @@ import (
 	"iter"
 	"maps"
 	"math/rand/v2"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -61,6 +62,9 @@ type world struct {
 	toolGate func(ctx context.Context, s string)
 	// flows, if set, gives every process's flow factory the step tree.
 	flows func(p *proc, conv string) (flow.Step, error)
+	// commands, if set, has every process read the commands sent to its
+	// runs from its store (runner.WithCommands).
+	commands bool
 	// agent, if set, replaces the harness of every process.
 	agent func(conv string) runner.Agent
 	// hopts are options of every process's harness.
@@ -202,6 +206,9 @@ func (w *world) process(opts ...runner.Option) *proc {
 	base := []runner.Option{
 		runner.WithClock(w.clk), runner.WithOwner(p.owner), runner.WithLease(ttl),
 		runner.WithIDs(w.newID), runner.WithRand(rand.NewPCG(1, 2)),
+	}
+	if w.commands {
+		base = append(base, runner.WithCommands(p.store))
 	}
 	if w.flows != nil {
 		base = append(base, runner.WithFlows(func(_ context.Context, conv string) (flow.Step, error) { return w.flows(p, conv) }))
@@ -419,6 +426,17 @@ func (w *world) check() {
 			last = max(last, ev.Seq)
 		}
 		for _, ev := range s.events {
+			if ev.Kind == runner.EventSteered && ev.Seq <= saved {
+				log := w.log(s.conv)
+				if ev.Seq < 1 || ev.Seq > int64(len(log)) {
+					t.Errorf("invariant 1: steered event at %d of %q, log has %d entries", ev.Seq, s.conv, len(log))
+					continue
+				}
+				e := log[ev.Seq-1]
+				if e.Kind != store.KindSteer || !sameJSON(e.Messages, ev.Steer) || e.RunID != ev.RunID {
+					t.Errorf("invariant 1: steer entry %d of %q = %s, event %s", ev.Seq, s.conv, js(e), js(ev.Steer))
+				}
+			}
 			if ev.Kind != runner.EventHarness {
 				continue
 			}
@@ -527,6 +545,18 @@ func messagesOf(es []store.Entry) harness.Transcript {
 		}
 		if e.Kind == store.KindCompaction {
 			tr = nil
+		}
+		if e.Kind == store.KindSteer {
+			// Steering goes into the user message before it (results the
+			// model has not seen yet), or after the model's answer.
+			for _, m := range e.Messages {
+				if n := len(tr); n > 0 && tr[n-1].Role == llm.RoleUser {
+					tr[n-1] = llm.Message{Role: llm.RoleUser, Content: append(slices.Clone(tr[n-1].Content), m.Content...)}
+				} else {
+					tr = append(tr, m)
+				}
+			}
+			continue
 		}
 		tr = append(tr, e.Messages...)
 	}
@@ -841,6 +871,18 @@ func (c *crashStore) Save(ctx context.Context, id string, ck flow.Checkpoint) er
 
 func (c *crashStore) Load(ctx context.Context, id string) (flow.Checkpoint, error) {
 	return call(c, "Load", func() (flow.Checkpoint, error) { return c.Store.Load(ctx, id) })
+}
+
+func (c *crashStore) SendCommand(ctx context.Context, id string, cmd store.Command) (store.Command, error) {
+	return call(c, "SendCommand", func() (store.Command, error) { return c.w.mem.SendCommand(ctx, id, cmd) })
+}
+
+func (c *crashStore) PendingCommands(ctx context.Context, id string, limit int) ([]store.Command, error) {
+	return call(c, "PendingCommands", func() ([]store.Command, error) { return c.w.mem.PendingCommands(ctx, id, limit) })
+}
+
+func (c *crashStore) ConsumeCommands(ctx context.Context, id, owner string, through int64) error {
+	return call0(c, "ConsumeCommands", func() error { return c.w.mem.ConsumeCommands(ctx, id, owner, through) })
 }
 
 // crashAtNth crashes at the n-th call of op, which reaches the store if

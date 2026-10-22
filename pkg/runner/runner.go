@@ -194,6 +194,11 @@ const (
 	// summary request used Event.Usage. When the run had failed for want of
 	// room, the agent runs again next, from the compacted context.
 	EventCompacted
+	// EventSteered says that steering messages ([CommandSteer]) were
+	// delivered at a turn boundary: Event.Steer, stored as a steer entry at
+	// Event.Seq before the event. The agent runs again next, from the
+	// context they end, numbering its turns from 1. See [WithCommands].
+	EventSteered
 )
 
 func (k EventKind) String() string {
@@ -210,6 +215,8 @@ func (k EventKind) String() string {
 		return "retrying"
 	case EventCompacted:
 		return "compacted"
+	case EventSteered:
+		return "steered"
 	}
 	return "EventKind(" + strconv.Itoa(int(k)) + ")"
 }
@@ -234,6 +241,10 @@ type Event struct {
 
 	// Usage is set on [EventCompacted].
 	Usage llm.Usage
+
+	// Steer is set on [EventSteered]: the messages delivered, in the order
+	// they were sent. They are copies the consumer may keep.
+	Steer []llm.Message
 }
 
 // Execution is a run that has been created or claimed and is ready to run.
@@ -306,6 +317,7 @@ type Runner struct {
 	cache  *cache
 	flush  int
 	limit  time.Duration
+	cmds   store.CommandLog
 
 	execs  atomic.Uint64
 	mu     sync.Mutex
@@ -335,6 +347,7 @@ type config struct {
 	cacheSize int
 	flush     int
 	limit     time.Duration
+	cmds      store.CommandLog
 }
 
 // WithFlows sets the factory of flow runs. Without it, [Runner.RunFlow] and
@@ -488,6 +501,21 @@ func WithTimeLimit(d time.Duration) Option {
 	}
 }
 
+// WithCommands sets the log of the commands sent to runs (usually the
+// runner's store) that the runner's chat runs read at every turn boundary:
+// steering messages, pause and resume ([CommandSteer], [CommandPause],
+// [CommandResume]; see [Runner.Resume] for a paused run). Without it, chat
+// runs read no commands, and commands sent to them wait unread.
+func WithCommands(log store.CommandLog) Option {
+	return func(c *config) error {
+		if log == nil {
+			return fmt.Errorf("%w: nil command log", ErrInvalidConfig)
+		}
+		c.cmds = log
+		return nil
+	}
+}
+
 // New returns a runner over s that runs conversations with the agents from
 // agents.
 func New(s Store, agents AgentFactory, opts ...Option) (*Runner, error) {
@@ -533,6 +561,7 @@ func New(s Store, agents AgentFactory, opts ...Option) (*Runner, error) {
 		cache:  newCache(c.cacheSize),
 		flush:  c.flush,
 		limit:  c.limit,
+		cmds:   c.cmds,
 		live:   map[liveKey]*liveRun{},
 	}, nil
 }

@@ -178,6 +178,7 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 			runner.WithClock(cfg.clock),
 			runner.WithIDs(func() string { return cfg.newID("run_") }),
 			runner.WithTimeLimit(cfg.taskLimit),
+			runner.WithCommands(s.store), // a task's steering, pause and resume
 		}, cfg.runnerOpts...)
 		rn, err := runner.New(s.store, factory, ropts...)
 		if err != nil {
@@ -203,6 +204,9 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 		{"POST /v1/runs/{id}/decisions", s.decideRun},
 		{"POST /v1/runs/{id}/input", s.inputRun},
 		{"POST /v1/tasks", s.postTask},
+		{"POST /v1/tasks/{id}/messages", s.steerTask},
+		{"POST /v1/tasks/{id}/pause", s.pauseTask},
+		{"POST /v1/tasks/{id}/resume", s.resumeTask},
 		{"GET /v1/webhooks/secret", s.webhookSecret},
 		{"GET /v1/threads", s.listThreads},
 		{"GET /v1/threads/{id}", s.getThread},
@@ -899,6 +903,15 @@ func (s *Server) drive(ctx context.Context, cancel context.CancelCauseFunc, x *r
 			// its turns from 1. The summary's tokens are in the compaction's
 			// record, not the run's usage.
 			baseTurns, baseUsage = turns, usage
+		case runner.EventSteered:
+			// The harness runs again from the steered context, numbering its
+			// turns from 1.
+			baseTurns, baseUsage = turns, usage
+			texts := make([]string, len(ev.Steer))
+			for i, m := range ev.Steer {
+				texts[i] = m.Text()
+			}
+			em.emit(ctx, Event{V: WireVersion, Type: TypeSteered, RunID: h.runID, At: s.cfg.clock.Now(), Steering: texts}, true)
 		case runner.EventDone:
 			e := ev
 			done = &e

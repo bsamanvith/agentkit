@@ -2300,6 +2300,363 @@
         }
       }
     },
+    "/v1/tasks/{id}/messages": {
+      "post": {
+        "operationId": "steerTask",
+        "summary": "Steer a task: queue a message for it",
+        "description": "Queues a message for a task that is going on (or paused), and answers at once. The task reads it at its next turn boundary: after the tool results of the turn going on, before its next model call, without stopping a tool call. The model sees it after those results (or, when it has just answered, as the next message, and answers it). Messages queued before one boundary are delivered together, in the order they were sent, in one steered event. A task that nobody runs just now reads it when it is taken up again.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The task's run ID.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "The sender's key: a retry with the same key is the same command (absent: a new one).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SteerRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "The message, queued.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskMessage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: the body is not a SteerRequest, or its text is empty; invalid_request: the Idempotency-Key was used for another command to the task.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such task (no run with that ID, or one that is not a task).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "run_final: the task has ended (done, failed for good, canceled); it takes no more messages.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "too_large: the body is over the server's limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tasks/{id}/pause": {
+      "post": {
+        "operationId": "pauseTask",
+        "summary": "Pause a task at its next turn boundary",
+        "description": "Asks a task to pause, and answers at once. The task stops at its next turn boundary (a tool call going on finishes first) with status paused: its execution ends with run_error paused, and nothing runs it, a restart included, until it is resumed (POST /v1/tasks/{id}/resume). A task whose model answers at that boundary completes instead. Pausing a paused task is a no-op.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The task's run ID.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "The sender's key: a retry with the same key is the same command (absent: a new one).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The task, paused already.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "The task, asked to pause: it is still running until its next turn boundary.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: the Idempotency-Key was used for another command to the task.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such task (no run with that ID, or one that is not a task).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "run_final: the task has ended (done, failed for good, canceled); it takes no more messages.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tasks/{id}/resume": {
+      "post": {
+        "operationId": "resumeTask",
+        "summary": "Resume a paused task",
+        "description": "Continues a paused task from where it paused, and answers at once (its events go on in GET /v1/runs/{id}/events); the messages queued meanwhile reach it first. A task not paused yet whose pause is still queued keeps going: the pause is withdrawn. A server at its limit of runs answers 503 over_capacity (retryable).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The task's run ID.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "The sender's key: a retry with the same key is the same command (absent: a new one).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "The task, going on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: the Idempotency-Key was used for another command to the task.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run. Or csrf_failed: a session's request without the server's Origin or the CSRF token of GET /v1/auth/me in X-Agentkit-CSRF.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such task (no run with that ID, or one that is not a task).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "run_final: the task has ended; run_leased: another process holds it (retryable).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "too_many_background_runs: the tenant has as many background runs going on as the server allows (retryable); over_capacity: the runner pool the task is placed in is running as many runs as its limit (retryable).",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "over_capacity: too many runs (retryable); shutting_down: the server is draining.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/webhooks/secret": {
       "get": {
         "operationId": "getWebhookSecret",
@@ -4093,7 +4450,7 @@
         "properties": {
           "code": {
             "type": "string",
-            "description": "What went wrong, for programs: invalid_request, invalid_definition (400), unauthorized, bad_signature (401), forbidden, csrf_failed (403), not_found (404), too_large (413), too_many_attempts, too_many_background_runs (429), conversation_busy, agent_mismatch, run_final, run_leased, awaiting_decision, not_pending, shape_changed, toolset_exists, trigger_exists, static_trigger, trigger_paused, replayed, conflict, read_only, version_published (409), auth_required, server_unreachable (422), over_capacity, shutting_down (503), internal (500); a run's codes are interrupted, run_failed, suspended (a flow run waits for a decision, a chat run for input), rejected, budget_exceeded, max_tokens, refused, unexpected_stop, cancelled, timeout, wall_clock_limit (a background run passed its wall-clock limit, and failed), shutdown, rate_limited, overloaded, model_auth, context_too_long, model_rejected and internal. conversation_interrupted is no longer returned. New codes may be added: treat an unknown one as internal."
+            "description": "What went wrong, for programs: invalid_request, invalid_definition (400), unauthorized, bad_signature (401), forbidden, csrf_failed (403), not_found (404), too_large (413), too_many_attempts, too_many_background_runs (429), conversation_busy, agent_mismatch, run_final, run_leased, awaiting_decision, not_pending, shape_changed, toolset_exists, trigger_exists, static_trigger, trigger_paused, replayed, conflict, read_only, version_published (409), auth_required, server_unreachable (422), over_capacity, shutting_down (503), internal (500); a run's codes are interrupted, run_failed, suspended (a flow run waits for a decision, a chat run for input), rejected, budget_exceeded, max_tokens, refused, unexpected_stop, cancelled, timeout, wall_clock_limit (a background run passed its wall-clock limit, and failed), paused (a task paused at a turn boundary; it is not over: resume it), shutdown, rate_limited, overloaded, model_auth, context_too_long, model_rejected and internal. conversation_interrupted is no longer returned. New codes may be added: treat an unknown one as internal."
           },
           "message": {
             "type": "string",
@@ -4299,6 +4656,10 @@
           },
           "message": {
             "$ref": "#/components/schemas/Message"
+          },
+          "steer": {
+            "type": "boolean",
+            "description": "Marks a user message sent to a task while it ran (POST /v1/tasks/{id}/messages), where the task read it; for the model it goes on the user message before it (the tool results it had not seen yet), if there is one. Absent for other messages."
           }
         },
         "required": [
@@ -4473,12 +4834,13 @@
               "running",
               "interrupted",
               "suspended",
+              "paused",
               "done",
               "failed",
               "canceled",
               "rejected"
             ],
-            "description": "running: an execution is going on; interrupted: a chat run stopped (a background run whose process stopped stays running until the server resumes it) with nobody running it (resume it, or post a new message); suspended: a flow run waits for a decision, or a chat run for input (its interrupts); then done, failed (it can still be resumed), canceled or rejected, which never change. New statuses may be added."
+            "description": "running: an execution is going on; interrupted: a chat run stopped (a background run whose process stopped stays running until the server resumes it) with nobody running it (resume it, or post a new message); suspended: a flow run waits for a decision, or a chat run for input (its interrupts); paused: a task paused at a turn boundary (POST /v1/tasks/{id}/pause) until it is resumed; then done, failed (it can still be resumed), canceled or rejected, which never change. New statuses may be added."
           },
           "created_at": {
             "type": "string",
@@ -4933,7 +5295,7 @@
           },
           "type": {
             "type": "string",
-            "description": "run_start, text_delta, tool_call, tool_policy, tool_flagged, interrupt, tool_result, ui, turn_done, retrying, run_done or run_error; new types may be added: skip an unknown one. tool_policy says what the run's tool policy decided about a call it did not plainly allow (flag: the call runs; approve: in a run that may wait for people, an interrupt follows, else like deny; deny: the call does not run, and its tool_result is the error the model was shown); tool_flagged follows the tool_policy of a flagged call, with the same fields. interrupt says a call waits for people (its interrupt). ui carries one A2UI v0.9 message an agent with UI showed (its surface_id and message): each message of a ui_render call that succeeded, in order, right after the call's tool_result."
+            "description": "run_start, text_delta, tool_call, tool_policy, tool_flagged, interrupt, tool_result, ui, turn_done, retrying, steered, run_done or run_error; new types may be added: skip an unknown one. tool_policy says what the run's tool policy decided about a call it did not plainly allow (flag: the call runs; approve: in a run that may wait for people, an interrupt follows, else like deny; deny: the call does not run, and its tool_result is the error the model was shown); tool_flagged follows the tool_policy of a flagged call, with the same fields. interrupt says a call waits for people (its interrupt). ui carries one A2UI v0.9 message an agent with UI showed (its surface_id and message): each message of a ui_render call that succeeded, in order, right after the call's tool_result. steered says steering messages reached a task at a turn boundary (after the turn before it, before the next model call); it does not end the run."
           },
           "id": {
             "type": "string",
@@ -5054,6 +5416,13 @@
           "delay_ms": {
             "type": "number",
             "description": "retrying: how long the run waits before it."
+          },
+          "steering": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "steered: the steering messages delivered at this turn boundary (POST /v1/tasks/{id}/messages), in the order they were sent."
           },
           "surface_id": {
             "type": "string",
@@ -5934,6 +6303,53 @@
         },
         "required": [
           "input"
+        ],
+        "additionalProperties": false
+      },
+      "SteerRequest": {
+        "type": "object",
+        "description": "The body of POST /v1/tasks/{id}/messages. Unknown fields are refused.",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The message: what the task should know or do now (\"focus on 2026 data\")."
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "TaskMessage": {
+        "type": "object",
+        "description": "A steering message queued for a task.",
+        "properties": {
+          "v": {
+            "type": "integer",
+            "const": 1
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "seq": {
+            "type": "integer",
+            "description": "The command's position among those sent to the run, from 1."
+          },
+          "text": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was queued."
+          }
+        },
+        "required": [
+          "v",
+          "run_id",
+          "seq",
+          "text",
+          "at"
         ],
         "additionalProperties": false
       },

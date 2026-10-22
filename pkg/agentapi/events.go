@@ -326,5 +326,5 @@ func withText(evs []Event, after bus.ID) []Event {
 // bounds reports whether e, with the ID id, is a stored event a turn
 // starts after.
 func bounds(e Event, id bus.ID) bool {
-	return id.N == 0 && (e.Type == TypeTurnDone || e.Type == TypeRunStart || e.Type == TypeRetrying)
+	return id.N == 0 && (e.Type == TypeTurnDone || e.Type == TypeRunStart || e.Type == TypeRetrying || e.Type == TypeSteered)
 }

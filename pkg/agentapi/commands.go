@@ -150,28 +150,43 @@ func (s *Server) obey(ctx context.Context, x *runner.Execution, h *hub) func() {
 }
 
 // consume acts on the run's pending commands, and reports whether it
-// stopped the run.
+// stopped the run. The runner's own commands (a task's steering, pause and
+// resume) are the runner's to read, at turn boundaries: this consumes no
+// further than the first of them, and acts on nothing behind it but a
+// cancel, which makes the rest moot. A stop behind steering waits until the
+// runner has delivered it.
 func (s *Server) consume(in *stream.Inbox, h *hub) bool {
 	cmds, err := in.Pending(store.MaxPageLimit)
 	if err != nil || len(cmds) == 0 {
 		return false
 	}
 	verb := ""
+	var through int64
+	ours := true // no runner command so far
 	for _, c := range cmds {
 		switch c.Type {
 		case commandCancel:
 			verb = commandCancel
 		case commandStop:
-			if verb == "" {
+			if verb == "" && ours {
 				verb = commandStop
 			}
+		case runner.CommandSteer, runner.CommandPause, runner.CommandResume:
+			ours = false
 		default:
-			s.log.Warn("a run's command of an unknown type; dropped", "run_id", h.runID, "type", c.Type)
+			if ours {
+				s.log.Warn("a run's command of an unknown type; dropped", "run_id", h.runID, "type", c.Type)
+			}
+		}
+		if ours {
+			through = c.Seq
 		}
 	}
-	if err := in.Consume(cmds[len(cmds)-1].Seq); err != nil {
-		s.log.Warn("consuming a run's commands", "run_id", h.runID, "err", err)
-		return false
+	if through > 0 {
+		if err := in.Consume(through); err != nil {
+			s.log.Warn("consuming a run's commands", "run_id", h.runID, "err", err)
+			return false
+		}
 	}
 	if verb == "" {
 		return false

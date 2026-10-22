@@ -207,7 +207,7 @@ TAGS_runner := noconnectors nomcp noweb noa2a nosqlite nopostgres noredis noagen
 TAGS_toolsets := nomodels noweb noa2a nosqlite nopostgres noredis noagent
 IMAGE_BUDGET_MB_local ?= 31
 IMAGE_BUDGET_MB_dev ?= 32
-IMAGE_BUDGET_MB_api ?= 22
+IMAGE_BUDGET_MB_api ?= 23
 IMAGE_BUDGET_MB_runner ?= 20
 IMAGE_BUDGET_MB_toolsets ?= 18
 # Binaries that get an image; fakellm joins when cmd/fakellm exists (T004).

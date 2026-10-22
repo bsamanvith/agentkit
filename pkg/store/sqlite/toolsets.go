@@ -28,7 +28,7 @@ func (s *Store) PutToolset(ctx context.Context, t store.ToolsetRecord, ifVersion
 	if err := backend.CheckTime("the clock's time", now); err != nil {
 		return store.ToolsetRecord{}, err
 	}
-	err = s.write(ctx, func(tx *sql.Tx) error {
+	err = s.write(ctx, func(tx *txn) error {
 		old, found, err := getToolset(ctx, tx, tenant, t.Name)
 		if err != nil {
 			return fmt.Errorf("sqlite: put toolset: %w", err)
@@ -98,7 +98,7 @@ func (s *Store) DeleteToolset(ctx context.Context, name string, ifVersion int64)
 	if err := backend.CheckDeleteToolset(name, ifVersion); err != nil {
 		return err
 	}
-	return s.write(ctx, func(tx *sql.Tx) error {
+	return s.write(ctx, func(tx *txn) error {
 		old, _, err := getToolset(ctx, tx, tenant, name)
 		if err != nil {
 			return fmt.Errorf("sqlite: delete toolset: %w", err)

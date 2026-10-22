@@ -31,7 +31,7 @@ func (s *Store) Append(ctx context.Context, id string, e store.Entry) error {
 	if err != nil {
 		return err
 	}
-	return s.write(ctx, func(tx *sql.Tx) error {
+	return s.write(ctx, func(tx *txn) error {
 		var last int64
 		var lastCreated sql.NullInt64
 		err := tx.QueryRowContext(ctx, `SELECT seq, created_at FROM entries
@@ -89,7 +89,7 @@ func (s *Store) AppendBatch(ctx context.Context, id string, entries []store.Entr
 	if err != nil || len(batch) == 0 {
 		return err
 	}
-	return s.write(ctx, func(tx *sql.Tx) error {
+	return s.write(ctx, func(tx *txn) error {
 		var last int64
 		var lastCreated sql.NullInt64
 		err := tx.QueryRowContext(ctx, `SELECT seq, created_at FROM entries
@@ -195,7 +195,7 @@ func (s *Store) History(ctx context.Context, id string, p store.Page) (store.Ent
 	}
 	// One row more than the page says whether there is a next page.
 	rows, err := s.r.QueryContext(ctx, `SELECT `+entryColumns+` FROM entries WHERE `+
-		strings.Join(where, " AND ")+` ORDER BY `+order+` LIMIT ?`, append(args, limit+1)...)
+		strings.Join(where, " AND ")+` ORDER BY `+order+` LIMIT CAST(? AS INTEGER)`, append(args, limit+1)...)
 	if err != nil {
 		return store.EntryPage{}, fmt.Errorf("sqlite: history: %w", err)
 	}

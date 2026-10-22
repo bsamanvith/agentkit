@@ -2,8 +2,13 @@ package sqlite_test
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"reflect"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -19,7 +24,68 @@ import (
 // the test ends.
 func open(t testing.TB, clk clock.Clock) *sqlite.Store {
 	t.Helper()
-	return openPath(t, filepath.Join(t.TempDir(), "agentkit.db"), sqlite.WithClock(clk))
+	return openPath(t, migrated(t), sqlite.WithClock(clk))
+}
+
+// migrated returns the path of a new file in a temporary directory that
+// holds an empty, fully migrated database: a copy of one that sqlite.Open
+// created and migrated once for the whole test binary. Migrating a new file
+// is the most expensive part of an Open under the race detector (a fifth of
+// the package's time, T056), and the suites open a new store for every
+// subtest; Open then finds the schema current and migrates nothing. Opening
+// and migrating a new file is tested by the tests that open their own
+// (migrate_test.go, Example).
+func migrated(t testing.TB) string {
+	t.Helper()
+	src, err := template()
+	if err != nil {
+		t.Fatalf("migrated template: %v", err)
+	}
+	b, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "agentkit.db")
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// template is the file migrated copies: created by sqlite.Open in a
+// directory of its own, and closed, which checkpoints its write-ahead log
+// into it, before any copy is made. TestMain removes the directory.
+var (
+	templateDir string
+	template    = sync.OnceValues(func() (string, error) {
+		path := filepath.Join(templateDir, "template.db")
+		s, err := sqlite.Open(context.Background(), path)
+		if err != nil {
+			return "", err
+		}
+		if err := s.Close(); err != nil {
+			return "", err
+		}
+		switch _, err := os.Stat(path + "-wal"); {
+		case err == nil:
+			return "", errors.New("the closed template left a write-ahead log")
+		case !errors.Is(err, fs.ErrNotExist):
+			return "", err
+		}
+		return path, nil
+	})
+)
+
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "agentkit-sqlite-test-")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	templateDir = dir
+	code := m.Run()
+	_ = os.RemoveAll(dir)
+	os.Exit(code)
 }
 
 func openPath(t testing.TB, path string, opts ...sqlite.Option) *sqlite.Store {
@@ -136,7 +202,7 @@ type pair struct {
 }
 
 func openPair(t *testing.T, clk clock.Clock) *pair {
-	path := filepath.Join(t.TempDir(), "agentkit.db")
+	path := migrated(t)
 	p := &pair{}
 	for i := range p.s {
 		p.s[i] = openPath(t, path, sqlite.WithClock(clk))

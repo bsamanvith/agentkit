@@ -31,7 +31,7 @@ func (s *Store) CreateConversation(ctx context.Context, c store.Conversation) (s
 		return store.Conversation{}, fmt.Errorf("sqlite: create conversation: the clock reads %w", err)
 	}
 	var rec store.Conversation
-	err = s.write(ctx, func(tx *sql.Tx) error {
+	err = s.write(ctx, func(tx *txn) error {
 		had, err := getConversation(ctx, tx, tenant, c.ID)
 		switch {
 		case err == nil && had.Agent != c.Agent:
@@ -57,7 +57,7 @@ func (s *Store) CreateConversation(ctx context.Context, c store.Conversation) (s
 
 // counted adds n messages, appended at at, to the conversation's record, if
 // it has one: in the transaction of the append.
-func counted(ctx context.Context, tx *sql.Tx, tenant, id string, n int64, at any) error {
+func counted(ctx context.Context, tx *txn, tenant, id string, n int64, at any) error {
 	if _, err := tx.ExecContext(ctx, `UPDATE conversations SET messages = messages + ?, updated_at = MAX(updated_at, ?)
 		WHERE tenant = ? AND id = ?`, n, at, tenant, id); err != nil {
 		return fmt.Errorf("sqlite: count appended messages: %w", err)
@@ -118,7 +118,7 @@ func (s *Store) ListConversations(ctx context.Context, agent string, p store.Pag
 	}
 	// One row more than the page says whether there is a next page.
 	rows, err := s.r.QueryContext(ctx, `SELECT `+conversationColumns+` FROM conversations WHERE `+
-		strings.Join(conds, " AND ")+` ORDER BY `+order+` LIMIT ?`, append(args, limit+1)...)
+		strings.Join(conds, " AND ")+` ORDER BY `+order+` LIMIT CAST(? AS INTEGER)`, append(args, limit+1)...)
 	if err != nil {
 		return store.ConversationPage{}, fmt.Errorf("sqlite: list conversations: %w", err)
 	}
@@ -159,7 +159,7 @@ func (s *Store) SetTitle(ctx context.Context, id, title string) (store.Conversat
 		return store.Conversation{}, fmt.Errorf("sqlite: set title: the clock reads %w", err)
 	}
 	var c store.Conversation
-	err = s.write(ctx, func(tx *sql.Tx) error {
+	err = s.write(ctx, func(tx *txn) error {
 		if title != "" {
 			if _, err := tx.ExecContext(ctx, `UPDATE conversations SET title = ?, updated_at = MAX(updated_at, ?)
 				WHERE tenant = ? AND id = ? AND title = ''`, title, at, tenant, id); err != nil {
@@ -184,7 +184,7 @@ func (s *Store) DeleteConversation(ctx context.Context, id string) error {
 		return err
 	}
 	now := s.now()
-	return s.write(ctx, func(tx *sql.Tx) error {
+	return s.write(ctx, func(tx *txn) error {
 		res, err := tx.ExecContext(ctx, `DELETE FROM conversations WHERE tenant = ? AND id = ?`, tenant, id)
 		if err != nil {
 			return fmt.Errorf("sqlite: delete conversation: %w", err)

@@ -196,6 +196,7 @@ A test should fail only when a **feature** breaks, not when code is refactored.
 | **Live** | Real model providers (Anthropic, OpenAI-compatible) | next to adapter, `//go:build live` | `make test-live` | API keys | manual / nightly |
 | **Perf** | Benchmarks (rerunnable) and load tests (recorded) | `Benchmark*` next to code; load-test results in the task's Notes | `go test -bench` | nothing | not in CI until a budget is set |
 
+- `make test-timing` runs the unit tier and prints its slowest packages and top-level tests (`scripts/test-timing.sh` over `go test -json`); CI prints the top 10 after `make check`. Look there before a package nears go test's timeout, and fix waste (a query parsed on every call, a schema migrated for every subtest) before cutting a check.
 - Integration tests read connection strings from env (`AGENTKIT_PG_URL`, `AGENTKIT_VAULT_ADDR`, ...) and **skip** if unset, so a laptop without Docker still runs them cleanly. In CI `AGENTKIT_REQUIRE_INTEGRATION=1` turns those skips into failures, so nothing silently stops running.
 - We do not use testcontainers; `scripts/dev.sh` already provides the dependencies, and it keeps the dependency list small.
 

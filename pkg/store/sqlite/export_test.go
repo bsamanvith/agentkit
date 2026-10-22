@@ -21,5 +21,5 @@ func Exec(s *Store, query string, args ...any) error {
 // Write runs fn in a write transaction of s, as the store's own methods do:
 // for tests of how a failing fn leaves the writer.
 func Write(ctx context.Context, s *Store, fn func(*sql.Tx) error) error {
-	return s.write(ctx, fn)
+	return s.write(ctx, func(t *txn) error { return fn(t.Tx) })
 }

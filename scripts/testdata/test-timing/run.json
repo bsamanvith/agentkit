@@ -1,0 +1,30 @@
+{"Time":"2026-10-22T12:00:00.000000000+02:00","Action":"start","Package":"ex/passed"}
+{"Time":"2026-10-22T12:00:00.100000000+02:00","Action":"run","Package":"ex/passed","Test":"TestQuiet"}
+{"Time":"2026-10-22T12:00:00.100000000+02:00","Action":"output","Package":"ex/passed","Test":"TestQuiet","Output":"=== RUN   TestQuiet\n"}
+{"Time":"2026-10-22T12:00:00.200000000+02:00","Action":"output","Package":"ex/passed","Test":"TestQuiet","Output":"    passed_test.go:3: HIDDEN log of a passing test\n"}
+{"Time":"2026-10-22T12:00:01.100000000+02:00","Action":"pass","Package":"ex/passed","Test":"TestQuiet","Elapsed":1}
+{"Time":"2026-10-22T12:00:01.200000000+02:00","Action":"output","Package":"ex/passed","Output":"ok  \tex/passed\t1.2s\n"}
+{"Time":"2026-10-22T12:00:01.200000000+02:00","Action":"pass","Package":"ex/passed","Elapsed":1.2}
+{"Time":"2026-10-22T12:00:00.000000000+02:00","Action":"start","Package":"ex/failed"}
+{"Time":"2026-10-22T12:00:00.000000000+02:00","Action":"run","Package":"ex/failed","Test":"TestBroken"}
+{"Time":"2026-10-22T12:00:00.000000000+02:00","Action":"output","Package":"ex/failed","Test":"TestBroken","Output":"=== RUN   TestBroken\n"}
+{"Time":"2026-10-22T12:00:00.500000000+02:00","Action":"output","Package":"ex/failed","Test":"TestBroken","Output":"    failed_test.go:3: SHOWN the assertion of a failed test\n"}
+{"Time":"2026-10-22T12:00:00.500000000+02:00","Action":"output","Package":"ex/failed","Test":"TestBroken","Output":"--- FAIL: TestBroken (0.50s)\n"}
+{"Time":"2026-10-22T12:00:00.500000000+02:00","Action":"fail","Package":"ex/failed","Test":"TestBroken","Elapsed":0.5}
+{"Time":"2026-10-22T12:00:00.600000000+02:00","Action":"output","Package":"ex/failed","Output":"FAIL\n"}
+{"Time":"2026-10-22T12:00:00.600000000+02:00","Action":"output","Package":"ex/failed","Output":"FAIL\tex/failed\t0.6s\n"}
+{"Time":"2026-10-22T12:00:00.600000000+02:00","Action":"fail","Package":"ex/failed","Elapsed":0.6}
+{"Time":"2026-10-22T12:00:00.000000000+02:00","Action":"start","Package":"ex/timedout"}
+{"Time":"2026-10-22T12:00:00.000000000+02:00","Action":"run","Package":"ex/timedout","Test":"TestHangs"}
+{"Time":"2026-10-22T12:00:00.000000000+02:00","Action":"output","Package":"ex/timedout","Test":"TestHangs","Output":"=== RUN   TestHangs\n"}
+{"Time":"2026-10-22T12:00:03.000000000+02:00","Action":"output","Package":"ex/timedout","Test":"TestHangs","Output":"panic: SHOWN test timed out after 3s\n"}
+{"Time":"2026-10-22T12:00:03.000000000+02:00","Action":"output","Package":"ex/timedout","Test":"TestHangs","Output":"\trunning tests:\n"}
+{"Time":"2026-10-22T12:00:03.000000000+02:00","Action":"output","Package":"ex/timedout","Test":"TestHangs","Output":"\t\tTestHangs (3s)\n"}
+{"Time":"2026-10-22T12:00:03.100000000+02:00","Action":"output","Package":"ex/timedout","Output":"FAIL\tex/timedout\t3.1s\n"}
+{"Time":"2026-10-22T12:00:03.100000000+02:00","Action":"fail","Package":"ex/timedout","Elapsed":3.1}
+{"Time":"2026-10-22T12:00:00.000000000+02:00","Action":"start","Package":"ex/panicked"}
+{"Time":"2026-10-22T12:00:00.000000000+02:00","Action":"run","Package":"ex/panicked","Test":"TestGoroutinePanics"}
+{"Time":"2026-10-22T12:00:00.000000000+02:00","Action":"output","Package":"ex/panicked","Test":"TestGoroutinePanics","Output":"=== RUN   TestGoroutinePanics\n"}
+{"Time":"2026-10-22T12:00:00.200000000+02:00","Action":"output","Package":"ex/panicked","Test":"TestGoroutinePanics","Output":"panic: SHOWN boom in another goroutine\n"}
+{"Time":"2026-10-22T12:00:00.300000000+02:00","Action":"output","Package":"ex/panicked","Output":"FAIL\tex/panicked\t0.3s\n"}
+{"Time":"2026-10-22T12:00:00.300000000+02:00","Action":"fail","Package":"ex/panicked","Elapsed":0.3}

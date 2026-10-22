@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -73,6 +74,49 @@ func TestStoredAgentRefused(t *testing.T) {
 	// The config file's agent is read-only.
 	if _, err := c.SaveAgent(ctx, "plain", wire.SaveAgentRequest{Definition: json.RawMessage(`{"model": {"id": "m"}}`)}); !errors.Is(err, agentclient.ErrReadOnly) {
 		t.Errorf("save over plain = %v, want read_only", err)
+	}
+}
+
+// TestStoredAgentModelServer: a stored agent's openai model talks to the
+// operator's server with the operator's key variable, or to a server and
+// key variable an agent of the config file uses; any other base_url or
+// api_key_env is refused, or a tenant admin could have the server send any
+// of its variables (its keys, the store's URL) to a server of theirs.
+func TestStoredAgentModelServer(t *testing.T) {
+	t.Parallel()
+	const cfg = `{
+  "mcp": {"toolsets": [{"name": "demo-a", "type": "demo"}]},
+  "agents": [
+    {"name": "plain", "model": {"id": "model-plain"}},
+    {"name": "local", "model": {"provider": "openai", "id": "m", "base_url": "http://localhost:11434/v1", "api_key_env": "OLLAMA_KEY"}}
+  ]
+}`
+	c := serveAgents(t, cfg, map[string]*llmtest.Fake{"model-plain": llmtest.NewFake(t), "m": llmtest.NewFake(t)})
+	ctx := t.Context()
+	for _, tc := range []struct{ name, model, field string }{
+		{"another server", `{"provider": "openai", "id": "m", "base_url": "https://attacker.example/v1"}`, "model.base_url"},
+		{"another server, the file's variable", `{"provider": "openai", "id": "m", "base_url": "https://attacker.example/v1", "api_key_env": "OLLAMA_KEY"}`, "model.base_url"},
+		{"the file's server, another variable", `{"provider": "openai", "id": "m", "base_url": "http://localhost:11434/v1", "api_key_env": "ANTHROPIC_API_KEY"}`, "model.base_url"},
+		{"the operator's server, another variable", `{"provider": "openai", "id": "m", "api_key_env": "AGENTKIT_STORE"}`, "model.api_key_env"},
+	} {
+		_, err := c.SaveAgent(ctx, "stored", wire.SaveAgentRequest{Definition: json.RawMessage(`{"model": ` + tc.model + `}`), Publish: true})
+		var api *agentclient.APIError
+		if !errors.Is(err, agentclient.ErrInvalidDefinition) || !errors.As(err, &api) {
+			t.Errorf("%s: save = %v, want invalid_definition", tc.name, err)
+			continue
+		}
+		if !slices.ContainsFunc(api.Fields, func(f wire.FieldError) bool { return f.Field == tc.field }) {
+			t.Errorf("%s: fields = %+v, want %s", tc.name, api.Fields, tc.field)
+		}
+	}
+	for i, model := range []string{
+		`{"provider": "openai", "id": "m"}`,
+		`{"provider": "openai", "id": "m", "api_key_env": "OPENAI_API_KEY"}`,
+		`{"provider": "openai", "id": "m", "base_url": "http://localhost:11434/v1", "api_key_env": "OLLAMA_KEY"}`,
+	} {
+		if _, err := c.SaveAgent(ctx, "stored-"+strconv.Itoa(i), wire.SaveAgentRequest{Definition: json.RawMessage(`{"model": ` + model + `}`), Publish: true}); err != nil {
+			t.Errorf("save with model %s: %v, want it taken", model, err)
+		}
 	}
 }
 

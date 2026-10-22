@@ -3,6 +3,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -109,6 +110,23 @@ func (c cli) storedAgentBuilder(cfg serveConfig, built map[string]tool.Registry,
 		for _, ts := range a.RuntimeToolsets {
 			if slices.ContainsFunc(cfg.MCP.Toolsets, func(s toolset.Spec) bool { return s.Name == ts }) {
 				refuse("runtime_toolsets", "%q is a toolset of the config file; list it in toolsets", ts)
+			}
+		}
+		// An openai model's server and key variable: the operator's
+		// ($OPENAI_BASE_URL, OPENAI_API_KEY), or a pair an agent of the
+		// file uses. Any other would send the value of any variable of the
+		// server (its keys, the store's URL) to any server the admin names.
+		keyEnv := cmp.Or(a.Model.APIKeyEnv, defaultOpenAIKeyEnv)
+		if a.Model.BaseURL != "" || keyEnv != defaultOpenAIKeyEnv {
+			if !slices.ContainsFunc(cfg.Agents, func(f agentDef) bool {
+				return f.Model.Provider == providerOpenAI && f.Model.BaseURL == a.Model.BaseURL &&
+					cmp.Or(f.Model.APIKeyEnv, defaultOpenAIKeyEnv) == keyEnv
+			}) {
+				field := "model.base_url"
+				if a.Model.BaseURL == "" {
+					field = "model.api_key_env"
+				}
+				refuse(field, "an agent stored through the API uses $OPENAI_BASE_URL and $%s, or the base_url and api_key_env of an agent of the config file", defaultOpenAIKeyEnv)
 			}
 		}
 		iso, err := pool.ParseIsolation(a.Isolation)

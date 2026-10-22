@@ -1,6 +1,6 @@
 # agentkit console: UI plan
 
-> The web client is an **admin console** served by `agentkit` itself (component `web`). Every screen is built only on the public `/v1` API ([docs/api/openapi.yaml](api/openapi.yaml), T062), so Claude Code, scripts and other harnesses can do everything the console does. Decisions: [E11](../tasks/E11-clients.md). Layout, states, components and tokens: [T070](../tasks/T070-console-ux-design.md) (its Notes hold the reasons, the references, the contrast table and the review record). Clickable mockup v3 with sample data, both themes, three widths and every state: [ui/console-mockup.html](ui/console-mockup.html) (also published as an artifact for review). **Approved by the owner on 2026-10-12**, with the review changes in T070 Notes; T055 starts from it. The same day the owner added **Connections** (per-user credentials for connectors, org connections later; see "Connections"), which replaced the admin-only Credentials page. Skills, the agent builder, tool policies, interrupts and tasks are designed in T087 (part 2), on top of this.
+> The web client is an **admin console** served by `agentkit` itself (component `web`). Every screen is built only on the public `/v1` API ([docs/api/openapi.yaml](api/openapi.yaml), T062), so Claude Code, scripts and other harnesses can do everything the console does. Decisions: [E11](../tasks/E11-clients.md). Layout, states, components and tokens: [T070](../tasks/T070-console-ux-design.md) (its Notes hold the reasons, the references, the contrast table and the review record). Clickable mockup v3 with sample data, both themes, three widths and every state: [ui/console-mockup.html](ui/console-mockup.html) (also published as an artifact for review). **Approved by the owner on 2026-10-12**, with the review changes in T070 Notes; T055 starts from it. The same day the owner added **Connections** (per-user credentials for connectors, org connections later; see "Connections"), which replaced the admin-only Credentials page. **Part 2** ([T087](../tasks/T087-console-ux-design-2.md), mockup **v4**, waiting for the owner's review) adds: tasks with steering and pause, agent threads and triggers; interrupts (questions and approvals); tool policy in transcripts; the agent builder with versions; skills with an editor and upload; and adding an MCP server at run time. v4 is v3 plus these. Where part 2 changes a v3 decision, T087 Notes say so ("What changed from v3"); the sections below are written to match v4.
 
 ## Information architecture
 
@@ -8,8 +8,8 @@ Three columns, each with one job:
 
 | Column | What it holds |
 |---|---|
-| **Rail** (56 px, icons with labels in a tooltip and for screen readers) | The sections: **Chats**; **Activity** (later, T074; T087 renames it **Tasks**); **Connections** (everyone); a divider; **Agents** and **Toolsets** (admin only; T087 adds **Skills**). At the bottom: **Shortcuts** (`?`) and the **user menu** (name, role, tenant; theme; Memories later; sign out). |
-| **List** (288 px desktop, 248 px laptop, collapsible) | The current section's list. In Chats it is **the conversation list**; in Agents the agents; in Toolsets the toolsets; in Activity the runs and threads. Connections has no list (one page). |
+| **Rail** (56 px, icons with labels in a tooltip and for screen readers) | The sections: **Chats**; **Tasks** (everyone; its badge counts tasks waiting for you); **Connections** (everyone); a divider; **Agents**, **Skills** and **Toolsets** (admin only). At the bottom: **Shortcuts** (`?`) and the **user menu** (name, role, tenant; theme; Memories later; sign out). |
+| **List** (288 px desktop, 248 px laptop, collapsible) | The current section's list. In Chats it is **the conversation list**; in Tasks the tasks, agent threads and (admins) triggers; in Agents, Skills and Toolsets their items. Connections has no list (one page). The agent builder, versions and the skill editor are full-width pages that hide it. |
 | **Content** | The chat, or the selected item's detail. |
 
 Decisions (reasons in T070 Notes):
@@ -17,18 +17,16 @@ Decisions (reasons in T070 Notes):
 - **Conversations have one home: the Chats list.** No separate Conversations page and no "Recent" block. The list has **New chat**, **search**, an **agent filter**, date groups (Today, Yesterday, Previous 7 days, Older), a status mark on rows that need attention (running, interrupted, finished while you were elsewhere), and loads more by cursor as you scroll. Each row: the title, then the agent name in mono and the time. A **⋯** menu (Copy ID, Delete) shows on hover or focus, and always on touch.
   - **Search** matches titles. Until `GET /v1/conversations` gains a `q` parameter (asked of T062, see T070 Notes), it filters the loaded rows: its placeholder says "Search loaded chats", and with more pages on the server the results end with **Load older to search more**.
 - **Connections are everyone's** (owner, 2026-10-12): each user connects their own key or account for each connector, so the page sits above the divider for every role. Admins add connectors in the server config; the console doesn't. An "Add connector" screen is asked of T087 (T070 Notes). Details: "Connections".
-- **Admin pages live in the rail**, under a divider, with their own list column (list on the left, detail on the right, as in Linear and Vercel settings). A `user` sees Chats and Connections (and Activity later). Hiding them is a convenience; the API answers 403 (a direct link shows the 403 page).
+- **Admin pages live in the rail**, under a divider, with their own list column (list on the left, detail on the right, as in Linear and Vercel settings). A `user` sees Chats, Tasks and Connections. Hiding them is a convenience; the API answers 403 (a direct link shows the 403 page).
 - **The agent picker** sits in the chat header's left slot, in both cases:
   - **New chat:** a button showing the chosen agent with a chevron. It opens a searchable list (name, description, and readiness for you: "All 3 toolsets ready", or what is missing, such as "Connect Exa"). The default is the agent of your last new chat (kept in `localStorage`) if it still exists, else `default`, else the first. The empty chat shows the chosen agent's description and readiness above the composer.
   - **Existing conversation:** a **read-only chip** with the agent's name (a conversation belongs to one agent; continuing with another is `409 agent_mismatch`). The chip opens a small card (description, model) with **New chat with researcher**, **New chat with another agent…** and, for admins, **Open agent details**. There is no "switch agent" that silently starts a new chat.
   - **One agent configured:** no picker, just the chip.
   - **"Chat with this agent"** on the Agents page opens a new chat with the picker preset.
-- **Later features have a slot now:**
-  - **Activity** in the rail (T074): background runs, agent threads, triggers and notifications. Its Runs list is also where E16's jobs land, shown with the same run viewer. T087 renames it **Tasks** and designs the task list, task view and steering.
-  - **Approvals** (T030/T037): an inline card in the chat, plus a "Needs you" filter and the Activity badge. T087 designs them with E17's interrupts.
-  - **Memories** (E12): from the user menu, as a side panel.
-  - **Skills** (T057): on the agent detail now; T087 gives them a rail entry and an editor.
-  - **Editing agents and skills** (E15: T075, T077): T087 designs the agent builder. It is a **full-width page that hides the list**, because a builder with a test chat beside it doesn't fit next to the list (at 1200 px the content column is 856 px). The agent detail's **Edit** and **Versions** lead there.
+- **Tasks have one home: the Tasks list** (T087). Any run that isn't a chat (started with `POST /v1/tasks`, by a trigger, by another agent, or by an API key) shows there and not in Chats. This replaces v3's line that showed a background run's conversation in Chats too. E16's jobs land in the same list. Details: "Tasks".
+- **Waiting for you is the one thing that nags.** The Tasks badge counts tasks waiting for an answer; a chat that waits shows an amber mark and "Waiting for you" on its row. A finished task you haven't opened gets a dot on its row, not a badge.
+- **Full-width pages:** the agent builder, versions and the skill editor hide the list, because a form with a test chat beside it doesn't fit next to the list (at 1200 px the content column is 856 px). The agent detail's **Edit** and **Versions** lead there; on phones they show a read-only view.
+- **Still later:** **Memories** (E12), from the user menu, as a side panel; per-user sign-in to MCP servers (T095); finding a server in a registry (T097).
 
 ## Layouts
 
@@ -53,13 +51,20 @@ Every view has a URL, so links, Back and reloads work. Rail items, list rows and
 | `/toolsets`, `/toolsets/{name}` | Toolsets list, toolset detail |
 | `/connections` | Connections |
 | `/connections/done` | Where an account connection returns from the provider. In a popup, it reports the result to the page that opened it and closes. In the same tab, it goes back to the saved route with the result. Opened with no connection pending, it goes to `/connections` (see "Connections") |
-| `/activity/…` | Later (T074; T087 defines `/tasks/…`) |
+| `/agents/new`, `/agents/{name}/edit` | The agent builder (full width) |
+| `/agents/{name}/versions`, `/agents/{name}/versions/{v}` | An agent's versions and the diff (full width) |
+| `/skills`, `/skills/{name}`, `/skills/{name}/edit`, `/skills/upload` | Skills list and detail, the skill editor (full width), upload |
+| `/toolsets/new`, `/toolsets/{name}/review` | Add an MCP server; review a server's changed tools |
+| `/tasks`, `/tasks/{run_id}` | Tasks list, a task |
+| `/tasks/threads`, `/tasks/threads/{thread_id}` | Agent threads, a thread |
+| `/tasks/triggers` | Triggers (admins) |
 
 - On a route change the document title becomes "{page} · agentkit" (a conversation's title, "New chat", the agent's name) and focus moves to the page's `h1`, so a screen reader hears where it landed. The exception is **New chat** on desktop (the button or `Mod+Shift+O`): focus goes to the message box, because typing is why you pressed it. Every page has one `h1`; in a chat it is the title in the header.
 - On phones, opening a detail pushes a history entry, so the system Back returns to the list.
 - An unknown route or ID shows the 404 page; an admin route as a user shows the 403 page.
 - Signed out, a deep link shows the sign-in card and then opens the link. The route is kept in the router, not in a `?next=` parameter.
 - Sign-in is an overlay over the route, not a route of its own.
+- Leaving the builder or the skill editor with unsaved changes asks first ("Discard your changes?"), and so does closing the tab.
 
 ## Screens
 
@@ -68,10 +73,16 @@ Every view has a URL, so links, Back and reloads work. Rail items, list rows and
 | **Sign in** | everyone | A small card on the grey ground. The method comes from the server (below, "Sign in"): username and password, an **API token** prompt, or both. One generic error for a wrong password; throttling, empty fields and an unreachable server have their own messages. A 401 later shows the same card over the app with "Your session ended…". | `GET /v1/auth/config` (asked of T061), `POST /v1/auth/login`, `GET /v1/auth/me`, `POST /v1/auth/logout` | T061, T055 |
 | **Chat** | user, admin | Header: agent picker or chip, title (`h1`), ⋯ (Copy ID, Delete). The thread: user messages as grey bubbles on the right, answers as plain text, tool calls as quiet steps (below), A2UI surfaces inline, then source chips and a usage line. Composer: Enter sends, Shift+Enter is a new line; while this conversation answers, the send button becomes **Stop** and Enter does nothing (the draft waits). How runs, Stop and drafts behave: "Runs and conversations". | `POST /v1/runs` (SSE), `GET /v1/conversations/{id}`, `GET /v1/agents` | T055 |
 | **Chats list** | user, admin | The caller's conversations (see IA). Delete asks first; when the conversation is answering, the confirm says it also stops the answer. | `GET /v1/conversations?agent=&limit=&cursor=`, `DELETE /v1/conversations/{id}` | T055, T062 |
-| **Agents** | admin | List: name (mono), description, a status dot with its word for screen readers (ready, or a warning when a toolset it uses is skipped or needs your connection). Detail: description; model and effort; toolsets with status; skills; memory; UI (text or A2UI); the system prompt (admin only, collapsed); **Chat with this agent**. T087 adds Edit and Versions. | `GET /v1/agents`, `GET /v1/agents/{name}` | T064 |
+| **Agents** | admin | List: name (mono), description, a status dot with its word for screen readers (ready, or a warning when a toolset it uses is skipped or needs your connection). Detail: description; model and effort; toolsets with status; skills; memory; UI (text or A2UI); the system prompt (admin only, collapsed); **Chat with this agent**. Part 2 adds the version ("Published v3 · draft v4" or "From the server config"), the interaction mode, the tool policy with its counts ("8 allowed · 3 flagged"), the deferred tools, and **Edit** with **Versions** (stored agents) or **Duplicate** (config agents). | `GET /v1/agents`, `GET /v1/agents/{name}`, T075's versions | T064, T077 |
 | **Toolsets** | admin | List: name, status dot, tool count. Detail: status (ready, or skipped with the reason), the credential it needs and who provides it ("API key · each user connects their own · server key `EXA_API_KEY` not set"; later the org connection), the MCP URL and a copyable `claude mcp add` command (token placeholder, never the token; a note says the token is an API token from your admin, `AGENTKIT_API_TOKEN` on a single-token server), then each tool as a disclosure with a chevron: name, description, a readable field list (name, type, required, help) and the raw schema on demand. A skipped toolset shows how to fix it instead of the command. The command wraps on phones. | `GET /v1/toolsets`, `GET /v1/toolsets/{name}/tools` | T064 |
 | **Connections** | everyone | One row per connector that an agent you can use needs: connector and provider, kind (API key or account), your status, the agents that use it, and the action (Connect, Replace key, Reconnect, Disconnect). Rows that need you come first. Values are never sent to the page. On phones each row is a card. The rail badge counts connectors that need you (see "Connections"). | T045's `GET/PUT/DELETE /v1/credentials`, `POST /v1/credentials/{slot}/connect` (and the asks in T070 Notes) | T064, T045 |
-| **Activity** (later) | user (own), admin | List: segments **Runs** and **Threads** (and **Triggers** for admins), a filter (Running, Needs you, Recent), unread dots. Run detail: agent, status (running, needs you, done, failed, **cancelled**), origin (API, schedule, webhook, another agent), elapsed, tokens and cost, **Cancel**, and the live transcript with the same tool steps as chat. Thread detail: participants, hops (3 of 8), budget used, the messages in order, each labelled with its sender agent and linked to its run. Triggers: name, agent, schedule or webhook, next firing, last outcome, Pause/Resume. T087 redesigns this as Tasks. | T071 `GET /v1/runs?background=true`, `GET /v1/runs/{id}/events`; T072; T073 | T074 |
+| **Tasks** | user (own), admin | List: tabs **Tasks**, **Threads**, **Triggers** (admins); tasks grouped Waiting for you, Running and paused, Finished; agent filter; **Start a task**. Task view: status and actions, who started it, mode, policy, usage, Result, the transcript, and the steering box. See "Tasks". | `POST /v1/tasks`, `GET /v1/runs?background=true`, `GET /v1/runs/{id}`, `GET /v1/runs/{id}/events`, `POST /v1/runs/{id}/cancel`, `POST /v1/runs/{id}/input`; T086's messages, pause and resume | T074 |
+| **Thread** | user (own), admin | The two agents, hops (3 of 8), tokens (7,400 of 500,000), the messages in order (asked, replied, notice), each linked to the task it started; a stopped thread says why. | `GET /v1/threads`, `GET /v1/threads/{id}` (T073) | T074 |
+| **Triggers** | admin | A table: name and kind, agent, when (words, cron with `CRON_TZ`, next firing), last firing and recent firings, Pause/Resume; **New trigger**. | T072 | T074 |
+| **Agent builder** | admin | Full width: section nav, form, test chat. See "Agent builder". | `GET/POST /v1/agents/{name}/versions`, `POST /v1/agents/{name}/publish` (T075) | T077 |
+| **Versions** | admin | Version list, the diff against the published version, Publish, Roll back, Edit from, Delete draft. See "Versions". | `GET /v1/agents/{name}/versions/{v}`, `DELETE …/versions/{v}` (T075) | T077 |
+| **Skills** | admin | List with warnings; detail with files, the tools it loads per agent, users, SKILL.md; the editor (full width) and upload. See "Skills". | T076 (asked: the skills API) | T077 |
+| **Add an MCP server** | admin | Four steps: server, sign-in, review tools, use it. Review needed for a changed server. See "Adding an MCP server". | `POST /v1/toolsets`, `GET/POST /v1/toolsets/{name}/review` (T096) | T096's console part |
 | **403** | everyone | "Admins only": "This page shows server configuration. Ask an admin if you need access." and **Back to chats**. No request lines for users. | | T055 |
 | **404** | everyone | "This conversation doesn't exist, was deleted or expired." and **Back to chats**; the list drops the row. | | T055 |
 
@@ -134,8 +145,190 @@ A **connector** is a toolset that calls an outside service: Exa, Parallel, GitHu
   - **Before sending:** the new-chat agent card and the picker say what is missing ("Connect Exa"), with **Connect** opening the dialog in place. The agent still works with its other tools.
   - **During a run:** a call that needs a connection you don't have fails with `not_connected` (or `needs_reconnect`). The step reads "Exa search needs your connection" in amber, not red. A card under it says "researcher couldn't use Exa because it isn't connected for you." with **Connect Exa**. The run goes on without that tool, because the model gets the error.
   - *API dependency:* these error codes don't exist yet. T036's `tool_result` has only `content` and `is_error`, and T044 raises one `ErrNotConnected`. The asks for T036/T044 are in T070 Notes. Until then, the console can't tell this failure from any other and shows a plain failed step.
-  - **After connecting:** the card reads "Exa connected" and offers **Ask again**, which puts your last message back in the composer to send. With E17's interrupts (T087), the run can instead wait for the connection.
+  - **After connecting:** the card reads "Exa connected" and offers **Ask again**, which puts your last message back in the composer to send. A missing connection is not an interrupt kind (T084 has questions and approvals), so the run doesn't wait for it; asked in T087 Notes.
 - **Never on the page:** values, partial values or key hints. A provider's error text is summarized, not copied. Connection details belong to their owner. Admins see only counts for other users.
+
+### Interrupts and approvals
+
+E17's interrupts (T084), with the decisions of the tool policy (T083).
+
+- **What can wait.** A run in a chat (interactive) or a supervised task can stop for a person in two ways: the agent asks with `ask_user` (a question, maybe with choices), or the policy holds a call for approval (also any tool that sets `requires_approval`). The run then ends with `run_error` `suspended`, and its `interrupt` events say what waits: kind, prompt, choices, input, policy and rule. An autonomous run never waits: `ask_user` isn't offered to it, and a call that would need approval is denied.
+- **In a chat:**
+  - One **card per waiting call**, inline under its step. The step row reads "Waiting for approval: opening an issue" or "Waiting for your answer", in amber with a shield or a question icon.
+  - The composer shows "researcher is waiting for you." with **Go to it** and **Cancel run…**. Send is disabled ("Answer above first, or cancel the run."), because a suspended run keeps its conversation busy (`409 conversation_busy`); the draft stays editable.
+  - In Chats, the row gets an amber mark and "Waiting for you".
+- **Question card:** "researcher asks", the prompt, then the choices as one-pick chips, or a text field when there are none, and **Answer**. With choices only a choice is accepted, because the API enforces it. The answer goes back to the agent as the tool's result, not as a message. Answered, the card collapses to "researcher asked: … · You answered: Lowest latency · Answered by you · 12:04".
+- **Approval card:**
+  - "ops-helper wants to open an issue", and why it waits: "Needs approval: medium-risk write tools need approval (policy ops-helper) (rule default)".
+  - The tool name, toolset, kind and risk tags.
+  - The **exact input** as a key/value list (multi-line values kept), with **Show exact JSON**.
+  - **Approve** and **Deny…**; Deny opens an optional reason, which the agent sees. Approve runs the call once, with exactly this input.
+  - There is no "Always allow". The card says how instead: "To allow it every time, change ops-helper's policy."
+  - After: "Approved by samanvith" or "Denied by samanvith: not now". The step settles to the done row with "Approved by samanvith", or to "Denied by samanvith: opening an issue" in grey.
+- **Several calls waiting:** each has its own card. Answers post one at a time (`POST /v1/runs/{id}/input` with `{answers: [{id, text | approved, reason}]}`; the server sets `by`), and the status region says "1 of 2 answered. It goes on when every call has an answer." The run resumes after the last one.
+- **Answered elsewhere:** a second answer gets `409 not_pending`. The card then shows the answer that stands ("Approved by samanvith · answered in another tab"), never a second decision. `409 run_final` (the run ended or was canceled) shows "Not answered: the run was canceled."
+- **Cancel run** asks first. The waiting calls won't run, their cards read "not answered", and a note says "Run canceled by you". The conversation then takes a new message.
+- **Notifications** for a task that starts waiting: a toast ("ops-helper is waiting for you: Check every toolset after deploy", **Review**) and the Tasks badge. The toast never takes the answer: **Review** opens the task at its first open card, so the decision is made with the whole input in view.
+- **Not an interrupt:** a missing connection still fails the call (see "Connections").
+
+### Tool policy in transcripts
+
+What the policy decided (T083) and which tools were loaded (T085), in the quiet step rows. Each is a word and an icon, never a colour alone.
+
+| Decision | The step row | Its details |
+|---|---|---|
+| Allowed | as v3 | no policy block, unless a rule named the tool |
+| Flagged | the call ran; a **Flagged** tag on the row | the policy block: decision, policy, rule, reason, class (kind and risk) |
+| Waiting for approval | amber "Waiting for approval: opening an issue", shield icon | the policy block; "Once approved, the call runs with exactly this input." The card follows |
+| Approved by a person | the done row with "Approved by samanvith" | "Approved by samanvith at 11:42. It ran with the input that was approved." |
+| Not allowed (the policy) | grey "Not allowed: restarting a toolset", a ban icon | the policy block, and "The model was told: not allowed in this run: commands are disabled for this agent. It carried on without the call." |
+| Denied by a person | grey "Denied by samanvith: opening an issue" | the reason the person gave |
+| Tools loaded | "Loaded 2 tools · tool_search", a package icon | the tool names; "Deferred tools aren't sent with every request; a search or a skill loads them. The policy still decides every call." |
+
+- The group summary counts them: "Used 5 tools · 1 not allowed · 1 flagged · 3.2 s". A group with a waiting call reads "Waiting for you · 4 tools". Waiting and not-allowed calls are always shown, even in a collapsed range, like failures.
+- The data: the `tool_policy` and `tool_flagged` events (action, policy, rule, reason, tool_kind, tool_risk), the refused call's result text ("not allowed in this run: …"), and `turn_done.record.loaded`. Asked: the conversation's history keeps the decision and the loaded tools per step, so a reload shows the same rows (T087 Notes).
+
+### Tasks
+
+T071's background runs, T086's steering, T073's threads and T072's triggers.
+
+- **A task is any run that isn't a chat:** started with `POST /v1/tasks`, by a trigger, by another agent in a thread, or with an API key. Tasks live in the **Tasks** section (everyone's) and never in Chats.
+- **The list:**
+  - Tabs: **Tasks**, **Threads**, and **Triggers** for admins.
+  - Tasks are grouped **Waiting for you**, **Running and paused**, **Finished**, newest first, with an agent filter. Older ones load by cursor.
+  - A row: the title, the agent (mono) and the status word. A spinner while running, an amber mark when waiting, a dot on a finished task you haven't opened.
+  - **Start a task** (+) sits in the list header.
+- **The rail badge** counts tasks waiting for you. Finished tasks don't count; their dot is on the row.
+- **The task view:**
+  - Header: the title (`h1`), the status (dot and word), and the actions for its state: **Pause**, **Resume**, **Cancel…**, **Run again**; ⋯ has Copy run ID and Open agent.
+  - Key/value block:
+    - the agent and version (runs record `agent_version`);
+    - who started it: you, a trigger (linked to Triggers), an agent (linked to its thread), or an API key's name;
+    - how it runs (autonomous: never waits for a person; supervised: may wait for you);
+    - the tool policy and the task's narrowing ("low_risk_writes, narrowed to read_only for this task");
+    - time, tokens and cost ("so far" while live).
+  - Then the state's notice; then **Result** for a done task (the final answer, with Copy). The transcript follows: the same steps as a chat, open while live, folded under "How it got there · 4 tools" when done.
+  - It updates live from `GET /v1/runs/{id}/events` (SSE, resumed from `Last-Event-ID`).
+- **Statuses** (the API's): running; waiting for you (`suspended`); paused; done; failed, with the reason and Run again; **Canceled** (the API's spelling, not v3's "Cancelled"); rejected.
+- **Steering** (T086): a message box under a live task, "Message digest-bot while it works".
+  - While it runs: "It reads your message at its next step. It doesn't stop what it's doing." Your bubble reads "Sent · it reads this at its next step", then "Read at its next step" after the `steered` event.
+  - Paused, or waiting for you: the message is queued ("Queued · it reads this when you resume", or "… after the answers above").
+  - A finished task has no box, only: "This task is done, so it can't take messages. Run it again, or chat with digest-bot." The API refuses a message after the end.
+- **Pause and Resume** (T086): Pause stops at the next step boundary ("Paused by you. It stops after the step it's on."), and nothing runs until Resume; queued messages are read then. **Cancel…** asks first; waiting calls and queued messages are dropped.
+- **Start a task** (a dialog):
+  - the agent, and the task ("Nobody is watching, so say what done looks like.");
+  - how it runs: **Autonomous**, with **Supervised** shown as later, because tasks are autonomous-only for now;
+  - the tool policy: "Its own policy" or "Narrow it to read_only" (a task can only narrow, never widen);
+  - a live count of its tools by decision ("6 allowed · 2 flagged · 3 denied"), with "Calls that would need approval are denied: an autonomous task can't wait for a person";
+  - "Notify me when it's done or fails".
+  - A 202 opens the new task. A 429 `too_many_background_runs` says so in the dialog and counts down from `Retry-After`, keeping everything typed.
+- **Notifications:** a task that finishes, fails or starts waiting while you're elsewhere gets a toast with **Open** or **Review** (8 s, paused on hover or focus), the row's dot or mark, and the badge. Browser notifications are an open question (T087 Notes).
+- **Threads** (T073):
+  - The list: the subject, the two agents (researcher ⇄ ops-helper) and the hops; a stopped thread has an amber mark.
+  - The view: between whom, hops ("3 of 8"), tokens ("7,400 of 500,000"), the thread ID, and the messages in order ("researcher asked ops-helper", "replied", a notice), each linked to the task it started.
+  - Stopped: "This thread stopped: it reached its hop limit (8 of 8)." The page also says that a message from another agent reaches its recipient as data from that agent, never as instructions.
+- **Triggers** (T072, admins):
+  - A table: the name and kind; the agent; when, in words, with the cron line (`CRON_TZ=Europe/London 0 8 * * 1-5`) and the next firing; the last firing, with **Recent firings** (started, with its task; skipped because the last one is still running; refused for a bad signature); **Pause** or **Resume**.
+  - **New trigger**: a name, the agent, then **Schedule** (days, time, time zone, shown as cron with the next firing) or **Webhook** (signed), and the task text.
+  - A new webhook shows its URL and signing secret **once**, with Copy.
+
+### Agent builder
+
+T075's stored, versioned definitions, edited by T077; E17's mode and policy; T085's deferred tools.
+
+- **A full-width page** at `/agents/new` and `/agents/{name}/edit`.
+  - Header: Back, "Edit researcher" (`h1`), the version state ("Published v3 · draft v4", "Unsaved changes"), **Test**, **Versions**, **Save draft** (`Mod+S`), **Publish…**.
+  - Desktop: section nav (172 px), the form, and the test chat (380 px). Laptop: the form alone, with **Test** opening the chat as a panel over it (Esc closes it). Phone: read-only, the latest version as text, with "Editing an agent needs a wider screen."
+- **Sections:**
+  - **Name** (fixed once created: chats, tasks and versions refer to it) and description.
+  - **Model**: a text field with suggestions, because there is no models API; and effort.
+  - **Instructions**: the system prompt (mono, with a character count).
+  - **Skills**: checkboxes. A skill whose tools match nothing of this agent says so.
+  - **Tools**, **Interaction** and **Tool policy** (below).
+  - **Memory**.
+  - **Limits**: turns and tokens per run, and which agents it may message (T073's threads).
+- **Tools:**
+  - One block per toolset: a checkbox to use it, its type and state, and a **Defer all** switch.
+  - In it, one row per tool:
+    - the name and description;
+    - kind and risk tags, plus "asks" for a tool that sets `requires_approval`;
+    - a **Deferred** switch;
+    - a policy select. It shows what the policy decides ("Policy: needs approval") and offers "Always allowed / flagged / needs approval / denied". Each of those writes an exact-name rule at the top of the rules.
+  - `ask_user` is listed as built in, "Not offered" in autonomous mode.
+  - Leaving out a single tool of a toolset isn't in the API, so the page says to deny it instead (asked).
+- **Interaction:** three radio cards: interactive (the chat default), supervised, and autonomous (the task default), each with what it means.
+- **Tool policy:**
+  - **Start from** a preset (read_only, low_risk_writes, approve_writes, all), with its sentence.
+  - The rules, first match wins: custom rules on top (move up or down, edit, remove); then the preset's rules written out, greyed ("from low_risk_writes"); then "Anything else: Denied".
+  - **Add a rule**: a name; then Allowed, Flagged, Needs approval or Denied; then the match: when the kind is …, the risk is …, it's tagged …, its name matches … (globs). Then a reason (the model and the transcript see it), and a live "Matches 3 of this agent's tools: …".
+  - **Try it** (the idea of IAM's policy simulator): where it runs (interactive, supervised, autonomous) and an environment narrowing. It shows counts by decision, and a disclosure with every tool and the rule that decides it.
+  - The console computes it with the server's rules (pkg/policy). Asked: an endpoint that evaluates a draft policy, so the two can't drift.
+- **Errors:** the console checks the name, model and limits inline. The server's `400 invalid_definition` lands its `error.fields` on their fields. A summary at the top ("The draft wasn't saved: 2 fields need a fix.") links to each one, and the section nav shows a dot. Focus goes to the summary.
+- **Saving:** **Save draft** makes a new version (`POST /v1/agents/{name}/versions` with `if_latest`). A draft doesn't change what runs.
+- **Conflict** (`409 conflict`): "alex saved v5 while you were editing. Your draft isn't saved." It offers **What changed in v5** (a diff dialog), **Save mine as v6** and **Discard mine, load v5**. Nothing is overwritten silently.
+- **Publish…** saves first if needed, then confirms: "Publish v5 of researcher? 4 lines differ from v3, which is published now. New chats and tasks use v5. Runs already going keep the version they started with."
+- **Agents from the config file** (`409 read_only` if written): the builder opens read-only with "default comes from the server config file, so it can't be changed here." and **Duplicate to edit**. Duplicate opens a new stored agent, "{name}-copy", with the same definition.
+- **Test chat:** a chat beside the form, with the agent's tools, policy and steps; it isn't listed in Chats. It runs the **published** version, so while there are unsaved or unpublished changes it says "Your draft isn't what answers here." (Asked: running a draft version.)
+
+### Versions
+
+- `/agents/{name}/versions/{v}` is a full-width page.
+  - A **list**: v4 Draft, v3 Published, v2, v1, each with who saved it, when, and a note.
+  - The selected version **compared** with the published one (or the previous one, if it is the published one); **Compare with** picks another.
+- **The diff** is of the definition as text: description, model, the instructions sentence by sentence, toolsets, defer, skills, interaction, the policy's rules, limits.
+  - Unchanged runs fold ("12 unchanged lines").
+  - Added and removed lines carry + and − signs and hidden "Added:" and "Removed:" words, not colour alone.
+- **Actions:**
+  - **Publish v4…** for a draft.
+  - **Roll back to v2…** for an older version, which publishes it again.
+  - **Edit from v2**: the builder, starting from that version; saving makes a new one.
+  - **Delete draft**, for an unpublished version only. A published version stays, because runs refer to it (`409 version_published`).
+
+### Skills
+
+T057's skills, stored and versioned by T076.
+
+- **The list** (admins): name (mono), description, and a status dot, which warns when part of the skill does nothing. **Upload** sits in the list header.
+- **The detail:**
+  - description;
+  - warnings ("nope_tool matches no tool of ops-helper, so it's ignored.");
+  - version and files;
+  - **Loads tools**: each glob and what it matches per agent that uses the skill ("ops_* → ops-helper: ops_read_logs, ops_restart_toolset, ops_scale");
+  - used by;
+  - SKILL.md, rendered.
+  - Stored skills offer **Edit** and **Upload a new version**. Config skills (`skills_dir`) are read-only, with a note.
+- **The editor** is full width: file tree · editor · preview. On laptops the preview is a tab; on phones the editor is read-only.
+  - SKILL.md shows its front matter as fields above the Markdown body: the name (fixed), the description, and the tools as a chip input of globs with live matches.
+  - Other files are plain text ("Scripts are files to read; agentkit never runs them.").
+  - **Save draft** (`Mod+S`) and **Publish…** work as in the builder.
+- **Upload:**
+  - A drop zone for a folder or a .zip ("Up to 5 MB and 200 files").
+  - Then the checks, each with an icon and a hidden Passed, Failed or Warning: SKILL.md and its front matter; the name matches the folder; the size; no links out of the folder; tools that match nothing (a warning).
+  - A failed check blocks **Upload as a draft**.
+- Every skill page says the rule: a skill loads only deferred tools the agent already has; it never adds tools or permissions.
+
+### Adding an MCP server
+
+T096's runtime toolsets, added by an admin from Toolsets (+ in the list header). Four steps, shown as "1 Server · 2 Sign-in · 3 Review tools · 4 Use it" with the current one marked.
+
+1. **Server:** a URL, and a name (from the host by default; the tools become `name__tool`).
+   - Some URLs are refused before any request, with the reason under the field: not https ("Use an https URL…"); a private or local address ("10.0.3.12 is a private address. agentkit connects only to public addresses, so a server can't be used to reach your network. (url_not_allowed)"); a name already taken.
+   - **Connect** probes the server (`POST /v1/toolsets`). Nothing is saved if the probe fails.
+2. **Sign-in:** first what the server said: a 401 with `WWW-Authenticate`, or that it answered without sign-in. Then the choices:
+   - **No sign-in**.
+   - **A header from a server variable**: a header name and a value like `Bearer ${LINEAR_API_KEY}`. Only variables listed in `runtime_toolsets.header_env` are allowed, and the value never passes through the console.
+   - **Each person signs in**: later (T095, T044). It will add a row to Connections, "Account, MCP server".
+3. **Review tools:** one card per tool, and every tool needs **Approve** or **Reject**. **Approve the 3 without flags** saves clicks. A card shows:
+   - the name;
+   - the description **exactly as the model sees it**, with invisible characters shown (⟦U+200B⟧);
+   - flags ("3 invisible characters", "Tells the model to call another tool");
+   - the class agentkit will use: kind and risk selects. The server's hints (`readOnlyHint`) are "a claim, not a check", and an unclassified tool is a medium-risk write;
+   - the input schema, on demand.
+4. **Use it:** pick stored agents (config agents are greyed). Each gets a new draft with the toolset added, which changes nothing until it is published.
+
+- **Pinned and reviewed:** approved definitions are pinned. When the server changes a tool or adds one, the toolset shows **Review needed** (in the list, on the agents' readiness, and as a notice with **Review** on its page), and only those tools are off.
+- **The review page** (`/toolsets/{name}/review`): each changed tool as a diff (approved → now, description and schema) and each new tool as a card, with Approve or Reject, then **Save review** (`POST /v1/toolsets/{name}/review`).
+- **Later:** a registry search (T097) adds "Find a server" before step 1.
 
 ## Runs and conversations
 
@@ -188,6 +381,22 @@ Each has a design in the mockup (the **State** menu in its top bar) or here.
 | **Connection lost mid-run** | Chat | Until T071 a closed stream cancels the run, so the honest message is: "Connection lost. The run was stopped on the server. Your messages and finished steps are saved; the unfinished part of this answer isn't." with **Reload conversation**. The server can report the run as running for up to a minute after; Reload then shows the 409 busy notice with Check again. With T071: "Reconnecting…", and the stream resumes from `Last-Event-ID`. |
 | **Long content** | Chat, details | A long answer flows normally, code blocks scroll sideways (and take focus, so the keyboard can scroll them), a Jump to latest pill. Tool groups collapse (see Rules, "Tool calls"). A huge result shows the first 20 results or 4,000 characters, then "Show all (1.2 MB)" and **Copy raw JSON**. Long titles end in an ellipsis in the list. |
 | **Not found** | Chat | The 404 page and Back to chats; the list drops the row. A 404 on send keeps the draft and offers **New chat with this message**. |
+| **Waiting for you** | Chat, Chats list, Tasks | One card per waiting call (question or approval), the amber step, the composer notice with Go to it and Cancel run; Send disabled ("Answer above first, or cancel the run."); in a task, the notice under the header and the Tasks badge (see "Interrupts and approvals"). |
+| **Answered elsewhere** | Card | 409 `not_pending`: the card shows the answer that stands ("Approved by samanvith · answered in another tab"), never a second decision. 409 `run_final`: "Not answered: the run was canceled." |
+| **Several waiting** | Chat, task | "1 of 2 answered. It goes on when every call has an answer." in the status region; the run resumes after the last. |
+| **Paused** | Task | "Paused. It stopped at a step boundary and runs nothing until you resume." Messages queue. |
+| **Queued message** | Task | Your bubble with "Queued · it reads this when you resume" (or "after the answers above"); "Read at its next step" once delivered. |
+| **Finished task** | Task | Result first, the transcript collapsed; no message box ("This task is done, so it can't take messages."); Run again. |
+| **Too many tasks** | Start a task | 429 `too_many_background_runs`: "8 tasks are already running in this tenant, the most it allows. Try again in 30 s, or cancel one." counting down from `Retry-After`; the dialog keeps what you typed. |
+| **Thread stopped** | Thread | "This thread stopped: it reached its hop limit (8 of 8)." (or the token budget), with the code. |
+| **Save refused** | Builder | 400 `invalid_definition`: a summary at the top linking to each field, the message under the field (`aria-invalid`), a dot in the section nav. |
+| **Someone saved meanwhile** | Builder | 409 `conflict` (the `if_latest` check): "alex saved v5 while you were editing. Your draft isn't saved." with What changed in v5, Save mine as v6, Discard mine. |
+| **Read-only agent** | Builder | An agent from the config file (409 `read_only` if written): read-only with **Duplicate to edit**. |
+| **Draft not tested** | Builder test chat | "Your draft isn't what answers here": the test runs the published version. |
+| **Skill check failed** | Skill upload | The failed checks with an icon and a hidden "Failed:", and Upload disabled. |
+| **URL refused** | Add an MCP server | Not https, or a private or local address: the reason under the field, with `url_not_allowed`; nothing is requested. |
+| **Sign-in asked** | Add an MCP server | "The server asked for sign-in (401)." and the sign-in choices. |
+| **Review needed** | Toolsets, agents | A server changed or added tools: "Review needed" on the toolset, a notice with Review; only those tools are off. |
 
 **Run errors** (`run_error` codes, T036). The button follows the error's `retryable` flag, and **Retry** means Resume. Codes that leave the conversation interrupted offer Resume too. An unknown code shows its message and the code, with no button.
 
@@ -206,6 +415,7 @@ Each has a design in the mockup (the **State** menu in its top bar) or here.
 | `model_auth` | The server's model API key was rejected. Ask an admin. | (admins: a link to the setup docs) |
 | `model_rejected` | The model rejected the request, plus the error's message. | — |
 | `internal` | Something went wrong on the server. | Copy run ID |
+| `suspended` | Not an error: the run waits for you. The chat shows its cards and "researcher is waiting for you." | Answer, or Cancel run |
 
 ## Components
 
@@ -228,7 +438,7 @@ Built with React, shadcn/ui and Radix (E11, T078). Each component has a home:
 | **Composer** | agent-ui | `InputGroup` + `Textarea` + `Button` | idle, with draft, running (Stop; Enter does nothing), Send disabled with a reason (typing still works), fully disabled (no agent, agent removed) | focus, multi-line (grows to 8 lines, then scrolls) |
 | **Thread** | agent-ui | ours: a native scroll container (`role="log"`), stick-to-bottom, the Jump to latest pill | | at bottom, scrolled up (pill), loading (`Skeleton`), load failed |
 | **Message** | agent-ui | ours; Markdown through an allowlist renderer to React elements | user bubble; assistant text; pending (muted text, no opacity); thinking line; stopped note (with Resume); origin label ("From schedule …"); `ui_action` summary | streaming (`aria-busy="true"`), actions (Copy, also on a stopped answer) |
-| **Tool step** | agent-ui | ours, on Radix `Collapsible` | an icon per kind (search, page, calc, tool) | running (shimmer + `Spinner`), done, failed (red), stopped (neutral); collapsed, open (request, results, raw JSON) |
+| **Tool step** | agent-ui | ours, on Radix `Collapsible` | an icon per kind (search, page, calc, tool, package for loaded tools) | running (shimmer + `Spinner`), done, failed (red), stopped (neutral), waiting for approval (amber), waiting for your answer (amber), not allowed (grey), denied by a person (grey), approved by a person, flagged (tag), loaded tools; collapsed, open (request, results, policy, raw JSON) |
 | **Step group** | agent-ui | ours, on `Collapsible` | one call is a plain step; a group forms at the second consecutive call; ≤ 3 calls open by default; > 3 collapsed with a summary | running (shows the latest 5, "Show N earlier"), done ("Show N more"), some failed (failed calls always shown); the open state is kept across updates |
 | **Source chip** | agent-ui | ours (a link styled like `Badge`) | site initial + host + path | hover, focus |
 | **Usage line** | agent-ui | ours | turns · tokens (cached) · time | |
@@ -238,7 +448,25 @@ Built with React, shadcn/ui and Radix (E11, T078). Each component has a home:
 | **Connection row** | console | `Table` row; a card on phones | API key, account; later with the org column | connected, not connected, needs reconnect, server key, keyless, waiting, using the org's (later) |
 | **Connect dialog** (API key) | console | `Dialog` + `Field` + password `Input` | connect, replace | default, saving, rejected |
 | **A2UI surface** | agent-ui | ours, rendering the catalog with `ui` components (table below) | | live, disabled while a run is active, sent (keeps the values), not used |
-| **Run viewer** (Activity, later jobs) | agent-ui | Thread + Message + Step group, read-only, plus a key/value header | | running, needs you, done, failed, cancelled |
+| **Task view** (tasks, later jobs) | agent-ui | Thread + Message + Step group, plus a key/value header, a Result block and the steering box | | running, waiting for you, paused, done, failed, canceled, rejected |
+| **Task row** | console | as the conversation row | title + agent + status word; spinner (running), amber mark (waiting), dot (not opened) | as above |
+| **Interrupt card** | agent-ui | ours: `Card` + `ToggleGroup` (choices, one pick) or `Textarea`, `Button`s; the approval adds a key/value list and a raw JSON `Collapsible` | question (choices or free text), approval (Approve, Deny with an optional reason) | open, error, answered (collapsed, who and when), answered elsewhere, canceled |
+| **Policy tag** | agent-ui | `Badge` (outline) + icon | flagged; kind and risk tags (risk has a dot: grey low, amber medium, red high, plus the word) | |
+| **Steering box** | agent-ui | Composer variant | running, paused (queues), waiting (queues), ended (a sentence instead) | |
+| **Builder layout** | console | ours: section nav (anchor links), form sections, a test panel (overlay on laptops) | desktop, laptop, phone (read-only) | unsaved, saving, errors (summary + fields), conflict, read-only |
+| **Radio cards** | ui | native radios in labels (`RadioGroup` look) | 2 or 3 options, with a tag ("chat default") | checked, disabled, focus |
+| **Switch** | ui | `Switch` (`role="switch"`) | with a visible label | on, off, disabled |
+| **Toolset block** | console | ours: a checkbox header + tool rows (name, tags, defer `Switch`, policy `Select`) | used, not used, skipped, review needed | |
+| **Rule list** and **rule form** | console | ours: an ordered list; `Checkbox` groups, `Input`, `Select` | custom (reorder, edit, remove), from the preset (read-only), default | live match count |
+| **Policy preview** | console | ours: two `Select`s, the counts, a `Collapsible` with every tool | | |
+| **Version list** | console | a list of links | draft, published, earlier | current |
+| **Diff** | ui | ours: lines with +/− signs, hidden words, folded unchanged runs, focusable to scroll | | no differences |
+| **File tree** | console | ours (`role="tree"`, `treeitem`) | file, folder | selected |
+| **Markdown editor** | console | `Textarea` (mono) + a preview pane (tabs on laptops) | SKILL.md (with front-matter fields), plain file | |
+| **Chip input** | ui | ours: `Badge`s with a remove button + an `Input` | globs | with live matches below |
+| **Drop zone** and **checks** | console | ours | pick, checked | passed, warning, failed |
+| **Wizard steps** | ui | ours: an ordered list with `aria-current="step"` | | done, current, to do |
+| **Tool review card** | console | `Card` + `Select`s + Approve/Reject (a radio pair) | new, changed (a diff), from a probe | flagged (invisible characters, instructions to call other tools) |
 | **Status** | ui | ours (dot + word, or dot + hidden word where space is tight) | ok (green), warn (amber), bad (red), neutral (grey), running (`Spinner`) | |
 | **Tag** | ui | `Badge` (outline, mono) | agent or toolset name; with a status dot and its hidden word | at least 24 px tall when clickable |
 | **Kbd** | ui | `Kbd` | single key, combination | |
@@ -253,7 +481,6 @@ Built with React, shadcn/ui and Radix (E11, T078). Each component has a home:
 | **Button** | ui | `Button` | primary (ink), secondary (`outline`), ghost, icon, link | hover, focus, disabled, busy (`Spinner`); at least 24 × 24 px |
 | **Inputs** | ui | `Input`, `InputGroup` (search with `Kbd`), `Select`, `Textarea`, `Checkbox`, `ToggleGroup` (segments) | text, password (with show/hide), search, select, textarea, checkbox, segmented | focus, invalid, disabled |
 
-T087 adds the components its pages need: a diff, a version list, a file tree and the editor fields.
 
 **A2UI basic catalog (v0.9.1)** drawn with these components:
 
@@ -392,11 +619,12 @@ Status colours (`--ak-ok`, `--ak-warn`, `--ak-bad`) and `--ak-shadow` have no sh
 | `Mod+Shift+O` | New chat |
 | `Mod+K` | Search conversations (opens the drawer on phones) |
 | `/` | Focus the message box |
-| `Enter` / `Shift+Enter` | Send / new line. Enter does nothing while the conversation is answering |
-| `Esc` | Close the topmost menu, sheet, dialog or the drawer; otherwise, in a conversation that is answering, stop it |
+| `Enter` / `Shift+Enter` | Send / new line. Enter does nothing while the conversation is answering. In a task's message box Enter sends, because a message doesn't stop the task |
+| `Esc` | Close the topmost menu, sheet, dialog or the drawer, or the builder's test panel on a laptop; otherwise, in a conversation that is answering, stop it |
 | `Mod+Shift+S` | Show or hide the list |
 | `?` or `Mod+/` | Keyboard shortcuts |
 | `↑` `↓` `Enter` `Esc` | Move, pick and close in the agent picker and menus |
+| `Mod+S` | Save a draft, in the agent builder and the skill editor (the browser's Save page never fires there) |
 
 - **Single-key shortcuts** (`/`, `?`) fire only when focus is not in a text field. They can be turned off in the shortcuts dialog (WCAG 2.1.4); the setting is kept in `localStorage`.
 - **While a dialog or sheet is open**, only Esc and that dialog's own keys work.
@@ -420,7 +648,12 @@ Status colours (`--ak-ok`, `--ak-warn`, `--ak-bad`) and `--ak-shadow` have no sh
 - **Names:** icon-only buttons have an accessible name and a `Tooltip` that also shows on keyboard focus, not a `title` attribute. A disabled control's reason is visible text.
 - **Scrollable regions** (code blocks, raw JSON) are focusable and labelled, so the keyboard can scroll them.
 - **Connections:** after the key dialog, Disconnect or an account connection, focus returns to the row's action (in a chat, to the card's button: Ask again after connecting). The key field's error is linked with `aria-describedby` and `aria-invalid`. Waiting, connected, denied and failed are announced in the status region.
-- **Contrast**: see Tokens.
+- **Interrupts:** each card is a labelled group ("ops-helper asks", "Approve github_create_issue?"); choices are a radio group; the composer's **Go to it** moves focus to the first open card. Answers, "1 of 2 answered" and "ops-helper is going on" are announced in the status region. A card that is answered keeps its place and collapses, so focus never jumps to the top.
+- **Policy** is a word in the step row ("Not allowed", "Waiting for approval", "Flagged", "Approved by …"), never only a colour or an icon.
+- **Forms** (builder, rule form, skill editor, MCP steps): every field has a label; errors are linked with `aria-describedby` and `aria-invalid`; a refused save moves focus to the error summary, whose items are links to the fields. Switches are `role="switch"`; radio cards are native radios; wizard steps mark the current one with `aria-current="step"` and say "done" to screen readers.
+- **Diffs** use + and − signs and hidden "Added:" and "Removed:" words; the file tree uses `tree` and `treeitem` roles.
+- **Tasks:** status changes of the open task are announced; a task that finishes or starts waiting elsewhere gets a toast with Open or Review, plus the row mark, so nothing depends on the toast.
+- **Contrast**: see Tokens. Part 2 adds no colours: the risk dot uses the status colours with the word next to it, and the diff uses `--ok` and `--bad` for its edge and sign on `--surface-2`.
 
 ## Rules
 
@@ -440,4 +673,4 @@ Status colours (`--ak-ok`, `--ak-warn`, `--ak-bad`) and `--ak-shadow` have no sh
 ## Open for the owner
 
 - Brand: keep the neutral "agentkit" look, or apply a product name, logo and colours when the name is final (PLAN open item).
-- More in T070 Notes ("Open questions").
+- More in T070 Notes ("Open questions") and T087 Notes ("Open questions").

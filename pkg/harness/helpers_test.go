@@ -292,6 +292,7 @@ func cloneEvent(ev harness.Event) harness.Event {
 			tr.Messages[i] = harness.TimedMessage{Message: m.Message.Clone(), At: m.At}
 		}
 		tr.Tools = append([]harness.ToolRecord(nil), tr.Tools...)
+		tr.Loaded = append([]string(nil), tr.Loaded...)
 		ev.TurnRecord = &tr
 	}
 	return ev

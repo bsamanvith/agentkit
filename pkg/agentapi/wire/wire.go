@@ -371,6 +371,9 @@ type TurnRecord struct {
 	Usage        llm.Usage      `json:"usage"`
 	Stop         llm.StopReason `json:"stop"`
 	Tools        []ToolRecord   `json:"tools"`
+	// Loaded names the deferred tools the turn's results loaded (a
+	// tool_search, or a skill that lists tools), in order.
+	Loaded []string `json:"loaded,omitempty"`
 }
 
 // ToolRecord is the wire form of harness.ToolRecord.

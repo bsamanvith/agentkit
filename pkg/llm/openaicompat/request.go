@@ -89,6 +89,11 @@ func (m *Model) build(req llm.Request) (*chatRequest, error) {
 	if req.MaxTokens < 0 {
 		return nil, fmt.Errorf("%w: max tokens %d is negative", llm.ErrInvalidRequest, req.MaxTokens)
 	}
+	if len(req.Deferred) > 0 {
+		// The API cannot hold tools back: the model would get every tool,
+		// and a search's results would be empty (harness.WithNativeToolSearch).
+		return nil, fmt.Errorf("%w: deferred tools are not supported: use the harness's emulated tool search", llm.ErrInvalidRequest)
+	}
 	var msgs []message
 	if req.System != "" {
 		msgs = append(msgs, message{Role: "system", Content: req.System})

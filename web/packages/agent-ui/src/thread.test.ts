@@ -86,6 +86,18 @@ describe("a run's events", () => {
     ]);
   });
 
+  it("show the tools a turn loaded as a step after its calls", () => {
+    const a = play([
+      ev({ type: "tool_call", tool_use_id: "t1", name: "tool_search", input: { query: "weather" } }),
+      ev({ type: "tool_result", tool_use_id: "t1", content: "" }),
+      ev({ id: "4", type: "turn_done", turn: 1, record: { loaded: ["weather_now", "weather_week"] } }),
+      ev({ id: "5", type: "turn_done", turn: 2, record: { loaded: [] } }),
+      ev({ type: "run_done" }),
+    ]);
+    expect(steps(a.parts).map((s) => s.label ?? s.name)).toEqual(["tool_search", "Loaded 2 tools"]);
+    expect(steps(a.parts)[1]).toMatchObject({ state: "done", input: { tools: ["weather_now", "weather_week"] } });
+  });
+
   it("ignore event types this client doesn't know, and keep going", () => {
     const a = play([
       ev({ type: "run_start" }),

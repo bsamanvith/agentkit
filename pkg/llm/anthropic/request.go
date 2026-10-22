@@ -14,6 +14,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
 
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/tool"
 )
 
 // provider is the llm.Opaque provider name of this adapter's blocks.
@@ -55,17 +56,33 @@ func (m *Model) build(req llm.Request) (anthropic.BetaMessageNewParams, []byte, 
 		}
 		p.System = []anthropic.BetaTextBlockParam{sys}
 	}
+	deferred, err := deferredTools(req)
+	if err != nil {
+		return p, nil, err
+	}
+	// The tools breakpoint goes on the last tool sent in full: the API
+	// refuses cache_control on a deferred one.
+	lastFull := -1
 	for i, d := range req.Tools {
-		last := cache[CacheTools] && i == len(req.Tools)-1
+		if !deferred[d.Name] {
+			lastFull = i
+		}
+	}
+	for i, d := range req.Tools {
+		last := cache[CacheTools] && i == lastFull
+		var deferLoading param.Opt[bool]
+		if deferred[d.Name] {
+			deferLoading = param.NewOpt(true)
+		}
 		if o.NativeMemory && d.Name == memoryToolName {
-			mt := anthropic.BetaMemoryTool20250818Param{}
+			mt := anthropic.BetaMemoryTool20250818Param{DeferLoading: deferLoading}
 			if last {
 				mt.CacheControl = anthropic.NewBetaCacheControlEphemeralParam()
 			}
 			p.Tools = append(p.Tools, anthropic.BetaToolUnionParam{OfMemoryTool20250818: &mt})
 			continue
 		}
-		t := anthropic.BetaToolParam{Name: d.Name, InputSchema: inputSchema(d.InputSchema)}
+		t := anthropic.BetaToolParam{Name: d.Name, InputSchema: inputSchema(d.InputSchema), DeferLoading: deferLoading}
 		if d.Description != "" {
 			t.Description = param.NewOpt(d.Description)
 		}
@@ -78,7 +95,7 @@ func (m *Model) build(req llm.Request) (anthropic.BetaMessageNewParams, []byte, 
 		// Forced tool choice ("any", "tool") is a 400 on current models.
 		p.ToolChoice = anthropic.BetaToolChoiceUnionParam{OfAuto: &anthropic.BetaToolChoiceAutoParam{}}
 	}
-	s := splicer{nonce: rand.Text()}
+	s := splicer{nonce: rand.Text(), deferred: deferred}
 	for i, msg := range req.Messages {
 		mp, err := s.message(msg)
 		if err != nil {
@@ -117,6 +134,26 @@ func (m *Model) build(req llm.Request) (anthropic.BetaMessageNewParams, []byte, 
 	return p, body, nil
 }
 
+// deferredTools returns the set of req.Deferred, which must name tools of
+// the request and leave at least one tool sent in full (the API refuses a
+// request whose tools are all deferred).
+func deferredTools(req llm.Request) (map[string]bool, error) {
+	if len(req.Deferred) == 0 {
+		return nil, nil
+	}
+	set := make(map[string]bool, len(req.Deferred))
+	for _, name := range req.Deferred {
+		if !slices.ContainsFunc(req.Tools, func(d tool.Definition) bool { return d.Name == name }) {
+			return nil, fmt.Errorf("%w: deferred tool %q is not in the request's tools", llm.ErrInvalidRequest, name)
+		}
+		set[name] = true
+	}
+	if len(set) == len(req.Tools) {
+		return nil, fmt.Errorf("%w: every tool is deferred; at least one must be sent in full", llm.ErrInvalidRequest)
+	}
+	return set, nil
+}
+
 // inputSchema sends a tool's JSON Schema as it is.
 func inputSchema(schema json.RawMessage) anthropic.BetaToolInputSchemaParam {
 	if len(schema) == 0 {
@@ -131,6 +168,9 @@ func inputSchema(schema json.RawMessage) anthropic.BetaToolInputSchemaParam {
 type splicer struct {
 	nonce string   // makes placeholders impossible to guess from content
 	data  [][]byte // Opaque data, by placeholder number
+	// deferred are the request's deferred tools, the only ones a result
+	// can load: a reference to any other tool is a 400.
+	deferred map[string]bool
 }
 
 func (s *splicer) placeholder(i int) string {
@@ -190,6 +230,17 @@ func (s *splicer) message(msg llm.Message) (anthropic.BetaMessageParam, error) {
 				r.Content = []anthropic.BetaToolResultBlockParamContentUnion{
 					{OfText: &anthropic.BetaTextBlockParam{Text: b.Content}},
 				}
+			}
+			// Tools the result loads: the API expands each reference into
+			// the deferred tool's definition (tool search, done by the
+			// harness rather than by the API's own search tool).
+			for _, name := range b.Loads {
+				if !s.deferred[name] {
+					continue
+				}
+				r.Content = append(r.Content, anthropic.BetaToolResultBlockParamContentUnion{
+					OfToolReference: &anthropic.BetaToolReferenceBlockParam{ToolName: name},
+				})
 			}
 			if b.IsError {
 				r.IsError = param.NewOpt(true)

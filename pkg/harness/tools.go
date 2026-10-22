@@ -102,7 +102,7 @@ func (r *run) runTools(ctx context.Context, turn int, jobs []job) ([]toolCall, e
 			go func() {
 				defer wg.Done()
 				defer func() { <-sem }()
-				r.h.call(toolCtx, stop, turn, j, r.toolDef(j.use.Name), r.policy, r.mode, &calls[i], events)
+				r.h.call(toolCtx, stop, turn, j, r.toolDef(j.use.Name), r.policy, r.mode, r.deferral, &calls[i], events)
 			}()
 		}
 	}()
@@ -139,7 +139,7 @@ func (r *run) runTools(ctx context.Context, turn int, jobs []job) ([]toolCall, e
 // call runs one tool call, which holds a slot, on its own goroutine. It always
 // sends exactly one done event, or for a call that waits for a person one
 // interrupt event, after the start event and the policy's.
-func (h *Harness) call(ctx context.Context, stop context.CancelFunc, turn int, j job, def tool.Definition, pol *policy.Policy, mode Interaction, out *toolCall, events chan<- toolEvent) {
+func (h *Harness) call(ctx context.Context, stop context.CancelFunc, turn int, j job, def tool.Definition, pol *policy.Policy, mode Interaction, dfr *deferral, out *toolCall, events chan<- toolEvent) {
 	u := j.use
 	kind, _ := def.Class()
 	out.rec = ToolRecord{ToolUseID: u.ID, Name: u.Name, Kind: kind}
@@ -188,7 +188,10 @@ func (h *Harness) call(ctx context.Context, stop context.CancelFunc, turn int, j
 	case j.answer != nil:
 		// Approved: the call runs with its original input, byte for byte,
 		// as the policy's decision was taken already.
-		res, ask, err = h.invoke(ctx, hooked, []byte(j.interrupt.Input))
+		res, ask, err = h.invoke(ctx, hooked, []byte(j.interrupt.Input), dfr)
+	case dfr.waiting(u.Name):
+		// The model was never given the tool: it guessed the name.
+		res = errorResult(u.ID, errNotLoaded(u.Name))
 	default:
 		refused, ok, in := h.decide(turn, j.call, u, def, pol, mode, events)
 		switch {
@@ -197,7 +200,7 @@ func (h *Harness) call(ctx context.Context, stop context.CancelFunc, turn int, j
 		case ok:
 			res = refused
 		default:
-			res, ask, err = h.invoke(ctx, hooked, bytes.Clone(u.Input))
+			res, ask, err = h.invoke(ctx, hooked, bytes.Clone(u.Input), dfr)
 		}
 	}
 	if ask != nil {
@@ -216,9 +219,14 @@ func (h *Harness) call(ctx context.Context, stop context.CancelFunc, turn int, j
 		out.err = err
 		out.result = errorResult(u.ID, err)
 	default:
+		loads := res.Loads // what loaded is the harness's to say, not a hook's
 		for _, f := range h.cfg.after {
 			res = f(ctx, hooked, res)
 			res.ToolUseID = u.ID
+		}
+		res.Loads = nil
+		if !res.IsError {
+			res.Loads = slices.Clone(loads)
 		}
 		out.result = res
 	}
@@ -265,7 +273,7 @@ func (h *Harness) decide(turn, i int, u llm.ToolUse, def tool.Definition, pol *p
 // invoke runs the hooks and the tool. It returns an error only for failures
 // that end the run; everything the model can react to is an error result. A
 // tool that asks a person ([tool.InterruptError]) returns its question.
-func (h *Harness) invoke(ctx context.Context, u llm.ToolUse, input json.RawMessage) (llm.ToolResult, *tool.InterruptError, error) {
+func (h *Harness) invoke(ctx context.Context, u llm.ToolUse, input json.RawMessage, dfr *deferral) (llm.ToolResult, *tool.InterruptError, error) {
 	for _, f := range h.cfg.before {
 		if err := f(ctx, u); err != nil {
 			if cerr := ctx.Err(); cerr != nil {
@@ -274,11 +282,18 @@ func (h *Harness) invoke(ctx context.Context, u llm.ToolUse, input json.RawMessa
 			return errorResult(u.ID, err), nil, nil
 		}
 	}
+	if u.Name == SearchTool && dfr != nil {
+		return dfr.search(u.ID, input), nil, nil
+	}
 	out, err := h.tools.Invoke(ctx, u.Name, input)
 	ask, asks := errors.AsType[*tool.InterruptError](err)
 	switch {
 	case err == nil:
-		return llm.ToolResult{ToolUseID: u.ID, Content: string(out)}, nil, nil
+		res := llm.ToolResult{ToolUseID: u.ID, Content: string(out)}
+		if load := h.cfg.loaders[u.Name]; load != nil && dfr != nil {
+			res.Loads = dfr.match(load(input))
+		}
+		return res, nil, nil
 	case ctx.Err() != nil:
 		return llm.ToolResult{}, nil, ctx.Err()
 	case asks:

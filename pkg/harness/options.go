@@ -51,6 +51,61 @@ type config struct {
 	clock       clock.Clock
 	window      ContextWindow
 	prepare     []PrepareFunc
+	// deferred picks the deferred tools ([WithDeferLoading]); nil defers
+	// none. nativeSearch hands them to the model as llm.Request.Deferred.
+	deferred     func(name string) bool
+	nativeSearch bool
+	loaders      map[string]ToolLoaderFunc
+}
+
+// WithDeferLoading defers the tools deferred reports true for, by name:
+// the model is not sent them until it finds them. A run with deferred
+// tools offers one more, [SearchTool], whose call takes a query and loads
+// the deferred tools that match it best by name, description and tags; a
+// loader tool ([WithToolLoader]) loads the ones it names. A loaded tool is
+// sent with every later request of the run, and of every run that
+// continues its transcript: a result's [llm.ToolResult.Loads] records what
+// it loaded, so loading is read back from the transcript. A call to a
+// deferred tool that is not loaded gets an error result telling the model
+// to search for it. Loading changes no policy: a loaded tool's calls are
+// decided like any other's ([WithToolPolicy]).
+//
+// Loaded tools come after the others, in the order they loaded, so that
+// the tools of earlier requests stay a prefix of the next one's. With
+// [WithNativeToolSearch], every request carries every tool instead, and
+// the model's adapter holds back the deferred ones.
+//
+// deferred is called once per tool and run, from the run's goroutine. A
+// tool named [SearchTool] fails a run that has tools to defer, with
+// [ErrInvalidConfig].
+func WithDeferLoading(deferred func(name string) bool) Option {
+	return func(c *config) { c.deferred = deferred }
+}
+
+// WithNativeToolSearch has the model's provider hold deferred tools back
+// ([WithDeferLoading]) instead of the harness: every request lists every
+// tool, names the deferred ones in [llm.Request.Deferred], and a search's
+// result has only the found tools' references ([llm.ToolResult.Loads]),
+// which the provider expands into their definitions. The tool list then
+// never changes during a conversation, which keeps a provider's prompt
+// cache (and Claude's preserved thinking) valid. Use it only with a model
+// whose adapter supports [llm.Request.Deferred] (pkg/llm/anthropic does).
+func WithNativeToolSearch() Option { return func(c *config) { c.nativeSearch = true } }
+
+// WithToolLoader makes the tool named name a loader: each of its calls that
+// succeeds loads the deferred tools ([WithDeferLoading]) that load names,
+// given the call's input. Only deferred tools load: a name or glob of a
+// tool that is not deferred, or that the run does not have, is ignored, so
+// a loader never grants a tool the agent does not have. Skills use it:
+// loading a skill loads the tools it lists. The result's Loads records
+// what loaded, like a search's.
+func WithToolLoader(name string, load ToolLoaderFunc) Option {
+	return func(c *config) {
+		if c.loaders == nil {
+			c.loaders = map[string]ToolLoaderFunc{}
+		}
+		c.loaders[name] = load
+	}
 }
 
 // Option configures [New].

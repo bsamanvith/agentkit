@@ -122,6 +122,12 @@ type ToolResult struct {
 	Content string
 	// IsError marks a failed tool call, so the model can react to it.
 	IsError bool
+	// Loads names deferred tools (see [Request.Deferred]) this result makes
+	// available from then on, such as the tools a tool search found. An
+	// adapter whose provider loads deferred tools itself sends them as
+	// references the provider expands (Claude's tool_reference blocks),
+	// after Content; the others ignore it. Nil for most results.
+	Loads []string
 }
 
 // Opaque is a block of one provider that agentkit does not interpret: Claude's
@@ -180,10 +186,11 @@ type toolUseWire struct {
 }
 
 type toolResultWire struct {
-	Type      string `json:"type"`
-	ToolUseID string `json:"tool_use_id"`
-	Content   string `json:"content"`
-	IsError   bool   `json:"is_error,omitempty"`
+	Type      string   `json:"type"`
+	ToolUseID string   `json:"tool_use_id"`
+	Content   string   `json:"content"`
+	IsError   bool     `json:"is_error,omitempty"`
+	Loads     []string `json:"loads,omitempty"`
 }
 
 // opaqueWire carries Data as a JSON string. A raw JSON value embedded in the
@@ -224,12 +231,16 @@ func (u ToolUse) wire() (any, error) {
 	return toolUseWire{Type: typeToolUse, ID: u.ID, Name: u.Name, Input: input}, nil
 }
 
-func (r ToolResult) clone() Block { return r }
+func (r ToolResult) clone() Block {
+	r.Loads = slices.Clone(r.Loads)
+	return r
+}
+
 func (r ToolResult) wire() (any, error) {
 	if r.ToolUseID == "" {
 		return nil, fmt.Errorf("%w: tool result needs a tool use ID", ErrInvalidMessage)
 	}
-	return toolResultWire{Type: typeToolResult, ToolUseID: r.ToolUseID, Content: r.Content, IsError: r.IsError}, nil
+	return toolResultWire{Type: typeToolResult, ToolUseID: r.ToolUseID, Content: r.Content, IsError: r.IsError, Loads: r.Loads}, nil
 }
 
 func (o Opaque) clone() Block {
@@ -456,7 +467,7 @@ func decodeBlock(typ string, data []byte, lenient bool) (Block, string, error) {
 		if w.ToolUseID == "" {
 			return nil, "", fmt.Errorf("%w: tool result needs a tool use ID", ErrInvalidMessage)
 		}
-		return ToolResult{ToolUseID: w.ToolUseID, Content: w.Content, IsError: w.IsError}, w.Type, nil
+		return ToolResult{ToolUseID: w.ToolUseID, Content: w.Content, IsError: w.IsError, Loads: w.Loads}, w.Type, nil
 	case typeOpaque:
 		var w opaqueWire
 		if err := decodeJSON(data, &w, lenient); err != nil {

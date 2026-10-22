@@ -162,7 +162,7 @@ func turnRecord(r harness.TurnRecord) TurnRecord {
 	return TurnRecord{
 		Turn: r.Turn, Messages: timedMessages(r.Messages),
 		RequestedAt: r.RequestedAt, FirstEventAt: r.FirstEventAt, DoneAt: r.DoneAt,
-		Usage: r.Usage, Stop: r.Stop, Tools: tools,
+		Usage: r.Usage, Stop: r.Stop, Tools: tools, Loaded: slices.Clone(r.Loaded),
 	}
 }
 

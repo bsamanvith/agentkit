@@ -73,6 +73,11 @@ func New(model llm.Model, tools tool.Registry, opts ...Option) (*Harness, error)
 			return nil, fmt.Errorf("%w: Prepare hook is nil", ErrInvalidConfig)
 		}
 	}
+	for name, f := range cfg.loaders {
+		if f == nil || name == SearchTool {
+			return nil, fmt.Errorf("%w: tool loader %q: nil, or the name of the tool search", ErrInvalidConfig, name)
+		}
+	}
 	return &Harness{model: model, tools: tools, cfg: cfg}, nil
 }
 
@@ -138,6 +143,9 @@ type run struct {
 	resume    *Pending
 	answers   map[int]Answer
 	suspended *Pending
+	// deferral holds the deferred tools ([WithDeferLoading]); nil when the
+	// run defers none.
+	deferral *deferral
 }
 
 // toolDef returns the definition of the named tool; for a tool that was not
@@ -236,6 +244,11 @@ func (r *run) exec(ctx context.Context, in Input) {
 			continue // nobody could answer it
 		}
 		offered = append(offered, d)
+	}
+	offered, err = r.setupDeferral(offered)
+	if err != nil {
+		r.fail(err)
+		return
 	}
 
 	if r.resume != nil {
@@ -385,10 +398,12 @@ func (r *run) turn(ctx context.Context, defs []tool.Definition) (done bool, err 
 	// The model gets a view of the transcript it cannot append to, and it is
 	// never modified once sent: only whole turns are added at the end.
 	n := len(r.transcript)
+	tools, deferred := r.requestTools(defs)
 	req := llm.Request{
 		System:    r.h.cfg.system,
 		Messages:  r.transcript[:n:n],
-		Tools:     defs,
+		Tools:     tools,
+		Deferred:  deferred,
 		MaxTokens: r.h.cfg.request.MaxTokens,
 		Provider:  r.h.cfg.request.Provider,
 	}
@@ -563,6 +578,9 @@ func (r *run) commit(tr *TurnRecord, msgs ...TimedMessage) {
 	for _, m := range msgs {
 		r.transcript = append(r.transcript, m.Message)
 		tr.Messages = append(tr.Messages, m.clone())
+		if r.deferral != nil && m.Message.Role == llm.RoleUser {
+			tr.Loaded = append(tr.Loaded, r.deferral.load(loadsOf(m.Message))...)
+		}
 	}
 	r.rec.Turns = append(r.rec.Turns, *tr)
 	ev := tr.clone()

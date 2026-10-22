@@ -1,6 +1,7 @@
 package skill_test
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -146,6 +147,72 @@ func TestEndToEnd(t *testing.T) {
 	}
 	if read.Content != string(ref) {
 		t.Errorf("skill_read gave %.80q", read.Content)
+	}
+}
+
+// TestLoadSkillLoadsItsTools: with ToolsOf as skill_load's loader, loading a
+// skill whose front matter lists tools makes the agent's deferred tools
+// among them available from the next request; a listed tool the agent
+// does not have loads nothing.
+func TestLoadSkillLoadsItsTools(t *testing.T) {
+	t.Parallel()
+	skills := load(t, fstest.MapFS{
+		"s/gh/SKILL.md": md("name: gh\ndescription: File GitHub issues.\ntools: [github_*, gitlab_issue]", "Use the github tools."),
+	}, "s")
+	cat, err := skill.NewCatalog(skills...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tools, err := cat.Toolset()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"github_issue", "github_pr", "echo"} {
+		tl, err := tool.Func(name, "test tool", func(context.Context, struct{}) (string, error) { return "ok", nil })
+		if err != nil {
+			t.Fatal(err)
+		}
+		tools = append(tools, tl)
+	}
+	reg, err := tool.NewRegistry(tools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := llmtest.NewFake(t,
+		llmtest.ToolCalls(llm.ToolUse{ID: "1", Name: skill.LoadTool, Input: json.RawMessage(`{"name":"gh"}`)}),
+		llmtest.ToolCalls(llm.ToolUse{ID: "2", Name: "github_issue", Input: json.RawMessage(`{}`)}),
+		llmtest.Text("filed"),
+	)
+	h, err := harness.New(model, reg,
+		harness.WithDeferLoading(func(name string) bool { return strings.HasPrefix(name, "git") }),
+		harness.WithToolLoader(skill.LoadTool, cat.ToolsOf))
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := harness.Collect(h.Run(t.Context(), harness.Input{Message: harness.UserText("File an issue.")}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	toolNames := func(req llm.Request) []string {
+		var out []string
+		for _, d := range req.Tools {
+			out = append(out, d.Name)
+		}
+		return out
+	}
+	reqs := model.Requests()
+	base := []string{"echo", skill.LoadTool, skill.ReadTool, harness.SearchTool}
+	if got := toolNames(reqs[0]); !slices.Equal(got, base) {
+		t.Errorf("first request's tools %v, want %v", got, base)
+	}
+	if got, want := toolNames(reqs[1]), append(slices.Clone(base), "github_issue", "github_pr"); !slices.Equal(got, want) {
+		t.Errorf("tools after skill_load %v, want %v", got, want)
+	}
+	if lastResult(t, reqs[2]) != `"ok"` {
+		t.Errorf("the loaded tool did not run")
+	}
+	if got := res.Record.Turns[0].Loaded; !slices.Equal(got, []string{"github_issue", "github_pr"}) {
+		t.Errorf("record loaded %v", got)
 	}
 }
 

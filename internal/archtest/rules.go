@@ -161,6 +161,8 @@ func ModuleRules() Rules {
 				// Its tests set and connect credentials (T045) through
 				// the service over a memory vault and a fake provider.
 				"pkg/credentials/connect", "pkg/credentials", "pkg/credentials/memory", "pkg/credentials/credentialstest",
+				// Its tests define agents through the registry (T075).
+				"pkg/registry",
 			},
 			// A2UI (T065): the protocol's types, the catalog and the
 			// validator stand alone; ui_render is a tool.
@@ -298,6 +300,13 @@ func ModuleRules() Rules {
 			"pkg/mcp/servers": {
 				"pkg/agentapi", "pkg/agentapi/wire", "pkg/clock", "pkg/mcp/client",
 				"pkg/netguard", "pkg/store", "pkg/tenancy", "pkg/tool", "pkg/store/memory",
+			},
+			// The agent registry (T075): the API's registry contract over
+			// the store's versioned items, never a backend but in its tests
+			// (which build agents on the fake model).
+			"pkg/registry": {
+				"pkg/agentapi", "pkg/agentapi/wire", "pkg/store", "pkg/tenancy",
+				"pkg/store/memory", "pkg/harness", "pkg/llm", "pkg/llm/llmtest", "pkg/tool",
 			},
 			// Tool policies (T083) decide on a tool's metadata: the tool
 			// abstraction and nothing else, so the harness, the runner and

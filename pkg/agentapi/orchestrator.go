@@ -50,6 +50,9 @@ type StartOptions struct {
 	// Background starts a background run (POST /v1/tasks) instead of an
 	// interactive one.
 	Background bool
+	// AgentVersion is the version of a stored agent the run runs
+	// ([runner.AgentVersion]); 0 for an agent that is not versioned.
+	AgentVersion int64
 }
 
 // RunOptions are opts as the runner takes them, [runner.Interactive]
@@ -72,6 +75,9 @@ func (o StartOptions) RunOptions() []runner.RunOption {
 	}
 	if !o.Background {
 		out = append(out, runner.Interactive())
+	}
+	if o.AgentVersion != 0 {
+		out = append(out, runner.AgentVersion(o.AgentVersion))
 	}
 	return out
 }

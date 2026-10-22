@@ -66,6 +66,11 @@ func TestNotifications(t *testing.T) {
 	})
 }
 
+func TestItemStore(t *testing.T) {
+	t.Parallel()
+	storetest.RunItemStore(t, func(_ *testing.T, clk clock.Clock) store.ItemStore { return memory.New(memory.WithClock(clk)) })
+}
+
 func TestCommandLog(t *testing.T) {
 	t.Parallel()
 	storetest.RunCommandLog(t, func(_ *testing.T, clk clock.Clock) storetest.CommandStore { return memory.New(memory.WithClock(clk)) })

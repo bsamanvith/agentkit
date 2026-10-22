@@ -43,12 +43,13 @@ type runConfig struct {
 	priority    int
 	startAt     time.Time
 	pool        string
+	version     int64
 	err         error
 }
 
 // createOptions are the store options of a run with c.
 func (c runConfig) createOptions() []store.CreateOption {
-	opts := []store.CreateOption{store.WithLane(c.lane), store.WithPriority(c.priority), store.WithPool(c.pool)}
+	opts := []store.CreateOption{store.WithLane(c.lane), store.WithPriority(c.priority), store.WithPool(c.pool), store.WithAgentVersion(c.version)}
 	if c.interactive {
 		opts = append(opts, store.Interactive())
 	}
@@ -75,6 +76,15 @@ func Lane(name string) RunOption {
 // [store.ErrInvalid].
 func InPool(name string) RunOption {
 	return func(c *runConfig) { c.pool = name }
+}
+
+// AgentVersion records the version of its agent the run runs
+// ([store.Run.AgentVersion]): the agent factory gets it in
+// [Placement.AgentVersion], for this run and every resume of it, so a run
+// keeps the version it started on whatever is published later. A negative
+// version gives [store.ErrInvalid].
+func AgentVersion(v int64) RunOption {
+	return func(c *runConfig) { c.version = v }
 }
 
 // Priority sets the run's priority in its lane ([store.Run.Priority];
@@ -178,7 +188,7 @@ func (r *Runner) Run(ctx context.Context, conversationID string, msg llm.Message
 	if err != nil {
 		return nil, err
 	}
-	agent, err := r.agents(ctx, Placement{ConversationID: conversationID, Interactive: c.interactive, Pool: c.pool})
+	agent, err := r.agents(ctx, Placement{ConversationID: conversationID, Interactive: c.interactive, Pool: c.pool, AgentVersion: c.version})
 	if err != nil {
 		return nil, fmt.Errorf("agent of conversation %q: %w", conversationID, err)
 	}
@@ -488,7 +498,7 @@ func (r *Runner) resume(ctx context.Context, runID string, c resumeConfig) (*Exe
 			return func(ctx context.Context, emit func(Event) bool) outcome { return x.flow(ctx, step, &c, emit) }
 		}
 	} else {
-		agent, err := r.agents(ctx, Placement{ConversationID: run.ConversationID, RunID: run.ID, Interactive: run.Interactive, Resume: true, Pool: run.Pool})
+		agent, err := r.agents(ctx, Placement{ConversationID: run.ConversationID, RunID: run.ID, Interactive: run.Interactive, Resume: true, Pool: run.Pool, AgentVersion: run.AgentVersion})
 		if err != nil {
 			return nil, fmt.Errorf("agent of conversation %q: %w", run.ConversationID, err)
 		}

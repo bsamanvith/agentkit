@@ -75,15 +75,18 @@ func (s *Server) Enqueue(ctx context.Context, conversationID string, msg llm.Mes
 	if err != nil {
 		return store.Run{}, err
 	}
-	a := s.agents[c.Agent]
-	if a == nil {
-		return store.Run{}, fmt.Errorf("%w: conversation %q is of agent %q", errNoAgent, conversationID, c.Agent)
+	a, err := s.agentFor(ctx, c.Agent, 0)
+	if err != nil {
+		return store.Run{}, fmt.Errorf("conversation %q is of agent %q: %w", conversationID, c.Agent, err)
 	}
 	pl, err := s.router.Route(pool.Request{Placement: runner.Placement{ConversationID: conversationID}, Agent: a.Name, Isolation: a.Isolation})
 	if err != nil {
 		return store.Run{}, err
 	}
 	opts = append(slices.Clip(opts), runner.Lane(pl.Name()), runner.InPool(pl.Name()))
+	if a.Version != 0 {
+		opts = append(opts, runner.AgentVersion(a.Version))
+	}
 	run, err := s.runner.Enqueue(ctx, conversationID, msg, opts...)
 	if err != nil {
 		return store.Run{}, err

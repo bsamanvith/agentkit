@@ -731,6 +731,37 @@ func TestOpenAPIResponses(t *testing.T) {
 	rec.probe(cr.rig, "delete_credential_unauthorized", 401, "DELETE", "/v1/credentials/mail", "", "", bearer...)
 	rec.probe(cr.rig, "delete_credential", 204, "DELETE", "/v1/credentials/mail?scope=user", "", "")
 	rec.probe(cr.rig, "delete_credential_not_found", 404, "DELETE", "/v1/credentials/mail", "", "")
+	// The agent registry (T075).
+	rg := registryRig(t)
+	rec.probe(rg, "save_agent", 201, "POST", "/v1/agents/support/versions", `{"definition":{"system":"v1"},"message":"first","publish":true}`, "")
+	rec.probe(rg, "save_agent_invalid", 400, "POST", "/v1/agents/support/versions", `{"definition":{"system":"x","toolsets":["exa"]}}`, "")
+	rec.probe(rg, "save_agent_unauthorized", 401, "POST", "/v1/agents/support/versions", `{"definition":{"system":"x"}}`, "", bearer...)
+	rec.probe(rg, "save_agent_not_found", 404, "POST", "/v1/agents/fresh/versions", `{"definition":{"system":"x"},"if_latest":3}`, "")
+	rec.probe(rg, "save_agent_read_only", 409, "POST", "/v1/agents/default/versions", `{"definition":{"system":"x"}}`, "")
+	rg.save("support", `{"system": "v2"}`, false)
+	rec.probe(rg, "list_agent_versions", 200, "GET", "/v1/agents/support/versions", "", "")
+	rec.probe(rg, "list_agent_versions_invalid", 400, "GET", "/v1/agents/a.b/versions", "", "")
+	rec.probe(rg, "list_agent_versions_unauthorized", 401, "GET", "/v1/agents/support/versions", "", "", bearer...)
+	rec.probe(rg, "list_agent_versions_not_found", 404, "GET", "/v1/agents/nope/versions", "", "")
+	rec.probe(rg, "get_agent_version", 200, "GET", "/v1/agents/support/versions/1", "", "")
+	rec.probe(rg, "get_agent_version_invalid", 400, "GET", "/v1/agents/support/versions/0", "", "")
+	rec.probe(rg, "get_agent_version_unauthorized", 401, "GET", "/v1/agents/support/versions/1", "", "", bearer...)
+	rec.probe(rg, "get_agent_version_not_found", 404, "GET", "/v1/agents/support/versions/9", "", "")
+	rec.probe(rg, "publish_agent", 200, "POST", "/v1/agents/support/publish", `{"version":2}`, "")
+	rec.probe(rg, "publish_agent_invalid", 400, "POST", "/v1/agents/support/publish", `{"version":0}`, `{"version":1}`)
+	rec.probe(rg, "publish_agent_unauthorized", 401, "POST", "/v1/agents/support/publish", `{"version":2}`, "", bearer...)
+	rec.probe(rg, "publish_agent_not_found", 404, "POST", "/v1/agents/nope/publish", `{"version":1}`, "")
+	rec.probe(rg, "publish_agent_read_only", 409, "POST", "/v1/agents/default/publish", `{"version":1}`, "")
+	rg.save("support", `{"system": "v3"}`, false)
+	rec.probe(rg, "delete_agent_version_published", 409, "DELETE", "/v1/agents/support/versions/1", "", "")
+	rec.probe(rg, "delete_agent_version_invalid", 400, "DELETE", "/v1/agents/support/versions/x", "", "")
+	rec.probe(rg, "delete_agent_version_unauthorized", 401, "DELETE", "/v1/agents/support/versions/3", "", "", bearer...)
+	rec.probe(rg, "delete_agent_version", 204, "DELETE", "/v1/agents/support/versions/3", "", "")
+	rec.probe(rg, "delete_agent_version_not_found", 404, "DELETE", "/v1/agents/support/versions/3", "", "")
+	rec.probe(rg, "list_agents_stored", 200, "GET", "/v1/agents", "", "")
+	rec.probe(rg, "get_agent_stored", 200, "GET", "/v1/agents/support", "", "")
+	rg.model.gate <- struct{}{}
+	rec.probe(rg, "run_stored_agent", 200, "POST", "/v1/runs", `{"message":"hi","agent":"support"}`, "", jsonAccept...)
 
 	// Keys without the scope an endpoint needs: 403 on every route. The
 	// rig's own requests read, with the read key.
@@ -750,7 +781,7 @@ func TestOpenAPIResponses(t *testing.T) {
 			continue // any credential may sign out and ask who it is
 		}
 		method, target, _ := strings.Cut(rt, " ")
-		target = strings.NewReplacer("{id}", "x", "{name}", "x", "{slot}", "x").Replace(target)
+		target = strings.NewReplacer("{id}", "x", "{name}", "x", "{slot}", "x", "{version}", "1").Replace(target)
 		name := strings.ToLower(method) + strings.NewReplacer("/v1/", "_", "/", "_", "{", "", "}", "").Replace(strings.TrimPrefix(rt, method+" ")) + "_forbidden"
 		if method == http.MethodGet {
 			rec.probe(rf, name, 403, method, target, "", "", "Authorization", "Bearer "+runKey)
@@ -762,6 +793,7 @@ func TestOpenAPIResponses(t *testing.T) {
 				"PATCH /v1/toolsets/{name}":  `{"enabled":true}`,
 				"POST /v1/tasks":             `{"input":"hi"}`,
 				"PUT /v1/credentials/{slot}": `{"kind":"api_key","api_key":"k"}`, "POST /v1/credentials/{slot}/connect": `{}`,
+				"POST /v1/agents/{name}/versions": `{"definition":{"system":"x"}}`, "POST /v1/agents/{name}/publish": `{"version":1}`,
 			}[rt]
 			rec.probe(rf, name, 403, method, target, body, "")
 		}

@@ -312,6 +312,9 @@ func CheckCreate(o store.CreateOptions, created time.Time) (Created, error) {
 	if err := CheckText("pool", o.Pool); err != nil {
 		return Created{}, err
 	}
+	if o.AgentVersion < 0 {
+		return Created{}, fmt.Errorf("%w: negative agent version %d", store.ErrInvalid, o.AgentVersion)
+	}
 	if o.Priority < store.MinPriority || o.Priority > store.MaxPriority {
 		return Created{}, fmt.Errorf("%w: priority %d is outside %d to %d", store.ErrInvalid, o.Priority, store.MinPriority, store.MaxPriority)
 	}

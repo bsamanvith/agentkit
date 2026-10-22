@@ -184,12 +184,14 @@ func TestScopes(t *testing.T) {
 	}
 	for _, rt := range r.srv.Routes() {
 		method, _, _ := strings.Cut(rt, " ")
-		path := strings.NewReplacer("{id}", run.ID, "{name}", "solo", method+" ", "").Replace(rt)
+		path := strings.NewReplacer("{id}", run.ID, "{name}", "solo", "{version}", "1", method+" ", "").Replace(rt)
 		if strings.HasPrefix(rt, "DELETE /v1/conversations/") {
 			path = "/v1/conversations/" + run.ConversationID
 		}
 		resp, body := r.do(method, path, `{"message":"x"}`, as(keyRead)...)
-		admin := strings.HasSuffix(rt, "/review") || rt == "GET /v1/webhooks/secret" // agent:admin, even to read
+		// agent:admin, even to read: reviews, the webhook secret, and the
+		// registry's versions.
+		admin := strings.HasSuffix(rt, "/review") || rt == "GET /v1/webhooks/secret" || strings.Contains(rt, "/versions")
 		switch {
 		case strings.Contains(rt, " /v1/auth/"): // any credential
 			if resp.StatusCode == http.StatusForbidden {

@@ -129,6 +129,11 @@ type Placement struct {
 	// new run, or the run's stored [store.Run.Pool] on a resume; "" when
 	// nobody placed it. A router sends the run back there (package pool).
 	Pool string
+	// AgentVersion is the version of its agent the run runs: the one
+	// [AgentVersion] named for a new run, or the run's stored
+	// [store.Run.AgentVersion] on a resume; 0 when none was named (an agent
+	// that is not versioned).
+	AgentVersion int64
 }
 
 // AgentFactory returns the agent that runs a chat run of a conversation. It

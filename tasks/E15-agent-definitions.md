@@ -21,7 +21,7 @@ Owner decision (2026-10-12, [docs/PRODUCT.md](../docs/PRODUCT.md)): agents, skil
 
 ## Tasks
 
-- [ ] [T075](T075-agent-registry.md) Agent registry: stored, versioned agent definitions and toolset instances; publish and rollback; config as read-only; export/import
+- [x] [T075](T075-agent-registry.md) Agent registry: stored, versioned agent definitions and toolset instances; publish and rollback; config as read-only; export/import
 - [ ] T076 Skills store: upload skill folders, versions, validation, used by the harness (after T057) *(to plan)*
 - [ ] T077 Console editors: the **agent builder** (skills picker, tools picker with defer-loading toggles, interaction mode, tool policy with preview, test chat beside it), skill editor and upload with the tools a skill auto-loads, toolset settings; designed in T087 (after T055, T064, T075, T087) *(to plan)*
 

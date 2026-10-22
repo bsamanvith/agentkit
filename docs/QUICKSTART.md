@@ -598,6 +598,30 @@ The `runtime_toolsets` section of the config:
 
 Not yet: OAuth sign-in to a server (T095) and per-user connections, agents on a separate runner component, and the console screens (T096 part 3).
 
+## 9. Agents defined through the API
+
+An admin (scope `agent:admin`) can define agents without editing the config or restarting. A definition has the shape of an entry of `agents` in the config file, and is checked as serve checks the file (toolsets exist, tool names do not clash, the model builds); a refused one comes back as `400 invalid_definition` with the fields at fault, and saves nothing. Each save is a new version, a draft until published; new runs use the published version, and a run keeps the version it started on (`agent_version` in `GET /v1/runs/{id}`), resumed or not. Agents belong to the tenant that saved them.
+
+```sh
+TOKEN=$AGENTKIT_API_TOKEN
+curl -s -H "Authorization: Bearer $TOKEN" localhost:8080/v1/agents/writer/versions \
+  -d '{"definition": {"system": "You write.", "toolsets": ["demo"]}, "message": "first", "publish": true}'
+curl -s -H "Authorization: Bearer $TOKEN" localhost:8080/v1/agents/writer/versions      # every version, oldest first
+curl -s -H "Authorization: Bearer $TOKEN" localhost:8080/v1/agents/writer/publish -d '{"version": 1}'   # roll back
+curl -s -X DELETE -H "Authorization: Bearer $TOKEN" localhost:8080/v1/agents/writer/versions/3       # a draft only
+agentkit export ./backup     # each published stored agent to ./backup/agents/<name>.json
+agentkit import ./backup     # save and publish each file on the server in $AGENTKIT_SERVER (-draft: drafts)
+```
+
+The agents of the config file are listed with `"read_only": true` and cannot be changed through the API (`409 read_only`). A stored agent may name any toolset of `mcp.toolsets`, so with the registry on the agent API builds them all. Stored agents cannot have `skills` or `memory` yet (T076), nor `ui` or `notify` (a task names its own webhook), and isolation other than `process` waits for sandbox pools.
+
+The `agent_registry` section of the config:
+
+| Field | Default | Meaning |
+|---|---|---|
+| `enabled` | true | false turns it off. It is off when the agents run on a runner elsewhere (`AGENTKIT_RUNNER_URL`) |
+| `cache_size` | 256 | stored agents kept built, across tenants and versions |
+
 ## Troubleshooting
 
 - **`startup: AGENTKIT_API_TOKEN ...`**: set a token of at least 16 bytes when listening on a non-loopback address (always the case in Docker).

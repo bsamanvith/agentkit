@@ -55,6 +55,7 @@ type Store interface {
 	store.ToolsetStore
 	store.RunIndex
 	store.NotificationLog
+	store.ItemStore
 	flow.Checkpointer
 }
 

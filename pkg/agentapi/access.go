@@ -52,7 +52,8 @@ func writeAuthError(w http.ResponseWriter, _ *http.Request, status int) {
 
 // scopeOf is the scope an endpoint needs: none for signing in and out and
 // saying who the caller is, [ScopeAdmin] to add, review, change or remove
-// toolsets, else reading for GET and running for the rest.
+// toolsets and for the agent registry's endpoints, else reading for GET and
+// running for the rest.
 func scopeOf(pattern string) string {
 	switch {
 	case isAuthRoute(pattern):
@@ -60,6 +61,9 @@ func scopeOf(pattern string) string {
 	case pattern == "POST /v1/toolsets" || strings.HasPrefix(pattern, "PATCH /v1/toolsets/") ||
 		strings.HasPrefix(pattern, "DELETE /v1/toolsets/") || strings.HasSuffix(pattern, "/v1/toolsets/{name}/review"),
 		pattern == "GET /v1/webhooks/secret":
+		return ScopeAdmin
+	case strings.Contains(pattern, " /v1/agents/{name}/versions") || strings.HasSuffix(pattern, " /v1/agents/{name}/publish"):
+		// The agent registry: its versions hold whole definitions.
 		return ScopeAdmin
 	case strings.HasPrefix(pattern, http.MethodGet+" "):
 		return ScopeRead

@@ -119,6 +119,14 @@ func Open(path string) (*Store, error) {
 	return s, nil
 }
 
+// lockRetry and lockWait bound how takeLock waits for a lock that is
+// briefly held: it retries after lockRetry, doubling each time, while the
+// pause is at most lockWait (about 0.6 s in all).
+const (
+	lockRetry = 5 * time.Millisecond
+	lockWait  = 320 * time.Millisecond
+)
+
 // takeLock opens and locks the lock file at path, creating it. The lock
 // file holds nothing; the lock is on its open descriptor, which the kernel
 // releases when the process ends, however it ends.
@@ -127,7 +135,15 @@ func takeLock(path string) (*os.File, error) {
 	if err != nil {
 		return nil, fmt.Errorf("credentials file: lock: %w", err)
 	}
-	if err := flock(f); err != nil {
+	err = flock(f)
+	// A lock just released can still be held for a moment: a child this
+	// process forks keeps a copy of the descriptor, and so the lock, until
+	// it execs (descriptors are close-on-exec). Wait that out, briefly.
+	for wait := lockRetry; errors.Is(err, errWouldBlock) && wait <= lockWait; wait *= 2 {
+		time.Sleep(wait)
+		err = flock(f)
+	}
+	if err != nil {
 		_ = f.Close()
 		if errors.Is(err, errWouldBlock) {
 			return nil, fmt.Errorf("%w: %s is locked (%s): stop the other agentkit, or give this one another file", ErrLocked, filepath.Base(strings.TrimSuffix(path, ".lock")), path)

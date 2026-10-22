@@ -169,6 +169,28 @@ func TestOneWriter(t *testing.T) {
 	}
 }
 
+// TestLockReleasedSoon: an Open that finds the lock held waits briefly for
+// it, as when a forked child still holds a copy of a closed store's
+// descriptor until it execs.
+func TestLockReleasedSoon(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "credentials.json")
+	first := open(t, path)
+	done := make(chan error, 1)
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		done <- first.Close()
+	}()
+	s, err := file.Open(path)
+	if err != nil {
+		t.Fatalf("Open while the lock is released 50ms later: %v", err)
+	}
+	s.Close()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestBadFile: a file that is not the store's is an error at open, which
 // leaves the file as it is.
 func TestBadFile(t *testing.T) {

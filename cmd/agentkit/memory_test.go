@@ -1,3 +1,5 @@
+//go:build !noagent
+
 package main
 
 import (

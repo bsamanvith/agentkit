@@ -9,7 +9,6 @@ import (
 	"io"
 	"log/slog"
 	"net"
-	"net/http"
 	"os"
 	"regexp"
 	"slices"
@@ -19,12 +18,10 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/agenttools"
 	"github.com/bsamanvith/agentkit/pkg/auth"
-	"github.com/bsamanvith/agentkit/pkg/bus"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/component"
 	"github.com/bsamanvith/agentkit/pkg/credentials"
 	"github.com/bsamanvith/agentkit/pkg/policy"
-	"github.com/bsamanvith/agentkit/pkg/runner"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 	"github.com/bsamanvith/agentkit/pkg/web"
@@ -140,26 +137,16 @@ func (c cli) serve(ctx context.Context, args []string) error {
 		return err
 	}
 
-	// The agent API's store, and the recovery loop over it, which resumes
-	// the background runs a process left (chat runs stay interrupted for
-	// their user). It stops first, then the server drains, then the store
-	// closes.
+	// The agent API's store and bus (agentserver.go), and the recovery loop
+	// over the store, which resumes the background runs a process left. It
+	// stops first, then the server drains, then the store closes.
 	clk := clock.Real()
-	var (
-		agents *agentapi.Server
-		st     openedStore
-		b      bus.Bus
-	)
+	var ag *agentWiring // nil unless the agent component runs
 	if slices.Contains(env.components, agentapi.Name) {
-		if st, err = c.openStore(ctx, clk); err != nil {
+		if ag, err = c.openAgents(ctx, clk, log); err != nil {
 			return err
 		}
-		defer st.close()
-		var closeBus func()
-		if b, closeBus, err = c.openBus(ctx, clk, log); err != nil {
-			return err
-		}
-		defer closeBus()
+		defer ag.close()
 	}
 
 	// One authenticator for the agent API and the MCP endpoints, so both
@@ -188,7 +175,7 @@ func (c cli) serve(ctx context.Context, args []string) error {
 		case mcpServerName:
 			mcpAt = len(mounts)
 		case agentapi.Name:
-			m, agents, err = c.newAgents(ctx, cfg, built, problems, env, authn, st.Store, b, clk, log)
+			m, err = c.buildAgents(ctx, ag, cfg, built, problems, env, authn, clk, log)
 		case web.Name:
 			m, err = newWeb()
 		case runnerName:
@@ -208,11 +195,8 @@ func (c cli) serve(ctx context.Context, args []string) error {
 	if mcpAt >= 0 {
 		mcp := cfg.MCP
 		mcp.protected = cfg.Auth.JWT
-		var agentAPI http.Handler // the agentkit toolsets call it in process
-		if agents != nil {
-			agentAPI = agents.Handler()
-		}
-		m, err := newMCPServer(ctx, mcp, built, problems, authn, agentAPI, env.addr, log)
+		// The agentkit toolsets call the agent API in process, when it runs here.
+		m, err := newMCPServer(ctx, mcp, built, problems, authn, ag.handler(), env.addr, log)
 		if err != nil {
 			return fmt.Errorf("%s: %w", mcpServerName, err)
 		}
@@ -225,7 +209,7 @@ func (c cli) serve(ctx context.Context, args []string) error {
 		mounts = append(mounts, meta...)
 	}
 	if slices.Contains(env.components, a2aName) {
-		m, err := c.newA2A(agents, cfg, authn, log)
+		m, err := c.newA2A(ag.server(), cfg, authn, log)
 		if err != nil {
 			return fmt.Errorf("%s: %w", a2aName, err)
 		}
@@ -243,38 +227,7 @@ func (c cli) serve(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if agents == nil {
-		return rt.Serve(ctx, ln)
-	}
-	rc, err := runner.NewRecovery(agents.Runner(), st.admin, runner.WithExecute(agents.RunRecovered))
-	if err != nil {
-		ln.Close()
-		return err
-	}
-	// A recovery loop that cannot read across tenants (a Postgres role under
-	// row-level security, with no $AGENTKIT_STORE_ADMIN) fails startup
-	// rather than every pass.
-	if _, err := st.admin.ListResumableAll(ctx, time.Time{}, 1); err != nil {
-		ln.Close()
-		return fmt.Errorf("recovery: %w", err)
-	}
-	rctx, stopRecovery := context.WithCancel(ctx)
-	recovered := make(chan struct{})
-	go func() {
-		defer close(recovered)
-		_ = rc.Run(rctx, func(r runner.Report, err error) {
-			switch {
-			case err != nil:
-				log.Error("recovery pass", "component", agentapi.Name, "resumed", r.Resumed, "skipped", r.Skipped, "errors", r.Errors, "err", err)
-			case r.Resumed > 0:
-				log.Info("recovery pass", "component", agentapi.Name, "resumed", r.Resumed, "skipped", r.Skipped)
-			}
-		})
-	}()
-	err = rt.Serve(ctx, ln)
-	stopRecovery()
-	<-recovered
-	return err
+	return ag.serve(ctx, rt, ln, log)
 }
 
 // buildToolsets is cli.buildToolsets with the compiled-in catalog.

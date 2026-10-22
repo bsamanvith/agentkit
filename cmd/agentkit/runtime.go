@@ -46,9 +46,6 @@ type toolsetAdmin interface {
 	Close() error
 }
 
-// errNoRuntimeStore means the store cannot keep toolsets.
-var errNoRuntimeStore = errors.New("runtime_toolsets: the store cannot keep toolsets")
-
 // joinRegistries offers the tools of a, then those of b whose names a does
 // not have.
 func joinRegistries(a, b tool.Registry) tool.Registry { return joined{a, b} }

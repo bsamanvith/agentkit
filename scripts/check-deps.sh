@@ -22,6 +22,16 @@ openai='github.com/bsamanvith/agentkit/pkg/llm/openaicompat'
 # pulls in the driver.
 credsqlite='github.com/bsamanvith/agentkit/pkg/credentials/sqlite'
 credpg='github.com/bsamanvith/agentkit/pkg/credentials/postgres'
+# What only the agent component (the agent API) uses, which the noagent tag
+# leaves out: the store backends and their opener, the bus opener, the
+# agents' memory and the MCP servers added at run time. The agent API's
+# package itself stays imported (its names and wire types are shared), but
+# its server is not linked.
+stores='github.com/bsamanvith/agentkit/pkg/store/'
+busopen='github.com/bsamanvith/agentkit/pkg/bus/busopen'
+memory='github.com/bsamanvith/agentkit/pkg/memory'
+servers='github.com/bsamanvith/agentkit/pkg/mcp/servers'
+agent="$stores $busopen $memory $servers"
 
 # What each variant must not link.
 forbidden() {
@@ -29,8 +39,8 @@ forbidden() {
 	local) echo "$pgx $redis $credpg" ;;
 	dev) echo "$sqlite $credsqlite" ;;
 	api) echo "$anthropic $openai $mcp $sqlite $connectors $skill $credsqlite" ;;
-	runner) echo "$mcp $pgx $sqlite $redis $connectors $a2a $credsqlite $credpg" ;;
-	toolsets) echo "$anthropic $openai $pgx $sqlite $redis $skill $a2a $credsqlite $credpg" ;;
+	runner) echo "$mcp $pgx $sqlite $redis $connectors $a2a $credsqlite $credpg $agent" ;;
+	toolsets) echo "$anthropic $openai $pgx $sqlite $redis $skill $a2a $credsqlite $credpg $agent" ;;
 	*) echo "check-deps: unknown variant $1" >&2; exit 2 ;;
 	esac
 }

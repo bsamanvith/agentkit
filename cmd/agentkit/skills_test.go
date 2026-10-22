@@ -1,4 +1,4 @@
-//go:build !nomodels
+//go:build !nomodels && !noagent
 
 package main
 

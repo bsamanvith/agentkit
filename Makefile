@@ -194,15 +194,16 @@ IMAGE_BUDGET_MB_fakellm ?= 12
 #   api       agent API and console; agents run on a runner, no model SDK,
 #             no connectors, no MCP server
 #   runner    the agents' turn loops: the model SDK; toolsets come from the
-#             toolsets component; no store, bus, console, MCP or A2A server
+#             toolsets component; no agent API, store, bus, console, MCP or
+#             A2A server
 #   toolsets  the connectors, to runners (/rpc/toolsets/) and over MCP; no
-#             model SDK, store, bus, console or A2A server
+#             model SDK, agent API, store, bus, console or A2A server
 VARIANTS := local dev api runner toolsets
 TAGS_local := nopostgres noredis
 TAGS_dev := nosqlite
 TAGS_api := nomodels noconnectors nomcp nosqlite
-TAGS_runner := noconnectors nomcp noweb noa2a nosqlite nopostgres noredis
-TAGS_toolsets := nomodels noweb noa2a nosqlite nopostgres noredis
+TAGS_runner := noconnectors nomcp noweb noa2a nosqlite nopostgres noredis noagent
+TAGS_toolsets := nomodels noweb noa2a nosqlite nopostgres noredis noagent
 IMAGE_BUDGET_MB_local ?= 29
 IMAGE_BUDGET_MB_dev ?= 30
 IMAGE_BUDGET_MB_api ?= 22

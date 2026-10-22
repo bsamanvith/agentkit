@@ -72,8 +72,8 @@ conversations, and runs fail until the runner is back.
 | `agentkit-local` | `image-local` | `nopostgres noredis` | One machine: memory or SQLite |
 | `agentkit-dev` | `image-dev` | `nosqlite` | Deployed replicas: Postgres and Redis |
 | `agentkit-api` | `image-api` | `nomodels noconnectors nomcp nosqlite` | `agent` and `web`, memory or Postgres, Redis; no model SDK, connectors or MCP server |
-| `agentkit-runner` | `image-runner` | `noconnectors nomcp noweb noa2a nosqlite nopostgres noredis` | `runner`: the model SDK; no store, bus, console, connectors, MCP or A2A server |
-| `agentkit-toolsets` | `image-toolsets` | `nomodels noweb noa2a nosqlite nopostgres noredis` | `toolsets` and `mcp-server`: the connectors; no model SDK, store, bus, console or A2A server |
+| `agentkit-runner` | `image-runner` | `noconnectors nomcp noweb noa2a nosqlite nopostgres noredis noagent` | `runner`: the model SDK; no agent API, store, bus, console, connectors, MCP or A2A server |
+| `agentkit-toolsets` | `image-toolsets` | `nomodels noweb noa2a nosqlite nopostgres noredis noagent` | `toolsets` and `mcp-server`: the connectors; no model SDK, agent API, store, bus, console or A2A server |
 
 `make images-split` builds the last three. Their sizes and budgets are in
 [SIZES.md](SIZES.md); `make deps-check` (part of `make check`) fails when an
@@ -103,6 +103,7 @@ part out:
 | `nomcp` | the MCP server | no `mcp-server` component |
 | `noweb` | the console | no `web` component |
 | `noa2a` | the A2A server | no `a2a` component |
+| `noagent` | the agent API: its store and bus, the agents' memory, the toolsets added at run time, `migrate` | no `agent` component, so no `a2a` (it calls the agent API in process); the `runner` component still runs agents, and an `agentkit` toolset calls an agent API at its `settings.url` |
 
 A one-off build takes any mix, for example an API that runs its agents in
 process, with Postgres only and its toolsets from a toolsets pod:

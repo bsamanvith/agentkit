@@ -4,7 +4,9 @@ import (
 	"cmp"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -468,40 +470,103 @@ func (s *Service) Delete(ctx context.Context, user, slot string) error {
 }
 
 // Connect implements [agentapi.Credentials]: it keeps a new flow under a
-// new state and returns the provider's authorization URL for it.
-func (s *Service) Connect(ctx context.Context, user, slot string, req wire.ConnectRequest) (wire.ConnectResponse, error) {
+// new state and returns the provider's authorization URL for it, and the
+// cookie that binds the flow to the browser that started it (RFC 9700
+// §4.7). The cookie is random (256 bits), HttpOnly, SameSite=Lax and lives
+// as long as the flow. For an https redirect URL it is a Secure "__Host-"
+// cookie (Path=/); for an http one it is limited to the callback's path.
+// The flow keeps only its SHA-256, and the callback refuses a browser
+// without it. The API also sets it Secure when the request came over TLS.
+func (s *Service) Connect(ctx context.Context, user, slot string, req wire.ConnectRequest) (wire.ConnectResponse, *http.Cookie, error) {
 	app, ok := s.cfg.Apps[slot]
 	if !ok {
-		return wire.ConnectResponse{}, invalid("slot %q has no OAuth2 app to connect an account with (credentials.oauth2)", slot)
+		return wire.ConnectResponse{}, nil, invalid("slot %q has no OAuth2 app to connect an account with (credentials.oauth2)", slot)
 	}
 	if req.ReturnURL != "" && !s.allowed(req.ReturnURL) {
-		return wire.ConnectResponse{}, invalid("return_url is not one this server returns to")
+		return wire.ConnectResponse{}, nil, invalid("return_url is not one this server returns to")
 	}
 	t, err := tenancy.Require(ctx)
 	if err != nil {
-		return wire.ConnectResponse{}, err
+		return wire.ConnectResponse{}, nil, err
 	}
 	if err := notReserved(ctx); err != nil {
-		return wire.ConnectResponse{}, err
+		return wire.ConnectResponse{}, nil, err
 	}
 	b := make([]byte, 32) // 256 bits
 	s.random(b)
-	state := base64.RawURLEncoding.EncodeToString(b)
+	state := newState(t.ID(), user, b)
+	s.random(b)
+	binding := base64.RawURLEncoding.EncodeToString(b)
+	clear(b)
 	verifier := oauth2.GenerateVerifier()
 	now := s.clk.Now().UTC()
+	secure, path := cookieScope(app.RedirectURL)
 	f := flow{
 		Tenant: t.ID(), User: user, Slot: slot, Verifier: verifier, ReturnURL: req.ReturnURL,
+		Binding: bindingHash(binding), CookiePath: path, CookieSecure: secure,
 		Created: now, Expires: now.Add(s.ttl),
 	}
 	if err := s.flows.put(ctx, state, f); err != nil {
-		return wire.ConnectResponse{}, fmt.Errorf("keeping the flow: %w", err)
+		return wire.ConnectResponse{}, nil, fmt.Errorf("keeping the flow: %w", err)
 	}
 	opts := []oauth2.AuthCodeOption{oauth2.S256ChallengeOption(verifier)}
 	for _, k := range slices.Sorted(maps.Keys(app.AuthParams)) {
 		opts = append(opts, oauth2.SetAuthURLParam(k, app.AuthParams[k]))
 	}
+	cookie := &http.Cookie{
+		Name: f.cookieName(state), Value: binding, Path: f.CookiePath, Secure: f.CookieSecure,
+		MaxAge: int(s.ttl / time.Second), HttpOnly: true, SameSite: http.SameSiteLaxMode,
+	}
 	s.log.InfoContext(ctx, "connect flow started", "slot", slot, "tenant", f.Tenant, "user", user)
-	return wire.ConnectResponse{AuthorizeURL: oauthConfig(app).AuthCodeURL(state, opts...), ExpiresAt: f.Expires}, nil
+	return wire.ConnectResponse{AuthorizeURL: oauthConfig(app).AuthCodeURL(state, opts...), ExpiresAt: f.Expires}, cookie, nil
+}
+
+// CookieName is the name of the cookie that binds the flow of state to its
+// browser when the redirect URL is http: one per flow, so that flows
+// started at once in one browser do not replace each other's. When the
+// redirect URL is https, the name is "__Host-" and this.
+func CookieName(state string) string {
+	sum := sha256.Sum256([]byte("agentkit oauth cookie\x00" + state))
+	return cookiePrefix + hex.EncodeToString(sum[:8])
+}
+
+// cookiePrefix starts the name of every binding cookie.
+const cookiePrefix = "agentkit_oauth_"
+
+// hostPrefix starts the binding cookie's name when the redirect URL is
+// https. Browsers take a "__Host-" cookie only when it is Secure, has no
+// Domain and has Path=/, so neither a sibling subdomain nor a network
+// attacker answering over plain http can plant one. Without it, either
+// could put the caller's own cookie in someone else's browser, which is
+// the attack the binding stops.
+const hostPrefix = "__Host-"
+
+// cookieScope is where the binding cookie for redirectURL goes: an https
+// redirect URL gets a Secure "__Host-" cookie, which must have Path=/; an
+// http one (local use) a cookie limited to the redirect URL's path.
+func cookieScope(redirectURL string) (secure bool, path string) {
+	u, err := url.Parse(redirectURL)
+	switch {
+	case err == nil && u.Scheme == "https":
+		return true, "/"
+	case err != nil || u.EscapedPath() == "":
+		return false, CallbackPath
+	}
+	return false, u.EscapedPath()
+}
+
+// cookieName is the name of the binding cookie of the flow of state.
+func (f flow) cookieName(state string) string {
+	if f.CookieSecure {
+		return hostPrefix + CookieName(state)
+	}
+	return CookieName(state)
+}
+
+// bindingHash is what a flow keeps of its binding cookie's value.
+func bindingHash(v string) string {
+	sum := sha256.Sum256([]byte(v))
+	return hex.EncodeToString(sum[:])
 }
 
 func oauthConfig(a App) *oauth2.Config {

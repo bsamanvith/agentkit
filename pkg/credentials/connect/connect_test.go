@@ -3,12 +3,14 @@ package connect_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -76,6 +78,10 @@ type rig struct {
 	// wrap, if set, is put around the callback handler (a test's
 	// middleware).
 	wrap func(http.Handler) http.Handler
+	// cookies are the binding cookies Connect gave, by state: the browser
+	// that started each flow.
+	mu      sync.Mutex
+	cookies map[string]*http.Cookie
 }
 
 func testRing(t testing.TB) *credentials.KeyRing {
@@ -95,7 +101,7 @@ func withStore(s credentials.BlobStore) rigOption {
 
 func newRig(t testing.TB, opts ...rigOption) *rig {
 	t.Helper()
-	r := &rig{t: t, clk: clocktest.NewFake(time.Now()), logs: &syncBuffer{}, ring: testRing(t)}
+	r := &rig{t: t, clk: clocktest.NewFake(time.Now()), logs: &syncBuffer{}, ring: testRing(t), cookies: map[string]*http.Cookie{}}
 	r.ts = credentialstest.NewTokenServer(t, credentialstest.TokenServerOptions{Prefix: canary + "-"})
 	r.ts.AddClient(appID, appSecret)
 	var svc *connect.Service
@@ -162,14 +168,50 @@ func ctxOf(t testing.TB, tenant string) context.Context {
 // noFollow is a client that returns redirects instead of following them.
 var noFollow = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 
-// start connects (tenant, user, slot) and returns the authorization URL.
+// start connects (tenant, user, slot) and returns the authorization URL;
+// the rig keeps the binding cookie for the callback.
 func (r *rig) start(tenant, user, slot, ret string) string {
 	r.t.Helper()
-	resp, err := r.svc.Connect(ctxOf(r.t, tenant), user, slot, wire.ConnectRequest{ReturnURL: ret})
+	return r.startOn(r.svc, tenant, user, slot, ret)
+}
+
+// startOn is start on another service (a replica).
+func (r *rig) startOn(svc *connect.Service, tenant, user, slot, ret string) string {
+	r.t.Helper()
+	resp, cookie, err := svc.Connect(ctxOf(r.t, tenant), user, slot, wire.ConnectRequest{ReturnURL: ret})
 	if err != nil {
 		r.t.Fatalf("Connect: %v", err)
 	}
+	u, err := url.Parse(resp.AuthorizeURL)
+	if err != nil || cookie == nil {
+		r.t.Fatalf("Connect = %q, cookie %v", resp.AuthorizeURL, cookie)
+	}
+	r.mu.Lock()
+	r.cookies[u.Query().Get("state")] = cookie
+	r.mu.Unlock()
 	return resp.AuthorizeURL
+}
+
+// cookieFor is the binding cookie of the flow whose state target's query
+// has, nil for none.
+func (r *rig) cookieFor(target string) *http.Cookie {
+	u, err := url.Parse(target)
+	if err != nil {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.cookies[u.Query().Get("state")]
+}
+
+// browserRequest is the request of the browser that started the flow of
+// target's state: target with its binding cookie.
+func (r *rig) browserRequest(target string) *http.Request {
+	req := httptest.NewRequest(http.MethodGet, target, nil)
+	if c := r.cookieFor(target); c != nil {
+		req.AddCookie(&http.Cookie{Name: c.Name, Value: c.Value})
+	}
+	return req
 }
 
 // authorize follows an authorization URL at the fake provider and returns
@@ -187,10 +229,29 @@ func (r *rig) authorize(authURL string) string {
 	return resp.Header.Get("Location")
 }
 
-// callback sends the browser's request to the callback.
+// callback sends the request of the browser that started the flow to the
+// callback.
 func (r *rig) callback(target string) (*http.Response, string) {
 	r.t.Helper()
-	resp, err := noFollow.Get(target)
+	var cookies []*http.Cookie
+	if c := r.cookieFor(target); c != nil {
+		cookies = append(cookies, &http.Cookie{Name: c.Name, Value: c.Value})
+	}
+	return r.callbackWith(target, cookies...)
+}
+
+// callbackWith sends target to the callback from a browser holding
+// cookies.
+func (r *rig) callbackWith(target string, cookies ...*http.Cookie) (*http.Response, string) {
+	r.t.Helper()
+	req, err := http.NewRequestWithContext(r.t.Context(), http.MethodGet, target, nil)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	resp, err := noFollow.Do(req)
 	if err != nil {
 		r.t.Fatal(err)
 	}
@@ -374,7 +435,7 @@ func TestFlowAcrossReplicas(t *testing.T) {
 				}
 			}
 			// The browser comes back to the other replica.
-			req := httptest.NewRequest(http.MethodGet, cb, nil)
+			req := one.browserRequest(cb)
 			rec := httptest.NewRecorder()
 			two.Callback().ServeHTTP(rec, req)
 			if rec.Code != http.StatusOK {
@@ -618,7 +679,7 @@ func TestStateRace(t *testing.T) {
 	for i := range n {
 		wg.Go(func() {
 			rec := httptest.NewRecorder()
-			r.svc.Callback().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, cb, nil))
+			r.svc.Callback().ServeHTTP(rec, r.browserRequest(cb))
 			codes[i] = rec.Code
 		})
 	}
@@ -644,19 +705,8 @@ func TestStateRace(t *testing.T) {
 func TestFlowsAfterKeyRotation(t *testing.T) {
 	t.Parallel()
 	r := newRig(t)
+	// u1's flows are kept in one blob, sealed under the old key.
 	old := r.authorize(r.start("tenant-a", "u1", "mail", ""))
-	// Fill every bucket under the old key.
-	flowCtx := ctxOf(t, connect.FlowTenant)
-	for i, tries := 0, 0; i < 64; {
-		if _, err := r.store.Get(flowCtx, fmt.Sprintf("flows-%02x", i), connect.FlowSlot); err == nil {
-			i++
-			continue
-		}
-		if tries++; tries > 10000 {
-			t.Fatalf("bucket %d never written", i)
-		}
-		r.start("tenant-a", "u2", "mail", "")
-	}
 	ring, err := credentials.ParseKeyRing("k2:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8")
 	if err != nil {
 		t.Fatal(err)
@@ -670,20 +720,18 @@ func TestFlowsAfterKeyRotation(t *testing.T) {
 	}
 	serve := func(target string) int {
 		rec := httptest.NewRecorder()
-		rotated.Callback().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, target, nil))
+		rotated.Callback().ServeHTTP(rec, r.browserRequest(target))
 		return rec.Code
 	}
+	// u1 starts again: their blob, unreadable now, is replaced.
+	again := r.authorize(r.startOn(rotated, "tenant-a", "u1", "mail", ""))
 	if code := serve(old); code != http.StatusBadRequest {
 		t.Errorf("a flow sealed under the dropped key = %d, want 400", code)
 	}
-	resp, err := rotated.Connect(ctxOf(t, "tenant-a"), "u3", "mail", wire.ConnectRequest{})
-	if err != nil {
-		t.Fatalf("Connect after the rotation: %v", err)
-	}
-	if code := serve(r.authorize(resp.AuthorizeURL)); code != http.StatusOK {
+	if code := serve(again); code != http.StatusOK {
 		t.Errorf("a flow started after the rotation = %d", code)
 	}
-	if _, _, err := cfg.Vault.Get(ctxOf(t, "tenant-a"), "u3", "mail"); err != nil {
+	if _, _, err := cfg.Vault.Get(ctxOf(t, "tenant-a"), "u1", "mail"); err != nil {
 		t.Errorf("the tokens after the rotation: %v", err)
 	}
 }
@@ -698,7 +746,7 @@ func TestReservedTenant(t *testing.T) {
 	_, errStatus := r.svc.Status(ctx, "flows-00", "mail")
 	_, errPut := r.svc.Put(ctx, "flows-00", "mail", wire.PutCredentialRequest{Kind: wire.KindAPIKey, APIKey: "k"})
 	errDelete := r.svc.Delete(ctx, "", "crm")
-	_, errConnect := r.svc.Connect(ctx, "flows-00", "mail", wire.ConnectRequest{})
+	_, _, errConnect := r.svc.Connect(ctx, "flows-00", "mail", wire.ConnectRequest{})
 	for name, err := range map[string]error{"List": errList, "Status": errStatus, "Put": errPut, "Delete": errDelete, "Connect": errConnect} {
 		if !errors.Is(err, agentapi.ErrCredentialForbidden) {
 			t.Errorf("%s in the flows' tenant = %v, want forbidden", name, err)
@@ -723,7 +771,7 @@ func TestReturnURL(t *testing.T) {
 		"javascript:alert(1)",
 		"/connections/done",
 	} {
-		_, err := r.svc.Connect(ctxOf(t, "tenant-a"), "u1", "mail", wire.ConnectRequest{ReturnURL: bad})
+		_, _, err := r.svc.Connect(ctxOf(t, "tenant-a"), "u1", "mail", wire.ConnectRequest{ReturnURL: bad})
 		if !errors.Is(err, agentapi.ErrCredentialInvalid) {
 			t.Errorf("return URL %q: %v, want refused", bad, err)
 		}
@@ -818,7 +866,7 @@ func TestPutListDelete(t *testing.T) {
 	if err := r.svc.Delete(ctx, "", "crm"); !errors.Is(err, agentapi.ErrCredentialNotFound) {
 		t.Errorf("deleting twice = %v", err)
 	}
-	if _, err := r.svc.Connect(ctx, "u1", "nope", wire.ConnectRequest{}); !errors.Is(err, agentapi.ErrCredentialInvalid) {
+	if _, _, err := r.svc.Connect(ctx, "u1", "nope", wire.ConnectRequest{}); !errors.Is(err, agentapi.ErrCredentialInvalid) {
 		t.Errorf("connecting a slot without an app = %v", err)
 	}
 }
@@ -864,13 +912,14 @@ func FuzzCallback(f *testing.F) {
 	}
 	r := newRig(f)
 	f.Fuzz(func(t *testing.T, raw string) {
-		authURL, err := r.svc.Connect(ctxOf(t, "tenant-a"), "u1", "mail", wire.ConnectRequest{})
+		authURL, cookie, err := r.svc.Connect(ctxOf(t, "tenant-a"), "u1", "mail", wire.ConnectRequest{})
 		if err != nil {
 			t.Fatal(err)
 		}
 		state := mustQuery(t, authURL.AuthorizeURL).Get("state")
 		req := httptest.NewRequest(http.MethodGet, connect.CallbackPath, nil)
 		req.URL.RawQuery = strings.ReplaceAll(raw, "{state}", state)
+		req.AddCookie(&http.Cookie{Name: cookie.Name, Value: cookie.Value}) // the browser that started it
 		rec := httptest.NewRecorder()
 		r.svc.Callback().ServeHTTP(rec, req)
 		if rec.Code == http.StatusOK || rec.Code == http.StatusSeeOther {
@@ -880,4 +929,256 @@ func FuzzCallback(f *testing.F) {
 			t.Fatalf("%q stored something (%v)", raw, err)
 		}
 	})
+}
+
+// Criterion (security fix, RFC 9700 §4.7): a flow is bound to the browser
+// that started it. Connect gives a cookie (random, HttpOnly, SameSite=Lax,
+// the callback's path only, the flow's lifetime) and keeps only its hash;
+// the callback refuses a browser without it, or with another's, before
+// anything is exchanged or stored, and clears it.
+func TestBrowserBinding(t *testing.T) {
+	t.Parallel()
+	t.Run("the cookie", func(t *testing.T) {
+		t.Parallel()
+		r := newRig(t)
+		resp, c, err := r.svc.Connect(ctxOf(t, "tenant-a"), "u1", "mail", wire.ConnectRequest{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		state := mustQuery(t, resp.AuthorizeURL).Get("state")
+		if c.Name != connect.CookieName(state) || !strings.HasPrefix(c.Name, "agentkit_oauth_") || len(c.Value) < 43 ||
+			!c.HttpOnly || c.SameSite != http.SameSiteLaxMode || c.Path != connect.CallbackPath ||
+			c.MaxAge != int(connect.DefaultStateTTL/time.Second) || c.Domain != "" {
+			t.Errorf("cookie %+v", c)
+		}
+		if strings.Contains(resp.AuthorizeURL, c.Value) {
+			t.Error("the authorization URL has the cookie's value")
+		}
+		// A browser keeps it for the callback only.
+		jar, _ := cookiejar.New(nil)
+		api, _ := url.Parse(r.cb.URL + "/v1/credentials/mail/connect")
+		jar.SetCookies(api, []*http.Cookie{c})
+		cbURL, _ := url.Parse(r.cb.URL + connect.CallbackPath)
+		if got := jar.Cookies(cbURL); len(got) != 1 || got[0].Value != c.Value {
+			t.Errorf("the callback gets %v", got)
+		}
+		if got := jar.Cookies(api); len(got) != 0 {
+			t.Errorf("the API gets %v", got)
+		}
+		// The flow keeps the SHA-256 of the value, never the value.
+		bucket := "flows-" + state[:32]
+		b, err := r.store.Get(ctxOf(t, connect.FlowTenant), bucket, connect.FlowSlot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ft, _ := tenancy.NewTenant(connect.FlowTenant)
+		plain, _, err := credentials.NewSealer(r.ring).Open(credentials.Key{Tenant: ft, User: bucket, Slot: connect.FlowSlot}, b.Data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sum := sha256.Sum256([]byte(c.Value))
+		if strings.Contains(string(plain), c.Value) || !strings.Contains(string(plain), hex.EncodeToString(sum[:])) {
+			t.Errorf("the flow keeps %s", plain)
+		}
+		// That browser finishes the flow, and the callback clears the cookie.
+		cl := &http.Client{Jar: jar, CheckRedirect: noFollow.CheckRedirect}
+		got, err := cl.Get(r.authorize(resp.AuthorizeURL))
+		if err != nil {
+			t.Fatal(err)
+		}
+		got.Body.Close()
+		if got.StatusCode != http.StatusOK {
+			t.Fatalf("callback with the cookie = %d", got.StatusCode)
+		}
+		cleared := false
+		for _, sc := range got.Cookies() {
+			cleared = cleared || (sc.Name == c.Name && sc.MaxAge < 0 && sc.Path == c.Path)
+		}
+		if !cleared || len(jar.Cookies(cbURL)) != 0 {
+			t.Errorf("the cookie is not cleared: %v", got.Header.Values("Set-Cookie"))
+		}
+		if _, ok := r.stored("tenant-a", "u1", "mail").(credentials.OAuth2); !ok {
+			t.Error("the browser that started the flow did not connect")
+		}
+	})
+	// The attack: a caller starts a flow for their own slot and gets
+	// someone else to open its authorization URL and consent.
+	refused := func(t *testing.T, r *rig, target string, cookies ...*http.Cookie) {
+		t.Helper()
+		resp, body := r.callbackWith(target, cookies...)
+		if resp.StatusCode != http.StatusForbidden || !strings.Contains(body, "not started in this browser") || resp.Header.Get("Location") != "" {
+			t.Errorf("callback with %v = %d %s %s", cookies, resp.StatusCode, resp.Header.Get("Location"), body)
+		}
+		if c := r.stored("tenant-a", "attacker", "mail"); c != nil || r.ts.Grants("authorization_code") != 0 {
+			t.Errorf("stored %T after %d exchanges", c, r.ts.Grants("authorization_code"))
+		}
+		// The state is used up, also for the browser that started it.
+		if resp, _ := r.callback(target); resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("the state after a refused callback = %d", resp.StatusCode)
+		}
+	}
+	t.Run("no cookie", func(t *testing.T) {
+		t.Parallel()
+		r := newRig(t)
+		for _, ret := range []string{"", returnTo} {
+			refused(t, r, r.authorize(r.start("tenant-a", "attacker", "mail", ret)))
+		}
+	})
+	t.Run("another browser's cookie", func(t *testing.T) {
+		t.Parallel()
+		r := newRig(t)
+		mine := r.authorize(r.start("tenant-a", "u1", "mail", ""))
+		own := r.cookieFor(mine)
+		// The victim's own cookie, under its own name and under the flow's.
+		theirs := r.authorize(r.start("tenant-a", "attacker", "mail", ""))
+		refused(t, r, theirs, &http.Cookie{Name: own.Name, Value: own.Value})
+		theirs = r.authorize(r.start("tenant-a", "attacker", "mail", ""))
+		refused(t, r, theirs, &http.Cookie{Name: r.cookieFor(theirs).Name, Value: own.Value})
+		// The flow's own cookie name, its value changed.
+		theirs = r.authorize(r.start("tenant-a", "attacker", "mail", ""))
+		refused(t, r, theirs, &http.Cookie{Name: r.cookieFor(theirs).Name, Value: r.cookieFor(theirs).Value + "x"})
+		// The victim's own flow still connects their account.
+		if resp, body := r.callback(mine); resp.StatusCode != http.StatusOK {
+			t.Errorf("the victim's own flow = %d %s", resp.StatusCode, body)
+		}
+	})
+}
+
+// Review of the security fix: with an https redirect URL the binding cookie
+// is a Secure "__Host-" cookie (no Domain, Path=/), which browsers refuse
+// from a sibling subdomain or over plain http. Without the prefix, either
+// could plant the caller's own cookie, under its plain name, in the
+// victim's browser, and the victim's consent would connect their account
+// as the caller's. The callback looks for the prefixed name only.
+func TestBrowserBindingHostCookie(t *testing.T) {
+	t.Parallel()
+	const redirect = "https://agent.example.com" + connect.CallbackPath
+	r := newRig(t, func(r *rig, cfg *connect.Config) {
+		app := r.app()
+		app.RedirectURL = redirect
+		cfg.Apps = map[string]connect.App{"mail": app, "crm": app}
+	})
+	// Served as behind a proxy that ends TLS and says nothing of it: the
+	// cookie's Secure comes from the flow, not the request.
+	serve := func(target string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, strings.Replace(target, "https://", "http://", 1), nil)
+		for _, c := range cookies {
+			req.AddCookie(c)
+		}
+		rec := httptest.NewRecorder()
+		r.svc.Callback().ServeHTTP(rec, req)
+		return rec
+	}
+	start := func(user string) (target string, c *http.Cookie) {
+		t.Helper()
+		resp, c, err := r.svc.Connect(ctxOf(t, "tenant-a"), user, "mail", wire.ConnectRequest{ReturnURL: returnTo})
+		if err != nil {
+			t.Fatal(err)
+		}
+		state := mustQuery(t, resp.AuthorizeURL).Get("state")
+		if c.Name != "__Host-"+connect.CookieName(state) || !c.Secure || c.Path != "/" || c.Domain != "" ||
+			!c.HttpOnly || c.SameSite != http.SameSiteLaxMode || c.MaxAge != int(connect.DefaultStateTTL/time.Second) {
+			t.Errorf("cookie %+v, want a Secure __Host- cookie with Path=/", c)
+		}
+		return r.authorize(resp.AuthorizeURL), c
+	}
+	// The attacker's cookie, planted under the name a sibling can set.
+	target, c := start("attacker")
+	rec := serve(target, &http.Cookie{Name: connect.CookieName(mustQuery(t, target).Get("state")), Value: c.Value})
+	if rec.Code != http.StatusForbidden || rec.Header().Get("Location") != "" {
+		t.Errorf("callback with the planted cookie = %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+	if got := r.stored("tenant-a", "attacker", "mail"); got != nil || r.ts.Grants("authorization_code") != 0 {
+		t.Errorf("stored %T after %d exchanges", got, r.ts.Grants("authorization_code"))
+	}
+	// The browser that started the flow holds the __Host- cookie and
+	// finishes; the callback clears that cookie with the same attributes.
+	target, c = start("u1")
+	rec = serve(target, &http.Cookie{Name: c.Name, Value: c.Value})
+	if rec.Code != http.StatusSeeOther || mustQuery(t, rec.Header().Get("Location")).Get("result") != wire.CallbackConnected {
+		t.Fatalf("callback with the cookie = %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+	cleared := false
+	for _, sc := range rec.Result().Cookies() {
+		cleared = cleared || (sc.Name == c.Name && sc.MaxAge < 0 && sc.Path == "/" && sc.Secure && sc.Domain == "")
+	}
+	if !cleared {
+		t.Errorf("the cookie is not cleared: %v", rec.Header().Values("Set-Cookie"))
+	}
+}
+
+// Criterion (security fix): pending flows are bounded per caller. One
+// caller starting many flows drops only their own oldest: other users'
+// and other tenants' pending flows still finish.
+func TestPendingFlowsPerCaller(t *testing.T) {
+	t.Parallel()
+	r := newRig(t)
+	start := func(tenant, user, slot string) string {
+		r.clk.Advance(time.Millisecond) // each flow is newer than the last
+		return r.start(tenant, user, slot, "")
+	}
+	victims := [][3]string{
+		{"tenant-a", "u1", "mail"},
+		{"tenant-a", "", "crm"},
+		{"tenant-b", "u1", "mail"},
+		{"tenant-b", "attacker", "mail"}, // same user id, another tenant
+	}
+	pending := make([]string, len(victims))
+	for i, v := range victims {
+		pending[i] = start(v[0], v[1], v[2])
+	}
+	// Enough that, when flows were kept in 64 buckets by state, every
+	// victim's bucket got some of them, and a full one dropped its oldest.
+	const n = 1000
+	first := start("tenant-a", "attacker", "mail")
+	var last string
+	for range n {
+		last = start("tenant-a", "attacker", "mail")
+	}
+	// No victim's flows share a blob with the caller's, so no write of
+	// the caller's can drop them.
+	ft, _ := tenancy.NewTenant(connect.FlowTenant)
+	for i, v := range victims {
+		bucket := "flows-" + mustQuery(t, pending[i]).Get("state")[:32]
+		b, err := r.store.Get(ctxOf(t, connect.FlowTenant), bucket, connect.FlowSlot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		plain, _, err := credentials.NewSealer(r.ring).Open(credentials.Key{Tenant: ft, User: bucket, Slot: connect.FlowSlot}, b.Data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var kept map[string]struct{ Tenant, User string }
+		if err := json.Unmarshal(plain, &kept); err != nil {
+			t.Fatal(err)
+		}
+		for _, fl := range kept {
+			if fl.Tenant != v[0] || fl.User != v[1] {
+				t.Errorf("%v's flows are kept with %s/%s's", v, fl.Tenant, fl.User)
+				break
+			}
+		}
+	}
+	for i, v := range victims {
+		if resp, body := r.callback(r.authorize(pending[i])); resp.StatusCode != http.StatusOK {
+			t.Errorf("%v's flow after %d flows of another caller = %d %s", v, n, resp.StatusCode, body)
+		}
+	}
+	if resp, _ := r.callback(r.authorize(first)); resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("the caller's own oldest flow = %d, want dropped", resp.StatusCode)
+	}
+	if resp, body := r.callback(r.authorize(last)); resp.StatusCode != http.StatusOK {
+		t.Errorf("the caller's newest flow = %d %s", resp.StatusCode, body)
+	}
+	// A caller keeps 16 pending: starting a 17th drops the oldest.
+	recent := make([]string, 17)
+	for i := range recent {
+		recent[i] = start("tenant-a", "attacker", "mail")
+	}
+	if resp, _ := r.callback(r.authorize(recent[0])); resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("the 17th newest flow of a caller = %d, want dropped", resp.StatusCode)
+	}
+	if resp, body := r.callback(r.authorize(recent[1])); resp.StatusCode != http.StatusOK {
+		t.Errorf("the 16th newest flow of a caller = %d %s, want kept", resp.StatusCode, body)
+	}
 }

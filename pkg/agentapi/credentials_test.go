@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -190,11 +191,18 @@ func (cr *credRig) toolsetStatus(key, toolset string) string {
 }
 
 // connect runs the OAuth flow for key's own (or, with scope tenant, its
-// tenant's) slot through the API, the provider and the callback.
+// tenant's) slot through the API, the provider and the callback, in one
+// browser: it keeps the cookies the API sets.
 func (cr *credRig) connect(key, slot string) {
 	cr.t.Helper()
-	c := decodeAs[wire.ConnectResponse](cr.t, cr.expect(key, "POST", "/v1/credentials/"+slot+"/connect", `{}`, 200))
-	nf := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, body := cr.as(key, "POST", "/v1/credentials/"+slot+"/connect", `{}`)
+	if resp.StatusCode != http.StatusOK {
+		cr.t.Fatalf("connect = %d %s", resp.StatusCode, body)
+	}
+	c := decodeAs[wire.ConnectResponse](cr.t, body)
+	jar, _ := cookiejar.New(nil)
+	jar.SetCookies(resp.Request.URL, resp.Cookies())
+	nf := &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := nf.Get(c.AuthorizeURL)
 	if err != nil {
 		cr.t.Fatal(err)
@@ -273,6 +281,57 @@ func TestCredentialScopes(t *testing.T) {
 	cr.expect(keyCredU1, "DELETE", "/v1/credentials/mail", "", 404)
 	cr.expect(keyCredAdmin, "DELETE", "/v1/credentials/crm?scope=tenant", "", 204)
 	cr.expect(keyCredAdmin, "DELETE", "/v1/credentials/crm?scope=user", "", 400)
+}
+
+// Criterion (security fix, RFC 9700 §4.7): POST .../connect sets the
+// cookie that binds the flow to the browser: HttpOnly, SameSite=Lax, the
+// callback's path, Secure when the request came over TLS (to the server or
+// a proxy saying so), never cached. The callback refuses a browser without
+// it.
+func TestCredentialConnectCookie(t *testing.T) {
+	t.Parallel()
+	cr := newCredRig(t)
+	for _, tc := range []struct {
+		name   string
+		header []string
+		secure bool
+	}{
+		{"http", nil, false},
+		{"behind TLS", []string{"X-Forwarded-Proto", "https"}, true},
+		{"proxied http", []string{"X-Forwarded-Proto", "http"}, false},
+	} {
+		resp, body := cr.do("POST", "/v1/credentials/mail/connect", `{}`, append([]string{"Authorization", "Bearer " + keyCredU1}, tc.header...)...)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("%s: connect = %d %s", tc.name, resp.StatusCode, body)
+		}
+		cs := resp.Cookies()
+		if len(cs) != 1 {
+			t.Fatalf("%s: cookies %v", tc.name, resp.Header.Values("Set-Cookie"))
+		}
+		c := cs[0]
+		if !strings.HasPrefix(c.Name, "agentkit_oauth_") || c.Value == "" || !c.HttpOnly || c.SameSite != http.SameSiteLaxMode ||
+			c.Path != connect.CallbackPath || c.MaxAge <= 0 || c.Secure != tc.secure || resp.Header.Get("Cache-Control") != "no-store" {
+			t.Errorf("%s: Set-Cookie %q, Cache-Control %q", tc.name, resp.Header.Values("Set-Cookie"), resp.Header.Get("Cache-Control"))
+		}
+		if strings.Contains(string(body), c.Value) {
+			t.Errorf("%s: the body has the cookie's value", tc.name)
+		}
+	}
+	// Another browser (no cookie) opening the authorization URL is refused.
+	c := decodeAs[wire.ConnectResponse](t, cr.expect(keyCredU1, "POST", "/v1/credentials/mail/connect", `{}`, 200))
+	nf := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := nf.Get(c.AuthorizeURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp, err = nf.Get(resp.Header.Get("Location")); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden || cr.list(keyCredU1)["mail/user"].Status != wire.CredentialNotConnected {
+		t.Errorf("a callback from another browser = %d", resp.StatusCode)
+	}
 }
 
 // Criterion: listing. GET /v1/credentials (and the connect answer, and

@@ -2598,7 +2598,7 @@
       "post": {
         "operationId": "connectCredential",
         "summary": "Start connecting an account with OAuth2",
-        "description": "Starts the authorization code flow with PKCE (S256) for the slot's OAuth2 app and returns the provider's page to send the user's browser to. The provider sends the browser back to the server's GET /oauth/callback (no bearer token: the flow's state, random, single use and valid for 10 minutes, names it), which exchanges the code with the verifier and stores the tokens for the caller (scope user) or the caller's tenant (scope tenant, with credentials:admin). It then shows a page of its own, or redirects to return_url with result (connected, denied, expired or failed) and slot added to its query.",
+        "description": "Starts the authorization code flow with PKCE (S256) for the slot's OAuth2 app and returns the provider's page to send the user's browser to. The provider sends the browser back to the server's GET /oauth/callback (no bearer token: the flow's state, random, single use and valid for 10 minutes, names it), which exchanges the code with the verifier and stores the tokens for the caller (scope user) or the caller's tenant (scope tenant, with credentials:admin). It then shows a page of its own, or redirects to return_url with result (connected, denied, expired or failed) and slot added to its query. The answer sets a cookie that binds the flow to the browser that asked (RFC 9700 section 4.7): the callback refuses a browser without it (403, a page; nothing is stored), so call this from the browser that will open authorize_url, on the host of the redirect URL. Each caller has at most 16 flows pending; starting more drops their own oldest.",
         "parameters": [
           {
             "name": "slot",
@@ -2624,6 +2624,14 @@
         "responses": {
           "200": {
             "description": "Where to send the browser.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "With an https redirect URL: __Host-agentkit_oauth_<id>=<random>; Path=/; Max-Age=600; HttpOnly; SameSite=Lax; Secure. With an http one: agentkit_oauth_<id>=<random>; Path=/oauth/callback (the redirect URL's path); Max-Age=600; HttpOnly; SameSite=Lax; Secure when the request came over TLS. One per flow; the callback clears it.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {

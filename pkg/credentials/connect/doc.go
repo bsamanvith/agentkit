@@ -24,6 +24,24 @@
 // retried. The return URL must be on an allowlist when the flow starts, so
 // the callback is not an open redirect.
 //
+// A flow is bound to the browser that started it (RFC 9700 §4.7): Connect
+// also returns a cookie (256 random bits, HttpOnly, SameSite=Lax, the
+// flow's lifetime; one per flow, named from the state), which the agent API
+// sets on its answer, Secure over TLS. When the redirect URL is https it is
+// a Secure "__Host-" cookie with Path=/, which no sibling subdomain or
+// plain-http answer can plant; when it is http (local use), it is limited
+// to the redirect URL's path. The flow
+// keeps only the cookie's SHA-256. The callback requires the cookie and
+// compares it in constant time; without it, or with another's, it answers
+// a page (403), exchanges and stores nothing, and does not follow the
+// return URL. Either way it clears the cookie. Otherwise a caller could
+// start a flow for their own slot and get someone else to consent, storing
+// that person's account as the caller's.
+//
+// Each caller (tenant and user) has their own blob of pending flows, named
+// by the state, and at most 16 pending: starting more drops only the
+// caller's own oldest, never another caller's.
+//
 // The callback answers with a small page of its own, or, when the flow
 // named a return URL, redirects there with "result" (connected, denied,
 // expired, failed) and "slot" in its query. Neither carries a value, and

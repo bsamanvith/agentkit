@@ -25,6 +25,10 @@ var (
 	// (400 invalid_request): a missing field, an unknown kind, a refused
 	// token URL or return URL, a slot without an OAuth2 app.
 	ErrCredentialInvalid = errors.New("invalid credential request")
+	// ErrCredentialForbidden: the request's tenant may not keep
+	// credentials here at all (403 forbidden), such as the tenant reserved
+	// for the connect flows' state.
+	ErrCredentialForbidden = errors.New("credentials are not kept for this tenant")
 )
 
 // Credentials keeps the credentials of a tenant's slots, which toolsets use
@@ -211,6 +215,8 @@ func (s *Server) credentialsError(w http.ResponseWriter, what string, err error)
 		writeError(w, http.StatusNotFound, &Error{Code: CodeNotFound, Message: err.Error()})
 	case errors.Is(err, ErrCredentialInvalid):
 		writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: err.Error()})
+	case errors.Is(err, ErrCredentialForbidden):
+		writeError(w, http.StatusForbidden, &Error{Code: CodeForbidden, Message: err.Error()})
 	default:
 		s.internal(w, what, err)
 	}

@@ -284,7 +284,7 @@ func (s *Service) metas(ctx context.Context, user string) (map[string]credential
 // no principal acts as it, whatever its API key, token or header says.
 func notReserved(ctx context.Context) error {
 	if t, ok := tenancy.From(ctx); ok && t.ID() == FlowTenant {
-		return invalid("the tenant %q is reserved for the connect flows", FlowTenant)
+		return fmt.Errorf("%w: the tenant %q is reserved for the connect flows", agentapi.ErrCredentialForbidden, FlowTenant)
 	}
 	return nil
 }

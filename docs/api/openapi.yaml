@@ -2392,7 +2392,7 @@
             }
           },
           "403": {
-            "description": "forbidden: the request's credential does not have the scope agent:read.",
+            "description": "forbidden: the request's credential does not have the scope agent:read. Also when the request's tenant is agentkit-oauth-flows, which is reserved for the connect flows' state.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2481,7 +2481,7 @@
             }
           },
           "403": {
-            "description": "forbidden: the request's credential does not have the scope agent:run; or the slot's scope is tenant and it does not have credentials:admin; or the slot's scope is user and the credential is not a user's.",
+            "description": "forbidden: the request's credential does not have the scope agent:run; or the slot's scope is tenant and it does not have credentials:admin; or the slot's scope is user and the credential is not a user's. Also when the request's tenant is agentkit-oauth-flows, which is reserved for the connect flows' state.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2572,7 +2572,7 @@
             }
           },
           "403": {
-            "description": "forbidden: the request's credential does not have the scope agent:run; or the slot's scope is tenant and it does not have credentials:admin; or the slot's scope is user and the credential is not a user's.",
+            "description": "forbidden: the request's credential does not have the scope agent:run; or the slot's scope is tenant and it does not have credentials:admin; or the slot's scope is user and the credential is not a user's. Also when the request's tenant is agentkit-oauth-flows, which is reserved for the connect flows' state.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2661,7 +2661,7 @@
             }
           },
           "403": {
-            "description": "forbidden: the request's credential does not have the scope agent:run; or the slot's scope is tenant and it does not have credentials:admin; or the slot's scope is user and the credential is not a user's.",
+            "description": "forbidden: the request's credential does not have the scope agent:run; or the slot's scope is tenant and it does not have credentials:admin; or the slot's scope is user and the credential is not a user's. Also when the request's tenant is agentkit-oauth-flows, which is reserved for the connect flows' state.",
             "content": {
               "application/json": {
                 "schema": {

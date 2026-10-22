@@ -700,8 +700,8 @@ func TestReservedTenant(t *testing.T) {
 	errDelete := r.svc.Delete(ctx, "", "crm")
 	_, errConnect := r.svc.Connect(ctx, "flows-00", "mail", wire.ConnectRequest{})
 	for name, err := range map[string]error{"List": errList, "Status": errStatus, "Put": errPut, "Delete": errDelete, "Connect": errConnect} {
-		if !errors.Is(err, agentapi.ErrCredentialInvalid) {
-			t.Errorf("%s in the flows' tenant = %v, want refused", name, err)
+		if !errors.Is(err, agentapi.ErrCredentialForbidden) {
+			t.Errorf("%s in the flows' tenant = %v, want forbidden", name, err)
 		}
 	}
 }

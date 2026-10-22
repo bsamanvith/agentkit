@@ -31,13 +31,15 @@ import (
 const credCanary = "t045-api-canary-5d21"
 
 // The keys of credRig: tenant A's admin, users u1 and u2, and a service key
-// (no user); tenant B's user u1, who holds every scope.
+// (no user); tenant B's user u1, who holds every scope; and a key of the
+// tenant reserved for the connect flows, which also holds every scope.
 const (
 	keyCredAdmin   = "key-cred-admin-a-0123456"
 	keyCredU1      = "key-cred-u1-a-0123456789"
 	keyCredU2      = "key-cred-u2-a-0123456789"
 	keyCredService = "key-cred-service-a-01234"
 	keyCredB       = "key-cred-u1-b-0123456789"
+	keyCredFlows   = "key-cred-flows-012345678"
 )
 
 type lockedBuffer struct {
@@ -81,6 +83,10 @@ func newCredRig(t *testing.T, opts ...agentapi.Option) *credRig {
 		return tn
 	}
 	cr := &credRig{a: ten("a"), b: ten("b"), logs: &lockedBuffer{}, clk: clocktest.NewFake(time.Now())}
+	flows, err := tenancy.NewTenant(connect.FlowTenant)
+	if err != nil {
+		t.Fatal(err)
+	}
 	read, run := agentapi.ScopeRead, agentapi.ScopeRun
 	all := []string{"*"}
 	authn := authtest.NewFake(map[string]auth.Principal{
@@ -89,6 +95,7 @@ func newCredRig(t *testing.T, opts ...agentapi.Option) *credRig {
 		keyCredU2:      {Tenant: cr.a, User: "u2", Scopes: []string{read, run}, Toolsets: all},
 		keyCredService: {Tenant: cr.a, Scopes: []string{read, run}, Toolsets: all},
 		keyCredB:       {Tenant: cr.b, User: "u1", Scopes: all, Toolsets: all},
+		keyCredFlows:   {Tenant: flows, User: "flows-00", Scopes: all, Toolsets: all},
 	})
 	cr.ts = credentialstest.NewTokenServer(t, credentialstest.TokenServerOptions{Prefix: credCanary + "-"})
 	cr.ts.AddClient("app", "app-secret-"+credCanary)
@@ -206,6 +213,23 @@ func (cr *credRig) connect(key, slot string) {
 // Criterion: scopes. A user sets their own user-scoped credential, but not
 // the tenant's without credentials:admin; a key that is no user's has no
 // own credential; and tenant B can neither list, set nor delete A's.
+// The tenant the connect flows are kept in is no caller's: a key of that
+// tenant, even with every scope, is refused (403) by every credentials
+// endpoint, and GET /v1/toolsets does not read its slots' status.
+func TestCredentialReservedTenant(t *testing.T) {
+	t.Parallel()
+	cr := newCredRig(t)
+	key := `{"kind":"api_key","api_key":"k-` + credCanary + `"}`
+	cr.expect(keyCredFlows, "GET", "/v1/credentials", "", 403)
+	cr.expect(keyCredFlows, "PUT", "/v1/credentials/mail", key, 403)
+	cr.expect(keyCredFlows, "PUT", "/v1/credentials/crm", key, 403)
+	cr.expect(keyCredFlows, "DELETE", "/v1/credentials/crm", "", 403)
+	cr.expect(keyCredFlows, "POST", "/v1/credentials/mail/connect", `{}`, 403)
+	if l := cr.list(keyCredAdmin); l["crm/tenant"].Status != wire.CredentialNotConnected {
+		t.Errorf("tenant A's list after the reserved tenant's calls = %+v", l)
+	}
+}
+
 func TestCredentialScopes(t *testing.T) {
 	t.Parallel()
 	cr := newCredRig(t)

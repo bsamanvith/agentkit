@@ -259,18 +259,20 @@ T087 adds the components its pages need: a diff, a version list, a file tree and
 
 | A2UI | Console component |
 |---|---|
-| `Text` (`variant` h1–h5, body, caption) | text styles from the type scale (h1–h2 → 16 px semibold, h3–h5 → 14 px semibold, caption → 12 px muted) |
+| `Text` (`variant` h1–h5, body, caption) | text styles from the type scale (h1–h2 → 16 px semibold, h3–h5 → 14 px semibold, caption → 12 px muted); plain text: its Markdown is not parsed, a heading only drops a leading `#` |
 | `Row`, `Column`, `List` | flex rows and columns with the spacing scale |
 | `Card` | a surface with a hairline border, 12 px radius |
 | `Divider` | a 1 px `--line` rule |
-| `Button` (`variant`) | primary or secondary button |
-| `TextField` (`shortText`, `longText`, `number`, `date`, `obscured`) | input or textarea |
+| `Button` (`variant`) | primary, secondary (`default`) or ghost (`borderless`) button; disabled, with the check's message, while a check fails. A button whose action is `openUrl` is a link to a safe `http(s)` URL (new tab, no opener or referrer); with any other URL it is disabled with "Link removed: not a web address." |
+| `TextField` (`shortText`, `longText`, `number`, `obscured`) | input or textarea, with its checks' messages under it |
 | `CheckBox` | checkbox |
 | `DateTimeInput` | native date and time inputs |
-| `ChoicePicker` | toggle chips (several) or a select (one, many options) |
-| `Image` | an image from an allowlisted `https` URL, else dropped |
+| `ChoicePicker` | toggle chips (`displayStyle: chips`), checkboxes (several), radios (one), or a select (one of more than 6) |
+| `Image` | an image from a safe `http(s)` URL that the app allows (the console: its own origin, all its CSP's `img-src 'self'` loads), else "Image not shown: *description*" |
 | `Icon` | the console's icon set by name; an unknown name draws nothing |
-| `Slider`, `Tabs`, `Modal` | **deferred**: shown as "Unsupported component" until a real use appears |
+| `Slider`, `Tabs`, `Modal` | **deferred**: shown as "Unsupported component: Slider" (never its data) until a real use appears |
+
+A surface (T066) sits in the answer where the agent created it, and every later message about it, in that run or a later one, changes it there. Its `ui_render` steps are not shown: the surface is what they did. Data bindings, templates and the catalog's functions are resolved in the browser; every URL, literal, bound or computed, passes `a2ui.SafeURL`'s rule before use. The agent's theme (colours, icon) is ignored, so surfaces look like the console. States: **live**; **busy** (disabled while a run of the conversation goes on, or the agent was removed); **sent** (after a button's action, until the agent changes the surface: the values stay, disabled, with "Sent"). The action shows as the person's message, "Sent “Search”" (the button's label). What the person typed is kept per conversation while the console is open; once the agent changes the surface, its own data shows.
 
 ## Tokens
 

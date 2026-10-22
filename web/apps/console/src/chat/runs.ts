@@ -8,8 +8,17 @@
 // a conversation's state with useSyncExternalStore; each state is a new
 // object when it changes, and text deltas are applied once per frame.
 
-import { applyEvent, endAnswer, startAnswer, type AssistantTurn, type Turn, type UserTurn } from "@agentkit/agent-ui";
-import { ApiError, NetworkError, type AgentClient, type RunEvent } from "@agentkit/agent-ui/api";
+import {
+  applyEvent,
+  endAnswer,
+  startAnswer,
+  SurfaceEdits,
+  type AssistantTurn,
+  type Turn,
+  type UIAction,
+  type UserTurn,
+} from "@agentkit/agent-ui";
+import { ApiError, NetworkError, type AgentClient, type RunEvent, type RunRequest } from "@agentkit/agent-ui/api";
 import type { Drafts } from "./drafts";
 
 /** What is kept of an answer that ended in this tab: its history doesn't carry usage or errors. */
@@ -59,6 +68,8 @@ export class RunStore {
   #list = 0;
   #viewing: string | undefined;
   readonly drafts: Drafts;
+  /** What the person typed or picked on the agents' surfaces, by conversation. */
+  readonly edits = new SurfaceEdits();
   #hooks: Hooks;
 
   constructor(drafts: Drafts, hooks: Hooks) {
@@ -110,6 +121,27 @@ export class RunStore {
     void this.#start(client, id, { message: text, conversation_id: id }, { base, user, exchange }, agent);
   }
 
+  /**
+   * Sends the person's action on a surface (a button): a run whose message
+   * is the action (ui_action), shown as their message. A send that doesn't
+   * start says why, and the surface can be used again.
+   */
+  act(client: AgentClient, id: string, action: UIAction, base: Turn[], agent: string) {
+    if (this.running(id)) return;
+    const exchange = base.filter((t) => t.role === "user").length + 1;
+    const user: UserTurn = { role: "user", key: `u${Date.now()}`, text: action.name, pending: true, action };
+    const req: RunRequest = {
+      conversation_id: id,
+      ui_action: {
+        surface_id: action.surfaceId,
+        component_id: action.componentId,
+        action: action.name,
+        context: action.context,
+      },
+    };
+    void this.#start(client, id, req, { base, user, exchange }, agent);
+  }
+
   /** Resumes an interrupted conversation: a run with no message, which adds no bubble. */
   resume(client: AgentClient, id: string, base: Turn[], agent: string) {
     if (this.running(id)) return;
@@ -151,6 +183,7 @@ export class RunStore {
   forget(id: string) {
     this.#states.delete(id);
     this.drafts.set(id, "");
+    this.edits.forget(id);
     this.#list++;
     this.#emit();
   }
@@ -166,6 +199,7 @@ export class RunStore {
     this.#timers.clear();
     this.#states.clear();
     this.drafts.clear();
+    this.edits.clear();
     this.#list++;
     this.#emit();
   }
@@ -178,7 +212,7 @@ export class RunStore {
   async #start(
     client: AgentClient,
     id: string,
-    req: { message: string; conversation_id: string },
+    req: RunRequest,
     run: { base: Turn[]; user?: UserTurn; exchange: number },
     agent: string,
     retried = false,
@@ -214,7 +248,7 @@ export class RunStore {
       } else if (!started && (e instanceof ApiError || e instanceof NetworkError)) {
         this.#controllers.delete(id);
         this.#stoppers.delete(id);
-        this.#notSent(client, id, e, req.message, agent, retried);
+        this.#notSent(client, id, e, req.message ?? "", agent, retried);
         return;
       } else {
         answer = endAnswer(answer, "lost", Date.now());

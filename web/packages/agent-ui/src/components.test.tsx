@@ -19,6 +19,7 @@ describe("stories", () => {
         "agent-ui/SourceChip",
         "agent-ui/Message",
         "agent-ui/Composer",
+        "agent-ui/A2UISurface",
       ]),
     );
   });

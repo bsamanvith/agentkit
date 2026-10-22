@@ -163,4 +163,46 @@ describe("RunStore", () => {
     expect(store.drafts.get("c2")).toBe("");
     expect(sessionStorage.length).toBe(0);
   });
+
+  it("sends an action on a surface as ui_action, shown as the person's message", async () => {
+    const { client, calls } = fakeClient([[ev("run_start"), ev("run_done")]]);
+    store.drafts.set("c1", "half a thought");
+    const action = { surfaceId: "news", componentId: "search", name: "search", context: { topic: "go" } };
+    store.act(client, "c1", action, [{ role: "user", key: "h0", text: "Hi" }], "researcher");
+    expect(store.get("c1").live?.user).toMatchObject({ text: "search", pending: true, action });
+    expect(store.running("c1")).toBe(true);
+    await settled();
+    expect(calls[0]?.req).toEqual({
+      conversation_id: "c1",
+      ui_action: { surface_id: "news", component_id: "search", action: "search", context: { topic: "go" } },
+    });
+    // The draft is the person's own: an action leaves it.
+    expect(store.drafts.get("c1")).toBe("half a thought");
+    expect(store.get("c1").meta.get(2)).toMatchObject({ state: "done" });
+  });
+
+  it("an action that doesn't start says why and puts nothing in the composer", async () => {
+    const { client } = fakeClient([new ApiError(400, { code: "invalid_request", message: "no UI" })]);
+    store.act(client, "c1", { surfaceId: "s", componentId: "b", name: "go", context: {} }, [], "researcher");
+    await vi.waitFor(() => expect(store.get("c1").problem).toBeDefined());
+    expect(store.get("c1").live).toBeUndefined();
+    expect(store.drafts.get("c1")).toBe("");
+  });
+
+  it("a deleted conversation's surface edits go with it", () => {
+    const surface = { id: "s", revision: 1 };
+    store.edits.set("c1", surface, "/topic", "go");
+    store.edits.set("c2", surface, "/topic", "stay");
+    store.forget("c1");
+    expect(store.edits.get("c1", surface).size).toBe(0);
+    expect(store.edits.get("c2", surface).get("/topic")).toBe("stay");
+  });
+
+  it("forgets the surfaces' edits with everything else", () => {
+    const surface = { id: "s", revision: 1 };
+    store.edits.set("c1", surface, "/topic", "go");
+    expect(store.edits.get("c1", surface).get("/topic")).toBe("go");
+    store.clear();
+    expect(store.edits.get("c1", surface).size).toBe(0);
+  });
 });

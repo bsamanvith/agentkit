@@ -481,6 +481,11 @@ function ConversationPage({ id }: { id: string }) {
             onNewChat: () => navigate(`/new?agent=${encodeURIComponent(agentName)}`, { state: { focus: "composer" } }),
           }}
           className={threadPadding(phone)}
+          ui={{
+            edits: runs.edits,
+            scope: id,
+            ...(removed || !online ? {} : { onAction: (a) => runs.act(client, id, a, turns, agentName) }),
+          }}
           after={
             busy ? (
               <Notice

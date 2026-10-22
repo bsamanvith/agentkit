@@ -8,7 +8,7 @@
 
 /** The event types a run streams. New types may be added: handle `string`. */
 export type EventType =
-  "run_start" | "text_delta" | "tool_call" | "tool_result" | "turn_done" | "run_done" | "run_error";
+  "run_start" | "text_delta" | "tool_call" | "tool_result" | "turn_done" | "run_done" | "run_error" | "ui";
 
 /** A run error, in a run_error event or an HTTP error body. */
 export type WireError = {
@@ -81,6 +81,9 @@ export type RunEvent = {
   usage?: Usage;
   turns?: number;
   error?: WireError;
+  /** ui: the A2UI surface, and the A2UI message (v0.9) about it, as the server checked it. */
+  surface_id?: string;
+  message?: unknown;
   [field: string]: unknown;
 };
 
@@ -95,6 +98,8 @@ export type Agent = {
   skills: string[];
   memory: boolean;
   system?: string;
+  /** "a2ui": the agent shows A2UI surfaces (ui events) and its runs take ui_action. */
+  ui?: string;
 };
 
 export type ConversationSummary = {
@@ -134,10 +139,23 @@ export type Run = {
   error?: WireError;
 };
 
+/**
+ * The person's action on an A2UI surface, sent in place of a message: the
+ * button's action event with its context resolved (pkg/agentapi/wire.UIAction).
+ */
+export type UIActionRequest = {
+  surface_id: string;
+  component_id: string;
+  action: string;
+  context?: Record<string, unknown>;
+};
+
 export type RunRequest = {
-  message: string;
+  /** The message; empty resumes an interrupted conversation. Absent with ui_action. */
+  message?: string;
   conversation_id?: string;
   agent?: string;
+  ui_action?: UIActionRequest;
 };
 
 function isObject(v: unknown): v is Record<string, unknown> {

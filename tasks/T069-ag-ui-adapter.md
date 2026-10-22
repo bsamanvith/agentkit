@@ -155,6 +155,45 @@ Two planted bugs survived the first round (catch-up replaying the resumed
 turn, `replace` false); the `both` reply now has text before its calls and
 the invariants check `replace`.
 
+### Review fixes
+
+From the review of PR #92 (each test failed before its fix):
+
+- *Shutdown's deadline* ended a stream with RUN_ERROR `internal` and logged
+  "context canceled" as a failure; it is now RUN_ERROR `shutting_down` (the
+  run goes on in the agent API), not logged. `TestShutdownEndsStreams`.
+- *"." and ".." IDs*: a `threadId` of "." was looked up as
+  `GET /v1/conversations/.`, which the API's router cleans and redirects to
+  the list of conversations, so the run failed as "a conversation of
+  another agent". "." and ".." (as a thread, or as the run of a message or
+  interrupt ID) are no longer looked up (`isID`). `TestDotIDs`.
+- Tests for checks no test planted a bug in, both of which survived a
+  plant: a resume sent to another agent's path (`TestResumeAcrossTenants`,
+  which also covers another tenant's key and a read-only key: the run stays
+  suspended and its call never runs), and a resume naming two runs
+  (`TestResumeOfTwoRuns`). The keep-alive, off in every test before, is
+  tested on a fake clock (`TestKeepAlive`: a comment, whole, that a client
+  skips; a data line instead is caught). The dead "tenant b's run ID" case
+  of `TestRequestErrors` is gone.
+
+Looked at and left: tenant isolation through guessed message IDs (`GetRun`
+and `GetConversation` go through the API with the caller's credential, so
+another tenant's IDs are 404 and ignored; within a tenant `/v1` lets the
+key do the same; run IDs are random); a key without the agent's toolsets
+(`GET /v1/agents/{name}` is 404 for it, and every later call is bound to
+that agent's name); double and racing resumes (the API's answer is
+compare-and-set: the loser gets 409, which is `unknown_interrupt`, and the
+call runs once); `DisallowUnknownFields` (AG-UI clients send fields this
+server ignores, `parentRunId` among them, so it would refuse real clients;
+case-insensitive matching only lets a client spell a field it could send
+anyway); `forwardedProps` actions (the API checks them with
+`a2ui.ActionText`, and an action is no more than the user's own message);
+SSE escaping (each event is one `json.Marshal` line, which has no raw
+newline). The reference client is pinned by `package-lock.json` with
+integrity hashes and installed with `--ignore-scripts`; `npm audit` on it
+finds nothing, but CI does not audit it (`--no-audit`) and the web
+workspace's `pnpm audit` does not cover it.
+
 ### For later tasks
 
 - *Frontend tools* (a request's `tools`, run in the browser): would need a

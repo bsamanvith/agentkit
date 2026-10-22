@@ -77,14 +77,16 @@ func (s *Server) follow(ctx context.Context, st *agentclient.Stream, t *translat
 // conversation). AG-UI clients make up their thread IDs, so the messages
 // they send back are what ties their runs together.
 func (s *Server) thread(ctx context.Context, agent string, in *RunAgentInput) (string, error) {
-	c, err := s.api.GetConversation(ctx, in.ThreadID)
-	switch {
-	case err == nil && c.Agent == agent:
-		return c.ID, nil
-	case err == nil:
-		return "", &runError{code: CodeInvalidInput, msg: "the thread is a conversation of another agent"}
-	case !isNotFound(err):
-		return "", s.apiError(ctx, err)
+	if isID(in.ThreadID) {
+		c, err := s.api.GetConversation(ctx, in.ThreadID)
+		switch {
+		case err == nil && c.Agent == agent:
+			return c.ID, nil
+		case err == nil:
+			return "", &runError{code: CodeInvalidInput, msg: "the thread is a conversation of another agent"}
+		case !isNotFound(err):
+			return "", s.apiError(ctx, err)
+		}
 	}
 	tried := 0
 	for i := len(in.Messages) - 1; i >= 0 && tried < 3; i-- {

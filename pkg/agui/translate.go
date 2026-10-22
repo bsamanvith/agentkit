@@ -40,7 +40,7 @@ func genSuffix(gen int) string {
 // runOfMessage returns the run in a message ID the server gave.
 func runOfMessage(id string) (string, bool) {
 	run, rest, ok := strings.Cut(id, "/")
-	if !ok || run == "" || (!strings.HasPrefix(rest, "t") && !strings.HasPrefix(rest, "r/")) {
+	if !ok || !isID(run) || (!strings.HasPrefix(rest, "t") && !strings.HasPrefix(rest, "r/")) {
 		return "", false
 	}
 	return run, true
@@ -50,11 +50,16 @@ func runOfMessage(id string) (string, bool) {
 // tool call.
 func parseInterruptID(id string) (runID, toolUseID string, ok bool) {
 	run, rest, ok := strings.Cut(id, "/i/")
-	if !ok || run == "" || rest == "" || strings.Contains(run, "/") {
+	if !ok || !isID(run) || rest == "" || strings.Contains(run, "/") {
 		return "", "", false
 	}
 	return run, rest, true
 }
+
+// isID reports whether s can name a conversation or a run of the agent
+// API: not "", "." or "..", which the API's router would clean into another
+// path (GET /v1/conversations/. is the list of conversations).
+func isID(s string) bool { return s != "" && s != "." && s != ".." }
 
 // translator turns an agent API run's events into AG-UI events. It keeps
 // the messages it streamed, as the client's reducer builds them from the

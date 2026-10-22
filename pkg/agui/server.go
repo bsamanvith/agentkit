@@ -181,6 +181,10 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	case err == nil, errors.Is(err, errClientGone):
 	case ctx.Err() != nil && s.base.Err() == nil:
 		// The client went away: nobody reads what would be said.
+	case ctx.Err() != nil:
+		// Shutdown's time is up: the run goes on, which the client can
+		// follow elsewhere.
+		_ = em.fail(&runError{code: wire.CodeShuttingDown, msg: "the server is shutting down; the run goes on: GET /v1/runs/{id} has its state"})
 	default:
 		var re *runError
 		if !errors.As(err, &re) {

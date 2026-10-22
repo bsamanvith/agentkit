@@ -240,7 +240,7 @@ func ModuleRules() Rules {
 			// real agent API on the fake model, with a tool policy that
 			// holds calls and the A2UI tool, and over a fake agent API.
 			"pkg/agui": {
-				"pkg/agentapi/wire", "pkg/agentclient", "pkg/clock", "pkg/llm",
+				"pkg/agentapi/wire", "pkg/agentclient", "pkg/clock", "pkg/llm", "pkg/clock/clocktest",
 				"pkg/agentapi", "pkg/auth", "pkg/harness", "pkg/a2ui", "pkg/llm/llmtest", "pkg/policy",
 				"pkg/store/scoped", "pkg/tool",
 			},

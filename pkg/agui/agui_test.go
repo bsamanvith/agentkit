@@ -417,22 +417,18 @@ func TestRequestErrors(t *testing.T) {
 		status             int
 		code               string
 	}{
-		"no credential":     {"plain", "", http.MethodPost, good, http.StatusUnauthorized, wire.CodeUnauthorized},
-		"another key":       {"plain", "agui-test-key-unknown-0000000000", http.MethodPost, good, http.StatusUnauthorized, wire.CodeUnauthorized},
-		"no such agent":     {"nobody", keyA, http.MethodPost, good, http.StatusNotFound, wire.CodeNotFound},
-		"a path under":      {"plain/x", keyA, http.MethodPost, good, http.StatusNotFound, wire.CodeNotFound},
-		"not JSON":          {"plain", keyA, http.MethodPost, "{", http.StatusBadRequest, wire.CodeInvalidRequest},
-		"no threadId":       {"plain", keyA, http.MethodPost, `{"runId":"r","messages":[]}`, http.StatusBadRequest, wire.CodeInvalidRequest},
-		"no messages":       {"plain", keyA, http.MethodPost, `{"threadId":"t","runId":"r"}`, http.StatusBadRequest, wire.CodeInvalidRequest},
-		"version 2":         {"plain", keyA, http.MethodPost, `{"threadId":"t","runId":"r","messages":[],"protocolVersion":"2.0"}`, http.StatusBadRequest, wire.CodeInvalidRequest},
-		"too large":         {"plain", keyA, http.MethodPost, input("t", user("u", strings.Repeat("x", 4096))), http.StatusBadRequest, wire.CodeInvalidRequest},
-		"GET":               {"plain", keyA, http.MethodGet, nil, http.StatusMethodNotAllowed, wire.CodeInvalidRequest},
-		"no agent in path":  {"", keyA, http.MethodPost, good, http.StatusNotFound, wire.CodeNotFound},
-		"tenant b's run ID": {"plain", keyB, http.MethodPost, good, 0, ""}, // a stream: see below
+		"no credential":    {"plain", "", http.MethodPost, good, http.StatusUnauthorized, wire.CodeUnauthorized},
+		"another key":      {"plain", "agui-test-key-unknown-0000000000", http.MethodPost, good, http.StatusUnauthorized, wire.CodeUnauthorized},
+		"no such agent":    {"nobody", keyA, http.MethodPost, good, http.StatusNotFound, wire.CodeNotFound},
+		"a path under":     {"plain/x", keyA, http.MethodPost, good, http.StatusNotFound, wire.CodeNotFound},
+		"not JSON":         {"plain", keyA, http.MethodPost, "{", http.StatusBadRequest, wire.CodeInvalidRequest},
+		"no threadId":      {"plain", keyA, http.MethodPost, `{"runId":"r","messages":[]}`, http.StatusBadRequest, wire.CodeInvalidRequest},
+		"no messages":      {"plain", keyA, http.MethodPost, `{"threadId":"t","runId":"r"}`, http.StatusBadRequest, wire.CodeInvalidRequest},
+		"version 2":        {"plain", keyA, http.MethodPost, `{"threadId":"t","runId":"r","messages":[],"protocolVersion":"2.0"}`, http.StatusBadRequest, wire.CodeInvalidRequest},
+		"too large":        {"plain", keyA, http.MethodPost, input("t", user("u", strings.Repeat("x", 4096))), http.StatusBadRequest, wire.CodeInvalidRequest},
+		"GET":              {"plain", keyA, http.MethodGet, nil, http.StatusMethodNotAllowed, wire.CodeInvalidRequest},
+		"no agent in path": {"", keyA, http.MethodPost, good, http.StatusNotFound, wire.CodeNotFound},
 	} {
-		if tc.status == 0 {
-			continue
-		}
 		var body []byte
 		switch b := tc.body.(type) {
 		case string:

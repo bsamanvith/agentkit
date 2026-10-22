@@ -18,6 +18,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
 	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
+	"github.com/bsamanvith/agentkit/pkg/runner/pool"
 	"github.com/bsamanvith/agentkit/pkg/store"
 	"github.com/bsamanvith/agentkit/pkg/store/scoped"
 	"github.com/bsamanvith/agentkit/pkg/tenancy"
@@ -320,6 +321,49 @@ func TestTaskLimitCountAndStartAreOneStep(t *testing.T) {
 		t.Fatalf("two tasks for the last place = %v, want one 202 and one 429", got)
 	}
 	m.gate <- struct{}{}
+}
+
+// A task runs in the pool that takes background runs (T105), holding one of
+// its slots until it ends, and waits in that pool's lane, whose dispatcher
+// is the one that resumes it after a crash.
+func TestTaskTakesAPoolSlot(t *testing.T) {
+	t.Parallel()
+	m := echo(t)
+	m.gate = make(chan struct{})
+	rt, err := pool.NewRouter([]pool.Pool{pool.NewProcess("chat"), pool.NewProcess("work")},
+		[]pool.Rule{{Pool: "work", When: pool.Background()}}, "chat", pool.WithLimit("work", 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	clk := clocktest.NewFake(time.Time{})
+	mem := scoped.Memory(clk)
+	r := newRig(t, m, rigConfig{clock: clk, store: mem, api: []agentapi.Option{agentapi.WithRouter(rt)}})
+	task := r.task(`{"input":"one"}`)
+	if task.Pool != "work" {
+		t.Errorf("the task's pool = %q, want work", task.Pool)
+	}
+	tenant, err := tenancy.NewTenant(agentapi.DefaultTenant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := mem.Get(tenancy.With(t.Context(), tenant), task.ID)
+	if err != nil || stored.Lane != "work" || stored.Pool != "work" {
+		t.Errorf("stored task = lane %q, pool %q (%v), want both work", stored.Lane, stored.Pool, err)
+	}
+	resp, body := r.do(http.MethodPost, "/v1/tasks", `{"input":"two"}`)
+	wantError(t, "a task with its pool full", resp, body, http.StatusTooManyRequests, agentapi.CodeOverCapacity)
+	m.gate <- struct{}{}
+	r.waitTask(task.ID)
+	testkit.Eventually(t, 30*time.Second, func() bool {
+		if !rt.Slots("work").TryAcquire() {
+			return false
+		}
+		rt.Slots("work").Release()
+		return true
+	})
+	again := r.task(`{"input":"in the freed slot"}`)
+	m.gate <- struct{}{}
+	r.waitTask(again.ID)
 }
 
 // Limits: the background limit counts tasks only; a chat run going on takes

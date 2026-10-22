@@ -312,6 +312,9 @@ func CheckCreate(o store.CreateOptions, created time.Time) (Created, error) {
 	if err := CheckText("pool", o.Pool); err != nil {
 		return Created{}, err
 	}
+	if err := CheckText("user", o.User); err != nil {
+		return Created{}, err
+	}
 	if o.AgentVersion < 0 {
 		return Created{}, fmt.Errorf("%w: negative agent version %d", store.ErrInvalid, o.AgentVersion)
 	}

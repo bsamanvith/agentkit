@@ -140,9 +140,9 @@ func testWaitSubscribed(ctx context.Context, t *testing.T, n *stream.Notifier, w
 	t.Fatal("the watch never got a notification")
 }
 
-// A watch from the zero ID starts now; one from an ID resumes after it; one
+// A watch from the last ID starts now; one from an ID resumes after it; one
 // from an ID no longer kept gets a resync, at the topic's newest, and goes
-// on from there.
+// on from there, as one from the zero ID does once the start is trimmed.
 func TestWatchUserPositions(t *testing.T) {
 	t.Parallel()
 	tight := func(bus.Topic) bus.Trim { return bus.Trim{MaxLen: 3, MaxAge: time.Hour} }
@@ -152,9 +152,16 @@ func TestWatchUserPositions(t *testing.T) {
 		n := notifier(t, b.bus, stream.WithClock(clk))
 		var ids []bus.ID
 		for i := range 300 { // Redis trims only whole nodes of 100
-
 			ids = append(ids, notify(ctx, t, n, "u", i))
 			clk.Advance(time.Millisecond)
+		}
+		// From zero: from the start of the topic, trimmed here: a resync at
+		// the newest (or, from a Redis that kept the start, the first).
+		all := startUserWatch(ctx, t, b.bus, "u", bus.ID{})
+		e := all.next()
+		resync := e.Type == stream.TypeResync && e.ID == ids[299]
+		if !resync && e.ID != ids[0] {
+			t.Errorf("watch from zero got %s %s first, want a resync at %s", e.ID, e.Type, ids[299])
 		}
 		// From an ID still kept: the ones after it.
 		w := startUserWatch(ctx, t, b.bus, "u", ids[296])
@@ -168,8 +175,12 @@ func TestWatchUserPositions(t *testing.T) {
 		if e := old.next(); e.Type != stream.TypeResync || e.ID != ids[299] {
 			t.Errorf("trimmed watch got %s %s first, want a resync at %s", e.ID, e.Type, ids[299])
 		}
-		// From zero: nothing before now.
-		fresh := startUserWatch(ctx, t, b.bus, "u", bus.ID{})
+		// From the last one: nothing before now.
+		now, err := stream.LastNotification(ctx, b.bus, "u")
+		if err != nil || now != ids[299] {
+			t.Fatalf("LastNotification = %s, %v; want %s", now, err, ids[299])
+		}
+		fresh := startUserWatch(ctx, t, b.bus, "u", now)
 		testWaitSubscribed(ctx, t, n, fresh, "u")
 		last := notify(ctx, t, n, "u", 99)
 		for _, w := range []*userWatch{w, old, fresh} {
@@ -239,6 +250,15 @@ func TestNotifyErrors(t *testing.T) {
 		}
 		if len(errs) != 1 || errs[0] == nil {
 			t.Errorf("%s: got %v, want one error", name, errs)
+		}
+	}
+	for name, f := range map[string]func() (bus.ID, error){
+		"nil bus":    func() (bus.ID, error) { return stream.LastNotification(ctx, nil, "u") },
+		"empty user": func() (bus.ID, error) { return stream.LastNotification(ctx, b, "") },
+		"no tenant":  func() (bus.ID, error) { return stream.LastNotification(t.Context(), b, "u") },
+	} {
+		if _, err := f(); err == nil {
+			t.Errorf("LastNotification with %s succeeded", name)
 		}
 	}
 	cctx, cancel := context.WithCancel(ctx)

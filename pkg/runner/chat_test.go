@@ -664,3 +664,43 @@ func TestCancelOfARunHeldElsewhereIsRefused(t *testing.T) {
 		t.Errorf("Cancel of a completed run = %v, want ErrFinal", err)
 	}
 }
+
+// A run is stored as the run of the user its context acts for, and keeps
+// that user on a resume by a process that knows none; a run started for no
+// user has none.
+func TestRunsAreStoredForTheirUser(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	p := w.process()
+	anon := w.ctx
+	w.ctx = tenancy.WithUser(anon, "ann")
+	evs, err := p.run("c", w.model.on("first", 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.ctx = anon
+	if run := lastDone(t, evs).Run; run.User != "ann" {
+		t.Errorf("run of ann = %+v, want user ann", run)
+	}
+	queued, err := p.r.Enqueue(tenancy.WithUser(anon, "bob"), "q", harness.UserText(w.model.on("queued", 0)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if queued.User != "bob" {
+		t.Errorf("queued run of bob = %+v, want user bob", queued)
+	}
+	evs, err = w.process().resume(queued.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run := lastDone(t, evs).Run; run.User != "bob" {
+		t.Errorf("queued run resumed with no user = %+v, want user bob", run)
+	}
+	evs, err = p.run("c", w.model.on("second", 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run := lastDone(t, evs).Run; run.User != "" {
+		t.Errorf("run of nobody = %+v, want no user", run)
+	}
+}

@@ -147,8 +147,8 @@ jobs:
           redis-server --version
       - name: go test -tags integration ./pkg/bus/... ./pkg/store/... ./pkg/stream/... ./pkg/credentials/...
         run: scripts/go-test-annotate.sh -race -shuffle=on -count=1 -tags integration ./pkg/bus/... ./pkg/store/... ./pkg/stream/... ./pkg/credentials/...
-      - name: go test -tags integration -run '^(TestMigrate|TestE2EServeReplicas|TestCredentials)' ./cmd/agentkit/
-        run: scripts/go-test-annotate.sh -race -count=1 -tags integration -run '^(TestMigrate|TestE2EServeReplicas|TestCredentials)' ./cmd/agentkit/
+      - name: go test -tags integration -run '^(TestMigrate|TestE2EServeReplicas|TestE2ESteeringAcrossReplicas|TestCredentials)' ./cmd/agentkit/
+        run: scripts/go-test-annotate.sh -race -count=1 -tags integration -run '^(TestMigrate|TestE2EServeReplicas|TestE2ESteeringAcrossReplicas|TestCredentials)' ./cmd/agentkit/
       # On Postgres as a role that is neither a superuser nor BYPASSRLS, owning
       # its schema: row-level security (T093, FORCE) applies to every query.
       - name: the agent API's suite on SQLite and Postgres (AGENTAPI_TEST_STORE)

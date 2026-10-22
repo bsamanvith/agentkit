@@ -432,6 +432,75 @@
         }
       }
     },
+    "/v1/events": {
+      "get": {
+        "operationId": "userEvents",
+        "summary": "Follow the caller's notifications",
+        "description": "The caller's notification stream: a UserEvent each time one of the caller's runs changes status (run_status: running when an execution of it starts, and the status it stops in), then conversation_updated, from any server sharing the bus. It is the caller's, in the caller's tenant: the runs started for the caller's user (requests authenticated as that user, and the tasks and messages they started), or, for a caller with no user, those started for no user; nobody else's. Notifications are hints to refetch, not records: the stream keeps an hour of them for a client that reconnects with Last-Event-ID, and sends resync when that is not enough (refetch what you show). The stream has no end of its own: it goes on until the client goes away or the server shuts down.",
+        "parameters": [
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "description": "The id of the last notification the client has: the stream goes on after it. Without it, it starts now.",
+            "schema": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)(\\.[1-9][0-9]*)?$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The caller's notification stream.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "Server-Sent Events: each event's name is its type, its id the notification's id, and its data the JSON of a UserEvent (components.schemas.UserEvent)."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: Last-Event-ID is not a notification's id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/runs/{id}/resume": {
       "post": {
         "operationId": "resumeRun",
@@ -5383,6 +5452,66 @@
           }
         },
         "additionalProperties": false
+      },
+      "UserEvent": {
+        "type": "object",
+        "description": "One event of the caller's notification stream (GET /v1/events): the JSON of an SSE data line, whose event name is its type and whose id is its id.",
+        "properties": {
+          "v": {
+            "const": 1,
+            "description": "The wire format version."
+          },
+          "type": {
+            "type": "string",
+            "description": "run_status (one of the caller's runs changed status), conversation_updated (a run of the caller's added to its conversation: sent after the run_status of an execution that stopped) or resync (notifications were lost: refetch what you show); new types may be added: skip an unknown one."
+          },
+          "id": {
+            "type": "string",
+            "description": "The notification's id, and the SSE id: the time it was sent in Unix milliseconds, then \".n\" telling apart those of one millisecond (\"1767225600000\", \"1767225600000.2\"). Ids order one caller's notifications.",
+            "pattern": "^(0|[1-9][0-9]*)(\\.[1-9][0-9]*)?$"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the server sent it."
+          },
+          "run_id": {
+            "type": "string",
+            "description": "run_status, conversation_updated: the run."
+          },
+          "conversation_id": {
+            "type": "string",
+            "description": "run_status, conversation_updated: the run's conversation."
+          },
+          "status": {
+            "type": "string",
+            "description": "run_status: the run's status (a Run's status): running once an execution of it starts (a task started, resumed, or taken over after its server stopped), then the status the execution left it in.",
+            "enum": [
+              "running",
+              "done",
+              "failed",
+              "canceled",
+              "rejected",
+              "suspended",
+              "paused",
+              "interrupted"
+            ]
+          },
+          "background": {
+            "type": "boolean",
+            "description": "run_status: the run is a background run (a task)."
+          },
+          "code": {
+            "type": "string",
+            "description": "run_status: the error code the run stopped with, if any (as in its run_error)."
+          }
+        },
+        "required": [
+          "v",
+          "type",
+          "id",
+          "at"
+        ]
       },
       "Event": {
         "type": "object",

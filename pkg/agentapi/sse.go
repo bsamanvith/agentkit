@@ -52,6 +52,15 @@ func (s *sseWriter) event(e Event) {
 	s.write(fmt.Sprintf("id: %s\nevent: %s\ndata: %s\n\n", e.ID, e.Type, data))
 }
 
+// notification writes n, an event of a notification stream.
+func (s *sseWriter) notification(n UserEvent) {
+	data, err := json.Marshal(n)
+	if err != nil { // cannot happen: every field marshals
+		data, _ = json.Marshal(UserEvent{V: WireVersion, Type: TypeResync, ID: n.ID, At: n.At})
+	}
+	s.write(fmt.Sprintf("id: %s\nevent: %s\ndata: %s\n\n", n.ID, n.Type, data))
+}
+
 func (s *sseWriter) write(msg string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

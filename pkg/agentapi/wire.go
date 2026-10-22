@@ -34,6 +34,14 @@ const (
 	TypeSteered     = wire.TypeSteered
 )
 
+// Notification types, the "type" of a [UserEvent] and the SSE event name
+// of GET /v1/events.
+const (
+	TypeRunStatus           = wire.TypeRunStatus
+	TypeConversationUpdated = wire.TypeConversationUpdated
+	TypeResync              = wire.TypeResync
+)
+
 // Error codes of a failed run, and of HTTP errors.
 const (
 	CodeBudgetExceeded = wire.CodeBudgetExceeded
@@ -111,6 +119,9 @@ const (
 type (
 	// Event is [wire.Event]: one event of a run.
 	Event = wire.Event
+	// UserEvent is [wire.UserEvent]: one event of a caller's notification
+	// stream (GET /v1/events).
+	UserEvent = wire.UserEvent
 	// TimedMessage is [wire.TimedMessage]: a message and when it was written.
 	TimedMessage = wire.TimedMessage
 	// TurnRecord is [wire.TurnRecord]: one model call and its tools.

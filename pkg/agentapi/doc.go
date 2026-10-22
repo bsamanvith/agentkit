@@ -25,6 +25,7 @@
 //	POST   /v1/runs/{id}/decisions       {"path", "approved", "reason"?}: answer a flow run's approval
 //	POST   /v1/runs/{id}/input           {"answers": [{"id", "text"} or {"id", "approved", "reason"?}]}: answer a chat run's interrupts
 //	POST   /v1/tasks                     {"input", "agent"?, "interaction"?, "policy"?, "notify"?}: 202, a background run
+//	GET    /v1/events                    the caller's notifications, after Last-Event-ID (from now without it), as they come
 //	GET    /v1/webhooks/secret           the tenant's webhook signing secret (agent:admin)
 //	GET    /v1/threads                   ?limit=&cursor=: threads of messages between agents, newest first
 //	GET    /v1/threads/{id}              a thread with its messages
@@ -148,6 +149,20 @@
 // agent's [Agent.Notify]): the body is [Server.WebhookPayload], signed per
 // tenant, and the delivery (by package webhook, which retries for a day) is
 // in the run's "notify".
+//
+// # Notifications
+//
+// GET /v1/events is the caller's notification stream (T090), for live
+// lists: a [UserEvent] run_status each time one of the caller's runs or
+// tasks changes status (running when an execution of it starts, whichever
+// replica runs it, and the status it stops in), then conversation_updated.
+// It is the caller's alone, in its tenant: the runs started for its user
+// ([store.Run.User], set from the request that started the run, and kept
+// across resumes and take-overs), or for a caller with no user, the runs
+// started with none. The stream keeps an hour of notifications on the bus,
+// for a client that reconnects with Last-Event-ID, and says resync when
+// that is not enough: refetch what you show. It ends only with the client
+// or the server.
 //
 // # Store
 //

@@ -77,6 +77,8 @@ type Server struct {
 	ownBus bool // the server made the bus, and closes it
 	pub    *stream.Publisher
 	cmds   *stream.Commands
+	// notifier publishes on users' notification streams (GET /v1/events).
+	notifier *stream.Notifier
 
 	closeOnce sync.Once
 	closed    chan struct{} // closed by Shutdown
@@ -161,6 +163,9 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 	if s.cmds, err = stream.NewCommands(s.store, s.bus, sopts...); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
 	}
+	if s.notifier, err = stream.NewNotifier(s.bus, sopts...); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+	}
 	s.router = cfg.router
 	if s.router == nil {
 		s.router = pool.Default()
@@ -198,6 +203,7 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 		{"GET /v1/runs", s.listRuns},
 		{"GET /v1/runs/{id}", s.getRun},
 		{"GET /v1/runs/{id}/events", s.runEvents},
+		{"GET /v1/events", s.userEvents},
 		{"POST /v1/runs/{id}/resume", s.resumeRun},
 		{"POST /v1/runs/{id}/stop", s.stopRun},
 		{"POST /v1/runs/{id}/cancel", s.cancelRun},
@@ -850,6 +856,7 @@ func (s *Server) drive(ctx context.Context, cancel context.CancelCauseFunc, x *r
 	turns, usage, final := seed.turns, seed.usage, seed.final
 	waiting := seed.interrupts // the last turn's calls wait for input
 	started := len(seed.events) > 0
+	s.notifyStatus(ctx, x.Run, StatusRunning, nil)
 	if seed.rewind != nil {
 		em.emit(ctx, *seed.rewind, true)
 	}
@@ -958,6 +965,12 @@ func (s *Server) drive(ctx context.Context, cancel context.CancelCauseFunc, x *r
 		end = em.emit(ctx, end, false)
 	}
 	h.finish(now)
+	// The run's users hear how it ended; a task this process stopped
+	// running goes on elsewhere, which says so when it takes it up.
+	if status := endStatus(end, h.interactive); status != StatusRunning {
+		s.notifyStatus(ctx, x.Run, status, end.Error)
+		s.notify(ctx, x.Run, UserEvent{Type: TypeConversationUpdated})
+	}
 
 	s.mu.Lock()
 	if end.Error != nil && end.Error.Code == CodeShutdown {

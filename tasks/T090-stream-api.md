@@ -2,7 +2,7 @@
 id: T090
 title: "Streaming across replicas: resumable run streams, the user notification stream, commands to the lease holder"
 epic: E18
-status: in-progress
+status: done
 depends_on: [T088, T089, T030]
 ---
 
@@ -36,8 +36,8 @@ With several replicas, the client watching a run is often connected to a differe
 
 - [x] **Cross-replica stream:** with two `agentkit serve` processes sharing Postgres and Redis (integration tier), a run started on A and watched on B streams every event in order. Killing B mid-stream and reconnecting to A with `Last-Event-ID` continues with no gap or duplicate (replay e2e with real binaries).
 - [x] **Trimmed history:** after the bus history was trimmed, a reconnect still gets every durable event and the full final text (from `turn_done`).
-- [ ] **Steering across replicas:** a steering message sent to B reaches the run on A at the next boundary. After A is killed, the runner that takes over still delivers it.
-- [ ] **Notifications:** the user notification stream shows another user's task to nobody (tenant and user isolation).
+- [x] **Steering across replicas:** a steering message sent to B reaches the run on A at the next boundary. After A is killed, the runner that takes over still delivers it.
+- [x] **Notifications:** the user notification stream shows another user's task to nobody (tenant and user isolation).
 - [x] **Mutation list** recorded.
 
 ## Notes
@@ -54,9 +54,28 @@ Phase 2 (bsamanvith/agentkit#13): the agent API streams through `pkg/stream`.
 
 Left for later:
 
-- **Steering across replicas** needs steering itself (T086); the command path it will use is the one stop and cancel use.
-- **`GET /v1/events`** (notifications) needs a user identity (T040); `pkg/stream` has the user stream and its isolation tests.
 - A viewer on another replica does not count toward the holder's reconnect grace for interactive runs.
+
+### Phase 3: steering across replicas, `GET /v1/events`
+
+**Steering across replicas** held as built: T086's commands are stored in the command log first (Postgres), the holder's runner reads them at its next turn boundary, and a runner that resumes a run reads what is pending at its start. Nothing needed fixing. Proved by `TestE2ESteeringAcrossReplicas` (integration tier, `cmd/agentkit/steer_integration_test.go`, run in CI's integration job and `scripts/integration.sh`): two `agentkit serve` processes on Postgres and Redis. A task runs on A; a message sent to B while A's model works on turn 1 is delivered after the tool result and before the second model call (the `steered` event is at the boundary, the second request carries the text and the first does not). A second task is steered through B while A waits for the model, then A is killed (SIGKILL); B's recovery takes the task over once A's lease runs out, delivers the message before its first model call, and finishes the task. Fixtures: `testdata/e2e/serve-steer` (serve-replicas' two recordings, once per task).
+
+**Notifications (`GET /v1/events`)**, built on `pkg/stream`'s user stream:
+
+- **Who a run belongs to:** `store.Run.User` (new, set by `store.WithUser`, migrations SQLite `0017_run_user.sql`, Postgres `0018_run_user.sql`, all three backends and storetest). The runner stores every run it creates with the user its context acts for (`tenancy.User`, which the auth middleware sets from the principal). It never changes, so a task resumed or taken over by a process that acts for nobody (the recovery loop) still notifies its user.
+- **What is sent** (`wire.UserEvent`, `agentapi.UserEvent`; the name `Notification` was taken by the webhook record): `run_status` when an execution starts (`running`) and when it stops, in the status the run's stream gives it (done, failed, canceled, rejected, suspended, paused, interrupted), with `background` and the error `code`; then `conversation_updated`. A task whose process stopped (shutdown, lost lease) sends nothing then: the process that takes it up says `running`. A stop or cancel of a run nobody executes is sent by the server that did it. `resync` when notifications were lost.
+- **Where:** published by the process executing the run (`drive`), on the bus topic of the run's user in its tenant; any replica on the bus serves the stream. IDs are `stream.Notifier`'s (`<unix ms>[.n]`).
+- **The endpoint:** `GET /v1/events` (scope `agent:read`), SSE as `GET /v1/runs/{id}/events` (`id:`, `event:` the type, `data:` the JSON, keep-alives). Without `Last-Event-ID` it starts now: the newest ID is read before the headers go (`stream.LastNotification`, new), so a client that has the headers misses nothing; `stream.WatchUser`'s zero ID now means from the start of the topic (it was "from now", which raced). With `Last-Event-ID` it goes on after it, or sends `resync` when the bus no longer has it. The stream ends when the server drains (`WithDrain`'s stop: SIGTERM) or shuts down, so it never holds up `http.Server.Shutdown`.
+- OpenAPI: path `/v1/events`, schema `UserEvent`; `TestOpenAPIResponses` probes 200 (every event checked against `UserEvent`, a resync too), 400, 401, 403. Docs: `pkg/agentapi` package doc ("Notifications"), QUICKSTART.
+
+Decisions (defaults):
+
+- **A caller with no user** (an open server, `AGENTKIT_API_TOKEN`, a key with no user) follows the tenant's runs started with no user: a reserved user id (NUL, which no stored user can be). Those callers already see all of the tenant's runs through `GET /v1/runs`, so this shows them nothing new.
+- **Thread messages** (agent to agent, E14) are not separate notifications: a delivered message is a run of the recipient, stored for the user the sending run's context acts for, so its status reaches that user. A dedicated `thread_message` type can come with the console's threads view.
+- **Duplicates are allowed** (a stop of a run executing here is sent by the stop and by the execution's end): notifications are hints to refetch.
+- No notification when a run is queued (it says `running` once it starts).
+
+Tests: `pkg/agentapi/notify_test.go` (`TestNotificationsReachOnlyTheirUser`: ann's task and chat reach ann only, not bob in her tenant, not a key with no user, not ann of another tenant, and theirs do not reach her; `TestNotificationsAcrossReplicas`: from another replica, `Last-Event-ID`, resync, 400; `TestNotificationsOfATaskTakenOver`: a task taken over by a process with no user still tells its user; `TestNotificationsOfStopAndCancel`; `TestNotificationsEndWithTheServer`), `pkg/runner` `TestRunsAreStoredForTheirUser`, storetest (`QueueOptionsAreStored`, the rig's model), `pkg/stream` `TestWatchUserPositions`, and the e2e above, which also follows B's `GET /v1/events` through Redis: both tasks' statuses, the second one's `running` from A, then from B after the kill.
 
 ### Mutation check
 
@@ -73,3 +92,23 @@ Each bug planted alone; `./pkg/agentapi/... ./pkg/stream/...` and the e2e tests 
 | no rewind for turns the runner did not keep | `TestE2EServeKilledMidRun` |
 | text deltas stored | `TestFollowAcrossReplicas`, `TestClientDisconnect`, `TestEventsOfAnEvictedRun`, `TestRetention`, `TestEventJSONGolden`, `TestE2EServeReplicas` |
 | SSE `id:` is the seq, not the event ID | most of `pkg/agentapi` (the rig checks every SSE id) |
+
+Phase 3 (steering, notifications): each bug planted alone; `./pkg/agentapi/` and `./pkg/runner/` (notification tests, `TestOpenAPIResponses`), `./pkg/store/sqlite/` and `./pkg/store/memory/` for the store plants, and `TestE2ESteeringAcrossReplicas` (integration tier, Postgres and Redis) for the steering plants.
+
+| Planted bug | Caught by |
+|---|---|
+| notifications all sent to the no-user stream | `TestNotificationsOfATaskTakenOver`, `TestNotificationsReachOnlyTheirUser` |
+| notifications sent to the user of the executing context, not the run's | `TestNotificationsOfATaskTakenOver` |
+| `GET /v1/events` follows the no-user stream | `TestNotificationsOfATaskTakenOver`, `TestNotificationsReachOnlyTheirUser` |
+| the runner does not store the run's user | `TestRunsAreStoredForTheirUser` |
+| SQLite does not store the user | `TestRunStore`, `TestTwoHandles` |
+| the memory store does not keep the user | `TestRunStore` |
+| `Last-Event-ID` ignored on `/v1/events` | `TestNotificationsAcrossReplicas`, `TestOpenAPIResponses` |
+| a task whose process stopped (lost lease, shutdown) sends `running` again | `TestNotificationsOfATaskTakenOver` |
+| the stream does not end on drain | `TestNotificationsEndWithTheServer` |
+| a cancel of a run nobody executes sends nothing | `TestNotificationsOfStopAndCancel` |
+| no `conversation_updated` | `TestNotificationsAcrossReplicas`, `TestNotificationsOfATaskTakenOver`, `TestNotificationsReachOnlyTheirUser`, `TestOpenAPIResponses` |
+| `resync` sent as a `run_status` | `TestNotificationsAcrossReplicas` |
+| a status that is not a documented one | `TestNotificationsAcrossReplicas`, `TestNotificationsOfATaskTakenOver`, `TestNotificationsOfStopAndCancel`, `TestNotificationsReachOnlyTheirUser`, `TestOpenAPIResponses` |
+| a resumed run does not read pending steering at its start | `TestE2ESteeringAcrossReplicas` |
+| the server's command watcher consumes the runner's commands (steer, pause, resume) | `TestE2ESteeringAcrossReplicas` |

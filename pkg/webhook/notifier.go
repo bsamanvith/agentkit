@@ -29,7 +29,7 @@ const (
 	// DefaultBaseDelay·2^(n-1)).
 	DefaultBaseDelay = 5 * time.Second
 	DefaultMaxDelay  = time.Hour
-	// DefaultTimeout bounds one attempt, the answer included.
+	// DefaultTimeout bounds one attempt: its payload, its post and the answer.
 	DefaultTimeout = 15 * time.Second
 	// DefaultInterval is the wait between the passes of [Notifier.Run].
 	DefaultInterval = 2 * time.Second
@@ -329,6 +329,11 @@ const maxAnswer = 64 << 10
 // post sends one attempt. It returns the answer's status (0 for none) and
 // why the attempt failed, or nil for a 2xx.
 func (n *Notifier) post(ctx context.Context, tenant tenancy.Tenant, nt store.Notification, attempt int, at time.Time) (int, error) {
+	// The whole attempt, its payload included, is bounded by the timeout,
+	// which the lease outlasts: no other notifier takes the notification
+	// over while this attempt may still post it.
+	ctx, cancel := context.WithTimeout(ctx, n.timeout)
+	defer cancel()
 	body, err := n.payload(ctx, nt.RunID)
 	if err != nil {
 		return 0, fmt.Errorf("making the payload: %w", err)
@@ -337,8 +342,6 @@ func (n *Notifier) post(ctx context.Context, tenant tenancy.Tenant, nt store.Not
 	if err != nil {
 		return 0, fmt.Errorf("the tenant's secret: %w", err)
 	}
-	ctx, cancel := context.WithTimeout(ctx, n.timeout)
-	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, nt.URL, bytes.NewReader(body))
 	if err != nil {
 		return 0, fmt.Errorf("the URL: %w", err)

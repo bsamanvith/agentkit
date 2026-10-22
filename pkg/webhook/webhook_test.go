@@ -341,6 +341,32 @@ func TestRedirectIsAFailedAttempt(t *testing.T) {
 	}
 }
 
+// The payload is made within the attempt's timeout, which the lease
+// outlasts: a payload that takes its time cannot keep the attempt going
+// once another notifier may take the notification over and post it again.
+func TestPayloadIsBoundedByTheTimeout(t *testing.T) {
+	t.Parallel()
+	r := newRig(t)
+	r.ended("acme", "run-1")
+	var bounded bool
+	payload := func(ctx context.Context, runID string) ([]byte, error) {
+		dl, ok := ctx.Deadline()
+		bounded = ok && time.Until(dl) <= time.Minute
+		return []byte(`{}`), nil
+	}
+	n, err := webhook.New(r.admin, payload, secretOf, webhook.WithClock(r.clk), webhook.WithClient(r.srv.Client()),
+		webhook.WithTimeout(time.Minute), webhook.WithLease(2*time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep, err := n.Deliver(t.Context()); err != nil || rep.Delivered != 1 {
+		t.Fatalf("Deliver = %+v, %v; want delivered", rep, err)
+	}
+	if !bounded {
+		t.Error("the payload was asked for with no deadline of the attempt's timeout")
+	}
+}
+
 // Only ended runs are told: a running run's notification waits.
 func TestWaitsForTheRunToEnd(t *testing.T) {
 	t.Parallel()

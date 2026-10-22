@@ -593,16 +593,36 @@ func TestMaxInFlight(t *testing.T) {
 	}
 	t.Cleanup(releaseOnce)
 
-	// Fill both slots with calls that stay open.
+	// Fill both slots with calls that stay open. Both sessions connect
+	// first, and a call the limit turns away (a session's own handshake
+	// requests can still hold a slot) is tried again until it starts.
+	sessions := []*mcp.ClientSession{connect(t, ts.URL+"/mcp/h", nil), connect(t, ts.URL+"/mcp/h", nil)}
 	var wg sync.WaitGroup
-	for range 2 {
-		cs := connect(t, ts.URL+"/mcp/h", nil)
+	for _, cs := range sessions {
 		wg.Go(func() {
-			_, _ = cs.CallTool(t.Context(), &mcp.CallToolParams{Name: "hold", Arguments: map[string]any{}})
+			for {
+				_, err := cs.CallTool(t.Context(), &mcp.CallToolParams{Name: "hold", Arguments: map[string]any{}})
+				select {
+				case <-release:
+					return
+				case <-t.Context().Done():
+					return
+				default:
+				}
+				if err == nil {
+					return
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
 		})
 	}
-	<-started
-	<-started
+	for range 2 {
+		select {
+		case <-started:
+		case <-time.After(10 * time.Second):
+			t.Fatal("the two calls that fill the slots did not both start")
+		}
+	}
 
 	post := func() int {
 		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)

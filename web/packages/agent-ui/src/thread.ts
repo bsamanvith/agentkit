@@ -5,7 +5,15 @@
 // Untrusted content stays data here: text, tool inputs and results are
 // strings and values, never markup.
 
-import type { Block, Message, RunEvent, TimedMessage, Usage, WireError } from "./api/types";
+import {
+  decodeMessage,
+  type Block,
+  type Message,
+  type RunEvent,
+  type TimedMessage,
+  type Usage,
+  type WireError,
+} from "./api/types";
 import {
   messageKind,
   messagesOfInput,
@@ -308,4 +316,18 @@ export function sourcesOf(markdown: string): string[] {
     }
   }
   return out;
+}
+
+/**
+ * The message a run started from, as a user turn, from its run_start's
+ * prompt; undefined when the event has none or no text (a resume).
+ */
+export function promptOf(ev: RunEvent, key: string): UserTurn | undefined {
+  if (ev.type !== "run_start" || typeof ev.prompt !== "object" || ev.prompt === null) return undefined;
+  const message = decodeMessage((ev.prompt as { message?: unknown }).message);
+  if (message?.role !== "user") return undefined;
+  const text = textOf(message.content);
+  if (text === "") return undefined;
+  const action = parseActionText(text);
+  return action ? { role: "user", key, text: action.name, action } : { role: "user", key, text };
 }

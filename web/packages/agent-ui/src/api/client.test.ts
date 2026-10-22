@@ -555,3 +555,87 @@ describe("conversations", () => {
     await expect(json('{"v":1,"conversations":{}}').listConversations()).rejects.toBeInstanceOf(BadResponseError);
   });
 });
+
+describe("background runs and threads (T074)", () => {
+  const jsonFetch = (body: string, seen: Request[]) =>
+    fakeFetch([body], { headers: { "Content-Type": "application/json" } }, seen);
+
+  it("follows a run's events from Last-Event-ID, and says whether the end event came", async () => {
+    const seen: Request[] = [];
+    const ev = (id: string, type: string) => `data: {"v":1,"type":"${type}","id":"${id}","seq":1,"run_id":"r"}\n\n`;
+    // The server replayed what it has and ended the stream: no end event.
+    let client = new AgentClient({ fetch: fakeFetch([ev("3", "tool_call"), ev("4", "tool_result")], {}, seen) });
+    const got: string[] = [];
+    const gen = client.events("run/1", { after: "2.1" });
+    let next = await gen.next();
+    while (!next.done) {
+      got.push(next.value.id);
+      next = await gen.next();
+    }
+    expect(got).toEqual(["3", "4"]);
+    expect(next.value).toBe(false);
+    expect(new URL(seen[0]!.url).pathname).toBe("/v1/runs/run%2F1/events");
+    expect(seen[0]!.method).toBe("GET");
+    expect(seen[0]!.headers.get("Last-Event-ID")).toBe("2.1");
+    expect(seen[0]!.headers.get("Accept")).toBe("text/event-stream");
+
+    // From the start (no Last-Event-ID), to run_done: true, and nothing after it is read.
+    client = new AgentClient({ fetch: fakeFetch([ev("1", "run_start"), ev("2", "run_done"), ev("3", "x")], {}, seen) });
+    const all = client.events("r");
+    const ids: string[] = [];
+    let n = await all.next();
+    while (!n.done) {
+      ids.push(n.value.id);
+      n = await all.next();
+    }
+    expect(ids).toEqual(["1", "2"]);
+    expect(n.value).toBe(true);
+    expect(seen[1]!.headers.has("Last-Event-ID")).toBe(false);
+  });
+
+  it("lists background runs with the filters as query parameters", async () => {
+    const seen: Request[] = [];
+    const client = new AgentClient({
+      fetch: jsonFetch('{"v":1,"runs":[{"id":"r1","status":"running"}],"next_cursor":"c2"}', seen),
+    });
+    const page = await client.listRuns({ background: true, status: "running", limit: 50 });
+    expect(page.runs.map((r) => r.id)).toEqual(["r1"]);
+    expect(page.nextCursor).toBe("c2");
+    const url = new URL(seen[0]!.url);
+    expect(url.pathname).toBe("/v1/runs");
+    expect(Object.fromEntries(url.searchParams)).toEqual({ background: "true", status: "running", limit: "50" });
+  });
+
+  it("cancels with POST /v1/runs/{id}/cancel and answers with the run", async () => {
+    const seen: Request[] = [];
+    const client = new AgentClient({ fetch: jsonFetch('{"v":1,"id":"r/1","status":"canceled"}', seen) });
+    const run = await client.cancelRun("r/1");
+    expect(run.status).toBe("canceled");
+    expect(seen[0]!.method).toBe("POST");
+    expect(new URL(seen[0]!.url).pathname).toBe("/v1/runs/r%2F1/cancel");
+  });
+
+  it("starts a task with POST /v1/tasks, and refuses an answer without a run", async () => {
+    const seen: Request[] = [];
+    const client = new AgentClient({
+      fetch: jsonFetch('{"v":1,"id":"r1","status":"running","background":true}', seen),
+    });
+    expect((await client.startTask({ input: "go", agent: "a" })).background).toBe(true);
+    expect(await seen[0]!.json()).toEqual({ input: "go", agent: "a" });
+    const bad = new AgentClient({ fetch: jsonFetch('{"v":1}', []) });
+    await expect(bad.startTask({ input: "go" })).rejects.toBeInstanceOf(BadResponseError);
+  });
+
+  it("lists threads and reads one with its messages", async () => {
+    const seen: Request[] = [];
+    let client = new AgentClient({ fetch: jsonFetch('{"v":1,"threads":[{"id":"t1","hops":2}]}', seen) });
+    const page = await client.listThreads({ limit: 20 });
+    expect(page).toEqual({ threads: [{ id: "t1", hops: 2 }], nextCursor: undefined });
+    expect(new URL(seen[0]!.url).search).toBe("?limit=20");
+    client = new AgentClient({ fetch: jsonFetch('{"v":1,"id":"t1","messages":null}', seen) });
+    expect((await client.getThread("t1")).messages).toEqual([]);
+    expect(new URL(seen[1]!.url).pathname).toBe("/v1/threads/t1");
+    client = new AgentClient({ fetch: jsonFetch('{"v":1,"id":"t1","messages":{}}', seen) });
+    await expect(client.getThread("t1")).rejects.toBeInstanceOf(BadResponseError);
+  });
+});

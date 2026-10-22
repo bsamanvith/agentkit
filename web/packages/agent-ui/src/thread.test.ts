@@ -3,6 +3,7 @@ import { decodeEvent, decodeMessage, type RunEvent, type TimedMessage } from "./
 import {
   applyEvent,
   endAnswer,
+  promptOf,
   sourcesOf,
   startAnswer,
   threadFromHistory,
@@ -215,5 +216,24 @@ describe("sources", () => {
           "[x](javascript:alert(1)) ftp://x.org/y and (https://pkg.go.dev/net/http).",
       ),
     ).toEqual(["https://go.dev/doc/go1.27", "https://example.com/a", "https://pkg.go.dev/net/http"]);
+  });
+});
+
+describe("promptOf", () => {
+  const start = (prompt: unknown) => ev({ type: "run_start", prompt });
+  it("is the run_start's prompt as a user turn", () => {
+    const p = { at: "2026-10-22T10:00:00Z", message: { role: "user", content: [{ type: "text", text: "Summarize" }] } };
+    expect(promptOf(start(p), "k")).toEqual({ role: "user", key: "k", text: "Summarize" });
+  });
+  it.each([
+    ["no prompt", undefined],
+    ["not a message", { message: 7 }],
+    ["no text (a resume)", { message: { role: "user", content: [] } }],
+    ["the model's", { message: { role: "assistant", content: [{ type: "text", text: "hi" }] } }],
+  ])("is undefined for %s", (_, p) => {
+    expect(promptOf(start(p), "k")).toBeUndefined();
+  });
+  it("is undefined for another event", () => {
+    expect(promptOf(ev({ type: "turn_done", prompt: {} }), "k")).toBeUndefined();
   });
 });

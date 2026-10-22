@@ -1,0 +1,20 @@
+{
+  "mcp": {
+    "toolsets": [{ "name": "demo", "type": "demo" }]
+  },
+  "agents": [
+    {
+      "name": "boss",
+      "description": "The Tasks browser tests' agent: it runs tasks and messages the worker.",
+      "system": "Its model is e2e/fake-model.ts.",
+      "toolsets": ["demo"],
+      "can_message": ["worker"]
+    },
+    {
+      "name": "worker",
+      "description": "Answers the boss.",
+      "system": "Its model is e2e/fake-model.ts.",
+      "toolsets": ["demo"]
+    }
+  ]
+}

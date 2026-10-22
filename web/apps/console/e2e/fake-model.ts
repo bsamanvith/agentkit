@@ -14,6 +14,9 @@
 //            action's answer wait for GET /release (GET /gates: how many wait)
 //   "unsafe" shows a surface with markup in its text, an image from another
 //            origin (GET /hook.png, counted at GET /hooks) and a javascript: link
+//   "background" with "echo": echoes, then holds the answer until GET /release
+//   "delegate" asks agent:worker "What is 6*7?" (agent_message, wait), which
+//            answers 42, and says what came back
 //   other    "You said: …" with the number of messages so far
 //
 // Run with Node 24 (type stripping): node e2e/fake-model.ts <port>.
@@ -309,6 +312,44 @@ const server = createServer((req, res) => {
     const xss = /\bxss\b/i.test(said);
     // The echo tool's result is back: say what it echoed.
     const result = last && blocks(last).find((b) => b.type === "tool_result");
+    const resultText = () =>
+      typeof result?.content === "string" ? result.content : (result?.content ?? []).map((b) => b.text ?? "").join("");
+    // Tasks (tasks.spec.ts): a "background" task echoes, then holds
+    // its answer until GET /release, so it is still running while the page
+    // comes and goes.
+    if (result && /\bbackground\b/i.test(said)) {
+      gate(() => {
+        text(res, 0, `Background work done: ${resultText()}.`);
+        finish(res, "end_turn", 12);
+      });
+      return;
+    }
+    // "delegate" asks the worker agent and waits for its reply; the worker
+    // answers "6*7" with 42.
+    if (/\bdelegate\b/i.test(said)) {
+      if (result) {
+        text(res, 0, `The worker replied: ${resultText()}`);
+        return finish(res, "end_turn", 12);
+      }
+      const name = tools.find((t) => t.name.endsWith("agent_message"))?.name ?? "agent_message";
+      send(res, "content_block_start", {
+        index: 0,
+        content_block: { type: "tool_use", id: `toolu_fake${Date.now()}`, name, input: {} },
+      });
+      send(res, "content_block_delta", {
+        index: 0,
+        delta: {
+          type: "input_json_delta",
+          partial_json: JSON.stringify({ to: "agent:worker", text: "What is 6*7?", wait: true }),
+        },
+      });
+      send(res, "content_block_stop", { index: 0 });
+      return finish(res, "tool_use", 20);
+    }
+    if (said.includes("What is 6*7?")) {
+      text(res, 0, "42");
+      return finish(res, "end_turn", 2);
+    }
     if (result && xss) {
       text(
         res,

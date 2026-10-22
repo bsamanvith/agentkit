@@ -3,6 +3,7 @@ import { useState } from "react";
 import { createBrowserRouter, RouterProvider } from "react-router";
 import { useApi } from "./api";
 import { ApiProvider } from "./api-provider";
+import { TasksProvider } from "./tasks/context";
 import { RunsProvider } from "./chat/context";
 import { routes } from "./routes";
 import { SignIn } from "./sign-in";
@@ -15,7 +16,9 @@ function Body({ router }: { router: Router }) {
       <div inert={prompt !== null} className="contents">
         {/* Runs outlive pages: the store is above the router. */}
         <RunsProvider>
-          <RouterProvider router={router} />
+          <TasksProvider>
+            <RouterProvider router={router} />
+          </TasksProvider>
         </RunsProvider>
       </div>
       <SignIn />

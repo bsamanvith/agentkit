@@ -25,6 +25,12 @@ const agents = {
  * each request but those to /v1/auth/ (the sign-in card's and the account
  * menu's), which it answers as a server with keys and no users.
  */
+/** GET /v1/auth/me of a server without credentials (anyone may do anything), else undefined. */
+const openMe = (input: RequestInfo | URL) =>
+  new URL(String(input), "http://console.test").pathname === "/v1/auth/me"
+    ? Response.json({ v: 1, tenant: "default", roles: [], scopes: [] })
+    : undefined;
+
 function fakeServer(server = { token: "good" }) {
   const seen: Request[] = [];
   const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -35,7 +41,11 @@ function fakeServer(server = { token: "good" }) {
     if (path === "/v1/auth/me" && bearer) {
       return Response.json({ v: 1, tenant: "default", roles: [], scopes: ["*"], credential: "api_key" });
     }
-    seen.push(req);
+    // The shell's watch of background runs (Tasks): not what these tests count.
+    const watch = path === "/v1/runs" && new URL(req.url).searchParams.get("background") === "true";
+    if (watch && bearer) return Response.json({ v: 1, runs: [] });
+    // Who is signed in (the provider asks once per sign-in): not counted either.
+    if (!watch && !path.startsWith("/v1/auth/")) seen.push(req);
     if (!bearer) {
       const body = { v: 1, error: { code: "unauthenticated", message: "token required", retryable: false } };
       return Response.json(body, { status: 401 });
@@ -236,7 +246,7 @@ describe("the token", () => {
   it("is not offered to forget when there is none", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => Response.json(agents)),
+      vi.fn(async (input: RequestInfo | URL) => openMe(input) ?? Response.json(agents)),
     );
     renderAt("/agents");
     await researcher();
@@ -248,7 +258,7 @@ describe("the token", () => {
   it("is not asked for when the server needs none", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => Response.json(agents)),
+      vi.fn(async (input: RequestInfo | URL) => openMe(input) ?? Response.json(agents)),
     );
     renderAt("/");
     expect(await screen.findByText("Finds things")).toBeInTheDocument();
@@ -324,6 +334,44 @@ async function signInAs(username: string, password: string) {
 }
 
 describe("signing in with a password", () => {
+  it("shows admin navigation only once who is signed in says admin", async () => {
+    sessionServer();
+    renderAt("/tasks");
+    const sections = await screen.findByRole("navigation", { name: "Sections", hidden: true });
+    // Not known yet: no admin navigation.
+    expect(within(sections).queryByRole("link", { name: "Agents", hidden: true })).toBeNull();
+    await signInAs("bob", "other-pw");
+    const tabs = await screen.findByRole("navigation", { name: "Tabs" });
+    expect(within(tabs).getByRole("link", { name: "Threads" })).toBeInTheDocument();
+    expect(within(tabs).queryByRole("link", { name: "Triggers" })).toBeNull();
+    expect(within(sections).queryByRole("link", { name: "Agents" })).toBeNull();
+    expect(within(sections).queryByRole("link", { name: "Toolsets" })).toBeNull();
+    expect(within(sections).getByRole("link", { name: "Tasks" })).toBeInTheDocument();
+  });
+
+  it("shows a user's phone drawer no admin sections", async () => {
+    asPhone();
+    sessionServer();
+    renderAt("/tasks");
+    await signInAs("bob", "other-pw");
+    await screen.findByRole("navigation", { name: "Tabs" });
+    const drawer = screen.getByRole("dialog", { name: "Menu", hidden: true });
+    const sections = within(drawer).getByRole("navigation", { name: "Sections", hidden: true });
+    expect(within(sections).getByRole("link", { name: /Tasks/, hidden: true })).toBeInTheDocument();
+    expect(within(sections).queryByRole("link", { name: /Agents|Toolsets/, hidden: true })).toBeNull();
+  });
+
+  it("shows an admin the admin navigation", async () => {
+    sessionServer();
+    renderAt("/tasks");
+    await signInAs("ann", "secret-pw");
+    const sections = screen.getByRole("navigation", { name: "Sections" });
+    expect(await within(sections).findByRole("link", { name: "Agents" })).toBeInTheDocument();
+    expect(within(sections).getByRole("link", { name: "Toolsets" })).toBeInTheDocument();
+    const tabs = await screen.findByRole("navigation", { name: "Tabs" });
+    expect(within(tabs).getByRole("link", { name: "Triggers" })).toBeInTheDocument();
+  });
+
   it("asks for a username and password, then uses the session", async () => {
     const server = sessionServer();
     renderAt("/agents");
@@ -508,7 +556,10 @@ describe("a page", () => {
     let calls = 0;
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => {
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).includes("background=true")) return Response.json({ v: 1, runs: [] });
+        const me = openMe(input);
+        if (me) return me;
         calls++;
         if (calls === 1) {
           const body = { v: 1, error: { code: "internal", message: "the store is down", retryable: true } };
@@ -574,7 +625,7 @@ describe("a page", () => {
   it("that doesn't exist is Not found, with a way back", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => Response.json(agents)),
+      vi.fn(async (input: RequestInfo | URL) => openMe(input) ?? Response.json(agents)),
     );
     renderAt("/nowhere");
     expect(await screen.findByRole("heading", { level: 1, name: "Not found" })).toBeInTheDocument();
@@ -592,7 +643,7 @@ describe("a page that throws", () => {
     onTestFinished(() => logged.mockRestore());
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => Response.json(agents)),
+      vi.fn(async (input: RequestInfo | URL) => openMe(input) ?? Response.json(agents)),
     );
     const pages = routes[0]?.children?.[0]?.children ?? [];
     render(
@@ -618,7 +669,7 @@ describe("a page that throws", () => {
   it("that arrives while the account menu is open leaves the menu open", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => Response.json(agents)),
+      vi.fn(async (input: RequestInfo | URL) => openMe(input) ?? Response.json(agents)),
     );
     let arrive: () => void = () => {};
     const Late = lazy(
@@ -645,7 +696,7 @@ describe("a page that throws", () => {
     onTestFinished(() => logged.mockRestore());
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => Response.json(agents)),
+      vi.fn(async (input: RequestInfo | URL) => openMe(input) ?? Response.json(agents)),
     );
     const Gone = lazy(() => Promise.reject(new TypeError("Failed to fetch dynamically imported module: /assets/x.js")));
     render(
@@ -663,10 +714,12 @@ describe("the shell", () => {
   beforeEach(() => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (input: RequestInfo | URL) =>
-        String(input).endsWith("/v1/toolsets")
-          ? Response.json({ v: 1, toolsets: [{ name: "web", type: "mcp", status: "ready", tool_count: 3 }] })
-          : Response.json(agents),
+      vi.fn(
+        async (input: RequestInfo | URL) =>
+          openMe(input) ??
+          (String(input).endsWith("/v1/toolsets")
+            ? Response.json({ v: 1, toolsets: [{ name: "web", type: "mcp", status: "ready", tool_count: 3 }] })
+            : Response.json(agents)),
       ),
     );
   });
@@ -753,7 +806,7 @@ describe("on a phone", () => {
     asPhone();
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => Response.json(agents)),
+      vi.fn(async (input: RequestInfo | URL) => openMe(input) ?? Response.json(agents)),
     );
   });
 

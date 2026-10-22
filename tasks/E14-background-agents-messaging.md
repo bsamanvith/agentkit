@@ -32,7 +32,7 @@ Today a run lives as long as its HTTP request: closing the stream cancels it (T0
 - [x] [T071](T071-background-runs.md) Background runs: detached runs, stored event log, resumable event stream, listing, cancel, completion webhooks
 - [x] [T072](T072-triggers.md) Triggers: schedules and inbound webhooks that start background runs
 - [x] [T073](T073-agent-messaging.md) Agent messaging: mailboxes, `agent_message`/`agents_list` tools, wake on reply, permissions and loop limits
-- [ ] [T074](T074-console-background-view.md) Console: background runs and agent threads
+- [x] [T074](T074-console-background-view.md) Console: background runs and agent threads
 
 Order:
 1. **T029 (SQLite store) and T030 (runner) first.** They are now on the critical path: start them now.

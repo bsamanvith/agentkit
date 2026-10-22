@@ -1,11 +1,15 @@
 import type { RouteObject } from "react-router";
 import { RouteError } from "./pages/error";
 import {
+  TasksPage,
   AgentPage,
   AgentsPage,
   ChatPage,
   ConnectionsPage,
   NotFoundPage,
+  RunPage,
+  ThreadPage,
+  TriggersPage,
   ToolsetPage,
   ToolsetsPage,
 } from "./pages/lazy";
@@ -33,5 +37,10 @@ export const routes: RouteObject[] = inShell([
   { path: "/toolsets", element: <ToolsetsPage /> },
   { path: "/toolsets/:name", element: <ToolsetPage /> },
   { path: "/connections", element: <ConnectionsPage /> },
+  { path: "/tasks", element: <TasksPage /> },
+  { path: "/tasks/threads", element: <TasksPage /> },
+  { path: "/tasks/triggers", element: <TriggersPage /> },
+  { path: "/tasks/:id", element: <RunPage /> },
+  { path: "/tasks/threads/:id", element: <ThreadPage /> },
   { path: "*", element: <NotFoundPage /> },
 ]);

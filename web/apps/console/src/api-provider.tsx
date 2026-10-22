@@ -151,6 +151,25 @@ export function ApiProvider({ children, client: given }: { children: ReactNode; 
     );
   }, [client, known]);
 
+  // Who is signed in, once per sign-in, so the shell knows whether to show
+  // admin navigation (docs/UI.md "Rules"). An answer that comes after a
+  // sign out or another sign-in is dropped.
+  useEffect(() => {
+    if (prompt !== null) return;
+    let live = true;
+    client.me().then(
+      (m) => {
+        if (live) known(m, false);
+      },
+      () => {
+        // Not signed in, or an older server: no admin navigation.
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [client, known, prompt, epoch]);
+
   const signIn = useCallback(
     async (username: string, password: string) => {
       await client.login(username, password);

@@ -24,6 +24,7 @@ export {
   answerText,
   applyEvent,
   endAnswer,
+  promptOf,
   sourcesOf,
   startAnswer,
   threadFromHistory,

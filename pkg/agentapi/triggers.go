@@ -470,7 +470,8 @@ func firingView(f store.Firing) wire.Firing {
 // a run of its trigger with the body as a data block (202), or is recorded
 // as skipped while the trigger's previous run goes on (200). A delivery
 // whose webhook-id the trigger has taken is refused (409 replayed), unless
-// its firing failed to start a run: the sender's retry fires it again.
+// its firing failed to start a run or was lost (pending for longer than
+// staleFiring): the sender's retry fires it again.
 func (s *Server) postHook(w http.ResponseWriter, r *http.Request) {
 	if !s.hooksOn() {
 		writeError(w, http.StatusNotFound, &Error{Code: CodeNotFound, Message: "this server takes no inbound webhooks"})

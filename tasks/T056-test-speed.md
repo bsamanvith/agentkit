@@ -141,6 +141,22 @@ not what a call returns; the numbers above are their check.
 `TestKeptStatementsSurviveASchemaChange` pins SQLite's own re-prepare on a
 schema change, which no plant in this package can break.
 
+### Review (PR #69)
+
+- A kept statement is one SQLite statement on the writer's connection, and
+  modernc.org/sqlite steps it in place: a transaction that ran a text again
+  while rows of the same text were still open reset it under them, and the
+  outer loop started over forever (no store method does this today). A text
+  whose rows a transaction opened from its kept statement now runs
+  unprepared for the rest of that transaction
+  (`TestTxnSameQueryWhileItsRowsAreOpen`, which loops without the fix).
+- `--output` hid the output of a test that never ended: a timeout's panic
+  and stack, a panic in another goroutine, an `os.Exit`, since go test
+  writes no `fail` for that test. It now hides only tests that passed or
+  were skipped, and the timing lists such a test as `(unfinished)`, timed
+  to its package's end. `scripts/test-timing.sh --test` checks both modes on
+  `scripts/testdata/test-timing/run.json` and runs in `make lint`.
+
 ### Findings outside this task
 
 - `pkg/mcp/server` `TestMaxInFlight` hung for the whole 30 m timeout once in

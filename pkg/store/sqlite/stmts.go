@@ -104,27 +104,49 @@ func (d *stmtDB) Close() error {
 // transaction holds, so a query with no kept statement yet cannot be
 // prepared for keeping while the transaction runs: it runs unprepared, and
 // is prepared for keeping once the transaction is over ([txn.keep]).
+//
+// A kept statement is one SQLite statement on that connection, and rows
+// read from it hold it: running the same text again while they are open
+// would reset it under them (the outer loop starts over, forever). So a
+// text whose rows the transaction opened from the kept statement runs
+// unprepared for the rest of the transaction, as every query did before
+// T056.
 type txn struct {
 	*sql.Tx
 	db     *stmtDB
-	missed []string
+	missed map[string]bool // ran with no kept statement: keep them after
+	rows   map[string]bool // rows opened from the kept statement
 }
 
 // stmt returns the transaction's use of query's kept statement, or nil if
-// there is none yet.
+// there is none yet or rows of it may still be open.
 func (t *txn) stmt(ctx context.Context, query string) *sql.Stmt {
+	if t.rows[query] {
+		return nil
+	}
 	if st := t.db.kept(query); st != nil {
 		return t.StmtContext(ctx, st)
 	}
-	t.missed = append(t.missed, query)
+	if t.missed == nil {
+		t.missed = map[string]bool{}
+	}
+	t.missed[query] = true
 	return nil
+}
+
+// hold marks query's kept statement as possibly holding open rows.
+func (t *txn) hold(query string) {
+	if t.rows == nil {
+		t.rows = map[string]bool{}
+	}
+	t.rows[query] = true
 }
 
 // keep prepares the queries the transaction ran with no kept statement, for
 // the next transactions. It is called after the transaction ended, when the
 // writer's connection is free again.
 func (t *txn) keep(ctx context.Context) {
-	for _, q := range t.missed {
+	for q := range t.missed {
 		if ctx.Err() != nil {
 			return
 		}
@@ -140,9 +162,12 @@ func (t *txn) ExecContext(ctx context.Context, query string, args ...any) (sql.R
 	return t.Tx.ExecContext(ctx, query, args...)
 }
 
-// QueryContext runs query as [sql.Tx.QueryContext] does.
+// QueryContext runs query as [sql.Tx.QueryContext] does. The rows it
+// returns from the kept statement hold it until they are closed, which txn
+// cannot see, so the text runs unprepared from then on in the transaction.
 func (t *txn) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	if st := t.stmt(ctx, query); st != nil {
+		t.hold(query)
 		return st.QueryContext(ctx, args...)
 	}
 	return t.Tx.QueryContext(ctx, query, args...)
@@ -157,9 +182,11 @@ func (t *txn) QueryRowContext(ctx context.Context, query string, args ...any) *s
 }
 
 // PrepareContext returns a statement for query in the transaction, as
-// [sql.Tx.PrepareContext] does; closing it leaves the kept one open.
+// [sql.Tx.PrepareContext] does; closing it leaves the kept one open. It may
+// open rows of the kept statement, as QueryContext does.
 func (t *txn) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
 	if st := t.stmt(ctx, query); st != nil {
+		t.hold(query)
 		return st, nil
 	}
 	return t.Tx.PrepareContext(ctx, query)

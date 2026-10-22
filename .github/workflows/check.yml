@@ -218,7 +218,8 @@ jobs:
 
   # The smoke suite (test/e2e, T007) against the split deployment run as
   # processes on the fake model: make smoke, as on a laptop. Node runs the
-  # console's fake model; nothing is installed for it.
+  # console's fake model; nothing is installed for it. Then AG-UI's
+  # reference client, which make agui-client installs, against pkg/agui.
   smoke:
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
@@ -237,6 +238,8 @@ jobs:
           node-version-file: web/.nvmrc
       - name: make smoke (the split deployment as processes, test/e2e)
         run: make smoke
+      - name: make agui-client (AG-UI's reference client against pkg/agui, T069)
+        run: make agui-client
 
   # The web workspace (web/): lint, typecheck, unit tests, audit, and a
   # rebuild that must match the committed pkg/web/dist; then the browser

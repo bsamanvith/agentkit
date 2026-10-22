@@ -41,7 +41,7 @@ const (
 )
 
 // knownComponents are the names AGENTKIT_COMPONENTS accepts.
-var knownComponents = []string{mcpServerName, agentapi.Name, web.Name, runnerName, toolsetsName, a2aName}
+var knownComponents = []string{mcpServerName, agentapi.Name, web.Name, runnerName, toolsetsName, a2aName, aguiName}
 
 // serveConfig is the config file of agentkit serve, as loadServeConfig reads
 // it. The file is JSON; YAML (with the same keys) comes with pkg/config.
@@ -225,7 +225,7 @@ func (c cli) serve(ctx context.Context, args []string) error {
 			m, err = c.newRunner(ctx, cfg, built, env, clk, log)
 		case toolsetsName:
 			m, err = c.newToolsets(cfg, built, problems, env, log)
-		case a2aName:
+		case a2aName, aguiName:
 			continue // over the agent API, below
 		default: // in knownComponents but not wired here
 			err = errors.New("component not wired in cmd/agentkit")
@@ -258,6 +258,13 @@ func (c cli) serve(ctx context.Context, args []string) error {
 			return fmt.Errorf("%s: %w", a2aName, err)
 		}
 		mounts = append(m, mounts...) // shut down after the agent API (newA2A)
+	}
+	if slices.Contains(env.components, aguiName) {
+		m, err := newAGUI(ag.server(), log)
+		if err != nil {
+			return fmt.Errorf("%s: %w", aguiName, err)
+		}
+		mounts = append(m, mounts...) // shut down after the agent API (newAGUI)
 	}
 	rt, err := component.New(mounts,
 		component.WithLogger(log),

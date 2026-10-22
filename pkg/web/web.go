@@ -9,9 +9,11 @@
 // or style, nothing from other origins), X-Content-Type-Options: nosniff and
 // Referrer-Policy: no-referrer. index.html is never cached; hashed files
 // under /assets/ are cached for a year; other files (favicon, theme.js) are
-// revalidated. Text files (scripts, styles, HTML, SVG) are gzipped once, at
-// start, and sent compressed to clients that accept it: a third of the bytes
-// on a slow connection. Paths that don't end in a file's extension (.js,
+// revalidated. Text files (scripts, styles, HTML, SVG) are committed and
+// embedded gzipped, as name.gz ([Pack], which make web runs): the image
+// carries a third of their bytes, and so does a slow connection, since they
+// go as they are to clients that accept gzip. Other clients get them
+// decompressed, once, at start. Paths that don't end in a file's extension (.js,
 // .css, .png, ...) get index.html, so the app's routes (/c/{id}, /agents,
 // /agents/research.v2) work on reload; a missing file with one, or anything
 // under /assets/, is 404, so a stale tab never gets HTML for a script. /v1/, /mcp/ and /rpc/ belong to other components and are
@@ -26,9 +28,13 @@ import (
 	"embed"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
+	"os"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -96,7 +102,7 @@ type file struct {
 	body  []byte
 	etag  string
 	ctype string
-	gz    []byte // body gzipped, when that is smaller; nil otherwise
+	gz    []byte // body gzipped, as the build has it (name.gz); nil otherwise
 }
 
 // compressible reports whether a media type is worth gzipping: text, not
@@ -105,6 +111,16 @@ func compressible(ctype string) bool {
 	return strings.HasPrefix(ctype, "text/") || ctype == "image/svg+xml" || ctype == "application/json"
 }
 
+// packedName returns the name of the file a build's name.gz holds, when it
+// is a packed text file ([Pack]); a .gz of anything else is a file of its own.
+func packedName(name string) (string, bool) {
+	orig, ok := strings.CutSuffix(name, ".gz")
+	return orig, ok && compressible(types[path.Ext(orig)])
+}
+
+// gzipped returns b gzipped at the best compression, or nil when that is no
+// smaller. The output depends only on b (no name, no time, the same OS byte
+// on every machine), so a rebuild of the same sources packs the same bytes.
 func gzipped(b []byte) []byte {
 	var buf bytes.Buffer
 	zw, _ := gzip.NewWriterLevel(&buf, gzip.BestCompression) // a valid level never errs
@@ -114,6 +130,41 @@ func gzipped(b []byte) []byte {
 		return nil
 	}
 	return buf.Bytes()
+}
+
+// Pack gzips the text files of the console build in dir in place: each one
+// that gzip makes smaller is replaced by name.gz, which [New] serves as name.
+// The binary embeds what Pack leaves, so the image carries the compressed
+// bytes only (docs/SIZES.md); fonts, images and files that don't shrink stay
+// as they are. make web runs it after Vite (pkg/web/pack.go); packing a
+// packed build changes nothing. The binary never calls it, so the gzip
+// compressor is not linked.
+func Pack(dir string) error {
+	return filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !compressible(types[path.Ext(p)]) {
+			return err
+		}
+		b, err := os.ReadFile(p) //nolint:gosec // a file of the build directory make web names
+		if err != nil {
+			return err
+		}
+		gz := gzipped(b)
+		if gz == nil {
+			return nil
+		}
+		if err := os.WriteFile(p+".gz", gz, 0o644); err != nil { //nolint:gosec // a build output, committed and world-readable
+			return err
+		}
+		return os.Remove(p)
+	})
+}
+
+func gunzip(b []byte) ([]byte, error) {
+	zr, err := gzip.NewReader(bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	return io.ReadAll(zr)
 }
 
 // acceptsGzip reports whether a request's Accept-Encoding allows gzip
@@ -150,7 +201,9 @@ type Component struct {
 }
 
 // New serves the build in files (Dist for the embedded one), read into
-// memory once. A build without index.html is served but not ready.
+// memory once. A packed file (name.gz, see [Pack]) is served as name, and
+// decompressed for the clients that don't accept gzip; other files are
+// served as they are. A build without index.html is served but not ready.
 func New(files fs.FS) *Component {
 	c := &Component{files: map[string]file{}}
 	c.err = fs.WalkDir(files, ".", func(name string, d fs.DirEntry, err error) error {
@@ -161,16 +214,22 @@ func New(files fs.FS) *Component {
 		if err != nil {
 			return err
 		}
+		var gz []byte
+		if orig, ok := packedName(name); ok {
+			gz, name = b, orig
+			if b, err = gunzip(gz); err != nil {
+				return fmt.Errorf("%s.gz: %w", name, err)
+			}
+		}
+		if _, dup := c.files[name]; dup {
+			return fmt.Errorf("the console build has %s both as it is and gzipped", name)
+		}
 		sum := sha256.Sum256(b)
 		ctype, ok := types[path.Ext(name)]
 		if !ok {
 			ctype = http.DetectContentType(b)
 		}
-		f := file{body: b, etag: `"` + hex.EncodeToString(sum[:12]) + `"`, ctype: ctype}
-		if compressible(ctype) {
-			f.gz = gzipped(b)
-		}
-		c.files[name] = f
+		c.files[name] = file{body: b, etag: `"` + hex.EncodeToString(sum[:12]) + `"`, ctype: ctype, gz: gz}
 		return nil
 	})
 	if _, ok := c.files["index.html"]; c.err == nil && !ok {

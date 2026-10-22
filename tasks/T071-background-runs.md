@@ -60,7 +60,7 @@ Runs that outlive the request that started them. Decisions: [E14](E14-background
 
 ### Decisions
 
-- Migrations are SQLite 0011 and Postgres 0012, after T043's credential blobs (SQLite needs dense numbers).
+- Migrations are SQLite 0013 and Postgres 0014, after T044's credential reconnect and T105's pool (SQLite needs dense numbers).
 - A task's per-run budget is its agent's harness budgets (`budget_exceeded`) plus the wall-clock limit; per-request budget overrides are left to the owner (below).
 - The background limit is counted in the store under a per-server lock: exact on one replica, best-effort across replicas (two replicas may each admit the last place at once).
 - A watcher that follows a task across a hand-over may miss `text_delta` events the new process streamed before it followed; the `turn_done` has the text. Every other event arrives once, in order.

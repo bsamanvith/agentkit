@@ -2,9 +2,18 @@
 
 - `base/`: the split deployment of docs/COMPONENTS.md (the agent API with the
   console, a runner, the toolsets), one Deployment and Service each, with no
-  namespace and an in-memory store.
+  namespace and an in-memory store, and the ConfigMap made from
+  `base/config.json`.
 - `local/`: the base on Docker Desktop's Kubernetes, with Postgres, small
   resource limits and the console on a node port.
+
+## Two ways to run it locally
+
+The same split deployment also runs in Docker Compose, with no cluster:
+`make compose-up`, console on http://localhost:30081
+([deploy/compose/README.md](../compose/README.md)). Both use the same images,
+config file and environment; this one is for manifests, probes and anything
+that needs real Kubernetes.
 
 ## Run it on Docker Desktop
 
@@ -51,5 +60,5 @@ The secret `agentkit` holds random RPC and API tokens, the Postgres password
 and URL, and the model key. It is made on the first `up` and kept after that,
 since Postgres keeps the password it started with; a different
 `ANTHROPIC_API_KEY` on a later `up` replaces the stored key. To change the
-agents or toolsets, edit the ConfigMap in `base/split.yaml` and run
-`make k8s-up`.
+agents or toolsets, edit `base/config.json` (shared with Compose and
+`make smoke`) and run `make k8s-up`.

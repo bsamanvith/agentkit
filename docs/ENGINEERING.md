@@ -191,7 +191,7 @@ A test should fail only when a **feature** breaks, not when code is refactored.
 |---|---|---|---|---|---|
 | **Unit** | Pure logic, fakes, `httptest` servers | next to code | `make test` | nothing | whole repo < 30 s |
 | **Integration** | Real backends: Postgres, Vault, LocalStack, real MCP servers | next to code, `//go:build integration` | `make test-integration` | `make integration STORE=postgres` starts Postgres and Redis as processes (no Docker; cloud sessions) | < 3 min |
-| **E2E / smoke** | Real binaries in containers, black-box over HTTP/gRPC/MCP | `test/e2e`, `//go:build e2e` | `scripts/dev.sh smoke <topology>` | running topology | < 2 min per topology |
+| **E2E / smoke** | Real binaries as processes or in containers, black-box over HTTP/MCP | `test/e2e`, `//go:build e2e` | `make smoke`; `make compose-smoke`, `make k8s-smoke` against what is running ([§3](#3-local-environments-pods)) | Go and Node; Docker or Docker Desktop's Kubernetes for the others | < 2 min per topology |
 | **Replay E2E** | The real binary as separate processes, against a local server replaying recorded provider responses | next to the `cmd`, no tag (skips under `-short`) | `make test` | nothing | seconds |
 | **Live** | Real model providers (Anthropic, OpenAI-compatible) | next to adapter, `//go:build live` | `make test-live` | API keys | manual (Claude sessions; on-demand workflow) |
 | **Eval** | Real Claude using the search connectors against faked upstreams: tool choice, arguments, calls, citations, recovery ([evals/README.md](../evals/README.md)) | `evals/`, `//go:build eval` | `make eval` | `ANTHROPIC_API_KEY` | manual; pass rates over N runs, a drop is shown, not gated |
@@ -200,7 +200,7 @@ A test should fail only when a **feature** breaks, not when code is refactored.
 - `make test-timing` runs the unit tier and prints its slowest packages and top-level tests (`scripts/test-timing.sh` over `go test -json`); CI prints the top 10 after `make check`. Look there before a package nears go test's timeout, and fix waste (a query parsed on every call, a schema migrated for every subtest) before cutting a check.
 - Integration tests read connection strings from env (`AGENTKIT_PG_URL`, `AGENTKIT_VAULT_ADDR`, ...) and **skip** if unset, so a laptop without Docker still runs them cleanly. In CI `AGENTKIT_REQUIRE_INTEGRATION=1` turns those skips into failures, so nothing silently stops running.
 - CI ([check.yml](../.github/workflows/check.yml), T008) runs these tiers as parallel jobs that call the same make targets and scripts as a laptop: `check` (`make check`), `integration` (Postgres and Redis service containers, `AGENTKIT_REQUIRE_INTEGRATION=1`), `image` (every image within its budget, then the per-image smoke), `smoke` (`make smoke`) and `web`. A pull request that changes only `docs/` and `tasks/` skips `image` and `smoke` (`scripts/ci-changes.sh`, whose `--test` in `make lint` also checks that wiring). The live tier runs in Claude sessions (no Anthropic key in GitHub, T034); [live.yml](../.github/workflows/live.yml) runs it on demand only: `make test-live LIVE_REQUIRED=1` with the repository secret `ANTHROPIC_API_KEY`, and fails, saying why, when the secret is missing.
-- We do not use testcontainers; `scripts/dev.sh` already provides the dependencies, and it keeps the dependency list small.
+- We do not use testcontainers; `scripts/integration.sh` starts the dependencies as processes, and it keeps the dependency list small.
 
 - **Replay E2E** proves the pieces fit through the real entry point (flags, files, signals, several processes) without a key: see `cmd/agentkit/e2e_test.go`. Re-record from the real API with an env switch; the binary only ever gets a dummy key, and fixtures keep no account headers.
 - **Evals** (scoring model quality on a task set) are a separate, later tier; nothing in the unit, replay or live tiers asserts on what a model says beyond what the test scripted.
@@ -286,64 +286,63 @@ Connectors call paid APIs, so their tests follow one recipe, in [CONNECTORS.md](
 
 ### 3.1 Approach
 
-- **Docker Compose with profiles** is the default local runtime: fast, one file, no cluster needed.
-- **kind** (Kubernetes in Docker) is optional and only for things that need real Kubernetes (the k8s secrets backend, manifests, probes). Same images, same config. It is built with the credentials work, the first thing that needs it.
-- One `Dockerfile` producing distroless images: `agentkit` and `fakellm`. Topologies differ by config, not by image.
-- **`fakellm`**: a small scripted model server speaking the Anthropic Messages API (subset). Every topology uses it by default, so local runs and e2e tests are deterministic and need no API key. Set `AGENTKIT_LLM=anthropic` plus a key to use the real provider.
+- **One deployment, several ways to run it.** The split deployment of [COMPONENTS.md](COMPONENTS.md) (the agent API with the console, a runner, the toolsets) runs on a laptop as processes, in Docker Compose, or on Docker Desktop's Kubernetes. Every way uses the same config file (`deploy/k8s/base/config.json`), the same environment and, where there are containers, the same images (`make images-split`), so a change seen working one way works the others.
+- **Compose and Kubernetes are parallel**: `deploy/compose/compose.yaml` mirrors the overlay `deploy/k8s/local` service for service (Postgres 17, a one-shot `migrate`, then the API with `AGENTKIT_STORE_MIGRATE=off`), with the same limits and security settings. Pick Compose for a quick containerized run with no cluster, Kubernetes for manifests, probes and anything that needs a real cluster. Neither script creates a cluster: Kubernetes is Docker Desktop's own (T006 dropped kind and k3d).
+- One `Dockerfile` producing distroless images: `agentkit` (everything), the variants `agentkit-local` and `agentkit-dev`, and one image per component (`agentkit-api`, `-runner`, `-toolsets`), each the same binary built with tags that leave parts out ([COMPONENTS.md](COMPONENTS.md#images)). Topologies differ by config and environment, not by code.
+- **The model**: the smoke run as processes uses the console's fake model (`web/apps/console/e2e/fake-model.ts`), so it needs no key and is deterministic. The containerized ways call the real Anthropic API with `ANTHROPIC_API_KEY`, and runs fail with `model_auth` without it. `fakellm` (T004), a scripted model server image, is planned for containerized runs with no key.
+- **Dependencies for integration tests** run as processes, not containers: `make integration STORE=postgres` starts a throwaway Postgres and Redis (`scripts/integration.sh`; `--deps` keeps them up), which also works in cloud sessions, which have no Docker.
 
 ### 3.2 Topologies
 
-| Topology | Containers | Use it for |
-|---|---|---|
-| `allinone` (default) | `agentkit` (all components, SQLite), `fakellm` | Day-to-day dev, fastest loop |
-| `split` | `harness` and `tools` (both the `agentkit` image, different config), `postgres`, `fakellm` | Remote tools over gRPC, Postgres, multi-tenancy |
-| `mcp` | `split` + fixture MCP server(s) | MCP client/server/bridge |
-| `secrets` | `allinone` + `vault` + `localstack` | Credential backends |
-| `obs` | add-on: `otel-collector` + `jaeger` | Traces and metrics; combine with any topology |
-| `deps` | `postgres`, `vault`, `localstack` only | Running integration tests from the host |
+| Topology | Where | What runs | Use it for |
+|---|---|---|---|
+| One process | `scripts/try-agent.sh` (`--docker` for the `agentkit` image) | `agent,web,mcp-server` in one process, memory store, real model | A real agent run, tools, MCP at `/mcp/<toolset>` |
+| Split, processes | `make smoke` (`scripts/smoke.sh`) | API, runner, toolsets built with each image's tags, the fake model; memory store, or Postgres with `AGENTKIT_STORE` | Default check; CI runs it. No Docker, no key |
+| Split, Compose | `make compose-up` (`scripts/compose-local.sh`), console on http://localhost:30081 | The split images, `migrate`, Postgres 17 ([deploy/compose](../deploy/compose/README.md)) | The images and their wiring, Postgres, on any Docker |
+| All in one, Compose | `scripts/compose-local.sh up allinone`, console on http://localhost:30082 | The `agentkit-local` image alone on SQLite | The one-machine image |
+| Split, Kubernetes | `make k8s-up` (`scripts/k8s-local.sh`), console on http://localhost:30080 | The split images, the API's migrate init container, Postgres 17 as a StatefulSet ([deploy/k8s](../deploy/k8s/README.md)) | Manifests, probes, services, the cluster's secret |
 
-Fixed host ports (documented in `deploy/local/README.md`) so scripts and tests never guess.
+Fixed host ports, so scripts and tests never guess: 30080 (Kubernetes), 30081 and 30082 (Compose, bound to 127.0.0.1), 18480 to 18483 (`make smoke`'s API, model, toolsets and runner; `PORT` moves them).
 
-### 3.3 The script
+### 3.3 The scripts
 
-One entry point, `scripts/dev.sh`:
+`scripts/compose-local.sh` and `scripts/k8s-local.sh` take the same commands:
 
 ```
-scripts/dev.sh up [topology...]     build images, start, block until healthy
-scripts/dev.sh down [-v]            stop (and wipe volumes)
-scripts/dev.sh status               containers, health, URLs
-scripts/dev.sh logs [service]       follow logs
-scripts/dev.sh smoke [topology]     run the e2e suite against what is running
-scripts/dev.sh reset                down -v, then up the same topology
-scripts/dev.sh run [config]         go run agentkit on the host (no Docker), SQLite in .data/
+up            build the images, start, block until every service is ready; print the console's URL and token
+status        containers or pods, health, URLs
+token         the API token the console asks for
+logs [svc]    follow a service's logs (api with its migrate step, runner, toolsets, postgres)
+smoke         run the e2e suite (test/e2e) against what is running
+down          compose: down keeps the data, down -v (make compose-down) deletes it; k8s: delete the namespace
 ```
 
-- `up` waits on container healthchecks (`/readyz`), so when it returns, the stack is usable.
-- `run` is the fastest inner loop: `go run ./cmd/agentkit` with the `allinone` config, no image build at all.
-- `scripts/k8s-local.sh up|status|down` (`make k8s-up`) deploys the split topology to Docker Desktop's Kubernetes with the kustomize overlay `deploy/k8s/local` (T006).
-- `Makefile` holds build, lint, and test targets and delegates environment work to the scripts.
+- `up` waits on the components' own readiness (`/readyz`, through `agentkit healthcheck -ready` inside the distroless containers and from the host), so when it returns, the stack is usable. `SKIP_BUILD=1` reuses the images already built.
+- The secrets (random RPC and API tokens, the Postgres password, the model key) are made on the first `up` and kept after that, since Postgres keeps the password it started with: in the `agentkit` Secret on Kubernetes, in `deploy/compose/.env` (ignored by git) for Compose. Nothing prints a secret but the API token.
+- `Makefile` holds build, lint and test targets (`compose-*`, `k8s-*`, `smoke`, `integration`) and delegates environment work to the scripts. The `local-env` skill picks a way for a change and reads the logs when it fails.
 
 ### 3.4 Layout
 
 ```
-Dockerfile
+Dockerfile                one file, every image (BIN, TAGS)
 Makefile
-.golangci.yml
 scripts/
-  dev.sh
-  kind.sh
+  smoke.sh                the split deployment as processes, then the suite
+  compose-local.sh        Docker Compose: up, status, token, logs, smoke, down
+  k8s-local.sh            Docker Desktop's Kubernetes: the same commands
+  try-agent.sh            one process (or the image) with a real model
+  integration.sh          Postgres and Redis as processes, then the integration tier
 deploy/
-  local/
-    compose.yaml          all services, gated by profiles
-    config/*.yaml         agentkit config per topology and per container
-    fakellm/*.jsonl       default scripts for fakellm
-    README.md             ports, topologies, env vars
   k8s/
-    base/
-    overlays/<topology>/
+    base/                 the split deployment; config.json, shared by every way
+    local/                overlay for Docker Desktop: Postgres, limits, node port 30080
+  compose/
+    compose.yaml          the same deployment in Compose; profile allinone
+    README.md             ports, services, configs, secrets and mounts
+  local/agent/            configs for try-agent.sh
+  example/                the agentkit image with the demo toolset
 cmd/
   agentkit/               the binary: parse config, start components
-  fakellm/                scripted model server (dev/test only)
 test/
   e2e/                    black-box smoke tests (//go:build e2e)
 internal/

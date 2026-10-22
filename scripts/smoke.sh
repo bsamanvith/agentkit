@@ -29,7 +29,8 @@
 # needs psql), PORT (default 18480; the others are the next three ports). Needs
 # Go and Node 22.18 or later, and Docker for --images.
 #
-# make k8s-smoke runs the same suite against make k8s-up's deployment.
+# make k8s-smoke and make compose-smoke run the same suite against make
+# k8s-up's and make compose-up's deployments.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -53,8 +54,9 @@ stop() {
 }
 trap stop EXIT
 
-# The config of deploy/k8s/base, so the suite sees what the cluster runs.
-sed -n '/config.json: |/,/^---/p' deploy/k8s/base/split.yaml | sed '1d;$d;s/^    //' >"$dir/config.json"
+# The config of deploy/k8s/base (and deploy/compose), so the suite sees what
+# the cluster runs.
+cp deploy/k8s/base/config.json "$dir/config.json"
 chmod 644 "$dir/config.json" # the images run as uid 65532
 
 export AGENTKIT_RPC_TOKEN=smoke-rpc-token-0123456789

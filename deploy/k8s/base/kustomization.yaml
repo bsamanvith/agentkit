@@ -2,3 +2,11 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - split.yaml
+# The agents and toolsets every pod mounts at /etc/agentkit/config.json. The
+# file is shared: deploy/compose mounts it too, and scripts/smoke.sh runs on
+# it, so the processes, Compose and the cluster run the same agents.
+configMapGenerator:
+  - name: agentkit-config
+    files: [config.json]
+    options:
+      disableNameSuffixHash: true

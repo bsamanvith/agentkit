@@ -15,8 +15,9 @@ A Go kit for running Claude agents: one binary (`cmd/agentkit`), a web console
   (the split deployment as processes, fake model); `make fuzz`; `make golden`;
   `make eval` (tool-use evals on real Claude, `evals/`); `make record-anthropic`.
 - `make web-check` for the console; `make image` and `make image-size`.
-- Run it: `scripts/try-agent.sh` (one process, real model), `make k8s-up`
-  (Docker Desktop's Kubernetes). The `local-env` skill picks one.
+- Run it: `scripts/try-agent.sh` (one process, real model), `make compose-up`
+  (Docker Compose) or `make k8s-up` (Docker Desktop's Kubernetes), the same
+  split deployment either way. The `local-env` skill picks one.
 
 ## Where things are
 

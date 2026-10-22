@@ -340,7 +340,10 @@ const server = createServer((req, res) => {
       });
       send(res, "content_block_delta", {
         index: 0,
-        delta: { type: "input_json_delta", partial_json: JSON.stringify({ query: "restocking fee for an opened e-bike" }) },
+        delta: {
+          type: "input_json_delta",
+          partial_json: JSON.stringify({ query: "restocking fee for an opened e-bike" }),
+        },
       });
       send(res, "content_block_stop", { index: 0 });
       return finish(res, "tool_use", 20);

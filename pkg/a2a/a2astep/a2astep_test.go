@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -127,6 +128,7 @@ type fake struct {
 	mu      sync.Mutex
 	tasks   map[string]a2a.Task
 	started []string
+	ids     []string // the message IDs of the started tasks
 	next    a2a.Task // what Start creates
 }
 
@@ -136,6 +138,7 @@ func (f *fake) Start(_ context.Context, msg a2a.Message) (a2a.Task, error) {
 	t := f.next
 	f.tasks[t.ID] = t
 	f.started = append(f.started, *msg.Parts[0].Text)
+	f.ids = append(f.ids, msg.MessageID)
 	return t, nil
 }
 
@@ -224,6 +227,66 @@ func TestSavedTaskStates(t *testing.T) {
 			t.Errorf("%v, want ErrNeedsInput", err)
 		}
 	})
+}
+
+// crashing is a saver whose first Save fails, as if the process stopped
+// between the agent creating the task and the step saving its ID.
+type crashing struct {
+	*a2astep.MemorySaver
+	mu      sync.Mutex
+	crashed bool
+}
+
+func (c *crashing) Save(ctx context.Context, runID, path, id string) error {
+	c.mu.Lock()
+	first := !c.crashed
+	c.crashed = true
+	c.mu.Unlock()
+	if first {
+		return errors.New("crash")
+	}
+	return c.MemorySaver.Save(ctx, runID, path, id)
+}
+
+// TestCrashBeforeSaveResendsTheSameMessage: a step run again after a crash
+// before its save sends the prompt with the same message ID, so the agent
+// can tell it is the same message; a retry after a failed task gets a new
+// one; and the output is labelled third-party data.
+func TestCrashBeforeSaveResendsTheSameMessage(t *testing.T) {
+	t.Parallel()
+	f := &fake{tasks: map[string]a2a.Task{}, next: done("t1", a2a.StateFailed, "boom")}
+	saver := &crashing{MemorySaver: a2astep.NewMemorySaver()}
+	step, err := a2astep.New("ask", f, saver, a2astep.Keys{Input: "prompt", Output: "answer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := func() (*flow.State, error) {
+		return flow.Run(t.Context(), "r", step, flow.WithCheckpointer(flow.NewMemory()), flow.WithState(input("go")))
+	}
+	if _, err := run(); err == nil {
+		t.Fatal("the crash: no error")
+	}
+	var te *a2astep.TaskError
+	if _, err := run(); !errors.As(err, &te) {
+		t.Fatalf("run again: %v, want the TaskError", err)
+	}
+	if !strings.Contains(te.Error(), "third-party") {
+		t.Errorf("TaskError %q: want the agent's message labelled third-party", te.Error())
+	}
+	f.mu.Lock()
+	f.next = done("t2", a2a.StateCompleted, "fine")
+	f.mu.Unlock()
+	st, err := run() // a retry of the failed t1
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f.ids) != 3 || f.ids[0] == "" || f.ids[0] != f.ids[1] || f.ids[2] == f.ids[1] {
+		t.Errorf("message IDs %q: want the first two equal (the crash), the retry's new", f.ids)
+	}
+	out, _ := flow.Get[a2astep.Output](st, "answer")
+	if out.TaskID != "t2" || out.Notice != a2astep.Notice || !strings.Contains(out.Notice, "Third-party") {
+		t.Errorf("output %+v: want t2 labelled third-party", out)
+	}
 }
 
 func TestNewChecksItsConfig(t *testing.T) {

@@ -78,9 +78,15 @@ needed: the remote agent is our own T067 server in process).
   the card URL and the picked interface only: interfaces on another origin
   are never used, redirects are never followed (`CheckRedirect` returns the
   3xx as a `StatusError`), and every credential value (and its JSON-escaped
-  form, and the token alone inside "Bearer ...") is replaced by
-  `[redacted]` in every response body and error text before anything reads
-  it. Nothing logs headers.
+  form, the token alone inside "Bearer ...", and for basic auth the
+  decoded pair and the password) is replaced by `[redacted]` in every
+  response body and error text before anything reads it. A JSON body with
+  escapes is written again by encoding/json first, so a value escaped
+  another way (`a`, `\/`) is found too; a stream event is redacted
+  whole. Nothing logs headers. The cards' URLs are the operator's (toolset
+  settings, never added at run time), so `pkg/netguard` (for URLs users
+  supply, E19) is not used; the card cannot point the client anywhere else,
+  since only its own origin is called.
 - *Building reads the cards* (the description comes from the card), so
   unlike connectors `Build` makes requests, with `connect_timeout` (15s).
   That is why the toolset is not under `connectors/` and does not run
@@ -100,7 +106,10 @@ needed: the remote agent is our own T067 server in process).
   that fails is an output with `state: failed`, not a tool error, so the
   model reads why; transport and protocol failures are `ErrToolFailed`,
   and what the model can fix (unknown task, refused params, unsupported
-  operation or content type) `ErrInvalidInput`. The card's description
+  operation or content type) `ErrInvalidInput`; both are labelled, like an
+  output, as possibly quoting the third-party agent, and the agent's text
+  in them is sanitized and cut at 300 runes. A task or context ID over
+  1,024 bytes is `ErrProtocol` (IDs reach the model whole). The card's description
   and skill names are sanitized (hidden characters dropped, 1,024 runes):
   a small copy of `pkg/mcp/client.SanitizeDescription`, because importing
   that package would link the MCP SDK.
@@ -115,7 +124,15 @@ needed: the remote agent is our own T067 server in process).
   `TaskNotFound` (it may have had effects, so the prompt is not sent
   again). Input-required or auth-required fail the step with
   `ErrNeedsInput` (no one to ask in a flow). A crash between the agent
-  creating the task and the save still starts a second task.
+  creating the task and the save sends the prompt again, with the same
+  message ID (a hash of run ID, step path and the failed task it retries),
+  so an agent that deduplicates messages answers with the first task; one
+  that does not (A2A has no idempotency key, and our server does not)
+  starts a second task. The output carries a `notice` (third-party data),
+  and the agent's text in a `TaskError` or `ErrNeedsInput` is labelled.
+- *Wait* reads a task again at once when its subscription says it settled,
+  but only once in a row: an agent whose stream and GetTask disagree is then
+  polled on the interval, not called in a tight loop.
 - *Image placement.* Behind `noa2a` with the server: agentkit, local and
   dev have it; runner, toolsets and api do not. So **in the split
   deployment remote agents are not available as tools** (the toolsets image
@@ -139,7 +156,10 @@ subscribing to a terminal task), `TestWaitSubscribesOrPolls`,
 `TestCredentialSlot`,
 `TestMalformedResponses`, `TestReplayedRemoteAgent` (cassettes, hermetic
 client), `TestSavedTaskStates`, `TestStepRunsATask`, `FuzzValidateCard`,
-and the Examples.
+and the Examples. From the review: `TestRedactsEchoesInAnyEncoding`,
+`TestRedactsAcrossStreamWrites`, `TestErrorsAreLabelledThirdParty`,
+`TestWaitDoesNotSpin`, `TestRejectsHugeIDs`,
+`TestCrashBeforeSaveResendsTheSameMessage`.
 
 **Mutation self-check.** Each bug planted alone; each made a test fail:
 redirects followed (TestCredentialNeverLeaks/redirect); an interface on

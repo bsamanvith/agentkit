@@ -138,7 +138,10 @@ func (c *Client) SendMessage(ctx context.Context, req a2a.SendMessageRequest) (a
 
 // SendStreamingMessage sends a message (SendStreamingMessage) and yields
 // the stream's items: the task, its updates and its last status. The stream
-// ends when the agent closes it; an error ends it too.
+// ends when the agent closes it; an error ends it too. Each event is
+// redacted whole; a credential an agent splits across two artifact chunks
+// is only redacted in the task GetTask (and so Wait) returns, which is what
+// the toolset outputs.
 func (c *Client) SendStreamingMessage(ctx context.Context, req a2a.SendMessageRequest) iter.Seq2[a2a.StreamResponse, error] {
 	if err := c.prepare(&req); err != nil {
 		return func(yield func(a2a.StreamResponse, error) bool) { yield(a2a.StreamResponse{}, err) }
@@ -153,7 +156,23 @@ func (c *Client) GetTask(ctx context.Context, id string) (a2a.Task, error) {
 	if err == nil && t.ID == "" {
 		err = fmt.Errorf("%w: GetTask answered a task without an id", ErrProtocol)
 	}
+	if err == nil {
+		err = checkIDs("GetTask", t.ID, t.ContextID)
+	}
 	return t, err
+}
+
+// MaxIDBytes is the longest task or context ID taken from an agent: IDs go
+// to the model whole, so they are not cut like the answer.
+const MaxIDBytes = 1024
+
+func checkIDs(method string, ids ...string) error {
+	for _, id := range ids {
+		if len(id) > MaxIDBytes {
+			return fmt.Errorf("%w: %s answered an id longer than %d bytes", ErrProtocol, method, MaxIDBytes)
+		}
+	}
+	return nil
 }
 
 // CancelTask asks the agent to cancel a task (CancelTask) and returns it
@@ -203,7 +222,7 @@ func (c *Client) remoteError(code int, reason, msg string, status int) error {
 	if code == 0 {
 		code = codeOf(reason)
 	}
-	return &a2a.Error{Code: code, Reason: reason, Status: status, Message: cut(c.t.redactString(msg), maxMessageRunes)}
+	return &a2a.Error{Code: code, Reason: reason, Status: status, Message: sanitize(c.t.redactString(msg), maxMessageRunes)}
 }
 
 var sentinels = []*a2a.Error{
@@ -436,7 +455,7 @@ func (c *Client) restStreamError(data []byte) error {
 		}
 	}
 	if reason == "" {
-		return &StatusError{StatusCode: v.Error.Code, Message: cut(v.Error.Message, maxMessageRunes)}
+		return &StatusError{StatusCode: v.Error.Code, Message: sanitize(v.Error.Message, maxMessageRunes)}
 	}
 	return c.remoteError(0, reason, v.Error.Message, v.Error.Code)
 }
@@ -458,9 +477,15 @@ func (c *Client) start(ctx context.Context, req a2a.SendMessageRequest) (a2a.Tas
 		if res.Task.ID == "" {
 			return a2a.Task{}, fmt.Errorf("%w: SendMessage answered a task without an id", ErrProtocol)
 		}
+		if err := checkIDs("SendMessage", res.Task.ID, res.Task.ContextID); err != nil {
+			return a2a.Task{}, err
+		}
 		return *res.Task, nil
 	}
 	m := res.Message
+	if err := checkIDs("SendMessage", m.ContextID); err != nil {
+		return a2a.Task{}, err
+	}
 	return a2a.Task{ContextID: m.ContextID, Status: a2a.TaskStatus{State: a2a.StateCompleted, Message: m}}, nil
 }
 
@@ -486,6 +511,10 @@ func Terminal(s string) bool {
 // ends first.
 func (c *Client) Wait(ctx context.Context, id string) (a2a.Task, error) {
 	subscribe := c.card.Capabilities.Streaming
+	// again: the last subscription said the task settled, so it is read at
+	// once; if GetTask disagrees, the next read waits a PollInterval, so an
+	// agent that contradicts itself is not called in a tight loop.
+	again := false
 	for {
 		t, err := c.GetTask(ctx, id)
 		if err != nil {
@@ -494,19 +523,21 @@ func (c *Client) Wait(ctx context.Context, id string) (a2a.Task, error) {
 		if Settled(t.Status.State) {
 			return t, nil
 		}
-		if subscribe {
+		if subscribe && !again {
 			settled, err := c.untilSettled(ctx, id)
 			switch {
 			case ctx.Err() != nil:
 				return a2a.Task{}, ctx.Err()
-			case errors.Is(err, a2a.ErrUnsupported):
-				continue // it settled between GetTask and the subscription
+			case errors.Is(err, a2a.ErrUnsupported), err == nil && settled:
+				// It settled (between GetTask and the subscription, or
+				// in it): read it again.
+				again = true
+				continue
 			case err != nil:
 				subscribe = false // poll from now on
-			case settled:
-				continue
 			}
 		}
+		again = false
 		timer := c.clk.NewTimer(c.poll)
 		select {
 		case <-ctx.Done():

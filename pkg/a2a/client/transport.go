@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -59,8 +60,21 @@ func newTransport(cfg Config) *transport {
 	for _, vs := range cfg.Header {
 		for _, v := range vs {
 			t.addSecret(v)
-			if _, rest, ok := strings.Cut(v, " "); ok { // "Bearer <token>"
-				t.addSecret(strings.TrimSpace(rest))
+			scheme, rest, ok := strings.Cut(v, " ")
+			if !ok {
+				continue
+			}
+			rest = strings.TrimSpace(rest)
+			t.addSecret(rest) // "Bearer <token>"
+			if strings.EqualFold(scheme, "Basic") {
+				// "Basic base64(user:password)": the pair and the password
+				// too, as an agent could echo them decoded.
+				if b, err := base64.StdEncoding.DecodeString(rest); err == nil {
+					t.addSecret(string(b))
+					if _, pw, ok := strings.Cut(string(b), ":"); ok {
+						t.addSecret(pw)
+					}
+				}
 			}
 		}
 	}
@@ -77,22 +91,69 @@ func (t *transport) addSecret(v string) {
 	if len(v) < minSecret {
 		return
 	}
-	t.secrets = append(t.secrets, []byte(v))
-	if b, err := json.Marshal(v); err == nil && string(b[1:len(b)-1]) != v {
-		t.secrets = append(t.secrets, b[1:len(b)-1]) // as it appears inside JSON
+	// As it is and as it appears inside JSON, with and without HTML
+	// escaping.
+	for _, s := range [][]byte{[]byte(v), jsonString(v, true), jsonString(v, false)} {
+		if !slices.ContainsFunc(t.secrets, func(o []byte) bool { return bytes.Equal(o, s) }) {
+			t.secrets = append(t.secrets, s)
+		}
 	}
+}
+
+// jsonString is v as encoding/json writes it inside a JSON string, without
+// the quotes.
+func jsonString(v string, escapeHTML bool) []byte {
+	var buf bytes.Buffer
+	e := json.NewEncoder(&buf)
+	e.SetEscapeHTML(escapeHTML)
+	_ = e.Encode(v)
+	b := bytes.TrimSuffix(buf.Bytes(), []byte("\n"))
+	return b[1 : len(b)-1]
 }
 
 var redacted = []byte("[redacted]")
 
-// redact replaces every credential value in b.
+// redact replaces every credential value in b. A JSON body with escapes is
+// first written again in encoding/json's own form, so that a value escaped
+// another way (`a`, `\/`), which decoding would give back whole, is
+// found too.
 func (t *transport) redact(b []byte) []byte {
+	if len(t.secrets) == 0 {
+		return b
+	}
+	if bytes.IndexByte(b, '\\') >= 0 {
+		if c, ok := canonicalJSON(b); ok {
+			b = c
+		}
+	}
 	for _, s := range t.secrets {
 		if bytes.Contains(b, s) {
 			b = bytes.ReplaceAll(b, s, redacted)
 		}
 	}
 	return b
+}
+
+// canonicalJSON is the one JSON value in b written again by encoding/json
+// (numbers as they are, no HTML escaping); false when b is not one JSON
+// value.
+func canonicalJSON(b []byte) ([]byte, bool) {
+	d := json.NewDecoder(bytes.NewReader(b))
+	d.UseNumber()
+	var v any
+	if d.Decode(&v) != nil {
+		return nil, false
+	}
+	if _, err := d.Token(); !errors.Is(err, io.EOF) {
+		return nil, false
+	}
+	var buf bytes.Buffer
+	e := json.NewEncoder(&buf)
+	e.SetEscapeHTML(false)
+	if e.Encode(v) != nil {
+		return nil, false
+	}
+	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), true
 }
 
 func (t *transport) redactString(s string) string { return string(t.redact([]byte(s))) }
@@ -173,7 +234,7 @@ func errorText(body []byte) string {
 	} else if !bytes.HasPrefix(bytes.TrimSpace(body), []byte("<")) {
 		s = string(body)
 	}
-	return cut(strings.TrimSpace(s), maxMessageRunes)
+	return sanitize(s, maxMessageRunes)
 }
 
 // cut keeps at most n runes of s, marking the cut.

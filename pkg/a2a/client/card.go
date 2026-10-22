@@ -148,13 +148,15 @@ func sameOrigin(a, b *url.URL) bool {
 }
 
 func hostPort(u *url.URL) string {
-	if u.Port() != "" {
-		return u.Host
+	port := u.Port()
+	switch {
+	case port != "":
+	case u.Scheme == "https":
+		port = "443"
+	default:
+		port = "80"
 	}
-	if u.Scheme == "https" {
-		return u.Hostname() + ":443"
-	}
-	return u.Hostname() + ":80"
+	return net.JoinHostPort(u.Hostname(), port)
 }
 
 func loopback(host string) bool {

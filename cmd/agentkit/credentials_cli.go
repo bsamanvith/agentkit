@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/bsamanvith/agentkit/pkg/credentials"
+	"github.com/bsamanvith/agentkit/pkg/credentials/connect"
 	"github.com/bsamanvith/agentkit/pkg/tenancy"
 )
 
@@ -72,6 +73,9 @@ func (c cli) credentialsPut(ctx context.Context, args []string) error {
 	tn, err := tenancy.NewTenant(*tenant)
 	if err != nil {
 		return fmt.Errorf("-tenant: %w", err)
+	}
+	if tn.ID() == connect.FlowTenant {
+		return fmt.Errorf("-tenant: %q is reserved for the connect flows", connect.FlowTenant)
 	}
 	cfg, err := loadServeConfig(*configPath)
 	if err != nil {

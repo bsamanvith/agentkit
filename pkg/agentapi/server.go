@@ -1153,7 +1153,7 @@ func (s *Server) leave(h *hub) {
 			return
 		}
 		s.log.Info("interrupting a run nobody follows", "run_id", h.runID, "grace", s.cfg.grace.String())
-		if _, err := s.runs.Interrupt(tenancy.With(context.Background(), h.tenant), h.runID); err != nil {
+		if _, err := s.interrupt(tenancy.With(context.Background(), h.tenant), h.runID); err != nil {
 			s.log.Warn("interrupting a run nobody follows", "run_id", h.runID, "err", err)
 		}
 	}()

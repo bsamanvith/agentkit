@@ -22,3 +22,10 @@ export const users = {
 export const serverKeyCanary = "t064-server-key-canary-5e1d";
 export const typedKeyCanary = "t064-typed-key-canary-90ab";
 export const providerCanary = "t064-provider-canary-c3f7";
+// The MCP servers tests' server (mcp.spec.ts, e2e/mcp.json: servers added at
+// run time, T096) and the fake MCP server and registry it adds
+// (fake-mcp.ts). The server reads the fake's token from FAKE_MCP_TOKEN, a
+// canary that must never reach a page.
+export const mcpPort = 18485;
+export const fakeMcpPort = 18484;
+export const mcpTokenCanary = "t096-mcp-token-canary-4b2e";

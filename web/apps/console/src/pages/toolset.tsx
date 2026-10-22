@@ -3,21 +3,21 @@
 // that use it, its MCP URL with a `claude mcp add` command, and each tool
 // with a readable field list and its raw schema.
 
-import type { Tool, Toolset } from "@agentkit/agent-ui/api";
+import { ApiError, type Tool, type Toolset } from "@agentkit/agent-ui/api";
 import { Status } from "@agentkit/ui";
 import { Button } from "@agentkit/ui/components/button";
 import { ChevronRight, KeyRound } from "lucide-react";
 import { useState } from "react";
-import { Link } from "react-router";
-import { useResource } from "../api";
-import { listAgents } from "../lists";
+import { Link, useLocation, useNavigate } from "react-router";
+import { useApi, useResource } from "../api";
+import { listAgents, useLists } from "../lists";
 import { credentialWords } from "./credential";
 import { Loaded } from "./page";
-import { Callout, CopyLine, Facts, Section } from "./parts";
+import { Callout, CopyLine, Facts, Modal, Section } from "./parts";
 import { mcpAddCommand, mcpURL } from "./mcp";
 import { fields, type Field } from "./schema";
 
-function FieldList({ list, label }: { list: Field[]; label: string }) {
+export function FieldList({ list, label }: { list: Field[]; label: string }) {
   if (list.length === 0) return <p className="text-(length:--ak-text-sm) text-ak-muted">{label}: none.</p>;
   return (
     <table className="w-full border-collapse text-left text-(length:--ak-text-sm)">
@@ -153,6 +153,7 @@ function UsedBy({ name }: { name: string }) {
 }
 
 export function ToolsetDetail({ toolset: t }: { toolset: Toolset }) {
+  const reviewed = (useLocation().state as { reviewed?: boolean } | null)?.reviewed === true;
   const cred = credentialWords(t.credential);
   const url = mcpURL(t, window.location.origin);
   return (
@@ -166,9 +167,27 @@ export function ToolsetDetail({ toolset: t }: { toolset: Toolset }) {
           The toolsets component may be down. Agents that use it go on without its tools.
         </Callout>
       ) : t.status === "review_needed" ? (
-        <Callout title={`${t.name} changed or added tools since they were approved.`}>
+        <Callout
+          title={`${t.name} has new or changed tools since they were approved.`}
+          actions={
+            t.runtime ? (
+              <Button asChild size="sm">
+                <Link to={`/toolsets/${encodeURIComponent(t.name)}/review`}>Review</Link>
+              </Button>
+            ) : undefined
+          }
+        >
           Those tools are off until an admin reviews them. The ones already approved keep working.
         </Callout>
+      ) : t.status === "disabled" ? (
+        <Callout tone="info" title="Turned off.">
+          Agents get none of its tools until an admin turns it on again.
+        </Callout>
+      ) : null}
+      {reviewed ? (
+        <p role="status" className="text-(length:--ak-text-sm) text-ak-text-2">
+          Review saved. Approved tools reach agents from their next turn.
+        </p>
       ) : null}
       {cred && cred.tone === "warn" ? (
         <Callout icon={KeyRound} title={`${cred.word}: ${cred.source}.`}>
@@ -213,7 +232,85 @@ export function ToolsetDetail({ toolset: t }: { toolset: Toolset }) {
       ) : (
         <p className="text-(length:--ak-text-sm) text-ak-muted">The MCP URL appears once the toolset is ready.</p>
       )}
-      {t.status === "skipped" ? null : <Tools name={t.name} />}
+      {t.status === "skipped" ? null : <Tools key={`${t.status}\n${t.tool_count}`} name={t.name} />}
+    </>
+  );
+}
+
+/**
+ * A runtime toolset's actions (T096): the tools' review, turn it off or on
+ * (PATCH), and Remove, which asks first (DELETE).
+ */
+export function ToolsetActions({ toolset: t }: { toolset: Toolset }) {
+  const { client } = useApi();
+  const { reloadToolsets } = useLists();
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const [error, setError] = useState("");
+  const fail = (what: string) => (e: unknown) => {
+    setBusy(false);
+    setError(e instanceof ApiError ? `${what}: ${e.message} (${e.code}).` : `${what}: couldn't reach agentkit.`);
+  };
+  const toggle = () => {
+    setBusy(true);
+    setError("");
+    client.setToolsetEnabled(t.name, t.status === "disabled").then(
+      () => {
+        setBusy(false);
+        reloadToolsets();
+      },
+      fail(t.status === "disabled" ? "It wasn't turned on" : "It wasn't turned off"),
+    );
+  };
+  const remove = () => {
+    setBusy(true);
+    setError("");
+    client.deleteToolset(t.name).then(() => {
+      setAsking(false);
+      reloadToolsets();
+      void navigate("/toolsets");
+    }, fail("It wasn't removed"));
+  };
+  return (
+    <>
+      {t.status !== "review_needed" ? (
+        <Button asChild size="sm" variant="outline">
+          <Link to={`/toolsets/${encodeURIComponent(t.name)}/review`}>Review tools</Link>
+        </Button>
+      ) : null}
+      <Button type="button" size="sm" variant="outline" disabled={busy} onClick={toggle}>
+        {t.status === "disabled" ? "Turn on" : "Turn off"}
+      </Button>
+      <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => setAsking(true)}>
+        Remove
+      </Button>
+      {error && !asking ? (
+        <span role="alert" className="basis-full text-xs text-ak-bad">
+          {error}
+        </span>
+      ) : null}
+      {asking ? (
+        <Modal title={`Remove ${t.name}?`} onClose={() => setAsking(false)}>
+          <p className="mb-4 text-(length:--ak-text-sm) text-ak-text-2">
+            Agents get none of its tools from their next turn, and its reviews are forgotten. Adding it again starts a
+            new review.
+          </p>
+          {error ? (
+            <p role="alert" className="mb-3 text-(length:--ak-text-sm) text-ak-bad">
+              {error}
+            </p>
+          ) : null}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setAsking(false)} data-autofocus="">
+              Cancel
+            </Button>
+            <Button type="button" variant="destructive" disabled={busy} onClick={remove}>
+              Remove {t.name}
+            </Button>
+          </div>
+        </Modal>
+      ) : null}
     </>
   );
 }

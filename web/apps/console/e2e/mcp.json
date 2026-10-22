@@ -1,0 +1,34 @@
+{
+  "mcp": {
+    "toolsets": [{ "name": "demo", "type": "demo" }]
+  },
+  "agents": [
+    {
+      "name": "default",
+      "description": "An agent of the config file: the add form greys it out.",
+      "system": "The MCP servers tests' config agent.",
+      "toolsets": ["demo"]
+    }
+  ],
+  "runtime_toolsets": {
+    "allow_hosts": ["127.0.0.1"],
+    "header_env": ["FAKE_MCP_TOKEN"],
+    "registry": { "url": "http://127.0.0.1:18484" }
+  },
+  "auth": {
+    "users": [
+      {
+        "username": "ada",
+        "password_hash": "$argon2id$v=19$m=19456,t=2,p=1$2OgKvobnk2nfou4bHP9Rzw$2je9UU6OKhis7YK57di8GLCHNmuilH2fjCxyjlrJHgA",
+        "tenant": "default",
+        "roles": ["admin"]
+      },
+      {
+        "username": "uma",
+        "password_hash": "$argon2id$v=19$m=19456,t=2,p=1$6O66JJKi5gSzJvuYh5Wsbg$yIbneZkvzhO4rUJ7VX5uuHJBRrIDyCmKEIoLtUx/Lw0",
+        "tenant": "default",
+        "roles": ["user"]
+      }
+    ]
+  }
+}

@@ -699,3 +699,71 @@ describe("the catalog and credentials (T064)", () => {
     expect(err).toMatchObject({ status: 404, code: "not_found" });
   });
 });
+
+describe("toolsets added at run time and the MCP Registry (T096, T097)", () => {
+  const jsonFetch = (body: unknown, seen: Request[], status = 200) =>
+    (async (input: RequestInfo | URL, init?: RequestInit) => {
+      seen.push(new Request(new URL(String(input), "http://test.invalid"), init));
+      return Response.json(body, { status });
+    }) as typeof fetch;
+  const ts = { v: 1, name: "linear", status: "review_needed", tools: null };
+
+  it("adds, reviews, changes and removes by escaped name, and checks the answer is a toolset", async () => {
+    const seen: Request[] = [];
+    const c = new AgentClient({ fetch: jsonFetch(ts, seen) });
+    const added = await c.addToolset({ type: "mcp", name: "linear", url: "https://mcp.linear.app/mcp" });
+    expect(added.tools).toEqual([]); // null is an empty list
+    await c.getToolsetReview("a/b");
+    await c.reviewToolset("a/b", [{ name: "t", fingerprint: "f", decision: "approve", kind: "read", risk: "low" }]);
+    await c.setToolsetEnabled("a/b", false);
+    await new AgentClient({ fetch: async () => new Response(null, { status: 204 }) }).deleteToolset("a/b");
+    expect(seen.map((r) => `${r.method} ${new URL(r.url).pathname}`)).toEqual([
+      "POST /v1/toolsets",
+      "GET /v1/toolsets/a%2Fb/review",
+      "POST /v1/toolsets/a%2Fb/review",
+      "PATCH /v1/toolsets/a%2Fb",
+    ]);
+    expect(await seen[2]!.text()).toBe(
+      '{"tools":[{"name":"t","fingerprint":"f","decision":"approve","kind":"read","risk":"low"}]}',
+    );
+    expect(await seen[3]!.text()).toBe('{"enabled":false}');
+    await expect(new AgentClient({ fetch: jsonFetch({ v: 1 }, seen) }).getToolsetReview("x")).rejects.toBeInstanceOf(
+      BadResponseError,
+    );
+    const refused = { v: 1, error: { code: "auth_required", message: "the server answered 401" } };
+    await expect(
+      new AgentClient({ fetch: jsonFetch(refused, seen, 422) }).addToolset({ type: "mcp", name: "x", url: "u" }),
+    ).rejects.toMatchObject({ status: 422, code: "auth_required" });
+  });
+
+  it("searches the registry with the query escaped, and reads a missing list as none", async () => {
+    const seen: Request[] = [];
+    const body = { v: 1, query: "a&b", registry: "r", restricted: true, servers: [{ name: "s", remotes: null }] };
+    const found = await new AgentClient({ fetch: jsonFetch(body, seen) }).searchMCPRegistry("a&b", { limit: 5 });
+    expect(found).toMatchObject({ restricted: true, servers: [{ name: "s", remotes: [] }] });
+    expect(new URL(seen[0]!.url).searchParams.get("q")).toBe("a&b");
+    expect(new URL(seen[0]!.url).searchParams.get("limit")).toBe("5");
+  });
+
+  it("lists a stored agent's versions and saves a new one", async () => {
+    const seen: Request[] = [];
+    const list = { v: 1, versions: [{ name: "h", version: 1, published: true, definition: {}, created_at: "" }] };
+    expect(await new AgentClient({ fetch: jsonFetch(list, seen) }).listAgentVersions("h")).toMatchObject({
+      latest: 1,
+      published: 0,
+    });
+    // A deleted draft keeps its number: latest is the server's, not the highest listed.
+    const after = { ...list, latest: 4, published: 1 };
+    expect(await new AgentClient({ fetch: jsonFetch(after, seen) }).listAgentVersions("h")).toMatchObject({
+      latest: 4,
+      published: 1,
+    });
+    const saved = { v: 1, name: "h", version: 2, published: false, definition: {}, created_at: "" };
+    const c = new AgentClient({ fetch: jsonFetch(saved, seen) });
+    expect((await c.saveAgentVersion("h", { definition: {}, if_latest: 1 })).version).toBe(2);
+    expect(`${seen[2]!.method} ${new URL(seen[2]!.url).pathname}`).toBe("POST /v1/agents/h/versions");
+    await expect(
+      new AgentClient({ fetch: jsonFetch({ v: 1 }, seen) }).saveAgentVersion("h", { definition: {} }),
+    ).rejects.toBeInstanceOf(BadResponseError);
+  });
+});

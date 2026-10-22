@@ -13,10 +13,17 @@ export type { Toolset };
 export const listAgents = (c: AgentClient, signal: AbortSignal) => c.listAgents({ signal });
 export const listToolsets = (c: AgentClient, signal: AbortSignal) => c.listToolsets({ signal });
 
-/** The section's list, or null in a section that doesn't load it. */
-export type Lists = { agents: Resource<Agent[]> | null; toolsets: Resource<Toolset[]> | null };
+/**
+ * The section's list, or null in a section that doesn't load it, and a way
+ * to load the toolsets again after a page changed them (added, reviewed).
+ */
+export type Lists = {
+  agents: Resource<Agent[]> | null;
+  toolsets: Resource<Toolset[]> | null;
+  reloadToolsets: () => void;
+};
 
-export const ListsContext = createContext<Lists>({ agents: null, toolsets: null });
+export const ListsContext = createContext<Lists>({ agents: null, toolsets: null, reloadToolsets: () => {} });
 
 export function useLists(): Lists {
   return useContext(ListsContext);

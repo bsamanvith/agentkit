@@ -7,13 +7,22 @@ import {
   decodeEvent,
   isTerminal,
   decodeConversation,
+  type AddToolsetRequest,
   type Agent,
+  type AgentVersion,
+  type AgentVersionList,
   type AuthConfig,
   type ConnectResponse,
   type Conversation,
   type ConversationSummary,
   type CredentialInfo,
   type PutCredentialRequest,
+  type RegistrySearch,
+  type RegistryServer,
+  type ReviewTool,
+  type SaveAgentRequest,
+  type ServerToolset,
+  type ToolDecision,
   type Tool,
   type ToolList,
   type Toolset,
@@ -188,6 +197,86 @@ export class AgentClient {
       status: typeof b?.status === "string" ? b.status : "",
       tools: listField<Tool>(body, "tools", path),
     };
+  }
+
+  /**
+   * POST /v1/toolsets (agent:admin): probes an MCP server and adds it, every
+   * tool new and off until reviewed. 422 auth_required: it wants a
+   * credential; 422 server_unreachable; 403 url_not_allowed; 409 toolset_exists.
+   */
+  async addToolset(req: AddToolsetRequest, opts: RequestOptions = {}): Promise<ServerToolset> {
+    const resp = await this.#send("POST", "/v1/toolsets", JSON.stringify(req), "application/json", opts.signal);
+    return serverToolset(await this.#json(resp, "/v1/toolsets"), "/v1/toolsets");
+  }
+
+  /** GET /v1/toolsets/{name}/review (agent:admin): the toolset added at run time, with every tool's review. */
+  async getToolsetReview(name: string, opts: RequestOptions = {}): Promise<ServerToolset> {
+    const path = `/v1/toolsets/${encodeURIComponent(name)}/review`;
+    return serverToolset(await this.getJSON<unknown>(path, opts), path);
+  }
+
+  /** POST /v1/toolsets/{name}/review (agent:admin): decisions; 409 conflict when a tool changed since it was shown. */
+  async reviewToolset(name: string, tools: ToolDecision[], opts: RequestOptions = {}): Promise<ServerToolset> {
+    const path = `/v1/toolsets/${encodeURIComponent(name)}/review`;
+    const resp = await this.#send("POST", path, JSON.stringify({ tools }), "application/json", opts.signal);
+    return serverToolset(await this.#json(resp, path), path);
+  }
+
+  /** PATCH /v1/toolsets/{name} (agent:admin): turns a toolset added at run time on or off. */
+  async setToolsetEnabled(name: string, enabled: boolean, opts: RequestOptions = {}): Promise<ServerToolset> {
+    const path = `/v1/toolsets/${encodeURIComponent(name)}`;
+    const resp = await this.#send("PATCH", path, JSON.stringify({ enabled }), "application/json", opts.signal);
+    return serverToolset(await this.#json(resp, path), path);
+  }
+
+  /** DELETE /v1/toolsets/{name} (agent:admin): removes a toolset added at run time. */
+  async deleteToolset(name: string, opts: RequestOptions = {}): Promise<void> {
+    const path = `/v1/toolsets/${encodeURIComponent(name)}`;
+    const resp = await this.#send("DELETE", path, undefined, "application/json", opts.signal);
+    await resp.body?.cancel();
+  }
+
+  /** GET /v1/mcp-registry/search (agent:admin): servers to add by URL. 404: no registry; 502 registry_unavailable. */
+  async searchMCPRegistry(q: string, opts: RequestOptions & { limit?: number } = {}): Promise<RegistrySearch> {
+    const params = new URLSearchParams({ q });
+    if (opts.limit) params.set("limit", String(opts.limit));
+    const path = `/v1/mcp-registry/search?${params}`;
+    const body = await this.getJSON<Partial<RegistrySearch> | null>(path, opts);
+    return {
+      query: typeof body?.query === "string" ? body.query : q,
+      registry: typeof body?.registry === "string" ? body.registry : "",
+      restricted: body?.restricted === true,
+      servers: listField<RegistryServer>(body, "servers", "/v1/mcp-registry/search").map((s) => ({
+        ...s,
+        remotes: Array.isArray(s.remotes) ? s.remotes : [],
+      })),
+    };
+  }
+
+  /**
+   * GET /v1/agents/{name}/versions (agent:admin): a stored agent's versions,
+   * oldest first, with the highest number given (latest, which a deleted
+   * draft keeps) and the published one (0 for none).
+   */
+  async listAgentVersions(name: string, opts: RequestOptions = {}): Promise<AgentVersionList> {
+    const path = `/v1/agents/${encodeURIComponent(name)}/versions`;
+    const body = await this.getJSON<Partial<AgentVersionList> | null>(path, opts);
+    const versions = listField<AgentVersion>(body, "versions", path);
+    const highest = versions.reduce((n, v) => Math.max(n, v.version), 0);
+    return {
+      latest: typeof body?.latest === "number" ? body.latest : highest,
+      published: typeof body?.published === "number" ? body.published : 0,
+      versions,
+    };
+  }
+
+  /** POST /v1/agents/{name}/versions (agent:admin): a new version; 409 conflict when if_latest isn't the latest. */
+  async saveAgentVersion(name: string, req: SaveAgentRequest, opts: RequestOptions = {}): Promise<AgentVersion> {
+    const path = `/v1/agents/${encodeURIComponent(name)}/versions`;
+    const resp = await this.#send("POST", path, JSON.stringify(req), "application/json", opts.signal);
+    const v = (await this.#json(resp, path)) as Partial<AgentVersion> | null;
+    if (typeof v?.version !== "number") throw new BadResponseError(`${path}: the response is not a version`);
+    return v as AgentVersion;
   }
 
   /** GET /v1/credentials: the slots and the caller's status; 404 when the server keeps no credentials. */
@@ -530,6 +619,15 @@ async function errorFrom(resp: Response): Promise<ApiError> {
 // By name: an abort is a DOMException, which isn't an Error in every realm.
 function isAbort(e: unknown): boolean {
   return typeof e === "object" && e !== null && (e as { name?: unknown }).name === "AbortError";
+}
+
+/** A toolset added at run time, checked to be one: a name and a list of tools. */
+function serverToolset(body: unknown, path: string): ServerToolset {
+  const t = body as Partial<ServerToolset> | null;
+  if (typeof t?.name !== "string" || typeof t.status !== "string") {
+    throw new BadResponseError(`${path}: the response is not a toolset`);
+  }
+  return { ...t, tools: listField<ReviewTool>(t, "tools", path) } as ServerToolset;
 }
 
 /** A page's next_cursor; undefined on the last page. */

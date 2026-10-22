@@ -102,7 +102,140 @@ export type Agent = {
   system?: string;
   /** "a2ui": the agent shows A2UI surfaces (ui events) and its runs take ui_action. */
   ui?: string;
+  /** A stored agent's published version; absent for an agent of the config file. */
+  version?: number;
+  /** An agent of the config file, on a server that keeps agents: the API can't change it. */
+  read_only?: boolean;
 };
+
+/** GET /v1/agents/{name}/versions: one version of a stored agent. It never changes. */
+export type AgentVersion = {
+  name: string;
+  version: number;
+  published: boolean;
+  /** The agent as saved: an entry of "agents" in the serve config file. */
+  definition: Record<string, unknown>;
+  author?: string;
+  message?: string;
+  created_at: string;
+};
+
+/** GET /v1/agents/{name}/versions. */
+export type AgentVersionList = {
+  /** The highest version number given so far: what if_latest compares with, even after that draft was deleted. */
+  latest: number;
+  /** The version new runs use; 0 for none. */
+  published: number;
+  versions: AgentVersion[];
+};
+
+/** POST /v1/agents/{name}/versions. */
+export type SaveAgentRequest = {
+  definition: Record<string, unknown>;
+  message?: string;
+  /** Save only if the latest version is this one (409 conflict otherwise). */
+  if_latest?: number;
+  publish?: boolean;
+};
+
+/** POST /v1/toolsets: an MCP server to add by URL. Header values are ${VAR} references, never secrets. */
+export type AddToolsetRequest = {
+  type: "mcp";
+  name: string;
+  url: string;
+  /** "auto" (the default), "http" (Streamable HTTP) or "sse". */
+  transport?: string;
+  /** "none" (the default) or "headers". */
+  auth?: string;
+  headers?: Record<string, string>;
+};
+
+/** A tool's definition as its MCP server sends it, raw: hostile text, shown only as text. */
+export type ToolDefinition = {
+  title?: string;
+  description?: string;
+  input_schema?: unknown;
+  output_schema?: unknown;
+  annotations?: Record<string, unknown>;
+};
+
+/** One tool of a toolset added at run time, as its review shows it. */
+export type ReviewTool = {
+  name: string;
+  /** approved, new, changed, removed, rejected. */
+  status: string;
+  /** The definition the server lists now (absent for a removed tool): sent back to decide on it. */
+  fingerprint?: string;
+  /** What the model is given: the description, sanitized. */
+  description?: string;
+  current?: ToolDefinition;
+  approved?: ToolDefinition;
+  /** The fields that differ between approved and current. */
+  changes?: string[];
+  kind: string;
+  risk: string;
+  reviewed_by?: string;
+  reviewed_at?: string;
+};
+
+/** POST /v1/toolsets and the review endpoints: a toolset added at run time. */
+export type ServerToolset = {
+  name: string;
+  type: string;
+  url: string;
+  transport: string;
+  auth: string;
+  /** The headers sent; never their values. */
+  header_names?: string[];
+  scope: string;
+  enabled: boolean;
+  /** ready, review_needed, disabled, unavailable. */
+  status: string;
+  reason?: string;
+  server: { name?: string; version?: string };
+  tools: ReviewTool[];
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+
+/** POST /v1/toolsets/{name}/review: one decision, on the definition the review showed. */
+export type ToolDecision = {
+  name: string;
+  fingerprint: string;
+  decision: "approve" | "reject";
+  kind?: string;
+  risk?: string;
+};
+
+/** A header a registry server's remote takes. */
+export type RegistryHeader = { name: string; description?: string; required: boolean; secret: boolean };
+
+/** An endpoint a registry server is hosted at. */
+export type RegistryRemote = {
+  /** As POST /v1/toolsets takes it: "http" or "sse". */
+  transport: string;
+  url: string;
+  /** The {variables} in url to fill in before adding. */
+  variables?: string[];
+  headers?: RegistryHeader[];
+  /** false: the tenant's mcp_servers.allow doesn't include url. */
+  allowed: boolean;
+};
+
+/** A server a registry search found: third-party text, never a trust signal. */
+export type RegistryServer = {
+  name: string;
+  suggested_name: string;
+  title?: string;
+  description?: string;
+  version?: string;
+  status: string;
+  remotes: RegistryRemote[];
+};
+
+/** GET /v1/mcp-registry/search. */
+export type RegistrySearch = { query: string; registry: string; restricted: boolean; servers: RegistryServer[] };
 
 /**
  * Where a toolset's credential comes from, and whether it is there

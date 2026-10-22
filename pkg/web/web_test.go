@@ -9,7 +9,10 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -78,6 +81,9 @@ func TestServe(t *testing.T) {
 		{"/assets/nothing", "404", "", "", "no-cache"},
 		{"/robots.txt", "404", "", "", "no-cache"},
 		{"/app.js.map", "404", "", "", "no-cache"},
+		// A packed file is served by its name only (Pack), never as name.gz.
+		{"/theme.js.gz", "404", "", "", "no-cache"},
+		{"/index.html.gz", "404", "", "", "no-cache"},
 		{"/logo.PNG", "404", "", "", "no-cache"},
 		{"/agents/x.js", "404", "", "", "no-cache"},
 		{"/assets", "404", "", "", "no-cache"},
@@ -223,10 +229,7 @@ func TestEmbeddedBuild(t *testing.T) {
 	if err := c.Ready(t.Context()); err != nil {
 		t.Fatalf("embedded build: %v", err)
 	}
-	html, err := fs.ReadFile(dist, "index.html")
-	if err != nil {
-		t.Fatal(err)
-	}
+	html := []byte(body(t, get(t, c.Handler(), http.MethodGet, "/index.html")))
 	for _, m := range refs.FindAllStringSubmatch(string(html), -1) {
 		if resp := get(t, c.Handler(), http.MethodGet, m[1]); resp.StatusCode != http.StatusOK ||
 			strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
@@ -243,18 +246,154 @@ func TestEmbeddedBuild(t *testing.T) {
 	}
 }
 
-// TestCompression: text files go gzipped to clients that accept it, with
-// their own ETag; fonts and files that don't shrink never are.
-func TestCompression(t *testing.T) {
+// TestEmbeddedBuildIsPacked keeps the console's text files out of the binary
+// uncompressed (docs/SIZES.md): the committed build, unpacked and packed
+// again, is byte for byte what is committed. A build written by Vite without
+// the pack step (make web runs it), one with a file both as it is and
+// packed, or one packed some other way (gzip -9, another level) fails here.
+func TestEmbeddedBuildIsPacked(t *testing.T) {
+	t.Parallel()
+	before := tree(t, web.Dist())
+	dir := t.TempDir()
+	for name, b := range before {
+		if orig, ok := strings.CutSuffix(name, ".gz"); ok {
+			name, b = orig, gunzip(t, b)
+		}
+		p := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(b), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := web.Pack(dir); err != nil {
+		t.Fatal(err)
+	}
+	if after := tree(t, os.DirFS(dir)); !maps.Equal(before, after) {
+		t.Errorf("pkg/web/dist is not packed: run make web (it runs go run ./pkg/web/pack.go pkg/web/dist)\nbefore %v\nafter  %v", keys(before), keys(after))
+	}
+	if !slices.ContainsFunc(keys(before), func(n string) bool { return strings.HasSuffix(n, ".js.gz") }) {
+		t.Errorf("pkg/web/dist has no packed script: %v", keys(before))
+	}
+}
+
+// tree returns every file of files, by name.
+func tree(t *testing.T, files fs.FS) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	err := fs.WalkDir(files, ".", func(name string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, err := fs.ReadFile(files, name)
+		out[name] = string(b)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func keys(m map[string]string) []string { return slices.Sorted(maps.Keys(m)) }
+
+func gz(t *testing.T, s string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	if _, err := zw.Write([]byte(s)); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func gunzip(t *testing.T, b string) string {
+	t.Helper()
+	zr, err := gzip.NewReader(strings.NewReader(b))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := io.ReadAll(zr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(got)
+}
+
+// TestPack: the text files that shrink become name.gz, the rest stay; the
+// packed build serves what the unpacked one holds, with the same ETags, and
+// packing twice changes nothing.
+func TestPack(t *testing.T) {
 	t.Parallel()
 	script := strings.Repeat("console.log('agentkit');\n", 200)
 	files := build()
 	files["assets/big-abc123.js"] = &fstest.MapFile{Data: []byte(script)}
+	files["index.html"] = &fstest.MapFile{Data: []byte(index + strings.Repeat("<!-- -->", 50))}
+	files["assets/data.tar.gz"] = &fstest.MapFile{Data: []byte("not ours")}
+	dir := t.TempDir()
+	if err := os.CopyFS(dir, files); err != nil {
+		t.Fatal(err)
+	}
+	if err := web.Pack(dir); err != nil {
+		t.Fatal(err)
+	}
+	packed := tree(t, os.DirFS(dir))
+	want := []string{
+		"assets/app-abc123.css", "assets/app-abc123.js", "assets/big-abc123.js.gz", "assets/data.tar.gz",
+		"assets/geist-latin-x.woff2", "favicon.svg", "index.html.gz", "theme.js",
+	}
+	if got := keys(packed); !slices.Equal(got, want) {
+		t.Fatalf("packed build %v, want %v", got, want)
+	}
+	if got := gunzip(t, packed["assets/big-abc123.js.gz"]); got != script {
+		t.Errorf("big-abc123.js.gz holds %.40q, want the script", got)
+	}
+	if err := web.Pack(dir); err != nil {
+		t.Fatal(err)
+	}
+	if again := tree(t, os.DirFS(dir)); !maps.Equal(again, packed) {
+		t.Errorf("packing twice changed the build: %v", keys(again))
+	}
+
+	plainC, gzdC := web.New(files), web.New(os.DirFS(dir))
+	for name, c := range map[string]*web.Component{"unpacked": plainC, "packed": gzdC} {
+		if err := c.Ready(t.Context()); err != nil {
+			t.Fatalf("the %s build: Ready = %v", name, err)
+		}
+	}
+	plain, gzd := plainC.Handler(), gzdC.Handler()
+	for name := range files {
+		p := "/" + name
+		a, b := get(t, plain, http.MethodGet, p), get(t, gzd, http.MethodGet, p)
+		if a.StatusCode != http.StatusOK || b.StatusCode != http.StatusOK {
+			t.Errorf("GET %s: %s unpacked, %s packed; want 200 from both", p, a.Status, b.Status)
+		}
+		if body(t, a) != body(t, b) || a.Header.Get("ETag") != b.Header.Get("ETag") ||
+			a.Header.Get("Content-Type") != b.Header.Get("Content-Type") {
+			t.Errorf("GET %s: the packed build serves it otherwise (ETag %q, %q)", p, a.Header.Get("ETag"), b.Header.Get("ETag"))
+		}
+	}
+}
+
+// TestCompression: packed text files go gzipped to clients that accept it,
+// with their own ETag, and decompressed to the others; files that aren't
+// packed (fonts, files that don't shrink) go as they are.
+func TestCompression(t *testing.T) {
+	t.Parallel()
+	script := strings.Repeat("console.log('agentkit');\n", 200)
+	files := build()
+	files["assets/big-abc123.js.gz"] = &fstest.MapFile{Data: gz(t, script)}
 	h := web.New(files).Handler()
 
 	plain := get(t, h, http.MethodGet, "/assets/big-abc123.js")
-	if plain.Header.Get("Content-Encoding") != "" || body(t, plain) != script || plain.Header.Get("Vary") != "Accept-Encoding" {
-		t.Fatalf("without Accept-Encoding: Content-Encoding %q, Vary %q", plain.Header.Get("Content-Encoding"), plain.Header.Get("Vary"))
+	if plain.Header.Get("Content-Encoding") != "" || body(t, plain) != script || plain.Header.Get("Vary") != "Accept-Encoding" ||
+		plain.Header.Get("Content-Type") != "text/javascript; charset=utf-8" {
+		t.Fatalf("without Accept-Encoding: Content-Encoding %q, Vary %q, Content-Type %q",
+			plain.Header.Get("Content-Encoding"), plain.Header.Get("Vary"), plain.Header.Get("Content-Type"))
 	}
 	for _, ae := range []string{"gzip", "gzip, deflate, br, zstd", "br;q=1.0, gzip;q=0.8", "*", "GZIP"} {
 		resp := get(t, h, http.MethodGet, "/assets/big-abc123.js", "Accept-Encoding", ae)
@@ -262,13 +401,8 @@ func TestCompression(t *testing.T) {
 			t.Errorf("Accept-Encoding %q: Content-Encoding %q, want gzip", ae, resp.Header.Get("Content-Encoding"))
 			continue
 		}
-		zr, err := gzip.NewReader(bytes.NewReader([]byte(body(t, resp))))
-		if err != nil {
-			t.Fatal(err)
-		}
-		got, err := io.ReadAll(zr)
-		if err != nil || string(got) != script {
-			t.Errorf("Accept-Encoding %q: the gzipped body is not the file (%v)", ae, err)
+		if got := gunzip(t, body(t, resp)); got != script {
+			t.Errorf("Accept-Encoding %q: the gzipped body is not the file", ae)
 		}
 		if etag := resp.Header.Get("ETag"); etag == plain.Header.Get("ETag") || etag == "" {
 			t.Errorf("Accept-Encoding %q: ETag %q, want one of its own", ae, etag)
@@ -281,11 +415,30 @@ func TestCompression(t *testing.T) {
 			t.Errorf("Accept-Encoding %q: Content-Encoding %q, want none", ae, resp.Header.Get("Content-Encoding"))
 		}
 	}
+	// The name.gz itself is not a file of the build.
+	if resp := get(t, h, http.MethodGet, "/assets/big-abc123.js.gz"); resp.StatusCode != http.StatusNotFound {
+		t.Errorf("GET /assets/big-abc123.js.gz: %s, want 404", resp.Status)
+	}
 	// A font is compressed already; a tiny file grows when gzipped.
 	for _, p := range []string{"/assets/geist-latin-x.woff2", "/theme.js"} {
 		resp := get(t, h, http.MethodGet, p, "Accept-Encoding", "gzip")
 		if resp.Header.Get("Content-Encoding") != "" || resp.Header.Get("Vary") != "" {
 			t.Errorf("GET %s: Content-Encoding %q, Vary %q; want neither", p, resp.Header.Get("Content-Encoding"), resp.Header.Get("Vary"))
+		}
+	}
+}
+
+// TestBadPack: a build that has a file both as it is and packed, or a
+// packed file that isn't gzip, is not ready.
+func TestBadPack(t *testing.T) {
+	t.Parallel()
+	dup := build()
+	dup["theme.js.gz"] = &fstest.MapFile{Data: gz(t, "// theme")}
+	bad := build()
+	bad["assets/big-abc123.js.gz"] = &fstest.MapFile{Data: []byte("not gzip")}
+	for name, files := range map[string]fstest.MapFS{"both": dup, "not gzip": bad} {
+		if err := web.New(files).Ready(t.Context()); err == nil {
+			t.Errorf("%s: Ready = nil, want an error", name)
 		}
 	}
 }

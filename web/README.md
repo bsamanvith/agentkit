@@ -43,7 +43,11 @@ Vite serves the console with hot reload and proxies `/v1` to
 caching, use `make web` and `AGENTKIT_COMPONENTS=agent,web agentkit serve`.
 
 **Commit `pkg/web/dist` with every change to `web/`.** CI rebuilds and fails
-when the committed build is not what the sources make. Builds are
+when the committed build is not what the sources make. `make web` runs Vite,
+then gzips the build's text files in place (`go run ./pkg/web/pack.go
+pkg/web/dist`, so it needs Go too): the binary embeds `index-x.js.gz`, not
+`index-x.js`, which keeps about 0.5 MB out of every image that serves the
+console, and `pkg/web` sends it as it is to browsers that accept gzip. Builds are
 byte-for-byte reproducible (checked on macOS and Linux). A change that
 doesn't reach the console's bundle (a component it doesn't import) doesn't
 change the build, so it doesn't fail the check either.

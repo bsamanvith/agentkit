@@ -160,9 +160,10 @@ $(GOLANGCI):
 PNPM ?= pnpm
 
 .PHONY: web
-web: ## Build the console into pkg/web/dist (commit it with the sources)
+web: ## Build the console into pkg/web/dist, its text files gzipped (commit it with the sources)
 	$(PNPM) --dir web install --frozen-lockfile
 	$(PNPM) --dir web build
+	$(GO) run ./pkg/web/pack.go pkg/web/dist
 
 .PHONY: web-check
 web-check: ## Web: lint, format, typecheck, unit tests, audit, build; fail if pkg/web/dist is stale or over budget

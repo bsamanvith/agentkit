@@ -100,11 +100,11 @@ that suspend for a decision (RUN_ERROR `unsupported`). Encoding/json matches
 input field names regardless of case (the fuzz corpus has a case of it);
 the client's zod schema is stricter, which is harmless.
 
-*Image.* +106 KB on agentkit and +110 KB on local (docs/SIZES.md). Behind a
-`noagui` tag, which runner and toolsets carry, and dev and api too, for
-their budgets: with the server dev would use about all of its 32 MB (+106
-KB, of about 106 KB left after T072) and api would cross its 23 MB (+110
-KB, of about 36 KB left). So `agui` runs on the all-in-one and local
+*Image.* +110 KB on agentkit and on local (docs/SIZES.md, measured on
+main after T086). Behind a `noagui` tag, which runner and toolsets carry,
+and dev and api too, for their budgets: with the server dev would use about
+all of its 32 MB (+110 KB, of about 123 KB left after T086) and api would
+cross its 23 MB (+110 KB, of about 52 KB left). So `agui` runs on the all-in-one and local
 images. Whether dev or api should serve AG-UI (a budget raise, or a cut
 elsewhere) is the owner's call.
 

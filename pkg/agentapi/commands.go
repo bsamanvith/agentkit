@@ -73,7 +73,14 @@ func (s *Server) command(ctx context.Context, w http.ResponseWriter, r *http.Req
 	if typ == commandCancel {
 		// The holder lets the run go, then cancels it: cancel it here too,
 		// so the answer is the run canceled (one of the two finds it final).
-		if _, err := s.runs.Cancel(ctx, id); err != nil && !errors.Is(err, store.ErrFinal) {
+		// A cancel holds the run while it stores it canceled: the other one
+		// finds it leased then, and waits for it once more.
+		_, err := s.runs.Cancel(ctx, id)
+		if errors.Is(err, store.ErrLeased) {
+			s.awaitReleased(ctx, id)
+			_, err = s.runs.Cancel(ctx, id)
+		}
+		if err != nil && !errors.Is(err, store.ErrFinal) {
 			s.commandError(w, id, err)
 			return
 		}

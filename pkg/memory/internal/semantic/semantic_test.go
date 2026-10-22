@@ -69,3 +69,44 @@ func TestEncodeDecode(t *testing.T) {
 		t.Error("Decode of the wrong length succeeded")
 	}
 }
+
+// TestDecodeBadDim: a dimension a corrupt file gives (negative, past
+// MaxEmbedderDim, or one whose byte length overflows) is an error, not a
+// panic.
+func TestDecodeBadDim(t *testing.T) {
+	t.Parallel()
+	for _, dim := range []int{-1, memory.MaxEmbedderDim + 1, 1<<62 + 1} {
+		if _, err := semantic.Decode([]byte{0, 0, 0, 0}, dim); err == nil {
+			t.Errorf("Decode(4 bytes, %d) succeeded", dim)
+		}
+	}
+}
+
+// TestDotBlob: the same sum as Dot of the decoded vector, to the bit (so
+// the SQLite index scores as the in-memory one), and an error for a blob
+// of another length or values that are not finite.
+func TestDotBlob(t *testing.T) {
+	t.Parallel()
+	q, _ := semantic.Normalize([]float32{0.3, -1.7, 2.2, 0.01, 5, -0.4, 0.9})
+	v, _ := semantic.Normalize([]float32{1.1, 0.2, -0.3, 4, 0.5, 0.6, -2})
+	got, err := semantic.DotBlob(q, semantic.Encode(v))
+	if want := semantic.Dot(q, v); err != nil || got != want {
+		t.Errorf("DotBlob = %v, %v; Dot = %v", got, err, want)
+	}
+	if _, err := semantic.DotBlob(q, semantic.Encode(v[:6])); err == nil {
+		t.Error("DotBlob of a short blob succeeded")
+	}
+	v[2] = float32(math.Inf(1))
+	if _, err := semantic.DotBlob(q, semantic.Encode(v)); err == nil {
+		t.Error("DotBlob of an infinite value succeeded")
+	}
+}
+
+// TestTopClamps: float32 rounding past 1 or -1 is held to [-1, 1].
+func TestTopClamps(t *testing.T) {
+	t.Parallel()
+	got := semantic.Top([]semantic.Scored{{Item: memory.Item{ID: "a"}, Score: 1.0000001}, {Item: memory.Item{ID: "b"}, Score: -1.0000001}}, 10)
+	if len(got) != 2 || got[0].Score != 1 || got[1].Score != -1 {
+		t.Errorf("Top = %v", got)
+	}
+}

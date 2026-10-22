@@ -56,14 +56,24 @@ INSERT INTO memory_index_meta (key, value) VALUES ('schema', 2);
 `
 
 // vectorSchema is what version 2 adds: a vector per item (its seq), as
-// little-endian float32s of unit length.
+// little-endian float32s of unit length. The triggers keep a vector only
+// while its item has the text it was made of, whoever writes the file: a
+// process that opened it at version 1 before another upgraded it still
+// writes items without vectors, and its deletes and edits must not leave a
+// vector to the item (or a reused seq) that it no longer describes. The
+// item then has no vector, which a semantic search reports.
 const vectorSchema = `
 CREATE TABLE IF NOT EXISTS memory_vectors (
 	seq   INTEGER PRIMARY KEY,
 	model TEXT    NOT NULL,
 	dim   INTEGER NOT NULL,
 	vec   BLOB    NOT NULL
-);`
+);
+CREATE TRIGGER IF NOT EXISTS memory_vectors_item_deleted AFTER DELETE ON memory_items
+BEGIN DELETE FROM memory_vectors WHERE seq = old.seq; END;
+CREATE TRIGGER IF NOT EXISTS memory_vectors_text_changed AFTER UPDATE OF text ON memory_items
+WHEN new.text IS NOT old.text
+BEGIN DELETE FROM memory_vectors WHERE seq = old.seq; END;`
 
 // Index is a memory.Index in a SQLite file: keyword search through an FTS5
 // index, ranked by BM25 over the scope's own statistics (never another
@@ -365,7 +375,9 @@ func keywordSearch(ctx context.Context, tx *sql.Tx, o memory.Owner, kq memory.Ke
 }
 
 // semanticSearch ranks every item of the scope by its vector's similarity
-// to qv.
+// to qv, as semantic.Rank does. Each vector is scored as its row is read
+// (semantic.DotBlob, on the driver's bytes), so the scan holds the items of
+// the filter and their scores, never the scope's vectors.
 func semanticSearch(ctx context.Context, tx *sql.Tx, o memory.Owner, qv semantic.Vector, filter map[string]string, k int) ([]memory.Result, error) {
 	rows, err := tx.QueryContext(ctx, `SELECT i.id, i.text, i.metadata, i.time, v.model, v.dim, v.vec
 		FROM memory_items i LEFT JOIN memory_vectors v ON v.seq = i.seq
@@ -374,33 +386,34 @@ func semanticSearch(ctx context.Context, tx *sql.Tx, o memory.Owner, qv semantic
 		return nil, fmt.Errorf("memory/sqlite: %w", err)
 	}
 	defer rows.Close()
-	var docs []semantic.Doc
+	var cands []semantic.Scored
 	for rows.Next() {
 		var it memory.Item
 		var meta string
 		var at, dim sql.NullInt64
 		var model sql.NullString
-		var blob []byte
+		var blob sql.RawBytes // valid until the next row: scored at once
 		if err := rows.Scan(&it.ID, &it.Text, &meta, &at, &model, &dim, &blob); err != nil {
 			return nil, fmt.Errorf("memory/sqlite: %w", err)
+		}
+		if err := semantic.Check(qv, it.ID, model.String, int(dim.Int64)); err != nil {
+			return nil, err
+		}
+		score, err := semantic.DotBlob(qv.V, blob)
+		if err != nil {
+			return nil, fmt.Errorf("memory/sqlite: item %q: %w", it.ID, err)
 		}
 		if it, err = decodeItem(it, meta, at); err != nil {
 			return nil, err
 		}
-		d := semantic.Doc{Item: it}
-		if model.Valid {
-			v, err := semantic.Decode(blob, int(dim.Int64))
-			if err != nil {
-				return nil, fmt.Errorf("memory/sqlite: item %q: %w", it.ID, err)
-			}
-			d.Vec = semantic.Vector{Model: model.String, Dim: int(dim.Int64), V: v}
+		if memory.MatchesFilter(it.Metadata, filter) {
+			cands = append(cands, semantic.Scored{Item: it, Score: score})
 		}
-		docs = append(docs, d)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("memory/sqlite: %w", err)
 	}
-	return semantic.Rank(qv, docs, filter, k)
+	return semantic.Top(cands, k), nil
 }
 
 // checkRoom fails with the items LimitError when the scope is full and has
@@ -471,12 +484,14 @@ func (x *Index) Reembed(ctx context.Context) (int, error) {
 	}
 }
 
-// stale returns up to reembedBatch items after seq whose vector is missing
-// or not of the model name with dimension dim.
+// stale returns up to reembedBatch items after seq whose vector is missing,
+// not of the model name with dimension dim, or not 4*dim bytes long (a
+// corrupt blob, which a search refuses).
 func (x *Index) stale(ctx context.Context, after int64, name string, dim int) ([]int64, []string, error) {
 	rows, err := x.r.QueryContext(ctx, `SELECT i.seq, i.text FROM memory_items i LEFT JOIN memory_vectors v ON v.seq = i.seq
-		WHERE i.seq > ? AND (v.seq IS NULL OR v.model != ? OR v.dim != ?) ORDER BY i.seq LIMIT CAST(? AS INTEGER)`,
-		after, name, dim, reembedBatch)
+		WHERE i.seq > ? AND (v.seq IS NULL OR v.model != ? OR v.dim != ? OR length(v.vec) != ?)
+		ORDER BY i.seq LIMIT CAST(? AS INTEGER)`,
+		after, name, dim, 4*dim, reembedBatch)
 	if err != nil {
 		return nil, nil, fmt.Errorf("memory/sqlite: %w", err)
 	}

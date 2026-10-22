@@ -1,4 +1,4 @@
-//go:build nosqlite
+//go:build nosqlite && !noagent
 
 package main
 

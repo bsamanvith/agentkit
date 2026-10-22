@@ -6,26 +6,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"maps"
 	"net"
-	"os"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/agenttools"
-	"github.com/bsamanvith/agentkit/pkg/auth"
-	"github.com/bsamanvith/agentkit/pkg/bus"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/component"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/policy"
-	"github.com/bsamanvith/agentkit/pkg/rpc"
-	"github.com/bsamanvith/agentkit/pkg/runner"
-	"github.com/bsamanvith/agentkit/pkg/runner/runnerrpc"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
@@ -219,39 +211,6 @@ func agentToolsetSpecs(cfg serveConfig) ([]toolset.Spec, error) {
 	return specs, nil
 }
 
-// agentComponent is the agent API with the readiness of its toolsets, or
-// of the runner its agents run on.
-type agentComponent struct {
-	*agentapi.Server
-	skipped []string
-	// runner runs the agents when they run elsewhere ($AGENTKIT_RUNNER_URL);
-	// agents are the names it must run.
-	runner    *runnerrpc.Client
-	runnerURL string
-	agents    []string
-	// toolsets is one of the toolsets served by the toolsets component
-	// ($AGENTKIT_TOOLSETS_URL), nil when they are built here: listing its
-	// tools checks the component.
-	toolsets    tool.Registry
-	toolsetsURL string
-	// admin keeps the toolsets added at run time; nil when off.
-	admin toolsetAdmin
-	// closers close the agents' memory stores.
-	closers []func() error
-	// skillReport lists the agents' skills in /readyz (Report).
-	skillReport
-}
-
-// Shutdown drains the API, then closes the connections to the MCP servers
-// added at run time and the agents' memory stores.
-func (a *agentComponent) Shutdown(ctx context.Context) error {
-	err := a.Server.Shutdown(ctx)
-	if a.admin != nil {
-		_ = a.admin.Close()
-	}
-	return errors.Join(err, closeAll(a.closers))
-}
-
 // closeAll calls each close func.
 func closeAll(closers []func() error) error {
 	var errs []error
@@ -259,44 +218,6 @@ func closeAll(closers []func() error) error {
 		errs = append(errs, c())
 	}
 	return errors.Join(errs...)
-}
-
-// runnerCheckTimeout bounds the call that checks the runner in /readyz.
-const runnerCheckTimeout = 2 * time.Second
-
-// Ready is degraded when optional toolsets the agents name were skipped,
-// when the toolsets component cannot be reached, or when the runner the
-// agents run on cannot be reached or does not run them:
-// the API still serves conversations and runs that are stored.
-func (a *agentComponent) Ready(ctx context.Context) error {
-	if err := a.Server.Ready(ctx); err != nil {
-		return err
-	}
-	if a.runner != nil {
-		ctx, cancel := context.WithTimeout(ctx, runnerCheckTimeout)
-		defer cancel()
-		served, err := a.runner.Agents(ctx)
-		if err != nil {
-			return fmt.Errorf("%w: runner at %s: %w", component.ErrDegraded, a.runnerURL, err)
-		}
-		var missing []string
-		for _, n := range a.agents {
-			if !slices.Contains(served, n) {
-				missing = append(missing, n)
-			}
-		}
-		if len(missing) > 0 {
-			return fmt.Errorf("%w: the runner at %s does not run agents %s", component.ErrDegraded, a.runnerURL, strings.Join(missing, ", "))
-		}
-	}
-	if a.toolsets != nil {
-		ctx, cancel := context.WithTimeout(ctx, runnerCheckTimeout)
-		defer cancel()
-		if _, err := a.toolsets.List(ctx); err != nil {
-			return fmt.Errorf("%w: toolsets at %s: %w", component.ErrDegraded, a.toolsetsURL, err)
-		}
-	}
-	return degraded(a.skipped, a.skillReport)
 }
 
 // degraded is the Ready error of a component whose agents skipped optional
@@ -313,141 +234,6 @@ func degraded(toolsets []string, skills skillReport) error {
 		return nil
 	}
 	return fmt.Errorf("%w: %s", component.ErrDegraded, strings.Join(why, "; "))
-}
-
-// newAgents builds the agent component: per agent the model, its toolsets
-// merged into one registry and the harness; the catalog of the toolsets
-// served (specs, as built and skipped); and the API on top, mounted at /v1/,
-// on st and the clock clk. ctx is the signal context: when it is done, the
-// drain begins.
-func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]tool.Registry, problems []toolset.Problem, env serveEnv, authn auth.Authenticator, st agentapi.Store, b bus.Bus, clk clock.Clock, log *slog.Logger) (component.Mount, *agentapi.Server, error) {
-	specs, err := servedSpecs(env, cfg)
-	if err != nil {
-		return component.Mount{}, nil, err
-	}
-	if authn == nil && !isLoopback(env.addr) {
-		return component.Mount{}, nil, needsCredentials(env.addr)
-	}
-	var remote *runnerrpc.Client
-	if env.runnerURL != "" {
-		conn, err := rpc.Dial(env.runnerURL, rpc.WithBearer(env.rpcToken))
-		if err != nil {
-			return component.Mount{}, nil, fmt.Errorf("%s: %w", envRunnerURL, err)
-		}
-		remote = runnerrpc.NewClient(conn)
-	}
-	admin, err := c.newToolsetAdmin(cfg, st, log)
-	if err != nil {
-		return component.Mount{}, nil, err
-	}
-	var agents []agentapi.Agent
-	var (
-		skipped []string
-		skills  skillReport
-		closers []func() error
-	)
-	fail := func(err error) (component.Mount, *agentapi.Server, error) {
-		if admin != nil {
-			_ = admin.Close()
-		}
-		_ = closeAll(closers)
-		return component.Mount{}, nil, err
-	}
-	for _, a := range cfg.Agents {
-		def := agentapi.Agent{
-			Name: a.Name, Description: a.Description, System: a.System,
-			Model:    wire.Model{Provider: a.Model.Provider, ID: a.Model.id(), Effort: a.Model.Effort},
-			Toolsets: a.Toolsets, PrefixToolNames: a.PrefixToolNames, RuntimeToolsets: a.RuntimeToolsets,
-		}
-		if len(a.RuntimeToolsets) > 0 && admin == nil {
-			return fail(fmt.Errorf("%s.runtime_toolsets: toolsets added at run time are off (runtime_toolsets.enabled)", a.label(cfg.legacy)))
-		}
-		for _, name := range a.RuntimeToolsets {
-			if slices.ContainsFunc(cfg.MCP.Toolsets, func(s toolset.Spec) bool { return s.Name == name }) {
-				return fail(fmt.Errorf("%s.runtime_toolsets: %q is a toolset of the config file; list it in toolsets", a.label(cfg.legacy), name))
-			}
-		}
-		if remote != nil {
-			if len(a.RuntimeToolsets) > 0 {
-				// TODO(T096): the runner component reads them too.
-				return fail(fmt.Errorf("%s.runtime_toolsets: an agent that runs on the runner at $%s cannot use toolsets added at run time yet", a.label(cfg.legacy), envRunnerURL))
-			}
-			// The runner builds the model and the tools: this process
-			// needs neither (the agentkit-api image has no model adapter).
-			if a.Memory != nil {
-				// TODO(T058 follow-up): the tenant does not cross to the
-				// runner yet, so its memory calls would all be refused.
-				return fail(fmt.Errorf("%s.memory: an agent that runs on the runner at $%s cannot have memory yet", a.label(cfg.legacy), envRunnerURL))
-			}
-			if err := a.check(cfg.legacy); err != nil {
-				return fail(err)
-			}
-			def.Runner = remote.Agent(a.Name, a.Model.window())
-			for _, name := range a.Toolsets {
-				if slices.ContainsFunc(problems, func(p toolset.Problem) bool { return p.Toolset == name }) {
-					skipped = appendNew(skipped, name) // the runner skips it too
-				}
-			}
-		} else {
-			mem, err := openMemory(ctx, a, cfg.legacy, clk)
-			if err != nil {
-				return fail(err)
-			}
-			if mem != nil {
-				closers = append(closers, mem.close)
-			}
-			h, sk, ks, err := c.newHarness(ctx, cfg, a, built, admin, mem, clk)
-			if err != nil {
-				return fail(err)
-			}
-			def.Harness = h
-			skipped = appendNew(skipped, sk...)
-			skills.add(a, ks)
-		}
-		agents = append(agents, def)
-	}
-	if cfg.API.RunTimeout < 0 {
-		return fail(errors.New("agent_api: negative limit"))
-	}
-	host, _ := os.Hostname()
-	// The lease owner names this process in the store, for operators.
-	runnerOpts := []runner.Option{runner.WithOwner(fmt.Sprintf("%s-%d", host, os.Getpid()))}
-	if env.runLease > 0 {
-		runnerOpts = append(runnerOpts, runner.WithLease(env.runLease))
-	}
-	var authOpts []agentapi.Option
-	if authn != nil {
-		authOpts = append(authOpts, agentapi.WithAuthenticator(authn))
-	}
-	if admin != nil {
-		authOpts = append(authOpts, agentapi.WithToolsetAdmin(admin))
-	}
-	srv, err := agentapi.NewAgents(agents, append(authOpts,
-		agentapi.WithStore(st),
-		agentapi.WithBus(b),
-		agentapi.WithRunnerOptions(runnerOpts...),
-		agentapi.WithToolsets(c.toolsetCatalog(cfg, specs, built, problems, env)...),
-		agentapi.WithMaxConcurrentRuns(cfg.API.MaxConcurrentRuns),
-		agentapi.WithRunTimeout(time.Duration(cfg.API.RunTimeout)),
-		agentapi.WithRetention(cfg.API.MaxRuns, cfg.API.MaxConversations, time.Duration(cfg.API.Retention)),
-		agentapi.WithMaxBodyBytes(cfg.API.MaxBodyBytes),
-		agentapi.WithClock(clk),
-		agentapi.WithLogger(log.With("component", agentapi.Name)),
-		// Runs still going near the end of the shutdown get a run_error
-		// "shutdown" instead of a cut connection.
-		agentapi.WithDrain(ctx.Done(), env.shutdownTimeout*9/10),
-	)...)
-	if err != nil {
-		return fail(err)
-	}
-	ac := &agentComponent{Server: srv, skipped: skipped, skillReport: skills, runner: remote, runnerURL: env.runnerURL, agents: agentNames(cfg), toolsetsURL: env.toolsetsURL, admin: admin, closers: closers}
-	for _, name := range slices.Sorted(maps.Keys(built)) {
-		if r, ok := built[name].(remoteToolset); ok {
-			ac.toolsets = r
-			break
-		}
-	}
-	return component.Mount{Pattern: "/v1/", Component: ac}, srv, nil
 }
 
 // check validates what of an agent's config does not need its model built.

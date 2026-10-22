@@ -1,0 +1,13 @@
+{
+  "method": "POST",
+  "path": "/v1/embeddings",
+  "body": {
+    "model": "voyage-3.5-lite",
+    "input": [
+      "what is alpha"
+    ],
+    "input_type": "query",
+    "output_dimension": 256
+  },
+  "synthetic": true
+}

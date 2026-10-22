@@ -73,9 +73,15 @@ const (
 	// ModeKeyword matches the words and quoted phrases of the query
 	// ([ParseKeywordQuery]) and ranks by BM25.
 	ModeKeyword Mode = "keyword"
-	// ModeSemantic matches by meaning, through embeddings (T060).
+	// ModeSemantic matches by meaning: every item of the scope (and the
+	// filter) is ranked by the cosine similarity of its vector and the
+	// query's, both from the index's [Embedder]. Scores are in [-1, 1].
 	ModeSemantic Mode = "semantic"
-	// ModeHybrid fuses the keyword and the semantic rankings (T060).
+	// ModeHybrid fuses the keyword and the semantic rankings by reciprocal
+	// rank fusion: each of the top HybridDepth of either ranking scores
+	// 1/(RRFK + rank) there, ranks starting at 1 and tied scores sharing a
+	// rank, and an item's score is the sum over the rankings it is in. The
+	// keyword half searches [HybridKeywordText] of the query.
 	ModeHybrid Mode = "hybrid"
 )
 
@@ -101,8 +107,12 @@ type Result struct {
 	// Score ranks the results: higher is better. Scores compare only
 	// within one search.
 	Score float64
-	// Mode is the mode that found the item.
+	// Mode is the mode of the search.
 	Mode Mode
+	// Found are the modes whose rankings had the item: [Mode] in keyword
+	// and semantic searches; in a hybrid one, ModeKeyword, ModeSemantic or
+	// both, in that order.
+	Found []Mode
 	// Highlights are the parts of the query the item matched: its phrases
 	// (their words joined by a space), then its words, each in the
 	// query's order. Nil when the mode does not say.
@@ -124,6 +134,11 @@ const (
 	DefaultMaxTextBytes = 32 << 10
 	// DefaultMaxItems is the default of IndexConfig.MaxItems.
 	DefaultMaxItems = 10_000
+	// RRFK is the constant of reciprocal rank fusion (Cormack, Clarke and
+	// Büttcher, 2009).
+	RRFK = 60
+	// HybridDepth is how many of each ranking a hybrid search fuses.
+	HybridDepth = MaxK
 )
 
 // IndexConfig configures an Index backend.
@@ -135,6 +150,14 @@ type IndexConfig struct {
 	// MaxItems caps how many items a scope holds (default
 	// DefaultMaxItems).
 	MaxItems int
+	// Embedder makes the vectors of ModeSemantic and ModeHybrid; nil for an
+	// index that searches by keyword only. With one, every Put embeds the
+	// item's text, whatever the modes, so the vectors stay current.
+	Embedder Embedder
+	// Modes are the modes the index searches in, its default first. Empty
+	// is [keyword] without an Embedder and [hybrid, keyword, semantic] with
+	// one. Semantic and hybrid need an Embedder.
+	Modes []Mode
 }
 
 // Resolve returns c with its defaults filled in, or ErrInvalid for a scope it
@@ -153,6 +176,9 @@ func (c IndexConfig) Resolve() (IndexConfig, error) {
 	}
 	if c.MaxItems == 0 {
 		c.MaxItems = DefaultMaxItems
+	}
+	if c.Modes, err = resolveModes(c.Modes, c.Embedder); err != nil {
+		return c, err
 	}
 	return c, nil
 }

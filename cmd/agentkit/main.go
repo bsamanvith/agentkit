@@ -9,6 +9,7 @@
 //	agentkit toolsets <command> [flags]        list a server's toolsets; add, review and approve MCP servers
 //	agentkit migrate                           apply the Postgres store's migrations to $AGENTKIT_STORE
 //	agentkit users hash-password < password    the argon2id hash of a password, for auth.users
+//	agentkit memory reembed [-config file]     embed agents' memory items again after a change of embedder
 //
 // Credentials come from the Anthropic SDK's chain: ANTHROPIC_API_KEY,
 // ANTHROPIC_AUTH_TOKEN or an `ant auth login` profile. An agent on an
@@ -97,6 +98,7 @@ const usage = `usage:
   agentkit ask [flags] "<message>" | -     one run on a server, for scripts; -json prints the events as JSONL
   agentkit create [flags]                  create an empty conversation on a server; prints its ID for -conversation
   agentkit migrate                         apply the Postgres store's migrations to $AGENTKIT_STORE, then exit
+  agentkit memory reembed [-config file]   embed the memory items of the config's agents again (after a change of embedder)
   agentkit mcp-tools [flags] <url>         list an MCP server's tools with the fingerprints to pin them
   agentkit toolsets <command> [flags]      list a server's toolsets; add, review and approve MCP servers on it
   agentkit users hash-password < password  print the argon2id hash of a password, for the config's auth.users
@@ -118,6 +120,8 @@ func (c cli) main(ctx context.Context, args []string) int {
 		err = c.serve(ctx, args[1:])
 	case len(args) >= 1 && args[0] == "healthcheck":
 		err = c.healthcheck(ctx, args[1:])
+	case len(args) >= 1 && args[0] == "memory":
+		err = c.memoryCmd(ctx, args[1:])
 	case len(args) >= 1 && args[0] == "migrate":
 		err = c.migrate(ctx, args[1:])
 	case len(args) >= 1 && args[0] == "mcp-tools":

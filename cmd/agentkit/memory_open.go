@@ -60,8 +60,9 @@ func memoryIndexBackends() map[string]memoryIndexBackend {
 }
 
 // openMemory builds an agent's memory from its config: nil, with no
-// "memory" section. Saved items are dated by clk.
-func openMemory(ctx context.Context, a agentDef, legacy bool, clk clock.Clock) (_ *agentMemory, err error) {
+// "memory" section. Saved items are dated by clk; an embedder's key is read
+// with getenv.
+func openMemory(ctx context.Context, a agentDef, legacy bool, clk clock.Clock, getenv func(string) string) (_ *agentMemory, err error) {
 	if a.Memory == nil {
 		return nil, nil
 	}
@@ -90,7 +91,7 @@ func openMemory(ctx context.Context, a agentDef, legacy bool, clk clock.Clock) (
 		tools = append(tools, t)
 	}
 	if c := a.Memory.Index; c != nil {
-		ts, prepare, closeFn, err := openMemoryIndex(ctx, label+".index", *c, clk)
+		ts, prepare, closeFn, err := openMemoryIndex(ctx, label+".index", *c, clk, getenv)
 		if err != nil {
 			return nil, err
 		}
@@ -138,7 +139,7 @@ func openMemoryStore(ctx context.Context, label string, c memoryStoreConfig) (to
 
 // openMemoryIndex opens the search store, its tools and, with auto_recall,
 // the prepare hook.
-func openMemoryIndex(ctx context.Context, label string, c memoryIndexConfig, clk clock.Clock) ([]tool.Tool, harness.PrepareFunc, func() error, error) {
+func openMemoryIndex(ctx context.Context, label string, c memoryIndexConfig, clk clock.Clock, getenv func(string) string) ([]tool.Tool, harness.PrepareFunc, func() error, error) {
 	open, ok := memoryIndexBackends()[c.Backend]
 	if !ok {
 		names := slices.Sorted(maps.Keys(memoryIndexBackends()))
@@ -147,9 +148,9 @@ func openMemoryIndex(ctx context.Context, label string, c memoryIndexConfig, clk
 	if c.K < 0 || c.K > memory.MaxK {
 		return nil, nil, nil, fmt.Errorf("%s.k %d: want 1 to %d (0 for %d)", label, c.K, memory.MaxK, memory.DefaultK)
 	}
-	cfg, err := memory.IndexConfig{Scope: memory.Scope(c.Scope), MaxItems: c.MaxItems, MaxTextBytes: c.MaxTextBytes}.Resolve()
+	cfg, err := indexConfig(label, c, getenv)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("%s: %w", label, err)
+		return nil, nil, nil, err
 	}
 	x, closeFn, err := open(ctx, c, cfg)
 	if err != nil {

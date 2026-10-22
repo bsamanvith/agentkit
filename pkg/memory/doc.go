@@ -42,8 +42,13 @@
 // facts, where a Store holds a few notes read whole. It is scoped like a
 // Store. A query has a [Mode]: [ModeKeyword] matches words and quoted
 // phrases ([ParseKeywordQuery], words by [Tokenize]) and ranks by BM25;
-// semantic and hybrid modes come with embeddings. A mode the backend lacks
-// is [ErrModeUnsupported], never results of another mode.
+// with an [Embedder] (IndexConfig.Embedder), [ModeSemantic] ranks by the
+// cosine of embeddings and [ModeHybrid] fuses both rankings (reciprocal rank
+// fusion, [RRFK] = 60). Each stored vector records its model and dimension;
+// one of another embedder is [ErrEmbedderMismatch] until the index is
+// re-embedded ([Reembedder]). A mode the backend lacks is
+// [ErrModeUnsupported], never results of another mode. Package embed has
+// the clients of embedding APIs (OpenAI-compatible, Voyage AI).
 //
 // [NewRecallTools] gives a model recall_search, recall_get and recall_save
 // over an index. [AutoRecall] is a harness prepare hook (harness.WithPrepare)
@@ -54,7 +59,9 @@
 // # Backends
 //
 // Package inmem is the reference store and index, in memory; package sqlite
-// keeps the files, and the items (searched through FTS5), in a SQLite file.
+// keeps the files, and the items (searched through FTS5) and their vectors,
+// in a SQLite file.
 // Package memorytest is the conformance suite every backend passes:
-// RunStore for stores, RunIndex (with a relevance set per mode) for indexes.
+// RunStore for stores, RunIndex (with a relevance set per mode) for indexes,
+// with FakeEmbedder for the semantic modes.
 package memory

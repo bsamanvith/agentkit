@@ -1,0 +1,41 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "object": "list",
+  "data": [
+    {
+      "object": "embedding",
+      "index": 1,
+      "embedding": [
+        -0.353601,
+        -0.353588,
+        -0.353574,
+        -0.35356,
+        -0.353547,
+        -0.353533,
+        -0.353519,
+        -0.353505
+      ]
+    },
+    {
+      "object": "embedding",
+      "index": 0,
+      "embedding": [
+        -0.353557,
+        -0.353556,
+        -0.353555,
+        -0.353554,
+        -0.353553,
+        -0.353552,
+        -0.353551,
+        -0.35355
+      ]
+    }
+  ],
+  "model": "text-embedding-3-small",
+  "usage": {
+    "prompt_tokens": 4,
+    "total_tokens": 4
+  }
+}

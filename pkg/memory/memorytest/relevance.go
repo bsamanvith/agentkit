@@ -133,3 +133,68 @@ func KeywordRelevance() Relevance {
 	}
 	return Relevance{Mode: memory.ModeKeyword, Items: items, Queries: queries}
 }
+
+// semanticItems are the notes of SemanticRelevance: none shares a word with
+// its query, so only meaning finds them. "travel-log" says "plane" five
+// times among many other words: it outranks "aisle" for "flight
+// preferences" only when vectors are not normalized.
+func semanticItems() []memory.Item {
+	return []memory.Item{
+		{ID: "aisle", Text: "I always take an aisle seat on planes."},
+		{ID: "travel-log", Text: "Travel log: the plane was late, the plane was full, the plane was cold, the plane landed late and the plane taxied for an hour."},
+		{ID: "diet", Text: "She doesn't eat meat or fish."},
+		{ID: "allergy", Text: "Peanuts give him a severe reaction."},
+		{ID: "standup", Text: "The daily sync starts at nine thirty."},
+		{ID: "laptop", Text: "His work computer is a ThinkPad X1."},
+		{ID: "pay", Text: "Pay day is the last Friday of the month."},
+		{ID: "dog", Text: "Their puppy is a golden retriever named Biscuit."},
+		{ID: "car", Text: "Her automobile is a red hatchback."},
+		{ID: "cancel", Text: "To end the subscription, write to billing two weeks before renewal."},
+		{ID: "weather", Text: "It rained all week in Lisbon."},
+		{ID: "garden", Text: "Tomatoes and basil grow on the balcony."},
+	}
+}
+
+// semanticQueries are the paraphrase queries of SemanticRelevance.
+func semanticQueries() []RelevanceQuery {
+	q := func(text, top, why string) RelevanceQuery {
+		return RelevanceQuery{Query: memory.Query{Text: text}, Top: []string{top}, Why: why}
+	}
+	return []RelevanceQuery{
+		q("flight preferences", "aisle", "a paraphrase; a long text that repeats one related word comes after"),
+		q("vegetarian diet", "diet", "a paraphrase"),
+		q("nut allergy", "allergy", "a paraphrase"),
+		q("morning standup time", "standup", "a paraphrase"),
+		q("notebook brand", "laptop", "a paraphrase"),
+		q("salary", "pay", "one word, a paraphrase"),
+		q("pet dog breed", "dog", "a paraphrase"),
+		q("car vehicle", "car", "a paraphrase"),
+		q("cancel membership", "cancel", "a paraphrase"),
+		q("portugal weather", "weather", "a paraphrase"),
+		q("vegetable gardening", "garden", "a paraphrase"),
+	}
+}
+
+// SemanticRelevance is the relevance set of ModeSemantic, with
+// FakeEmbedder (DefaultFakeModel): 12 notes about people, and 11 queries
+// that share no word with the note they must find first ("flight
+// preferences" finds "I always take an aisle seat on planes."). A keyword
+// search finds none of them.
+func SemanticRelevance() Relevance {
+	return Relevance{Mode: memory.ModeSemantic, Items: semanticItems(), Queries: semanticQueries()}
+}
+
+// HybridRelevance is the relevance set of ModeHybrid: the items of
+// KeywordRelevance and SemanticRelevance together, the keyword queries
+// (their top hit must stay first) and every paraphrase query (whose note
+// must come first though no word matches). Absent IDs are not checked: a
+// semantic ranking has every item.
+func HybridRelevance() Relevance {
+	kw := KeywordRelevance()
+	set := Relevance{Mode: memory.ModeHybrid, Items: append(kw.Items, semanticItems()...)}
+	for _, q := range kw.Queries {
+		set.Queries = append(set.Queries, RelevanceQuery{Query: q.Query, Top: q.Top[:1], Why: q.Why + " (in hybrid, first)"})
+	}
+	set.Queries = append(set.Queries, semanticQueries()...)
+	return set
+}

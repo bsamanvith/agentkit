@@ -1,0 +1,14 @@
+{
+  "method": "POST",
+  "path": "/v1/embeddings",
+  "body": {
+    "model": "voyage-3.5-lite",
+    "input": [
+      "alpha",
+      "beta"
+    ],
+    "input_type": "document",
+    "output_dimension": 256
+  },
+  "synthetic": true
+}

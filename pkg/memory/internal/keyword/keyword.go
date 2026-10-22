@@ -99,7 +99,7 @@ func Rank(q memory.KeywordQuery, docs []Doc, st Stats, filter map[string]string,
 			hl = append(hl, labels[i])
 			score += idf(st.Docs, st.DF[i]) * tf(f, len(d.Tokens), avg)
 		}
-		out = append(out, memory.Result{Item: d.Item.Clone(), Score: score, Mode: memory.ModeKeyword, Highlights: hl})
+		out = append(out, memory.Result{Item: d.Item.Clone(), Score: score, Mode: memory.ModeKeyword, Found: []memory.Mode{memory.ModeKeyword}, Highlights: hl})
 	}
 	slices.SortFunc(out, Compare)
 	if len(out) > k {

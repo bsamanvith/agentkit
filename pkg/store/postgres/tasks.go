@@ -16,7 +16,7 @@ import (
 )
 
 // ListRuns implements [store.RunIndex]: a keyset query on the runs_tenant
-// index (migration 0012).
+// index (migration 0014).
 func (s *Store) ListRuns(ctx context.Context, f store.RunFilter, p store.Page) (store.RunPage, error) {
 	tenant, err := scope(ctx)
 	if err != nil {

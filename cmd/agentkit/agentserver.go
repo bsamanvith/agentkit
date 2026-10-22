@@ -95,7 +95,8 @@ func (c cli) buildAgents(ctx context.Context, w *agentWiring, cfg serveConfig, b
 	topts := triggerOptions(env, w.st.Store, w.st.triggers)
 	m, srv, err := c.newAgents(ctx, cfg, built, problems, env, authn, w.st.Store, w.b, clk, log, topts...)
 	w.srv, w.env = srv, env
-	if ac, ok := m.Component.(*agentComponent); ok {
+	ac, _ := m.Component.(*agentComponent)
+	if ac != nil {
 		w.callback, w.msg = ac.callback, ac.messenger
 	}
 	if err != nil {
@@ -103,6 +104,9 @@ func (c cli) buildAgents(ctx context.Context, w *agentWiring, cfg serveConfig, b
 	}
 	if len(topts) > 0 {
 		w.triggers = w.st.triggers
+	}
+	if ac.ws, err = newWS(srv.Handler(), clk, log); err != nil {
+		return m, err
 	}
 	// The config's triggers are stored before the API serves.
 	return m, syncTriggers(ctx, cfg, srv)
@@ -280,12 +284,37 @@ type agentComponent struct {
 	// messenger is agent messaging, which serve's dispatcher delivers; nil
 	// when no agent may message another.
 	messenger *agentmsg.Messenger
+	// ws is the API's WebSocket binding at /v1/ws (ws.go), part of the
+	// component; nil with the nows tag.
+	ws wsBinding
 }
 
-// Shutdown drains the API, then closes the connections to the MCP servers
-// added at run time and the agents' memory stores.
+// wsBinding is what the component uses of the WebSocket binding.
+type wsBinding interface {
+	Handler() http.Handler
+	Shutdown(ctx context.Context) error
+}
+
+// Handler serves the API under /v1/, and its WebSocket binding at /v1/ws.
+func (a *agentComponent) Handler() http.Handler {
+	if a.ws == nil {
+		return a.Server.Handler()
+	}
+	mux := http.NewServeMux()
+	mux.Handle(wire.WSPath, a.ws.Handler())
+	mux.Handle("/", a.Server.Handler())
+	return mux
+}
+
+// Shutdown drains the API (the WebSocket streams get the runs' last
+// events, as the SSE streams do), closes the WebSocket connections, then
+// the connections to the MCP servers added at run time and the agents'
+// memory stores.
 func (a *agentComponent) Shutdown(ctx context.Context) error {
 	err := a.Server.Shutdown(ctx)
+	if a.ws != nil {
+		err = errors.Join(err, a.ws.Shutdown(ctx))
+	}
 	if a.admin != nil {
 		_ = a.admin.Close()
 	}

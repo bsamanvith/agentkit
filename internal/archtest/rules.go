@@ -66,7 +66,12 @@ func ModuleRules() Rules {
 				"github.com/a2aproject/a2a-go/v2/a2a", "github.com/a2aproject/a2a-go/v2/a2aclient",
 				"github.com/a2aproject/a2a-go/v2/a2aclient/agentcard",
 			},
-			"pkg/tool": {"github.com/google/jsonschema-go/jsonschema"},
+			// The agent API's WebSocket binding (T091), server and client,
+			// in these two packages only: the API and its client do not
+			// link it.
+			"pkg/agentapi/wsapi":       {"github.com/coder/websocket"},
+			"pkg/agentclient/wsclient": {"github.com/coder/websocket"},
+			"pkg/tool":                 {"github.com/google/jsonschema-go/jsonschema"},
 			// The SQLite store's driver: pure Go, so binaries stay static
 			// (T029). It also names the driver's error type, for SQLITE_BUSY.
 			"pkg/store/sqlite": {"modernc.org/sqlite"},
@@ -207,6 +212,17 @@ func ModuleRules() Rules {
 			// The wire format, shared by the server and its clients: messages
 			// and usage, nothing else (E11).
 			"pkg/agentapi/wire": {"pkg/llm"},
+			// The WebSocket binding serves the API's handler and never
+			// imports the server (checked by its
+			// TestBindingDoesNotImportTheServer). Its tests run it over the
+			// real server, through agentclient on both transports.
+			"pkg/agentapi/wsapi": {
+				"pkg/agentapi/wire", "pkg/clock",
+				"pkg/agentapi", "pkg/agentclient", "pkg/agentclient/wsclient", "pkg/harness", "pkg/llm", "pkg/llm/llmtest",
+				"pkg/toolset", "pkg/store/scoped", "pkg/auth", "pkg/auth/login", "pkg/clock/clocktest", "pkg/policy", "internal/testkit",
+			},
+			// The client's WebSocket transport speaks the wire format only.
+			"pkg/agentclient/wsclient": {"pkg/agentapi/wire", "pkg/agentclient"},
 			// The agent API's client speaks the wire format over net/http.
 			// Its tests run it against the real server (agentapi, the
 			// harness, the demo toolsets and the fake model); that its own

@@ -7,6 +7,7 @@ toolchain go1.27.2
 require (
 	github.com/a2aproject/a2a-go/v2 v2.7.0
 	github.com/anthropics/anthropic-sdk-go v1.80.0
+	github.com/coder/websocket v1.8.15
 	github.com/go-jose/go-jose/v4 v4.1.6
 	github.com/google/go-cmp v0.7.0
 	github.com/google/jsonschema-go v0.4.3

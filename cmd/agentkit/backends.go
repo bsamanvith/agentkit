@@ -17,6 +17,7 @@ import "fmt"
 //	              the toolsets component
 //	nomcp         no MCP server (mcpserver.go)
 //	noweb         no console (web.go)
+//	nows          no WebSocket binding of the agent API at /v1/ws (ws.go)
 //	noagent       no agent component (agentserver.go): no agent API, its
 //	              store and bus, the agents' memory (memory_open.go), the
 //	              toolsets added at run time (toolsetadmin.go) or migrate

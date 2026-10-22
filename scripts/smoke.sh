@@ -58,6 +58,10 @@ trap stop EXIT
 # the cluster runs.
 cp deploy/k8s/base/config.json "$dir/config.json"
 chmod 644 "$dir/config.json" # the images run as uid 65532
+# The handbook knowledge base's documents, next to the config, where the
+# cluster mounts them.
+cp -R deploy/local/agent/knowledge "$dir/knowledge"
+chmod -R a+rX "$dir/knowledge"
 
 export AGENTKIT_RPC_TOKEN=smoke-rpc-token-0123456789
 token=smoke-api-token-0123456789
@@ -78,7 +82,8 @@ if [ -n "$images" ]; then
 		shift
 		for kv in "$@"; do e+=(-e "$kv"); done
 		docker run -d --pull=never --name "$c" --network host -e AGENTKIT_RPC_TOKEN "${e[@]}" \
-			-v "$dir/config.json:/etc/agentkit/config.json:ro" "agentkit-$name:$tag" serve >/dev/null
+			-v "$dir/config.json:/etc/agentkit/config.json:ro" -v "$dir/knowledge:/etc/agentkit/knowledge:ro" \
+			"agentkit-$name:$tag" serve >/dev/null
 		containers+=("$c")
 	}
 	logs() { for c in "${containers[@]}"; do echo "== $c"; docker logs --tail 20 "$c" 2>&1; done; }

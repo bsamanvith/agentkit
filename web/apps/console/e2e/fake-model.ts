@@ -15,6 +15,8 @@
 //   "unsafe" shows a surface with markup in its text, an image from another
 //            origin (GET /hook.png, counted at GET /hooks) and a javascript: link
 //   "background" with "echo": echoes, then holds the answer until GET /release
+//   "handbook" searches the knowledge base (knowledge_search) for the
+//            restocking fee, then answers with what the search returned
 //   "delegate" asks agent:worker "What is 6*7?" (agent_message, wait), which
 //            answers 42, and says what came back
 //   other    "You said: …" with the number of messages so far
@@ -323,6 +325,25 @@ const server = createServer((req, res) => {
         finish(res, "end_turn", 12);
       });
       return;
+    }
+    // "handbook" (test/e2e's TestKnowledge) searches the knowledge base
+    // and answers with what it found.
+    if (/\bhandbook\b/i.test(said)) {
+      if (result) {
+        text(res, 0, `From the handbook: ${resultText()}`);
+        return finish(res, "end_turn", 20);
+      }
+      const name = tools.find((t) => t.name.endsWith("knowledge_search"))?.name ?? "knowledge_search";
+      send(res, "content_block_start", {
+        index: 0,
+        content_block: { type: "tool_use", id: `toolu_fake${Date.now()}`, name, input: {} },
+      });
+      send(res, "content_block_delta", {
+        index: 0,
+        delta: { type: "input_json_delta", partial_json: JSON.stringify({ query: "restocking fee for an opened e-bike" }) },
+      });
+      send(res, "content_block_stop", { index: 0 });
+      return finish(res, "tool_use", 20);
     }
     // "delegate" asks the worker agent and waits for its reply; the worker
     // answers "6*7" with 42.

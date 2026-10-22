@@ -9,6 +9,7 @@
       {"name": "tavily", "type": "tavily", "settings": {"auth": "auto"}, "optional": true},
       {"name": "exa", "type": "exa", "optional": true},
       {"name": "parallel", "type": "parallel", "optional": true},
+      {"name": "handbook", "type": "knowledge", "optional": true, "settings": {"root": "knowledge", "description": "Northwind Bikes' customer support handbook: returns, warranty, shipping, e-bike error codes, escalation"}},
       {"name": "agentkit", "type": "agentkit", "settings": {"timeout": "5m"}}
     ]
   },
@@ -40,6 +41,14 @@
       "system": "You are a careful assistant working in a folder of files. Use list_files, search_files and read_file to look before you change anything, and edit_file to change or create files (an empty old_text creates a new file). Use the math tools for arithmetic instead of working it out yourself. Keep answers short and say which files you changed.",
       "toolsets": ["files", "math"],
       "max_turns": 20
+    },
+    {
+      "name": "support",
+      "description": "Northwind Bikes' support assistant, which answers from the support handbook (deploy/local/agent/knowledge).",
+      "model": {"provider": "anthropic", "id": "claude-haiku-5-5", "effort": "low"},
+      "system": "You are a customer support assistant for Northwind Bikes. Answer only from the support handbook: search it with knowledge_search before answering (knowledge_read reads a whole document), and cite the source of what you use by its file name (such as returns.md). If the handbook does not say, say so. Keep answers short.",
+      "toolsets": ["handbook"],
+      "max_turns": 10
     }
   ]
 }

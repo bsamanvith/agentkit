@@ -91,8 +91,9 @@ services:
       AGENTKIT_API_TOKEN: ${AGK_API_TOKEN:?run scripts/compose-local.sh up}
       # Connector keys go here, and only here (TAVILY_API_KEY, ...).
     # Files a toolset reads go under /etc/agentkit next to the config, one
-    # bind mount each, relative to this file, for example:
-    # volumes: [../local/agent/knowledge:/etc/agentkit/knowledge:ro]
+    # bind mount each, relative to this file: the handbook knowledge base
+    # of config.json (deploy/local/agent/knowledge).
+    volumes: [../local/agent/knowledge:/etc/agentkit/knowledge:ro]
 
   runner:
     <<: *agentkit

@@ -12,6 +12,6 @@ import (
 // runner and the agent API of a split deployment take their toolsets from
 // the toolsets component ($AGENTKIT_TOOLSETS_URL), and a config naming
 // another type fails at startup with toolset.ErrUnknownType.
-func newCatalog(*slog.Logger) (*toolset.Catalog, error) {
+func newCatalog(*slog.Logger, string) (*toolset.Catalog, error) {
 	return toolset.NewCatalog(toolset.Demo())
 }

@@ -535,6 +535,27 @@ claude mcp add --transport http agentkit-files http://localhost:8080/mcp/files -
 
 `edit_file` is a write tool (kind `write`, risk `medium`); the rest are read-only. An agent (or an environment, or a run) with the tool policy `read_only` cannot call it (section 5, "Tool policies"); without one, anyone with the API token can change files under `files`' root: give it a root you are happy for them to change.
 
+### Knowledge bases
+
+A `knowledge` toolset (`pkg/knowledge`) is a knowledge base: a folder of Markdown (`.md`, `.markdown`) and text (`.txt`) documents that the agent searches for passages to answer from. It is read once at startup: every document is cut into passages along its headings (each at most `chunk_bytes`, default 2,000, and labelled with its section, such as "Returns and refunds > Restocking fee") and indexed in memory. The tools are `knowledge_search` (passages for a query, with their source and section to cite), `knowledge_list` (the documents) and `knowledge_read` (a whole document, in parts of 16 KiB). All three are read-only.
+
+```json
+{"name": "handbook", "type": "knowledge", "settings": {"root": "knowledge", "description": "Northwind Bikes' customer support handbook"}}
+```
+
+Settings: `root` (required; a relative path is from the config file's folder), `description` (what the base holds, added to the tools' descriptions so the model knows when to search it), `k` (passages per search when the model gives none, default 5), `chunk_bytes` (200 to 16,384), and, for search by meaning, `embedder` (as an agent's `memory.index.embedder`: `{"type": "voyage", "model": "voyage-3.5-lite"}`, or `"openai"` for any OpenAI-compatible server) and `modes`. With an embedder, every passage is embedded at startup. Without an embedder the search is by keyword (BM25), which finds the words of the question, not their synonyms. Folders and files whose names start with `.` are skipped; a symlink is never followed.
+
+The base is the deployment's, like a system prompt: every caller searches the same documents, whatever its tenant. To change it, change the folder and restart. Write it as you would the agent's instructions: a model may follow text it reads, though the tools say that passages are reference material, not instructions.
+
+`search.json` has a sample, the made-up Northwind Bikes support handbook in `deploy/local/agent/knowledge`, and the agent `support`, which answers from it:
+
+```sh
+scripts/try-agent.sh --agent support
+bin/agentkit ask -agent support "My e-bike shows E07. What should I do?"
+```
+
+The split deployment (`make k8s-up`, `make smoke`) runs the same handbook on the toolsets component; `make eval EVAL_SCENARIOS='^knowledge-'` measures how Claude uses it.
+
 ### Skills
 
 An agent's `skills` names folders of [Agent Skills](https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills) (`pkg/skill`): each folder under one is a skill, with a `SKILL.md` (YAML front matter `name` and `description`, then instructions) and any reference files. The same folders Claude Code uses work as they are. Only each skill's name and description go into the system prompt; the agent gets `skill_load` (a skill's instructions and its list of files) and `skill_read` (one of its text files) to read the rest when a task needs it. Reads stay inside the skill's folder (no `..`, absolute paths or symlinks out). Scripts in a skill are never run.

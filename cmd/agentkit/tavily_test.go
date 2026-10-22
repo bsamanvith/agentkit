@@ -113,7 +113,7 @@ func TestSearchConfigBuilds(t *testing.T) {
 	for _, a := range cfg.Agents {
 		toolsets[a.Name] = a.Toolsets
 	}
-	if want := map[string][]string{"default": {"demo"}, "search": {"tavily", "exa", "parallel"}, "workspace": {"files", "math"}}; !maps.EqualFunc(toolsets, want, slices.Equal) {
+	if want := map[string][]string{"default": {"demo"}, "search": {"tavily", "exa", "parallel"}, "workspace": {"files", "math"}, "support": {"handbook"}}; !maps.EqualFunc(toolsets, want, slices.Equal) {
 		t.Errorf("agents' toolsets %v, want %v", toolsets, want)
 	}
 }

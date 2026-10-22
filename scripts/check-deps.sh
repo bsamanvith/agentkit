@@ -40,6 +40,11 @@ connect='github.com/bsamanvith/agentkit/pkg/credentials/connect'
 # link it (the nows tag leaves it out of those too).
 ws='github.com/coder/websocket'
 agent="$stores $busopen $memory $servers $connect"
+# The toolsets component serves knowledge bases (pkg/knowledge, T112), which
+# index their documents with the search store's in-memory backend and
+# embedding clients: it may link those, never the rest of memory.
+memstore='github.com/bsamanvith/agentkit/pkg/memory/sqlite'
+toolsetsAgent="$stores $busopen $memstore $servers $connect"
 
 # What each variant must not link.
 forbidden() {
@@ -48,7 +53,7 @@ forbidden() {
 	dev) echo "$sqlite $credsqlite $agui" ;;
 	api) echo "$anthropic $openai $mcp $sqlite $connectors $skill $agui $credsqlite" ;;
 	runner) echo "$mcp $pgx $sqlite $redis $connectors $a2a $agui $webhook $credsqlite $credpg $agent $ws" ;;
-	toolsets) echo "$anthropic $openai $pgx $sqlite $redis $skill $a2a $agui $webhook $credsqlite $credpg $agent $ws" ;;
+	toolsets) echo "$anthropic $openai $pgx $sqlite $redis $skill $a2a $agui $webhook $credsqlite $credpg $toolsetsAgent $ws" ;;
 	*) echo "check-deps: unknown variant $1" >&2; exit 2 ;;
 	esac
 }

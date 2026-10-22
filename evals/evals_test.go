@@ -52,13 +52,22 @@ func TestShippedScenarios(t *testing.T) {
 		if c.After != nil {
 			proved["after "+c.After.On] = true
 		}
+		if len(c.AnswerContains) > 0 {
+			proved["answer"] = true
+		}
+		if c.CitesSource {
+			proved["source citation"] = true
+		}
 	}
 	for _, p := range []string{"tavily", "exa", "parallel"} {
 		if providers[p] < 3 {
 			t.Errorf("%s is offered in %d scenarios, want at least 3", p, providers[p])
 		}
 	}
-	for _, kind := range []string{"tool chosen", "arguments", "call count", "citation", "after error", "after truncation"} {
+	if providers[Knowledge] < 3 {
+		t.Errorf("knowledge is offered in %d scenarios, want at least 3", providers[Knowledge])
+	}
+	for _, kind := range []string{"tool chosen", "arguments", "call count", "citation", "after error", "after truncation", "answer", "source citation"} {
 		if !proved[kind] {
 			t.Errorf("no scenario with misleading descriptions checks %s", kind)
 		}
@@ -68,14 +77,17 @@ func TestShippedScenarios(t *testing.T) {
 func TestLoadScenariosRejects(t *testing.T) {
 	t.Parallel()
 	for name, body := range map[string]string{
-		"unknown field":      `{"behavior":"b","prompt":"p","toolsets":["exa"],"checks":{"max_calls":0},"extra":1}`,
-		"unknown toolset":    `{"behavior":"b","prompt":"p","toolsets":["bing"],"checks":{"max_calls":0}}`,
-		"no checks":          `{"behavior":"b","prompt":"p","toolsets":["exa"],"checks":{}}`,
-		"tool not offered":   `{"behavior":"b","prompt":"p","toolsets":["exa"],"checks":{"called":["tavily_search"]}}`,
-		"unknown endpoint":   `{"behavior":"b","prompt":"p","toolsets":["exa"],"upstream":{"exa":{"/extract":[{"status":500}]}},"checks":{"max_calls":0}}`,
-		"missing cassette":   `{"behavior":"b","prompt":"p","toolsets":["exa"],"upstream":{"exa":{"/search":[{"cassette":"nope.http"}]}},"checks":{"max_calls":0}}`,
-		"bad after":          `{"behavior":"b","prompt":"p","toolsets":["exa"],"checks":{"after":{"tool":"exa_search","on":"timeout","next":["exa_search"]}}}`,
-		"misleading unknown": `{"behavior":"b","prompt":"p","toolsets":["exa"],"checks":{"max_calls":0},"misleading":{"exa":{"exa_find":"x"}}}`,
+		"unknown field":       `{"behavior":"b","prompt":"p","toolsets":["exa"],"checks":{"max_calls":0},"extra":1}`,
+		"unknown toolset":     `{"behavior":"b","prompt":"p","toolsets":["bing"],"checks":{"max_calls":0}}`,
+		"no checks":           `{"behavior":"b","prompt":"p","toolsets":["exa"],"checks":{}}`,
+		"tool not offered":    `{"behavior":"b","prompt":"p","toolsets":["exa"],"checks":{"called":["tavily_search"]}}`,
+		"unknown endpoint":    `{"behavior":"b","prompt":"p","toolsets":["exa"],"upstream":{"exa":{"/extract":[{"status":500}]}},"checks":{"max_calls":0}}`,
+		"missing cassette":    `{"behavior":"b","prompt":"p","toolsets":["exa"],"upstream":{"exa":{"/search":[{"cassette":"nope.http"}]}},"checks":{"max_calls":0}}`,
+		"bad after":           `{"behavior":"b","prompt":"p","toolsets":["exa"],"checks":{"after":{"tool":"exa_search","on":"timeout","next":["exa_search"]}}}`,
+		"cites_source, no kb": `{"behavior":"b","prompt":"p","toolsets":["exa"],"checks":{"cites_source":true}}`,
+		"unknown agent":       `{"behavior":"b","prompt":"p","agent":"sales","toolsets":["knowledge"],"checks":{"max_calls":1}}`,
+		"empty answer text":   `{"behavior":"b","prompt":"p","toolsets":["knowledge"],"checks":{"answer_contains":[" "]}}`,
+		"misleading unknown":  `{"behavior":"b","prompt":"p","toolsets":["exa"],"checks":{"max_calls":0},"misleading":{"exa":{"exa_find":"x"}}}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -134,6 +146,9 @@ func TestCheck(t *testing.T) {
 		`{"results":[{"url":"https://go.dev/blog/go1.27","content":"Go 1.27 is out…[truncated 900 characters; call tavily_extract on this URL for the full page]"}]}`)
 	extract := call("tavily_extract", `{"urls":["https://go.dev/blog/go1.27"]}`, `{"results":[{"url":"https://go.dev/blog/go1.27"}]}`)
 	exa := call("exa_search", `{"query":"go","start_published_date":"2026-10-05T00:00:00Z"}`, `{"results":[]}`)
+	kbSearch := call("knowledge_search", `{"query":"restocking fee"}`,
+		`{"results":[{"source":"returns.md","title":"Returns and refunds","text":"Opened e-bikes carry a 12% restocking fee."}]}`)
+	kbRead := call("knowledge_read", `{"source":"warranty.md"}`, `{"source":"warranty.md","title":"Warranty","text":"..."}`)
 	cases := []struct {
 		name   string
 		checks Checks
@@ -177,6 +192,15 @@ func TestCheck(t *testing.T) {
 		{"one provider", Checks{OneProvider: true}, Transcript{Calls: []Call{search, extract}}, 0},
 		{"two providers", Checks{OneProvider: true}, Transcript{Calls: []Call{search, exa}}, 1},
 		{"run failed", Checks{MaxCalls: intp(5)}, Transcript{Error: "model_error: overloaded"}, 1},
+		{"answer contains", Checks{AnswerContains: []string{"12%", "Fee"}}, Transcript{Answer: "A 12% restocking fee."}, 0},
+		{"answer lacks one", Checks{AnswerContains: []string{"12%", "45 days"}}, Transcript{Answer: "A 12% restocking fee."}, 1},
+		{"cites a source", Checks{CitesSource: true}, Transcript{Calls: []Call{kbSearch}, Answer: "12% (see Returns.md)."}, 0},
+		{"a stem is not a source", Checks{CitesSource: true}, Transcript{Calls: []Call{kbSearch}, Answer: "12%, per the returns policy."}, 1},
+		{"a title is not a source", Checks{CitesSource: true}, Transcript{Calls: []Call{kbSearch}, Answer: "From Returns and Refunds: 12%."}, 1},
+		{"cites a read", Checks{CitesSource: true}, Transcript{Calls: []Call{kbRead}, Answer: "See warranty.md."}, 0},
+		{"cites no source", Checks{CitesSource: true}, Transcript{Calls: []Call{kbSearch}, Answer: "It is 12%."}, 1},
+		{"cites another source", Checks{CitesSource: true}, Transcript{Calls: []Call{kbSearch}, Answer: "See shipping.md."}, 1},
+		{"cites a failed search", Checks{CitesSource: true}, Transcript{Calls: []Call{failed(kbSearch)}, Answer: "See returns.md."}, 1},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

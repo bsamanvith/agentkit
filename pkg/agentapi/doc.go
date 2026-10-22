@@ -89,6 +89,19 @@
 // last turn add up to run_done's answer. Comment lines (": keep-alive") may
 // come in between; SSE clients skip them.
 //
+// # UI
+//
+// An agent with UI on ([Agent.UI] is "a2ui") has the ui_render tool of
+// package a2ui: each A2UI message of a call that succeeded is a ui event,
+// right after the call's tool_result, with the surface's ID and the message.
+// The person's action on a surface comes back in POST /v1/runs as
+// "ui_action" ({"surface_id", "component_id", "action", "context"}), in
+// place of "message", to the conversation that showed it: the next user
+// message is the action, as a2ui.ActionText writes it, which the agent reads
+// like any message. A ui_action without a conversation, with a message too,
+// to an agent without UI, or that a2ui.Action.Check refuses, is 400
+// invalid_request.
+//
 // # Conversations and disconnects
 //
 // A conversation holds every message the model has seen, in order: the

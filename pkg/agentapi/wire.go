@@ -30,6 +30,7 @@ const (
 	TypeRunError    = wire.TypeRunError
 	TypeRetrying    = wire.TypeRetrying
 	TypeRewind      = wire.TypeRewind
+	TypeUI          = wire.TypeUI
 )
 
 // Error codes of a failed run, and of HTTP errors.
@@ -124,6 +125,9 @@ type (
 	Interrupt = wire.Interrupt
 	// Answer is [wire.Answer]: the answer to an Interrupt.
 	Answer = wire.Answer
+	// UIAction is [wire.UIAction]: a person's action on an A2UI surface,
+	// in a RunRequest.
+	UIAction = wire.UIAction
 	// Credential is [wire.Credential]: where a toolset's credential comes
 	// from. The other catalog types (agents, toolsets, tools, conversation
 	// lists) are used from package wire: [Agent] and [Toolset] here are what

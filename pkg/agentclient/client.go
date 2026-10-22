@@ -26,8 +26,12 @@ var ErrInvalidConfig = errors.New("invalid agent client configuration")
 
 // RunRequest is the body of POST /v1/runs: the message, and the conversation
 // to continue (empty starts a new one). The message may be empty only to
-// resume an interrupted conversation.
+// resume an interrupted conversation, or with a UIAction.
 type RunRequest = wire.RunRequest
+
+// UIAction is a person's action on an A2UI surface, sent in a RunRequest in
+// place of its message.
+type UIAction = wire.UIAction
 
 // Client talks to one agent API server. It is safe for concurrent use.
 type Client struct {

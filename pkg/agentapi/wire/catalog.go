@@ -56,6 +56,9 @@ type Agent struct {
 	// (E12); empty and false until those land.
 	Skills []string `json:"skills"`
 	Memory bool     `json:"memory"`
+	// UI is how the agent shows UI besides text: "a2ui" (A2UI surfaces,
+	// as ui events; it takes UIAction), or absent for text only.
+	UI string `json:"ui,omitempty"`
 	// System is the system prompt: only in GET /v1/agents/{name}, and only
 	// for a caller with the scope "admin:agents" (admins).
 	System string `json:"system,omitempty"`

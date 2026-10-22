@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/bsamanvith/agentkit/internal/testkit"
+	"github.com/bsamanvith/agentkit/pkg/a2ui"
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/clock"
@@ -751,8 +752,11 @@ func (r *rig) listAll() map[string]wire.ConversationSummary {
 }
 
 // checkStream checks one run's events: framing and header, the order, exactly
-// one terminal event at the end, and that the text deltas add up to each
-// turn's text and the last turn's to the answer.
+// one terminal event at the end, that the text deltas add up to each turn's
+// text and the last turn's to the answer, and that each ui_render call that
+// succeeded is followed at once by a ui event for each of its messages, in
+// order (or, for an agent without UI, by none), and no ui event comes from
+// anywhere else.
 func checkStream(t *testing.T, events []agentapi.Event) {
 	t.Helper()
 	if len(events) < 2 || events[0].Type != agentapi.TypeRunStart || events[0].ConversationID == "" {
@@ -766,7 +770,28 @@ func checkStream(t *testing.T, events []agentapi.Event) {
 	calls := map[[2]int]string{}
 	var usage llm.Usage
 	stored := 0
+	uiInputs := map[[2]int]json.RawMessage{} // ui_render calls, by turn and call
+	var uiDue []a2ui.Message                 // the messages the last tool_result owes as ui events
+	var uiCall [2]int
+	uiSent := false // some of uiDue's call's ui events came
 	for i, e := range events {
+		if e.Type == agentapi.TypeUI {
+			m, err := a2ui.Parse(e.UI)
+			switch {
+			case len(uiDue) == 0 || [2]int{e.Turn, e.Call} != uiCall:
+				t.Errorf("event %d: ui %s not right after its ui_render call's tool_result", i, e.UI)
+			case err != nil || e.SurfaceID != m.SurfaceID() || !jsonEqual(m, uiDue[0]) || e.ToolUseID == "":
+				t.Errorf("event %d: ui %+v (%v), want surface %q and message %s", i, e, err, uiDue[0].SurfaceID(), jsonOf(uiDue[0]))
+			}
+			if len(uiDue) > 0 {
+				uiDue, uiSent = uiDue[1:], true
+			}
+		} else if len(uiDue) > 0 {
+			if uiSent {
+				t.Errorf("event %d (%s): %d ui events of call %v missing before it", i, e.Type, len(uiDue), uiCall)
+			}
+			uiDue = nil
+		}
 		seq, n, ok := wire.ParseID(e.ID)
 		if n == 0 {
 			stored++
@@ -781,7 +806,7 @@ func checkStream(t *testing.T, events []agentapi.Event) {
 				t.Errorf("run_start at %d", i)
 			}
 		case agentapi.TypeTextDelta, agentapi.TypeToolCall, agentapi.TypeToolResult, agentapi.TypeTurnDone,
-			agentapi.TypeToolPolicy, agentapi.TypeToolFlagged, agentapi.TypeInterrupt:
+			agentapi.TypeToolPolicy, agentapi.TypeToolFlagged, agentapi.TypeInterrupt, agentapi.TypeUI:
 			if e.Turn != turn+1 {
 				t.Errorf("event %d (%s) of turn %d after turn %d was done", i, e.Type, e.Turn, turn)
 			}
@@ -821,6 +846,9 @@ func checkStream(t *testing.T, events []agentapi.Event) {
 				t.Errorf("tool_call %d/%d twice", e.Turn, e.Call)
 			}
 			calls[[2]int{e.Turn, e.Call}] = e.ToolUseID
+			if e.Name == a2ui.ToolName {
+				uiInputs[[2]int{e.Turn, e.Call}] = e.Input
+			}
 		case agentapi.TypeToolPolicy, agentapi.TypeToolFlagged:
 			// Between the call's tool_call and tool_result, a decision
 			// that is not a plain allow, and tool_flagged after a flag.
@@ -855,6 +883,13 @@ func checkStream(t *testing.T, events []agentapi.Event) {
 				t.Errorf("tool_result %d/%d without its tool_call", e.Turn, e.Call)
 			}
 			calls[[2]int{e.Turn, e.Call}] = "done"
+			if in, ok := uiInputs[[2]int{e.Turn, e.Call}]; ok && !e.IsError {
+				msgs, err := a2ui.ParseInput(in)
+				if err != nil {
+					t.Errorf("event %d: ui_render succeeded with input it refuses: %v", i, err)
+				}
+				uiDue, uiCall, uiSent = msgs, [2]int{e.Turn, e.Call}, false
+			}
 		case agentapi.TypeTurnDone:
 			turn++
 			for k, v := range calls {

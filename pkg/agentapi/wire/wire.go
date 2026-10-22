@@ -83,6 +83,15 @@ const (
 	// Only the first Turns turns stand: discard the events of the later
 	// ones, and of the turn that was in progress. It does not end the run.
 	TypeRewind = "rewind"
+	// TypeUI carries one A2UI message (v0.9) the agent showed the person:
+	// the surface it is about (SurfaceID) and the message (UI), checked
+	// against the catalog of package a2ui. An agent with UI on (an Agent's
+	// UI is "a2ui") shows UI with its ui_render tool; each message of a
+	// successful call is a ui event, in the call's order, right after the
+	// call's tool_result and before the turn's turn_done. A client keeps a
+	// surface's components and data model as the spec says and draws them;
+	// the person's action on it goes back as a RunRequest's UIAction.
+	TypeUI = "ui"
 )
 
 // Event is one event of a run on the wire: the JSON of an SSE "data:" line.
@@ -148,6 +157,10 @@ type Event struct {
 
 	// interrupt: what the call waits for.
 	Interrupt *Interrupt `json:"interrupt,omitempty"`
+
+	// ui: the surface, and the A2UI message about it (JSON object).
+	SurfaceID string          `json:"surface_id,omitempty"`
+	UI        json.RawMessage `json:"message,omitempty"`
 
 	// turn_done
 	Record *TurnRecord `json:"record,omitempty"`
@@ -270,6 +283,15 @@ func (e Event) MarshalJSON() ([]byte, error) {
 			Turn   int         `json:"turn"`
 			Record *TurnRecord `json:"record"`
 		}{h, e.Turn, e.Record})
+	case TypeUI:
+		return json.Marshal(struct {
+			header
+			Turn      int             `json:"turn"`
+			Call      int             `json:"call"`
+			ToolUseID string          `json:"tool_use_id"`
+			SurfaceID string          `json:"surface_id"`
+			UI        json.RawMessage `json:"message"`
+		}{h, e.Turn, e.Call, e.ToolUseID, e.SurfaceID, e.UI})
 	case TypeRunDone:
 		return json.Marshal(struct {
 			header
@@ -605,6 +627,25 @@ type RunRequest struct {
 	// is refused. The stricter of the agent's mode and the run's wins. The
 	// run keeps it when it is resumed.
 	Interaction string `json:"interaction,omitempty"`
+	// UIAction, in place of Message, says what the person did on a surface
+	// the agent showed (a ui event): the next user message is the action,
+	// as structured text the agent reads. It continues a conversation
+	// (ConversationID) whose agent has UI on.
+	UIAction *UIAction `json:"ui_action,omitempty"`
+}
+
+// UIAction is a person's action on an A2UI surface: a button's action
+// event, with its context's bindings resolved to the values chosen.
+type UIAction struct {
+	// SurfaceID is the surface, and ComponentID the component (the button)
+	// whose action it is.
+	SurfaceID   string `json:"surface_id"`
+	ComponentID string `json:"component_id"`
+	// Action is the action event's name.
+	Action string `json:"action"`
+	// Context is the event's context, resolved: a JSON object of the
+	// values. Absent is {}.
+	Context json.RawMessage `json:"context,omitempty"`
 }
 
 // ErrorResponse is the body of every HTTP error.

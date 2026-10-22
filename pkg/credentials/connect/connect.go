@@ -280,8 +280,20 @@ func (s *Service) metas(ctx context.Context, user string) (map[string]credential
 	return out, nil
 }
 
+// notReserved refuses a request in [FlowTenant], where the flows are kept:
+// no principal acts as it, whatever its API key, token or header says.
+func notReserved(ctx context.Context) error {
+	if t, ok := tenancy.From(ctx); ok && t.ID() == FlowTenant {
+		return invalid("the tenant %q is reserved for the connect flows", FlowTenant)
+	}
+	return nil
+}
+
 // List implements [agentapi.Credentials].
 func (s *Service) List(ctx context.Context, user string) ([]wire.CredentialInfo, error) {
+	if err := notReserved(ctx); err != nil {
+		return nil, err
+	}
 	stored := map[credentials.Scope]map[string]credentials.Meta{}
 	var err error
 	if stored[credentials.ScopeTenant], err = s.metas(ctx, ""); err != nil {
@@ -310,6 +322,9 @@ func (s *Service) List(ctx context.Context, user string) ([]wire.CredentialInfo,
 
 // Status implements [agentapi.Credentials].
 func (s *Service) Status(ctx context.Context, user, slot string) (string, error) {
+	if err := notReserved(ctx); err != nil {
+		return "", err
+	}
 	ms, err := s.metas(ctx, user)
 	if err != nil {
 		return "", err
@@ -404,6 +419,9 @@ func (s *Service) checkTokenURL(raw string) error {
 
 // Put implements [agentapi.Credentials].
 func (s *Service) Put(ctx context.Context, user, slot string, req wire.PutCredentialRequest) (wire.CredentialInfo, error) {
+	if err := notReserved(ctx); err != nil {
+		return wire.CredentialInfo{}, err
+	}
 	cred, err := s.credential(req)
 	if err != nil {
 		return wire.CredentialInfo{}, err
@@ -439,6 +457,9 @@ func (s *Service) store(ctx context.Context, user, slot string, cred credentials
 
 // Delete implements [agentapi.Credentials].
 func (s *Service) Delete(ctx context.Context, user, slot string) error {
+	if err := notReserved(ctx); err != nil {
+		return err
+	}
 	err := s.cfg.Vault.Delete(ctx, user, slot, 0)
 	if errors.Is(err, credentials.ErrNotFound) {
 		return fmt.Errorf("%w: nothing is stored at slot %q", agentapi.ErrCredentialNotFound, slot)
@@ -458,6 +479,9 @@ func (s *Service) Connect(ctx context.Context, user, slot string, req wire.Conne
 	}
 	t, err := tenancy.Require(ctx)
 	if err != nil {
+		return wire.ConnectResponse{}, err
+	}
+	if err := notReserved(ctx); err != nil {
 		return wire.ConnectResponse{}, err
 	}
 	b := make([]byte, 32) // 256 bits

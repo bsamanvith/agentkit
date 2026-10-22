@@ -75,7 +75,11 @@ func locate(state string) (bucket, id string) {
 	return fmt.Sprintf("flows-%02x", sum[0]%flowBuckets), hex.EncodeToString(sum[:])
 }
 
-// read opens a bucket: its flows by id, and its version (0: none yet).
+// read opens a bucket: its flows by id, and its version (0: none yet). A
+// bucket that does not open (sealed under a key the ring no longer has,
+// after a rotation, or damaged) reads as empty at its version, so the next
+// write replaces it: its flows are lost, which fails closed (their states
+// are unknown), instead of every flow hashing to it failing for good.
 func (f *flows) read(ctx context.Context, bucket string) (map[string]flow, int64, error) {
 	b, err := f.store.Get(ctx, bucket, FlowSlot)
 	if errors.Is(err, credentials.ErrNotFound) {
@@ -85,12 +89,12 @@ func (f *flows) read(ctx context.Context, bucket string) (map[string]flow, int64
 	}
 	plain, _, err := f.sealer.Open(credentials.Key{Tenant: f.tenant, User: bucket, Slot: FlowSlot}, b.Data)
 	if err != nil {
-		return nil, 0, err
+		return map[string]flow{}, b.Version, nil
 	}
 	defer clear(plain)
 	m := map[string]flow{}
 	if err := json.Unmarshal(plain, &m); err != nil {
-		return nil, 0, credentials.ErrCorrupt
+		return map[string]flow{}, b.Version, nil
 	}
 	return m, b.Version, nil
 }

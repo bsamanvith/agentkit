@@ -262,6 +262,7 @@ func TestCredentialsPutCLI(t *testing.T) {
 		"memory vault":  {"k\n", map[string]string{envCredentialsKey: testCredentialsKey}, []string{"crm", "-tenant", "acme"}},
 		"bad kind":      {"k\n", env, []string{"crm", "-tenant", "acme", "-kind", "token"}},
 		"bad slot":      {"k\n", env, []string{"has space", "-tenant", "acme"}},
+		"flows' tenant": {"k\n", env, []string{"crm", "-tenant", "agentkit-oauth-flows"}},
 		"http tokenurl": {"k\n", env, []string{"api", "-tenant", "acme", "-kind", "client_credentials", "-client-id", "c", "-token-url", "http://x/token"}},
 	} {
 		if code, _ := run(tc.stdin, tc.env, tc.args...); code == 0 {

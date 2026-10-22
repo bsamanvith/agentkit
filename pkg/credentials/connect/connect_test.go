@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -534,6 +536,20 @@ func TestBadState(t *testing.T) {
 			t.Errorf("an unknown state stored %T", c)
 		}
 	})
+	t.Run("two codes", func(t *testing.T) {
+		t.Parallel()
+		r := newRig(t)
+		u, _ := url.Parse(r.authorize(r.start("tenant-a", "u1", "mail", "")))
+		q := u.Query()
+		q.Add("code", q.Get("code"))
+		u.RawQuery = q.Encode()
+		if resp, body := r.callback(u.String()); resp.StatusCode != http.StatusBadGateway {
+			t.Errorf("a callback with two codes = %d %s", resp.StatusCode, body)
+		}
+		if c := r.stored("tenant-a", "u1", "mail"); c != nil || r.ts.Grants("authorization_code") != 0 {
+			t.Errorf("stored %T after %d exchanges", c, r.ts.Grants("authorization_code"))
+		}
+	})
 	t.Run("another tenant's flow", func(t *testing.T) {
 		t.Parallel()
 		r := newRig(t)
@@ -555,6 +571,139 @@ func TestBadState(t *testing.T) {
 			}
 		}
 	})
+}
+
+// barrierStore holds every write of the flows until n reads of them have
+// happened, once armed: n callbacks then all read the flow before any of
+// them writes, the race a compare-and-swap has to settle.
+type barrierStore struct {
+	credentials.BlobStore
+	n     int
+	armed atomic.Bool
+	mu    sync.Mutex
+	gets  int
+	all   chan struct{}
+}
+
+func (b *barrierStore) Get(ctx context.Context, user, slot string) (credentials.Blob, error) {
+	if b.armed.Load() && slot == connect.FlowSlot {
+		b.mu.Lock()
+		if b.gets++; b.gets == b.n {
+			close(b.all)
+		}
+		b.mu.Unlock()
+	}
+	return b.BlobStore.Get(ctx, user, slot)
+}
+
+func (b *barrierStore) Put(ctx context.Context, user, slot string, blob credentials.Blob, ifVersion int64) (credentials.Meta, error) {
+	if b.armed.Load() && slot == connect.FlowSlot {
+		<-b.all
+	}
+	return b.BlobStore.Put(ctx, user, slot, blob, ifVersion)
+}
+
+// Criterion: a state is used once, also by callbacks that come at the same
+// time: each reads the flow before any writes, and only one exchanges the
+// code and connects.
+func TestStateRace(t *testing.T) {
+	t.Parallel()
+	const n = 6
+	bs := &barrierStore{BlobStore: memory.New(), n: n, all: make(chan struct{})}
+	r := newRig(t, withStore(bs))
+	cb := r.authorize(r.start("tenant-a", "u1", "mail", ""))
+	bs.armed.Store(true)
+	codes := make([]int, n)
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Go(func() {
+			rec := httptest.NewRecorder()
+			r.svc.Callback().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, cb, nil))
+			codes[i] = rec.Code
+		})
+	}
+	wg.Wait()
+	ok := 0
+	for _, c := range codes {
+		switch c {
+		case http.StatusOK:
+			ok++
+		case http.StatusBadRequest:
+		default:
+			t.Errorf("a callback answered %d", c)
+		}
+	}
+	if ok != 1 || r.ts.Grants("authorization_code") != 1 {
+		t.Errorf("%d callbacks connected, %d exchanged the code (answers %v): want one", ok, r.ts.Grants("authorization_code"), codes)
+	}
+}
+
+// After the key ring drops the key the pending flows were sealed with, new
+// flows still start and finish (the old buckets are replaced), and an old
+// flow's state is unknown, not a server error.
+func TestFlowsAfterKeyRotation(t *testing.T) {
+	t.Parallel()
+	r := newRig(t)
+	old := r.authorize(r.start("tenant-a", "u1", "mail", ""))
+	// Fill every bucket under the old key.
+	flowCtx := ctxOf(t, connect.FlowTenant)
+	for i, tries := 0, 0; i < 64; {
+		if _, err := r.store.Get(flowCtx, fmt.Sprintf("flows-%02x", i), connect.FlowSlot); err == nil {
+			i++
+			continue
+		}
+		if tries++; tries > 10000 {
+			t.Fatalf("bucket %d never written", i)
+		}
+		r.start("tenant-a", "u2", "mail", "")
+	}
+	ring, err := credentials.ParseKeyRing("k2:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := r.config()
+	cfg.Store, cfg.Sealer = r.store, credentials.NewSealer(ring)
+	cfg.Vault = credentials.NewVault(r.store, cfg.Sealer)
+	rotated, err := connect.New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serve := func(target string) int {
+		rec := httptest.NewRecorder()
+		rotated.Callback().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, target, nil))
+		return rec.Code
+	}
+	if code := serve(old); code != http.StatusBadRequest {
+		t.Errorf("a flow sealed under the dropped key = %d, want 400", code)
+	}
+	resp, err := rotated.Connect(ctxOf(t, "tenant-a"), "u3", "mail", wire.ConnectRequest{})
+	if err != nil {
+		t.Fatalf("Connect after the rotation: %v", err)
+	}
+	if code := serve(r.authorize(resp.AuthorizeURL)); code != http.StatusOK {
+		t.Errorf("a flow started after the rotation = %d", code)
+	}
+	if _, _, err := cfg.Vault.Get(ctxOf(t, "tenant-a"), "u3", "mail"); err != nil {
+		t.Errorf("the tokens after the rotation: %v", err)
+	}
+}
+
+// No request acts as the tenant the flows are kept under, whatever
+// credential put it there.
+func TestReservedTenant(t *testing.T) {
+	t.Parallel()
+	r := newRig(t)
+	ctx := ctxOf(t, connect.FlowTenant)
+	_, errList := r.svc.List(ctx, "flows-00")
+	_, errStatus := r.svc.Status(ctx, "flows-00", "mail")
+	_, errPut := r.svc.Put(ctx, "flows-00", "mail", wire.PutCredentialRequest{Kind: wire.KindAPIKey, APIKey: "k"})
+	errDelete := r.svc.Delete(ctx, "", "crm")
+	_, errConnect := r.svc.Connect(ctx, "flows-00", "mail", wire.ConnectRequest{})
+	for name, err := range map[string]error{"List": errList, "Status": errStatus, "Put": errPut, "Delete": errDelete, "Connect": errConnect} {
+		if !errors.Is(err, agentapi.ErrCredentialInvalid) {
+			t.Errorf("%s in the flows' tenant = %v, want refused", name, err)
+		}
+	}
 }
 
 // Criterion: a return URL not on the allowlist is refused when the flow

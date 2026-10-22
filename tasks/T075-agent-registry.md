@@ -134,11 +134,11 @@ check` (Postgres's in the integration tier, `STORE=postgres`).
 12. Export writes the latest version, not the published one: `TestExportImport`.
 13. The run view omits `agent_version`: `TestRegistryPublishAndRollBack`.
 
-**Size.** About 238 KB in the all-in-one, 209 KB in local and dev; 78 KB in api (the
+**Size.** About 242 KB in the all-in-one, 209 KB in local and dev; 74 KB in api (the
 builder and `pkg/registry` need models, so `nomodels` leaves them out:
 `cmd/agentkit/registry_none.go`); about 25 KB in runner and toolsets (the
 client calls and the two commands). Every image stays under its budget
-(measured on main after T068; local's is 31 MB since #78); docs/SIZES.md has the row.
+(measured again on main `6d93484`, after T045, T085 and T066); docs/SIZES.md has the row.
 
 ### Review fixes
 - A stored agent's openai model could name any `base_url` and any

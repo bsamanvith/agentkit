@@ -1,0 +1,43 @@
+name: live
+
+# The live tier (docs/ENGINEERING.md 2.2): make test-live against the real
+# providers, nightly and on demand (Actions > live > Run workflow), never on
+# a pull request. Its keys come from repository secrets. ANTHROPIC_API_KEY is
+# required: without it (a secret that does not exist reads as empty) make
+# test-live LIVE_REQUIRED=1 fails and says so, rather than passing with every
+# test skipped. The other providers' keys are optional; their tests skip
+# without them.
+on:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live
+  cancel-in-progress: false
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: the checkout left no credentials in .git/config
+        run: scripts/check-no-git-credentials.sh
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      - name: make test-live LIVE_REQUIRED=1
+        run: make test-live LIVE_REQUIRED=1
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+          PARALLEL_API_KEY: ${{ secrets.PARALLEL_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}

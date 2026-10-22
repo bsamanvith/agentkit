@@ -13,6 +13,35 @@ permissions:
   contents: read
 
 jobs:
+  # Which jobs the change needs (scripts/ci-changes.sh): a pull request that
+  # touches only docs/ and tasks/ skips the image and smoke jobs; every other
+  # change, and every push to main, runs them. A skipped job reports success
+  # to a required check. If this job fails, its output is empty and those jobs
+  # run anyway: only an explicit "false" skips them.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.paths.outputs.code }}
+    steps:
+      # Depth 2: a pull request's checkout is its merge commit, whose first
+      # parent is the base branch, so HEAD^1..HEAD is what the PR changes.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - name: the checkout left no credentials in .git/config
+        run: scripts/check-no-git-credentials.sh
+      - name: scripts/ci-changes.sh HEAD^1 HEAD
+        id: paths
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            scripts/ci-changes.sh HEAD^1 HEAD >>"$GITHUB_OUTPUT"
+          else
+            echo code=true >>"$GITHUB_OUTPUT"
+          fi
+        env:
+          EVENT: ${{ github.event_name }}
+
   # Tests, lint and the fuzz seed corpus (which go test runs like any test;
   # coverage-guided fuzzing is local only, make fuzz).
   check:
@@ -26,6 +55,17 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
+      # setup-go caches the module and build caches (keyed on go.sum); this
+      # keeps the pinned linters make builds into bin/, and golangci-lint's
+      # analysis cache, so make lint neither rebuilds them nor starts cold.
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            bin/golangci-lint-*
+            bin/actionlint-*
+            ~/.cache/golangci-lint
+          key: lint-${{ runner.os }}-${{ hashFiles('Makefile', 'go.sum', '.golangci.yml') }}
+          restore-keys: lint-${{ runner.os }}-
       # make check runs zizmor when it is installed (scripts/zizmor.sh).
       - name: install zizmor for make workflow-lint
         run: pipx install "zizmor==$(make -s print-zizmor-version)"
@@ -116,6 +156,8 @@ jobs:
   # AGENTKIT_STORE_MIGRATE=off, and the smoke suite checks each image's
   # /readyz and surface and runs a chat on the fake model.
   image:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -165,6 +207,28 @@ jobs:
       - name: the fakellm image (make image BIN=fakellm), within its own 12 MB budget
         run: make image BIN=fakellm && make image-size BIN=fakellm
 
+  # The smoke suite (test/e2e, T007) against the split deployment run as
+  # processes on the fake model: make smoke, as on a laptop. Node runs the
+  # console's fake model; nothing is installed for it.
+  smoke:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: the checkout left no credentials in .git/config
+        run: scripts/check-no-git-credentials.sh
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: web/.nvmrc
+      - name: make smoke (the split deployment as processes, test/e2e)
+        run: make smoke
+
   # The web workspace (web/): lint, typecheck, unit tests, audit, and a
   # rebuild that must match the committed pkg/web/dist; then the browser
   # smoke test against agentkit serve, in the runner's Google Chrome (no
@@ -192,8 +256,6 @@ jobs:
         run: make web-check
       - name: make web-smoke
         run: make web-smoke
-      - name: make smoke (the split deployment as processes, test/e2e)
-        run: make smoke
       - name: Upload the Playwright report
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

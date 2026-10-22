@@ -57,8 +57,18 @@ STORE ?= sqlite
 integration: ## Integration tests, no Docker: STORE=sqlite (default, light) or postgres (CI's tier); live tests too if ANTHROPIC_API_KEY is set
 	STORE=$(STORE) scripts/integration.sh
 
+# LIVE_REQUIRED=1 makes a missing Anthropic key a failure instead of a run
+# whose tests all skip: CI's live workflow (.github/workflows/live.yml) sets it.
+LIVE_REQUIRED ?=
+
 .PHONY: test-live
-test-live: ## Live tests against real model providers (ANTHROPIC_API_KEY, or ANTHROPIC_KEY as in Claude sessions)
+test-live: ## Live tests against real model providers (ANTHROPIC_API_KEY, or ANTHROPIC_KEY as in Claude sessions); LIVE_REQUIRED=1 fails without a key
+	@if [ -n "$(LIVE_REQUIRED)" ] && [ -z "$${ANTHROPIC_API_KEY:-$$ANTHROPIC_KEY}" ]; then \
+		echo "test-live: ANTHROPIC_API_KEY is not set, and LIVE_REQUIRED=1 needs it: the live tests would all skip." >&2; \
+		echo "test-live: in GitHub Actions, add the repository secret ANTHROPIC_API_KEY (Settings > Secrets and variables > Actions)." >&2; \
+		[ "$$GITHUB_ACTIONS" != true ] || echo "::error title=no ANTHROPIC_API_KEY::make test-live LIVE_REQUIRED=1: the repository secret ANTHROPIC_API_KEY is missing or empty, so the live tests did not run." >&2; \
+		exit 1; \
+	fi
 	ANTHROPIC_API_KEY="$${ANTHROPIC_API_KEY:-$$ANTHROPIC_KEY}" $(GO) test $(TESTFLAGS) -tags live -count=1 ./...
 
 .PHONY: record-cassettes
@@ -93,11 +103,12 @@ fuzz: ## Run every fuzz target for FUZZTIME (default 10s)
 	scripts/fuzz.sh $(FUZZTIME)
 
 .PHONY: lint
-lint: $(GOLANGCI) ## Run golangci-lint, then the skills and task-file lint (scripts/lint-skills.sh) and its fixtures, and scripts/test-timing.sh's
+lint: $(GOLANGCI) ## Run golangci-lint, then the skills and task-file lint (scripts/lint-skills.sh) and its fixtures, and scripts/test-timing.sh's and scripts/ci-changes.sh's
 	$(GOLANGCI) run ./...
 	scripts/lint-skills.sh
 	scripts/lint-skills.sh --test >/dev/null
 	scripts/test-timing.sh --test >/dev/null
+	scripts/ci-changes.sh --test >/dev/null
 
 .PHONY: fmt
 fmt: $(GOLANGCI) ## Format code in place

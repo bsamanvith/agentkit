@@ -6,6 +6,15 @@
 // strings and values, never markup.
 
 import type { Block, Message, RunEvent, TimedMessage, Usage, WireError } from "./api/types";
+import {
+  messageKind,
+  messagesOfInput,
+  parseActionText,
+  uiToolName,
+  type UIAction,
+  type UIEntry,
+  type UIMessage,
+} from "./a2ui/model";
 
 /** A tool call: running until its result, then done or failed; stopped when the run stopped first. */
 export type Step = {
@@ -25,9 +34,15 @@ export type Part =
   /** Consecutive tool calls with no text between them. */
   | { kind: "tools"; steps: Step[] }
   /** A block of a type this client doesn't know: shown as a placeholder. */
-  | { kind: "unknown"; type: string };
+  | { kind: "unknown"; type: string }
+  /** Where an A2UI surface was created (its createSurface's entry key); foldSurfaces has its state. */
+  | { kind: "surface"; key: string; surfaceId: string };
 
-export type UserTurn = { role: "user"; key: string; text: string; pending?: boolean };
+/**
+ * A user message: the person's text, or their action on a surface (action;
+ * text is then the action's name).
+ */
+export type UserTurn = { role: "user"; key: string; text: string; pending?: boolean; action?: UIAction };
 
 export type AssistantTurn = {
   role: "assistant";
@@ -45,6 +60,8 @@ export type AssistantTurn = {
   error?: WireError;
   /** Wall-clock start, for the duration of a live run. */
   startedAt?: number;
+  /** The A2UI messages the answer showed (ui events), in order. */
+  ui?: UIEntry[];
 };
 
 export type Turn = UserTurn | AssistantTurn;
@@ -81,6 +98,15 @@ function updateStep(parts: Part[], id: string, f: (s: Step) => Step): Part[] {
   );
 }
 
+/** The step with this ID, wherever it is. */
+function stepOf(parts: Part[], id: string): Step | undefined {
+  for (const p of parts) {
+    const s = p.kind === "tools" ? p.steps.find((st) => st.id === id) : undefined;
+    if (s) return s;
+  }
+  return undefined;
+}
+
 /** Every running step marked stopped: the run ended before their results. */
 function stopRunning(parts: Part[]): Part[] {
   return parts.map((p) =>
@@ -88,6 +114,21 @@ function stopRunning(parts: Part[]): Part[] {
       ? { kind: "tools", steps: p.steps.map((s) => (s.state === "running" ? { ...s, state: "stopped" } : s)) }
       : p,
   );
+}
+
+/** The answer with A2UI messages added: each createSurface also places its surface in the parts. */
+function addUI(a: AssistantTurn, messages: UIMessage[]): AssistantTurn {
+  if (messages.length === 0) return a;
+  const ui = [...(a.ui ?? [])];
+  let parts = a.parts;
+  for (const message of messages) {
+    const k = messageKind(message);
+    if (!k) continue;
+    const key = `${a.key}:ui${ui.length}`;
+    ui.push({ key, message });
+    if (k.kind === "createSurface") parts = [...parts, { kind: "surface", key, surfaceId: k.surfaceId }];
+  }
+  return { ...a, ui, parts };
 }
 
 const ms = (at: string) => {
@@ -116,13 +157,21 @@ export function threadFromHistory(messages: TimedMessage[]): Turn[] {
             state: b.is_error ? "failed" : "done",
             result: b.content,
           }));
+          // A successful ui_render showed its messages, as its ui events did.
+          const call = stepOf(answer.parts, b.tool_use_id);
+          if (call?.name === uiToolName && !b.is_error) {
+            const i = turns.indexOf(answer);
+            answer = addUI(answer, messagesOfInput(call.input));
+            turns[i] = answer;
+          }
         }
       }
       const text = textOf(message.content);
       if (text !== "") {
         answer = undefined;
         askedAt = ms(at);
-        turns.push({ role: "user", key, text });
+        const action = parseActionText(text);
+        turns.push(action ? { role: "user", key, text: action.name, action } : { role: "user", key, text });
       }
       return;
     }
@@ -197,6 +246,10 @@ export function applyEvent(a: AssistantTurn, ev: RunEvent, now: number): Assista
         }),
       };
     }
+    case "ui":
+      return typeof ev.message === "object" && ev.message !== null && !Array.isArray(ev.message)
+        ? addUI(a, [ev.message as UIMessage])
+        : a;
     case "run_done":
       return { ...a, state: "done", usage: ev.usage, turns: ev.turns, durationMs: took, parts: stopRunning(a.parts) };
     case "run_error":

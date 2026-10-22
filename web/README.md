@@ -9,7 +9,8 @@ Node.js.
 web/
   packages/ui         @agentkit/ui        tokens (docs/UI.md), themes, shadcn/ui primitives, Status
   packages/agent-ui   @agentkit/agent-ui  agent components (tool step, step group, source chip,
-                                          message, composer) and the /v1 client (./api)
+                                          message, composer), the /v1 client (./api), and the
+                                          A2UI surface renderer (./a2ui, lazy)
   apps/console        @agentkit/console   the admin console: shell, routes, token prompt
   scripts/check-build.sh                  the stale-build check
   scripts/check-size.sh                   the first-load budget

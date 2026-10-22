@@ -1,39 +1,113 @@
 // The thread of a chat: messages, answers with their steps, notices, source
-// chips and usage (docs/UI.md "Chat", "Tool calls", "Run errors").
+// chips and usage (docs/UI.md "Chat", "Tool calls", "Run errors"), and the
+// agent's A2UI surfaces where it showed them.
 
 import {
   answerText,
+  foldSurfaces,
   Message,
   SourceChip,
   sourcesOf,
   StepGroup,
   stepText,
+  uiToolName,
   UsageLine,
   type AssistantTurn,
   type Part,
+  type Surface,
+  type SurfaceEdits,
   type ToolDisplay,
   type Turn,
+  type UIAction,
+  type UserTurn,
 } from "@agentkit/agent-ui";
 import { Button } from "@agentkit/ui/components/button";
 import { Spinner } from "@agentkit/ui/components/spinner";
 import { cn } from "@agentkit/ui/lib/utils";
 import { ArrowDown, CircleAlert } from "lucide-react";
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { runErrorText } from "./shared";
 
 // Its own chunk: the first screen doesn't wait for it (web/README.md "Size").
 const Markdown = lazy(() => import("@agentkit/agent-ui/markdown"));
+// Only a thread with a surface loads it.
+const A2UISurface = lazy(() => import("@agentkit/agent-ui/a2ui"));
+
+/** The agent's surfaces in a thread: their state, the person's edits, and where actions go. */
+export type ThreadUI = {
+  edits: SurfaceEdits;
+  /** The edits' scope: the conversation. */
+  scope: string;
+  /** Sends an action; absent, the surfaces can't be used (the agent was removed). */
+  onAction?: (a: UIAction) => void;
+};
+
+type Surfaces = { all: ReadonlyMap<string, Surface>; ui?: ThreadUI | undefined; busy: boolean; agent: string };
+
+const noEdits: ReadonlyMap<string, unknown> = new Map();
+const noSubscribe = () => () => {};
+
+function SurfacePart({ surface, surfaces }: { surface: Surface; surfaces: Surfaces }) {
+  const { ui, busy, agent } = surfaces;
+  const edits = useSyncExternalStore(ui?.edits.subscribe ?? noSubscribe, () =>
+    ui ? ui.edits.get(ui.scope, surface) : noEdits,
+  );
+  const state = surface.sent ? "sent" : busy || !ui?.onAction ? "busy" : "live";
+  return (
+    <Suspense fallback={<div className="text-(length:--ak-text-sm) text-ak-muted">Loading the form…</div>}>
+      <A2UISurface
+        surface={surface}
+        state={state}
+        edits={edits}
+        onEdit={(path, value) => ui?.edits.set(ui.scope, surface, path, value)}
+        {...(ui?.onAction ? { onAction: ui.onAction } : {})}
+        label={agent ? `From ${agent}` : "From the agent"}
+      />
+    </Suspense>
+  );
+}
+
+/** A user message that is an action on a surface: what the person pressed (the button's label). */
+function actionText(t: UserTurn, surfaces: ReadonlyMap<string, Surface>): string {
+  const a = t.action;
+  if (!a) return t.text;
+  let label: string | undefined;
+  for (const s of surfaces.values()) {
+    if (s.id !== a.surfaceId) continue;
+    const child = s.components.get(a.componentId)?.child;
+    const c = typeof child === "string" ? s.components.get(child) : undefined;
+    if (c?.component === "Text" && typeof c.text === "string" && c.text.trim() !== "") label = c.text.trim();
+  }
+  return `Sent “${label ?? a.name}”`;
+}
 
 function Parts({
   parts,
   displays,
   running,
+  surfaces,
 }: {
   parts: Part[];
   displays: ReadonlyMap<string, ToolDisplay>;
   running: boolean;
+  surfaces: Surfaces;
 }) {
   return parts.map((p, i) => {
+    if (p.kind === "surface") {
+      const s = surfaces.all.get(p.key);
+      return s ? <SurfacePart key={p.key} surface={s} surfaces={surfaces} /> : null;
+    }
     if (p.kind === "text") {
       return (
         <Suspense key={i} fallback={<div className="break-words whitespace-pre-wrap">{p.text}</div>}>
@@ -42,10 +116,13 @@ function Parts({
       );
     }
     if (p.kind === "tools") {
+      // A ui_render call is the surface it showed (or, failed, a retry the model makes).
+      const steps = p.steps.filter((s) => s.name !== uiToolName);
+      if (steps.length === 0) return null;
       return (
         <StepGroup
           key={i}
-          steps={p.steps.map((s) => ({
+          steps={steps.map((s) => ({
             id: s.id,
             ...(s.label !== undefined
               ? { label: s.label }
@@ -105,12 +182,14 @@ function Answer({
   displays,
   last,
   actions,
+  surfaces,
 }: {
   a: AssistantTurn;
   agent: string;
   displays: ReadonlyMap<string, ToolDisplay>;
   last: boolean;
   actions: AnswerActions;
+  surfaces: Surfaces;
 }) {
   const streaming = a.state === "streaming";
   const text = answerText(a);
@@ -162,7 +241,7 @@ function Answer({
       text={text}
       state={streaming ? "streaming" : "done"}
       runId={a.runId}
-      body={<Parts parts={a.parts} displays={displays} running={streaming} />}
+      body={<Parts parts={a.parts} displays={displays} running={streaming} surfaces={surfaces} />}
     >
       {streaming && a.parts.length === 0 ? (
         <div className="flex items-center gap-2 text-ak-muted">
@@ -227,6 +306,7 @@ export function Thread({
   displays,
   actions,
   after,
+  ui,
   className,
   children,
 }: {
@@ -237,6 +317,8 @@ export function Thread({
   actions: AnswerActions;
   /** Under the last message (a pending message's busy line). */
   after?: ReactNode;
+  /** The agent's surfaces: edits and actions. */
+  ui?: ThreadUI;
   className?: string;
   /** Above the messages (the new chat's agent card). */
   children?: ReactNode;
@@ -244,6 +326,10 @@ export function Thread({
   const scroller = useRef<HTMLDivElement>(null);
   const { atBottom, jump } = useStickToBottom(scroller, turns);
   const lastAnswer = turns.findLastIndex((t) => t.role === "assistant");
+  const all = useMemo(() => foldSurfaces(turns), [turns]);
+  // While a run goes on (or a message waits), surfaces wait too.
+  const busy = turns.some((t) => (t.role === "assistant" ? t.state === "streaming" : t.pending === true));
+  const surfaces: Surfaces = { all, ui, busy, agent };
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div
@@ -257,7 +343,7 @@ export function Thread({
           {children}
           {turns.map((t, i) =>
             t.role === "user" ? (
-              <Message key={t.key} role="user" text={t.text} state={t.pending ? "pending" : "done"} />
+              <Message key={t.key} role="user" text={actionText(t, all)} state={t.pending ? "pending" : "done"} />
             ) : (
               <Answer
                 key={t.key}
@@ -266,6 +352,7 @@ export function Thread({
                 displays={displays}
                 last={i === lastAnswer && i === turns.length - 1}
                 actions={actions}
+                surfaces={surfaces}
               />
             ),
           )}

@@ -2498,6 +2498,13 @@
           },
           "is_error": {
             "type": "boolean"
+          },
+          "loads": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Deferred tools this result loaded (a tool_search, or a skill that lists tools): the model has them from then on."
           }
         },
         "required": [
@@ -2665,6 +2672,13 @@
             "items": {
               "$ref": "#/components/schemas/ToolRecord"
             }
+          },
+          "loaded": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Deferred tools the turn's results loaded, in order (the console shows \"Loaded N tools\")."
           }
         },
         "required": [

@@ -64,6 +64,15 @@ func loadSkills(label string, sources []skillSource) (*skill.Catalog, agentSkill
 		return nil, agentSkills{}, fmt.Errorf("%s.skills: %w", label, err)
 	}
 	info.names = cat.Names()
+	info.loadTool, info.loader = skill.LoadTool, cat.ToolsOf
+	for _, s := range cat.Skills() {
+		if len(s.Tools) > 0 {
+			if info.lists == nil {
+				info.lists = map[string][]string{}
+			}
+			info.lists[s.Name] = s.Tools
+		}
+	}
 	return cat, info, nil
 }
 

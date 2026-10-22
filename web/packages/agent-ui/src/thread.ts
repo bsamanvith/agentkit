@@ -16,6 +16,8 @@ export type Step = {
   /** What the model was shown (tool_result content). */
   result?: string;
   durationMs?: number;
+  /** The step's line when it is not a tool call: "Loaded 2 tools". */
+  label?: string;
 };
 
 export type Part =
@@ -176,6 +178,23 @@ export function applyEvent(a: AssistantTurn, ev: RunEvent, now: number): Assista
           result,
           ...(typeof ev.duration_ms === "number" ? { durationMs: ev.duration_ms } : {}),
         })),
+      };
+    }
+    case "turn_done": {
+      // Deferred tools the turn loaded (a tool search, a skill): a step of its own.
+      const rec = ev.record as { loaded?: unknown } | undefined;
+      const loaded = Array.isArray(rec?.loaded) ? rec.loaded.filter((n): n is string => typeof n === "string") : [];
+      if (loaded.length === 0) return a;
+      const n = loaded.length;
+      return {
+        ...a,
+        parts: addStep(a.parts, {
+          id: `loaded-${ev.id}`,
+          name: "tools_loaded",
+          input: { tools: loaded },
+          state: "done",
+          label: `Loaded ${n} ${n === 1 ? "tool" : "tools"}`,
+        }),
       };
     }
     case "run_done":

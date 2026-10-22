@@ -377,7 +377,7 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 			if mem != nil {
 				closers = append(closers, mem.close)
 			}
-			h, sk, ks, err := c.newHarness(ctx, cfg, a, built, admin, mem, clk)
+			h, sk, ks, err := c.newHarness(ctx, cfg, a, built, admin, mem, clk, log)
 			if err != nil {
 				return fail(err)
 			}

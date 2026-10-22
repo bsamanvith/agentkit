@@ -2,6 +2,7 @@ package skill
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -114,6 +115,24 @@ type (
 		Content string `json:"content"`
 	}
 )
+
+// ToolsOf returns the tools (names or globs, its front matter's tools:)
+// that the skill a skill_load call loads lists, given the call's input; nil
+// for input that names no skill of the catalog. It is the skill_load
+// tool's loader for deferred tools (harness.WithToolLoader): the harness
+// loads only the agent's own deferred tools among them, so a skill never
+// grants a tool its agent does not have.
+func (c *Catalog) ToolsOf(input json.RawMessage) []string {
+	var in loadIn
+	if json.Unmarshal(input, &in) != nil {
+		return nil
+	}
+	s, err := c.Get(in.Name)
+	if err != nil {
+		return nil
+	}
+	return s.Tools
+}
 
 // Toolset returns the tools that read the catalog: skill_load (a skill's
 // instructions and file index) and skill_read (one file of a skill, text

@@ -47,6 +47,12 @@ func resolveSkillPaths(agents []agentDef, configPath string) {
 type agentSkills struct {
 	names   []string
 	skipped []string
+	// lists are the tools each skill that lists any lists (its tools:), and
+	// loader, of the tool loadTool (skill_load), gives a call's; nil without
+	// skills. They load the agent's deferred tools (deferred.go).
+	lists    map[string][]string
+	loadTool string
+	loader   func(json.RawMessage) []string
 }
 
 // skillReport is what the agents of a component loaded, for /readyz.

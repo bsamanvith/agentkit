@@ -47,7 +47,9 @@ function Parts({
           key={i}
           steps={p.steps.map((s) => ({
             id: s.id,
-            ...stepText(s.name, s.input, s.state === "running" && running, displays.get(s.name)),
+            ...(s.label !== undefined
+              ? { label: s.label }
+              : stepText(s.name, s.input, s.state === "running" && running, displays.get(s.name))),
             state: s.state,
             input: s.input,
             ...(s.result !== undefined ? { result: s.result } : {}),

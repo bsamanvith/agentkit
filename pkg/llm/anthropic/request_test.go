@@ -195,6 +195,48 @@ func TestNativeMemory(t *testing.T) {
 	}
 }
 
+// TestDeferredTools: deferred tools go with defer_loading and no cache
+// breakpoint, which moves to the last tool sent in full, and a result's
+// Loads become tool_reference blocks after its text, for deferred tools only.
+func TestDeferredTools(t *testing.T) {
+	t.Parallel()
+	obj := json.RawMessage(`{"type":"object"}`)
+	req := llm.Request{
+		Tools: []tool.Definition{
+			{Name: "tool_search", InputSchema: obj},
+			{Name: "github_issue", InputSchema: obj},
+			{Name: "github_pr", InputSchema: obj},
+		},
+		Deferred: []string{"github_issue", "github_pr"},
+		Messages: []llm.Message{
+			llm.User(llm.Text{Text: "Open an issue."}),
+			llm.Assistant(llm.ToolUse{ID: "toolu_1", Name: "tool_search", Input: json.RawMessage(`{"query":"issue"}`)}),
+			llm.User(llm.ToolResult{ToolUseID: "toolu_1", Content: "found", Loads: []string{"github_issue", "not_deferred"}}),
+		},
+		Provider: anthropic.Options{Cache: []anthropic.CachePoint{anthropic.CacheTools}},
+	}
+	m, _ := body(t, req)
+	tools := m["tools"].([]any)
+	for i, want := range []struct {
+		deferred, cached bool
+	}{{false, true}, {true, false}, {true, false}} {
+		tl := tools[i].(map[string]any)
+		if got := tl["defer_loading"] == true; got != want.deferred {
+			t.Errorf("tool %d (%v): defer_loading = %v, want %v", i, tl["name"], tl["defer_loading"], want.deferred)
+		}
+		if _, got := tl["cache_control"]; got != want.cached {
+			t.Errorf("tool %d (%v): cache_control set = %v, want %v", i, tl["name"], got, want.cached)
+		}
+	}
+	msgs := m["messages"].([]any)
+	result := msgs[2].(map[string]any)["content"].([]any)[0].(map[string]any)
+	got, _ := json.Marshal(result["content"])
+	want := `[{"text":"found","type":"text"},{"tool_name":"github_issue","type":"tool_reference"}]`
+	if string(got) != want {
+		t.Errorf("result content = %s, want %s", got, want)
+	}
+}
+
 func TestInvalidRequests(t *testing.T) {
 	t.Parallel()
 	hello := []llm.Message{llm.User(llm.Text{Text: "Hello."})}
@@ -212,6 +254,14 @@ func TestInvalidRequests(t *testing.T) {
 			llm.Assistant(llm.ToolUse{ID: "toolu_1", Name: "x", Input: json.RawMessage(`{"a":`)}),
 		}}},
 		{"pointer block", llm.Request{Messages: []llm.Message{llm.User(&llm.Text{Text: "Hi."})}}},
+		{"a deferred tool the request does not have", llm.Request{
+			Messages: hello,
+			Tools:    []tool.Definition{{Name: "a", InputSchema: json.RawMessage(`{"type":"object"}`)}}, Deferred: []string{"b"},
+		}},
+		{"every tool deferred", llm.Request{
+			Messages: hello,
+			Tools:    []tool.Definition{{Name: "a", InputSchema: json.RawMessage(`{"type":"object"}`)}}, Deferred: []string{"a"},
+		}},
 		{"a block of a newer version", llm.Request{Messages: []llm.Message{
 			llm.User(llm.Text{Text: "Hi."}, llm.Unknown{Type: "image", Data: json.RawMessage(`{"type":"image"}`)}),
 		}}},

@@ -72,6 +72,17 @@
 // asks gets an error result, and a call the policy wants approved is refused
 // ([PolicyError]).
 //
+// # Deferred tools
+//
+// [WithDeferLoading] holds tools back: the model is not sent them, and gets
+// [SearchTool] to find them by keywords instead. A search's result, or a
+// call of a loader tool such as skill_load ([WithToolLoader]), names what it
+// loaded in [llm.ToolResult.Loads], and those tools are sent from the next
+// request on, in this run and in every run that continues the transcript
+// (loading is read back from it). [WithNativeToolSearch] has a provider
+// that supports it (Claude) hold them back instead, so that the tool list
+// stays the same. Loading never changes a policy decision.
+//
 // # Adding context to a message
 //
 // [WithPrepare] is the one hook for retrieved context (memory recall, and

@@ -3,6 +3,7 @@ package runner
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/harness"
@@ -102,15 +103,20 @@ type TurnRecord struct {
 	Usage        llm.Usage            `json:"usage"`
 	Stop         llm.StopReason       `json:"stop"`
 	Tools        []harness.ToolRecord `json:"tools,omitempty"`
+	// Loaded names the deferred tools the turn loaded
+	// ([harness.TurnRecord.Loaded]); the transcript has them too, in its
+	// results' Loads, which is what a resumed run reads.
+	Loaded []string `json:"loaded,omitempty"`
 }
 
 func turnRecord(tr *harness.TurnRecord) *TurnRecord {
 	out := &TurnRecord{
 		Turn:        tr.Turn,
 		RequestedAt: tr.RequestedAt, FirstEventAt: tr.FirstEventAt, DoneAt: tr.DoneAt,
-		Usage: tr.Usage,
-		Stop:  tr.Stop,
-		Tools: append([]harness.ToolRecord(nil), tr.Tools...),
+		Usage:  tr.Usage,
+		Stop:   tr.Stop,
+		Tools:  append([]harness.ToolRecord(nil), tr.Tools...),
+		Loaded: slices.Clone(tr.Loaded),
 	}
 	for _, m := range tr.Messages {
 		out.MessageTimes = append(out.MessageTimes, m.At)
@@ -145,7 +151,7 @@ func HarnessTurn(e store.Entry) (harness.TurnRecord, error) {
 	t := r.Turn
 	out := harness.TurnRecord{
 		Turn: t.Turn, RequestedAt: t.RequestedAt, FirstEventAt: t.FirstEventAt, DoneAt: t.DoneAt,
-		Usage: t.Usage, Stop: t.Stop, Tools: t.Tools,
+		Usage: t.Usage, Stop: t.Stop, Tools: t.Tools, Loaded: t.Loaded,
 	}
 	for i, m := range e.Messages {
 		out.Messages = append(out.Messages, harness.TimedMessage{Message: m, At: t.MessageTimes[i]})

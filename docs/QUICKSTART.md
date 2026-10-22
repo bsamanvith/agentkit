@@ -238,6 +238,8 @@ Each entry of `agents`:
 | `prefix_tool_names` | false | name tools `<toolset>__<tool>` (needed when two toolsets share a tool name) |
 | `runtime_toolsets` | none | toolsets admins add while the server runs (section 8); the agent gets their approved tools as `<toolset>__<tool>` |
 | `skills` | none | folders of Agent Skills (`"path"` or `{"path": ..., "optional": true}`), relative to the config file (section 7, "Skills") |
+| `defer_loading` | none | tools the model is not sent until it finds them: `true` for every toolset tool, or a list of toolset names and tool-name globs (section 7, "Deferred tools") |
+| `model.tool_search` | `native` for `anthropic`, `emulated` for `openai` | who holds deferred tools back: the Claude API (`native`), or agentkit (`emulated`) |
 | `max_turns`, `max_total_tokens` | 25, unlimited | budgets per run |
 | `tool_policy` | `all` | which tool calls the agent may make (below) |
 | `interaction` | `autonomous` | whether its tool calls may wait for people: `interactive` or `supervised` (an `ask_user` question, or a call the policy wants approved, suspends the run until answered), or `autonomous` (never: `ask_user` is not offered, and such a call is refused) |
@@ -507,6 +509,18 @@ An agent's `skills` names folders of [Agent Skills](https://www.anthropic.com/en
 ```
 
 A skill that breaks a rule fails startup with its folder and the rule: no front matter, a `name` that is not `^[a-zA-Z0-9_-]{1,64}$`, an empty or over-1,024-character `description`, a `SKILL.md` over 64 KB, another file over 1 MB, more than 200 files, two skills with one name, or a symlink out of the folder. An `optional` folder that fails is skipped and named in `/readyz`, which also lists each agent's skills under `details.skills`. `search.json`'s `search` agent has a demo skill, `research-brief`, in `deploy/local/agent/skills/`.
+
+A skill's front matter may list `tools:` (names or globs, like Claude Code's `allowed-tools`): when the model loads the skill, those of the agent's deferred tools load with it (next section). A listed tool the agent doesn't have loads nothing, and startup logs a warning naming it: a skill never gives an agent a tool it doesn't have.
+
+### Deferred tools
+
+An agent with many tools wastes context, and confuses the model, if every definition goes with every request. `defer_loading` holds tools back until the model needs them:
+
+```json
+{"name": "ops", "toolsets": ["github", "linear", "demo"], "defer_loading": ["github", "linear", "calc*"]}
+```
+
+Each entry is a toolset name (all its tools) or a glob on tool names; `true` defers every toolset tool. Skill and memory tools are never deferred. An agent with deferred tools gets one more, `tool_search`: the model gives a few keywords (or a tool's name), and the best matches by name, description and tags are loaded for the rest of the conversation, a later run or a resume included (each result records what it loaded, in the transcript). A skill that lists the tools loads them too. With Claude (`model.tool_search: "native"`, the default) every request lists every tool with `defer_loading` and the search result references the found tools, so the tool list never changes and the prompt cache holds; with `"emulated"` (OpenAI-compatible models) a found tool is added to the next request. Loading changes no policy: a loaded tool's calls are checked like any other's. The console shows "Loaded N tools" as a step.
 
 ## 8. Other MCP servers' tools
 

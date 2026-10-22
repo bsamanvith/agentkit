@@ -1,6 +1,7 @@
 package harness
 
 import (
+	"slices"
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/llm"
@@ -61,6 +62,10 @@ type TurnRecord struct {
 	Stop  llm.StopReason
 	// Tools describes the tool calls in the order of the calls.
 	Tools []ToolRecord
+	// Loaded names the deferred tools ([WithDeferLoading]) the turn's
+	// results loaded, in the order they loaded: the model has them from the
+	// next turn on.
+	Loaded []string `json:",omitempty"`
 }
 
 func (t TurnRecord) clone() TurnRecord {
@@ -70,6 +75,7 @@ func (t TurnRecord) clone() TurnRecord {
 		out.Messages[i] = m.clone()
 	}
 	out.Tools = append([]ToolRecord(nil), t.Tools...)
+	out.Loaded = slices.Clone(t.Loaded)
 	return out
 }
 

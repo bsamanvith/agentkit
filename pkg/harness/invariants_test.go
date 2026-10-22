@@ -11,6 +11,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/policy"
+	"github.com/bsamanvith/agentkit/pkg/tool"
 )
 
 // The invariants of a run. They hold for every run, whatever the model said,
@@ -107,8 +108,43 @@ func checkRequests(tb testing.TB, in harness.Input, sent, snap []llm.Request) {
 			}
 		}
 		prev = msgs
+		if i > 0 {
+			checkTools(tb, i, snap[i-1], req)
+		}
+		for _, n := range req.Deferred {
+			if !slices.ContainsFunc(req.Tools, func(d tool.Definition) bool { return d.Name == n }) {
+				tb.Errorf("request %d defers %q, which it does not list", i, n)
+			}
+		}
 		if d := cmpRequests(sent[i], req); d != "" {
 			tb.Errorf("request %d was changed after it was sent (-sent +now):\n%s", i, d)
+		}
+	}
+}
+
+// checkTools checks the tools of one request against the request before it
+// in the same run: the earlier tools come first, unchanged, and a tool added
+// since is one a tool result of the conversation loaded.
+func checkTools(tb testing.TB, i int, before, req llm.Request) {
+	tb.Helper()
+	if len(req.Tools) < len(before.Tools) {
+		tb.Errorf("request %d has %d tools, fewer than the %d before it", i, len(req.Tools), len(before.Tools))
+		return
+	}
+	diff(tb, "the earlier tools of a request", before.Tools, req.Tools[:len(before.Tools)])
+	loaded := map[string]bool{}
+	for _, m := range req.Messages {
+		for _, b := range m.Content {
+			if r, ok := b.(llm.ToolResult); ok && !r.IsError {
+				for _, n := range r.Loads {
+					loaded[n] = true
+				}
+			}
+		}
+	}
+	for _, d := range req.Tools[len(before.Tools):] {
+		if !loaded[d.Name] {
+			tb.Errorf("request %d adds tool %q, which no result loaded", i, d.Name)
 		}
 	}
 }

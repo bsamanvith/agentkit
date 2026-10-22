@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"net"
 	"slices"
@@ -92,6 +93,11 @@ type agentDef struct {
 	// surfaces stream as ui events, and runs take ui_action. Empty: text
 	// only, and no ui_render.
 	UI string `json:"ui"`
+	// DeferLoading holds tools back until the model finds them with
+	// tool_search, or a skill that lists them is loaded: true for every
+	// toolset tool, or a list of toolset names and tool-name globs
+	// (deferred.go). Absent: every tool is sent with every request.
+	DeferLoading deferSpec `json:"defer_loading"`
 }
 
 // apiConfig is the "agent_api" section of the serve config file: limits of
@@ -139,6 +145,12 @@ type agentModelConfig struct {
 	// harness.DefaultCompactShare).
 	ContextWindow int     `json:"context_window"`
 	CompactAt     float64 `json:"compact_at"`
+	// ToolSearch says who holds deferred tools back (defer_loading):
+	// "native", the default for anthropic (every request lists every tool,
+	// the API keeps the deferred ones out of the model's context until a
+	// tool_search result references them), or "emulated", the only choice
+	// for openai (the harness adds a tool to the requests once found).
+	ToolSearch string `json:"tool_search"`
 }
 
 // providerOpenAI is the provider of OpenAI-compatible servers, and
@@ -277,6 +289,15 @@ func (d agentDef) check(legacy bool) error {
 	if d.Model.CompactAt < 0 || d.Model.CompactAt > 1 {
 		return fmt.Errorf("%s.model.compact_at %v: want a share above 0, at most 1", label, d.Model.CompactAt)
 	}
+	switch d.Model.ToolSearch {
+	case "", toolSearchEmulated:
+	case toolSearchNative:
+		if d.Model.Provider == providerOpenAI {
+			return fmt.Errorf("%s.model.tool_search: %q is for provider %q; openai models use %q", label, toolSearchNative, defaultProvider, toolSearchEmulated)
+		}
+	default:
+		return fmt.Errorf("%s.model.tool_search %q: want %q or %q", label, d.Model.ToolSearch, toolSearchNative, toolSearchEmulated)
+	}
 	if d.Interaction != "" && !d.Interaction.Valid() {
 		return fmt.Errorf("%s.interaction %q: want %q", label, d.Interaction, harness.Interactions())
 	}
@@ -290,7 +311,7 @@ func (d agentDef) check(legacy bool) error {
 // one registry with its memory and recall tools (mem, nil without memory),
 // its skills, auto recall, and its limits. It returns the toolsets the agent names that were skipped
 // (optional ones that failed to build) and the skills it loaded.
-func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built map[string]tool.Registry, admin toolsetAdmin, mem *agentMemory, clk clock.Clock) (*harness.Harness, []string, agentSkills, error) {
+func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built map[string]tool.Registry, admin toolsetAdmin, mem *agentMemory, clk clock.Clock, log *slog.Logger) (*harness.Harness, []string, agentSkills, error) {
 	label := a.label(cfg.legacy)
 	fail := func(err error) (*harness.Harness, []string, agentSkills, error) { return nil, nil, agentSkills{}, err }
 	if err := a.check(cfg.legacy); err != nil {
@@ -318,6 +339,14 @@ func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built 
 	tools, err := agentapi.MergeTools(ctx, sets, a.PrefixToolNames)
 	if err != nil {
 		return fail(fmt.Errorf("%s.toolsets: %w", label, err))
+	}
+	setDefs, err := tools.List(ctx)
+	if err != nil {
+		return fail(fmt.Errorf("%s.toolsets: %w", label, err))
+	}
+	static := defNames(setDefs)
+	if a.DeferLoading.set() && slices.Contains(static, harness.SearchTool) {
+		return fail(fmt.Errorf("%s.defer_loading: a toolset of the agent has a tool named %s, the name of the tool search; set prefix_tool_names", label, harness.SearchTool))
 	}
 	system, tools, skills, err := addSkills(ctx, label, a.System, tools, a.Skills)
 	if err != nil {
@@ -359,6 +388,17 @@ func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built 
 	}
 	if mem != nil && mem.prepare != nil {
 		opts = append(opts, harness.WithPrepare(mem.prepare))
+	}
+	if a.DeferLoading.set() || len(skills.lists) > 0 {
+		all, err := tools.List(ctx)
+		if err != nil {
+			return fail(fmt.Errorf("%s.toolsets: %w", label, err))
+		}
+		deferOpts, err := a.deferOptions(label, static, defNames(all), toolsetOf, skills, log)
+		if err != nil {
+			return fail(err)
+		}
+		opts = append(opts, deferOpts...)
 	}
 	h, err := harness.New(model, tools, opts...)
 	if err != nil {

@@ -150,6 +150,18 @@ func genScenario(seed uint64, scribbler bool) scenario {
 		}))
 	}
 
+	// Deferred tools: fail and boom wait for a search, or for a call of ok,
+	// which loads them as a loader.
+	if rng.IntN(3) == 0 {
+		sc.opts = append(sc.opts, harness.WithDeferLoading(func(name string) bool { return name == "fail" || name == "boom" }))
+		if rng.IntN(2) == 0 {
+			sc.opts = append(sc.opts, harness.WithNativeToolSearch())
+		}
+		if rng.IntN(2) == 0 {
+			sc.opts = append(sc.opts, harness.WithToolLoader("ok", func(json.RawMessage) []string { return []string{"f*", "nope"} }))
+		}
+	}
+
 	// The tool policy: the sim's tools are unclassified (write/medium).
 	if rng.IntN(3) == 0 {
 		sc.opts = append(sc.opts, harness.WithToolPolicy(policy.Policy{Rules: []policy.Rule{
@@ -210,6 +222,11 @@ func genCalls(rng *rand.Rand, turn int, allowBlock bool) []llm.Block {
 	}
 	for i := range 1 + rng.IntN(5) {
 		id := fmt.Sprintf("t%dc%d", turn, i)
+		if rng.IntN(10) == 0 {
+			q := []string{"fail", "boom", "double", ""}[rng.IntN(4)]
+			blocks = append(blocks, use(id, harness.SearchTool, fmt.Sprintf(`{"query":%q}`, q)))
+			continue
+		}
 		if rng.IntN(8) == 0 {
 			blocks = append(blocks, use(id, "ask", fmt.Sprintf(`{"n":%d}`, rng.IntN(3))))
 			continue

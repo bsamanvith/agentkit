@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"iter"
+	"slices"
 
 	"github.com/bsamanvith/agentkit/pkg/tool"
 )
@@ -38,6 +39,12 @@ type Request struct {
 	Messages []Message
 	// Tools the model may call. The same definitions the tool registry lists.
 	Tools []tool.Definition
+	// Deferred names tools of Tools that the provider should hold back
+	// until a [ToolResult.Loads] names them (its native deferred loading,
+	// such as Claude's defer_loading): the model sees their definitions
+	// only from then on. The harness sets it only for a model wired for
+	// native tool search; an adapter without it must not be given any.
+	Deferred []string
 	// MaxTokens limits the output tokens of the reply. Zero means the
 	// adapter's default.
 	MaxTokens int
@@ -65,6 +72,7 @@ func (r Request) Clone() Request {
 		}
 		r.Tools = defs
 	}
+	r.Deferred = slices.Clone(r.Deferred)
 	return r
 }
 

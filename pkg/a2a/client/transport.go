@@ -144,7 +144,7 @@ func canonicalJSON(b []byte) ([]byte, bool) {
 	if d.Decode(&v) != nil {
 		return nil, false
 	}
-	if _, err := d.Token(); !errors.Is(err, io.EOF) {
+	if len(bytes.TrimSpace(b[d.InputOffset():])) != 0 {
 		return nil, false
 	}
 	var buf bytes.Buffer

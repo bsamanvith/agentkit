@@ -135,8 +135,9 @@ needed: the remote agent is our own T067 server in process).
   polled on the interval, not called in a tight loop.
 - *Image placement.* Behind `noa2a` with the server: agentkit, local and
   dev have it; runner, toolsets and api do not. So **in the split
-  deployment remote agents are not available as tools** (the toolsets image
-  is at about 17.9 of 18 MB). See the owner question in the handoff.
+  deployment remote agents are not available as tools**. See the owner
+  question in the handoff. The wiring is also behind `!noconnectors` (the
+  catalog's tag), so api does not link the package either.
 - Our server answers CancelTask right after a task starts with a
   retryable `ErrInternal` + Retry-After ("about to start; retry"). The
   client returns it as an `*a2a.Error` with `RetryAfter` 0 (it does not read
@@ -178,15 +179,20 @@ five tests); the one-field check on stream events dropped
 TestMalformedResponses, TestLongTaskTimesOutWithItsID); the credential
 slot ignored (TestCredentialSlot).
 
-**Size.** +262,144 bytes on the agentkit binary, +253,952 on local and
-dev, nothing on api, runner and toolsets (docs/SIZES.md). Local about 28.5
-of 29 MB, dev about 30.2 of 32 MB (projected).
+Review mutations: the JSON rewrite before redaction dropped
+(TestRedactsEchoesInAnyEncoding); the Wait loop re-reading without a pause
+(TestWaitDoesNotSpin).
+
+**Size.** +270,336 bytes on the agentkit binary, +262,144 on local,
++258,048 on dev, nothing on api, runner and toolsets (docs/SIZES.md, on
+main `5b7db14`). Local about 28.8 of 29 MB, dev about 30.4 of 32 MB
+(projected).
 
 ### For a follow-up
 
 - Remote agents in the split deployment (the toolsets image carries
-  `noa2a`; it would take the client, about 127 KB, over its budget unless
-  something there is cut first).
+  `noa2a`; the client would cost about 127 KB there, where it has about
+  1.5 MB of room).
 - A store-backed `a2astep.TaskSaver` for the runner (like `runner.Saver` for
   agent steps), and a flow config that names an A2A step.
 - Honor `Retry-After` on a retryable error (one retry, on the clock).

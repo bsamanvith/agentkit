@@ -82,6 +82,10 @@ jobs:
         run: make check TEST_JSON="$RUNNER_TEMP/test.json"
         env:
           ZIZMOR_REQUIRED: "1"
+      # Known vulnerabilities reachable from the code, in the modules and in
+      # the stdlib of go.mod's toolchain (GO-2026-6809 moved it to 1.27.3).
+      - name: make vulncheck
+        run: make vulncheck
       # The ten slowest packages and tests (T056), passed or failed, so a
       # slow test shows here before it nears go test's timeout.
       - name: slowest tests

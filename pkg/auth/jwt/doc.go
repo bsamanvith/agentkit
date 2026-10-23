@@ -30,6 +30,10 @@
 // other failure is auth.ErrInvalidCredentials. Errors never hold the token or
 // a claim's value.
 //
+// [WithHeader] reads the token from another header, whole, instead: a proxy's
+// assertion (pkg/auth/cfaccess, Cloudflare Access). There a value that is
+// not shaped like a JWT is invalid.
+//
 // # Keys
 //
 // The JWKS is fetched from the configured URL, or from the jwks_uri of the

@@ -3,6 +3,7 @@ package component
 import (
 	"io"
 	"log/slog"
+	"net/http"
 	"time"
 )
 
@@ -13,6 +14,7 @@ type config struct {
 	logger          *slog.Logger
 	build           BuildInfo
 	shutdownTimeout time.Duration
+	middleware      []func(http.Handler) http.Handler
 }
 
 // DefaultShutdownTimeout is how long a shutdown may take unless
@@ -49,4 +51,12 @@ func WithBuildInfo(b BuildInfo) Option { return func(c *config) { c.build = b } 
 // positive.
 func WithShutdownTimeout(d time.Duration) Option {
 	return func(c *config) { c.shutdownTimeout = d }
+}
+
+// WithMiddleware wraps the whole server's handler, the runtime's own
+// endpoints included, in mw: the first given is the outermost. It is for
+// checks every request passes, such as a proxy's assertion; mw decides which
+// paths (the health probes) it lets through.
+func WithMiddleware(mw ...func(http.Handler) http.Handler) Option {
+	return func(c *config) { c.middleware = append(c.middleware, mw...) }
 }

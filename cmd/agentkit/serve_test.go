@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -144,6 +145,20 @@ func TestServeRejectsBadSetup(t *testing.T) {
 		"auth: unknown field":         {env: map[string]string{envComponents: "agent"}, config: `{"auth":{"api_keys":[{"id":"k","key":"hunter2"}]}}`, code: 1, says: "auth:"},
 		"auth: keys file missing":     {env: map[string]string{envComponents: "agent", envAPIKeysFile: "/nonexistent/keys.json"}, config: good, code: 1, says: envAPIKeysFile},
 		"auth: stateful mcp":          {env: map[string]string{envComponents: "mcp-server", envAPIToken: "a-token-0123456789abcdef"}, config: `{"mcp":{"stateful":true,"toolsets":[{"name":"demo","type":"demo"}]}}`, code: 1, says: "stateful"},
+		// Required authentication, and Cloudflare Access.
+		"require auth: open on loopback":  {env: map[string]string{envComponents: "agent", envRequireAuth: "1"}, config: good, code: 1, says: "authentication is required"},
+		"require auth: from the config":   {env: map[string]string{envComponents: "mcp-server"}, config: `{"mcp":{"toolsets":[{"name":"demo","type":"demo"}]},"auth":{"required":true}}`, code: 1, says: envCFAccessTeamDomain},
+		"require auth: not turned off":    {env: map[string]string{envComponents: "agent", envRequireAuth: "0"}, config: `{"auth":{"required":true}}`, code: 1, says: "authentication is required"},
+		"require auth: users not for MCP": {env: map[string]string{envComponents: "agent,mcp-server", envRequireAuth: "true"}, config: `{"mcp":{"toolsets":[{"name":"demo","type":"demo"}]},"auth":{"users":[{"username":"ann","password_hash":"` + userHash + `","tenant":"t","roles":["user"]}]}}`, code: 1, says: "authentication is required"},
+		"require auth: bad value":         {env: map[string]string{envComponents: "agent", envRequireAuth: "maybe"}, config: good, code: 1, says: envRequireAuth},
+		"require auth: runner no token":   {env: map[string]string{envComponents: "runner", envRequireAuth: "1"}, config: good, code: 1, says: envRPCToken},
+		"require auth: toolsets no token": {env: map[string]string{envComponents: "toolsets", envRequireAuth: "1"}, config: good, code: 1, says: envRPCToken},
+		"cf access: no aud":               {env: map[string]string{envComponents: "agent", envCFAccessTeamDomain: "myteam"}, config: good, code: 1, says: "aud"},
+		"cf access: no team":              {env: map[string]string{envComponents: "agent"}, config: `{"auth":{"cloudflare_access":{"aud":"x"}}}`, code: 1, says: "team_domain"},
+		"cf access: http team":            {env: map[string]string{envComponents: "agent"}, config: `{"auth":{"cloudflare_access":{"team_domain":"http://myteam.example","aud":"x"}}}`, code: 1, says: "auth.cloudflare_access"},
+		"cf access: unknown field":        {env: map[string]string{envComponents: "agent"}, config: `{"auth":{"cloudflare_access":{"team":"myteam","aud":"x"}}}`, code: 1, says: "team"},
+		"cf access: toolset typo":         {env: map[string]string{envComponents: "agent"}, config: `{"mcp":{"toolsets":[{"name":"demo","type":"demo"}]},"auth":{"cloudflare_access":{"team_domain":"myteam","aud":"x","toolsets":["dmeo"]}}}`, code: 1, says: `toolset "dmeo" matches none`},
+		"cf access: web only, bad config": {env: map[string]string{envComponents: "web", envCFAccessAUD: "x"}, code: 1, says: "team_domain"},
 		// Identity provider tokens (T041).
 		"auth.jwt: HMAC":                   {env: map[string]string{envComponents: "agent"}, config: `{"auth":{"jwt":{"issuer":"https://id.example","audience":"https://a.example","algorithms":["HS256"]}}}`, code: 1, says: "HS256"},
 		"auth.jwt: unknown field":          {env: map[string]string{envComponents: "agent"}, config: `{"auth":{"jwt":{"issuer":"https://id.example","audience":"https://a.example","secret":"x"}}}`, code: 1, says: "secret"},
@@ -193,5 +208,34 @@ func TestServeRejectsBadSetup(t *testing.T) {
 				t.Errorf("stderr echoes the store's password:\n%s", &stderr)
 			}
 		})
+	}
+}
+
+// TestAccessPublic: exactly the health probes, the OAuth callback and its
+// client metadata, and inbound webhooks pass Cloudflare Access's gate without
+// an assertion.
+func TestAccessPublic(t *testing.T) {
+	t.Parallel()
+	for req, want := range map[[2]string]bool{
+		{"GET", "/healthz"}:                              true,
+		{"GET", "/readyz"}:                               true,
+		{"GET", "/oauth/callback"}:                       true,
+		{"GET", "/oauth/client-metadata.json"}:           true,
+		{"POST", "/v1/hooks/trg_1"}:                      true,
+		{"GET", "/version"}:                              false,
+		{"GET", "/healthz/x"}:                            false,
+		{"POST", "/healthz"}:                             false,
+		{"POST", "/oauth/callback"}:                      false,
+		{"GET", "/v1/hooks/trg_1"}:                       false,
+		{"POST", "/v1/hooks/"}:                           false,
+		{"POST", "/v1/hooks/trg_1/x"}:                    false,
+		{"GET", "/v1/auth/config"}:                       false,
+		{"POST", "/v1/auth/login"}:                       false,
+		{"GET", "/"}:                                     false,
+		{"GET", "/.well-known/oauth-protected-resource"}: false,
+	} {
+		if got := accessPublic(httptest.NewRequest(req[0], req[1], nil)); got != want {
+			t.Errorf("%s %s: public = %v, want %v", req[0], req[1], got, want)
+		}
 	}
 }

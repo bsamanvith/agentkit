@@ -120,6 +120,9 @@ func New(mounts []Mount, opts ...Option) (*Runtime, error) {
 		}
 	}
 	r.handler = mux
+	for i := len(cfg.middleware) - 1; i >= 0; i-- {
+		r.handler = cfg.middleware[i](r.handler)
+	}
 	return r, nil
 }
 

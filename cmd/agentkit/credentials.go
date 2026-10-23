@@ -271,6 +271,12 @@ func secureURL(raw string) bool {
 // toolsets images leave the connect flow out).
 const oauthCallbackPath = "/oauth/callback"
 
+// oauthClientMetadataPath is where the MCP OAuth client's metadata is
+// served (oauth.ClientMetadataPath, which this file does not import); here,
+// not beside its handler, as Cloudflare Access's gate names it in every
+// build (accessPublic).
+const oauthClientMetadataPath = "/oauth/client-metadata.json"
+
 // providerProfile is what a provider preset sets.
 type providerProfile struct {
 	authURL, tokenURL, refreshScope string

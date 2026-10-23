@@ -369,7 +369,7 @@ An approved call runs with exactly the input it was approved with. A denied call
 
 ### Credentials
 
-`/v1` and `/mcp` need a credential (a bearer token, or for `/v1` a console session) whenever one is configured, and always off loopback (on loopback with none, the server logs a warning and stays open). `/healthz`, `/readyz` and `/version` are always open.
+`/v1` and `/mcp` need a credential (a bearer token, or for `/v1` a console session) whenever one is configured, and always off loopback (on loopback with none, the server logs a warning and stays open). A tunnel or reverse proxy on the same machine (cloudflared, ngrok, nginx) connects over loopback, so it would publish that open server: set `AGENTKIT_REQUIRE_AUTH=1` (or `"auth": {"required": true}`) and serve refuses to start with no credentials whatever the address, and the runner and toolsets components without `AGENTKIT_RPC_TOKEN`. `/healthz`, `/readyz` and `/version` are open (but see Cloudflare Access below).
 
 - `AGENTKIT_API_TOKEN`: one key that may do everything (tenant `default`, every scope, every toolset). At least 16 bytes.
 - API keys, in the config's `auth` section or in a file named by `AGENTKIT_API_KEYS_FILE` (same JSON, so the hashes can live in a mounted secret). Only the key's hash is stored:
@@ -403,6 +403,17 @@ A token needs a valid signature (`RS256` or `ES256` unless `algorithms` says oth
 ```
 
 `roles`: `user` may chat (`agent:run`, `agent:read`), `admin` may also manage toolsets (`agent:admin`) and see agents' system prompts. `toolsets` defaults to all (`*`). Signing in (`POST /v1/auth/login`) sets an `HttpOnly`, `SameSite=Strict` session cookie, which works for `/v1` only (never `/mcp`); a session ends after 12 hours idle or 7 days, or at sign-out. Requests other than GET with a session need the `X-Agentkit-CSRF` header from `GET /v1/auth/me` and a same-origin `Origin`. After 10 failed sign-ins for a username (or 100 from an address) each further try waits, doubling up to 15 minutes (429 with `Retry-After`). Off loopback, serve behind a TLS proxy and list it in `trusted_proxies` (addresses or CIDR prefixes): its `X-Forwarded-For` then names the client, and its `X-Forwarded-Proto: https` makes the cookie `Secure` (`__Host-agentkit_session`); without one the server warns at startup. Users alone are enough off loopback, unless `mcp-server` is a component (it needs a key or `auth.jwt`). `GET /v1/auth/config` (no credentials) says which sign-ins the console should offer.
+
+- Cloudflare Access, in `auth.cloudflare_access` (or `AGENTKIT_CF_ACCESS_TEAM_DOMAIN` and `AGENTKIT_CF_ACCESS_AUD`, which win over the file's), for a server behind a Cloudflare Tunnel with an Access application in front. Every request then needs the `Cf-Access-Jwt-Assertion` header Access adds, valid for the team and the application, or gets 401, before any component sees it; only `GET /healthz`, `GET /readyz`, `GET /oauth/callback`, `GET /oauth/client-metadata.json` and `POST /v1/hooks/{id}` pass without one (the paths Access must bypass, see [deploy/cloudflare](../deploy/cloudflare/README.md)). The assertion is also a credential: its `email` is the user, in `tenant` (default `default`) with `scopes` and `toolsets` (default `*`), so the console and `/mcp` work with no other sign-in. A key or token sent beside it wins.
+
+```json
+{"auth": {"cloudflare_access": {
+  "team_domain": "myteam.cloudflareaccess.com", "aud": "<the application's AUD tag>",
+  "emails": ["me@example.com"]
+}}}
+```
+
+The assertion must be RS256, signed by a key at `https://<team>.cloudflareaccess.com/cdn-cgi/access/certs` (cached as for `auth.jwt`), with `iss` the team domain, `aud` naming the AUD tag, a valid `exp` and `nbf` (60 s leeway), and an `email` (a service token's has none, and is refused). `emails`, when set, is the only emails let in: a second check on the Access policy. Requests other than GET, HEAD and OPTIONS from another site are refused (403), since the browser sends Access's cookie by itself.
 
 Tasks: `POST /v1/tasks {"input": ..., "agent"?, "policy"?, "notify"?: {"url": ...}}` starts a background run and answers `202` at once. The server owns it: closing a connection never stops it (only `POST /v1/runs/{id}/cancel` does), and after a crash the recovery loop resumes it once its lease runs out (`AGENTKIT_RECOVERY_INTERVAL`, default `30s`, is how often it looks). Follow it with `GET /v1/runs/{id}/events` from any number of clients, resuming with `Last-Event-ID`; list them with `GET /v1/runs?background=true&status=running`. Its end is posted to the webhook when `AGENTKIT_WEBHOOK_SECRET` (at least 32 bytes; each tenant's secret derives from it) is set: a JSON `run.ended` with the run, signed `Agentkit-Signature: t=<unix>,v1=<hex HMAC-SHA256 of "<t>.<body>">` under the tenant's secret (`GET /v1/webhooks/secret`, scope `agent:admin`), with `Agentkit-Webhook-Id` (the run's ID: keep the first) and `Agentkit-Webhook-Attempt`; it is retried with backoff for 24h, and the attempts show in the run's `notify`. Webhooks never reach private or loopback addresses except the hosts in `AGENTKIT_WEBHOOK_ALLOW_HOSTS` (comma-separated). Package `pkg/webhook` has `Verify` for receivers.
 

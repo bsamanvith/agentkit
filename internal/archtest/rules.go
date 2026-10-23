@@ -208,6 +208,9 @@ func ModuleRules() Rules {
 			// JWT tokens (T041) add the clock for token times and the key
 			// cache; their tests the shared suite and the fake clock.
 			"pkg/auth/jwt": {"pkg/auth", "pkg/tenancy", "pkg/clock", "pkg/clock/clocktest", "pkg/auth/authtest"},
+			// Cloudflare Access assertions: pkg/auth/jwt with Access's
+			// settings; its tests use the fake provider and the fake clock.
+			"pkg/auth/cfaccess": {"pkg/auth", "pkg/auth/jwt", "pkg/tenancy", "pkg/clock", "pkg/clock/clocktest", "pkg/auth/jwt/jwttest", "pkg/auth/authtest"},
 			// The metadata wraps auth's middleware; its tests use the fake.
 			"pkg/auth/resourcemeta": {"pkg/auth", "pkg/tenancy", "pkg/auth/authtest"},
 			// Password sign-in and sessions (T061): the clock for session

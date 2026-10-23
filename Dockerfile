@@ -12,7 +12,7 @@
 # `docker run <image> healthcheck` runs the self-check (there is no shell).
 
 # GO_VERSION follows the toolchain line in go.mod (the Makefile passes it).
-ARG GO_VERSION=1.27.2
+ARG GO_VERSION=1.27.3
 
 FROM --platform=$BUILDPLATFORM golang:${GO_VERSION} AS build
 WORKDIR /src

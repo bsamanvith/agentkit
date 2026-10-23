@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -150,15 +151,19 @@ func (c cli) authenticators(ctx context.Context, cfg serveConfig, log *slog.Logg
 // file's (either one alone turns it on); nil when neither configures it. Its
 // tenant defaults to the default one. The team's keys are fetched once at
 // startup, a failure only logged.
+//
+// With no emails, every email the Access policy admits gets the scopes,
+// "*" unless set: with authentication required that is refused unless the
+// scopes are set, otherwise it is a warning.
 func (c cli) cloudflareAccess(ctx context.Context, cfg serveConfig, log *slog.Logger) (*cfaccess.Authenticator, error) {
+	if !c.cloudflareAccessSet(cfg) {
+		return nil, nil
+	}
 	var ac cfaccess.Config
 	if cfg.Auth.CloudflareAccess != nil {
 		ac = *cfg.Auth.CloudflareAccess
 	}
 	team, aud := c.env(envCFAccessTeamDomain), c.env(envCFAccessAUD)
-	if cfg.Auth.CloudflareAccess == nil && team == "" && aud == "" {
-		return nil, nil
-	}
 	if team != "" {
 		ac.TeamDomain = team
 	}
@@ -176,14 +181,35 @@ func (c cli) cloudflareAccess(ctx context.Context, cfg serveConfig, log *slog.Lo
 	if err != nil {
 		return nil, fmt.Errorf("auth.cloudflare_access (or $%s, $%s): %w", envCFAccessTeamDomain, envCFAccessAUD, err)
 	}
+	if len(ac.Emails) == 0 {
+		required, err := c.requireAuth(cfg)
+		if err != nil {
+			return nil, err
+		}
+		if required && len(ac.Scopes) == 0 {
+			return nil, errors.New("auth.cloudflare_access: with authentication required, list the emails let in (emails), or set the scopes every admitted email gets (scopes): otherwise anyone the Access policy admits gets every scope")
+		}
+		scopes := ac.Scopes
+		if len(scopes) == 0 {
+			scopes = []string{"*"}
+		}
+		l.Warn("auth.cloudflare_access: no emails listed, so every email the Access policy admits gets these scopes; list them in auth.cloudflare_access.emails", "scopes", scopes)
+	}
 	if err := a.Refresh(ctx); err != nil {
 		l.Warn("auth.cloudflare_access: the team's keys could not be fetched; every request fails until they are", "issuer", a.Issuer(), "error", err)
 	}
 	return a, nil
 }
 
+// cloudflareAccessSet reports whether Cloudflare Access is configured: the
+// file's auth.cloudflare_access section, or either of its variables.
+func (c cli) cloudflareAccessSet(cfg serveConfig) bool {
+	return cfg.Auth.CloudflareAccess != nil || c.env(envCFAccessTeamDomain) != "" || c.env(envCFAccessAUD) != ""
+}
+
 // requireAuth reports whether serve must refuse to start open: auth.required,
-// or $AGENTKIT_REQUIRE_AUTH set to 1 or true.
+// or $AGENTKIT_REQUIRE_AUTH set to 1, true or yes. 0, false or no do not turn
+// off the file's "required": true.
 func (c cli) requireAuth(cfg serveConfig) (bool, error) {
 	v := c.env(envRequireAuth)
 	switch strings.ToLower(strings.TrimSpace(v)) {
@@ -194,23 +220,102 @@ func (c cli) requireAuth(cfg serveConfig) (bool, error) {
 	case "0", "false", "no":
 		return cfg.Auth.Required, nil // the file's true is not turned off from outside
 	}
-	return false, fmt.Errorf("$%s: %q is not 1 or 0", envRequireAuth, v)
+	return false, fmt.Errorf("$%s: %q is not 1, true, yes, 0, false or no", envRequireAuth, v)
 }
 
 // accessPublic are the requests that need no Cloudflare Access assertion:
 // the health probes, which the orchestrator sends to the origin, and the
 // public endpoints that callers outside Access reach, which its application
-// must bypass (docs: deploy/cloudflare). Exactly these, nothing more.
+// must bypass (docs: deploy/cloudflare). Exactly these, nothing more: a
+// webhook's id is letters, digits, '-' and '_', never "." or "..".
 func accessPublic(r *http.Request) bool {
 	p := r.URL.Path
 	switch r.Method {
 	case http.MethodGet, http.MethodHead:
 		return p == "/healthz" || p == "/readyz" || p == oauthCallbackPath || p == oauthClientMetadataPath
 	case http.MethodPost:
-		rest, ok := strings.CutPrefix(p, "/v1/hooks/")
-		return ok && rest != "" && !strings.Contains(rest, "/")
+		id, ok := strings.CutPrefix(p, "/v1/hooks/")
+		return ok && hookID(id)
 	}
 	return false
+}
+
+// hookID reports whether s may be a webhook's id: 1 to 128 letters, digits,
+// '-' or '_'.
+func hookID(s string) bool {
+	if s == "" || len(s) > 128 {
+		return false
+	}
+	for i := range len(s) {
+		c := s[i]
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_') {
+			return false
+		}
+	}
+	return true
+}
+
+// accessGate is the middleware Cloudflare Access puts in front of the whole
+// server: access.Require with the public requests, then /readyz answered
+// with its status alone to a caller without a valid assertion. The RPC of a
+// runner or toolsets component served beside the API passes when it has its
+// own token ($AGENTKIT_RPC_TOKEN): its callers send that, never an assertion.
+func accessGate(access *cfaccess.Authenticator, env serveEnv) []func(http.Handler) http.Handler {
+	rpc := env.rpcToken != "" && (slices.Contains(env.components, runnerName) || slices.Contains(env.components, toolsetsName))
+	public := func(r *http.Request) bool {
+		return accessPublic(r) || rpc && strings.HasPrefix(r.URL.Path, "/rpc/")
+	}
+	return []func(http.Handler) http.Handler{access.Require(public), redactReadyz(access)}
+}
+
+// redactReadyz answers GET /readyz, to a caller without a valid assertion,
+// with the status alone: the components' names, reasons (which may name
+// hosts) and details are for those Access let in.
+func redactReadyz(access *cfaccess.Authenticator) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/readyz" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if _, err := access.Authenticate(r); err == nil {
+				next.ServeHTTP(w, r)
+				return
+			}
+			rec := &statusOnly{header: http.Header{}}
+			next.ServeHTTP(rec, r)
+			if rec.code == 0 {
+				rec.code = http.StatusOK
+			}
+			status := "ready"
+			if rec.code != http.StatusOK {
+				status = "not ready"
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Cache-Control", "no-store")
+			w.WriteHeader(rec.code)
+			_ = json.NewEncoder(w).Encode(map[string]string{"status": status})
+		})
+	}
+}
+
+// statusOnly is a ResponseWriter that keeps the status and drops the rest.
+type statusOnly struct {
+	header http.Header
+	code   int
+}
+
+func (s *statusOnly) Header() http.Header { return s.header }
+
+func (s *statusOnly) WriteHeader(code int) {
+	if s.code == 0 {
+		s.code = code
+	}
+}
+
+func (s *statusOnly) Write(b []byte) (int, error) {
+	s.WriteHeader(http.StatusOK)
+	return len(b), nil
 }
 
 // apiKeys are the config's keys, those of $AGENTKIT_API_KEYS_FILE, and

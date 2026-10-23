@@ -119,7 +119,20 @@ func startServeBin(t *testing.T, bin, config string, shutdownTimeout time.Durati
 
 func (p *serveProcess) getJSON(t *testing.T, path string, v any) int {
 	t.Helper()
-	resp, err := http.Get(p.url + path) //nolint:noctx // test against a local server
+	return p.getJSONHeader(t, path, nil, v)
+}
+
+// getJSONHeader is getJSON with header added to the request.
+func (p *serveProcess) getJSONHeader(t *testing.T, path string, header http.Header, v any) int {
+	t.Helper()
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, p.url+path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for k, vs := range header {
+		req.Header[k] = vs
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("GET %s: %v", path, err)
 	}

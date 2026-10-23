@@ -170,7 +170,8 @@ vulncheck: $(GOVULNCHECK) ## Report known vulnerabilities (Go's database) reacha
 
 $(GOVULNCHECK):
 	@mkdir -p bin
-	@# Built with this repo's toolchain, so it checks the stdlib CI ships.
+	@# It checks the stdlib of the go command it runs, which follows go.mod's
+	@# toolchain line (not the Go it was built with).
 	GOBIN=$(CURDIR)/bin GOTOOLCHAIN=$$($(GO) env GOVERSION) $(GO) install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
 	mv bin/govulncheck $@
 

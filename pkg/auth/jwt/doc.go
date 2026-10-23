@@ -41,7 +41,13 @@
 // unknown key, or the set is older than its Cache-Control max-age (within
 // [Config.MinRefreshInterval] and [Config.MaxCacheAge]), but never more than
 // once per MinRefreshInterval, whatever the requests: a flood of tokens with
-// made-up key ids cannot hammer the provider. A failed fetch keeps the last
-// good set, so a provider outage only fails tokens signed by keys not seen
-// yet, with 401. All times come from the injected clock.
+// made-up key ids cannot hammer the provider. While there are no usable keys
+// (the first fetch failed, say), a fetch may be tried again after 5 s, if
+// MinRefreshInterval is longer: still at most one fetch per 5 s.
+//
+// A failed fetch keeps the last good set, so a provider outage only fails
+// tokens signed by keys not seen yet, with 401. That set is used for at most
+// 24 hours past its expiry: after that every token fails, with 401, until a
+// fetch succeeds, so keys the provider has revoked are not trusted forever.
+// All times come from the injected clock.
 package jwt

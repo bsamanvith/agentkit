@@ -71,7 +71,7 @@ func WithHTTPClient(c *http.Client) Option {
 }
 
 // WithLogger sets the logger (default: discard). Refused requests are
-// logged at info with the reason, never the assertion or its claims.
+// logged at debug with the reason, never the assertion or its claims.
 func WithLogger(l *slog.Logger) Option {
 	return func(o *options) { o.log = l; o.jwt = append(o.jwt, jwt.WithLogger(l)) }
 }
@@ -198,11 +198,8 @@ func (a *Authenticator) Require(public func(*http.Request) bool) func(http.Handl
 				return
 			}
 			if _, err := a.Authenticate(r); err != nil {
-				level := slog.LevelInfo
-				if errors.Is(err, auth.ErrNoCredentials) && !errors.Is(err, auth.ErrInvalidCredentials) {
-					level = slog.LevelDebug
-				}
-				a.log.LogAttrs(r.Context(), level, "auth/cfaccess: request refused", slog.String("method", r.Method), slog.String("path", r.URL.Path), slog.String("reason", err.Error()))
+				// Debug: anyone who reaches the origin can send refused requests.
+				a.log.LogAttrs(r.Context(), slog.LevelDebug, "auth/cfaccess: request refused", slog.String("method", r.Method), slog.String("path", r.URL.Path), slog.String("reason", err.Error()))
 				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 				w.Header().Set("X-Content-Type-Options", "nosniff")
 				w.Header().Set("Cache-Control", "no-store")

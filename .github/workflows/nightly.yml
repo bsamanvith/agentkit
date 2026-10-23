@@ -9,7 +9,11 @@ name: nightly
 # run does); budgets come after two weeks of numbers. The live tests are not
 # here: they run in Claude sessions (make test-live), with no key in GitHub.
 #
-# Fork-safe: no repository secret. The job's token can read the repository
+# The vulncheck job runs make vulncheck on the default branch every night,
+# so an advisory published between PRs shows here, not first on an
+# unrelated PR's check job.
+#
+# Fork-safe: no repository secret. The perf job's token can read the repository
 # and the Actions artifacts, and write nothing; it reaches GitHub only to
 # find and download the previous run's artifact.
 on:
@@ -25,6 +29,25 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Known vulnerabilities reachable from the code, in the modules and in the
+  # stdlib of go.mod's toolchain, against today's database.
+  vulncheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: the checkout left no credentials in .git/config
+        run: scripts/check-no-git-credentials.sh
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      - name: make vulncheck
+        run: make vulncheck
+
   perf:
     runs-on: ubuntu-latest
     timeout-minutes: 120

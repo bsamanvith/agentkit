@@ -50,12 +50,29 @@ type agentClient struct {
 	url   string
 	token string
 	agent string // the agent a new conversation gets; "" for the server's default
+	// header is added to every request: a Cloudflare Access assertion.
+	header http.Header
+}
+
+// headerTransport adds its header to every request.
+type headerTransport struct{ header http.Header }
+
+func (h headerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	r = r.Clone(r.Context())
+	for k, vs := range h.header {
+		r.Header[k] = vs
+	}
+	return http.DefaultTransport.RoundTrip(r)
 }
 
 func (a agentClient) client() *agentclient.Client {
 	a.t.Helper()
 	// A stream that never ends fails, not hangs.
-	c, err := agentclient.New(a.url, agentclient.WithToken(a.token), agentclient.WithHTTPClient(&http.Client{Timeout: 2 * time.Minute}))
+	hc := &http.Client{Timeout: 2 * time.Minute}
+	if a.header != nil {
+		hc.Transport = headerTransport{a.header}
+	}
+	c, err := agentclient.New(a.url, agentclient.WithToken(a.token), agentclient.WithHTTPClient(hc))
 	if err != nil {
 		a.t.Fatal(err)
 	}

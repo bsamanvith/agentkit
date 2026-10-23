@@ -79,10 +79,6 @@ func (o oauthCallback) Handler() http.Handler          { return o.h }
 func (o oauthCallback) Ready(context.Context) error    { return nil }
 func (o oauthCallback) Shutdown(context.Context) error { return nil }
 
-// oauthClientMetadataPath is where the MCP OAuth client's metadata is
-// served (oauth.ClientMetadataPath, which this file does not import).
-const oauthClientMetadataPath = "/oauth/client-metadata.json"
-
 // oauthClientMetadata serves the MCP OAuth client's metadata document:
 // public, always ready, nothing to shut down.
 type oauthClientMetadata struct{ h http.Handler }

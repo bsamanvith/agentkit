@@ -3,6 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +13,7 @@ import (
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/auth"
+	"github.com/bsamanvith/agentkit/pkg/auth/cfaccess"
 	"github.com/bsamanvith/agentkit/pkg/auth/login"
 	"github.com/bsamanvith/agentkit/pkg/auth/login/logintest"
 )
@@ -144,6 +148,22 @@ func TestServeRejectsBadSetup(t *testing.T) {
 		"auth: unknown field":         {env: map[string]string{envComponents: "agent"}, config: `{"auth":{"api_keys":[{"id":"k","key":"hunter2"}]}}`, code: 1, says: "auth:"},
 		"auth: keys file missing":     {env: map[string]string{envComponents: "agent", envAPIKeysFile: "/nonexistent/keys.json"}, config: good, code: 1, says: envAPIKeysFile},
 		"auth: stateful mcp":          {env: map[string]string{envComponents: "mcp-server", envAPIToken: "a-token-0123456789abcdef"}, config: `{"mcp":{"stateful":true,"toolsets":[{"name":"demo","type":"demo"}]}}`, code: 1, says: "stateful"},
+		// Required authentication, and Cloudflare Access.
+		"require auth: open on loopback":  {env: map[string]string{envComponents: "agent", envRequireAuth: "1"}, config: good, code: 1, says: "authentication is required"},
+		"require auth: from the config":   {env: map[string]string{envComponents: "mcp-server"}, config: `{"mcp":{"toolsets":[{"name":"demo","type":"demo"}]},"auth":{"required":true}}`, code: 1, says: envCFAccessTeamDomain},
+		"require auth: not turned off":    {env: map[string]string{envComponents: "agent", envRequireAuth: "0"}, config: `{"auth":{"required":true}}`, code: 1, says: "authentication is required"},
+		"require auth: users not for MCP": {env: map[string]string{envComponents: "agent,mcp-server", envRequireAuth: "true"}, config: `{"mcp":{"toolsets":[{"name":"demo","type":"demo"}]},"auth":{"users":[{"username":"ann","password_hash":"` + userHash + `","tenant":"t","roles":["user"]}]}}`, code: 1, says: "authentication is required"},
+		"require auth: bad value":         {env: map[string]string{envComponents: "agent", envRequireAuth: "maybe"}, config: good, code: 1, says: envRequireAuth},
+		"require auth: runner no token":   {env: map[string]string{envComponents: "runner", envRequireAuth: "1"}, config: good, code: 1, says: envRPCToken},
+		"require auth: toolsets no token": {env: map[string]string{envComponents: "toolsets", envRequireAuth: "1"}, config: good, code: 1, says: envRPCToken},
+		"require auth: access, no emails": {env: map[string]string{envComponents: "agent", envRequireAuth: "1", envCFAccessTeamDomain: "http://127.0.0.1:1", envCFAccessAUD: "x"}, config: good, code: 1, says: "list the emails"},
+		"require auth: web, no emails":    {env: map[string]string{envComponents: "web", envCFAccessTeamDomain: "http://127.0.0.1:1", envCFAccessAUD: "x"}, config: `{"auth":{"required":true}}`, code: 1, says: "list the emails"},
+		"cf access: no aud":               {env: map[string]string{envComponents: "agent", envCFAccessTeamDomain: "myteam"}, config: good, code: 1, says: "aud"},
+		"cf access: no team":              {env: map[string]string{envComponents: "agent"}, config: `{"auth":{"cloudflare_access":{"aud":"x"}}}`, code: 1, says: "team_domain"},
+		"cf access: http team":            {env: map[string]string{envComponents: "agent"}, config: `{"auth":{"cloudflare_access":{"team_domain":"http://myteam.example","aud":"x"}}}`, code: 1, says: "auth.cloudflare_access"},
+		"cf access: unknown field":        {env: map[string]string{envComponents: "agent"}, config: `{"auth":{"cloudflare_access":{"team":"myteam","aud":"x"}}}`, code: 1, says: "team"},
+		"cf access: toolset typo":         {env: map[string]string{envComponents: "agent"}, config: `{"mcp":{"toolsets":[{"name":"demo","type":"demo"}]},"auth":{"cloudflare_access":{"team_domain":"myteam","aud":"x","toolsets":["dmeo"]}}}`, code: 1, says: `toolset "dmeo" matches none`},
+		"cf access: web only, bad config": {env: map[string]string{envComponents: "web", envCFAccessAUD: "x"}, code: 1, says: "team_domain"},
 		// Identity provider tokens (T041).
 		"auth.jwt: HMAC":                   {env: map[string]string{envComponents: "agent"}, config: `{"auth":{"jwt":{"issuer":"https://id.example","audience":"https://a.example","algorithms":["HS256"]}}}`, code: 1, says: "HS256"},
 		"auth.jwt: unknown field":          {env: map[string]string{envComponents: "agent"}, config: `{"auth":{"jwt":{"issuer":"https://id.example","audience":"https://a.example","secret":"x"}}}`, code: 1, says: "secret"},
@@ -193,5 +213,93 @@ func TestServeRejectsBadSetup(t *testing.T) {
 				t.Errorf("stderr echoes the store's password:\n%s", &stderr)
 			}
 		})
+	}
+}
+
+// TestAccessPublic: exactly the health probes, the OAuth callback and its
+// client metadata, and inbound webhooks pass Cloudflare Access's gate without
+// an assertion.
+func TestAccessPublic(t *testing.T) {
+	t.Parallel()
+	for req, want := range map[[2]string]bool{
+		{"GET", "/healthz"}:                               true,
+		{"GET", "/readyz"}:                                true,
+		{"GET", "/oauth/callback"}:                        true,
+		{"GET", "/oauth/client-metadata.json"}:            true,
+		{"POST", "/v1/hooks/trg_1"}:                       true,
+		{"GET", "/version"}:                               false,
+		{"GET", "/healthz/x"}:                             false,
+		{"POST", "/healthz"}:                              false,
+		{"POST", "/oauth/callback"}:                       false,
+		{"GET", "/v1/hooks/trg_1"}:                        false,
+		{"POST", "/v1/hooks/"}:                            false,
+		{"POST", "/v1/hooks/trg_1/x"}:                     false,
+		{"GET", "/v1/auth/config"}:                        false,
+		{"POST", "/v1/auth/login"}:                        false,
+		{"GET", "/"}:                                      false,
+		{"GET", "/.well-known/oauth-protected-resource"}:  false,
+		{"HEAD", "/healthz"}:                              true,
+		{"HEAD", "/readyz"}:                               true,
+		{"GET", "/healthz/"}:                              false,
+		{"GET", "//healthz"}:                              false,
+		{"POST", "/v1/hooks/.."}:                          false,
+		{"POST", "/v1/hooks/."}:                           false,
+		{"POST", "/v1/hooks/%2e%2e"}:                      false,
+		{"POST", "/v1/hooks/a%2Fb"}:                       false,
+		{"POST", "/v1/hooks/trg_A-z09"}:                   true,
+		{"POST", "/v1/hooks/" + strings.Repeat("a", 129)}: false,
+		{"POST", "/rpc/runner/Agents"}:                    false,
+	} {
+		if got := accessPublic(httptest.NewRequest(req[0], req[1], nil)); got != want {
+			t.Errorf("%s %s: public = %v, want %v", req[0], req[1], got, want)
+		}
+	}
+}
+
+// TestAccessGate: the RPC of a runner or toolsets served beside the API
+// passes the gate only with its own token, and /readyz tells a caller
+// without an assertion its status alone.
+func TestAccessGate(t *testing.T) {
+	t.Parallel()
+	access, err := cfaccess.New(cfaccess.Config{TeamDomain: "http://127.0.0.1:1", AUD: "x", Tenant: "default"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/readyz" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = io.WriteString(w, `{"status":"not ready","components":[{"name":"agent","reason":"dial db.internal:5432"}]}`)
+		}
+	})
+	wrap := func(env serveEnv) http.Handler {
+		h := http.Handler(inner)
+		mw := accessGate(access, env)
+		for i := len(mw) - 1; i >= 0; i-- {
+			h = mw[i](h)
+		}
+		return h
+	}
+	send := func(h http.Handler, method, path string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(method, path, nil))
+		return w
+	}
+	for name, tc := range map[string]struct {
+		env  serveEnv
+		want int
+	}{
+		"runner with a token":    {serveEnv{components: []string{"agent", runnerName}, rpcToken: splitToken}, http.StatusOK},
+		"toolsets with a token":  {serveEnv{components: []string{"agent", toolsetsName}, rpcToken: splitToken}, http.StatusOK},
+		"runner without a token": {serveEnv{components: []string{"agent", runnerName}}, http.StatusUnauthorized},
+		"no runner":              {serveEnv{components: []string{"agent"}, rpcToken: splitToken}, http.StatusUnauthorized},
+	} {
+		if got := send(wrap(tc.env), "POST", "/rpc/runner/Agents").Code; got != tc.want {
+			t.Errorf("%s: POST /rpc/runner/Agents = %d, want %d", name, got, tc.want)
+		}
+	}
+	w := send(wrap(serveEnv{components: []string{"agent"}}), "GET", "/readyz")
+	if body := strings.TrimSpace(w.Body.String()); w.Code != http.StatusServiceUnavailable || body != `{"status":"not ready"}` {
+		t.Errorf("GET /readyz without an assertion = %d %q, want 503 and the status alone", w.Code, body)
 	}
 }

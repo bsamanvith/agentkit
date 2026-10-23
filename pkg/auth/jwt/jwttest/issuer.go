@@ -25,6 +25,10 @@ import (
 // JWKSPath is where an [Issuer] serves its keys.
 const JWKSPath = "/jwks.json"
 
+// CloudflareCertsPath is where Cloudflare Access publishes a team's keys; an
+// [Issuer] serves its keys there too, so it can stand in for a team domain.
+const CloudflareCertsPath = "/cdn-cgi/access/certs"
+
 // Issuer is a fake identity provider. Its methods are safe for concurrent
 // use.
 type Issuer struct {
@@ -59,7 +63,7 @@ func NewIssuer(t testing.TB) *Issuer {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{"issuer": i.URL(), "jwks_uri": i.JWKSURL()})
 	})
-	mux.HandleFunc("GET "+JWKSPath, func(w http.ResponseWriter, r *http.Request) {
+	jwks := func(w http.ResponseWriter, r *http.Request) {
 		i.mu.Lock()
 		i.fetches++
 		down := i.down
@@ -79,7 +83,9 @@ func NewIssuer(t testing.TB) *Issuer {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(set)
-	})
+	}
+	mux.HandleFunc("GET "+JWKSPath, jwks)
+	mux.HandleFunc("GET "+CloudflareCertsPath, jwks)
 	i.srv = httptest.NewServer(mux)
 	t.Cleanup(i.srv.Close)
 	return i

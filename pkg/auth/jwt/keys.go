@@ -31,10 +31,17 @@ const (
 	minRSABits = 2048
 	// maxRedirects caps the redirects one fetch follows.
 	maxRedirects = 5
+	// maxStale is how long past their expiry the last good keys are still
+	// used while fetches fail. After that no key is, until a fetch succeeds.
+	maxStale = 24 * time.Hour
+	// emptyRetryInterval is the least time between two fetches while the
+	// cache has no usable keys, when MinRefreshInterval is longer.
+	emptyRetryInterval = 5 * time.Second
 )
 
 // keyCache holds the provider's keys and fetches them again when a token
-// needs it, at most once per MinRefreshInterval.
+// needs it, at most once per MinRefreshInterval (once per
+// emptyRetryInterval while it has no usable keys).
 type keyCache struct {
 	client      *http.Client
 	clock       clock.Clock
@@ -106,8 +113,12 @@ func (k *keyCache) verify(ctx context.Context, jws *jose.JSONWebSignature, kid, 
 func (k *keyCache) candidates(kid, alg string) ([]jose.JSONWebKey, bool) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
-	fresh := k.attempted && k.clock.Now().Before(k.expires)
+	now := k.clock.Now()
+	fresh := k.attempted && now.Before(k.expires)
 	var out []jose.JSONWebKey
+	if !k.usableAt(now) {
+		return out, fresh
+	}
 	if kid == "" {
 		if len(k.keys) == 1 && fits(k.keys[0], alg) {
 			out = append(out, k.keys[0])
@@ -120,6 +131,12 @@ func (k *keyCache) candidates(kid, alg string) ([]jose.JSONWebKey, bool) {
 		}
 	}
 	return out, fresh
+}
+
+// usableAt reports whether the cache has keys that may be used at now: some
+// were fetched, and they expired at most maxStale before. k.mu must be held.
+func (k *keyCache) usableAt(now time.Time) bool {
+	return len(k.keys) > 0 && !now.After(k.expires.Add(maxStale))
 }
 
 // fits reports whether key may verify a signature made with alg: its type
@@ -147,14 +164,19 @@ func fits(key jose.JSONWebKey, alg string) bool {
 }
 
 // refresh fetches the keys, unless a fetch started less than MinRefreshInterval
-// ago. Concurrent callers wait for the one fetch in flight and then find the
+// ago (emptyRetryInterval, if shorter, while the cache has no usable keys).
+// Concurrent callers wait for the one fetch in flight and then find the
 // interval not yet passed, so a burst makes one fetch.
 func (k *keyCache) refresh(ctx context.Context) error {
 	k.fetching.Lock()
 	defer k.fetching.Unlock()
 	k.mu.Lock()
 	now := k.clock.Now()
-	if k.attempted && now.Sub(k.lastTry) < k.minInterval {
+	interval := k.minInterval
+	if !k.usableAt(now) {
+		interval = min(interval, emptyRetryInterval)
+	}
+	if k.attempted && now.Sub(k.lastTry) < interval {
 		k.mu.Unlock()
 		return nil
 	}

@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"regexp"
@@ -19,6 +20,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/agenttools"
 	"github.com/bsamanvith/agentkit/pkg/auth"
+	"github.com/bsamanvith/agentkit/pkg/auth/cfaccess"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/component"
 	"github.com/bsamanvith/agentkit/pkg/credentials"
@@ -141,6 +143,10 @@ type serveEnv struct {
 	// vaultParts is the vault with its backend and sealer, which the
 	// agent API's connect flows keep their state in; nil without a vault.
 	vaultParts *vaultParts
+	// requireAuth refuses to serve with no authentication, even on a
+	// loopback address (auth.required, $AGENTKIT_REQUIRE_AUTH): set by
+	// serve once the config is read.
+	requireAuth bool
 	// publicURL is the server's public base URL ($AGENTKIT_PUBLIC_URL):
 	// the toolsets added at run time with auth "oauth" need it for their
 	// redirect URI and client ID. "" when unset.
@@ -163,6 +169,9 @@ func (c cli) serve(ctx context.Context, args []string) error {
 	}
 	cfg, err := loadServeConfig(*configPath)
 	if err != nil {
+		return err
+	}
+	if env.requireAuth, err = c.requireAuth(cfg); err != nil {
 		return err
 	}
 	vault, closeVault, err := c.openVaultParts(ctx, cfg.Credentials, env.credentialKeys)
@@ -195,9 +204,12 @@ func (c cli) serve(ctx context.Context, args []string) error {
 	// accept the same keys and see the same principals. The agent API also
 	// takes the local users' sessions (newAgents), which are enough for it
 	// alone; the MCP endpoints need keys or tokens.
+	// Cloudflare Access, when configured, also guards every request
+	// before any component (component.WithMiddleware, below).
 	var authn auth.Authenticator
+	var access *cfaccess.Authenticator
 	if slices.Contains(env.components, agentapi.Name) || slices.Contains(env.components, mcpServerName) {
-		if authn, err = c.authenticator(ctx, cfg, log); err != nil {
+		if authn, access, err = c.authenticators(ctx, cfg, log); err != nil {
 			return err
 		}
 		users, err := c.users(cfg)
@@ -205,11 +217,35 @@ func (c cli) serve(ctx context.Context, args []string) error {
 			return err
 		}
 		if authn == nil && (len(users) == 0 || slices.Contains(env.components, mcpServerName)) {
-			if !isLoopback(env.addr) {
+			switch {
+			case env.requireAuth:
+				return fmt.Errorf("authentication is required (auth.required or $%s) and none is configured: %s", envRequireAuth, credentialChoices)
+			case !isLoopback(env.addr):
 				return needsCredentials(env.addr)
 			}
-			log.Warn("serving with no authentication: anyone who can reach " + env.addr + " can use the API and the toolsets")
+			log.Warn("serving with no authentication: anyone who can reach "+env.addr+" can use the API and the toolsets, including through a tunnel or proxy on this machine (cloudflared, ngrok, a reverse proxy) since those connect over loopback; configure credentials, and set $"+envRequireAuth+"=1 to refuse to start without them", "addr", env.addr)
 		}
+	} else if slices.Contains(env.components, web.Name) {
+		if access, err = c.cloudflareAccess(ctx, cfg, log); err != nil {
+			return err
+		}
+	}
+	switch {
+	case !env.requireAuth:
+	case !slices.Contains(env.components, agentapi.Name) && !slices.Contains(env.components, mcpServerName) && slices.Contains(env.components, web.Name):
+		log.Info("auth: authentication is required, but this process serves only the console's static files, which need none; the agent API they call is checked where it runs")
+	case access == nil && (slices.Contains(env.components, agentapi.Name) || slices.Contains(env.components, mcpServerName)):
+		log.Info("auth: Cloudflare Access is not configured (auth.cloudflare_access): requests are not checked for its assertion")
+	}
+	// Access guards the processes people reach: agent, mcp-server and web.
+	// A runner or toolsets process is called by those alone, with the RPC
+	// token, never through Access.
+	var middleware []func(http.Handler) http.Handler
+	if access != nil {
+		middleware = accessGate(access, env)
+		log.Info("Cloudflare Access: every request needs a valid assertion, but the health probes, the OAuth callback and inbound webhooks", "issuer", access.Issuer())
+	} else if c.cloudflareAccessSet(cfg) {
+		log.Info("Cloudflare Access is configured but not checked here: it guards agent, mcp-server and web, and this process serves none of them", "components", env.components)
 	}
 
 	// The wiring: one constructor per component, chosen by name. The MCP
@@ -275,6 +311,7 @@ func (c cli) serve(ctx context.Context, args []string) error {
 		component.WithLogger(log),
 		component.WithBuildInfo(component.BuildInfo{Version: version, Commit: commit, Date: date}),
 		component.WithShutdownTimeout(env.shutdownTimeout),
+		component.WithMiddleware(middleware...),
 	)
 	if err != nil {
 		return err

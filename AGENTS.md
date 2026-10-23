@@ -8,6 +8,8 @@ A Go kit for running Claude agents: one binary (`cmd/agentkit`), a web console
 
 - `make check`: what every change passes (tidy, format, lint, deps, unit
   tests with `-race`). Gate on its exit status: `make check > log 2>&1; echo $?`.
+- `make vulncheck`: govulncheck on the code, modules and go.mod's toolchain
+  stdlib (needs the network; CI and nightly run it).
 - `make lint`: golangci-lint, then `scripts/lint-skills.sh` (skills, links,
   task files; `--test` runs it on its fixtures).
 - `make test`; one package: `go test -race -shuffle=on -count=20 ./pkg/<p>/...`.

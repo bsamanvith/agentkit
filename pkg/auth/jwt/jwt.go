@@ -110,14 +110,22 @@ func WithHTTPClient(c *http.Client) Option { return func(a *Authenticator) { a.k
 // logged at warn; tokens never are.
 func WithLogger(l *slog.Logger) Option { return func(a *Authenticator) { a.log = l } }
 
+// WithHeader makes the authenticator read the token from the request header
+// name, whole (no "Bearer" scheme), instead of the Authorization header: for
+// a proxy in front that forwards its own assertion, such as Cloudflare
+// Access's Cf-Access-Jwt-Assertion. A value there that is not shaped like a
+// JWT is then invalid, not another authenticator's.
+func WithHeader(name string) Option { return func(a *Authenticator) { a.header = name } }
+
 // Authenticator is an auth.Authenticator of JWT bearer tokens. Make one with
 // [New]. It is safe for concurrent use.
 type Authenticator struct {
-	cfg   Config
-	algs  []jose.SignatureAlgorithm
-	clock clock.Clock
-	log   *slog.Logger
-	keys  *keyCache
+	cfg    Config
+	algs   []jose.SignatureAlgorithm
+	clock  clock.Clock
+	log    *slog.Logger
+	keys   *keyCache
+	header string // "" for the Authorization header's bearer token
 }
 
 // ConfigError is a configuration [New] refused.
@@ -229,18 +237,43 @@ func (a *Authenticator) Refresh(ctx context.Context) error { return a.keys.refre
 // Authenticate returns the principal of the request's bearer token. See the
 // package documentation for what is checked.
 func (a *Authenticator) Authenticate(r *http.Request) (auth.Principal, error) {
-	tok, err := auth.BearerToken(r.Header)
+	tok, err := a.token(r.Header)
 	if err != nil {
 		return auth.Principal{}, err
-	}
-	if !jwtShaped(tok) {
-		return auth.Principal{}, fmt.Errorf("%w: the bearer token is not a JWT", auth.ErrNoCredentials)
 	}
 	p, err := a.verify(r.Context(), tok, r.URL.Path)
 	if err != nil {
 		return auth.Principal{}, fmt.Errorf("%w: %w", auth.ErrInvalidCredentials, err)
 	}
 	return p, nil
+}
+
+// token returns the request's token: its bearer token, or with [WithHeader]
+// the whole value of that one header, at most auth.MaxAuthorizationLength
+// bytes. A bearer token not shaped like a JWT is another authenticator's
+// (auth.ErrNoCredentials); a header of our own that is not is invalid.
+func (a *Authenticator) token(h http.Header) (string, error) {
+	if a.header == "" {
+		tok, err := auth.BearerToken(h)
+		if err == nil && !jwtShaped(tok) {
+			err = fmt.Errorf("%w: the bearer token is not a JWT", auth.ErrNoCredentials)
+		}
+		return tok, err
+	}
+	vs := h.Values(a.header)
+	switch {
+	case len(vs) == 0:
+		return "", auth.ErrNoCredentials
+	case len(vs) > 1:
+		return "", fmt.Errorf("%w: %d %s headers", auth.ErrInvalidCredentials, len(vs), a.header)
+	case len(vs[0]) > auth.MaxAuthorizationLength:
+		return "", fmt.Errorf("%w: %s header longer than %d bytes", auth.ErrInvalidCredentials, a.header, auth.MaxAuthorizationLength)
+	}
+	tok := strings.TrimSpace(vs[0])
+	if !jwtShaped(tok) {
+		return "", fmt.Errorf("%w: the %s header is not a JWT", auth.ErrInvalidCredentials, a.header)
+	}
+	return tok, nil
 }
 
 // jwtShaped reports whether tok is three base64url segments, the first not

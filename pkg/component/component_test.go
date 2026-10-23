@@ -332,6 +332,43 @@ func TestReadyzDetails(t *testing.T) {
 	}
 }
 
+// TestMiddlewareWrapsEverything: WithMiddleware sees every request, the
+// runtime's own endpoints included, the first given outermost.
+func TestMiddlewareWrapsEverything(t *testing.T) {
+	t.Parallel()
+	ev := &events{}
+	var order []string
+	var mu sync.Mutex
+	mw := func(name string, block string) func(http.Handler) http.Handler {
+		return func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				mu.Lock()
+				order = append(order, name+" "+r.URL.Path)
+				mu.Unlock()
+				if r.URL.Path == block {
+					http.Error(w, "blocked", http.StatusUnauthorized)
+					return
+				}
+				next.ServeHTTP(w, r)
+			})
+		}
+	}
+	rt := newRuntime(t, []component.Mount{{Pattern: "/a/", Component: newFake("a", ev)}},
+		component.WithMiddleware(mw("outer", "/a/blocked"), mw("inner", "/version")))
+	ts := httptest.NewServer(rt.Handler())
+	t.Cleanup(ts.Close)
+	for path, want := range map[string]int{"/a/x": http.StatusOK, "/healthz": http.StatusOK, "/a/blocked": http.StatusUnauthorized, "/version": http.StatusUnauthorized} {
+		if code, _ := get(t, ts.Client(), ts.URL+path); code != want {
+			t.Errorf("GET %s = %d, want %d", path, code, want)
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(order) != 7 || !slices.Contains(order, "outer /healthz") || !slices.Contains(order, "inner /healthz") || slices.Contains(order, "inner /a/blocked") {
+		t.Errorf("middleware saw %q", order)
+	}
+}
+
 func TestVersion(t *testing.T) {
 	t.Parallel()
 	ev := &events{}

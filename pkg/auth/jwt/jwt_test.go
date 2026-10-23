@@ -641,3 +641,33 @@ func mustJSON(t *testing.T, v any) []byte {
 	}
 	return b
 }
+
+// TestConformanceWithHeader runs the shared suite on tokens read from a
+// proxy's header (WithHeader), as Cloudflare Access sends them.
+func TestConformanceWithHeader(t *testing.T) {
+	t.Parallel()
+	const header = "Cf-Access-Jwt-Assertion"
+	apply := func(r *http.Request, secret string) { r.Header.Set(header, secret) }
+	authtest.RunAuthenticator(t, func(t *testing.T) authtest.Subject {
+		r := newRig(t)
+		a, err := jwt.New(jwt.Config{Issuer: r.iss.URL(), Audience: audience, JWKSURL: r.iss.JWKSURL()},
+			jwt.WithClock(r.clk), jwt.WithHTTPClient(r.iss.Client()), jwt.WithHeader(header))
+		if err != nil {
+			t.Fatal(err)
+		}
+		via := auth.Credential{Kind: jwt.KindJWT, ID: r.iss.URL()}
+		return authtest.Subject{
+			Authenticator: a,
+			Credentials: []authtest.Credential{
+				{
+					Name: "acme's ann", Secret: r.token(nil), Apply: apply,
+					Want: auth.Principal{Tenant: mustTenant(t, "acme"), User: "ann", Scopes: []string{"agent:run", "agent:read", "mcp:crm"}, Toolsets: []string{"crm"}, Via: via},
+				},
+				{
+					Name: "globex's service", Secret: r.token(map[string]any{"tenant": "globex", "sub": nil, "scope": "mcp:gmail"}), Apply: apply,
+					Want: auth.Principal{Tenant: mustTenant(t, "globex"), Scopes: []string{"mcp:gmail"}, Toolsets: []string{"gmail"}, Via: via},
+				},
+			},
+		}
+	})
+}

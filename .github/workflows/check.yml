@@ -67,6 +67,7 @@ jobs:
           path: |
             bin/golangci-lint-*
             bin/actionlint-*
+            bin/govulncheck-*
           key: lint-bin-${{ runner.os }}-${{ hashFiles('Makefile', 'go.mod') }}
       # golangci-lint keys its own cache entries on its version and inputs,
       # so an older analysis cache is only a head start.

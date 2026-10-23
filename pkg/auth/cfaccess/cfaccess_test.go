@@ -1,7 +1,9 @@
 package cfaccess_test
 
 import (
+	"bytes"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -116,6 +118,10 @@ func TestRefusedAssertions(t *testing.T) {
 	other := jwttest.NewIssuer(t)
 	otherKid := other.AddKey(t, "RS256")
 	esKid := r.iss.AddKey(t, "ES256")
+	// The control: the same rig accepts the assertion unchanged.
+	if _, err := r.a.Authenticate(request(r.assertion(nil))); err != nil {
+		t.Fatalf("the unchanged assertion: %v", err)
+	}
 	now := t0.Unix()
 	for name, tok := range map[string]string{
 		"wrong aud":          r.assertion(map[string]any{"aud": []string{"another-app"}}),
@@ -175,6 +181,12 @@ func TestEmails(t *testing.T) {
 	if !errors.Is(err, auth.ErrInvalidCredentials) {
 		t.Errorf("unlisted email: got %v, want invalid credentials", err)
 	}
+
+	// The assertion's email is compared without case too.
+	r = newRig(t, func(c *cfaccess.Config) { c.Emails = []string{"owner@example.com"} })
+	if _, err := r.a.Authenticate(request(r.assertion(map[string]any{"email": "OWNER@example.com"}))); err != nil {
+		t.Errorf("listed email, upper case in the assertion: %v", err)
+	}
 }
 
 func TestKeysAreCached(t *testing.T) {
@@ -197,6 +209,58 @@ func TestKeysAreCached(t *testing.T) {
 	}
 }
 
+func TestUnknownKidFetchesAgain(t *testing.T) {
+	t.Parallel()
+	r := newRig(t)
+	if _, err := r.a.Authenticate(request(r.assertion(nil))); err != nil {
+		t.Fatal(err)
+	}
+	r.clk.Advance(2 * time.Minute)
+	before := r.iss.Fetches()
+	tok := r.iss.SignAs(t, r.kid, "made-up", r.claims(nil))
+	if _, err := r.a.Authenticate(request(tok)); !errors.Is(err, auth.ErrInvalidCredentials) {
+		t.Errorf("unknown kid: got %v, want invalid credentials", err)
+	}
+	if n := r.iss.Fetches(); n != before+1 {
+		t.Errorf("%d fetches after an unknown kid, want %d", n, before+1)
+	}
+}
+
+func TestTeamUnreachable(t *testing.T) {
+	t.Parallel()
+	r := newRig(t)
+	r.iss.SetDown(true)
+	if _, err := r.a.Authenticate(request(r.assertion(nil))); !errors.Is(err, auth.ErrInvalidCredentials) {
+		t.Errorf("team down: got %v, want invalid credentials", err)
+	}
+	h := r.a.Require(nil)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("the handler was reached with the team down")
+	}))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, request(r.assertion(nil)))
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Require with the team down: %d, want 401", w.Code)
+	}
+}
+
+func TestHeaderValue(t *testing.T) {
+	t.Parallel()
+	r := newRig(t)
+	tok := r.assertion(nil)
+	// Spaces around the assertion are trimmed.
+	if _, err := r.a.Authenticate(request(" " + tok + " ")); err != nil {
+		t.Errorf("padded assertion: %v", err)
+	}
+	// The length limit holds before trimming.
+	long := tok + strings.Repeat(" ", auth.MaxAuthorizationLength-len(tok)+1)
+	if _, err := r.a.Authenticate(request(long)); !errors.Is(err, auth.ErrInvalidCredentials) {
+		t.Errorf("header over %d bytes: got %v, want invalid credentials", auth.MaxAuthorizationLength, err)
+	}
+	if _, err := r.a.Authenticate(request(long[:len(long)-1])); err != nil {
+		t.Errorf("header at %d bytes: %v", auth.MaxAuthorizationLength, err)
+	}
+}
+
 func TestRequire(t *testing.T) {
 	t.Parallel()
 	r := newRig(t)
@@ -208,7 +272,7 @@ func TestRequire(t *testing.T) {
 			t.Errorf("the handler lost the request's Authorization header")
 		}
 	}))
-	send := func(method, path, assertion string, header map[string]string) int {
+	send := func(method, path, assertion string, header map[string]string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(method, "https://agents.example.com"+path, nil)
 		req.Header.Set("Authorization", "Bearer k")
 		if assertion != "" {
@@ -219,7 +283,7 @@ func TestRequire(t *testing.T) {
 		}
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, req)
-		return w.Code
+		return w
 	}
 	good := r.assertion(nil)
 	for _, c := range []struct {
@@ -237,12 +301,60 @@ func TestRequire(t *testing.T) {
 		{"valid POST, other Origin", "POST", "/v1/runs", good, map[string]string{"Origin": "https://evil.example"}, http.StatusForbidden},
 	} {
 		before := reached
-		if got := send(c.method, c.path, c.assertion, c.header); got != c.want {
-			t.Errorf("%s: got %d, want %d", c.name, got, c.want)
+		w := send(c.method, c.path, c.assertion, c.header)
+		if w.Code != c.want {
+			t.Errorf("%s: got %d, want %d", c.name, w.Code, c.want)
 		}
 		if ok := reached > before; ok != (c.want == http.StatusOK) {
 			t.Errorf("%s: handler reached = %v", c.name, ok)
 		}
+		if w.Code == http.StatusUnauthorized {
+			for k, v := range map[string]string{
+				"Content-Type":           "text/plain; charset=utf-8",
+				"Cache-Control":          "no-store",
+				"X-Content-Type-Options": "nosniff",
+			} {
+				if got := w.Header().Get(k); got != v {
+					t.Errorf("%s: %s %q, want %q", c.name, k, got, v)
+				}
+			}
+		}
+	}
+
+	// With no public paths, every path needs an assertion.
+	h = r.a.Require(nil)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { reached++ }))
+	before := reached
+	if w := send("GET", "/healthz", "", nil); w.Code != http.StatusUnauthorized || reached != before {
+		t.Errorf("Require(nil), /healthz without an assertion: %d, reached %v, want 401", w.Code, reached > before)
+	}
+	if w := send("GET", "/healthz", good, nil); w.Code != http.StatusOK || reached != before+1 {
+		t.Errorf("Require(nil), /healthz with an assertion: %d, want 200", w.Code)
+	}
+}
+
+func TestRefusalsLogAtDebug(t *testing.T) {
+	t.Parallel()
+	iss := jwttest.NewIssuer(t)
+	kid := iss.AddKey(t, "RS256")
+	var logs bytes.Buffer
+	a, err := cfaccess.New(cfaccess.Config{TeamDomain: iss.URL(), AUD: aud, Tenant: "default"},
+		cfaccess.WithClock(clocktest.NewFake(t0)), cfaccess.WithHTTPClient(iss.Client()),
+		cfaccess.WithLogger(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelInfo}))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := a.Require(nil)(http.NotFoundHandler())
+	now := t0.Unix()
+	bad := iss.Sign(t, kid, map[string]any{"iss": iss.URL(), "aud": "x", "email": "owner@example.com", "iat": now, "exp": now + 60})
+	for _, tok := range []string{"", "not-a-jwt", bad} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, request(tok))
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("%q: got %d, want 401", tok, w.Code)
+		}
+	}
+	if strings.Contains(logs.String(), "request refused") {
+		t.Errorf("a refusal was logged above debug: %s", logs.String())
 	}
 }
 

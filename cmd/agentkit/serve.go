@@ -225,13 +225,27 @@ func (c cli) serve(ctx context.Context, args []string) error {
 			}
 			log.Warn("serving with no authentication: anyone who can reach "+env.addr+" can use the API and the toolsets, including through a tunnel or proxy on this machine (cloudflared, ngrok, a reverse proxy) since those connect over loopback; configure credentials, and set $"+envRequireAuth+"=1 to refuse to start without them", "addr", env.addr)
 		}
-	} else if access, err = c.cloudflareAccess(ctx, cfg, log); err != nil {
-		return err
+	} else if slices.Contains(env.components, web.Name) {
+		if access, err = c.cloudflareAccess(ctx, cfg, log); err != nil {
+			return err
+		}
 	}
+	switch {
+	case !env.requireAuth:
+	case !slices.Contains(env.components, agentapi.Name) && !slices.Contains(env.components, mcpServerName) && slices.Contains(env.components, web.Name):
+		log.Info("auth: authentication is required, but this process serves only the console's static files, which need none; the agent API they call is checked where it runs")
+	case access == nil && (slices.Contains(env.components, agentapi.Name) || slices.Contains(env.components, mcpServerName)):
+		log.Info("auth: Cloudflare Access is not configured (auth.cloudflare_access): requests are not checked for its assertion")
+	}
+	// Access guards the processes people reach: agent, mcp-server and web.
+	// A runner or toolsets process is called by those alone, with the RPC
+	// token, never through Access.
 	var middleware []func(http.Handler) http.Handler
 	if access != nil {
-		middleware = append(middleware, access.Require(accessPublic))
+		middleware = accessGate(access, env)
 		log.Info("Cloudflare Access: every request needs a valid assertion, but the health probes, the OAuth callback and inbound webhooks", "issuer", access.Issuer())
+	} else if c.cloudflareAccessSet(cfg) {
+		log.Info("Cloudflare Access is configured but not checked here: it guards agent, mcp-server and web, and this process serves none of them", "components", env.components)
 	}
 
 	// The wiring: one constructor per component, chosen by name. The MCP

@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"io"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -11,6 +13,7 @@ import (
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/auth"
+	"github.com/bsamanvith/agentkit/pkg/auth/cfaccess"
 	"github.com/bsamanvith/agentkit/pkg/auth/login"
 	"github.com/bsamanvith/agentkit/pkg/auth/login/logintest"
 )
@@ -153,6 +156,8 @@ func TestServeRejectsBadSetup(t *testing.T) {
 		"require auth: bad value":         {env: map[string]string{envComponents: "agent", envRequireAuth: "maybe"}, config: good, code: 1, says: envRequireAuth},
 		"require auth: runner no token":   {env: map[string]string{envComponents: "runner", envRequireAuth: "1"}, config: good, code: 1, says: envRPCToken},
 		"require auth: toolsets no token": {env: map[string]string{envComponents: "toolsets", envRequireAuth: "1"}, config: good, code: 1, says: envRPCToken},
+		"require auth: access, no emails": {env: map[string]string{envComponents: "agent", envRequireAuth: "1", envCFAccessTeamDomain: "http://127.0.0.1:1", envCFAccessAUD: "x"}, config: good, code: 1, says: "list the emails"},
+		"require auth: web, no emails":    {env: map[string]string{envComponents: "web", envCFAccessTeamDomain: "http://127.0.0.1:1", envCFAccessAUD: "x"}, config: `{"auth":{"required":true}}`, code: 1, says: "list the emails"},
 		"cf access: no aud":               {env: map[string]string{envComponents: "agent", envCFAccessTeamDomain: "myteam"}, config: good, code: 1, says: "aud"},
 		"cf access: no team":              {env: map[string]string{envComponents: "agent"}, config: `{"auth":{"cloudflare_access":{"aud":"x"}}}`, code: 1, says: "team_domain"},
 		"cf access: http team":            {env: map[string]string{envComponents: "agent"}, config: `{"auth":{"cloudflare_access":{"team_domain":"http://myteam.example","aud":"x"}}}`, code: 1, says: "auth.cloudflare_access"},
@@ -217,25 +222,84 @@ func TestServeRejectsBadSetup(t *testing.T) {
 func TestAccessPublic(t *testing.T) {
 	t.Parallel()
 	for req, want := range map[[2]string]bool{
-		{"GET", "/healthz"}:                              true,
-		{"GET", "/readyz"}:                               true,
-		{"GET", "/oauth/callback"}:                       true,
-		{"GET", "/oauth/client-metadata.json"}:           true,
-		{"POST", "/v1/hooks/trg_1"}:                      true,
-		{"GET", "/version"}:                              false,
-		{"GET", "/healthz/x"}:                            false,
-		{"POST", "/healthz"}:                             false,
-		{"POST", "/oauth/callback"}:                      false,
-		{"GET", "/v1/hooks/trg_1"}:                       false,
-		{"POST", "/v1/hooks/"}:                           false,
-		{"POST", "/v1/hooks/trg_1/x"}:                    false,
-		{"GET", "/v1/auth/config"}:                       false,
-		{"POST", "/v1/auth/login"}:                       false,
-		{"GET", "/"}:                                     false,
-		{"GET", "/.well-known/oauth-protected-resource"}: false,
+		{"GET", "/healthz"}:                               true,
+		{"GET", "/readyz"}:                                true,
+		{"GET", "/oauth/callback"}:                        true,
+		{"GET", "/oauth/client-metadata.json"}:            true,
+		{"POST", "/v1/hooks/trg_1"}:                       true,
+		{"GET", "/version"}:                               false,
+		{"GET", "/healthz/x"}:                             false,
+		{"POST", "/healthz"}:                              false,
+		{"POST", "/oauth/callback"}:                       false,
+		{"GET", "/v1/hooks/trg_1"}:                        false,
+		{"POST", "/v1/hooks/"}:                            false,
+		{"POST", "/v1/hooks/trg_1/x"}:                     false,
+		{"GET", "/v1/auth/config"}:                        false,
+		{"POST", "/v1/auth/login"}:                        false,
+		{"GET", "/"}:                                      false,
+		{"GET", "/.well-known/oauth-protected-resource"}:  false,
+		{"HEAD", "/healthz"}:                              true,
+		{"HEAD", "/readyz"}:                               true,
+		{"GET", "/healthz/"}:                              false,
+		{"GET", "//healthz"}:                              false,
+		{"POST", "/v1/hooks/.."}:                          false,
+		{"POST", "/v1/hooks/."}:                           false,
+		{"POST", "/v1/hooks/%2e%2e"}:                      false,
+		{"POST", "/v1/hooks/a%2Fb"}:                       false,
+		{"POST", "/v1/hooks/trg_A-z09"}:                   true,
+		{"POST", "/v1/hooks/" + strings.Repeat("a", 129)}: false,
+		{"POST", "/rpc/runner/Agents"}:                    false,
 	} {
 		if got := accessPublic(httptest.NewRequest(req[0], req[1], nil)); got != want {
 			t.Errorf("%s %s: public = %v, want %v", req[0], req[1], got, want)
 		}
+	}
+}
+
+// TestAccessGate: the RPC of a runner or toolsets served beside the API
+// passes the gate only with its own token, and /readyz tells a caller
+// without an assertion its status alone.
+func TestAccessGate(t *testing.T) {
+	t.Parallel()
+	access, err := cfaccess.New(cfaccess.Config{TeamDomain: "http://127.0.0.1:1", AUD: "x", Tenant: "default"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/readyz" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = io.WriteString(w, `{"status":"not ready","components":[{"name":"agent","reason":"dial db.internal:5432"}]}`)
+		}
+	})
+	wrap := func(env serveEnv) http.Handler {
+		h := http.Handler(inner)
+		mw := accessGate(access, env)
+		for i := len(mw) - 1; i >= 0; i-- {
+			h = mw[i](h)
+		}
+		return h
+	}
+	send := func(h http.Handler, method, path string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(method, path, nil))
+		return w
+	}
+	for name, tc := range map[string]struct {
+		env  serveEnv
+		want int
+	}{
+		"runner with a token":    {serveEnv{components: []string{"agent", runnerName}, rpcToken: splitToken}, http.StatusOK},
+		"toolsets with a token":  {serveEnv{components: []string{"agent", toolsetsName}, rpcToken: splitToken}, http.StatusOK},
+		"runner without a token": {serveEnv{components: []string{"agent", runnerName}}, http.StatusUnauthorized},
+		"no runner":              {serveEnv{components: []string{"agent"}, rpcToken: splitToken}, http.StatusUnauthorized},
+	} {
+		if got := send(wrap(tc.env), "POST", "/rpc/runner/Agents").Code; got != tc.want {
+			t.Errorf("%s: POST /rpc/runner/Agents = %d, want %d", name, got, tc.want)
+		}
+	}
+	w := send(wrap(serveEnv{components: []string{"agent"}}), "GET", "/readyz")
+	if body := strings.TrimSpace(w.Body.String()); w.Code != http.StatusServiceUnavailable || body != `{"status":"not ready"}` {
+		t.Errorf("GET /readyz without an assertion = %d %q, want 503 and the status alone", w.Code, body)
 	}
 }

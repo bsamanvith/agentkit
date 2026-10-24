@@ -29,7 +29,10 @@ die() { echo "k8s-local: $*" >&2; exit 1; }
 
 check_context() {
 	command -v kubectl >/dev/null || die "kubectl not found (Docker Desktop installs it)"
-	k config get-contexts -o name | grep -qx "$ctx" ||
+	# A here-string, not a pipe: grep -q exits at the first match, and under
+	# pipefail kubectl's SIGPIPE would fail the check when the context is
+	# not the last one listed.
+	grep -qx "$ctx" <<<"$(k config get-contexts -o name)" ||
 		die "no kubectl context $ctx: turn on Kubernetes in Docker Desktop (Settings, Kubernetes), or set KUBE_CONTEXT"
 	k get --raw /readyz >/dev/null 2>&1 || die "the cluster of context $ctx does not answer: is Docker Desktop running?"
 }
@@ -86,13 +89,18 @@ up() {
 	kn rollout status statefulset/postgres --timeout=180s
 	kn apply -k "$overlay"
 	# The images are :latest, so a rebuild or a new key changes no pod spec:
-	# restart to pick them up.
-	if [ "${SKIP_BUILD:-}" != 1 ] || [ "$keychanged" = changed ]; then
-		kn rollout restart "${deployments[@]/#/deployment/}"
-	elif [[ "$kb" == *configured* ]]; then
-		kn rollout restart deployment/toolsets
+	# restart to pick them up, and after new knowledge documents too. One at
+	# a time, in the order they depend on each other: the runner and the API
+	# read the toolsets' list once, at startup, and must not read it from the
+	# old toolsets pod.
+	local restart=
+	if [ "${SKIP_BUILD:-}" != 1 ] || [ "$keychanged" = changed ] || [[ "$kb" == *configured* ]]; then
+		restart=1
 	fi
 	for d in "${deployments[@]}"; do
+		if [ -n "$restart" ]; then
+			kn rollout restart "deployment/$d" >/dev/null
+		fi
 		kn rollout status "deployment/$d" --timeout=180s
 	done
 	echo

@@ -214,6 +214,34 @@ func TestToolsetSettings(t *testing.T) {
 	})
 }
 
+// TestToolsetReadsAConfigMapVolume: a Kubernetes ConfigMap volume holds
+// each file as a link into its hidden "..data" folder; the links are read.
+func TestToolsetReadsAConfigMapVolume(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	data := filepath.Join(root, "..2026_10_24_16_04_16.1")
+	if err := os.Mkdir(data, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(data, "returns.md"), []byte("# Returns\nWithin 30 days.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Base(data), filepath.Join(root, "..data")); err != nil {
+		t.Skip("no symlinks here:", err)
+	}
+	if err := os.Symlink("..data/returns.md", filepath.Join(root, "returns.md")); err != nil {
+		t.Fatal(err)
+	}
+	reg := mustBuild(t, `{"root": `+quote(root)+`}`)
+	out, err := invoke[knowledge.ListOutput](t, reg, knowledge.ListTool, `{}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Documents) != 1 || out.Documents[0].Source != "returns.md" || out.Documents[0].Title != "Returns" {
+		t.Errorf("documents %+v, want returns.md alone", out.Documents)
+	}
+}
+
 // TestToolsetStaysInItsRoot: a symlink out of the root is not followed.
 func TestToolsetStaysInItsRoot(t *testing.T) {
 	t.Parallel()

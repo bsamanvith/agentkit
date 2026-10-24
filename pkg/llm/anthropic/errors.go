@@ -13,6 +13,10 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/llm"
 )
 
+// noCredentials starts the message of the SDK's error when its default
+// credential chain finds nothing (internal/auth.NoCredentialsError).
+const noCredentials = "no Anthropic credentials found"
+
 // classify wraps err with the llm sentinel it maps to. A done context wins:
 // the caller gets the context's own error.
 func classify(ctx context.Context, err error) error {
@@ -23,6 +27,11 @@ func classify(ctx context.Context, err error) error {
 			return fmt.Errorf("%w: %w", llm.ErrOverloaded, cause)
 		}
 		return ctxErr
+	}
+	// The SDK's credential chain found no key: its error type is internal,
+	// so it is told by its message. Not transient: no retry brings a key.
+	if strings.Contains(err.Error(), noCredentials) {
+		return fmt.Errorf("%w: %w", llm.ErrAuth, err)
 	}
 	var apiErr *anthropic.Error
 	if !errors.As(err, &apiErr) {

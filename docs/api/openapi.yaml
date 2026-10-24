@@ -53,7 +53,7 @@
             }
           },
           "400": {
-            "description": "invalid_request: the body is not a RunRequest, the message is empty for a new conversation, or no agent is named and the server has no default.",
+            "description": "invalid_request: the body is not a RunRequest, the message is empty for a new conversation, or no agent is named and the server has no default; model_not_allowed: the agent does not allow the model named.",
             "content": {
               "application/json": {
                 "schema": {
@@ -101,7 +101,7 @@
             }
           },
           "409": {
-            "description": "conversation_busy: a run of the conversation is going on (run_id names it); agent_mismatch: the conversation belongs to another agent. A new message to an interrupted conversation replaces its run, so is not 409.",
+            "description": "conversation_busy: a run of the conversation is going on (run_id names it); agent_mismatch: the conversation belongs to another agent; model_provider_mismatch: the model is of another provider than the conversation's last run. A new message to an interrupted conversation replaces its run, so is not 409.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2390,7 +2390,7 @@
             }
           },
           "400": {
-            "description": "invalid_request: the body is not a TaskRequest, the input is empty, an interaction that is not served, a bad policy, or a webhook URL the server does not post to (or webhooks it does not send).",
+            "description": "invalid_request: the body is not a TaskRequest, the input is empty, an interaction that is not served, a bad policy, or a webhook URL the server does not post to (or webhooks it does not send); model_not_allowed: the agent does not allow the model named.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4469,6 +4469,53 @@
         }
       }
     },
+    "/v1/models": {
+      "get": {
+        "operationId": "listModels",
+        "summary": "List the model providers and known models",
+        "description": "The providers of models this server builds, and the model names it knows of each, for pickers. A model's name is \"<provider>/<id>\". Each agent says which models it allows (GET /v1/agents/{name} models).",
+        "responses": {
+          "200": {
+            "description": "The providers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/threads": {
       "get": {
         "operationId": "listThreads",
@@ -4636,7 +4683,7 @@
         "properties": {
           "code": {
             "type": "string",
-            "description": "What went wrong, for programs: invalid_request, invalid_definition (400), unauthorized, bad_signature (401), forbidden, csrf_failed, url_not_allowed (403), not_found (404), too_large (413), too_many_attempts, too_many_background_runs (429), conversation_busy, agent_mismatch, run_final, run_leased, awaiting_decision, not_pending, shape_changed, toolset_exists, trigger_exists, static_trigger, trigger_paused, replayed, conflict, read_only, version_published (409), auth_required, server_unreachable (422), registry_unavailable (502), over_capacity, shutting_down (503), internal (500); a run's codes are interrupted, run_failed, suspended (a flow run waits for a decision, a chat run for input), rejected, budget_exceeded, max_tokens, refused, unexpected_stop, cancelled, timeout, wall_clock_limit (a background run passed its wall-clock limit, and failed), paused (a task paused at a turn boundary; it is not over: resume it), shutdown, rate_limited, overloaded, model_auth, context_too_long, model_rejected and internal. conversation_interrupted is no longer returned. New codes may be added: treat an unknown one as internal."
+            "description": "What went wrong, for programs: invalid_request, invalid_definition, model_not_allowed (400), unauthorized, bad_signature (401), forbidden, csrf_failed, url_not_allowed (403), not_found (404), too_large (413), too_many_attempts, too_many_background_runs (429), conversation_busy, agent_mismatch, model_provider_mismatch, run_final, run_leased, awaiting_decision, not_pending, shape_changed, toolset_exists, trigger_exists, static_trigger, trigger_paused, replayed, conflict, read_only, version_published (409), auth_required, server_unreachable (422), registry_unavailable (502), over_capacity, shutting_down (503), internal (500); a run's codes are interrupted, run_failed, suspended (a flow run waits for a decision, a chat run for input), rejected, budget_exceeded, max_tokens, refused, unexpected_stop, cancelled, timeout, wall_clock_limit (a background run passed its wall-clock limit, and failed), paused (a task paused at a turn boundary; it is not over: resume it), shutdown, rate_limited, overloaded, model_auth, context_too_long, model_rejected and internal. conversation_interrupted is no longer returned. New codes may be added: treat an unknown one as internal."
           },
           "message": {
             "type": "string",
@@ -5022,6 +5069,10 @@
             "minimum": 1,
             "description": "The version of a stored agent the run runs: the one published when it started, kept through every resume whatever is published since. Absent for an agent of the config file."
           },
+          "model": {
+            "type": "string",
+            "description": "The model the run runs, \"<provider>/<id>\": the one its request named, or the conversation's or agent's default, kept through every resume. Absent for runs from before models were recorded, for flow runs, and for agents that name no model."
+          },
           "status": {
             "enum": [
               "running",
@@ -5184,6 +5235,10 @@
               "autonomous"
             ],
             "description": "Narrows the agent's interaction mode for this run, and every resume of it: whether its tool calls may wait for people. interactive and supervised wait (a tool that asks, such as ask_user; a call the policy wants approved): the run is suspended until answered (POST /v1/runs/{id}/input). autonomous never waits: ask_user is not offered, and a call that wants an approval is refused, saying why. The stricter of the agent's mode and this one wins. Only with a message: a resumed run keeps its mode. An unknown mode is 400 invalid_request."
+          },
+          "model": {
+            "type": "string",
+            "description": "Picks the run's model among those the agent allows (Agent.models), as \"<provider>/<id>\" or a bare id of the default provider (anthropic); anything else is 400 model_not_allowed. Absent: the conversation's last model if the agent still allows it, else the agent's default. A model of another provider than the conversation's last run is 409 model_provider_mismatch (start a new conversation). Only with a message: a resumed run keeps its model."
           },
           "ui_action": {
             "$ref": "#/components/schemas/UIAction"
@@ -5713,6 +5768,88 @@
           "id"
         ]
       },
+      "AgentModels": {
+        "type": "object",
+        "description": "The models an agent may run (T125). A run picks one with RunRequest.model.",
+        "properties": {
+          "default": {
+            "type": "string",
+            "description": "The model of a run that names none, \"<provider>/<id>\"; empty for an agent that names no model."
+          },
+          "allow": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The models allowed by name, the default first."
+          },
+          "allow_patterns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Patterns (RE2) that allow every model name they match whole."
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The models to offer a person: allow, then the models of GET /v1/models that a pattern allows."
+          }
+        },
+        "required": [
+          "default",
+          "allow",
+          "choices"
+        ]
+      },
+      "ModelList": {
+        "type": "object",
+        "description": "The body of GET /v1/models.",
+        "properties": {
+          "v": {
+            "type": "integer",
+            "const": 1
+          },
+          "default": {
+            "type": "string",
+            "description": "The provider of a model name without \"/\"."
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelProvider"
+            }
+          }
+        },
+        "required": [
+          "v",
+          "default",
+          "providers"
+        ]
+      },
+      "ModelProvider": {
+        "type": "object",
+        "description": "A model provider this server builds.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The part of a model name before \"/\"."
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Model names the server knows, for suggestions. The provider may serve others, which patterns may allow."
+          }
+        },
+        "required": [
+          "name",
+          "models"
+        ]
+      },
       "AgentToolset": {
         "type": "object",
         "properties": {
@@ -5762,6 +5899,9 @@
           "model": {
             "$ref": "#/components/schemas/Model"
           },
+          "models": {
+            "$ref": "#/components/schemas/AgentModels"
+          },
           "toolsets": {
             "type": "array",
             "items": {
@@ -5805,6 +5945,7 @@
           "description",
           "default",
           "model",
+          "models",
           "toolsets",
           "skills",
           "memory"
@@ -6735,6 +6876,10 @@
               "url"
             ],
             "additionalProperties": false
+          },
+          "model": {
+            "type": "string",
+            "description": "The task's model, as RunRequest.model: one the agent allows (400 model_not_allowed otherwise); absent for the agent's default."
           }
         },
         "required": [

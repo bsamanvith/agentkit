@@ -71,6 +71,22 @@ func (s *Server) postTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, code, apiErr)
 		return
 	}
+	model, apiErr, code, err := s.chooseModel(ctx, ag, "", req.Model)
+	switch {
+	case err != nil:
+		s.internal(w, "choosing the task's model", err)
+		return
+	case apiErr != nil:
+		writeError(w, code, apiErr)
+		return
+	}
+	built, err := s.withModel(ctx, ag, model)
+	if err != nil {
+		s.internal(w, "building agent "+quote(ag.Name)+" for model "+quote(model), err)
+		return
+	}
+	ag = built
+	start.Model = model
 	notify := ag.Notify
 	if req.Notify != nil {
 		notify = req.Notify.URL

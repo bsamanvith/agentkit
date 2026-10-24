@@ -54,7 +54,7 @@ func (c cli) chat(ctx context.Context, args []string) int {
 	}
 	st := c.newStyle(c.stdout)
 	s := &chatSession{
-		client: client, agent: f.agent, conv: f.conversation,
+		client: client, agent: f.agent, model: f.model, conv: f.conversation,
 		out: c.stdout, st: st, interrupts: interrupts,
 		r: newRenderer(c.stdout, st, true),
 	}
@@ -65,6 +65,7 @@ func (c cli) chat(ctx context.Context, args []string) int {
 type chatSession struct {
 	client     *agentclient.Client
 	agent      string
+	model      string // the model of each run; empty for the conversation's or the agent's
 	out        io.Writer
 	st         style
 	interrupts <-chan os.Signal
@@ -226,7 +227,7 @@ func (s *chatSession) send(ctx context.Context, message string) {
 	}()
 	defer func() { close(stop); <-exited }()
 
-	stream, err := s.client.Stream(runCtx, agentclient.RunRequest{Message: message, ConversationID: s.conv, Agent: s.agent})
+	stream, err := s.client.Stream(runCtx, agentclient.RunRequest{Message: message, ConversationID: s.conv, Agent: s.agent, Model: s.model})
 	if err == nil {
 		runID = stream.RunID()
 	}

@@ -65,6 +65,7 @@ type runModel struct {
 	lane        string
 	pool        string
 	version     int64
+	model       string
 	user        string
 	priority    int
 	start       time.Time
@@ -130,13 +131,13 @@ func (r *runRig) create(ctx context.Context, id, conv string, opts ...store.Crea
 		if start.IsZero() {
 			start = run.CreatedAt
 		}
-		r.runs[k] = &runModel{conv: conv, status: store.StatusRunning, interactive: o.Interactive, lane: o.Lane, pool: o.Pool, version: o.AgentVersion, user: o.User, priority: o.Priority, start: start}
+		r.runs[k] = &runModel{conv: conv, status: store.StatusRunning, interactive: o.Interactive, lane: o.Lane, pool: o.Pool, version: o.AgentVersion, model: o.Model, user: o.User, priority: o.Priority, start: start}
 	case m.conv != conv:
 		r.t.Errorf("Create moved run %q from conversation %q to %q", id, m.conv, conv)
 	}
-	if m := r.runs[k]; run.Interactive != m.interactive || run.Lane != m.lane || run.Priority != m.priority || !run.StartAt.Equal(m.start) || run.Pool != m.pool || run.AgentVersion != m.version || run.User != m.user {
-		r.t.Errorf("Create of run %q returned interactive %v, lane %q, priority %d, start %v, pool %q, agent version %d, user %q; want %v, %q, %d, %v, %q, %d, %q as first created",
-			id, run.Interactive, run.Lane, run.Priority, run.StartAt, run.Pool, run.AgentVersion, run.User, m.interactive, m.lane, m.priority, m.start, m.pool, m.version, m.user)
+	if m := r.runs[k]; run.Interactive != m.interactive || run.Lane != m.lane || run.Priority != m.priority || !run.StartAt.Equal(m.start) || run.Pool != m.pool || run.AgentVersion != m.version || run.Model != m.model || run.User != m.user {
+		r.t.Errorf("Create of run %q returned interactive %v, lane %q, priority %d, start %v, pool %q, agent version %d, model %q, user %q; want %v, %q, %d, %v, %q, %d, %q, %q as first created",
+			id, run.Interactive, run.Lane, run.Priority, run.StartAt, run.Pool, run.AgentVersion, run.Model, run.User, m.interactive, m.lane, m.priority, m.start, m.pool, m.version, m.model, m.user)
 	}
 	return run, err
 }
@@ -342,9 +343,9 @@ func (r *runRig) checkTenant(tenant string) {
 		case run.ID != id || run.ConversationID != m.conv || run.Interactive != m.interactive:
 			t.Errorf("tenant %s: run %q reads back as %q in conversation %q, interactive %v; want conversation %q, interactive %v",
 				tenant, id, run.ID, run.ConversationID, run.Interactive, m.conv, m.interactive)
-		case run.Lane != m.lane || run.Priority != m.priority || !run.StartAt.Equal(m.start) || run.Pool != m.pool || run.AgentVersion != m.version || run.User != m.user:
-			t.Errorf("tenant %s: run %q reads back in lane %q at priority %d starting %v in pool %q, agent version %d, user %q; want %q, %d, %v, %q, %d, %q as created",
-				tenant, id, run.Lane, run.Priority, run.StartAt, run.Pool, run.AgentVersion, run.User, m.lane, m.priority, m.start, m.pool, m.version, m.user)
+		case run.Lane != m.lane || run.Priority != m.priority || !run.StartAt.Equal(m.start) || run.Pool != m.pool || run.AgentVersion != m.version || run.Model != m.model || run.User != m.user:
+			t.Errorf("tenant %s: run %q reads back in lane %q at priority %d starting %v in pool %q, agent version %d, model %q, user %q; want %q, %d, %v, %q, %d, %q, %q as created",
+				tenant, id, run.Lane, run.Priority, run.StartAt, run.Pool, run.AgentVersion, run.Model, run.User, m.lane, m.priority, m.start, m.pool, m.version, m.model, m.user)
 		case !run.Due().Equal(due(run)):
 			t.Errorf("tenant %s: run %+v Due = %v, want %v", tenant, run, run.Due(), due(run))
 		case run.Interrupted(r.clk.Now()) != interrupted(run, r.clk.Now()):
@@ -427,7 +428,7 @@ func sameRun(a, b store.Run) bool {
 		a.NextAttemptAt.Equal(b.NextAttemptAt) && a.Attempts == b.Attempts && slices.Equal(a.Pending, b.Pending) &&
 		a.CreatedAt.Equal(b.CreatedAt) && a.FinishedAt.Equal(b.FinishedAt) && sameLease(a.Lease, b.Lease) &&
 		a.Interactive == b.Interactive && a.Lane == b.Lane && a.Priority == b.Priority && a.StartAt.Equal(b.StartAt) &&
-		a.Pool == b.Pool && a.AgentVersion == b.AgentVersion && a.User == b.User
+		a.Pool == b.Pool && a.AgentVersion == b.AgentVersion && a.Model == b.Model && a.User == b.User
 }
 
 func sameLease(a, b store.Lease) bool {

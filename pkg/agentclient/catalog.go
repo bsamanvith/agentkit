@@ -93,6 +93,14 @@ func (c *Client) DeleteConversation(ctx context.Context, id string) error {
 	return resp.Body.Close()
 }
 
+// Models lists the model providers the server builds and the model names
+// it knows of each (GET /v1/models). An agent's own models are in
+// [wire.Agent.Models].
+func (c *Client) Models(ctx context.Context) (wire.ModelList, error) {
+	var list wire.ModelList
+	return list, c.get(ctx, "/v1/models", &list)
+}
+
 // Toolsets lists the server's toolsets (GET /v1/toolsets): each ready or
 // skipped (with the reason), where it is served over MCP ([Client.MCPURL]),
 // and its credential's status and variable name, never the value.

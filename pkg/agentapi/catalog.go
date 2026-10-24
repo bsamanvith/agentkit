@@ -17,6 +17,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/auth"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/llm/modelset"
 	"github.com/bsamanvith/agentkit/pkg/runner"
 	"github.com/bsamanvith/agentkit/pkg/runner/pool"
 	"github.com/bsamanvith/agentkit/pkg/store"
@@ -55,8 +56,19 @@ type Agent struct {
 	// server still keeps the agent's runs; only the turn loop runs there.
 	// Exactly one of Harness and Runner is set.
 	Runner runner.Agent
-	// Model describes the model, for clients (the harness has the model).
+	// Model describes the model, for clients (the harness has the model):
+	// the agent's default model when it allows more (Models).
 	Model wire.Model
+	// Models are the models the agent may run (T125), Model among them as
+	// their default; nil for Model alone. A run names one in
+	// RunRequest.Model.
+	Models *modelset.Set
+	// ForModel returns the agent as it runs on a model of Models other
+	// than the default: the same agent with that model's Harness or Runner
+	// (and Model and System). The server calls it for every run on such a
+	// model, and on every resume of one, so it should keep what it builds.
+	// It is needed when Models allows more than the default.
+	ForModel func(ctx context.Context, model string) (Agent, error)
 	// System is the system prompt the harness was built with, shown by
 	// GET /v1/agents/{name}.
 	System string
@@ -172,6 +184,9 @@ func newAgents(cfg config, agents []Agent) (*Server, error) {
 		case a.UI != "" && a.UI != a2ui.UIMode:
 			return nil, fmt.Errorf("%w: agent %q: ui %q: want %q or none", ErrInvalidConfig, a.Name, a.UI, a2ui.UIMode)
 		}
+		if err := checkModels(a); err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+		}
 		if a.Notify != "" {
 			probe := Server{cfg: cfg}
 			if err := probe.checkWebhook(a.Notify); err != nil {
@@ -231,7 +246,7 @@ func (s *Server) resolveAgent(ctx context.Context, r *http.Request, name string)
 		}
 		return s.defaultAgent, nil, 0
 	}
-	a, err := s.agentFor(ctx, name, 0)
+	a, err := s.agentFor(ctx, name, 0, "")
 	switch {
 	case err != nil && !errors.Is(err, errNoAgent):
 		s.log.Error("reading a stored agent", "agent", name, "err", err)
@@ -298,7 +313,7 @@ func (s *Server) getAgent(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	a, err := s.agentFor(ctx, name, 0)
+	a, err := s.agentFor(ctx, name, 0, "")
 	if err != nil && !errors.Is(err, errNoAgent) {
 		s.internal(w, "reading agent "+quote(name), err)
 		return
@@ -323,7 +338,7 @@ func (s *Server) getAgent(w http.ResponseWriter, r *http.Request) {
 func (s *Server) agentView(r *http.Request, a *agent) (wire.Agent, error) {
 	v := wire.Agent{
 		V: WireVersion, Name: a.Name, Description: a.Description, Default: a == s.defaultAgent,
-		Model: a.Model, Toolsets: make([]wire.AgentToolset, 0, len(a.Toolsets)),
+		Model: a.Model, Models: s.modelsView(a), Toolsets: make([]wire.AgentToolset, 0, len(a.Toolsets)),
 		Skills: append([]string{}, a.Skills...), Memory: a.Memory, UI: a.UI,
 		Version: a.Version, ReadOnly: s.cfg.registry != nil && s.agents[a.Name] == a,
 	}

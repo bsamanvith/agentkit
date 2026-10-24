@@ -304,6 +304,10 @@ type Run struct {
 	// [WithAgentVersion], 0 for an agent that is not versioned, and never
 	// changes.
 	AgentVersion int64
+	// Model is the model the run runs (T125): "<provider>/<id>", one its
+	// agent allows. It is set by [WithModel], "" for a run that named
+	// none, and never changes.
+	Model string
 	// User is the user the run was started for (T090): whose notifications
 	// say how it goes. It is set by [WithUser], "" for a run started for
 	// nobody in particular (an open server, a credential with no user), and
@@ -351,6 +355,8 @@ type CreateOptions struct {
 	Pool string
 	// AgentVersion is set by [WithAgentVersion].
 	AgentVersion int64
+	// Model is set by [WithModel].
+	Model string
 	// User is set by [WithUser].
 	User string
 	// LeaseOwner and LeaseTTL are set by [WithLease]; an empty owner means
@@ -401,6 +407,12 @@ func WithPool(pool string) CreateOption {
 // ([Run.AgentVersion]). It must not be negative.
 func WithAgentVersion(v int64) CreateOption {
 	return func(o *CreateOptions) { o.AgentVersion = v }
+}
+
+// WithModel records the model the run runs ([Run.Model]). The name is
+// text (see Text in the package documentation).
+func WithModel(name string) CreateOption {
+	return func(o *CreateOptions) { o.Model = name }
 }
 
 // WithUser records the user the run is started for ([Run.User]). The id
@@ -500,8 +512,8 @@ type RunStore interface {
 	// unfinished run: creating another while one is not final is
 	// [ErrUnfinished]. opts set properties stored with the run
 	// ([Interactive], [WithLane], [WithPriority], [WithStartAt],
-	// [WithPool], [WithAgentVersion], [WithUser], [WithLease]; a lane,
-	// pool or user that is not text, a negative agent version, a priority
+	// [WithPool], [WithAgentVersion], [WithModel], [WithUser], [WithLease];
+	// a lane, pool, model or user that is not text, a negative agent version, a priority
 	// out of range, a start time the store cannot keep or a lease Claim
 	// would refuse is [ErrInvalid]); a retry returns the run as first stored, whatever its
 	// opts.

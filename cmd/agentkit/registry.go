@@ -152,12 +152,23 @@ func (c cli) storedAgentBuilder(cfg serveConfig, built map[string]tool.Registry,
 			}
 			return agentapi.Agent{}, &agentapi.DefinitionError{Fields: []wire.FieldError{fieldError(a.label(cfg.legacy), err)}}
 		}
-		return agentapi.Agent{
+		def := agentapi.Agent{
 			Name: a.Name, Description: a.Description, System: a.System,
-			Model:    wire.Model{Provider: a.Model.Provider, ID: a.Model.id(), Effort: a.Model.Effort},
+			Model:    wireModel(a.Model),
 			Toolsets: a.Toolsets, PrefixToolNames: a.PrefixToolNames, RuntimeToolsets: a.RuntimeToolsets,
 			Isolation: iso, Harness: h,
-		}, nil
+		}
+		set, err := a.modelSet(a.label(cfg.legacy)) // checked by check
+		if err == nil {
+			def, err = withModels(ctx, def, set, c.modelBuild(cfg, a, set, def, built, admin, nil, nil, clk, log))
+		}
+		if err != nil {
+			if cerr := ctx.Err(); cerr != nil {
+				return agentapi.Agent{}, cerr
+			}
+			return agentapi.Agent{}, &agentapi.DefinitionError{Fields: []wire.FieldError{fieldError(a.label(cfg.legacy), err)}}
+		}
+		return def, nil
 	}
 }
 

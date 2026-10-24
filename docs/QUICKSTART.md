@@ -233,6 +233,7 @@ Each entry of `agents`:
 | `model.effort` | adapter default (medium) | `low` … `max`; for `openai`, sent as `reasoning_effort` |
 | `model.max_tokens` | adapter default | output limit per model call |
 | `model.context_window`, `model.compact_at` | 200000, 0.8 | when a request fills this share of the window, the conversation is compacted (summarized) before its next run; a request that does not fit at all is compacted and retried once |
+| `models` | none (`model` alone) | other models the agent may run, which each run picks (`POST /v1/runs` `"model"`, `agentkit ask -model`; below, "Choosing the model") |
 | `system` | a short generic prompt | system prompt |
 | `toolsets` | none | names from `mcp.toolsets` the agent may use |
 | `prefix_tool_names` | false | name tools `<toolset>__<tool>` (needed when two toolsets share a tool name) |
@@ -330,6 +331,27 @@ A pool that background runs can be routed to (the default, and any route that is
 The one-agent form still works: an `agent` section (instead of `agents` and `agent_api`) with the fields of both tables except `name` is served as the agent `default`.
 
 Environment: `AGENTKIT_COMPONENTS` (any of `agent`, `web`, `mcp-server`, comma-separated; `web` serves the console at `/`, a chat client of `agent` on the same address), `AGENTKIT_ADDR` (default `127.0.0.1:8080`), `AGENTKIT_API_TOKEN`, `AGENTKIT_API_KEYS_FILE` and `AGENTKIT_USERS_FILE` (credentials, below; one of them, or `auth` in the config with keys, `jwt` or `users`, is required off loopback), `AGENTKIT_CONFIG`, `AGENTKIT_LOG_LEVEL`, `AGENTKIT_SHUTDOWN_TIMEOUT`, `AGENTKIT_CREDENTIALS_KEY` (the credential vault's key ring, `<id>:<base64 of 32 random bytes>[,<id>:<base64>...]` with the first key sealing, e.g. `k1:$(openssl rand -base64 32)`; required by every `credentials.backend` but `memory`, and a malformed one fails startup). The API's reference: [docs/api/openapi.yaml](api/openapi.yaml) (OpenAPI 3.1); the event format and error codes are also in [tasks/T036](../tasks/T036-agent-api-v0.md) Notes.
+
+### Choosing the model
+
+An agent runs `model` unless a run names another it allows. A model is named `<provider>/<id>` (`anthropic/claude-opus-5-5`, `openai/gpt-5-mini`); a bare id is `anthropic`'s.
+
+```json
+"models": {
+  "allow": ["anthropic/claude-sonnet-5-5", "openai/gpt-5-mini"],
+  "allow_patterns": ["anthropic/claude-opus-.*"],
+  "variants": [
+    {"match": "anthropic/claude-sonnet-5-5", "system_append": "Keep answers short."},
+    {"match": "re:openai/.*", "system": "You are a careful assistant. Use the tools.", "effort": "low"}
+  ]
+}
+```
+
+- `allow` names models exactly; `allow_patterns` are RE2 patterns matched against the whole name (at most 16, 256 bytes each). `model` is the default and always allowed.
+- `variants` change the agent on some models; the first whose `match` (a name, or a pattern after `re:`) fits applies. `system` replaces the prompt, `system_append` adds to it; `effort` and `max_tokens` replace the model's.
+- A run's `model` that the agent does not allow is `400 model_not_allowed`. Without one, a run continues on its conversation's last model, or the agent's default. Switching to another provider in a conversation is `409 model_provider_mismatch` (a provider cannot read another's thinking blocks): start a new conversation. `GET /v1/runs/{id}` shows each run's `model`, and a resume keeps it.
+- `GET /v1/agents/{name}` lists the agent's `models` (`choices` are what a picker offers: the names, then the known models a pattern allows); `GET /v1/models` lists the providers this server builds and the models it knows of each.
+- Each model the agent allows by name is built at startup (or when a stored agent is saved), so a bad one fails there; a model only a pattern allows is built on its first run. A model of another provider than `model` uses that provider's defaults (`$OPENAI_BASE_URL` and `OPENAI_API_KEY` for `openai`).
 
 ### Tool policies
 

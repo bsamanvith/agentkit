@@ -19,7 +19,7 @@ const runColumns = `id, conversation, status,
 	input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
 	error, retryable, next_attempt_at, attempts, pending,
 	created_at, finished_at, lease_owner, lease_expires, interactive,
-	lane, priority, start_at, pool, agent_version, user_id`
+	lane, priority, start_at, pool, agent_version, model, user_id`
 
 // final is the SQL list of final statuses (store.Status.Final).
 const final = `('completed', 'rejected', 'canceled')`
@@ -66,13 +66,13 @@ func (s *Store) Create(ctx context.Context, id, conversationID string, opts ...s
 	var run store.Run
 	err = s.write(ctx, func(tx *txn) error {
 		_, insertErr := tx.ExecContext(ctx, `INSERT INTO runs (tenant, id, conversation, status, created_at, interactive,
-			lane, priority, start_at, pool, agent_version, user_id, lease_owner, lease_expires)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, tenant, id, conversationID, string(store.StatusRunning), at, o.Interactive,
-			o.Lane, o.Priority, c.Start.UnixNano(), o.Pool, o.AgentVersion, o.User, c.Lease.Owner, expires)
+			lane, priority, start_at, pool, agent_version, model, user_id, lease_owner, lease_expires)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, tenant, id, conversationID, string(store.StatusRunning), at, o.Interactive,
+			o.Lane, o.Priority, c.Start.UnixNano(), o.Pool, o.AgentVersion, o.Model, o.User, c.Lease.Owner, expires)
 		if insertErr == nil {
 			run = store.Run{
 				ID: id, ConversationID: conversationID, Status: store.StatusRunning, CreatedAt: now,
-				Interactive: o.Interactive, Lane: o.Lane, Priority: o.Priority, StartAt: c.Start, Pool: o.Pool, AgentVersion: o.AgentVersion, User: o.User, Lease: c.Lease,
+				Interactive: o.Interactive, Lane: o.Lane, Priority: o.Priority, StartAt: c.Start, Pool: o.Pool, AgentVersion: o.AgentVersion, Model: o.Model, User: o.User, Lease: c.Lease,
 			}
 			return nil
 		}
@@ -508,7 +508,7 @@ func scanRun(row scanner, pre ...any) (store.Run, error) {
 		&in, &out, &cacheR, &cacheW,
 		&r.Error, &retryable, &next, &r.Attempts, &pending,
 		&created, &finished, &r.Lease.Owner, &expires, &r.Interactive,
-		&r.Lane, &r.Priority, &start, &r.Pool, &r.AgentVersion, &r.User)...)
+		&r.Lane, &r.Priority, &start, &r.Pool, &r.AgentVersion, &r.Model, &r.User)...)
 	if err != nil {
 		return store.Run{}, err
 	}

@@ -151,7 +151,7 @@ func (s *Server) checkTrigger(ctx context.Context, r *http.Request, def trigger.
 			return store.TriggerRecord{}, invalid("conversation " + quote(def.ConversationID) + " is of agent " + quote(c.Agent) + ", not " + quote(def.Agent))
 		}
 		def.Agent = c.Agent
-		a, err := s.agentFor(ctx, c.Agent, 0)
+		a, err := s.agentFor(ctx, c.Agent, 0, "")
 		switch {
 		case err != nil && !errors.Is(err, errNoAgent):
 			return store.TriggerRecord{}, s.internalRefusal("reading a stored agent", err)
@@ -650,7 +650,7 @@ func (s *Server) fireRun(ctx context.Context, t store.TriggerRecord, def trigger
 	if reason != "" {
 		return end(store.FiringEnd{State: store.FiringSkipped, Reason: reason}), store.Run{}, nil
 	}
-	ag, err := s.agentFor(ctx, def.Agent, 0) // a stored agent at its published version
+	ag, err := s.agentFor(ctx, def.Agent, 0, "") // a stored agent at its published version
 	if err != nil && !errors.Is(err, errNoAgent) {
 		rf := s.internalRefusal("reading a stored agent", err)
 		return end(store.FiringEnd{State: store.FiringFailed, Reason: rf.err.Message}), store.Run{}, rf

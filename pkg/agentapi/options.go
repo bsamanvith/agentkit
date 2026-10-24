@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/auth"
 	"github.com/bsamanvith/agentkit/pkg/auth/login"
 	"github.com/bsamanvith/agentkit/pkg/bus"
@@ -54,6 +55,7 @@ const retryAfterTask = "30"
 type Option func(*config)
 
 type config struct {
+	models         []wire.ModelProvider
 	admin          ToolsetAdmin
 	mcpRegistry    MCPRegistry
 	credentials    Credentials

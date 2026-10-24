@@ -79,6 +79,9 @@ type TaskRequest struct {
 	// Notify is the webhook told when the run ends; without it, the agent's
 	// default, if it has one.
 	Notify *Notify `json:"notify,omitempty"`
+	// Model picks the task's model, as [RunRequest.Model]; empty for the
+	// agent's default.
+	Model string `json:"model,omitempty"`
 }
 
 // Notify says where a run's end is posted.

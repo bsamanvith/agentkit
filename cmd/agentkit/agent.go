@@ -19,6 +19,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/component"
 	"github.com/bsamanvith/agentkit/pkg/harness"
+	"github.com/bsamanvith/agentkit/pkg/llm/modelset"
 	"github.com/bsamanvith/agentkit/pkg/policy"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
@@ -43,6 +44,11 @@ type agentDef struct {
 	// Description says what the agent is for, in GET /v1/agents.
 	Description string           `json:"description"`
 	Model       agentModelConfig `json:"model"`
+	// Models are the other models the agent may run (T125), which a run
+	// picks (POST /v1/runs "model"): names ("anthropic/claude-opus-5-5"),
+	// patterns, and per-model variants of the system prompt and settings.
+	// Model is the default. Empty: Model alone.
+	Models modelset.Spec `json:"models"`
 	// System is the system prompt.
 	System string `json:"system"`
 	// Toolsets names entries of mcp.toolsets the agent may use, merged into
@@ -327,6 +333,9 @@ func (d agentDef) check(legacy bool) error {
 	}
 	if d.Model.Provider == providerOpenAI && d.Memory != nil && d.Memory.NativeTool {
 		return fmt.Errorf("%s.memory.native_tool: Claude's native memory tool needs provider %q", label, defaultProvider)
+	}
+	if _, err := d.modelSet(label); err != nil {
+		return err
 	}
 	if d.Model.Provider != providerOpenAI && (d.Model.BaseURL != "" || d.Model.APIKeyEnv != "") {
 		return fmt.Errorf("%s.model: base_url and api_key_env are for provider %q", label, providerOpenAI)

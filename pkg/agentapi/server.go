@@ -240,6 +240,7 @@ func newServer(cfg config, agents map[string]*agent, order []*agent, def *agent,
 		{"GET /v1/agents/{name}/versions/{version}", s.getVersion},
 		{"DELETE /v1/agents/{name}/versions/{version}", s.deleteVersion},
 		{"POST /v1/agents/{name}/publish", s.publishAgent},
+		{"GET /v1/models", s.listModels},
 		{"GET /v1/toolsets", s.listToolsets},
 		{"GET /v1/toolsets/{name}/tools", s.listTools},
 		{"POST /v1/toolsets", s.addToolset},
@@ -292,7 +293,7 @@ func (s *Server) describe(ctx context.Context, p runner.Placement) (pool.Request
 	if err != nil {
 		return pool.Request{}, err
 	}
-	a, err := s.agentFor(ctx, c.Agent, p.AgentVersion)
+	a, err := s.agentFor(ctx, c.Agent, p.AgentVersion, p.Model)
 	if err != nil {
 		return pool.Request{}, fmt.Errorf("conversation %q is of agent %q: %w", p.ConversationID, c.Agent, err)
 	}
@@ -489,6 +490,10 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var start StartOptions
+	if req.Model != "" && !hasMessage {
+		writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "model needs a message: a resumed run keeps the model it started with"})
+		return
+	}
 	if len(req.ToolPolicy) > 0 {
 		if !hasMessage {
 			writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "tool_policy needs a message: a resumed run keeps the policy it started with"})
@@ -528,7 +533,7 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, &Error{Code: CodeAgentMismatch, Message: "the conversation belongs to agent " + quote(c.Agent) + ", not " + quote(req.Agent) + "; continue it without \"agent\", or start a new conversation"})
 			return
 		}
-		if ag, err = s.agentFor(ctx, c.Agent, 0); err != nil && !errors.Is(err, errNoAgent) {
+		if ag, err = s.agentFor(ctx, c.Agent, 0, ""); err != nil && !errors.Is(err, errNoAgent) {
 			s.internal(w, "reading agent "+quote(c.Agent), err)
 			return
 		}
@@ -558,6 +563,21 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	model, apiErr, code, err := s.chooseModel(ctx, ag, convID, req.Model)
+	switch {
+	case err != nil:
+		s.internal(w, "reading the conversation's runs", err)
+		return
+	case apiErr != nil:
+		writeError(w, code, apiErr)
+		return
+	}
+	built, err := s.withModel(ctx, ag, model)
+	if err != nil {
+		s.internal(w, "building agent "+quote(ag.Name)+" for model "+quote(model), err)
+		return
+	}
+	ag = built
 	prompt := harness.UserText(req.Message)
 	if a := req.UIAction; a != nil {
 		text, err := a2ui.ActionText(a2ui.Action{
@@ -580,7 +600,7 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 		s.refuse(w, status, apiErr)
 		return
 	}
-	start.Pool, start.AgentVersion = poolName, ag.Version
+	start.Pool, start.AgentVersion, start.Model = poolName, ag.Version, model
 	created := false
 	if convID == "" {
 		convID = s.cfg.newID("conv_")

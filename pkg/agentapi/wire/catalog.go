@@ -49,6 +49,9 @@ type Agent struct {
 	// Default marks the agent a run gets when it names none.
 	Default bool  `json:"default"`
 	Model   Model `json:"model"`
+	// Models are the models the agent may run, which a run picks with
+	// RunRequest.Model (T125).
+	Models AgentModels `json:"models"`
 	// Toolsets are the toolsets the agent uses, in its config's order, with
 	// the names its model sees for their tools.
 	Toolsets []AgentToolset `json:"toolsets"`

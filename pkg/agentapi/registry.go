@@ -94,11 +94,12 @@ type AgentRegistry interface {
 func WithAgentRegistry(r AgentRegistry) Option { return func(c *config) { c.registry = r } }
 
 // agentFor finds the agent of name: one of the server's, or the tenant's
-// stored agent (at version, or its published one for 0). An agent the
-// server does not run is [errNoAgent].
-func (s *Server) agentFor(ctx context.Context, name string, version int64) (*agent, error) {
+// stored agent (at version, or its published one for 0), as it runs on
+// model (canonical; "" for its default). An agent the server does not run
+// is [errNoAgent].
+func (s *Server) agentFor(ctx context.Context, name string, version int64, model string) (*agent, error) {
 	if a := s.agents[name]; a != nil {
-		return a, nil
+		return s.withModel(ctx, a, model)
 	}
 	if s.cfg.registry == nil || !validName.MatchString(name) {
 		return nil, fmt.Errorf("%w: %q", errNoAgent, name)
@@ -113,7 +114,7 @@ func (s *Server) agentFor(ctx context.Context, name string, version int64) (*age
 	if (a.Harness == nil) == (a.Runner == nil) || a.Name != name {
 		return nil, fmt.Errorf("agent registry: agent %q came back as %q, with a harness and a runner or neither", name, a.Name)
 	}
-	return &agent{Agent: a}, nil
+	return s.withModel(ctx, &agent{Agent: a}, model)
 }
 
 // storedAgents are the tenant's published agents, after the server's.

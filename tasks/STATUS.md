@@ -51,7 +51,7 @@ T001 · T002 · T003 · T004 · T005 · T007 · T008 · T009 · T011 · T012 · 
 | [T060](T060-memory-search-semantic.md) | Review | the first embedding provider (Voyage AI, OpenAI, or local) and its key |
 | [T087](T087-console-ux-design-2.md) | Review | the owner's approval of mockup v4 |
 | [T111](T111-connector-google-drive.md) | Review | a Google test account to record real cassettes, then the mutation list |
-| [T114](T114-require-auth-cf-access.md) | Review | bsamanvith/agentkit#112: review fixes in progress; tests to pass the gate and CI |
+| [T130](T130-require-auth-cf-access.md) | Review | bsamanvith/agentkit#112: review fixes in progress; tests to pass the gate and CI |
 | [T106](T106-sandbox-pool.md), [T107](T107-vm-pool.md) | Paused | the owner (2026-10-22: only the shared runner for now) |
 
 ## Waiting on the owner

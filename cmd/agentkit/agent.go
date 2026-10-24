@@ -19,6 +19,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/component"
 	"github.com/bsamanvith/agentkit/pkg/harness"
+	"github.com/bsamanvith/agentkit/pkg/llm/modelset"
 	"github.com/bsamanvith/agentkit/pkg/policy"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
@@ -43,6 +44,11 @@ type agentDef struct {
 	// Description says what the agent is for, in GET /v1/agents.
 	Description string           `json:"description"`
 	Model       agentModelConfig `json:"model"`
+	// Models are the other models the agent may run (T125), which a run
+	// picks (POST /v1/runs "model"): names ("anthropic/claude-opus-5-5"),
+	// patterns, and per-model variants of the system prompt and settings.
+	// Model is the default. Empty: Model alone.
+	Models modelset.Spec `json:"models"`
 	// System is the system prompt.
 	System string `json:"system"`
 	// Toolsets names entries of mcp.toolsets the agent may use, merged into
@@ -51,6 +57,10 @@ type agentDef struct {
 	// PrefixToolNames names every tool "<toolset>__<tool>"; without it a tool
 	// name in two toolsets fails startup.
 	PrefixToolNames bool `json:"prefix_tool_names"`
+	// ToolDescriptions override the descriptions of the agent's tools, by
+	// the name its model sees (T126): how this agent should use a tool.
+	// The schema is never overridden. A variant of models adds its own.
+	ToolDescriptions map[string]string `json:"tool_descriptions"`
 	// RuntimeToolsets names toolsets admins add through the API (POST
 	// /v1/toolsets) that the agent may use, in the tenant of each run, as
 	// "<toolset>__<tool>" whatever PrefixToolNames says. A tenant that has
@@ -328,6 +338,9 @@ func (d agentDef) check(legacy bool) error {
 	if d.Model.Provider == providerOpenAI && d.Memory != nil && d.Memory.NativeTool {
 		return fmt.Errorf("%s.memory.native_tool: Claude's native memory tool needs provider %q", label, defaultProvider)
 	}
+	if _, err := d.modelSet(label); err != nil {
+		return err
+	}
 	if d.Model.Provider != providerOpenAI && (d.Model.BaseURL != "" || d.Model.APIKeyEnv != "") {
 		return fmt.Errorf("%s.model: base_url and api_key_env are for provider %q", label, providerOpenAI)
 	}
@@ -453,6 +466,11 @@ func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built 
 			return fail(err)
 		}
 		opts = append(opts, deferOpts...)
+	}
+	if len(a.ToolDescriptions) > 0 || slices.ContainsFunc(a.Models.Variants, func(v modelset.Variant) bool { return len(v.ToolDescriptions) > 0 }) {
+		if tools, err = describeTools(ctx, label, tools, a); err != nil {
+			return fail(err)
+		}
 	}
 	if a.Model.toolSearch() == toolSearchNative {
 		// A run may turn tool search on (its "tools"), deferring tools the

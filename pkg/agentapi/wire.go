@@ -77,6 +77,9 @@ const (
 	CodeReadOnly          = wire.CodeReadOnly
 	CodeVersionPublished  = wire.CodeVersionPublished
 
+	CodeModelNotAllowed       = wire.CodeModelNotAllowed
+	CodeModelProviderMismatch = wire.CodeModelProviderMismatch
+
 	CodeRunInterrupted   = wire.CodeRunInterrupted
 	CodeRunFailed        = wire.CodeRunFailed
 	CodeRejected         = wire.CodeRejected

@@ -134,6 +134,10 @@ type Placement struct {
 	// [store.Run.AgentVersion] on a resume; 0 when none was named (an agent
 	// that is not versioned).
 	AgentVersion int64
+	// Model is the model the run runs: the one [Model] named for a new
+	// run, or the run's stored [store.Run.Model] on a resume; "" when none
+	// was named (the agent's default).
+	Model string
 }
 
 // AgentFactory returns the agent that runs a chat run of a conversation. It

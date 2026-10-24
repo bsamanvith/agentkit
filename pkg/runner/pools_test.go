@@ -176,6 +176,34 @@ func TestRunKeepsItsAgentVersion(t *testing.T) {
 }
 
 // WithSlots refuses nil slots.
+// A run keeps the model it was started with (T125): stored, and given to
+// the agent factory again on resume.
+func TestRunKeepsItsModel(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	p := w.process()
+	chat := w.interrupted(p, "chat", w.model.on("q", 2), 1, runner.Model("anthropic/claude-opus-5-5"))
+	if got := w.get(chat); got.Model != "anthropic/claude-opus-5-5" {
+		t.Errorf("the run's stored model is %q, want anthropic/claude-opus-5-5", got.Model)
+	}
+	if _, err := p.resume(chat); err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	want := []runner.Placement{
+		{ConversationID: "chat", Interactive: true, Model: "anthropic/claude-opus-5-5"},
+		{ConversationID: "chat", RunID: chat, Interactive: true, Resume: true, Model: "anthropic/claude-opus-5-5"},
+	}
+	w.mu.Lock()
+	got := slices.Clone(w.placements)
+	w.mu.Unlock()
+	if !slices.Equal(got, want) {
+		t.Errorf("placements = %+v, want %+v", got, want)
+	}
+	if _, err := p.r.Run(w.ctx, "bad", harness.UserText(w.model.on("b", 0)), runner.Model("a\x00b")); !errors.Is(err, store.ErrInvalid) {
+		t.Errorf("Run with a model with a NUL = %v, want store.ErrInvalid", err)
+	}
+}
+
 func TestWithSlotsRefusesNil(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)

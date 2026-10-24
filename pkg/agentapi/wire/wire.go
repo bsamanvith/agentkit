@@ -549,9 +549,13 @@ type Run struct {
 	// AgentVersion is the version of a stored agent the run runs (T075):
 	// the one published when it started, whatever is published since.
 	// Absent for an agent of the config file.
-	AgentVersion int64     `json:"agent_version,omitempty"`
-	Status       string    `json:"status"`
-	CreatedAt    time.Time `json:"created_at"`
+	AgentVersion int64 `json:"agent_version,omitempty"`
+	// Model is the model the run runs (T125), "<provider>/<id>": the one
+	// the request named, or the conversation's or agent's default. Absent
+	// for runs from before models were recorded, and for flow runs.
+	Model     string    `json:"model,omitempty"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
 	// FinishedAt, Answer, Error and Record are set once the run has ended.
 	FinishedAt *time.Time `json:"finished_at,omitempty"`
 	Answer     string     `json:"answer,omitempty"`
@@ -672,6 +676,13 @@ type RunRequest struct {
 	// is refused. The stricter of the agent's mode and the run's wins. The
 	// run keeps it when it is resumed.
 	Interaction string `json:"interaction,omitempty"`
+	// Model picks the model of the run among those the agent allows
+	// (Agent.Models), as "<provider>/<id>" or a bare id of the default
+	// provider: CodeModelNotAllowed otherwise. Empty: the conversation's
+	// last model, or the agent's default. Another provider than the
+	// conversation's last run is CodeModelProviderMismatch. A resume (no
+	// message) keeps the run's model and cannot set one.
+	Model string `json:"model,omitempty"`
 	// UIAction, in place of Message, says what the person did on a surface
 	// the agent showed (a ui event): the next user message is the action,
 	// as structured text the agent reads. It continues a conversation

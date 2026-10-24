@@ -138,6 +138,17 @@ func (c cli) newRunner(ctx context.Context, cfg serveConfig, built map[string]to
 			return component.Mount{}, err
 		}
 		agents[a.Name] = h
+		set, err := a.modelSet(a.label(cfg.legacy))
+		if err != nil {
+			return component.Mount{}, err
+		}
+		if !set.Single() {
+			b, err := newModelBuilds(ctx, set, c.modelBuild(cfg, a, set, agentapi.Agent{Name: a.Name}, built, nil, nil, nil, clk, log))
+			if err != nil {
+				return component.Mount{}, err
+			}
+			agents[a.Name] = modelHarness{Harness: h, builds: b}
+		}
 		skipped = appendNew(skipped, sk...)
 		skills.add(a, ks)
 	}

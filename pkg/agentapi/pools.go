@@ -75,7 +75,7 @@ func (s *Server) Enqueue(ctx context.Context, conversationID string, msg llm.Mes
 	if err != nil {
 		return store.Run{}, err
 	}
-	a, err := s.agentFor(ctx, c.Agent, 0)
+	a, err := s.agentFor(ctx, c.Agent, 0, "")
 	if err != nil {
 		return store.Run{}, fmt.Errorf("conversation %q is of agent %q: %w", conversationID, c.Agent, err)
 	}

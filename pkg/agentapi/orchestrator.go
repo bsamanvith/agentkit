@@ -56,6 +56,9 @@ type StartOptions struct {
 	// AgentVersion is the version of a stored agent the run runs
 	// ([runner.AgentVersion]); 0 for an agent that is not versioned.
 	AgentVersion int64
+	// Model is the model the run runs ([runner.Model]); "" for an agent
+	// that names none.
+	Model string
 }
 
 // RunOptions are opts as the runner takes them, [runner.Interactive]
@@ -84,6 +87,9 @@ func (o StartOptions) RunOptions() []runner.RunOption {
 	}
 	if o.AgentVersion != 0 {
 		out = append(out, runner.AgentVersion(o.AgentVersion))
+	}
+	if o.Model != "" {
+		out = append(out, runner.Model(o.Model))
 	}
 	return out
 }

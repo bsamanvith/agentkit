@@ -49,6 +49,9 @@ type Agent struct {
 	// Default marks the agent a run gets when it names none.
 	Default bool  `json:"default"`
 	Model   Model `json:"model"`
+	// Models are the models the agent may run, which a run picks with
+	// RunRequest.Model (T125).
+	Models AgentModels `json:"models"`
 	// Toolsets are the toolsets the agent uses, in its config's order, with
 	// the names its model sees for their tools.
 	Toolsets []AgentToolset `json:"toolsets"`
@@ -62,6 +65,10 @@ type Agent struct {
 	// System is the system prompt: only in GET /v1/agents/{name}, and only
 	// for a caller with the scope "admin:agents" (admins).
 	System string `json:"system,omitempty"`
+	// ToolDescriptions are the descriptions the agent gives its tools
+	// instead of their own, by the names its model sees (T126): only where
+	// System is shown.
+	ToolDescriptions map[string]string `json:"tool_descriptions,omitempty"`
 	// Version is the published version of a stored agent (T075), which new
 	// runs use; absent for an agent of the config file.
 	Version int64 `json:"version,omitempty"`

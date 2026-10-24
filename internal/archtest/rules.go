@@ -179,6 +179,8 @@ func ModuleRules() Rules {
 				// Triggers (T072): their definitions, schedules and inbound
 				// webhooks' Standard Webhooks signatures.
 				"pkg/trigger",
+				// The models an agent allows, which a run picks (T125).
+				"pkg/llm/modelset",
 			},
 			// A2UI (T065): the protocol's types, the catalog and the
 			// validator stand alone; ui_render is a tool.

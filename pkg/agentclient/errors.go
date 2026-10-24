@@ -34,6 +34,13 @@ var (
 	// ErrAgentMismatch: 409 agent_mismatch, the run names another agent than
 	// the conversation's; leave Agent empty to continue it.
 	ErrAgentMismatch = errors.New("agent mismatch")
+	// ErrModelNotAllowed: 400 model_not_allowed, the run names a model its
+	// agent does not allow (wire.Agent.Models lists those it does).
+	ErrModelNotAllowed = errors.New("model not allowed")
+	// ErrModelProviderMismatch: 409 model_provider_mismatch, the run names
+	// a model of another provider than the conversation's last run; start a
+	// new conversation to use it.
+	ErrModelProviderMismatch = errors.New("model provider mismatch")
 	// ErrConversationInterrupted: 409 conversation_interrupted, which
 	// servers since T037 no longer return: a new message to a conversation
 	// whose run was interrupted starts a new run.
@@ -102,15 +109,17 @@ var (
 )
 
 var codeSentinels = map[string]error{
-	wire.CodeInvalidRequest: ErrInvalidRequest,
-	wire.CodeUnauthorized:   ErrUnauthorized,
-	wire.CodeNotFound:       ErrNotFound,
-	wire.CodeTooLarge:       ErrRequestTooLarge,
-	wire.CodeBusy:           ErrConversationBusy,
-	wire.CodeInterrupted:    ErrConversationInterrupted,
-	wire.CodeAgentMismatch:  ErrAgentMismatch,
-	wire.CodeOverCapacity:   ErrOverCapacity,
-	wire.CodeShuttingDown:   ErrShuttingDown,
+	wire.CodeInvalidRequest:        ErrInvalidRequest,
+	wire.CodeUnauthorized:          ErrUnauthorized,
+	wire.CodeNotFound:              ErrNotFound,
+	wire.CodeTooLarge:              ErrRequestTooLarge,
+	wire.CodeBusy:                  ErrConversationBusy,
+	wire.CodeInterrupted:           ErrConversationInterrupted,
+	wire.CodeAgentMismatch:         ErrAgentMismatch,
+	wire.CodeModelNotAllowed:       ErrModelNotAllowed,
+	wire.CodeModelProviderMismatch: ErrModelProviderMismatch,
+	wire.CodeOverCapacity:          ErrOverCapacity,
+	wire.CodeShuttingDown:          ErrShuttingDown,
 
 	wire.CodeTooManyBackgroundRuns: ErrTooManyBackgroundRuns,
 

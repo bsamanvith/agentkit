@@ -53,7 +53,7 @@ func (s *Server) memoryOf(w http.ResponseWriter, r *http.Request) (context.Conte
 	if !ok {
 		return nil, nil, false
 	}
-	a, err := s.agentFor(ctx, name, 0)
+	a, err := s.agentFor(ctx, name, 0, "")
 	if err != nil && !errors.Is(err, errNoAgent) {
 		s.internal(w, "reading agent "+quote(name), err)
 		return nil, nil, false

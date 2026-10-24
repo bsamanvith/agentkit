@@ -603,6 +603,8 @@ func TestOpenAPIResponses(t *testing.T) {
 	rec.probe(r, "get_agent_unauthorized", 401, "GET", "/v1/agents/default", "", "", bearer...)
 	rec.probe(r, "get_agent_not_found", 404, "GET", "/v1/agents/nobody", "", "")
 
+	rec.probe(r, "list_models", 200, "GET", "/v1/models", "", "")
+	rec.probe(r, "list_models_unauthorized", 401, "GET", "/v1/models", "", "", bearer...)
 	rec.probe(r, "list_toolsets", 200, "GET", "/v1/toolsets", "", "")
 	rec.probe(r, "list_toolsets_unauthorized", 401, "GET", "/v1/toolsets", "", "", bearer...)
 	rec.probe(r, "list_tools", 200, "GET", "/v1/toolsets/a/tools", "", "")

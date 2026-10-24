@@ -84,11 +84,13 @@ type clientFlags struct {
 	server       string
 	agent        string
 	conversation string
+	model        string
 }
 
 func (f *clientFlags) register(fs *flag.FlagSet, c cli) {
 	f.registerServer(fs, c)
 	fs.StringVar(&f.conversation, "conversation", "", "continue this conversation (default: start a new one)")
+	fs.StringVar(&f.model, "model", "", `the model to run, one the agent allows ("anthropic/claude-opus-5-5"; default: the conversation's, or the agent's)`)
 }
 
 // registerServer registers -server and -agent only.

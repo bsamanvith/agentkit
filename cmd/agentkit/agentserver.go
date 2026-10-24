@@ -460,10 +460,18 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 		isolations[a.Name] = iso
 		def := agentapi.Agent{
 			Name: a.Name, Description: a.Description, System: a.System,
-			Model:    wire.Model{Provider: a.Model.Provider, ID: a.Model.id(), Effort: a.Model.Effort},
+			Model:    wireModel(a.Model),
 			Toolsets: a.Toolsets, PrefixToolNames: a.PrefixToolNames, RuntimeToolsets: a.RuntimeToolsets,
-			Isolation: iso,
-			UI:        a.UI,
+			ToolDescriptions: a.ToolDescriptions,
+			Isolation:        iso,
+			UI:               a.UI,
+		}
+		if err := a.check(cfg.legacy); err != nil {
+			return fail(err)
+		}
+		set, err := a.modelSet(a.label(cfg.legacy))
+		if err != nil {
+			return fail(err)
 		}
 		if a.Notify != nil {
 			if a.Notify.URL == "" {
@@ -511,6 +519,14 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 				return fail(err)
 			}
 			def.Runner = remote.Agent(a.Name, a.Model.window())
+			if def, err = withModels(ctx, def, set, func(_ context.Context, m string) (agentapi.Agent, error) {
+				d := a.onModel(set, m)
+				on := def
+				on.Model, on.System, on.Runner = wireModel(d.Model), d.System, remote.ModelAgent(a.Name, m, d.Model.window())
+				return on, nil
+			}); err != nil {
+				return fail(err)
+			}
 			for _, name := range a.Toolsets {
 				if slices.ContainsFunc(problems, func(p toolset.Problem) bool { return p.Toolset == name }) {
 					skipped = appendNew(skipped, name) // the runner skips it too
@@ -536,6 +552,9 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 				return fail(err)
 			}
 			def.Harness = h
+			if def, err = withModels(ctx, def, set, c.modelBuild(cfg, a, set, def, built, admin, mem, msgTools, clk, log)); err != nil {
+				return fail(err)
+			}
 			skipped = appendNew(skipped, sk...)
 			skills.add(a, ks)
 		}
@@ -598,6 +617,7 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 		agentapi.WithMemory(memories),
 		agentapi.WithRunnerOptions(runnerOpts...),
 		agentapi.WithToolsets(c.toolsetCatalog(cfg, specs, built, problems, env)...),
+		agentapi.WithModels(modelCatalog()...),
 		agentapi.WithMaxConcurrentRuns(cfg.API.MaxConcurrentRuns),
 		agentapi.WithRunTimeout(time.Duration(cfg.API.RunTimeout)),
 		agentapi.WithRetention(cfg.API.MaxRuns, cfg.API.MaxConversations, time.Duration(cfg.API.Retention)),

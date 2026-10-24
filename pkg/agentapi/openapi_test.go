@@ -908,6 +908,22 @@ func TestOpenAPIResponses(t *testing.T) {
 	rec.probe(cr.rig, "delete_credential_unauthorized", 401, "DELETE", "/v1/credentials/mail", "", "", bearer...)
 	rec.probe(cr.rig, "delete_credential", 204, "DELETE", "/v1/credentials/mail?scope=user", "", "")
 	rec.probe(cr.rig, "delete_credential_not_found", 404, "DELETE", "/v1/credentials/mail", "", "")
+	// Agents' memory (T124), as user u1.
+	mr := newMemRig(t)
+	mr.mine.put("u1", "/memories/prefs.md", "Units: metric\n")
+	mr.mine.put("u1", "/memories/old.md", "stale")
+	service := []string{"Authorization", "Bearer " + keyMemService}
+	rec.probe(mr, "get_memory", 200, "GET", "/v1/agents/default/memory", "", "")
+	rec.probe(mr, "get_memory_file", 200, "GET", "/v1/agents/default/memory?path=/memories/prefs.md", "", "")
+	rec.probe(mr, "get_memory_invalid", 400, "GET", "/v1/agents/default/memory?path=/etc/passwd", "", "")
+	rec.probe(mr, "get_memory_unauthorized", 401, "GET", "/v1/agents/default/memory", "", "", bearer...)
+	rec.probe(mr, "get_memory_not_a_user", 403, "GET", "/v1/agents/default/memory", "", "", service...)
+	rec.probe(mr, "get_memory_not_found", 404, "GET", "/v1/agents/plain/memory", "", "")
+	rec.probe(mr, "delete_memory", 204, "DELETE", "/v1/agents/default/memory?path=/memories/old.md", "", "")
+	rec.probe(mr, "delete_memory_invalid", 400, "DELETE", "/v1/agents/default/memory?path=/memories", "", "")
+	rec.probe(mr, "delete_memory_unauthorized", 401, "DELETE", "/v1/agents/default/memory?path=/memories/prefs.md", "", "", bearer...)
+	rec.probe(mr, "delete_memory_not_a_user", 403, "DELETE", "/v1/agents/default/memory?path=/memories/prefs.md", "", "", service...)
+	rec.probe(mr, "delete_memory_not_found", 404, "DELETE", "/v1/agents/default/memory?path=/memories/old.md", "", "")
 	// The agent registry (T075).
 	rg := registryRig(t)
 	rec.probe(rg, "save_agent", 201, "POST", "/v1/agents/support/versions", `{"definition":{"system":"v1"},"message":"first","publish":true}`, "")

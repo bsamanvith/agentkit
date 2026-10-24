@@ -1,7 +1,7 @@
 ---
 id: E23
 title: "Agent memory: plain text, size-capped, everywhere agents run, visible to users"
-status: in-progress
+status: done
 ---
 
 # E23: agent memory people can read
@@ -38,4 +38,4 @@ store (`memory.Index`, T059/T060). What was missing for the owner's use:
 - [x] [T121](T121-memory-readable-text.md) Memory files hold readable text only
 - [x] [T122](T122-memory-postgres.md) Context store backend `postgres`, in the store's database
 - [x] [T123](T123-memory-split-runner.md) Memory for agents on the split runner, over `pkg/rpc`
-- [ ] [T124](T124-memory-api-console.md) Memory API and the console's Memory page
+- [x] [T124](T124-memory-api-console.md) Memory API and the console's Memory page

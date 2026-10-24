@@ -297,6 +297,23 @@ export type Tool = {
 /** GET /v1/toolsets/{name}/tools. A skipped toolset has no tools. */
 export type ToolList = { toolset: string; status: string; tools: Tool[] };
 
+/** One path of the caller's memory of an agent (GET /v1/agents/{name}/memory). Plain text. */
+export type MemoryView = {
+  agent: string;
+  /** "user": the caller's own memory; "tenant": one the tenant shares. */
+  scope: string;
+  path: string;
+  /** A directory: entries lists it, two levels deep. Otherwise text is the file's. */
+  dir: boolean;
+  size: number;
+  text?: string;
+  entries?: MemoryEntry[];
+  usage: { bytes: number; files: number };
+  limits: { file_bytes: number; scope_bytes: number; files: number };
+};
+
+export type MemoryEntry = { path: string; dir: boolean; size: number };
+
 /** GET /v1/credentials: a slot as the caller sees it. It never holds a value. */
 export type CredentialInfo = {
   slot: string;

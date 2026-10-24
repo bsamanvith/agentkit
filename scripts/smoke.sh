@@ -142,7 +142,7 @@ if [ -n "${AGENTKIT_STORE:-}" ]; then
 fi
 start api AGENTKIT_COMPONENTS=agent,web AGENTKIT_ADDR="127.0.0.1:$port" \
 	AGENTKIT_RUNNER_URL="http://127.0.0.1:$runner" AGENTKIT_TOOLSETS_URL="http://127.0.0.1:$toolsets" \
-	AGENTKIT_API_TOKEN="$token" "${store[@]}"
+	AGENTKIT_API_TOKEN="$token" ${store[@]+"${store[@]}"}
 
 for url in "$model/healthz" "$toolsets/readyz" "$runner/readyz" "$port/readyz"; do
 	for _ in $(seq 300); do

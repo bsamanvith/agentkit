@@ -1,8 +1,9 @@
 # Smoke suite
 
 A few black-box flows against a running deployment (T007): health and
-readiness, auth, the console's page, the toolsets the API sees, and one chat
-run that calls a tool and is kept by the store. It proves the components are
+readiness, auth, the console's page, the toolsets the API sees, one chat
+run that calls a tool and is kept by the store, and the notes agent's memory
+(saved in one conversation, loaded into the next: `TestMemory`). It proves the components are
 wired together; unit and integration tests prove the details.
 
 | Command | Runs the suite against |
@@ -16,7 +17,7 @@ wired together; unit and integration tests prove the details.
 Each failure starts with the component it points at (`api`, `web`, `runner`,
 `toolsets`, `store`). `TestComponents` (the per-image smoke, T102) checks
 each process alone: `/readyz` lists its own components only, and it serves
-its own surface (`/v1/agents` and `/`, `/rpc/runner/`, `/rpc/toolsets/` and
+its own surface (`/v1/agents`, `/` and `/rpc/memory/`, `/rpc/runner/`, `/rpc/toolsets/` and
 `/mcp/demo`) and none of the others'. It needs `AGENTKIT_SMOKE_RUNNER_URL`,
 `AGENTKIT_SMOKE_TOOLSETS_URL` and `AGENTKIT_RPC_TOKEN`, which `make smoke` sets
 and `make k8s-smoke` and `make compose-smoke` do not (the deployments do not

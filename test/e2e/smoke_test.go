@@ -216,6 +216,40 @@ func TestKnowledge(t *testing.T) {
 	}
 }
 
+// TestMemory tells the notes agent a fact, which it saves with the memory
+// tool (kept by the agent API; the agent runs on the runner), and asks for
+// it in a new conversation, whose message starts with the memory (T129).
+// The fake model saves on "remember" and answers from the loaded memory on
+// "recall"; a real one is told to. AGENTKIT_SMOKE_CHAT=0 skips it.
+func TestMemory(t *testing.T) {
+	if os.Getenv("AGENTKIT_SMOKE_CHAT") == "0" {
+		skipOrFail(t, "AGENTKIT_SMOKE_CHAT=0")
+	}
+	tg := newTarget(t)
+	colour := fmt.Sprintf("teal-%d", time.Now().UnixNano()%100000)
+	_, events := tg.run(t, `{"agent":"notes","message":"Remember this in your memory: my favourite colour is `+colour+`."}`)
+	if !slices.ContainsFunc(events, func(ev runEvent) bool { return ev.Type == "tool_call" && ev.Name == "memory" }) {
+		t.Fatalf("runner: the agent did not use its memory tool (events: %v)", types(events))
+	}
+	_, events = tg.run(t, `{"agent":"notes","message":"Recall from your memory: what is my favourite colour? Answer with the colour only."}`)
+	var answer strings.Builder
+	for _, ev := range events {
+		if ev.Type == "text_delta" {
+			answer.WriteString(ev.Text)
+		}
+	}
+	if !strings.Contains(answer.String(), colour) {
+		t.Errorf("agent API: the answer in a new conversation does not have the remembered %s: %q", colour, answer.String())
+	}
+	var m struct {
+		Usage struct{ Files int }
+	}
+	tg.getJSON(t, "agent API", "/v1/agents/notes/memory", &m)
+	if m.Usage.Files == 0 {
+		t.Errorf("agent API: GET /v1/agents/notes/memory shows no files")
+	}
+}
+
 // TestToolSearch runs a chat turn with the chat's Search mode (T114): the
 // agent's tools are held back behind tool_search, so the model finds the
 // echo tool first and then calls it. The fake model does so on "findtool";

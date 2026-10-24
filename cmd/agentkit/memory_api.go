@@ -46,37 +46,16 @@ func (m storeMemory) View(ctx context.Context, path string) (wire.MemoryView, er
 	return out, nil
 }
 
-// usage walks the scope's listings for its bytes and files: a listing goes
-// two levels deep, so each directory at the edge is viewed in turn. A scope
-// holds at most its file limit (200 by default), so the walk is short.
+// usage is the scope's bytes and files.
 func (m storeMemory) usage(ctx context.Context) (wire.MemoryUsage, error) {
-	var u wire.MemoryUsage
-	files := map[string]bool{}
-	seen := map[string]bool{}
-	dirs := []string{memory.Root}
-	for len(dirs) > 0 {
-		dir := dirs[0]
-		dirs = dirs[1:]
-		if seen[dir] {
-			continue
-		}
-		seen[dir] = true
-		v, err := m.s.View(ctx, dir)
-		if err != nil {
-			return u, err
-		}
-		if dir == memory.Root {
-			u.Bytes = v.Size
-		}
-		for _, e := range v.Entries {
-			if e.Dir {
-				dirs = append(dirs, e.Path)
-			} else {
-				files[e.Path] = true
-			}
-		}
+	files, err := memory.Files(ctx, m.s, memory.Root)
+	if err != nil {
+		return wire.MemoryUsage{}, err
 	}
-	u.Files = len(files)
+	u := wire.MemoryUsage{Files: len(files)}
+	for _, f := range files {
+		u.Bytes += f.Size
+	}
 	return u, nil
 }
 

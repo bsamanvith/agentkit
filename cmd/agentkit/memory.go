@@ -8,6 +8,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/harness"
+	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 )
 
@@ -45,6 +46,22 @@ type memoryStoreConfig struct {
 	MaxFileBytes  int64 `json:"max_file_bytes"`
 	MaxScopeBytes int64 `json:"max_scope_bytes"`
 	MaxFiles      int   `json:"max_files"`
+	// LoadBytes is how much memory each new message starts with as text
+	// (T129): every file's, while the memory is at most this; past it, the
+	// file list, and the agent greps and views what it needs. 0 for
+	// memory.DefaultLoadBytes (4 KB); -1 loads nothing.
+	LoadBytes int64 `json:"load_bytes"`
+}
+
+// loads reports whether new messages start with the memory.
+func (c *memoryStoreConfig) loads() bool { return c.LoadBytes != -1 }
+
+// checkLoadBytes refuses a load_bytes that means nothing.
+func checkLoadBytes(label string, c *memoryStoreConfig) error {
+	if c != nil && c.LoadBytes < -1 {
+		return fmt.Errorf("%s.store.load_bytes %d: want the bytes to load (0 for 4 KB), or -1 for none", label, c.LoadBytes)
+	}
+	return nil
 }
 
 // memoryIndexConfig chooses the search store's backend, its scope and
@@ -108,8 +125,9 @@ type agentMemory struct {
 	names []string
 	// native sends the memory tool as Claude's native type.
 	native bool
-	// prepare is auto recall; nil when off.
-	prepare harness.PrepareFunc
+	// prepare are its prepare hooks, in order: loading the memory into a new
+	// message (loadMemory), and auto recall; each only when on.
+	prepare []harness.PrepareFunc
 	// api is the context store as the agent API shows it to its users
 	// (memory_api.go); nil without a store, and on a runner.
 	api     agentapi.Memory
@@ -141,6 +159,9 @@ func memoryToolNames(m *memoryConfig) []string {
 // auto recall adds to each message before the model sees it, on the runner,
 // which has no index.
 func checkRemoteMemory(label string, m *memoryConfig) error {
+	if err := checkLoadBytes(label+".memory", m.Store); err != nil {
+		return err
+	}
 	if m.Index != nil && m.Index.AutoRecall {
 		return fmt.Errorf("%s.memory.index.auto_recall: an agent that runs on a runner cannot recall automatically yet; leave it off (the recall tools work)", label)
 	}
@@ -153,7 +174,34 @@ func checkRemoteMemory(label string, m *memoryConfig) error {
 // the agent API.
 func remoteMemory(m *memoryConfig, reg tool.Registry) *agentMemory {
 	names := memoryToolNames(m)
-	return &agentMemory{tools: namedTools{names: names, reg: reg}, names: names, native: m.NativeTool}
+	tools := namedTools{names: names, reg: reg}
+	mem := &agentMemory{tools: tools, names: names, native: m.NativeTool}
+	if m.Store != nil && m.Store.loads() {
+		mem.prepare = append(mem.prepare, loadMemory(tools))
+	}
+	return mem
+}
+
+// loadMemory is the prepare hook that starts each new message with the
+// agent's memory: what the memory tool's load command gives (pkg/memory
+// builds it, T129), through reg, so that an agent on a runner loads its
+// memory from the agent API as it uses it.
+func loadMemory(reg tool.Registry) harness.PrepareFunc {
+	input := json.RawMessage(`{"command":"load"}`)
+	return func(ctx context.Context, _ llm.Message) ([]llm.Block, error) {
+		out, err := reg.Invoke(ctx, memoryToolName, input)
+		if err != nil {
+			return nil, fmt.Errorf("memory: loading it into the message: %w", err)
+		}
+		var text string
+		if err := json.Unmarshal(out, &text); err != nil {
+			return nil, fmt.Errorf("memory: loading it into the message: the tool answered %.100s", out)
+		}
+		if text == "" {
+			return nil, nil
+		}
+		return []llm.Block{llm.Text{Text: text}}, nil
+	}
 }
 
 // namedTools is reg limited to the tools of names.

@@ -21,6 +21,10 @@
 //            answers 42, and says what came back
 //   "findtool" finds the echo tool with tool_search (the chat's Search
 //            mode), calls it, and says what it echoed
+//   "remember" saves what follows "memory:" with the memory tool (create
+//            /memories/fact.md), then says so
+//   "recall" answers from the memory the message starts with (T129): the
+//            text of its first file, or that there is none
 //   other    "You said: …" with the number of messages so far
 //
 // Run with Node 24 (type stripping): node e2e/fake-model.ts <port>.
@@ -349,6 +353,21 @@ const server = createServer((req, res) => {
       });
       send(res, "content_block_stop", { index: 0 });
       return finish(res, "tool_use", 20);
+    }
+    // "remember" and "recall" (test/e2e's TestMemory): the memory tool, and
+    // the memory a new message starts with.
+    if (/\bremember\b/i.test(said)) {
+      if (result) {
+        text(res, 0, "Saved to memory.");
+        return finish(res, "end_turn", 8);
+      }
+      const fact = /memory:\s*(.*)$/is.exec(said)?.[1] ?? said;
+      return toolUse(res, "memory", { command: "create", path: "/memories/fact.md", file_text: `${fact.trim()}\n` });
+    }
+    if (/\brecall\b/i.test(said)) {
+      const file = /<file path="[^"]*">\n([\s\S]*?)\n<\/file>/.exec(said)?.[1];
+      text(res, 0, file ? `From memory: ${file}` : "Nothing in memory.");
+      return finish(res, "end_turn", 8);
     }
     // "findtool" (T114, T115): tool_search for the echo tool, then echo,
     // then say what it echoed.

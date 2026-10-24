@@ -77,6 +77,9 @@ func openMemory(ctx context.Context, a agentDef, legacy bool, clk clock.Clock, g
 	if a.Memory.NativeTool && a.Memory.Store == nil {
 		return nil, fmt.Errorf("%s.native_tool: the native memory tool needs a store", label)
 	}
+	if err := checkLoadBytes(label, a.Memory.Store); err != nil {
+		return nil, err
+	}
 	m := &agentMemory{native: a.Memory.NativeTool}
 	defer func() {
 		if err != nil {
@@ -104,13 +107,19 @@ func openMemory(ctx context.Context, a agentDef, legacy bool, clk clock.Clock, g
 			m.closers = append(m.closers, closeFn)
 		}
 		tools = append(tools, ts...)
-		m.prepare = prepare
+		if prepare != nil {
+			m.prepare = append(m.prepare, prepare)
+		}
 	}
 	reg, err := tool.NewRegistry(tools)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", label, err)
 	}
 	m.tools = reg
+	if c := a.Memory.Store; c != nil && c.loads() {
+		// The memory first, then what auto recall finds.
+		m.prepare = append([]harness.PrepareFunc{loadMemory(reg)}, m.prepare...)
+	}
 	for _, t := range tools {
 		m.names = append(m.names, t.Definition().Name)
 	}
@@ -136,7 +145,11 @@ func openMemoryStore(ctx context.Context, label string, c memoryStoreConfig, get
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("%s: %w", label, err)
 	}
-	mt, err := memory.NewTool(s)
+	var opts []memory.ToolOption
+	if c.LoadBytes != 0 {
+		opts = append(opts, memory.WithLoadBytes(c.LoadBytes))
+	}
+	mt, err := memory.NewTool(s, opts...)
 	if err != nil {
 		return nil, nil, nil, errors.Join(fmt.Errorf("%s: %w", label, err), closeOrNil(closeFn))
 	}

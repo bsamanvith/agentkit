@@ -2,7 +2,7 @@
 id: T123
 title: "Memory for agents on the split runner, over pkg/rpc"
 epic: E23
-status: todo
+status: done
 depends_on: [T102, T122]
 ---
 
@@ -10,26 +10,44 @@ depends_on: [T102, T122]
 
 ## Context
 
-The runner component refuses an agent with a `memory` section ("the tenant
+The runner component refused an agent with a `memory` section ("the tenant
 does not cross to the runner yet"). The caller's tenant and user now cross
-`/rpc/` (runnerrpc's `Caller`), but the runner image has no database
-(`nopostgres`, `noagent`), and should not get one for memory.
+`/rpc/` (runnerrpc's `Caller`, toolrpc's), but the runner image has no
+database (`nopostgres`, `noagent`), and should not get one for memory.
 
 ## Scope
 
-- A `memory` RPC service (View, Create, StrReplace, Insert, Delete, Rename)
-  served by the agent component next to the store, keyed by agent name, and a
-  remote `memory.Store` client that carries the caller (`tenancy.Carry`).
-- The runner builds the memory tool over the remote store for each agent
-  with memory, from the URL in `$AGENTKIT_MEMORY_URL` (the agent API's) and
-  the RPC token; without it, it keeps refusing such an agent, saying what to set.
-- Errors cross with their kind, so the tool's texts (limit, not text, not
-  found) are the same as in one process.
-- The Compose and Kubernetes deployments set it.
+- The agent API opens the memory of each agent it sends to a runner and
+  serves its memory tools at `/rpc/memory/`: toolrpc's protocol under its own
+  service name (`toolrpc.RegisterAs`, `NewClientAs`), one registry per agent,
+  behind the RPC token. Tool errors and texts cross as they are (limit, not
+  text, not found), and the caller's tenant and user with each call.
+- The runner builds each such agent's memory tools as a client of
+  `$AGENTKIT_MEMORY_URL`. Only the memory tools' names go there; the agent's
+  other tools never wait on the API. Without the URL it refuses the agent,
+  naming the variable.
+- Auto recall (it would run on the runner) is refused on both sides, with
+  what to do; the recall tools work.
+- Compose and Kubernetes set `AGENTKIT_MEMORY_URL` on the runner.
+
+## Out of scope
+
+- Auto recall on a runner.
+- A durable memory store in the base Kubernetes deployment (its store is in
+  memory); the local overlay and Compose run on Postgres, where
+  `memory.store.backend: "postgres"` keeps memory (T122).
 
 ## Acceptance criteria
 
-- [ ] The remote store passes `memorytest.RunStore`. — test: `memoryrpc.TestConformance`
-- [ ] A split deployment (smoke, fake model) keeps a memory in run 1 and reads it in run 2 of a new conversation, for two users apart. — test: `TestSplitMemory`
-- [ ] Without `$AGENTKIT_MEMORY_URL` the runner refuses an agent with memory and names the variable. — test: `TestRunnerMemoryNeedsURL`
-- [ ] The runner image's size is measured before and after (docs/SIZES.md if it moves 100 KB).
+- [x] Two services on one RPC server stay apart. — test: `toolrpc.TestServicesApart`; the remote registry already passes `tooltest.RunRegistry`
+- [x] An agent on a runner (API and runner over HTTP with the token, fake model) saves a memory in one run and reads it in a new conversation; two users stay apart; the limit's text is the one-process text; only the 4 memory calls reach the API (an echo call does not); `/rpc/memory/` without the token is 401. — test: `TestSplitMemory`
+- [x] Without `$AGENTKIT_MEMORY_URL` the runner refuses an agent with memory and names the variable; auto recall is refused by the runner and the API. — test: `TestRunnerMemoryNeedsURL`
+- [x] The runner's copy of the memory tool names is pkg/memory's. — test: `TestMemoryToolNames`
+- [x] Size measured (`go build -trimpath -ldflags='-s -w'`, each image's tags): runner +12 KB (14,717,088 to 14,729,376 bytes), api +16 KB. No SIZES.md row (under 100 KB).
+
+## Notes
+
+- Mutation check: sending every tool name to the API (dropping `namedTools`'s
+  filter) fails `TestSplitMemory` (5 calls reach the API, not 4).
+- The smoke suite runs the deploy config, whose agents have no memory; the
+  split path is covered in process over real HTTP by `TestSplitMemory`.

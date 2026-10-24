@@ -34,6 +34,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/store"
 	"github.com/bsamanvith/agentkit/pkg/store/storeopen"
 	"github.com/bsamanvith/agentkit/pkg/tool"
+	"github.com/bsamanvith/agentkit/pkg/tool/toolrpc"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
@@ -63,15 +64,25 @@ type agentWiring struct {
 	// triggers finds the triggers the scheduler fires; nil when the API
 	// has none.
 	triggers store.TriggerAdmin
+	// memory serves the memory of the agents that run on a runner
+	// (/rpc/memory/); nil when none has memory.
+	memory *rpcComponent
 }
 
-// mounts are what the agent API serves beside /v1/: the OAuth callback,
-// when it keeps credentials.
+// mounts are what the agent API serves beside /v1/: the memory of its agents
+// that run on a runner, and the OAuth callback, when it keeps credentials.
 func (w *agentWiring) mounts() []component.Mount {
-	if w == nil || w.callback == nil {
+	if w == nil {
 		return nil
 	}
-	m := []component.Mount{{Pattern: oauthCallbackPath, Component: oauthCallback{w.callback}}}
+	var m []component.Mount
+	if w.memory != nil {
+		m = append(m, component.Mount{Pattern: rpc.PathPrefix + memoryService + "/", Component: w.memory})
+	}
+	if w.callback == nil {
+		return m
+	}
+	m = append(m, component.Mount{Pattern: oauthCallbackPath, Component: oauthCallback{w.callback}})
 	if w.clientMetadata != nil {
 		m = append(m, component.Mount{Pattern: oauthClientMetadataPath, Component: oauthClientMetadata{w.clientMetadata}})
 	}
@@ -105,7 +116,7 @@ func (c cli) buildAgents(ctx context.Context, w *agentWiring, cfg serveConfig, b
 	w.srv, w.env = srv, env
 	ac, _ := m.Component.(*agentComponent)
 	if ac != nil {
-		w.callback, w.msg = ac.callback, ac.messenger
+		w.callback, w.msg, w.memory = ac.callback, ac.messenger, ac.memory
 		if cm, ok := ac.admin.(interface{ ClientMetadata() http.Handler }); ok && ac.callback != nil {
 			w.clientMetadata = cm.ClientMetadata()
 		}
@@ -272,6 +283,9 @@ func (c cli) openBus(ctx context.Context, clk clock.Clock, log *slog.Logger) (bu
 // agentComponent is the agent API with the readiness of its toolsets, or
 // of the runner its agents run on.
 type agentComponent struct {
+	// memory serves the memory of the agents that run on a runner; nil
+	// when none has memory.
+	memory *rpcComponent
 	*agentapi.Server
 	skipped []string
 	// runner runs the agents when they run elsewhere ($AGENTKIT_RUNNER_URL);
@@ -424,6 +438,9 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 		skipped []string
 		skills  skillReport
 		closers []func() error
+		// The memory of the agents that run on the runner, served to it.
+		memSets []toolrpc.Toolset
+		memRegs = map[string]tool.Registry{}
 	)
 	fail := func(err error) (component.Mount, *agentapi.Server, error) {
 		if admin != nil {
@@ -468,9 +485,18 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 			// The runner builds the model and the tools: this process
 			// needs neither (the agentkit-api image has no model adapter).
 			if a.Memory != nil {
-				// TODO(T058 follow-up): the tenant does not cross to the
-				// runner yet, so its memory calls would all be refused.
-				return fail(fmt.Errorf("%s.memory: an agent that runs on the runner at $%s cannot have memory yet", a.label(cfg.legacy), envRunnerURL))
+				// This process keeps the agent's memory and serves its
+				// tools to the runner at /rpc/memory/ (memoryService).
+				if err := checkRemoteMemory(a.label(cfg.legacy), a.Memory); err != nil {
+					return fail(err)
+				}
+				mem, err := openMemory(ctx, a, cfg.legacy, clk, c.env)
+				if err != nil {
+					return fail(err)
+				}
+				closers = append(closers, mem.close)
+				memSets = append(memSets, toolrpc.Toolset{Name: a.Name, Type: memoryService})
+				memRegs[a.Name] = mem.tools
 			}
 			if len(a.CanMessage) > 0 {
 				// The sender does not cross to the runner.
@@ -578,7 +604,18 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 	if err != nil {
 		return fail(err)
 	}
-	ac := &agentComponent{Server: srv, skipped: skipped, skillReport: skills, runner: remote, runnerURL: env.runnerURL, agents: agentNames(cfg), toolsetsURL: env.toolsetsURL, admin: admin, closers: closers, callback: callback, messenger: msgr}
+	var memComp *rpcComponent
+	if len(memSets) > 0 {
+		ms, err := newRPCServer(memoryService, env, log)
+		if err != nil {
+			return fail(err)
+		}
+		if err := toolrpc.RegisterAs(ms, memoryService, memSets, memRegs); err != nil {
+			return fail(err)
+		}
+		memComp = &rpcComponent{name: memoryService, server: ms}
+	}
+	ac := &agentComponent{memory: memComp, Server: srv, skipped: skipped, skillReport: skills, runner: remote, runnerURL: env.runnerURL, agents: agentNames(cfg), toolsetsURL: env.toolsetsURL, admin: admin, closers: closers, callback: callback, messenger: msgr}
 	for _, name := range slices.Sorted(maps.Keys(built)) {
 		if r, ok := built[name].(remoteToolset); ok {
 			ac.toolsets = r

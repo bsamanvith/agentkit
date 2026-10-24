@@ -152,3 +152,30 @@ func (nilRegistry) List(context.Context) ([]tool.Definition, error) { return nil
 func (nilRegistry) Invoke(context.Context, string, json.RawMessage) (json.RawMessage, error) {
 	return nil, nil
 }
+
+// TestServicesApart: registries served under another service name answer
+// that name's client only, on the same server as the default service.
+func TestServicesApart(t *testing.T) {
+	t.Parallel()
+	reg, err := tool.NewRegistry(tooltest.Fixtures())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := rpc.NewServer()
+	if err := toolrpc.Register(s, []toolrpc.Toolset{{Name: "fx"}}, map[string]tool.Registry{"fx": reg}); err != nil {
+		t.Fatal(err)
+	}
+	if err := toolrpc.RegisterAs(s, "memory", []toolrpc.Toolset{{Name: "agent"}}, map[string]tool.Registry{"agent": reg}); err != nil {
+		t.Fatal(err)
+	}
+	conn := rpc.Pipe(s)
+	if _, err := toolrpc.NewClientAs(conn, "memory").Registry("agent").List(t.Context()); err != nil {
+		t.Errorf("memory/agent: %v", err)
+	}
+	if _, err := toolrpc.NewClientAs(conn, "memory").Registry("fx").List(t.Context()); !errors.Is(err, toolrpc.ErrNoToolset) {
+		t.Errorf("memory/fx: %v, want ErrNoToolset", err)
+	}
+	if _, err := toolrpc.NewClient(conn).Registry("agent").List(t.Context()); !errors.Is(err, toolrpc.ErrNoToolset) {
+		t.Errorf("toolsets/agent: %v, want ErrNoToolset", err)
+	}
+}

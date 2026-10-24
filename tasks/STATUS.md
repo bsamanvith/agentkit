@@ -24,7 +24,7 @@
 | Streaming and the server backend | [E18](E18-streaming-backend.md) | Done |
 | External MCP servers | [E19](E19-external-mcp-servers.md) | Done |
 | Runner pools | [E20](E20-runner-pools.md) | T104, T105 done; T106 (gVisor) and T107 (microVM) **paused** by the owner (2026-10-22) |
-| Agent memory: plain text, size-capped, visible | [E23](E23-agent-memory.md) | T121 (readable text only), T122 (Postgres backend) done; T123 (memory on the split runner), T124 (Memory page) next |
+| Agent memory: plain text, size-capped, visible | [E23](E23-agent-memory.md) | T121 (readable text only), T122 (Postgres backend), T123 (memory on the split runner) done; T124 (Memory page) next |
 | Google connectors | [E21](E21-google-connectors.md) | Gmail, Calendar done on synthetic cassettes; T111 Drive waits for a Google test account |
 | More model providers | [E08](E08-model-providers.md) | T025 (OpenAI-compatible) waits for an OpenAI key or an Ollama endpoint |
 | Agent skills | [E02](E02-agent-skills.md) | Done; T010 waits for one check with Codex |
@@ -35,7 +35,7 @@
 
 ## Done
 
-T001 · T002 · T003 · T004 · T005 · T007 · T008 · T009 · T011 · T012 · T013 · T014 · T015 · T016 · T017 · T018 · T019 · T020 · T021 · T022 · T023 · T024 · T026 · T027 · T028 · T029 · T030 · T031 · T032 · T033 · T034 · T035 · T036 · T037 · T038 · T039 · T040 · T041 · T042 · T043 · T044 · T045 · T046 · T047 · T048 · T049 · T050 · T051 · T052 · T053 · T054 · T055 · T057 · T058 · T059 · T061 · T062 · T063 · T064 · T065 · T066 · T067 · T068 · T069 · T070 · T071 · T072 · T073 · T074 · T075 · T078 · T082 · T083 · T084 · T085 · T086 · T088 · T089 · T090 · T091 · T092 · T093 · T094 · T095 · T096 · T097 · T098 · T099 · T100 · T101 · T102 · T103 · T104 · T105 · T108 · T109 · T110 · T112 · T121 · T122
+T001 · T002 · T003 · T004 · T005 · T007 · T008 · T009 · T011 · T012 · T013 · T014 · T015 · T016 · T017 · T018 · T019 · T020 · T021 · T022 · T023 · T024 · T026 · T027 · T028 · T029 · T030 · T031 · T032 · T033 · T034 · T035 · T036 · T037 · T038 · T039 · T040 · T041 · T042 · T043 · T044 · T045 · T046 · T047 · T048 · T049 · T050 · T051 · T052 · T053 · T054 · T055 · T057 · T058 · T059 · T061 · T062 · T063 · T064 · T065 · T066 · T067 · T068 · T069 · T070 · T071 · T072 · T073 · T074 · T075 · T078 · T082 · T083 · T084 · T085 · T086 · T088 · T089 · T090 · T091 · T092 · T093 · T094 · T095 · T096 · T097 · T098 · T099 · T100 · T101 · T102 · T103 · T104 · T105 · T108 · T109 · T110 · T112 · T121 · T122 · T123
 
 ## Open
 

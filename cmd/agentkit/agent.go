@@ -472,6 +472,11 @@ func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built 
 			return fail(err)
 		}
 	}
+	if a.Model.toolSearch() == toolSearchNative {
+		// A run may turn tool search on (its "tools"), deferring tools the
+		// agent itself sends directly: the provider holds them back.
+		opts = append(opts, harness.WithNativeToolSearch())
+	}
 	h, err := harness.New(model, tools, opts...)
 	if err != nil {
 		return fail(fmt.Errorf("%s: %w", label, err))
@@ -594,6 +599,7 @@ var credentialEnv = map[string]string{
 	"tavily":   "TAVILY_API_KEY",
 	"exa":      "EXA_API_KEY",
 	"parallel": "PARALLEL_API_KEY",
+	"gmail":    "GOOGLE_ACCESS_TOKEN",
 	"calendar": "GOOGLE_ACCESS_TOKEN",
 	"drive":    "GOOGLE_ACCESS_TOKEN",
 }

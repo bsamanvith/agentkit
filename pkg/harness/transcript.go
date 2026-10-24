@@ -201,6 +201,11 @@ type Input struct {
 	// Interaction, when set, narrows the harness's [WithInteraction] for this
 	// run ([NarrowInteraction]). It must be one of [Interactions].
 	Interaction Interaction
+	// Tools, when set, narrows the tools the run offers: which toolsets,
+	// and whether their tools are found with [SearchTool] ([ToolChoice]).
+	// Choosing toolsets needs [WithToolsets] (or [WithToolPolicy]'s
+	// toolsetOf); a call to a tool it left out is refused.
+	Tools *ToolChoice
 	// Pending is a turn an earlier run suspended in ([EventSuspended]), to
 	// finish first with Answers, one for each of its interrupts. The run
 	// then has no Message, and Transcript is the transcript the suspended

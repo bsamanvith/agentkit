@@ -38,6 +38,7 @@ type runConfig struct {
 	flush       int
 	policy      *policy.Policy
 	mode        harness.Interaction
+	tools       *harness.ToolChoice
 	interactive bool
 	lane        string
 	priority    int
@@ -171,6 +172,25 @@ func Interaction(m harness.Interaction) RunOption {
 	}
 }
 
+// Tools narrows the tools of the conversation's agent for this run and
+// every resume of it ([harness.Input.Tools]): which of its toolsets the
+// model gets, and whether their tools are found with tool search. It is
+// stored with the run's prompt, as [ToolPolicy] is. A search mode that is
+// not one makes Run give [ErrInvalidConfig]; an empty choice is none.
+func Tools(c harness.ToolChoice) RunOption {
+	return func(cfg *runConfig) {
+		if !c.Search.Valid() {
+			cfg.err = fmt.Errorf("%w: tools.search %q", ErrInvalidConfig, c.Search)
+			return
+		}
+		if c.IsZero() {
+			cfg.tools = nil
+			return
+		}
+		cfg.tools = c.Clone() // not c: the option may be given to concurrent runs
+	}
+}
+
 // Run starts a chat run: msg, a user message, on the conversation, run by the
 // conversation's agent. It creates the run and claims its lease before it
 // returns; iterate the execution's events to run it. A conversation with an
@@ -209,7 +229,7 @@ func (r *Runner) Run(ctx context.Context, conversationID string, msg llm.Message
 	}
 	msg = msg.Clone()
 	return x.execution(ctx, func(ctx context.Context, emit func(Event) bool) outcome {
-		return x.chat(ctx, agent, &msg, runSettings{flush: c.flush, policy: c.policy, mode: c.mode}, emit)
+		return x.chat(ctx, agent, &msg, runSettings{flush: c.flush, policy: c.policy, mode: c.mode, tools: c.tools}, emit)
 	}), nil
 }
 
@@ -1047,11 +1067,12 @@ func (x *exec) keepLease(ctx context.Context, cancel context.CancelCauseFunc) (s
 
 // runSettings are what a chat run is started with and keeps in its prompt
 // entry, for every resume: its FlushEvery (0 for the runner's), its
-// ToolPolicy and its Interaction.
+// ToolPolicy, its Interaction and its Tools.
 type runSettings struct {
 	flush  int
 	policy *policy.Policy
 	mode   harness.Interaction
+	tools  *harness.ToolChoice
 }
 
 // pendingInput makes in finish the run's pending turn, if the log ends with
@@ -1128,13 +1149,13 @@ func (x *exec) chat(ctx context.Context, agent Agent, msg *llm.Message, set runS
 			// run without it.
 			return outcome{kind: outFailed, err: fmt.Errorf("reading the run's tool policy: %w", v.policyErr)}
 		}
-		set = runSettings{flush: v.flush, policy: v.policy, mode: v.interaction}
+		set = runSettings{flush: v.flush, policy: v.policy, mode: v.interaction, tools: v.tools}
 		if out, ok := x.pendingInput(&v, &in); !ok {
 			return out
 		}
 	}
 	flush := set.flush
-	t := &turns{x: x, v: &v, every: flush, policy: set.policy, mode: set.mode, emit: emit}
+	t := &turns{x: x, v: &v, every: flush, policy: set.policy, mode: set.mode, tools: set.tools, emit: emit}
 	if flush == 0 {
 		t.every = r.flush
 	}
@@ -1265,6 +1286,7 @@ type turns struct {
 	// agent on every attempt and stored with the prompt.
 	policy *policy.Policy
 	mode   harness.Interaction
+	tools  *harness.ToolChoice
 	// stop is what the commands read at the boundary the agent was stopped
 	// at asked for, when run returned outBoundary.
 	stop boundary
@@ -1277,7 +1299,7 @@ func (t *turns) run(ctx context.Context, agent Agent, in harness.Input, flush in
 	var result *harness.Result
 	suspended := false
 	var turnsUsage llm.Usage // of the turns done, for a stop at a boundary
-	in.ToolPolicy, in.Interaction = t.policy, t.mode
+	in.ToolPolicy, in.Interaction, in.Tools = t.policy, t.mode, t.tools
 	for ev, err := range agent.Run(ctx, in) {
 		if err != nil {
 			out := outcome{kind: outFailed, err: err}
@@ -1297,7 +1319,7 @@ func (t *turns) run(ctx context.Context, agent Agent, in harness.Input, flush in
 					Kind:     store.KindPrompt,
 					Messages: []llm.Message{ev.Prompt.Message},
 					RunID:    x.run.ID,
-					Record:   mustJSON(Record{Prompt: &PromptRecord{At: ev.Prompt.At, FlushEvery: flush, ToolPolicy: t.policy, Interaction: t.mode}}),
+					Record:   mustJSON(Record{Prompt: &PromptRecord{At: ev.Prompt.At, FlushEvery: flush, ToolPolicy: t.policy, Interaction: t.mode, Tools: t.tools}}),
 				})
 				if err != nil {
 					t.failed = true

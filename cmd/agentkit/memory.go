@@ -24,7 +24,9 @@ type memoryConfig struct {
 // memoryStoreConfig chooses the backend and its scope and limits.
 type memoryStoreConfig struct {
 	// Backend is one of memoryBackends: "memory" (in this process, lost on
-	// restart) or "sqlite" (a file; path).
+	// restart), "sqlite" (a file; path; local images) or "postgres" (the
+	// Postgres store's database, which $AGENTKIT_STORE names: replicas;
+	// dev and cloud images).
 	Backend string `json:"backend"`
 	// Path is the SQLite file, absolute or relative to the working
 	// directory. Agents naming the same file share their memories.

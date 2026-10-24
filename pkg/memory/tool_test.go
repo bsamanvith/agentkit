@@ -180,6 +180,40 @@ func TestToolLimitAndScopeErrors(t *testing.T) {
 	}
 }
 
+// TestToolRefusesTextThatIsNotReadable: a write of a control character is a
+// tool failure whose text says memory holds plain text, and nothing is
+// written.
+func TestToolRefusesTextThatIsNotReadable(t *testing.T) {
+	t.Parallel()
+	mt := newTool(t, memory.Config{})
+	ctx := memorytest.Ctx(t, "t1", "")
+	_, err := mt.Invoke(ctx, json.RawMessage(`{"command":"create","path":"/memories/a.md","file_text":"a\u0000b"}`))
+	if !errors.Is(err, tool.ErrToolFailed) || !strings.Contains(err.Error(), "plain readable text only") || !strings.Contains(err.Error(), "byte 1") {
+		t.Errorf("create of a NUL: %v", err)
+	}
+	if out, err := mt.Invoke(ctx, json.RawMessage(`{"command":"view","path":"/memories/a.md"}`)); err == nil {
+		t.Errorf("the refused file was written: %q", out)
+	}
+}
+
+// TestCheckText: readable text passes; every byte that is not UTF-8 and
+// every control character but tab, line feed and carriage return is refused
+// with where it is.
+func TestCheckText(t *testing.T) {
+	t.Parallel()
+	for _, ok := range []string{"", "plain", "a\tb\r\nc\n", "Søren 東京 🙂", "\uFFFD written as such", "\u00a0nbsp"} {
+		if err := memory.CheckText(ok); err != nil {
+			t.Errorf("CheckText(%q) = %v, want nil", ok, err)
+		}
+	}
+	for text, at := range map[string]string{"\x00": "byte 0 ", "ab\x1b": "byte 2 ", "\xff": "byte 0 ", "x\xc3": "byte 1 ", "\x7f": "byte 0 ", "é\u009b": "byte 2 ", "\v": "byte 0 ", "\f": "byte 0 "} {
+		err := memory.CheckText(text)
+		if !errors.Is(err, memory.ErrNotText) || !strings.Contains(err.Error(), at) {
+			t.Errorf("CheckText(%q) = %v, want ErrNotText at %s", text, err, at)
+		}
+	}
+}
+
 func TestNewToolRefusesANilStore(t *testing.T) {
 	t.Parallel()
 	if _, err := memory.NewTool(nil); !errors.Is(err, tool.ErrInvalidDefinition) {

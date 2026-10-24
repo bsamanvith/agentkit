@@ -41,6 +41,10 @@ type Settings struct {
 	// Timeout limits one request, a duration such as "30s" (default 30s, at
 	// most 5m).
 	Timeout string `json:"timeout,omitempty"`
+
+	// tokenEnvSet says the settings named access_token_env themselves
+	// (Validate fills in the default).
+	tokenEnvSet bool
 }
 
 // Validate checks the settings of the named service and fills in defaults.
@@ -51,6 +55,7 @@ func (s *Settings) Validate(service string) error {
 	bad := func(format string, args ...any) error {
 		return fmt.Errorf("%w: %s: %s", toolset.ErrInvalidSettings, service, fmt.Sprintf(format, args...))
 	}
+	s.tokenEnvSet = s.tokenEnvSet || s.AccessTokenEnv != ""
 	if s.AccessTokenEnv == "" {
 		s.AccessTokenEnv = DefaultTokenEnv
 	}

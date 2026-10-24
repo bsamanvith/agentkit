@@ -80,12 +80,21 @@ func TestOldRunnerRefusesARunOnAModel(t *testing.T) {
 	}
 	ran := false
 	s := rpc.NewServer()
-	rpc.Stream[oldReq, struct{}]{Name: runnerrpc.Service + "/Run"}.Handle(s, func(context.Context, oldReq) iter.Seq2[struct{}, error] {
-		return func(func(struct{}, error) bool) { ran = true }
-	})
+	// A runner of the tool choice, before models: a run on a model that
+	// also chooses its tools must not go as RunWithTools.
+	for _, m := range []string{"/Run", "/RunWithTools"} {
+		rpc.Stream[oldReq, struct{}]{Name: runnerrpc.Service + m}.Handle(s, func(context.Context, oldReq) iter.Seq2[struct{}, error] {
+			return func(func(struct{}, error) bool) { ran = true }
+		})
+	}
 	a := runnerrpc.NewClient(rpc.Pipe(s)).ModelAgent("default", "anthropic/claude-opus-5-5", harness.ContextWindow{})
-	if _, err := collect(a, harness.Input{Message: llm.User(llm.Text{Text: "x"})}); !errors.Is(err, rpc.ErrUnknownMethod) || llm.IsRetryable(err) {
-		t.Fatalf("err = %v, want a non-retryable rpc.ErrUnknownMethod", err)
+	for _, in := range []harness.Input{
+		{Message: llm.User(llm.Text{Text: "x"})},
+		{Message: llm.User(llm.Text{Text: "x"}), Tools: &harness.ToolChoice{}},
+	} {
+		if _, err := collect(a, in); !errors.Is(err, rpc.ErrUnknownMethod) || llm.IsRetryable(err) {
+			t.Fatalf("err = %v, want a non-retryable rpc.ErrUnknownMethod", err)
+		}
 	}
 	if ran {
 		t.Fatal("the old runner ran a run on a model it does not know")

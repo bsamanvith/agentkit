@@ -216,6 +216,32 @@ func TestKnowledge(t *testing.T) {
 	}
 }
 
+// TestToolSearch runs a chat turn with the chat's Search mode (T114): the
+// agent's tools are held back behind tool_search, so the model finds the
+// echo tool first and then calls it. The fake model does so on "findtool";
+// a real one is asked to. AGENTKIT_SMOKE_CHAT=0 skips it.
+func TestToolSearch(t *testing.T) {
+	if os.Getenv("AGENTKIT_SMOKE_CHAT") == "0" {
+		skipOrFail(t, "AGENTKIT_SMOKE_CHAT=0")
+	}
+	tg := newTarget(t)
+	_, events := tg.run(t, `{"message":"findtool: use tool_search to find the tool that echoes text, then echo the word mango with it.","tools":{"search":"search"}}`)
+	searched, echoed := false, false
+	var called string // the tool of the last call: a result has no name
+	for _, ev := range events {
+		switch ev.Type {
+		case "tool_call":
+			called = ev.Name
+			searched = searched || called == "tool_search"
+		case "tool_result":
+			echoed = echoed || strings.HasSuffix(called, "echo") && !ev.IsError
+		}
+	}
+	if !searched || !echoed {
+		t.Errorf("runner: searched %v, echoed %v, want both (events: %v)", searched, echoed, types(events))
+	}
+}
+
 // runEvent is what the suite reads of a run's event.
 type runEvent struct {
 	Type    string `json:"type"`

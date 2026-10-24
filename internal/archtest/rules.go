@@ -81,6 +81,8 @@ func ModuleRules() Rules {
 			"pkg/store/sqlite": {"modernc.org/sqlite"},
 			// The memory context store on SQLite (T058): the same driver.
 			"pkg/memory/sqlite": {"modernc.org/sqlite"},
+			// The memory context store on Postgres (T122), on the store's pool.
+			"pkg/memory/postgres": {"github.com/jackc/pgx/v5", "github.com/jackc/pgx/v5/pgxpool"},
 			// The credential vault's Postgres backend (T043), on the
 			// store's pool.
 			"pkg/credentials/postgres": {"github.com/jackc/pgx/v5", "github.com/jackc/pgx/v5/pgxpool"},
@@ -426,6 +428,12 @@ func ModuleRules() Rules {
 			"pkg/credentials/sqlite": {
 				"pkg/credentials", "pkg/credentials/internal/sqltime", "pkg/tenancy",
 				"pkg/store/sqlite", "pkg/store", "pkg/credentials/credentialstest",
+			},
+			// The memory context store's Postgres backend (T122) keeps its
+			// table in the store's database the same way.
+			"pkg/memory/postgres": {
+				"pkg/memory", "pkg/memory/internal/fileops", "pkg/tenancy", "pkg/store/postgres",
+				"pkg/memory/memorytest", "internal/testkit",
 			},
 			"pkg/credentials/postgres": {
 				"pkg/credentials", "pkg/credentials/internal/sqltime", "pkg/tenancy",

@@ -57,7 +57,7 @@ Status `done`: every criterion has a test, below; all run in `make check`.
 
 **What was built.**
 - `pkg/llm/modelset` (pure, stdlib only): `Parse`/`Canonical` of `<provider>/<id>` (bare ids are `anthropic`'s; ids may hold `/` for gateways), `Spec` (`allow`, `allow_patterns`, `variants`), `Set` (`Resolve`, `Allows`, `Variant`, `Matching`), field errors, limits (64 names, 16 patterns of 256 bytes, 32 variants).
-- `pkg/store`: `Run.Model`, `WithModel` (text), migrations `sqlite/0018_run_model.sql` and `postgres/0019_run_model.sql`; the suite checks it.
+- `pkg/store`: `Run.Model`, `WithModel` (text), migrations `sqlite/0018_run_model.sql` and `postgres/0020_run_model.sql`; the suite checks it.
 - `pkg/runner`: `runner.Model` run option, `Placement.Model` on start and resume.
 - `pkg/runner/runnerrpc`: `runReq.Model` on a method of its own (`RunWithModel`, so an older runner refuses rather than running the default), `ModelAgent` on the served side, `Client.ModelAgent`, `ErrNoModel`.
 - `pkg/agentapi`: `Agent.Models` and `Agent.ForModel`; `RunRequest.Model`, `TaskRequest.Model`, `Run.Model`, `Agent.Models` (`default`, `allow`, `allow_patterns`, `choices`); `GET /v1/models` (`WithModels`); `400 model_not_allowed`, `409 model_provider_mismatch`; a resume cannot name a model. OpenAPI updated and probed.

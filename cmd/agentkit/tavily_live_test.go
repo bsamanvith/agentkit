@@ -4,6 +4,7 @@ package main
 
 import (
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -44,8 +45,15 @@ func TestLiveServeSearch(t *testing.T) {
 			t.Logf("result %d: %.600s", i, results[i].Content)
 		}
 	}
-	if len(calls) == 0 || calls[0].Name != "tavily_search" || results[0].IsError {
-		t.Fatalf("calls %+v, results %+v: want a successful tavily_search first", calls, results)
+	// The agent may load its skill first; it must then search, and the
+	// search must succeed.
+	i := slices.IndexFunc(calls, func(c agentapi.Event) bool { return c.Name == "tavily_search" })
+	if i < 0 {
+		t.Fatalf("calls %+v: want a tavily_search", calls)
+	}
+	j := slices.IndexFunc(results, func(r agentapi.Event) bool { return r.ToolUseID == calls[i].ToolUseID })
+	if j < 0 || results[j].IsError {
+		t.Fatalf("results %+v: want tavily_search's to succeed", results)
 	}
 	if end.Type != agentapi.TypeRunDone || !strings.Contains(end.Answer, "http") {
 		t.Fatalf("end %+v: want a finished run whose answer cites a URL", end)

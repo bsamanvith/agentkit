@@ -169,6 +169,9 @@ func expected(o Op, pre map[string]string, l memory.Limits) (map[string]string, 
 		return nil, "path " + o.Path + " is invalid"
 	}
 	post := maps.Clone(pre)
+	if t, ok := written(o); ok && memory.CheckText(t) != nil {
+		return nil, "the text is not readable text"
+	}
 	switch o.Kind {
 	case "view":
 		if !existsAt(pre, p) {
@@ -244,6 +247,17 @@ func expected(o Op, pre map[string]string, l memory.Limits) (map[string]string, 
 	return post, ""
 }
 
+// written is the text o writes, for the commands that write one.
+func written(o Op) (string, bool) {
+	switch o.Kind {
+	case "create", "insert":
+		return o.Text, true
+	case "str_replace":
+		return o.New, true
+	}
+	return "", false
+}
+
 // justified says why err is not a reason for o to fail on pre, or "" if it
 // is.
 func justified(o Op, pre map[string]string, l memory.Limits, err error) string {
@@ -271,6 +285,11 @@ func justified(o Op, pre map[string]string, l memory.Limits, err error) string {
 		return "the paths are valid"
 	case perr != nil:
 		return "an invalid path must be ErrInvalidPath"
+	case is(err, memory.ErrNotText):
+		if t, ok := written(o); ok && memory.CheckText(t) != nil {
+			return ""
+		}
+		return "the text is readable"
 	case is(err, memory.ErrNotFound):
 		if !existsAt(pre, p) {
 			return ""

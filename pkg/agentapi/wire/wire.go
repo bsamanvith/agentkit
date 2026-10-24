@@ -688,6 +688,29 @@ type RunRequest struct {
 	// as structured text the agent reads. It continues a conversation
 	// (ConversationID) whose agent has UI on.
 	UIAction *UIAction `json:"ui_action,omitempty"`
+	// Tools narrows the agent's tools for this run: which of its toolsets
+	// the model gets, and whether their tools are sent directly or found
+	// with tool search. Absent keeps the agent's. The run keeps it when it
+	// is resumed; a resume (no message) cannot set one.
+	Tools *ToolChoice `json:"tools,omitempty"`
+}
+
+// The modes of ToolChoice.Search.
+const (
+	ToolSearchDirect = "direct"
+	ToolSearchSearch = "search"
+)
+
+// ToolChoice is a run's choice of tools (RunRequest.Tools).
+type ToolChoice struct {
+	// Toolsets names the agent's toolsets to keep (as GET /v1/agents lists
+	// them). Absent keeps every one; [] keeps none. Tools of no toolset
+	// (skills, memory, ask_user) are always kept.
+	Toolsets []string `json:"toolsets"`
+	// Search is ToolSearchDirect (every chosen tool is sent),
+	// ToolSearchSearch (the chosen tools are held back behind tool_search,
+	// which loads them as the model finds them), or "" for the agent's.
+	Search string `json:"search,omitempty"`
 }
 
 // UIAction is a person's action on an A2UI surface: a button's action

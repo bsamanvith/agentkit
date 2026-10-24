@@ -324,6 +324,22 @@ func testLimits(t *testing.T, newStore NewStore) {
 	r.ok(rename("/memories/d.md", "/memories/e/d.md"))
 }
 
+// testText: files hold readable text. Tabs, line ends and any script go
+// in; a write of bytes that are not UTF-8, or of another control character,
+// fails with ErrNotText and changes nothing, whichever command writes it.
+func testText(t *testing.T, newStore NewStore) {
+	r := newRig(t, newStore, memory.Config{})
+	r.ok(create("/memories/notes.md", "col\tcol\r\nunits: metric\nname: Søren, 東京 🙂\n"))
+	for _, bad := range []string{"\x00", "a\x1b[31m", "\xff\xfe", "\u0085", "\x7f", "ok\xc3"} {
+		r.fails(create("/memories/bin.md", bad), memory.ErrNotText)
+		r.fails(create("/memories/notes.md", bad), memory.ErrNotText)
+		r.fails(replace("/memories/notes.md", "metric", bad), memory.ErrNotText)
+		r.fails(insert("/memories/notes.md", 1, bad), memory.ErrNotText)
+	}
+	r.ok(replace("/memories/notes.md", "metric", "imperial\t(US)"))
+	r.ok(insert("/memories/notes.md", 0, "# Notes"))
+}
+
 // testCanceled: a canceled context is refused before anything is done.
 func testCanceled(t *testing.T, newStore NewStore) {
 	s := newStore(t, memory.Config{})

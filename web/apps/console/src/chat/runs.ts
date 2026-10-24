@@ -20,6 +20,7 @@ import {
 } from "@agentkit/agent-ui";
 import { ApiError, NetworkError, type AgentClient, type RunEvent, type RunRequest } from "@agentkit/agent-ui/api";
 import type { Drafts } from "./drafts";
+import { ToolChoices } from "./tool-choices";
 
 /** What is kept of an answer that ended in this tab: its history doesn't carry usage or errors. */
 export type AnswerMeta = Pick<AssistantTurn, "state" | "usage" | "turns" | "durationMs" | "error" | "runId">;
@@ -70,6 +71,8 @@ export class RunStore {
   readonly drafts: Drafts;
   /** What the person typed or picked on the agents' surfaces, by conversation. */
   readonly edits = new SurfaceEdits();
+  /** Each chat's choice of tools (T115), sent with every message. */
+  readonly choices = new ToolChoices();
   #hooks: Hooks;
 
   constructor(drafts: Drafts, hooks: Hooks) {
@@ -118,7 +121,19 @@ export class RunStore {
     const exchange = base.filter((t) => t.role === "user").length + 1;
     const user: UserTurn = { role: "user", key: `u${Date.now()}`, text, pending: true };
     this.drafts.set(id, "");
-    void this.#start(client, id, { message: text, conversation_id: id }, { base, user, exchange }, agent);
+    void this.#start(
+      client,
+      id,
+      this.#withTools(id, { message: text, conversation_id: id }),
+      { base, user, exchange },
+      agent,
+    );
+  }
+
+  /** req with the chat's tool choice, if it made one. */
+  #withTools(id: string, req: RunRequest): RunRequest {
+    const tools = this.choices.request(id);
+    return tools ? { ...req, tools } : req;
   }
 
   /**
@@ -139,7 +154,7 @@ export class RunStore {
         context: action.context,
       },
     };
-    void this.#start(client, id, req, { base, user, exchange }, agent);
+    void this.#start(client, id, this.#withTools(id, req), { base, user, exchange }, agent);
   }
 
   /** Resumes an interrupted conversation: a run with no message, which adds no bubble. */
@@ -170,7 +185,8 @@ export class RunStore {
     this.#timers.delete(id);
     if (!s.live?.user || !s.problem?.busy) return;
     const { base, user, exchange } = s.live;
-    void this.#start(client, id, { message: user.text, conversation_id: id }, { base, user, exchange }, agent, true);
+    const req = this.#withTools(id, { message: user.text, conversation_id: id });
+    void this.#start(client, id, req, { base, user, exchange }, agent, true);
   }
 
   /** Cancel on a busy message: it goes back to the composer. */
@@ -183,6 +199,7 @@ export class RunStore {
   forget(id: string) {
     this.#states.delete(id);
     this.drafts.set(id, "");
+    this.choices.set(id, {});
     this.edits.forget(id);
     this.#list++;
     this.#emit();
@@ -199,6 +216,7 @@ export class RunStore {
     this.#timers.clear();
     this.#states.clear();
     this.drafts.clear();
+    this.choices.clear();
     this.edits.clear();
     this.#list++;
     this.#emit();

@@ -34,6 +34,7 @@ func RunStore(t *testing.T, newStore NewStore) {
 	t.Run("Isolation", func(t *testing.T) { t.Parallel(); testIsolation(t, newStore) })
 	t.Run("PathRules", func(t *testing.T) { t.Parallel(); testPathRules(t, newStore) })
 	t.Run("Limits", func(t *testing.T) { t.Parallel(); testLimits(t, newStore) })
+	t.Run("Text", func(t *testing.T) { t.Parallel(); testText(t, newStore) })
 	t.Run("Canceled", func(t *testing.T) { t.Parallel(); testCanceled(t, newStore) })
 	t.Run("Simulation", func(t *testing.T) { t.Parallel(); testSimulation(t, newStore) })
 	t.Run("Concurrent", func(t *testing.T) { t.Parallel(); testConcurrent(t, newStore) })

@@ -125,6 +125,9 @@ func checkWrite(f Files, l memory.Limits, path, text string, old int64, had bool
 
 // Create is [memory.Store.Create].
 func Create(f Files, l memory.Limits, path, text string) error {
+	if err := memory.CheckText(text); err != nil {
+		return err
+	}
 	old, had, err := f.Get(path)
 	if err != nil {
 		return err
@@ -164,6 +167,9 @@ func StrReplace(f Files, l memory.Limits, path, old, new string) error {
 	if old == "" {
 		return fmt.Errorf("%w: old text is empty", memory.ErrInvalid)
 	}
+	if err := memory.CheckText(new); err != nil {
+		return err
+	}
 	text, err := getFile(f, path)
 	if err != nil {
 		return err
@@ -180,6 +186,9 @@ func StrReplace(f Files, l memory.Limits, path, old, new string) error {
 
 // Insert is [memory.Store.Insert].
 func Insert(f Files, l memory.Limits, path string, line int, insert string) error {
+	if err := memory.CheckText(insert); err != nil {
+		return err
+	}
 	text, err := getFile(f, path)
 	if err != nil {
 		return err

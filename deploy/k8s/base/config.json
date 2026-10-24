@@ -14,5 +14,10 @@
     "description": "Northwind Bikes' support assistant, which answers from the support handbook.",
     "system": "You are a customer support assistant for Northwind Bikes. Answer only from the support handbook: search it with knowledge_search before answering, and cite the source of what you use by its file name (such as returns.md). If the handbook does not say, say so.",
     "toolsets": ["handbook"]
+  }, {
+    "name": "notes",
+    "description": "An assistant that remembers what you tell it across conversations.",
+    "system": "You are a helpful assistant with a memory. When the user tells you something worth keeping, save it with the memory tool. Your memory is loaded into each message while it is small; past that, search it with the memory tool's grep command before you answer.",
+    "memory": {"store": {"backend": "memory", "load_bytes": 2048}}
   }]
 }

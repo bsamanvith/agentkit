@@ -132,7 +132,7 @@ pids+=($!)
 start toolsets AGENTKIT_COMPONENTS=toolsets,mcp-server AGENTKIT_ADDR="127.0.0.1:$toolsets" \
 	AGENTKIT_API_TOKEN="$token"
 start runner AGENTKIT_COMPONENTS=runner AGENTKIT_ADDR="127.0.0.1:$runner" \
-	AGENTKIT_TOOLSETS_URL="http://127.0.0.1:$toolsets" \
+	AGENTKIT_TOOLSETS_URL="http://127.0.0.1:$toolsets" AGENTKIT_MEMORY_URL="http://127.0.0.1:$port" \
 	ANTHROPIC_API_KEY=smoke-dummy-key ANTHROPIC_BASE_URL="http://127.0.0.1:$model"
 store=()
 if [ -n "${AGENTKIT_STORE:-}" ]; then

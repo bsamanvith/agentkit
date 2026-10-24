@@ -140,6 +140,59 @@ func toolResult(req llm.Request, id string) (string, bool) {
 	return "", false
 }
 
+// lastText is the text of the last message of req, its blocks joined.
+func lastText(req llm.Request) string {
+	if len(req.Messages) == 0 {
+		return ""
+	}
+	var parts []string
+	for _, b := range req.Messages[len(req.Messages)-1].Content {
+		if t, ok := b.(llm.Text); ok {
+			parts = append(parts, t.Text)
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
+// TestMemoryLoads: each new message starts with the agent's memory: nothing
+// while it is empty, every file's text while it is small, and past
+// load_bytes the file list, after which the agent greps it.
+func TestMemoryLoads(t *testing.T) {
+	t.Parallel()
+	config := `{"agents": [{"name": "default", "model": {"id": "m"},
+	  "memory": {"store": {"backend": "memory", "load_bytes": 40}}}]}`
+	fake := llmtest.NewFake(t,
+		memoryCall("save", `{"command":"create","path":"/memories/prefs.md","file_text":"Units: metric\n"}`), llmtest.Text("ok"),
+		memoryCall("more", `{"command":"create","path":"/memories/notes.md","file_text":"`+strings.Repeat("x", 30)+`"}`), llmtest.Text("ok"),
+		memoryCall("grep", `{"command":"grep","pattern":"(?i)units"}`), llmtest.Text("Metric."),
+	)
+	s, err := startAgents(t, config, map[string]*llmtest.Fake{"m": fake})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := s.client(t, "")
+	for range 3 {
+		if _, err := c.Run(t.Context(), agentclient.RunRequest{Message: "Which units do I like?"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reqs := fake.Requests()
+	if got := lastText(reqs[0]); got != "Which units do I like?" {
+		t.Errorf("with no memory, the message is %q", got)
+	}
+	if got := lastText(reqs[2]); !strings.HasPrefix(got, "<memory>\n") || !strings.HasSuffix(got, "</memory>\nWhich units do I like?") ||
+		!strings.Contains(got, "<file path=\"/memories/prefs.md\">\nUnits: metric\n</file>") {
+		t.Errorf("with a small memory, the message is\n%s", got)
+	}
+	got := lastText(reqs[4])
+	if !strings.Contains(got, "holds 2 files, 44 in all") || !strings.Contains(got, "grep command") || strings.Contains(got, "Units: metric") {
+		t.Errorf("past load_bytes, the message is\n%s", got)
+	}
+	if out, ok := toolResult(reqs[5], "grep"); !ok || out != "/memories/prefs.md:1: Units: metric" {
+		t.Errorf("grep: %q, ok %v", out, ok)
+	}
+}
+
 // TestAgentWithoutMemoryHasNoMemoryTool: only an agent with a memory
 // section is offered the memory tool (the fakes record the tools of each
 // request), and only native_tool asks the model for the native type.
@@ -449,8 +502,15 @@ func TestSplitMemory(t *testing.T) {
 	if out, ok := toolResult(reqs[9], "u1-view"); !ok || !strings.Contains(out, "Units: metric") {
 		t.Errorf("u1's view in a new conversation: %q, ok %v", out, ok)
 	}
-	if n := invokes.Load(); n != 4 {
-		t.Errorf("the agent API answered %d tool calls, want the 4 memory calls", n)
+	// Each run starts with the memory, loaded from the agent API too.
+	if got := lastText(reqs[8]); !strings.Contains(got, "<file path=\"/memories/me.md\">\nUnits: metric\n</file>") {
+		t.Errorf("u1's new message does not start with u1's memory:\n%s", got)
+	}
+	if got := lastText(reqs[6]); got != "hi" {
+		t.Errorf("u2's new message is %q, want u2's empty memory loaded as nothing", got)
+	}
+	if n := invokes.Load(); n != 4+5 {
+		t.Errorf("the agent API answered %d tool calls, want the 4 memory calls and 5 loads", n)
 	}
 	resp, err := http.Post(apiSrv.URL+"/rpc/memory/Toolsets", "application/json", strings.NewReader("{}")) //nolint:noctx // local server
 	if err != nil || resp.StatusCode != http.StatusUnauthorized {
@@ -470,6 +530,7 @@ func TestMemoryConfigErrors(t *testing.T) {
 		{`{"store": {"backend": "memory", "scope": "team"}}`, "", `scope "team"`},
 		{`{"store": {"backend": "memory", "max_files": -1}}`, "", "negative limit"},
 		{`{"store": {"backend": "memory"}, "extra": 1}`, "", "extra"},
+		{`{"store": {"backend": "memory", "load_bytes": -2}}`, "", "load_bytes -2"},
 		// A toolset with a tool of the same name.
 		{`{"store": {"backend": "memory"}}`, `"mine"`, `has a tool named "memory"`},
 	} {

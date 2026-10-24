@@ -453,8 +453,10 @@ func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built 
 		harness.WithContextWindow(a.Model.window()),
 		harness.WithClock(clk),
 	}
-	if mem != nil && mem.prepare != nil {
-		opts = append(opts, harness.WithPrepare(mem.prepare))
+	if mem != nil {
+		for _, p := range mem.prepare {
+			opts = append(opts, harness.WithPrepare(p))
+		}
 	}
 	if a.DeferLoading.set() || len(skills.lists) > 0 {
 		all, err := tools.List(ctx)

@@ -20,8 +20,9 @@ const MaxViewChars = 16_000
 // ToolInput is the memory tool's input: Claude's memory tool's, one command
 // and the fields it takes.
 type ToolInput struct {
-	Command    string  `json:"command" jsonschema:"One of view, create, str_replace, insert, delete, rename."`
-	Path       string  `json:"path,omitempty" jsonschema:"The file or directory, under /memories (all commands but rename)."`
+	Command    string  `json:"command" jsonschema:"One of view, grep, create, str_replace, insert, delete, rename."`
+	Path       string  `json:"path,omitempty" jsonschema:"The file or directory, under /memories (all commands but rename; grep: /memories when left out)."`
+	Pattern    string  `json:"pattern,omitempty" jsonschema:"grep: a regular expression (RE2 syntax), matched against each line."`
 	ViewRange  []int   `json:"view_range,omitempty" jsonschema:"view: [start_line, end_line] of a file, 1-based; end_line -1 reads to the end."`
 	FileText   *string `json:"file_text,omitempty" jsonschema:"create: the file's content."`
 	OldStr     *string `json:"old_str,omitempty" jsonschema:"str_replace: the text to replace; it must occur exactly once."`
@@ -37,6 +38,7 @@ const toolDescription = `Your memory: a directory of files at /memories that per
 	`Keep it organized: update or remove files that are out of date rather than adding new ones.
 Commands (the "command" field):
 - view: show a directory listing (two levels deep) or a file with line numbers; "view_range" [start, end] shows part of a file (-1 for the end).
+- grep: the lines matching "pattern", a regular expression, in the files under "path" (all of /memories when left out), as path:line: text.
 - create: write "file_text" to "path", creating or overwriting the file.
 - str_replace: replace "old_str", which must occur exactly once in the file, with "new_str".
 - insert: insert "insert_text" after line "insert_line" (0 for the start of the file).
@@ -46,16 +48,27 @@ Every path is under /memories. Files hold plain readable text only, and the memo
 
 // NewTool returns the memory tool over s: one tool, [ToolName], with
 // Claude's memory tool's input ([ToolInput]) and its result texts, so a model
-// trained on that tool uses it as is. Its output is a JSON string. A failed
-// command is a tool error (tool.ErrToolFailed) whose message is the memory
-// tool's error text; a bad input (an unknown command, a missing field) is
-// tool.ErrInvalidInput.
-func NewTool(s Store) (*tool.FuncTool[ToolInput, string], error) {
+// trained on that tool uses it as is, and a grep command. Its output is a
+// JSON string. A failed command is a tool error (tool.ErrToolFailed) whose
+// message is the memory tool's error text; a bad input (an unknown command,
+// a missing field) is tool.ErrInvalidInput.
+//
+// One more command, "load", is the agent's: the description the model reads
+// leaves it out. It returns the memory as a new message starts with it
+// ([WithLoadBytes]): every file's text while the memory is small, the file
+// list past that, and "" when there is nothing to show. A prepare hook calls
+// it through the tool, so that an agent whose tools are remote loads its
+// memory the same way (T129).
+func NewTool(s Store, opts ...ToolOption) (*tool.FuncTool[ToolInput, string], error) {
 	if s == nil {
 		return nil, fmt.Errorf("%w: memory: nil store", tool.ErrInvalidDefinition)
 	}
+	c := toolConfig{loadBytes: DefaultLoadBytes}
+	for _, o := range opts {
+		o(&c)
+	}
 	return tool.Func(ToolName, toolDescription, func(ctx context.Context, in ToolInput) (string, error) {
-		out, err := run(ctx, s, in)
+		out, err := run(ctx, s, c, in)
 		if errors.Is(err, errBadInput) {
 			return "", &tool.Error{Tool: ToolName, Kind: tool.ErrInvalidInput, Err: err}
 		}
@@ -89,7 +102,20 @@ func need[T any](v *T, command, field string) (T, error) {
 	return *v, nil
 }
 
-func run(ctx context.Context, s Store, in ToolInput) (string, error) {
+func run(ctx context.Context, s Store, c toolConfig, in ToolInput) (string, error) {
+	switch in.Command {
+	case "load":
+		return load(ctx, s, c.loadBytes)
+	case "grep":
+		if in.Pattern == "" {
+			return "", badInput("grep needs %q", "pattern")
+		}
+		path := in.Path
+		if path == "" {
+			path = Root
+		}
+		return grep(ctx, s, path, in.Pattern)
+	}
 	if in.Command != "rename" && in.Path == "" {
 		return "", badInput("%s needs %q", in.Command, "path")
 	}
@@ -171,7 +197,7 @@ func run(ctx context.Context, s Store, in ToolInput) (string, error) {
 	case "":
 		return "", badInput("no command")
 	default:
-		return "", badInput("unknown command %q: want view, create, str_replace, insert, delete or rename", in.Command)
+		return "", badInput("unknown command %q: want view, grep, create, str_replace, insert, delete or rename", in.Command)
 	}
 }
 

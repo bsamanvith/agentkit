@@ -11,19 +11,34 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bsamanvith/agentkit/connectors/internal/apikey"
 	"github.com/bsamanvith/agentkit/connectors/internal/httpx"
 	"github.com/bsamanvith/agentkit/connectors/internal/trunc"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 )
 
-// client calls Exa for one toolset instance.
+// client calls Exa for one toolset instance. Each call uses its own copy
+// ([client.forCall]), which holds the caller's key.
 type client struct {
 	http    *http.Client
 	base    string // no trailing slash
-	key     string
+	keys    apikey.Key
+	key     string // the call's, set by forCall
 	clock   clock.Clock
 	log     *slog.Logger
 	timeout time.Duration
+}
+
+// forCall returns a copy of c with the key of ctx's caller: the one from
+// the environment, or the caller's own from the toolset's credential slot.
+func (c *client) forCall(ctx context.Context) (*client, error) {
+	key, err := c.keys.Get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	cc := *c
+	cc.key = key
+	return &cc, nil
 }
 
 // post sends body as JSON to path and returns the response body of a 200.

@@ -2,7 +2,7 @@
 id: T048
 title: "connectors/parallel: search and extract, keyed"
 epic: E10
-status: review
+status: done
 depends_on: [T026, T036]
 ---
 
@@ -84,10 +84,20 @@ API sources (fetch with `curl`; WebFetch may fail on DNS in sessions):
 - [x] **Canary:** The key appears in no tool output, error, log line or MCP response, including when the upstream echoes it. Passes `RunConnector` (`canary`). Also `TestCanaryEchoed`, the fuzz targets, `TestParallelOverMCP` (MCP response), and `rig.check` (every log line and request).
 - [x] **Fuzzing:** `FuzzDecodeSearch` and `FuzzDecodeExtract` never panic, nor do the kit's `FuzzResponsesSearch` and `FuzzResponsesExtract`. `make fuzz FUZZTIME=60s` clean; they also check the output shape, error classes and the key.
 - [x] **Over MCP:** `/mcp/parallel` lists exactly `parallel_search` and `parallel_extract` with schemas, and a call through the MCP client against the fake upstream returns the mapped result. Passes `RunConnector` (`mcp`). Also `TestParallelOverMCP` (cmd/agentkit).
-- [ ] **Live (`-tags live`, needs `PARALLEL_API_KEY`):** a search returns results with URLs and excerpts, and extracting a known page returns content. If the key is not set, leave this unticked with `status: review`. **Not run: no `PARALLEL_API_KEY` in the session.** `TestLive` (`connectors/parallel/live_test.go`) is written and skips without the key.
+- [ ] **Live (`-tags live`, needs `PARALLEL_API_KEY`):** a search returns results with URLs and excerpts, and extracting a known page returns content. If the key is not set, leave this unticked with `status: review`. **Not run: no `PARALLEL_API_KEY` in the session.** `TestLive` (`connectors/parallel/live_test.go`) is written and skips without the key. **Waived by the owner (2026-10-24):** there is no shared server key; each user connects their own Parallel key (next criterion). `TestLive` stays and runs whenever `PARALLEL_API_KEY` is set.
+- [x] **Per-user keys (added 2026-10-24, owner):** a spec with `"credential": {"slot": "parallel", "scope": "user"}` takes each call's key from the calling user's stored credential (`PUT /v1/credentials/parallel`, T045), never from the environment; a user without one gets "parallel is not connected for this account" and Parallel is not called; the user's key is redacted from responses; another kind of credential is refused; `api_key_env` with a slot is refused. `connectors/parallel` `TestEachUserSendsTheirOwnKey`, `TestSlotWithAnotherKindOfCredential`, `TestSlotBuildRules`; the split path is the same code as Exa's (`cmd/agentkit` `TestUsersConnectTheirOwnExaKey`).
 - [x] **Mutation list** recorded (at least: `objective` dropped, extra queries not sent, extract options sent top-level, `errors` dropped, key header missing, key not redacted from an echoed error, retry on 5xx). 22 mutants, all killed: table in Notes.
 
 ## Notes
+
+### Per-user keys (2026-10-24)
+
+The owner asked for no shared Parallel key: a user signs in and connects their own. Built on T044/T045, with no new mechanism:
+
+- `connectors/internal/apikey`: a call's key is `src.Get(ctx)` of the spec's credential slot (an `APIKey`), else the one read from `api_key_env` at build. The client copies itself per call with the caller's key (`forCall`), so redaction uses that user's key.
+- `deploy/local/agent/search.json` gives `parallel` the slot `parallel`, scope `user`; without a vault the toolset is skipped as optional. `scripts/try-agent.sh` makes a vault key for its run.
+- The split deployment carries the caller: `toolrpc` invoke and `runnerrpc` run requests send the context's tenant, user and request id (`tenancy.Carried`), so a toolsets component finds the user's credential; a resumed run acts for `store.Run.User`. The agent API reports a slot toolset's credential from its own config and vault, not the toolsets component's env status.
+- Follow-up: `deploy/k8s` and `deploy/compose` don't serve the search toolsets or a shared vault yet; adding them is `credentials.backend: postgres` and `AGENTKIT_CREDENTIALS_KEY` on the api and toolsets containers.
 
 **Status `review`, for two reasons**, to clear together once someone has a key:
 1. `TestLive` has not run: there was no `PARALLEL_API_KEY` in the session.

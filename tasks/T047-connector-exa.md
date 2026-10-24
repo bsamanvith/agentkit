@@ -2,7 +2,7 @@
 id: T047
 title: "connectors/exa: search and extract (contents), keyed"
 epic: E10
-status: review
+status: done
 depends_on: [T026, T036]
 ---
 
@@ -65,10 +65,20 @@ API source of truth: the OpenAPI spec `https://exa.ai/docs/exa-spec.yaml` (`/sea
 - [x] **Canary:** the key appears in no tool output, error, log line or MCP response, including when the upstream echoes it. Passes `RunConnector` (`canary`: the key echoed in 400, 401 and 500 bodies, over MCP and in logs; and after every subtest). `TestKeyNeverLeaks` (the key JSON-escaped, and in every field of a 200's results), the rig's checks after every call and test, `cmd/agentkit` `TestServeExaOverMCP`.
 - [x] **Fuzzing:** `FuzzDecodeSearch` and `FuzzDecodeContents` never panic (and return the shared shape or `ErrUpstream`); `FuzzResponses` and `FuzzResponsesExtract` (T049's target, through the tools).
 - [x] **Over MCP:** `/mcp/exa` lists exactly `exa_search` and `exa_extract` with schemas, and a call through the MCP client against the fake upstream returns the mapped result. `cmd/agentkit` `TestServeExaOverMCP`; passes `RunConnector` (`mcp`, `concurrency`).
-- [ ] **Live (`-tags live`, needs `EXA_API_KEY`):** a search returns results with URLs and content, and extracting a known page returns its text. If the key is not set, leave this unticked with `status: review`.
+- [ ] **Live (`-tags live`, needs `EXA_API_KEY`):** a search returns results with URLs and content, and extracting a known page returns its text. If the key is not set, leave this unticked with `status: review`. **Waived by the owner (2026-10-24):** there is no shared server key; each user connects their own Exa key (next criterion). `TestLive` stays and runs whenever `EXA_API_KEY` is set.
+- [x] **Per-user keys (added 2026-10-24, owner):** a spec with `"credential": {"slot": "exa", "scope": "user"}` takes each call's key from the calling user's stored credential (`PUT /v1/credentials/exa`, T045), never from the environment; a user without one gets "exa is not connected for this account" and Exa is not called; the user's key is redacted from responses; another kind of credential is refused; `api_key_env` with a slot is refused. `connectors/exa` `TestEachUserSendsTheirOwnKey`, `TestSlotWithAnotherKindOfCredential`, `TestSlotBuildRules`, and in the split deployment (toolsets component, agent API over `/rpc/`, one vault) `cmd/agentkit` `TestUsersConnectTheirOwnExaKey`.
 - [x] **Mutation list** recorded (at least: `numResults` not sent, highlights not joined, per-URL failures dropped, key header missing, key not redacted from an echoed error, retry on 5xx). In Notes.
 
 ## Notes
+
+### Per-user keys (2026-10-24)
+
+The owner asked for no shared Exa key: a user signs in and connects their own. Built on T044/T045, with no new mechanism:
+
+- `connectors/internal/apikey`: a call's key is `src.Get(ctx)` of the spec's credential slot (an `APIKey`), else the one read from `api_key_env` at build. The client copies itself per call with the caller's key (`forCall`), so redaction uses that user's key.
+- `deploy/local/agent/search.json` gives `exa` the slot `exa`, scope `user`; without a vault the toolset is skipped as optional. `scripts/try-agent.sh` makes a vault key for its run.
+- The split deployment carries the caller: `toolrpc` invoke and `runnerrpc` run requests send the context's tenant, user and request id (`tenancy.Carried`), so a toolsets component finds the user's credential; a resumed run acts for `store.Run.User`. The agent API reports a slot toolset's credential from its own config and vault, not the toolsets component's env status.
+- Follow-up: `deploy/k8s` and `deploy/compose` don't serve the search toolsets or a shared vault yet; adding them is `credentials.backend: postgres` and `AGENTKIT_CREDENTIALS_KEY` on the api and toolsets containers.
 
 ### Status: review
 

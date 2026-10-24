@@ -36,6 +36,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/policy"
 	"github.com/bsamanvith/agentkit/pkg/rpc"
 	"github.com/bsamanvith/agentkit/pkg/runner"
+	"github.com/bsamanvith/agentkit/pkg/tenancy"
 )
 
 // Service is the service's name: a component serving it mounts its server at
@@ -108,6 +109,9 @@ type runReq struct {
 	Interaction harness.Interaction `json:"interaction,omitempty"`
 	Pending     *harness.Pending    `json:"pending,omitempty"`
 	Answers     []harness.Answer    `json:"answers,omitempty"`
+	// Caller is the tenant and user the run acts for, which its tools
+	// (on a toolsets component too) read their credentials by.
+	Caller tenancy.Carried `json:"caller,omitzero"`
 }
 
 // event is a [harness.Event] on the wire: only the fields its kind sets.
@@ -184,6 +188,11 @@ func Register(s *rpc.Server, agents map[string]runner.Agent) error {
 				yield(event{}, fmt.Errorf("%w: %q", ErrNoAgent, r.Agent))
 				return
 			}
+			ctx, err := r.Caller.Into(ctx)
+			if err != nil {
+				yield(event{}, fmt.Errorf("%w: caller: %w", rpc.ErrBadRequest, err))
+				return
+			}
 			in := harness.Input{
 				Transcript: r.Transcript, At: r.At, ToolPolicy: r.ToolPolicy,
 				Interaction: r.Interaction, Pending: r.Pending, Answers: r.Answers,
@@ -256,6 +265,7 @@ func (a *agent) Run(ctx context.Context, in harness.Input) iter.Seq2[harness.Eve
 		req := runReq{
 			Agent: a.name, Transcript: in.Transcript, At: in.At, ToolPolicy: in.ToolPolicy,
 			Interaction: in.Interaction, Pending: in.Pending, Answers: in.Answers,
+			Caller: tenancy.Carry(ctx),
 		}
 		if in.Message.Role != "" || len(in.Message.Content) > 0 {
 			m := in.Message

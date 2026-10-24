@@ -20,8 +20,12 @@
 // # Settings
 //
 // All optional. Unknown fields are refused, and so is a literal "api_key":
-// config files get committed, so the key comes from the environment variable
-// named in api_key_env.
+// config files get committed. The key is each caller's own when the
+// toolset's spec names a credential slot ("credential": {"slot":
+// "parallel", "scope": "user"}): a call reads it from the calling user's
+// stored credential, and a user with none gets "parallel is not connected
+// for this account". Without a slot it comes from the environment variable
+// named in api_key_env, which a spec with a slot must not set.
 //
 //	{
 //	  "api_key_env": "PARALLEL_API_KEY",

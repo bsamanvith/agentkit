@@ -7,8 +7,8 @@
       {"name": "math", "type": "math"},
       {"name": "files", "type": "files", "settings": {"root": ".data/workspace", "create_root": true}, "optional": true},
       {"name": "tavily", "type": "tavily", "settings": {"auth": "auto"}, "optional": true},
-      {"name": "exa", "type": "exa", "optional": true},
-      {"name": "parallel", "type": "parallel", "optional": true},
+      {"name": "exa", "type": "exa", "credential": {"slot": "exa", "scope": "user"}, "optional": true},
+      {"name": "parallel", "type": "parallel", "credential": {"slot": "parallel", "scope": "user"}, "optional": true},
       {"name": "handbook", "type": "knowledge", "optional": true, "settings": {"root": "knowledge", "description": "Northwind Bikes' customer support handbook: returns, warranty, shipping, e-bike error codes, escalation"}},
       {"name": "agentkit", "type": "agentkit", "settings": {"timeout": "5m"}}
     ]

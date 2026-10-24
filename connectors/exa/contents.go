@@ -63,6 +63,10 @@ func extractCall(ctx context.Context, c *client, s settings, in extractIn) (extr
 	if err != nil {
 		return extractOut{}, err
 	}
+	c, err = c.forCall(ctx)
+	if err != nil {
+		return extractOut{}, err
+	}
 	body, err := c.post(ctx, contentsPath, req)
 	if err != nil {
 		return extractOut{}, err

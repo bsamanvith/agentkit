@@ -445,14 +445,21 @@ curl -sN localhost:8080/v1/runs -H "Authorization: Bearer $AGENTKIT_API_TOKEN" -
 `deploy/local/agent/search.json` adds three web search toolsets to the demo tools, each served over MCP at its own route, and has these agents: `default`, a plain assistant with the demo tools, `search`, a research assistant with the web search toolsets, and `workspace` (section 7):
 
 - `tavily`: `tavily_search` (web search) and `tavily_extract` (a page's content), at `/mcp/tavily`. No key needed.
-- `exa`: `exa_search` and `exa_extract` through [Exa](https://exa.ai), at `/mcp/exa`. Needs `EXA_API_KEY`.
-- `parallel`: `parallel_search` and `parallel_extract` through [Parallel](https://parallel.ai), at `/mcp/parallel`. Needs `PARALLEL_API_KEY`.
+- `exa`: `exa_search` and `exa_extract` through [Exa](https://exa.ai), at `/mcp/exa`. Each user connects their own Exa key.
+- `parallel`: `parallel_search` and `parallel_extract` through [Parallel](https://parallel.ai), at `/mcp/parallel`. Each user connects their own Parallel key.
 
 ```sh
-export EXA_API_KEY=...        # optional: without it Exa is skipped
-export PARALLEL_API_KEY=...   # optional: without it Parallel is skipped
 scripts/try-agent.sh --agent search     # uses search.json; AGENTKIT_CONFIG picks another
 ```
+
+Exa and Parallel have no server key in `search.json`: their specs name a credential slot of scope `user` (`"credential": {"slot": "exa", "scope": "user"}`), so each signed-in user stores their own key in the credential vault (section 5, `credentials`), from the console's Connections page or the API, and every call uses the key of the user it runs for:
+
+```sh
+curl -X PUT localhost:8080/v1/credentials/exa -H "Authorization: Bearer $MY_KEY" -d '{"kind": "api_key", "api_key": "..."}'
+curl -X PUT localhost:8080/v1/credentials/parallel -H "Authorization: Bearer $MY_KEY" -d '{"kind": "api_key", "api_key": "..."}'
+```
+
+The caller must be a user: a local user signed in to the console, or an API key with a `user` (`AGENTKIT_API_TOKEN` has none). Until a user connects a key, that user's calls answer "exa is not connected for this account" and the agent carries on with the other tools; `GET /v1/credentials` and `GET /v1/toolsets` show each slot's status for the caller. The slots need a vault, so a server without `AGENTKIT_CREDENTIALS_KEY` skips both toolsets (they are optional); `scripts/try-agent.sh` makes a key for its run (memory backend: keys are lost when it stops). In the split deployment, the agent API and the toolsets component open the same vault (`credentials.backend` `postgres`, the same `AGENTKIT_CREDENTIALS_KEY`), and the calling user reaches the toolsets component with each call. A single-user setup can still read one server key from the environment instead: drop `credential` and set `EXA_API_KEY` or `PARALLEL_API_KEY` (or name another variable in `api_key_env`; a spec cannot have both).
 
 Then ask the `search` agent something current, e.g. `{"message":"What is the latest Go release? Cite the source.","agent":"search"}`: the run's events show a `tool_call` to one of the search tools, and the answer cites URLs. `GET /v1/toolsets` shows which search toolsets are ready, and for a skipped one the reason and the key variable it reads (never the key).
 
@@ -464,13 +471,13 @@ No Tavily key is needed: without one the toolset runs keyless, at Tavily's free 
 
 ### Exa
 
-Exa needs an API key (dashboard.exa.ai); the config names the environment variable it is read from, never the key itself. Without `EXA_API_KEY` the server still starts: the `exa` toolset is optional, so it is skipped, the log says which variable is missing, and `/readyz` reports `degraded`. With `--docker`, pass the key into the container (`-e EXA_API_KEY`).
+Exa needs an API key (dashboard.exa.ai): each user's own, from a credential slot (above), or one server key from the environment, whose variable the config names (never the key itself). Without a slot and without `EXA_API_KEY` the server still starts: the `exa` toolset is optional, so it is skipped, the log says which variable is missing, and `/readyz` reports `degraded`. With `--docker`, pass the key into the container (`-e EXA_API_KEY`).
 
 Settings of an `exa` toolset (all optional; unknown fields, including a literal `api_key`, fail startup):
 
 | Field | Default | Meaning |
 |---|---|---|
-| `api_key_env` | `EXA_API_KEY` | environment variable holding the key |
+| `api_key_env` | `EXA_API_KEY` | environment variable holding the key, for a spec without a credential slot |
 | `base_url` | `https://api.exa.ai` | another server, e.g. a local replay (`https`, or `http` to loopback only) |
 | `timeout` | `30s` | per call, including one retry on 429 |
 | `max_content_chars` | `{"search": 4000, "extract": 20000}` | cap on each result's content; a cut ends with e.g. `…[truncated 12,400 characters; call exa_extract on this URL for the full page]` |
@@ -484,13 +491,13 @@ Settings of an `exa` toolset (all optional; unknown fields, including a literal 
 
 ### Parallel
 
-Parallel needs an API key (platform.parallel.ai). The config names the environment variable it is read from, never the key itself. Without `PARALLEL_API_KEY` the server still starts: the `parallel` toolset is optional, so it is skipped, and `/readyz` reports `degraded` and names the variable. With the container (section 4), pass the key with `-e PARALLEL_API_KEY` (`scripts/try-agent.sh --docker` passes it when set).
+Parallel needs an API key (platform.parallel.ai): each user's own, from a credential slot (above), or one server key from the environment, whose variable the config names (never the key itself). Without a slot and without `PARALLEL_API_KEY` the server still starts: the `parallel` toolset is optional, so it is skipped, and `/readyz` reports `degraded` and names the variable. With the container (section 4), pass the key with `-e PARALLEL_API_KEY` (`scripts/try-agent.sh --docker` passes it when set).
 
 Settings of a `parallel` toolset (all optional; unknown fields, including a literal `api_key`, fail startup; full reference: [connectors/parallel](../connectors/parallel/doc.go)):
 
 | Field | Default | Meaning |
 |---|---|---|
-| `api_key_env` | `PARALLEL_API_KEY` | environment variable holding the key |
+| `api_key_env` | `PARALLEL_API_KEY` | environment variable holding the key, for a spec without a credential slot |
 | `base_url` | `https://api.parallel.ai` | another server, e.g. a local replay (`https`, or `http` to loopback only) |
 | `timeout` | `30s` | per request attempt (one retry on 429) |
 | `max_content_chars` | `{"search": 4000, "extract": 20000}` | cap on each result's content; a cut ends with e.g. `…[truncated 12,400 characters; call parallel_extract on this URL for more of the page]` |

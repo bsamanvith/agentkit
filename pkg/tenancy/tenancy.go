@@ -125,3 +125,34 @@ func Request(ctx context.Context) (string, bool) {
 	r := scopeOf(ctx).request
 	return r, r != ""
 }
+
+// Carried is a context's tenant, user and request id as plain strings: what
+// a component sends with a call to another one (pkg/tool/toolrpc,
+// pkg/runner/runnerrpc), so that the callee acts for the same tenant and
+// user, as a user's own credential needs. The callee trusts it: the
+// components' RPC token is what authenticates the caller.
+type Carried struct {
+	Tenant  string `json:"tenant,omitempty"`
+	User    string `json:"user,omitempty"`
+	Request string `json:"request,omitempty"`
+}
+
+// Carry returns what ctx carries.
+func Carry(ctx context.Context) Carried {
+	s := scopeOf(ctx)
+	return Carried{Tenant: s.tenant.id, User: s.user, Request: s.request}
+}
+
+// Into returns ctx carrying c's tenant, user and request id, replacing what
+// ctx carried. With no tenant in c, it is ctx with none of them. It fails
+// for an invalid tenant id.
+func (c Carried) Into(ctx context.Context) (context.Context, error) {
+	if c.Tenant == "" {
+		return context.WithValue(ctx, scopeKey{}, scope{}), nil
+	}
+	t, err := NewTenant(c.Tenant)
+	if err != nil {
+		return nil, err
+	}
+	return context.WithValue(ctx, scopeKey{}, scope{tenant: t, user: c.User, request: c.Request}), nil
+}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"iter"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -666,11 +667,17 @@ func TestCancelOfARunHeldElsewhereIsRefused(t *testing.T) {
 }
 
 // A run is stored as the run of the user its context acts for, and keeps
-// that user on a resume by a process that knows none; a run started for no
+// that user on a resume by a process that knows none, where its agent (and
+// so its tools' credentials) acts for that user too; a run started for no
 // user has none.
 func TestRunsAreStoredForTheirUser(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
+	var mu sync.Mutex
+	var actedFor []string
+	w.agent = func(string) runner.Agent {
+		return userSpy{h: mustHarness(t, w), seen: func(u string) { mu.Lock(); actedFor = append(actedFor, u); mu.Unlock() }}
+	}
 	p := w.process()
 	anon := w.ctx
 	w.ctx = tenancy.WithUser(anon, "ann")
@@ -696,6 +703,11 @@ func TestRunsAreStoredForTheirUser(t *testing.T) {
 	if run := lastDone(t, evs).Run; run.User != "bob" {
 		t.Errorf("queued run resumed with no user = %+v, want user bob", run)
 	}
+	mu.Lock()
+	if got := strings.Join(actedFor, ","); got != "ann,bob" {
+		t.Errorf("the agent acted for %q, want ann,bob", got)
+	}
+	mu.Unlock()
 	evs, err = p.run("c", w.model.on("second", 0))
 	if err != nil {
 		t.Fatal(err)
@@ -703,4 +715,16 @@ func TestRunsAreStoredForTheirUser(t *testing.T) {
 	if run := lastDone(t, evs).Run; run.User != "" {
 		t.Errorf("run of nobody = %+v, want no user", run)
 	}
+}
+
+// userSpy is an agent that reports the user each run acts for.
+type userSpy struct {
+	h    runner.Agent
+	seen func(user string)
+}
+
+func (a userSpy) Run(ctx context.Context, in harness.Input) iter.Seq2[harness.Event, error] {
+	u, _ := tenancy.User(ctx)
+	a.seen(u)
+	return a.h.Run(ctx, in)
 }

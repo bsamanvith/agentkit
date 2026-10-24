@@ -299,7 +299,7 @@ func ModuleRules() Rules {
 			"pkg/rpc": {},
 			// Toolsets on the wire: the tool abstraction over the transport.
 			// Its tests run the registry conformance suite through it.
-			"pkg/tool/toolrpc": {"pkg/tool", "pkg/rpc", "pkg/tool/tooltest"},
+			"pkg/tool/toolrpc": {"pkg/tool", "pkg/rpc", "pkg/tenancy", "pkg/tool/tooltest"},
 			// Runner pools (E20, T104): where a run's agent runs, over the
 			// runner's Agent and Placement, never the store.
 			"pkg/runner/pool": {"pkg/runner", "pkg/harness"},
@@ -307,7 +307,7 @@ func ModuleRules() Rules {
 			// errors) over the transport, never the store: the runner that
 			// keeps runs stays where the store is.
 			"pkg/runner/runnerrpc": {
-				"pkg/runner", "pkg/harness", "pkg/llm", "pkg/rpc", "pkg/policy",
+				"pkg/runner", "pkg/harness", "pkg/llm", "pkg/rpc", "pkg/policy", "pkg/tenancy",
 				"pkg/llm/llmtest", "pkg/tool", "pkg/tool/tooltest", "pkg/clock/clocktest",
 			},
 			// The web component serves the embedded console build over
@@ -432,9 +432,11 @@ func ModuleRules() Rules {
 			// Connectors are toolset factories over plain net/http: the tool
 			// abstraction, the factory contract and the clock, never the
 			// server, the harness or another connector (E10). Their tests
-			// add the fake clock and the golden helper.
+			// add the fake clock and the golden helper. pkg/credentials is
+			// for the credentials.Source a factory is given (T044) and the
+			// credential types it returns, never a vault.
 			"connectors": {
-				"pkg/tool", "pkg/toolset", "pkg/clock",
+				"pkg/tool", "pkg/toolset", "pkg/clock", "pkg/credentials",
 				"pkg/clock/clocktest", "internal/testkit",
 				"pkg/toolset/toolsettest",
 			},
@@ -447,7 +449,7 @@ func ModuleRules() Rules {
 		// package. Not connectors, so not run through the kit (their own
 		// tests cover them).
 		ConnectorLibraries: []string{
-			"connectors/internal/httpx", "connectors/internal/trunc",
+			"connectors/internal/httpx", "connectors/internal/trunc", "connectors/internal/apikey",
 			"connectors/google/common",
 		},
 		// The agent API's wire types live in their own package so that

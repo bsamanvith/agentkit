@@ -463,6 +463,12 @@ func (r *Runner) resume(ctx context.Context, runID string, c resumeConfig) (*Exe
 	if err != nil {
 		return nil, fmt.Errorf("run %q: %w", runID, err)
 	}
+	if run.User != "" {
+		// The run goes on for the user it was started for, whoever resumes
+		// it (the recovery loop, a dispatcher, an answer): their own
+		// credentials are what its tools use.
+		ctx = tenancy.WithUser(ctx, run.User)
+	}
 	if run.Status == store.StatusCompleted && c.decision == nil {
 		return r.completed(ctx, run)
 	}

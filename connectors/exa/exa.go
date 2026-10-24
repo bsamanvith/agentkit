@@ -14,8 +14,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bsamanvith/agentkit/connectors/internal/apikey"
 	"github.com/bsamanvith/agentkit/connectors/internal/httpx"
 	"github.com/bsamanvith/agentkit/pkg/clock"
+	"github.com/bsamanvith/agentkit/pkg/credentials"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
@@ -30,7 +32,8 @@ const DefaultBaseURL = "https://api.exa.ai"
 // [tool.Error] of kind [tool.ErrToolFailed].
 var (
 	// ErrMissingKey reports, from Build, that the environment variable named
-	// by api_key_env is unset or empty.
+	// by api_key_env is unset or empty (for a toolset without a credential
+	// slot).
 	ErrMissingKey = errors.New("exa API key not set")
 	// ErrKeyRejected reports a 401 or 403 from Exa.
 	ErrKeyRejected = errors.New("exa rejected the API key")
@@ -76,7 +79,7 @@ const (
 	dateOnlyLayout        = "2006-01-02"
 	exaDateTimeLayout     = "2006-01-02T15:04:05.000Z"
 	endOfDay              = 24*time.Hour - time.Millisecond
-	apiKeySettingRejected = "api_key is not accepted: put the key in an environment variable and name it in api_key_env (default " + defaultAPIKeyEnv + ")"
+	apiKeySettingRejected = "api_key is not accepted: give the toolset a credential slot that each user connects their key to, or put the key in an environment variable and name it in api_key_env (default " + defaultAPIKeyEnv + ")"
 )
 
 // searchTypes and categories are the enums of Exa's OpenAPI spec
@@ -163,6 +166,8 @@ type settings struct {
 	MaxContentChars contentCaps     `json:"max_content_chars"`
 	SearchDefaults  searchDefaults  `json:"search_defaults"`
 	ExtractDefaults extractDefaults `json:"extract_defaults"`
+	// keyEnvSet: api_key_env was given, not defaulted.
+	keyEnvSet bool
 }
 
 type contentCaps struct {
@@ -212,15 +217,14 @@ func (f *factory) Build(_ context.Context, in toolset.BuildInput) ([]tool.Tool, 
 		}
 		base = f.baseURL
 	}
-	key, ok := f.lookupEnv(s.APIKeyEnv)
-	key = strings.TrimSpace(key)
-	if !ok || key == "" {
-		return nil, fmt.Errorf("%w: environment variable %s is unset or empty (it must hold the Exa API key; api_key_env names it)", ErrMissingKey, s.APIKeyEnv)
+	keys, err := f.keys(s, in.Credentials)
+	if err != nil {
+		return nil, err
 	}
 	c := &client{
 		http:    f.client,
 		base:    strings.TrimSuffix(base, "/"),
-		key:     key,
+		keys:    keys,
 		clock:   f.clock,
 		log:     f.log,
 		timeout: time.Duration(s.Timeout),
@@ -235,9 +239,31 @@ func (f *factory) Build(_ context.Context, in toolset.BuildInput) ([]tool.Tool, 
 	if err != nil {
 		return nil, err
 	}
-	f.log.Info("exa toolset built", "api_key_env", s.APIKeyEnv, "search_type", s.SearchDefaults.Type,
+	keyFrom := "env " + s.APIKeyEnv
+	if keys.PerCaller() {
+		keyFrom = "credential slot"
+	}
+	f.log.Info("exa toolset built", "api_key", keyFrom, "search_type", s.SearchDefaults.Type,
 		"model_chooses_type", s.SearchDefaults.ModelChoosesType, "contents", s.SearchDefaults.Contents)
 	return []tool.Tool{classified{search}, classified{extract}}, nil
+}
+
+// keys is where the toolset's calls get their key: the caller's credential
+// when the spec names a slot (src), else the environment variable that
+// api_key_env names, read once now.
+func (f *factory) keys(s settings, src credentials.Source) (apikey.Key, error) {
+	if src != nil {
+		if s.keyEnvSet {
+			return apikey.Key{}, fmt.Errorf("%w: api_key_env and the toolset's credential slot are two places for the key: give one", toolset.ErrInvalidSettings)
+		}
+		return apikey.FromSource(src), nil
+	}
+	key, ok := f.lookupEnv(s.APIKeyEnv)
+	key = strings.TrimSpace(key)
+	if !ok || key == "" {
+		return apikey.Key{}, fmt.Errorf("%w: environment variable %s is unset or empty (it must hold the Exa API key; api_key_env names it, or give the toolset a credential slot)", ErrMissingKey, s.APIKeyEnv)
+	}
+	return apikey.Static(key), nil
 }
 
 // decodeSettings decodes and validates settings, filling in defaults.
@@ -260,7 +286,8 @@ func decodeSettings(raw json.RawMessage) (settings, error) {
 		return s, fmt.Errorf("%w: %s", toolset.ErrInvalidSettings, fmt.Sprintf(format, args...))
 	}
 
-	if s.APIKeyEnv == "" {
+	s.keyEnvSet = s.APIKeyEnv != ""
+	if !s.keyEnvSet {
 		s.APIKeyEnv = defaultAPIKeyEnv
 	}
 	if !envNameRE.MatchString(s.APIKeyEnv) {

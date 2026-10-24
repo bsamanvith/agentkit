@@ -42,7 +42,7 @@ Commands (the "command" field):
 - insert: insert "insert_text" after line "insert_line" (0 for the start of the file).
 - delete: delete a file, or a directory and everything in it.
 - rename: move "old_path" to "new_path", which must not exist.
-Every path is under /memories. Never store secrets such as passwords or API keys.`
+Every path is under /memories. Files hold plain readable text only, and the memory has size limits, so keep notes short. Never store secrets such as passwords or API keys.`
 
 // NewTool returns the memory tool over s: one tool, [ToolName], with
 // Claude's memory tool's input ([ToolInput]) and its result texts, so a model
@@ -205,6 +205,8 @@ func toolError(ctx context.Context, err error, path, notFound string) error {
 		return fail("Error: %v", err)
 	case errors.Is(err, ErrLimit):
 		return fail("Error: The memory is full: %v. Shorten or delete files that are no longer needed", err)
+	case errors.Is(err, ErrNotText):
+		return fail("Error: %v. Memory files hold plain readable text only", err)
 	case errors.Is(err, ErrInvalid):
 		return fail("Error: %v", err)
 	}

@@ -95,6 +95,9 @@ func randomText(rng *rand.Rand) string {
 	if rng.IntN(5) == 0 {
 		parts = append(parts, strings.Repeat("z", rng.IntN(60)))
 	}
+	if rng.IntN(20) == 0 {
+		parts = append(parts, "\x00") // not readable text: refused
+	}
 	return strings.Join(parts, "\n")
 }
 

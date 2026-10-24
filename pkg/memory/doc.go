@@ -28,6 +28,14 @@
 // Directories are implicit: a directory exists while a file is under it.
 // Root always exists and can be neither deleted nor renamed.
 //
+// # Text
+//
+// A file holds readable text only ([CheckText]): valid UTF-8 with no
+// control character but tab, line feed and carriage return. A create, or
+// the new text of a str_replace or insert, that is anything else fails with
+// [ErrNotText] and changes nothing. Memory is plain notes that people can
+// read and review; search over embeddings is the [Index]'s, below.
+//
 // # Limits
 //
 // [Limits] cap the bytes of one file, the bytes of all files of a scope and

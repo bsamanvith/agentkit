@@ -11,7 +11,7 @@ import (
 )
 
 // openSQLiteMemory opens the context store backend "sqlite" at c.Path.
-func openSQLiteMemory(ctx context.Context, c memoryStoreConfig, cfg memory.Config) (memory.Store, func() error, error) {
+func openSQLiteMemory(ctx context.Context, c memoryStoreConfig, cfg memory.Config, _ func(string) string) (memory.Store, func() error, error) {
 	if c.Path == "" {
 		return nil, nil, errors.New(`backend "sqlite" needs a path (a file)`)
 	}

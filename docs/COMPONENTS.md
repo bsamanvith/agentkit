@@ -98,7 +98,7 @@ part out:
 | Tag | Leaves out | Then |
 |---|---|---|
 | `nosqlite` | the SQLite store, and the SQLite memory and credential backends | `AGENTKIT_STORE=sqlite` and `backend: "sqlite"` fail at startup |
-| `nopostgres` | the Postgres store, its credential backend and `migrate` | `AGENTKIT_STORE=postgres` and `credentials.backend: "postgres"` fail |
+| `nopostgres` | the Postgres store, its credential and memory backends and `migrate` | `AGENTKIT_STORE=postgres`, `credentials.backend: "postgres"` and `memory.store.backend: "postgres"` fail |
 | `noredis` | the Redis bus | `AGENTKIT_BUS=redis` fails |
 | `nomodels` | the model SDK | the `agent` component needs `AGENTKIT_RUNNER_URL`; no `runner` |
 | `noconnectors` | every connector but the demo | the toolsets come from `AGENTKIT_TOOLSETS_URL` |

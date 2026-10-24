@@ -248,12 +248,14 @@ T071's background runs, T086's steering, T073's threads and T072's triggers.
 
 T075's stored, versioned definitions, edited by T077; E17's mode and policy; T085's deferred tools.
 
+**Built (T077):** the page and its sections Name and description, Models, Instructions, Tools (with description overrides), Interaction and Limits; field errors and the summary; Save draft, the conflict dialog, Publish…; read-only config agents with Duplicate; the Versions page. Not yet: the test chat, Skills, Tool policy, Memory and the defer switches. A new agent is listed under Agents once published (the list shows published agents). Duplicate (`/agents/new?from={name}`) copies a stored agent's newest definition; a config agent's, only what `GET /v1/agents/{name}` shows.
+
 - **A full-width page** at `/agents/new` and `/agents/{name}/edit`.
   - Header: Back, "Edit researcher" (`h1`), the version state ("Published v3 · draft v4", "Unsaved changes"), **Test**, **Versions**, **Save draft** (`Mod+S`), **Publish…**.
   - Desktop: section nav (172 px), the form, and the test chat (380 px). Laptop: the form alone, with **Test** opening the chat as a panel over it (Esc closes it). Phone: read-only, the latest version as text, with "Editing an agent needs a wider screen."
 - **Sections:**
   - **Name** (fixed once created: chats, tasks and versions refer to it) and description.
-  - **Model**: a text field with suggestions, because there is no models API; and effort.
+  - **Models** (E24): the default model (suggestions from `GET /v1/models`) and its effort; **Also allowed**, models by name as chips; **Allowed by pattern**, each with a live "Matches: …" over the models the server knows; **Variants**: on a model or `re:` pattern, instructions added after or instead of the agent's, effort, max tokens and tool description overrides.
   - **Instructions**: the system prompt (mono, with a character count).
   - **Skills**: checkboxes. A skill whose tools match nothing of this agent says so.
   - **Tools**, **Interaction** and **Tool policy** (below).
@@ -262,7 +264,7 @@ T075's stored, versioned definitions, edited by T077; E17's mode and policy; T08
 - **Tools:**
   - One block per toolset: a checkbox to use it, its type and state, and a **Defer all** switch.
   - In it, one row per tool:
-    - the name and description;
+    - the name and description, and **Override description** (T126): a text field starting from the tool's own, which stays shown greyed; **Use its own** removes the override;
     - kind and risk tags, plus "asks" for a tool that sets `requires_approval`;
     - a **Deferred** switch;
     - a policy select. It shows what the policy decides ("Policy: needs approval") and offers "Always allowed / flagged / needs approval / denied". Each of those writes an exact-name rule at the top of the rules.

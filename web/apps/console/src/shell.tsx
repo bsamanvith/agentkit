@@ -53,7 +53,7 @@ import { LayoutContext, isApple, listStorageKey, modHint, modKey, type Layout } 
 import { ListRow } from "./list-row";
 import { TasksList } from "./pages/lazy";
 import { Loading } from "./pages/page";
-import { agentRow, listAgents, ListsContext, listToolsets, toolsetRow, type Lists } from "./lists";
+import { agentRow, keepsAgents, listAgents, ListsContext, listToolsets, toolsetRow, type Lists } from "./lists";
 import { tasks, adminSections, mayAdmin, sectionOf, sections, type Section } from "./sections";
 
 const themeLabels: Record<ThemePreference, string> = { system: "System", light: "Light", dark: "Dark" };
@@ -270,6 +270,22 @@ function AddServerButton() {
   );
 }
 
+/** Agents' list head: New agent, on a server that keeps agents (the API checks). */
+function NewAgentButton() {
+  return (
+    <Link
+      to="/agents/new"
+      aria-label="New agent"
+      className="group relative grid size-8 place-items-center rounded-md text-ak-muted hover:bg-ak-hover hover:text-ak-text"
+    >
+      <Plus aria-hidden="true" className="size-4" />
+      <span aria-hidden="true" className={cn(tip, "top-9 right-0")}>
+        New agent
+      </span>
+    </Link>
+  );
+}
+
 function NewChatButton() {
   return (
     <Link
@@ -359,7 +375,15 @@ function ListColumn({ current, lists }: { current: Section; lists: Lists }) {
   if (current.to === "/agents" && lists.agents) {
     content = (
       <>
-        <ListHead title="Agents" extra={count(lists.agents)} />
+        <ListHead
+          title="Agents"
+          extra={
+            <span className="flex items-center gap-1">
+              {count(lists.agents)}
+              {admin && lists.agents.state === "ready" && keepsAgents(lists.agents.data) ? <NewAgentButton /> : null}
+            </span>
+          }
+        />
         <ListBody label="Agents" res={lists.agents} empty="No agents are configured.">
           {(a) => (
             <ListRow
@@ -472,11 +496,15 @@ function Drawer({ open, current, close }: { open: boolean; current: Section; clo
   );
 }
 
+/** The pages that take the list column's place too (docs/UI.md "Routes"). */
+const fullWidth = /^\/agents\/(new|[^/]+\/(edit|versions)(\/[^/]*)?)\/?$/;
+
 export function Shell({ children }: { children?: ReactNode }) {
   const { pathname } = useLocation();
   const current = sectionOf(pathname);
   const phone = useIsMobile();
-  const hasList = current.to !== "/connections"; // one page, no list
+  // Connections is one page; the agent builder and versions are full width.
+  const hasList = current.to !== "/connections" && !fullWidth.test(pathname);
   const [listShown, setListShown] = useState(initialListShown);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { prompt, me, loadMe } = useApi();
@@ -496,13 +524,15 @@ export function Shell({ children }: { children?: ReactNode }) {
   const drawer = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
-  const agents = useResource(listAgents, "agents", current.to !== "/agents" || !mayList);
+  const [agentsLoad, setAgentsLoad] = useState(0);
+  const agents = useResource(listAgents, `agents\n${agentsLoad}`, current.to !== "/agents" || !mayList);
   const [toolsetsLoad, setToolsetsLoad] = useState(0);
   const toolsets = useResource(listToolsets, `toolsets\n${toolsetsLoad}`, current.to !== "/toolsets" || !mayList);
   const lists = useMemo<Lists>(
     () => ({
       agents: current.to === "/agents" && mayList ? agents : null,
       toolsets: current.to === "/toolsets" && mayList ? toolsets : null,
+      reloadAgents: () => setAgentsLoad((n) => n + 1),
       reloadToolsets: () => setToolsetsLoad((n) => n + 1),
     }),
     [current, mayList, agents, toolsets],

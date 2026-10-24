@@ -19,7 +19,12 @@ export type WireError = {
   explanation?: string;
   /** auth_required: the sign-in the MCP server asks for, "oauth" (MCP OAuth) or "headers". */
   auth?: string;
+  /** invalid_definition: the fields that need a fix, by their path in the definition ("models.allow[0]"). */
+  fields?: FieldError[];
 };
+
+/** One field of a refused definition: its path ("" for the whole definition) and what is wrong. */
+export type FieldError = { field?: string; message: string };
 
 /** GET /v1/auth/config: how to sign in ("password", "token"; none on an open server). */
 export type AuthConfig = { methods: string[] };
@@ -147,6 +152,8 @@ export type AgentVersion = {
 
 /** GET /v1/agents/{name}/versions. */
 export type AgentVersionList = {
+  /** An agent of the config file: it has no stored versions (change it in the file). */
+  read_only?: boolean;
   /** The highest version number given so far: what if_latest compares with, even after that draft was deleted. */
   latest: number;
   /** The version new runs use; 0 for none. */

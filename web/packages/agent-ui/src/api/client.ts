@@ -16,7 +16,9 @@ import {
   type Conversation,
   type ConversationSummary,
   type CredentialInfo,
+  type FieldError,
   type MemoryView,
+  type ModelList,
   type PutCredentialRequest,
   type RegistrySearch,
   type RegistryServer,
@@ -47,6 +49,8 @@ export class ApiError extends Error {
   readonly retryAfter: number | undefined;
   /** auth_required: the sign-in the MCP server asks for ("oauth" or "headers"), if the server said. */
   readonly auth: string | undefined;
+  /** invalid_definition: the fields that need a fix (empty otherwise). */
+  readonly fields: FieldError[];
 
   constructor(status: number, error: WireError, retryAfter?: number) {
     super(error.message || `HTTP ${status}`);
@@ -56,6 +60,9 @@ export class ApiError extends Error {
     this.retryable = error.retryable === true;
     this.retryAfter = retryAfter;
     this.auth = typeof error.auth === "string" ? error.auth : undefined;
+    this.fields = Array.isArray(error.fields)
+      ? error.fields.filter((f): f is FieldError => typeof f?.message === "string")
+      : [];
   }
 }
 
@@ -268,6 +275,7 @@ export class AgentClient {
     const versions = listField<AgentVersion>(body, "versions", path);
     const highest = versions.reduce((n, v) => Math.max(n, v.version), 0);
     return {
+      ...(body?.read_only === true ? { read_only: true } : {}),
       latest: typeof body?.latest === "number" ? body.latest : highest,
       published: typeof body?.published === "number" ? body.published : 0,
       versions,
@@ -281,6 +289,39 @@ export class AgentClient {
     const v = (await this.#json(resp, path)) as Partial<AgentVersion> | null;
     if (typeof v?.version !== "number") throw new BadResponseError(`${path}: the response is not a version`);
     return v as AgentVersion;
+  }
+
+  /** POST /v1/agents/{name}/publish (agent:admin): makes a version the one new runs use (a roll back, for an older one). */
+  async publishAgent(name: string, version: number, opts: RequestOptions = {}): Promise<AgentVersionList> {
+    const path = `/v1/agents/${encodeURIComponent(name)}/publish`;
+    const resp = await this.#send("POST", path, JSON.stringify({ version }), "application/json", opts.signal);
+    const body = (await this.#json(resp, path)) as Partial<AgentVersionList> | null;
+    const versions = listField<AgentVersion>(body, "versions", path);
+    return {
+      latest: typeof body?.latest === "number" ? body.latest : versions.reduce((n, v) => Math.max(n, v.version), 0),
+      published: typeof body?.published === "number" ? body.published : version,
+      versions,
+    };
+  }
+
+  /** DELETE /v1/agents/{name}/versions/{version} (agent:admin): a draft; 409 version_published for the published one. */
+  async deleteAgentVersion(name: string, version: number, opts: RequestOptions = {}): Promise<void> {
+    const path = `/v1/agents/${encodeURIComponent(name)}/versions/${version}`;
+    const resp = await this.#send("DELETE", path, undefined, "application/json", opts.signal);
+    await resp.body?.cancel();
+  }
+
+  /** GET /v1/models: the providers of models the server builds, and the model names it knows of each. */
+  async listModels(opts: RequestOptions = {}): Promise<ModelList> {
+    const body = await this.getJSON<Partial<ModelList> | null>("/v1/models", opts);
+    return {
+      v: typeof body?.v === "number" ? body.v : 1,
+      default: typeof body?.default === "string" ? body.default : "anthropic",
+      providers: listField<ModelList["providers"][number]>(body, "providers", "/v1/models").map((p) => ({
+        name: p.name,
+        models: Array.isArray(p.models) ? p.models : [],
+      })),
+    };
   }
 
   /** GET /v1/agents/{name}/memory: a file or directory of the caller's memory of the agent; 404 when it keeps none. */
@@ -628,6 +669,7 @@ async function errorFrom(resp: Response): Promise<ApiError> {
         message: typeof e.message === "string" ? e.message : error.message,
         retryable: e.retryable === true,
         ...(typeof e.auth === "string" ? { auth: e.auth } : {}),
+        ...(Array.isArray(e.fields) ? { fields: e.fields } : {}),
       };
     }
   } catch (e) {

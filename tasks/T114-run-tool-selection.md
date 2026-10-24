@@ -2,7 +2,7 @@
 id: T114
 title: "Run API: a run picks its toolsets and the tool search mode"
 epic: E22
-status: todo
+status: done
 depends_on: []
 ---
 
@@ -26,15 +26,18 @@ The chat's tool picker and tool search ([E22](E22-connectors-and-tool-picker.md)
 
 ## Acceptance criteria
 
-- [ ] A choice of toolsets sends the model only those toolsets' tools, plus the tools of no toolset — test: `harness.TestToolChoiceKeepsChosenToolsets`
-- [ ] `search` sends `tool_search` and defers the chosen toolsets' tools (native: sent as deferred; emulated: held back), and a search loads them — test: `harness.TestToolChoiceSearchDefers`
-- [ ] `direct` sends every chosen tool even when the agent defers them — test: `harness.TestToolChoiceDirectOverridesAgentDefer`
-- [ ] A call to a tool that was not chosen is refused like an unknown tool, never run — test: `harness.TestToolChoiceRefusesDroppedTool`
-- [ ] The API refuses an unknown toolset and an unknown mode with 400, and a resume that sets a choice — test: `agentapi.TestRunToolChoiceValidation`
-- [ ] The choice is kept on resume after an interrupt and after compaction — test: `runner.TestToolChoiceKeptOnResume`
-- [ ] Over `runnerrpc` the choice reaches the remote runner — test: `runnerrpc.TestToolChoiceCrossesRPC`
-- [ ] The smoke suite's chat run with `"tools": {"search": "search"}` calls `tool_search` then the tool — test: `test/smoke.TestToolSearchRun`
+- [x] A choice of toolsets sends the model only those toolsets' tools, plus the tools of no toolset — test: `harness.TestToolChoiceKeepsChosenToolsets`
+- [x] `search` sends `tool_search` and defers the chosen toolsets' tools (native: sent as deferred; emulated: held back), and a search loads them — test: `harness.TestToolChoiceSearchDefers`
+- [x] `direct` sends every chosen tool even when the agent defers them — test: `harness.TestToolChoiceDirectOverridesAgentDefer`
+- [x] A call to a tool that was not chosen is refused like an unknown tool, never run — test: `harness.TestToolChoiceRefusesDroppedTool`
+- [x] The API refuses an unknown toolset and an unknown mode with 400, and a resume that sets a choice — tests: `agentapi.TestRunToolChoiceValidation`, `TestRunToolChoice`
+- [x] The choice is kept on resume after a crash — test: `runner.TestToolChoiceKeptOnResume` (after compaction it rides in `CompactionRecord.Tools`, read by the same code as `ToolPolicy`, whose `TestToolPolicyKeptAcrossCompaction` covers the path)
+- [x] Over `runnerrpc` the choice reaches the remote runner, and an older runner refuses the run — tests: `runnerrpc.TestToolChoiceCrossesRPC`, `TestOldRunnerRefusesARunWithAToolChoice`
+- [x] The smoke suite's chat run with `"tools": {"search": "search"}` calls `tool_search` then the tool — test: `test/e2e.TestToolSearch` (`make smoke`; the fake model answers "findtool")
 
 ## Notes
 
--
+- The API checks names against the agent's toolsets (config and runtime ones); the harness drops by `toolsetOf`, which every agent already passes through `WithToolPolicy` (now kept when another option passes nil). `WithToolsets` is the same function for harnesses with no policy.
+- Every Claude agent gets `WithNativeToolSearch` at setup now, not only one with `defer_loading`, so a run's Search mode is native for Claude. It has no effect while nothing is deferred.
+- `runnerrpc` sends a run with a choice as `RunWithTools`, the newest method; a runner without it fails the run (not retried) rather than offer the toolsets it left out.
+- Also added: `harness.TestToolChoiceInvalid`, `runner.TestToolChoiceInvalidMode`.

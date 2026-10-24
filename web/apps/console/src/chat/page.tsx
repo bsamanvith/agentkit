@@ -22,11 +22,12 @@ import { useEffect, useEffectEvent, useMemo, useState, type ReactNode } from "re
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { useApi, useResource } from "../api";
 import { useLayout } from "../layout";
-import { listAgents } from "../lists";
+import { listAgents, listToolsets } from "../lists";
 import { iconButton, Loaded, Page } from "../pages/page";
 import { readiness } from "../pages/readiness";
 import { composerId, preloadMarkdown, withMeta } from "./shared";
-import { useConversationState, useDraft, useRuns } from "./use-runs";
+import { useConversationState, useDraft, useRuns, useToolChoice } from "./use-runs";
+import { ToolPicker } from "./tool-picker";
 import type { Problem } from "./runs";
 import { Notice, Thread } from "./thread";
 
@@ -256,6 +257,7 @@ function NewChatPage() {
   const agents = useResource(listAgents, "agents");
   const [picked, setPicked] = useState<string | null>(null);
   const [draft, setDraft] = useDraft("new");
+  const toolsets = useResource(listToolsets, "toolsets");
   const [creating, setCreating] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const online = useOnline();
@@ -268,6 +270,9 @@ function NewChatPage() {
   const list = agents.state === "ready" ? agents.data : [];
   const wanted = picked ?? params.get("agent") ?? lastAgent();
   const agent = list.find((a) => a.name === wanted) ?? list.find((a) => a.default) ?? list[0];
+  // A choice of tools is the agent's: each agent's new chat has its own.
+  const choiceKey = `new:${agent?.name ?? ""}`;
+  const [choice, setChoice] = useToolChoice(choiceKey);
 
   async function send(text: string) {
     if (!agent) return;
@@ -281,6 +286,7 @@ function NewChatPage() {
       } catch {
         // Storage blocked.
       }
+      runs.choices.move(choiceKey, conv.id);
       runs.send(client, conv.id, text, [], agent.name);
       navigate(`/c/${encodeURIComponent(conv.id)}`, { replace: true, state: { sent: true } satisfies NavState });
     } catch (e) {
@@ -345,6 +351,16 @@ function NewChatPage() {
           {...(agent ? {} : { disabledReason: "Choose an agent to start a chat." })}
           {...(creating ? { sendDisabledReason: "Sending…" } : !online ? { sendDisabledReason: offline } : {})}
           placeholder={agent ? `Message ${agent.name}` : "Message"}
+          accessory={
+            agent ? (
+              <ToolPicker
+                agent={agent}
+                toolsets={toolsets.state === "ready" ? toolsets.data : []}
+                choice={choice}
+                onChange={setChoice}
+              />
+            ) : undefined
+          }
         />
       </Bottom>
     </Page>
@@ -361,6 +377,8 @@ function ConversationPage({ id }: { id: string }) {
   const { phone } = useLayout();
   const state = useConversationState(id);
   const [draft, setDraft] = useDraft(id);
+  const [choice, setChoice] = useToolChoice(id);
+  const toolsets = useResource(listToolsets, "toolsets");
   const online = useOnline();
   const sent = (location.state as NavState)?.sent === true;
 
@@ -559,6 +577,16 @@ function ConversationPage({ id }: { id: string }) {
               ? { sendDisabledReason: offline }
               : {})}
           placeholder={agentName ? `Message ${agentName}` : "Message"}
+          accessory={
+            agent ? (
+              <ToolPicker
+                agent={agent}
+                toolsets={toolsets.state === "ready" ? toolsets.data : []}
+                choice={choice}
+                onChange={setChoice}
+              />
+            ) : undefined
+          }
         />
       </Bottom>
     </Page>

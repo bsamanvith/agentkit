@@ -26,6 +26,15 @@ function fakeServer() {
     conversations: new Map<string, { agent: string; status: string; messages: unknown[]; title: string }>(),
     aborted: 0,
     createError: undefined as { status: number; code: string } | undefined,
+    /** The researcher's toolsets, and GET /v1/toolsets (the tool picker). */
+    researcherToolsets: [] as { name: string; status: string; tools: string[] }[],
+    toolsets: [] as {
+      name: string;
+      type: string;
+      status: string;
+      tool_count: number;
+      credential?: { status: string };
+    }[],
   };
   let next = 1;
   const json = (body: unknown, status = 200) => Response.json(body, { status });
@@ -64,11 +73,18 @@ function fakeServer() {
       return json({
         v: 1,
         agents: [
-          { name: "researcher", description: "Finds things", default: true, toolsets: [], model: { id: "m" } },
+          {
+            name: "researcher",
+            description: "Finds things",
+            default: true,
+            toolsets: state.researcherToolsets,
+            model: { id: "m" },
+          },
           { name: "writer", description: "Writes", default: false, toolsets: [], model: { id: "m" } },
         ],
       });
     }
+    if (path === "/v1/toolsets") return json({ v: 1, toolsets: state.toolsets });
     if (path === "/v1/conversations" && method === "POST") {
       if (state.createError) return error(state.createError.status, state.createError.code);
       const id = `conv_${next++}`;
@@ -482,5 +498,73 @@ describe("withMeta", () => {
       "b",
       "failed:",
     ]);
+  });
+});
+
+describe("the tool picker", () => {
+  function withTools(server: ReturnType<typeof fakeServer>) {
+    server.researcherToolsets = [
+      { name: "web", status: "ready", tools: ["web_search", "web_fetch"] },
+      { name: "gmail", status: "ready", tools: ["gmail_search_messages"] },
+    ];
+    server.toolsets = [
+      { name: "web", type: "exa", status: "ready", tool_count: 2, credential: { status: "connected" } },
+      { name: "gmail", type: "gmail", status: "ready", tool_count: 1, credential: { status: "not_connected" } },
+    ];
+  }
+  const runBody = (server: ReturnType<typeof fakeServer>) =>
+    server.seen.filter((r) => r.path === "/v1/runs" && r.method === "POST").at(-1)?.body;
+
+  it("sends the chosen toolsets and mode", async () => {
+    const server = fakeServer();
+    withTools(server);
+    renderAt("/new");
+    await userEvent.click(await screen.findByRole("button", { name: "Tools: 2 of 2" }));
+    await userEvent.click(await screen.findByRole("menuitemcheckbox", { name: /gmail/ }));
+    await userEvent.click(screen.getByRole("menuitemradio", { name: /Search/ }));
+    await userEvent.keyboard("{Escape}");
+    expect(screen.getByRole("button", { name: "Tools: 1 of 2, search" })).toBeInTheDocument();
+    await userEvent.type(box(), "Find it{Enter}");
+    await waitFor(() => expect(runBody(server)).toBeDefined());
+    expect(runBody(server)).toEqual({
+      message: "Find it",
+      conversation_id: "conv_1",
+      tools: { toolsets: ["web"], search: "search" },
+    });
+  });
+
+  it("marks toolsets that aren't connected and links to Connectors", async () => {
+    const server = fakeServer();
+    withTools(server);
+    renderAt("/new");
+    await userEvent.click(await screen.findByRole("button", { name: "Tools: 2 of 2" }));
+    expect(await screen.findByRole("menuitemcheckbox", { name: /gmail.*Not connected/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitemcheckbox", { name: /web/ })).not.toHaveTextContent("Not connected");
+    expect(screen.getByRole("menuitem", { name: /Connect accounts/ })).toHaveAttribute("href", "/connections");
+  });
+
+  it("remembers the choice per conversation; a new chat starts from the agent's", async () => {
+    const server = fakeServer();
+    withTools(server);
+    withConversation(server);
+    renderAt("/c/conv_1");
+    await userEvent.click(await screen.findByRole("button", { name: "Tools: 2 of 2" }));
+    await userEvent.click(screen.getByRole("menuitemradio", { name: /Direct/ }));
+    await userEvent.keyboard("{Escape}");
+    await userEvent.type(box(), "Again{Enter}");
+    await waitFor(() =>
+      expect(runBody(server)).toEqual({ message: "Again", conversation_id: "conv_1", tools: { search: "direct" } }),
+    );
+    expect(JSON.parse(localStorage.getItem("agentkit.tools.conv_1") ?? "{}")).toEqual({ search: "direct" });
+  });
+
+  it("sends no tools when nothing was changed", async () => {
+    const server = fakeServer();
+    withTools(server);
+    localStorage.setItem("agentkit.tools.conv_9", JSON.stringify({ search: "search" })); // another chat's
+    renderAt("/new");
+    expect(await screen.findByRole("button", { name: "Tools: 2 of 2" })).toBeInTheDocument();
+    await userEvent.type(box(), "Plain{Enter}");
+    await waitFor(() => expect(runBody(server)).toEqual({ message: "Plain", conversation_id: "conv_1" }));
   });
 });

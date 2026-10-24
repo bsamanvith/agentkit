@@ -444,6 +444,21 @@ export type RunRequest = {
   conversation_id?: string;
   agent?: string;
   ui_action?: UIActionRequest;
+  /** Narrows the agent's tools for this run (pkg/agentapi/wire.ToolChoice). */
+  tools?: ToolChoice;
+};
+
+/** How a run offers its toolsets' tools: all sent, or found with tool_search. */
+export type ToolSearchMode = "direct" | "search";
+
+/**
+ * A run's choice of tools: which of its agent's toolsets the model gets
+ * (absent: all; []: none), and whether their tools are sent directly or
+ * found with tool search (absent: the agent's).
+ */
+export type ToolChoice = {
+  toolsets?: string[];
+  search?: ToolSearchMode;
 };
 
 function isObject(v: unknown): v is Record<string, unknown> {

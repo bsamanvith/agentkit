@@ -146,6 +146,10 @@ type run struct {
 	// deferral holds the deferred tools ([WithDeferLoading]); nil when the
 	// run defers none.
 	deferral *deferral
+	// choice is the run's [Input.Tools]; dropped the tools it left out,
+	// whose calls are refused.
+	choice  *ToolChoice
+	dropped map[string]bool
 }
 
 // toolDef returns the definition of the named tool; for a tool that was not
@@ -245,7 +249,8 @@ func (r *run) exec(ctx context.Context, in Input) {
 		}
 		offered = append(offered, d)
 	}
-	offered, err = r.setupDeferral(offered)
+	offered, deferred := r.choose(offered)
+	offered, err = r.setupDeferral(offered, deferred)
 	if err != nil {
 		r.fail(err)
 		return
@@ -299,6 +304,10 @@ func (r *run) begin(ctx context.Context, in Input) error {
 		return invalidInput("interaction %q", in.Interaction)
 	}
 	r.mode = NarrowInteraction(r.h.cfg.interaction, in.Interaction)
+	if err := r.checkChoice(in.Tools); err != nil {
+		return err
+	}
+	r.choice = in.Tools.Clone()
 	r.policy = r.h.cfg.policy
 	if p := in.ToolPolicy; p != nil {
 		if err := p.Validate(); err != nil {

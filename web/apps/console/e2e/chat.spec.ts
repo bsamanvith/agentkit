@@ -153,3 +153,20 @@ test("with no token or a wrong one, the page asks for it and doesn't loop", asyn
   await expect(prompt).toHaveCount(0);
   await expect(box(page)).toBeVisible();
 });
+
+test("tool search in a chat: the agent finds the echo tool, then calls it", async ({ page }) => {
+  const errors = watchErrors(page);
+  await signIn(page);
+  await page.goto("/new");
+  await page.getByRole("button", { name: /^Tools: 1 of 1/ }).click();
+  await page.getByRole("menuitemradio", { name: /Search/ }).click();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Tools: 1 of 1, search" })).toBeVisible();
+
+  await send(page, "findtool and echo mango");
+  const thread = page.getByRole("log");
+  await expect(thread.getByText("Found the echo tool", { exact: false })).toBeVisible();
+  await ended(page);
+  await expect(thread.getByRole("button", { name: /Find|tool_search/i }).first()).toBeVisible();
+  expect(errors).toEqual([]);
+});

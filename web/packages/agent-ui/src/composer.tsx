@@ -1,7 +1,7 @@
 import { Button } from "@agentkit/ui/components/button";
 import { cn } from "@agentkit/ui";
 import { ArrowUp, Square } from "lucide-react";
-import { useState, type FormEvent, type KeyboardEvent } from "react";
+import { useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 
 export type ComposerProps = {
   /** Called with the text when the user sends. */
@@ -20,6 +20,8 @@ export type ComposerProps = {
   /** The textarea's id, for "Skip to message box" and focus. */
   id?: string;
   className?: string;
+  /** Controls shown left of Send, such as the chat's tool picker. */
+  accessory?: ReactNode;
 };
 
 /**
@@ -38,6 +40,7 @@ export function Composer({
   onValueChange,
   id,
   className,
+  accessory,
 }: ComposerProps) {
   const [own, setOwn] = useState("");
   const text = value ?? own;
@@ -80,6 +83,7 @@ export function Composer({
           rows={1}
           className="max-h-[calc(8lh+12px)] min-h-9 flex-1 resize-none bg-transparent px-1 py-1.5 outline-none field-sizing-content placeholder:text-ak-muted"
         />
+        {accessory}
         {running ? (
           <Button type="button" size="icon" variant="secondary" onClick={onStop} aria-label="Stop">
             <Square aria-hidden="true" />

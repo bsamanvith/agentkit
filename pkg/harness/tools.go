@@ -102,7 +102,7 @@ func (r *run) runTools(ctx context.Context, turn int, jobs []job) ([]toolCall, e
 			go func() {
 				defer wg.Done()
 				defer func() { <-sem }()
-				r.h.call(toolCtx, stop, turn, j, r.toolDef(j.use.Name), r.policy, r.mode, r.deferral, &calls[i], events)
+				r.h.call(toolCtx, stop, turn, j, r.toolDef(j.use.Name), r.policy, r.mode, r.deferral, r.dropped, &calls[i], events)
 			}()
 		}
 	}()
@@ -139,7 +139,7 @@ func (r *run) runTools(ctx context.Context, turn int, jobs []job) ([]toolCall, e
 // call runs one tool call, which holds a slot, on its own goroutine. It always
 // sends exactly one done event, or for a call that waits for a person one
 // interrupt event, after the start event and the policy's.
-func (h *Harness) call(ctx context.Context, stop context.CancelFunc, turn int, j job, def tool.Definition, pol *policy.Policy, mode Interaction, dfr *deferral, out *toolCall, events chan<- toolEvent) {
+func (h *Harness) call(ctx context.Context, stop context.CancelFunc, turn int, j job, def tool.Definition, pol *policy.Policy, mode Interaction, dfr *deferral, dropped map[string]bool, out *toolCall, events chan<- toolEvent) {
 	u := j.use
 	kind, _ := def.Class()
 	out.rec = ToolRecord{ToolUseID: u.ID, Name: u.Name, Kind: kind}
@@ -189,6 +189,9 @@ func (h *Harness) call(ctx context.Context, stop context.CancelFunc, turn int, j
 		// Approved: the call runs with its original input, byte for byte,
 		// as the policy's decision was taken already.
 		res, ask, err = h.invoke(ctx, hooked, []byte(j.interrupt.Input), dfr)
+	case dropped[u.Name]:
+		// The run's choice left the tool out: the model was not given it.
+		res = errorResult(u.ID, errNotChosen(u.Name))
 	case dfr.waiting(u.Name):
 		// The model was never given the tool: it guessed the name.
 		res = errorResult(u.ID, errNotLoaded(u.Name))

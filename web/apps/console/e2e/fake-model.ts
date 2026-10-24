@@ -19,12 +19,14 @@
 //            restocking fee, then answers with what the search returned
 //   "delegate" asks agent:worker "What is 6*7?" (agent_message, wait), which
 //            answers 42, and says what came back
+//   "findtool" finds the echo tool with tool_search (the chat's Search
+//            mode), calls it, and says what it echoed
 //   other    "You said: …" with the number of messages so far
 //
 // Run with Node 24 (type stripping): node e2e/fake-model.ts <port>.
 import { createServer, type ServerResponse } from "node:http";
 
-type Block = { type: string; text?: string; content?: Block[] };
+type Block = { type: string; text?: string; name?: string; content?: Block[] };
 type Message = { role: string; content: string | Block[] };
 
 const port = Number(process.argv[2] ?? 18479);
@@ -343,6 +345,33 @@ const server = createServer((req, res) => {
         delta: {
           type: "input_json_delta",
           partial_json: JSON.stringify({ query: "restocking fee for an opened e-bike" }),
+        },
+      });
+      send(res, "content_block_stop", { index: 0 });
+      return finish(res, "tool_use", 20);
+    }
+    // "findtool" (T114, T115): tool_search for the echo tool, then echo,
+    // then say what it echoed.
+    if (/\bfindtool\b/i.test(said)) {
+      const called = (pred: (name: string) => boolean) =>
+        messages.some(
+          (m) => m.role === "assistant" && blocks(m).some((b) => b.type === "tool_use" && pred(b.name ?? "")),
+        );
+      if (result && called((n) => n.endsWith("echo"))) {
+        text(res, 0, `Found the echo tool, which said ${resultText()}.`);
+        return finish(res, "end_turn", 12);
+      }
+      const searched = called((n) => n === "tool_search");
+      const name = searched ? (tools.find((t) => t.name.endsWith("echo"))?.name ?? "echo") : "tool_search";
+      send(res, "content_block_start", {
+        index: 0,
+        content_block: { type: "tool_use", id: `toolu_fake${Date.now()}`, name, input: {} },
+      });
+      send(res, "content_block_delta", {
+        index: 0,
+        delta: {
+          type: "input_json_delta",
+          partial_json: JSON.stringify(searched ? { text: "mango" } : { query: "echo" }),
         },
       });
       send(res, "content_block_stop", { index: 0 });

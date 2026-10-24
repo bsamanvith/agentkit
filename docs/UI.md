@@ -148,6 +148,10 @@ A **connector** is a toolset that calls an outside service: Exa, Parallel, GitHu
   - **After connecting:** the card reads "Exa connected" and offers **Ask again**, which puts your last message back in the composer to send. A missing connection is not an interrupt kind (T084 has questions and approvals), so the run doesn't wait for it; asked in T087 Notes.
 - **Never on the page:** values, partial values or key hints. A provider's error text is summarized, not copied. Connection details belong to their owner. Admins see only counts for other users.
 
+### Tools in a chat
+
+A **Tools** button sits in the composer, left of Send (T115). It opens a menu of the agent's toolsets, each a checkbox with its tool count and, when the person hasn't connected its key or account, "Not connected" and a link to Connections; then how the agent gets them: **Agent's default**, **Direct** (every chosen tool in its context) or **Search** (held back behind `tool_search`, loaded when the agent looks for them); and "Reset to the agent's tools" once something changed. The button reads "3/5" and "· Search". The choice is kept per conversation in localStorage (a new chat: per agent until its first send) and sent as `tools` with every message of that chat; nothing changed sends nothing. A chat can only narrow its agent's toolsets, never add one (E22).
+
 ### Interrupts and approvals
 
 E17's interrupts (T084), with the decisions of the tool policy (T083).

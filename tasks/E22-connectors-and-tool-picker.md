@@ -21,7 +21,7 @@ Three parts, each usable on its own:
 | What a chat can pick | A **subset of its agent's toolsets**, never more: an agent's tools, policy and credentials are set up when the server starts, and a run only narrows them, as `tool_policy` does. The deployed configs give the default assistant every connector (optional), so the picker has them all. |
 | How a run says it | `POST /v1/runs` takes `"tools": {"toolsets": [...], "search": "direct" \| "search"}`. Absent fields keep the agent's. Unknown toolset names are 400. The run keeps the choice on resume, like `tool_policy`. Tools that belong to no toolset (skills, memory, `ask_user`) are always kept and never deferred. |
 | Search mode | `search` defers every tool of the chosen toolsets behind `tool_search` (native for Claude, emulated for other providers, as the agent's `model.tool_search`); `direct` sends them all and defers none, overriding the agent's `defer_loading`. |
-| Where the console keeps the choice | Per conversation in the browser (like drafts), sent with every run; a new chat starts from the agent's defaults. The server keeps it per run, so another client may choose differently. |
+| Where the console keeps the choice | Per conversation in the browser (localStorage), sent with every run; a new chat starts from the agent's defaults. The server keeps it per run, so another client may choose differently. |
 | One slot per Google product or one per account | **One per product** (`gmail`, `calendar`, `drive`, `sheets`): each connect asks for that product's scopes only (the narrowest-scope rule of E21). Several products of one account are several connects. |
 | HubSpot and Salesforce | Our own connectors over their REST APIs with plain `net/http` (E21's rule), per-user OAuth through a slot. HubSpot gets an OAuth profile preset; Salesforce uses the existing one and the token's `instance_url`. |
 | The page | Renamed **Connectors**, same route (`/connections`, so connect flows in flight still land). A card per connector the server serves with a slot, grouped by provider, whether or not an agent uses it yet; server keys stay listed as today. |
@@ -29,9 +29,9 @@ Three parts, each usable on its own:
 
 ## Tasks
 
-- [ ] [T114](T114-run-tool-selection.md) Run API: a run picks its toolsets and the tool search mode
-- [ ] [T115](T115-console-tool-picker.md) Console: the tool picker in the chat composer
-- [ ] [T116](T116-google-slot-tokens.md) Google connectors take the user's token from a credential slot
+- [x] [T114](T114-run-tool-selection.md) Run API: a run picks its toolsets and the tool search mode
+- [x] [T115](T115-console-tool-picker.md) Console: the tool picker in the chat composer
+- [x] [T116](T116-google-slot-tokens.md) Google connectors take the user's token from a credential slot
 - [ ] [T117](T117-connector-google-sheets.md) `connectors/google/sheets`
 - [ ] [T118](T118-connector-hubspot.md) `connectors/hubspot`
 - [ ] [T119](T119-connector-salesforce.md) `connectors/salesforce`

@@ -137,7 +137,7 @@ func (f *factory) Build(_ context.Context, in toolset.BuildInput) ([]tool.Tool, 
 		return nil, err
 	}
 	env := f.env // a copy: BaseURL below is per toolset
-	tokens, err := env.TokensFor(Type, s.AccessTokenEnv)
+	tokens, err := env.TokensForSpec(Type, s.Settings, in.Credentials)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s: %w", toolset.ErrInvalidSettings, Type, err)
 	}

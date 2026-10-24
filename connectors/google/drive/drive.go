@@ -155,7 +155,7 @@ func (f *factory) Build(_ context.Context, in toolset.BuildInput) ([]tool.Tool, 
 		return nil, err
 	}
 	env := f.env // options are shared by every toolset, so copy
-	tokens, err := env.TokensFor(Type, s.AccessTokenEnv)
+	tokens, err := env.TokensForSpec(Type, s.Settings, in.Credentials)
 	if err != nil {
 		return nil, fmt.Errorf("%w: drive: %w", toolset.ErrInvalidSettings, err)
 	}

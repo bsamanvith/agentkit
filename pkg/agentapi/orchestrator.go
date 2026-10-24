@@ -44,6 +44,9 @@ type StartOptions struct {
 	// Interaction narrows the agent's interaction mode for the run and its
 	// resumes ([runner.Interaction]); empty for the agent's.
 	Interaction harness.Interaction
+	// Tools narrows the agent's tools for the run and its resumes
+	// ([runner.Tools]); nil for none.
+	Tools *harness.ToolChoice
 	// Pool is the runner pool the server placed the run in, and took a slot
 	// of ([runner.InPool]); "" for none.
 	Pool string
@@ -64,6 +67,9 @@ func (o StartOptions) RunOptions() []runner.RunOption {
 	}
 	if o.Interaction != "" {
 		out = append(out, runner.Interaction(o.Interaction))
+	}
+	if o.Tools != nil {
+		out = append(out, runner.Tools(*o.Tools))
 	}
 	if o.Pool != "" {
 		out = append(out, runner.InPool(o.Pool))

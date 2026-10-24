@@ -1,0 +1,21 @@
+HTTP/1.1 200 OK
+Content-Type: application/json;charset=utf-8
+
+{
+  "id": "9001",
+  "properties": {
+    "createdate": "2025-11-19T09:00:00.000Z",
+    "description": "Northwind Traders imports and distributes specialty foods to restaurants and grocers across North America and Europe. Renewal due in Q1; key contact is Ana Ruiz.",
+    "domain": "northwind.example",
+    "hs_lastmodifieddate": "2026-10-21T12:00:00.000Z",
+    "hs_object_id": "9001",
+    "name": "Northwind Traders"
+  },
+  "createdAt": "2025-11-19T09:00:00.000Z",
+  "updatedAt": "2026-10-21T12:00:00.000Z",
+  "archived": false,
+  "associations": {
+    "contacts": {"results": [{"id": "1051", "type": "company_to_contact"}, {"id": "1051", "type": "company_to_contact_primary"}, {"id": "1077", "type": "company_to_contact"}]},
+    "deals": {"results": [{"id": "5501", "type": "company_to_deal"}]}
+  }
+}

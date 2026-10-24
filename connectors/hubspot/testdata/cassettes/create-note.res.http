@@ -1,0 +1,16 @@
+HTTP/1.1 201 Created
+Content-Type: application/json;charset=utf-8
+
+{
+  "id": "77001",
+  "properties": {
+    "hs_createdate": "2026-10-24T18:32:00.000Z",
+    "hs_lastmodifieddate": "2026-10-24T18:32:00.000Z",
+    "hs_note_body": "Call with Ana: renewal approved, PO to follow next week.",
+    "hs_object_id": "77001",
+    "hs_timestamp": "2026-01-01T00:00:00Z"
+  },
+  "createdAt": "2026-10-24T18:32:00.000Z",
+  "updatedAt": "2026-10-24T18:32:00.000Z",
+  "archived": false
+}

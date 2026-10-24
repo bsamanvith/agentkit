@@ -58,6 +58,7 @@ type AuthServer struct {
 	opts AuthServerOptions
 
 	mu            sync.Mutex
+	formAuth      bool // the latest token request sent its client in the form
 	clients       map[string]client
 	codes         map[string]grant
 	access        map[string]grant
@@ -221,6 +222,9 @@ func (a *AuthServer) token(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, sec, basic := r.BasicAuth()
+	a.mu.Lock()
+	a.formAuth = !basic
+	a.mu.Unlock()
 	if !basic {
 		id, sec = r.PostForm.Get("client_id"), r.PostForm.Get("client_secret")
 	}
@@ -312,6 +316,14 @@ func (a *AuthServer) Counts() (registrations, refreshes, cimdFetches int) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.Registrations, a.Refreshes, a.CIMDFetches
+}
+
+// LastTokenAuthInParams reports whether the latest token request sent its
+// client's id and secret in the form rather than in HTTP basic auth.
+func (a *AuthServer) LastTokenAuthInParams() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.formAuth
 }
 
 // LastAuthorize returns the query of the latest authorization request.

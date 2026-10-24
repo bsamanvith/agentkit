@@ -33,7 +33,7 @@ Three parts, each usable on its own:
 - [x] [T115](T115-console-tool-picker.md) Console: the tool picker in the chat composer
 - [x] [T116](T116-google-slot-tokens.md) Google connectors take the user's token from a credential slot
 - [x] [T117](T117-connector-google-sheets.md) `connectors/google/sheets`
-- [ ] [T118](T118-connector-hubspot.md) `connectors/hubspot`
+- [x] [T118](T118-connector-hubspot.md) `connectors/hubspot`
 - [ ] [T119](T119-connector-salesforce.md) `connectors/salesforce`
 - [ ] [T120](T120-console-connectors-page.md) Console: the Connectors page, and the deployed configs that serve every connector
 

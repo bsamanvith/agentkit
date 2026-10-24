@@ -223,6 +223,10 @@ A new check rolls in, not crashes in. When a check would fail connectors that ex
 | `connectors/google/drive` | `cassettes.openapi` | Google publishes Discovery documents for Drive, not OpenAPI; the synthetic cassettes are checked against the v3 reference by hand until they are recorded |
 | `connectors/google/drive` | `settings.honored` | no setting changes a request: `read_only`, `allow_share` and `narrow_scopes` choose tools and scopes, the two limits cut output; `TestGatingFollowsSettings`, `TestScopes` and `TestReadFile` cover them |
 | `connectors/google/drive` | `limits.rune_boundary` | the text of `drive_read_file` is a raw response body, not a JSON field, so the kit cannot put its multi-byte text there; `TestReadCutsAtARuneBoundary` covers it |
+| `connectors/google/sheets` | `cassettes.openapi` | Google publishes Discovery documents for Sheets, not OpenAPI; the synthetic cassettes are written from the v4 reference |
+| `connectors/google/sheets` | `settings.honored` | no setting changes a request: `read_only` chooses tools, `max_cells` and `max_cell_chars` cut output; `TestGatingFollowsSettings` and `TestReadCutsAtMaxCells` cover them |
+| `connectors/hubspot` | `cassettes.openapi` | HubSpot's per-object OpenAPI documents are not at a stable public URL; the synthetic cassettes are written from the CRM v3 reference |
+| `connectors/hubspot` | `settings.honored` | no setting changes a request: `read_only` chooses tools, `max_value_chars` cuts output; `TestGatingFollowsSettings` and the kit's truncation check cover them |
 
 ### Every generic bug becomes a check
 

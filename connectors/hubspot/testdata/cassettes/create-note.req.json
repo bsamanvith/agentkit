@@ -1,0 +1,12 @@
+{
+  "method": "POST",
+  "path": "/crm/v3/objects/notes",
+  "body": {
+    "properties": {"hs_note_body": "Call with Ana: renewal approved, PO to follow next week.", "hs_timestamp": "2026-01-01T00:00:00Z"},
+    "associations": [
+      {"to": {"id": "1051"}, "types": [{"associationCategory": "HUBSPOT_DEFINED", "associationTypeId": 202}]},
+      {"to": {"id": "5501"}, "types": [{"associationCategory": "HUBSPOT_DEFINED", "associationTypeId": 214}]}
+    ]
+  },
+  "synthetic": true
+}

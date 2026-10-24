@@ -2,7 +2,7 @@
 id: T118
 title: "connectors/hubspot: search and read CRM records, notes, with writes behind settings"
 epic: E22
-status: todo
+status: done
 depends_on: []
 ---
 
@@ -28,12 +28,17 @@ depends_on: []
 
 ## Acceptance criteria
 
-- [ ] **Kit:** passes `toolsettest.RunConnector` with synthetic cassettes from HubSpot's reference and a fuzz target per read tool — tests: `TestConformance`, `FuzzResponses*`
-- [ ] Search builds HubSpot's filter groups from the input, refusing an unknown operator or object before any request — test: `TestSearchRequest`, `TestInvalidInputSendsNothing`
-- [ ] Writes are absent by default and medium risk when on — test: `TestGatingFollowsSettings`
-- [ ] The slot's OAuth token is sent per caller; a caller with none gets "not connected" — test: `TestSlotToken`
-- [ ] The `hubspot` profile sets HubSpot's endpoints — test: `oauth.TestProfiles` (extended), `cmd/agentkit.TestOAuth2AppsProfiles`
+- [x] **Kit:** passes `toolsettest.RunConnector` with synthetic cassettes from HubSpot's reference and a fuzz target per read tool — tests: `TestConformance`, `FuzzResponses*`
+- [x] Search builds HubSpot's filter groups from the input, refusing an unknown operator or object before any request — test: `TestSearchRequest`, `TestInvalidInputSendsNothing`
+- [x] Writes are absent by default and medium risk when on — test: `TestGatingFollowsSettings`
+- [x] The slot's OAuth token is sent per caller; a caller with none gets "not connected" — test: `TestSlotToken`
+- [x] The `hubspot` profile sets HubSpot's endpoints — test: `oauth.TestProfiles` (extended), `cmd/agentkit.TestConnectConfig`
 
 ## Notes
 
--
+- **Shared client.** HubSpot and Salesforce act for a user with a bearer token like the Google family, so the Google client moved to `connectors/internal/rest` (provider-neutral: the account name, the error-body reader and the rate-limit rule are configuration) and `connectors/google/common` wraps it; Google's tests run through it unchanged. One behaviour change for every user of it: a 409 is now `ErrInvalidInput` with the provider's message (HubSpot answers an existing email with 409 and the existing id), where it was a plain failure.
+- **OAuth.** The `hubspot` profile carries the endpoints, no refresh scope (HubSpot always issues one) and `AuthInParams` (HubSpot takes the client only in the token request's form); `cmd/agentkit` turns it into `auth_style: params` for a slot.
+- **Notes** are timestamped with the factory's clock, so cassettes are stable under the kit's fake clock.
+- **Mutations checked:** dropping the HAS_PROPERTY value rule (`TestSearchRequest`), sending the env token with a slot (`TestSlotToken`), exposing writes by default (`TestGatingFollowsSettings`), header auth for the hubspot profile (`TestProfiles`).
+- **Size:** +184,320 bytes; agentkit and local budgets +1 MB ([docs/SIZES.md](../docs/SIZES.md), 2026-10-24).
+- Cassettes are synthetic (owner: real accounts not required).

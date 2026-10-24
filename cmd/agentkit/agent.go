@@ -585,6 +585,7 @@ var credentialEnv = map[string]string{
 	"calendar": "GOOGLE_ACCESS_TOKEN",
 	"drive":    "GOOGLE_ACCESS_TOKEN",
 	"sheets":   "GOOGLE_ACCESS_TOKEN",
+	"hubspot":  "HUBSPOT_ACCESS_TOKEN",
 }
 
 // credentialOf says where a toolset's key comes from and whether it is set:

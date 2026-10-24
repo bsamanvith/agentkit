@@ -1,0 +1,39 @@
+HTTP/1.1 200 OK
+Content-Type: application/json;charset=utf-8
+
+{
+  "total": 3,
+  "results": [
+    {
+      "id": "1051",
+      "properties": {
+        "createdate": "2026-03-02T10:15:00.000Z",
+        "email": "ana.ruiz@northwind.example",
+        "firstname": "Ana",
+        "hs_object_id": "1051",
+        "jobtitle": "Head of Operations",
+        "lastmodifieddate": "2026-10-20T08:01:12.381Z",
+        "lastname": "Ruiz"
+      },
+      "createdAt": "2026-03-02T10:15:00.000Z",
+      "updatedAt": "2026-10-20T08:01:12.381Z",
+      "archived": false
+    },
+    {
+      "id": "1077",
+      "properties": {
+        "createdate": "2026-05-11T14:40:00.000Z",
+        "email": "lee.chen@northwind.example",
+        "firstname": "Lee",
+        "hs_object_id": "1077",
+        "jobtitle": null,
+        "lastmodifieddate": "2026-10-02T17:22:45.002Z",
+        "lastname": "Chen"
+      },
+      "createdAt": "2026-05-11T14:40:00.000Z",
+      "updatedAt": "2026-10-02T17:22:45.002Z",
+      "archived": false
+    }
+  ],
+  "paging": {"next": {"after": "2", "link": "?after=2"}}
+}

@@ -1,0 +1,29 @@
+{
+  "total": 3,
+  "results": [
+    {
+      "id": "1051",
+      "object": "contacts",
+      "properties": {
+        "email": "ana.ruiz@northwind.example",
+        "firstname": "Ana",
+        "jobtitle": "Head of Operations",
+        "lastname": "Ruiz"
+      },
+      "created_at": "2026-03-02T10:15:00.000Z",
+      "updated_at": "2026-10-20T08:01:12.381Z"
+    },
+    {
+      "id": "1077",
+      "object": "contacts",
+      "properties": {
+        "email": "lee.chen@northwind.example",
+        "firstname": "Lee",
+        "lastname": "Chen"
+      },
+      "created_at": "2026-05-11T14:40:00.000Z",
+      "updated_at": "2026-10-02T17:22:45.002Z"
+    }
+  ],
+  "next_after": "2"
+}

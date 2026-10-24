@@ -1,0 +1,6 @@
+{
+  "method": "PATCH",
+  "path": "/crm/v3/objects/deals/5501",
+  "body": {"properties": {"dealstage": "closedwon", "amount": "48000"}},
+  "synthetic": true
+}

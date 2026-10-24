@@ -208,7 +208,12 @@ function Builder({ start, isNew }: { start: Start; isNew: boolean }) {
     return () => window.removeEventListener("beforeunload", onUnload);
   }, [dirty]);
 
-  const showSummary = () => requestAnimationFrame(() => summary.current?.focus());
+  // Focus goes to the error summary once it is rendered with the new errors.
+  const [summaryAsks, setSummaryAsks] = useState(0);
+  const showSummary = () => setSummaryAsks((n) => n + 1);
+  useEffect(() => {
+    if (summaryAsks > 0) summary.current?.focus();
+  }, [summaryAsks]);
 
   /** Saves the draft as a new version on top of ifLatest; the version, or null when it wasn't saved. */
   const save = async (publish: boolean, ifLatest = list?.latest ?? 0): Promise<AgentVersion | null> => {

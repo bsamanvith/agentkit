@@ -285,7 +285,7 @@ describe("the agent builder", () => {
     await user.type(field("Name"), "bad name");
     await user.click(screen.getByRole("button", { name: "Save draft" }));
     const summary = await screen.findByRole("alert", { name: /2 fields need a fix/ });
-    expect(summary).toHaveFocus();
+    await waitFor(() => expect(summary).toHaveFocus());
     expect(fake.posts).toHaveLength(0);
     expect(field("Name")).toHaveAccessibleDescription(/1 to 64 letters/);
     // The server's errors: on their fields, and linked from the summary.

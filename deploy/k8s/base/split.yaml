@@ -86,6 +86,8 @@ spec:
           env:
             - {name: AGENTKIT_COMPONENTS, value: runner}
             - {name: AGENTKIT_TOOLSETS_URL, value: "http://toolsets:8080"}
+            # Agents with a memory section keep it in the API's store.
+            - {name: AGENTKIT_MEMORY_URL, value: "http://api:8080"}
             - name: AGENTKIT_RPC_TOKEN
               valueFrom: {secretKeyRef: {name: agentkit, key: rpc-token}}
             - name: ANTHROPIC_API_KEY

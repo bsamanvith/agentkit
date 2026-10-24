@@ -1,6 +1,11 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"slices"
+
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 )
@@ -108,3 +113,62 @@ type agentMemory struct {
 }
 
 func (m *agentMemory) close() error { return closeAll(m.closers) }
+
+// The names of the memory tools (pkg/memory's ToolName and its recall
+// tools), here so that the runner, which links no pkg/memory, knows which
+// tool calls go to the agent API (TestMemoryToolNames keeps them equal).
+const memoryToolName = "memory"
+
+var recallToolNames = []string{"recall_get", "recall_save", "recall_search"}
+
+// memoryToolNames are the tools an agent's memory section gives it.
+func memoryToolNames(m *memoryConfig) []string {
+	var names []string
+	if m.Store != nil {
+		names = append(names, memoryToolName)
+	}
+	if m.Index != nil {
+		names = append(names, recallToolNames...)
+	}
+	return names
+}
+
+// checkRemoteMemory refuses what memory cannot do for an agent on a runner:
+// auto recall adds to each message before the model sees it, on the runner,
+// which has no index.
+func checkRemoteMemory(label string, m *memoryConfig) error {
+	if m.Index != nil && m.Index.AutoRecall {
+		return fmt.Errorf("%s.memory.index.auto_recall: an agent that runs on a runner cannot recall automatically yet; leave it off (the recall tools work)", label)
+	}
+	return nil
+}
+
+// remoteMemory is a runner's agent's memory: its memory tools at the agent
+// API (memoryService). Only the names of memory tools are sent there; any
+// other is tool.ErrNotFound here, so the agent's own tools never wait on
+// the agent API.
+func remoteMemory(m *memoryConfig, reg tool.Registry) *agentMemory {
+	names := memoryToolNames(m)
+	return &agentMemory{tools: namedTools{names: names, reg: reg}, names: names, native: m.NativeTool}
+}
+
+// namedTools is reg limited to the tools of names.
+type namedTools struct {
+	names []string
+	reg   tool.Registry
+}
+
+func (n namedTools) List(ctx context.Context) ([]tool.Definition, error) {
+	defs, err := n.reg.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return slices.DeleteFunc(defs, func(d tool.Definition) bool { return !slices.Contains(n.names, d.Name) }), nil
+}
+
+func (n namedTools) Invoke(ctx context.Context, name string, input json.RawMessage) (json.RawMessage, error) {
+	if !slices.Contains(n.names, name) {
+		return nil, fmt.Errorf("%w: %q", tool.ErrNotFound, name)
+	}
+	return n.reg.Invoke(ctx, name, input)
+}

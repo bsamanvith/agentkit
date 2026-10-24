@@ -30,9 +30,12 @@ browser ──/v1──▶ agent ──runner.Agent──▶ runner ──tool.R
 |---|---|---|---|
 | agent → runner | `runner.Agent` | the agent's `*harness.Harness` | `runnerrpc.Client.Agent(name)`, with `AGENTKIT_RUNNER_URL` |
 | runner, agent → toolsets | `tool.Registry` | the registries `toolset.Build` returns | `toolrpc.Client.Registry(name)`, with `AGENTKIT_TOOLSETS_URL` |
+| runner → agent (memory) | `tool.Registry` | the agent's memory tools (`openMemory`) | `toolrpc.NewClientAs(conn, "memory").Registry(agent)`, with `AGENTKIT_MEMORY_URL`; the agent API serves them at `/rpc/memory/` |
 
 The agent API keeps every run where its store is: only the turn loop moves to
-the runner, which holds no state. A run the API sends to a runner streams the
+the runner, which holds no state. Agents' memory stays with the API too: the
+runner calls the API's memory tools for the caller's tenant and user (T123),
+and only those; auto recall does not run on a runner yet. A run the API sends to a runner streams the
 same events and fails with the same errors as a local one (the run's partial
 work, retryable model errors, refusals), so recovery, retries and the event
 stream do not change. The runner is the one component that needs the model's
@@ -45,7 +48,8 @@ a `pool.Pool` whose agents are `runnerrpc` clients.
 |---|---|---|
 | `AGENTKIT_RUNNER_URL` | `agent` | Run the agents on the runner at this URL (`http://runner:8080`) instead of in process. The API then builds no model. |
 | `AGENTKIT_TOOLSETS_URL` | `agent`, `runner`, `mcp-server` | Take the toolsets from the toolsets component at this URL instead of building them. Every toolset the config names must be served there. |
-| `AGENTKIT_RPC_TOKEN` | all | The bearer token between components, 16 bytes or more. The runner and toolsets components require it on an address that is not loopback, and their callers send it. |
+| `AGENTKIT_MEMORY_URL` | `runner` | The agent API whose memory the runner's agents use (`http://api:8080`). Required when an agent of the config has a `memory` section. |
+| `AGENTKIT_RPC_TOKEN` | all | The bearer token between components, 16 bytes or more. The runner and toolsets components, and the agent API's `/rpc/memory/`, require it on an address that is not loopback, and their callers send it. |
 | `AGENTKIT_API_TOKEN` | `agent`, `mcp-server` | The bearer token clients send to `/v1/` and `/mcp/`. Required on an address that is not loopback, and checked whenever it is set. |
 | `AGENTKIT_A2A_URL` | `a2a` | The origin the Agent Cards name (`https://agents.example.com`), when a proxy in front changes it. Unset, a card names the scheme and host of the request that fetched it. |
 | `AGENTKIT_PUBLIC_URL` | `agent` | The server's public origin (`https://agents.example.com`), for MCP OAuth on toolsets added at run time (T095): authorization servers redirect to `/oauth/callback` there, and over https `/oauth/client-metadata.json` there is agentkit's client ID. Unset, those toolsets can't use `auth: oauth`. Needs the credential vault. |

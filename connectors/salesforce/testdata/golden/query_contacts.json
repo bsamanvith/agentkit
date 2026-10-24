@@ -1,0 +1,22 @@
+{
+  "total_size": 3,
+  "records": [
+    {
+      "Account.Name": "Northwind Traders",
+      "Description": "Head of Operations. Prefers email; approves renewals up to 50k and joins the quarterly business review with finance.",
+      "Email": "ana.ruiz@northwind.example",
+      "Id": "003D000000QV9n2IAD",
+      "Name": "Ana Ruiz",
+      "type": "Contact"
+    },
+    {
+      "Account.Name": "Northwind Traders",
+      "Description": null,
+      "Email": "lee.chen@northwind.example",
+      "Id": "003D000000QV9n3IAD",
+      "Name": "Lee Chen",
+      "type": "Contact"
+    }
+  ],
+  "next": "/services/data/v61.0/query/01gD0000002HU6KIAW-2000"
+}

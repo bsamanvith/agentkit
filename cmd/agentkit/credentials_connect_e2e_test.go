@@ -337,7 +337,8 @@ func TestConnectConfig(t *testing.T) {
 		Slot: "sf", Profile: "salesforce", ClientID: "app", ClientSecretEnv: "S", TokenURL: "https://login.salesforce.com/services/oauth2/token",
 		AuthURL: "https://login.salesforce.com/services/oauth2/authorize", RedirectURL: "https://agents.example.com/oauth/callback", Scopes: []string{"api"},
 	}
-	if apps, err := c.oauth2Apps(credentialsConfig{OAuth2: []oauth2AppConfig{s}}); err != nil || strings.Join(apps[0].scope, " ") != "api refresh_token" {
+	if apps, err := c.oauth2Apps(credentialsConfig{OAuth2: []oauth2AppConfig{s}}); err != nil || strings.Join(apps[0].scope, " ") != "api refresh_token" ||
+		strings.Join(apps[0].app.KeepExtras, ",") != "instance_url" || apps[0].app.DefaultTTL != time.Hour {
 		t.Errorf("salesforce = %+v, %v", apps, err)
 	}
 	h := oauth2AppConfig{

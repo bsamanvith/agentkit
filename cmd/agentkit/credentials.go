@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/credentials"
 	"github.com/bsamanvith/agentkit/pkg/credentials/file"
@@ -198,11 +199,13 @@ func (c cli) oauth2Apps(cfg credentialsConfig) ([]oauth2App, error) {
 			return nil, fmt.Errorf("%s: slot %q is listed twice", where, a.Slot)
 		}
 		seen[a.Slot] = true
+		var prof providerProfile
 		if a.Profile != "" {
 			p, err := oauthProfile(a.Profile)
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", where, err)
 			}
+			prof = p
 			a.AuthURL, a.TokenURL = cmp.Or(a.AuthURL, p.authURL), cmp.Or(a.TokenURL, p.tokenURL)
 			a.AuthStyle = cmp.Or(a.AuthStyle, p.authStyle)
 			if p.refreshScope != "" && !slices.Contains(a.Scopes, p.refreshScope) {
@@ -238,7 +241,10 @@ func (c cli) oauth2Apps(cfg credentialsConfig) ([]oauth2App, error) {
 		}
 		app := oauth2App{
 			slot: a.Slot, scope: a.Scopes, params: a.AuthParams,
-			app: credentials.OAuth2App{ClientID: a.ClientID, ClientSecret: credentials.NewSecret(secret), TokenURL: a.TokenURL, AuthStyle: style},
+			app: credentials.OAuth2App{
+				ClientID: a.ClientID, ClientSecret: credentials.NewSecret(secret), TokenURL: a.TokenURL, AuthStyle: style,
+				KeepExtras: prof.keepExtras, DefaultTTL: prof.defaultTTL,
+			},
 		}
 		if a.AuthURL == "" {
 			if a.RedirectURL != "" || len(a.AuthParams) > 0 {
@@ -276,6 +282,8 @@ const oauthCallbackPath = "/oauth/callback"
 type providerProfile struct {
 	authURL, tokenURL, refreshScope string
 	authStyle                       string // "" or "params"
+	keepExtras                      []string
+	defaultTTL                      time.Duration
 	params                          map[string]string
 }
 

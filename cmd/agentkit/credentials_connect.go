@@ -50,6 +50,7 @@ func (c cli) newConnect(cfg serveConfig, specs []toolset.Spec, env serveEnv, dyn
 				ClientID: a.app.ClientID, ClientSecret: a.app.ClientSecret, AuthStyle: a.app.AuthStyle,
 				AuthURL: a.authURL, TokenURL: a.app.TokenURL, RedirectURL: a.redirectURL,
 				Scopes: slices.Clone(a.scope), AuthParams: a.params,
+				KeepExtras: a.app.KeepExtras, DefaultTTL: a.app.DefaultTTL,
 			}
 		}
 	}

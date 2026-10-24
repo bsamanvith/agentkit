@@ -2,7 +2,7 @@
 id: T119
 title: "connectors/salesforce: SOQL queries and records, with writes behind settings"
 epic: E22
-status: todo
+status: done
 depends_on: []
 ---
 
@@ -30,12 +30,20 @@ depends_on: []
 
 ## Acceptance criteria
 
-- [ ] **Kit:** passes `toolsettest.RunConnector` with synthetic cassettes and a fuzz target per read tool — tests: `TestConformance`, `FuzzResponses*`
-- [ ] A query that is not a SELECT, or holds a `;`, is refused before any request — test: `TestQueryMustBeSelect`
-- [ ] Search escapes SOSL's reserved characters so input cannot change the query — test: `TestSOSLEscapeCannotBreakOut` (property test)
-- [ ] The instance comes from the slot token's `instance_url`, and a non-Salesforce host is refused — test: `TestInstanceFromToken`
-- [ ] Writes are absent by default and medium risk when on — test: `TestGatingFollowsSettings`
+- [x] **Kit:** passes `toolsettest.RunConnector` with synthetic cassettes and a fuzz target per read tool — tests: `TestConformance`, `FuzzResponses*`
+- [x] A query that is not a SELECT, or holds a `;`, is refused before any request — test: `TestQueryMustBeSelect`
+- [x] Search escapes SOSL's reserved characters so input cannot change the query — test: `TestSOSLEscapeCannotBreakOut` (property test)
+- [x] The instance comes from the slot token's `instance_url`, and a non-Salesforce host is refused — test: `TestInstanceFromToken`
+- [x] `api_version` picks the path's version — test: `TestAPIVersionSetting`
+- [x] The slot connect flow and refresh keep `instance_url` and give a token without `expires_in` the profile's lifetime — tests: `connect.TestKeepExtras`, `credentials.TestRefreshKeepsExtras`, `cmd/agentkit.TestConnectConfig`
+- [x] Writes are absent by default and medium risk when on — test: `TestGatingFollowsSettings`
 
 ## Notes
 
--
+- **Slot tokens.** The T095 profile kept `instance_url` only on the MCP OAuth path; the slot connect flow (`pkg/credentials/connect`) and its refresh dropped token extras. `credentials.OAuth2App` and `connect.App` gained `KeepExtras` and `DefaultTTL` (Salesforce sends no `expires_in`), filled from the profile by `cmd/agentkit`; a refresh keeps the extras it does not repeat.
+- **Per call.** With a slot, each call reads the user's token, checks its `instance_url` (https, a Salesforce domain, no path) and sends there (`rest.Client.With`). `base_url`/`WithBaseURL` replaces the org for tests only.
+- **Search** writes the SOSL itself and escapes every reserved character; `salesforce_query` takes SOQL as written, SELECT only, because SOQL cannot change data and the model needs its full expressiveness.
+- **Paging.** `Sforce-Query-Options: batchSize` asks for pages of `max_records` (at least 200); a smaller `max_records` cuts the page and sets `truncated`, with no `next`.
+- **Mutations checked:** dropping the `;` rule, leaving `}` unescaped, a domain match by `Contains`, writes on by default, a fixed API version: each fails its test.
+- **Size:** +184,320 bytes, under the budgets T118 raised ([docs/SIZES.md](../docs/SIZES.md)).
+- Cassettes are synthetic (owner: real accounts not required).

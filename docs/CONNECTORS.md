@@ -227,6 +227,8 @@ A new check rolls in, not crashes in. When a check would fail connectors that ex
 | `connectors/google/sheets` | `settings.honored` | no setting changes a request: `read_only` chooses tools, `max_cells` and `max_cell_chars` cut output; `TestGatingFollowsSettings` and `TestReadCutsAtMaxCells` cover them |
 | `connectors/hubspot` | `cassettes.openapi` | HubSpot's per-object OpenAPI documents are not at a stable public URL; the synthetic cassettes are written from the CRM v3 reference |
 | `connectors/hubspot` | `settings.honored` | no setting changes a request: `read_only` chooses tools, `max_value_chars` cuts output; `TestGatingFollowsSettings` and the kit's truncation check cover them |
+| `connectors/salesforce` | `cassettes.openapi` | Salesforce publishes no OpenAPI document for the REST API's core resources; the synthetic cassettes are written from the REST API reference |
+| `connectors/salesforce` | `settings.honored` | `api_version` changes the path, which the cassettes pin to v61.0; `TestAPIVersionSetting` covers it. `read_only` chooses tools, the limits cut output |
 
 ### Every generic bug becomes a check
 

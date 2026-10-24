@@ -1,0 +1,6 @@
+{
+  "method": "POST",
+  "path": "/services/data/v61.0/sobjects/Contact",
+  "body": {"LastName": "Okafor", "FirstName": "Sam", "Email": "sam.okafor@contoso.example"},
+  "synthetic": true
+}

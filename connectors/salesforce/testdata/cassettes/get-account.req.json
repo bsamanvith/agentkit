@@ -1,0 +1,6 @@
+{
+  "method": "GET",
+  "path": "/services/data/v61.0/sobjects/Account/001D000000IqhSLIAZ",
+  "query": {"fields": ["Name,Industry,AnnualRevenue,IsDeleted"]},
+  "synthetic": true
+}

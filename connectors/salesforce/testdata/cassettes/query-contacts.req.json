@@ -1,0 +1,6 @@
+{
+  "method": "GET",
+  "path": "/services/data/v61.0/query",
+  "query": {"q": ["SELECT Id, Name, Email, Account.Name, Description FROM Contact WHERE Account.Name = 'Northwind Traders'"]},
+  "synthetic": true
+}

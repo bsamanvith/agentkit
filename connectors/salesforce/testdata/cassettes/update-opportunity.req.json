@@ -1,0 +1,6 @@
+{
+  "method": "PATCH",
+  "path": "/services/data/v61.0/sobjects/Opportunity/006D000000CbP8yIAF",
+  "body": {"StageName": "Closed Won", "Amount": 48000},
+  "synthetic": true
+}

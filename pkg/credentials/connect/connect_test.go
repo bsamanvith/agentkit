@@ -390,6 +390,32 @@ func TestFullFlow(t *testing.T) {
 	}
 }
 
+// A slot's app keeps the token response fields it names (Salesforce's
+// instance_url) and no others, and gives a token with no expires_in its
+// default lifetime.
+func TestKeepExtras(t *testing.T) {
+	t.Parallel()
+	r := newRig(t, func(r *rig, cfg *connect.Config) {
+		a := cfg.Apps["crm"]
+		a.KeepExtras, a.DefaultTTL = []string{"instance_url"}, 2*time.Hour
+		cfg.Apps["crm"] = a
+	})
+	r.ts.SetOptions(credentialstest.TokenServerOptions{
+		Prefix: canary + "-", ExpiresIn: -1,
+		Extra: map[string]any{"instance_url": "https://acme.my.salesforce.com", "id": "https://login.salesforce.com/id/00D/005"},
+	})
+	crm := r.connected("tenant-a", "", "crm")
+	if len(crm.Extra) != 1 || crm.Extra["instance_url"] != "https://acme.my.salesforce.com" {
+		t.Errorf("Extra %v, want only instance_url", crm.Extra)
+	}
+	if want := r.clk.Now().Add(2 * time.Hour).UTC(); !crm.Expiry.Equal(want) {
+		t.Errorf("Expiry %v, want %v (the default lifetime)", crm.Expiry, want)
+	}
+	if mail := r.connected("tenant-a", "u1", "mail"); mail.Extra != nil || !mail.Expiry.IsZero() {
+		t.Errorf("mail: Extra %v Expiry %v, want neither (its app keeps none and has no default)", mail.Extra, mail.Expiry)
+	}
+}
+
 func mustQuery(t *testing.T, raw string) url.Values {
 	t.Helper()
 	u, err := url.Parse(raw)

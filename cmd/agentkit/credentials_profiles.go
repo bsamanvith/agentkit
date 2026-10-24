@@ -23,7 +23,10 @@ func oauthProfile(name string) (providerProfile, error) {
 	if !ok {
 		return providerProfile{}, fmt.Errorf("profile %q: want %q", name, strings.Join(slices.Sorted(maps.Keys(all)), `", "`))
 	}
-	out := providerProfile{authURL: p.AuthURL, tokenURL: p.TokenURL, params: maps.Clone(p.AuthParams)}
+	out := providerProfile{
+		authURL: p.AuthURL, tokenURL: p.TokenURL, params: maps.Clone(p.AuthParams),
+		keepExtras: slices.Clone(p.KeepExtras), defaultTTL: p.DefaultTTL,
+	}
 	if p.AuthInParams {
 		out.authStyle = "params"
 	}

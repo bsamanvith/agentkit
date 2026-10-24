@@ -2,7 +2,7 @@
 id: T099
 title: "runs: start time, lane and priority, and claiming the next run in that order"
 epic: E05
-status: review
+status: done
 depends_on: [T030, T088, T098, T100]
 ---
 

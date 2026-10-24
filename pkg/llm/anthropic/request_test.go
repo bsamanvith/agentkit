@@ -197,7 +197,10 @@ func TestNativeMemory(t *testing.T) {
 
 // TestDeferredTools: deferred tools go with defer_loading and no cache
 // breakpoint, which moves to the last tool sent in full, and a result's
-// Loads become tool_reference blocks after its text, for deferred tools only.
+// Loads become tool_reference blocks, for deferred tools only. The API
+// refuses a result that mixes them with text, so the text of a result that
+// loads tools goes after the message's results, as a text block; a result
+// that loads none keeps its text.
 func TestDeferredTools(t *testing.T) {
 	t.Parallel()
 	obj := json.RawMessage(`{"type":"object"}`)
@@ -210,8 +213,10 @@ func TestDeferredTools(t *testing.T) {
 		Deferred: []string{"github_issue", "github_pr"},
 		Messages: []llm.Message{
 			llm.User(llm.Text{Text: "Open an issue."}),
-			llm.Assistant(llm.ToolUse{ID: "toolu_1", Name: "tool_search", Input: json.RawMessage(`{"query":"issue"}`)}),
-			llm.User(llm.ToolResult{ToolUseID: "toolu_1", Content: "found", Loads: []string{"github_issue", "not_deferred"}}),
+			llm.Assistant(llm.ToolUse{ID: "toolu_1", Name: "tool_search", Input: json.RawMessage(`{"query":"issue"}`)},
+				llm.ToolUse{ID: "toolu_2", Name: "tool_search", Input: json.RawMessage(`{"query":"x"}`)}),
+			llm.User(llm.ToolResult{ToolUseID: "toolu_1", Content: "found", Loads: []string{"github_issue", "not_deferred"}},
+				llm.ToolResult{ToolUseID: "toolu_2", Content: "nothing", Loads: []string{"not_deferred"}}),
 		},
 		Provider: anthropic.Options{Cache: []anthropic.CachePoint{anthropic.CacheTools}},
 	}
@@ -229,11 +234,12 @@ func TestDeferredTools(t *testing.T) {
 		}
 	}
 	msgs := m["messages"].([]any)
-	result := msgs[2].(map[string]any)["content"].([]any)[0].(map[string]any)
-	got, _ := json.Marshal(result["content"])
-	want := `[{"text":"found","type":"text"},{"tool_name":"github_issue","type":"tool_reference"}]`
+	got, _ := json.Marshal(msgs[2].(map[string]any)["content"])
+	want := `[{"content":[{"tool_name":"github_issue","type":"tool_reference"}],"tool_use_id":"toolu_1","type":"tool_result"},` +
+		`{"content":[{"text":"nothing","type":"text"}],"tool_use_id":"toolu_2","type":"tool_result"},` +
+		`{"text":"The output of tool call toolu_1, which loaded the tools above:\n\nfound","type":"text"}]`
 	if string(got) != want {
-		t.Errorf("result content = %s, want %s", got, want)
+		t.Errorf("message content = %s, want %s", got, want)
 	}
 }
 

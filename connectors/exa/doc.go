@@ -18,9 +18,15 @@
 // the tool descriptions tell the model to treat it as data.
 //
 // Exa needs an API key, sent in the x-api-key header. Settings never hold the
-// key: they name the environment variable it is read from (default
-// EXA_API_KEY), looked up through [WithLookupEnv] when the toolset is built.
-// A missing variable fails the build, so an optional toolset is skipped.
+// key. When the toolset's spec names a credential slot ("credential":
+// {"slot": "exa", "scope": "user"}), each call uses the key the calling user
+// (or, with scope tenant, their tenant) stored at that slot: a caller with
+// none gets "exa is not connected for this account", and a slot holding
+// another kind of credential is refused. Without a slot, the settings name
+// the environment variable the one key is read from (default EXA_API_KEY),
+// looked up through [WithLookupEnv] when the toolset is built; a missing
+// variable fails the build, so an optional toolset is skipped. A spec with a
+// slot must not set api_key_env.
 //
 // Settings (all optional):
 //

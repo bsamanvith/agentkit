@@ -13,7 +13,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bsamanvith/agentkit/connectors/internal/apikey"
 	"github.com/bsamanvith/agentkit/pkg/clock"
+	"github.com/bsamanvith/agentkit/pkg/credentials"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
@@ -151,6 +153,7 @@ var (
 // config is the validated settings with defaults applied.
 type config struct {
 	keyEnv       string
+	keyEnvSet    bool // api_key_env was given, not defaulted
 	baseURL      string
 	timeout      time.Duration
 	searchChars  int
@@ -174,7 +177,7 @@ func (f *factory) decode(raw json.RawMessage) (config, error) {
 	if err := json.Unmarshal(raw, &top); err == nil {
 		for k := range top {
 			if strings.EqualFold(k, "api_key") {
-				return config{}, invalid(`"api_key" is not accepted, because config files get committed: put the key in an environment variable and name it in "api_key_env" (default %s)`, defaultAPIKeyEnv)
+				return config{}, invalid(`"api_key" is not accepted, because config files get committed: give the toolset a credential slot that each user connects their key to, or put the key in an environment variable and name it in "api_key_env" (default %s)`, defaultAPIKeyEnv)
 			}
 		}
 	}
@@ -194,7 +197,7 @@ func (f *factory) decode(raw json.RawMessage) (config, error) {
 		if !envNameRE.MatchString(s.APIKeyEnv) {
 			return config{}, invalid("api_key_env %q is not an environment variable name", s.APIKeyEnv)
 		}
-		c.keyEnv = s.APIKeyEnv
+		c.keyEnv, c.keyEnvSet = s.APIKeyEnv, true
 	}
 	if s.BaseURL != "" {
 		c.baseURL = s.BaseURL
@@ -297,6 +300,24 @@ func isLoopback(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
+// keys is where the toolset's calls get their key: the caller's credential
+// when the spec names a slot (src), else the environment variable that
+// api_key_env names, read once now.
+func (f *factory) keys(c config, src credentials.Source) (apikey.Key, error) {
+	if src != nil {
+		if c.keyEnvSet {
+			return apikey.Key{}, invalid("api_key_env and the toolset's credential slot are two places for the key: give one")
+		}
+		return apikey.FromSource(src), nil
+	}
+	key, ok := f.lookupEnv(c.keyEnv)
+	key = strings.TrimSpace(key)
+	if !ok || key == "" {
+		return apikey.Key{}, fmt.Errorf("%s: the API key is missing: set the environment variable %s, or give the toolset a credential slot", Type, c.keyEnv)
+	}
+	return apikey.Static(key), nil
+}
+
 // Build implements [toolset.Factory]. It makes no network request.
 func (f *factory) Build(_ context.Context, in toolset.BuildInput) ([]tool.Tool, error) {
 	raw := in.Settings
@@ -304,15 +325,14 @@ func (f *factory) Build(_ context.Context, in toolset.BuildInput) ([]tool.Tool, 
 	if err != nil {
 		return nil, err
 	}
-	key, ok := f.lookupEnv(c.keyEnv)
-	key = strings.TrimSpace(key)
-	if !ok || key == "" {
-		return nil, fmt.Errorf("%s: the API key is missing: set the environment variable %s", Type, c.keyEnv)
+	keys, err := f.keys(c, in.Credentials)
+	if err != nil {
+		return nil, err
 	}
 	cl := &client{
 		http:    f.client,
 		baseURL: c.baseURL,
-		key:     key,
+		keys:    keys,
 		timeout: c.timeout,
 		clock:   f.clock,
 		log:     f.log,
@@ -325,7 +345,11 @@ func (f *factory) Build(_ context.Context, in toolset.BuildInput) ([]tool.Tool, 
 	if err != nil {
 		return nil, err
 	}
-	f.log.Info("parallel toolset built", "api_key_env", c.keyEnv, "base_url", c.baseURL,
+	keyFrom := "env " + c.keyEnv
+	if keys.PerCaller() {
+		keyFrom = "credential slot"
+	}
+	f.log.Info("parallel toolset built", "api_key", keyFrom, "base_url", c.baseURL,
 		"mode", c.mode, "model_picks_mode", c.allowMode, "full_content", c.fullContent)
 	return []tool.Tool{search, extract}, nil
 }

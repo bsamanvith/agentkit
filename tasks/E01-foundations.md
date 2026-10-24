@@ -16,13 +16,13 @@ Put [docs/ENGINEERING.md](../docs/ENGINEERING.md) into practice. Split in two ph
 ## Phase 2: M5, after E03 (real components exist)
 
 - [x] [T003](T003-skeleton-binaries.md) `agentkit` binary with component runtime and health endpoints
-- [ ] [T004](T004-fakellm.md) `fakellm` scripted model server (needs the `llm` work from M3)
+- [x] [T004](T004-fakellm.md) `fakellm` scripted model server (needs the `llm` work from M3)
 - [x] [T005](T005-container-image.md) Distroless container image (read T003's "For T005" Notes first)
 - [ ] [T006](T006-compose-and-dev-script.md) Local deploy on Docker Desktop's Kubernetes (`make k8s-up`)
 - [x] [T113](T113-compose-local.md) Local deploy in Docker Compose, beside the Kubernetes one (`make compose-up`) — in review: `docker compose up` not yet run (needs Docker)
 - [x] [T007](T007-e2e-smoke-suite.md) E2E smoke suite
 - [x] [T008](T008-ci-pipeline.md) Full CI pipeline (images, integration, smoke)
-- [ ] [T102](T102-component-images.md) An image per component, a migrate image, and the all-in-one image (after T037)
+- [x] [T102](T102-component-images.md) An image per component, a migrate image, and the all-in-one image (after T037)
 
 ## CI follow-ups
 

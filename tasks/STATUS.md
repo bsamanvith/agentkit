@@ -1,109 +1,62 @@
 # Plan status
 
-> Maintained by the planner ([docs/WORKFLOW.md](../docs/WORKFLOW.md)). Updated 2026-10-12 at `main` `e80b204` plus planner commits, CI green. Task files are the source of truth for each task; this page is the overview.
+> Maintained by the planner ([docs/WORKFLOW.md](../docs/WORKFLOW.md)). Updated 2026-10-24 at `main` `9899c35` plus bsamanvith/agentkit#113 (T047/T048 per-user keys, the status pass). Task files are the source of truth for each task; this page is the overview. 108 task files: 98 done, 8 in review (each waits on something a cloud session cannot do, below), 2 paused.
 
 ## Milestones
 
 | Milestone | Epic | State |
 |---|---|---|
-| M0 Tooling: `make check`, lint, architecture test, CI | [E01](E01-foundations.md) | Done |
-| M1 `pkg/tool` | [E03](E03-tool-core-and-mcp.md) | Done |
-| M2 Toolsets from config; one MCP server, one path per toolset | [E03](E03-tool-core-and-mcp.md) | Done |
-| M3 `llm`, Anthropic adapter, harness, `flow`, `agentstep`, `agentkit run` | [E04](E04-llm-harness-flow.md) | Done |
-| M4 Store, runner, compaction | [E05](E05-store-runner.md) | In progress: `pkg/store` (interfaces, memory store, suites, run lifecycle), the SQLite store (T029), the runner (T030) and the API on the runner (T037: store chosen by `AGENTKIT_STORE`, runs outlive `serve`) done; compaction (T031) done. Postgres store (T088) and turn batching (T098) done; run start times and priority are T099 |
-| M5 Agent API, `agentkit serve`, image, Compose, smoke tests | [E09](E09-agent-api.md), [E01](E01-foundations.md) | In progress: `agentkit serve`, agent API v0 and the image done; **deployable** |
-| M6 Remote tools and runners over `pkg/rpc` | E06 (to plan) | In progress: T102 puts toolsets and runners on the wire |
-| Credentials, auth, tenancy at the edge | [E07](E07-auth-credentials.md) | **In progress**: T039 (`pkg/auth`) and T040 (`serve` behind API keys, scopes and per-key toolsets on `/v1` and `/mcp`) done; T042 (`pkg/credentials`: sealer, key ring, vault, memory backend) done; T041 (JWT), T043 and T044 ready |
-| First connectors: Tavily, Exa, Parallel (search, extract) | [E10](E10-search-connectors.md) | **Tavily done** (live end to end with real Claude passed); Exa and Parallel on `main`, in review until keys exist; no auth work needed (Tavily keyless or keyed; Exa and Parallel keyed from env) |
-| Clients: admin console, CLI and headless, and the APIs behind them | [E11](E11-clients.md) | **In progress**: T053 (`pkg/agentclient`), T054 (`agentkit chat`, `agentkit ask --json`), T062 (agents, conversations, catalog API) T070 (console design, owner-approved), T078 (web workspace, embedded console shell) and T092 (`POST /v1/conversations`) done; T055 (console chat), T063 (agents over MCP), T061 (login), T055/T064 (console) next. UI plan: [docs/UI.md](../docs/UI.md) with a clickable mockup |
-| Skills and memory (context store; search by keyword or embeddings, opt-in) | [E12](E12-skills-memory.md) | **Planned** (T057–T060); T057 and T058 can start now |
-| Agent protocols: A2UI (agent-driven UI), A2A (agent to agent), AG-UI, MCP Apps | [E13](E13-agent-protocols.md) | **Planned** (T065–T069); after the console basics and the agents API |
-| Tasks (background agents) and agent-to-agent messaging | [E14](E14-background-agents-messaging.md) | **Planned** (T071–T074); needs the stream API (T090, E18); the runner (T030) and SQLite store (T029) are done |
-| Agent definitions as versioned data (agents, skills, toolsets) | [E15](E15-agent-definitions.md) | **Planned** (T075; T076, T077 to plan); T029 and T062 are done, so T075 can start |
-| Runtimes and jobs: temporary environments, exported harness images, results outside chat | [E16](E16-runtimes-jobs.md) | **Shaped**, tasks to plan after the console's first version |
-| Tool safety and control: tool kinds and risk, policies, interrupts and approvals, deferred loading, steering | [E17](E17-tool-safety-control.md) | **In progress**: T082 (tool metadata) done; T083–T086 next |
-| Streaming and the server backend: SSE + HTTP commands (WebSocket later), Postgres + Redis | [E18](E18-streaming-backend.md) | **In progress**: T088 (Postgres store, event log, `agentkit migrate`), T089 (`pkg/bus`, Redis Streams) T098 (runner turn batching) and T093 (row-level security, `AGENTKIT_STORE_ADMIN`) done; T090 (stream API) mostly done |
-| External MCP servers: add any remote MCP server by URL, MCP OAuth, tool pinning | [E19](E19-external-mcp-servers.md) | **In progress**: T094 (the client, toolset type `mcp`) done; T095 core built; T096 parts 1 (SSRF guard, tool pinning) and 2 (runtime API, `agentkit toolsets`) done; part 3 (console) after T087 |
-| Google connectors: Gmail, Calendar, Drive as toolsets, one package each, shared `common` | [E21](E21-google-connectors.md) | **In progress** (T108–T111): T108 (`connectors/google/common`) and T109 (Gmail, synthetic cassettes) in review (PR #23); T110 (Calendar) and T111 (Drive) start from T108 |
-| More model providers | [E08](E08-model-providers.md) | Later |
-| Agent skills | [E02](E02-agent-skills.md) | In progress: `write-tests` exists and was dry-run on `pkg/flow` |
+| M0 Tooling: `make check`, lint, architecture test, CI | [E01](E01-foundations.md) | Done; local deploys (T006 k8s, T113 Compose) wait for a run on the owner's Docker Desktop, T056 for a decision |
+| M1 `pkg/tool`; M2 toolsets from config, one MCP server | [E03](E03-tool-core-and-mcp.md) | Done |
+| M3 `llm`, Anthropic adapter, harness, `flow`, `agentkit run` | [E04](E04-llm-harness-flow.md) | Done |
+| M4 Store, runner, compaction | [E05](E05-store-runner.md) | Done: memory, SQLite and Postgres stores, the runner, compaction, run queue order (T099) |
+| M5 Agent API, `agentkit serve`, images, smoke tests | [E09](E09-agent-api.md), [E01](E01-foundations.md) | Done: six images built and budget-checked in CI (T102), `make smoke`, `make integration` |
+| M6 Remote tools and runners over `pkg/rpc` | (T102) | Done: the split deployment; the caller's tenant and user cross `/rpc/` (2026-10-24) |
+| Credentials, auth, tenancy at the edge | [E07](E07-auth-credentials.md) | Done: API keys, JWT/OIDC, local users, the vault, credentials in tools, connecting accounts; T009 superseded by T006 |
+| Search connectors: Tavily, Exa, Parallel | [E10](E10-search-connectors.md) | Done: Exa and Parallel use **each user's own key** from a credential slot (2026-10-24); tool-use evals (`make eval`) |
+| Clients: console, CLI and headless, and the APIs behind them | [E11](E11-clients.md) | Done; T087 (UX design part 2) waits for the owner's review of mockup v4 |
+| Skills and memory | [E12](E12-skills-memory.md) | Done; T060 (semantic search) waits for an embedding provider's key |
+| Agent protocols: A2UI, A2A | [E13](E13-agent-protocols.md) | Done (live runs passed 2026-10-24) |
+| Tasks (background agents) and agent messaging | [E14](E14-background-agents-messaging.md) | Done; supervised tasks wait for a person (T084, 2026-10-24) |
+| Agent definitions as versioned data | [E15](E15-agent-definitions.md) | T075 done; T076 (skills store) and T077 (console editors) **to plan**: owner's call |
+| Runtimes and jobs | [E16](E16-runtimes-jobs.md) | **Shaped**, T078–T081 to plan (the ids collide with existing tasks: renumber when planned); owner's call |
+| Tool safety and control | [E17](E17-tool-safety-control.md) | Done (live runs passed 2026-10-24) |
+| Streaming and the server backend | [E18](E18-streaming-backend.md) | Done |
+| External MCP servers | [E19](E19-external-mcp-servers.md) | Done |
+| Runner pools | [E20](E20-runner-pools.md) | T104, T105 done; T106 (gVisor) and T107 (microVM) **paused** by the owner (2026-10-22) |
+| Google connectors | [E21](E21-google-connectors.md) | Gmail, Calendar done on synthetic cassettes; T111 Drive waits for a Google test account |
+| More model providers | [E08](E08-model-providers.md) | T025 (OpenAI-compatible) waits for an OpenAI key or an Ollama endpoint |
+| Agent skills | [E02](E02-agent-skills.md) | Done; T010 waits for one check with Codex |
 
-## Verified end to end (planner, 2026-10-11)
+## Verified with the real model (2026-10-24)
 
-The stripped binary of `main` (14.5 MB; image about 17.9 MB of the 20 MB budget), run as a deployment would run it: `AGENTKIT_COMPONENTS=agent,mcp-server`, listening on `0.0.0.0` with `AGENTKIT_API_TOKEN`, real Claude.
-- `/readyz` ready (agent, mcp-server); `/v1/runs` without the token: 401.
-- A streamed run used the demo arithmetic tool and answered 391 (17×23); events `run_start`, `text_delta`, `tool_call`, `tool_result`, 2× `turn_done`, `run_done`.
-- A JSON follow-up in the same conversation answered 400.
-- `/mcp/demo` listed `calculate`, `current_time`, `echo` from the same process.
-- SIGTERM: draining runs, shutting down, stopped, exit 0.
-
-Not verified here: the container itself (no Docker daemon in the planner's environment; T005 verified the image with Docker).
-
-The same checks are one command on a laptop: `scripts/try-agent.sh` ([docs/QUICKSTART.md](../docs/QUICKSTART.md)), verified on 2026-10-12 with `--demo` and with Ctrl-C in serve mode.
+`make test-live` with the project's Anthropic key: every live test passes (skills, memory recall, agents over MCP, A2UI surfaces, A2A streaming, deferred tools native and emulated, deferred skill loading, serve and `ask` with the search agent). The run found a real bug, now fixed: the API refuses a tool result that mixes tool references with text, which a native `skill_load` sent. Exa's and Parallel's own live tests still need a key, which each user now brings.
 
 ## Done
 
-T001 tooling · T002 testkit · T003 `agentkit serve` · T005 image and `agentkit healthcheck` · T017 `pkg/tool` · T018 MCP server · T019 `pkg/clock` · T020 `pkg/llm` · T021 Anthropic adapter · T022 harness · T023 `flow` · T024 `agentkit run`, `agentstep` · T026 `pkg/toolset` · T027 `pkg/tenancy` · T028 `pkg/store` · T038 `store.Admin` · T046 Tavily connector · T049 connector test kit · T051 cassette OpenAPI validation · T052 kit hardening · T053 `pkg/agentclient` · T032 flow step-tree check · T036 agent API v0 · T029 SQLite store · T054 `agentkit chat` and `ask` · T062 agents, conversations and catalog API · T070 console UX design (owner-approved) · T030 `pkg/runner` · T078 web workspace · T092 `POST /v1/conversations` · T082 tool metadata · T088 Postgres store and event log · T089 `pkg/bus` · T098 runner turn batching · T037 agent API v1 on the runner
+T001 · T002 · T003 · T004 · T005 · T007 · T008 · T009 · T011 · T012 · T013 · T014 · T015 · T016 · T017 · T018 · T019 · T020 · T021 · T022 · T023 · T024 · T026 · T027 · T028 · T029 · T030 · T031 · T032 · T033 · T034 · T035 · T036 · T037 · T038 · T039 · T040 · T041 · T042 · T043 · T044 · T045 · T046 · T047 · T048 · T049 · T050 · T051 · T052 · T053 · T054 · T055 · T057 · T058 · T059 · T061 · T062 · T063 · T064 · T065 · T066 · T067 · T068 · T069 · T070 · T071 · T072 · T073 · T074 · T075 · T078 · T082 · T083 · T084 · T085 · T086 · T088 · T089 · T090 · T091 · T092 · T093 · T094 · T095 · T096 · T097 · T098 · T099 · T100 · T101 · T102 · T103 · T104 · T105 · T108 · T109 · T110 · T112
 
-## Running or waiting
+## Open
 
-| Task | State |
-|---|---|
-| [T013](T013-skill-write-tests.md) `write-tests` dry runs | The `pkg/flow` dry run found a real bug (a rejected run could be resumed into `failed`); **fixed on `main`** by the planner (`a645012`) with a deterministic regression test. The dry run's flow tests (invariants after every run, seeded simulation, `FuzzSimulatedFlow`) are on `main` as `5a13386`. The T018 dry run stopped unfinished. |
-
-## Next (ready to start)
-
-| Task | What | Why now |
+| Task | State | Waits for |
 |---|---|---|
-| [T039](T039-auth-principals-middleware.md) | `pkg/auth`: principals, API keys, edge middleware | **Done** (`f08e82e`, CI green): T040, T041 and T061 can start; read its "For T040", "For T041" and "For T061" Notes first |
-| [T040](T040-serve-auth-wiring.md) | `serve` behind auth | **Done**: API keys (config or `AGENTKIT_API_KEYS_FILE`), scopes, per-key toolsets; see its Notes for the agent-visibility decision |
-| [T041](T041-auth-jwt-oidc.md) | JWT/OIDC | **Ready** (T039 done) |
-| [T063](T063-agents-over-mcp.md) | Agents over MCP for Claude Code | **Ready** (T062 done) |
-| [T055](T055-web-client.md), [T061](T061-local-users-login.md), [T064](T064-console-admin-pages.md) | Console shell and chat; local users and login; admin pages | **T055 ready** (T078, T062, T070 done; read T055's "From T078's handoff"); T061 ready; T064 after T055 |
-| [T057](T057-skills.md), [T058](T058-memory-context-store.md) | Skills (Agent Skills format, progressive disclosure); memory context store (Claude memory-tool shape) | Ready; new packages, parallel with everything |
-| [T056](T056-test-speed.md) | `make test` back under 30 s (52 s now) | Ready; small |
-| [T050](T050-connector-tool-evals.md) | Tool-use evals: real Claude with faked connectors | **Done** 2026-10-22: `make eval` (18 scenarios, faked upstreams, `agentkit ask -json`), `make eval-misleading`; baseline and description changes in its Notes |
-| [T047](T047-connector-exa.md) | `connectors/exa`: search and extract | **Review**: on `main`, on the kit (`2f7b951`, `049a7cc`); waits for `EXA_API_KEY` (live test, re-recording synthetic cassettes) |
-| [T048](T048-connector-parallel.md) | `connectors/parallel`: search and extract | **Review**: on `main`, on the kit (`baf4248`); waits for `PARALLEL_API_KEY` (live test, re-recording synthetic cassettes) |
-| [T042](T042-credentials-core.md) | `pkg/credentials`: secrets, sealer, vault, memory backend | **Done**: AES-256-GCM sealer with a rotating key ring (`AGENTKIT_CREDENTIALS_KEY`), `Vault` over a `BlobStore`, memory backend, conformance suites; see its Notes "For T043 and T044" |
-| [T100](T100-interactive-chat-runs.md) | Runner: interactive chat runs stop with their user (stop, closed tab), show `interrupted`, are never recovered in the background | **Start now** (T030, T088, T098 done): T037 and T099 wait on it |
-| [T090](T090-stream-api.md) | Stream API across replicas: replay from Postgres, tail Redis, commands to the lease holder | **Mostly done** (bsamanvith/agentkit#13, merged 2026-10-15): run streams and stop/cancel across replicas, local/dev image variants. Left: steering (needs T086), `GET /v1/events` (needs T040) |
-| [T103](T103-shared-run-watch.md) | One watch per run per replica, shared by its viewers: one Redis connection and one held-check per run, not per viewer | **Review**: bsamanvith/agentkit#18. The takeover criterion is tested in process, not in `TestE2EServeReplicas` (see its Notes) |
-| [T093](T093-postgres-rls.md) | Postgres row-level security by tenant | **Done**: policies on every tenant table, tenant set per pooled connection, `Admin` on its own role (`AGENTKIT_STORE_ADMIN`) |
-| [T099](T099-run-queue-order.md) | Runs: start time, lane and priority, `ClaimNext` | After T100 (migration 0006; skips interactive runs) |
-| [T083](T083-tool-policy.md) | Tool policy: presets, rules, allow/flag/approve/deny | **Ready** (T082 done); T084 follows with T030 done |
-| [T031](T031-compaction.md) | Compaction | **Done**: reactive on `context_too_long` and proactive at `model.compact_at` of `model.context_window`; the harness summarizes, also through the runner component |
-| [T087](T087-console-ux-design-2.md) | Console UX design part 2: skills, agent builder, tool policies, interrupts and approvals, tasks with steering; mockup v4 | **Ready** (owner approved v3) |
-| [T108](T108-google-common.md) | `connectors/google/common`: the client, token sources, settings, paging and text limits the Google connectors share | **Review** (draft PR with Gmail); T110 and T111 build on it |
-| [T109](T109-connector-gmail.md), [T110](T110-connector-google-calendar.md), [T111](T111-connector-google-drive.md) | Gmail, Google Calendar and Google Drive connectors | T109 **Review** (PR #23); T110 and T111 **ready** to start on T108's branch |
-| [T094](T094-mcp-client-toolset.md) | `pkg/mcp/client` and the `mcp` toolset type: use external MCP servers' tools, pin fingerprints | **Done**: Streamable HTTP, SSE and stdio; fingerprints, diff and sanitizer for T096; see its Notes for the naming and kit decisions |
-| [T101](T101-ci-hardening.md) | CI hardening: actions pinned by SHA, no persisted credentials, workflow lint | **Ready**; small, from T078's review |
-| [T102](T102-component-images.md) | Split images: API, runner and toolsets on `pkg/rpc`, each alone or bundled; the all-in-one image stays | **Review** (rescoped by the owner 2026-10-16) |
-| [T006](T006-compose-and-dev-script.md) | Local deploy on Docker Desktop's Kubernetes: `make k8s-up` (rescoped from Compose 2026-10-17) | **Review** |
-| [T113](T113-compose-local.md) | Local deploy in Docker Compose, parallel to T006: `make compose-up` (console on 30081), `allinone` profile on SQLite | **Review**: validated without a Docker daemon; `compose up` needs the owner's machine |
-| [T033](T033-harness-clock.md) | Harness on `pkg/clock` | Small, independent |
-| [T035](T035-rerecord-anthropic-fixtures.md) | Re-record Anthropic fixtures from the real API | **Done** 2026-10-22: `make record-anthropic`; hand-written ones listed in `pkg/llm/anthropic/testdata/README.md` |
-| [T010](T010-skills-layout.md) | `AGENTS.md`, `CLAUDE.md`, skills README, lint | Small, independent |
-| [T034](T034-nightly-ci.md) | Nightly benchstat report (non-gating, no secrets) | Small; starts the perf history |
-
-## Blocked on other tasks
-
-| Task | Waits for |
-|---|---|
-| [T043](T043-credentials-backends.md) credential backends, [T044](T044-credentials-in-tools.md) credentials in tools | T042 |
-| [T091](T091-websocket-binding.md) WebSocket binding | T090 |
-| [T095](T095-mcp-oauth-client.md) MCP OAuth for external servers | **In progress**: the core (`pkg/mcp/oauth`: discovery, CIMD/DCR, PKCE + resource, refresh, provider profiles) is built and tested on fakes. Wiring needs T094 (client), T042 (vault) and T096 (API, callback page) |
-| [T096](T096-mcp-servers-api-console.md) Add MCP servers at runtime: API, console, SSRF guard | **In progress**: part 1 (guards) and part 2 (runtime API, store, `agentkit toolsets`) done; part 3 (console) needs T087; OAuth and user scope need T095 and T044 |
-| [T097](T097-mcp-registry-search.md) MCP Registry search | T096 |
-| [T045](T045-connect-accounts.md) Connecting accounts (OAuth2 + PKCE) | T040, T043, T044 |
-| [T004](T004-fakellm.md) `fakellm`, [T008](T008-ci-pipeline.md) full CI | T006. [T007](T007-e2e-smoke-suite.md) smoke suite **done** 2026-10-17 (`make smoke`, `make k8s-smoke`, on the console's fake model in place of `fakellm`) |
+| [T006](T006-compose-and-dev-script.md) | Review | `make k8s-up` / `k8s-down` on the owner's Docker Desktop (cloud sessions have no Docker) |
+| [T113](T113-compose-local.md) | Review | `make compose-up` / `compose-down` on the owner's Docker Desktop |
+| [T010](T010-skills-layout.md) | Review | one check that Codex lists the same skills |
+| [T025](T025-llm-openai-compatible.md) | Review | an OpenAI key or an Ollama endpoint for its live test |
+| [T056](T056-test-speed.md) | Review | a decision: "under 30 s" no longer fits the repository (on 2026-10-24 `pkg/store/sqlite` alone takes 91 s and `pkg/runner` 45 s under `-race`); a new budget or a split tier |
+| [T060](T060-memory-search-semantic.md) | Review | the first embedding provider (Voyage AI, OpenAI, or local) and its key |
+| [T087](T087-console-ux-design-2.md) | Review | the owner's approval of mockup v4 |
+| [T111](T111-connector-google-drive.md) | Review | a Google test account to record real cassettes, then the mutation list |
+| [T106](T106-sandbox-pool.md), [T107](T107-vm-pool.md) | Paused | the owner (2026-10-22: only the shared runner for now) |
 
 ## Waiting on the owner
 
-1. **Managed Postgres** for deployments (RDS, Cloud SQL, Neon, ...): needed before the first deploy with more than one replica (E18).
-1. **First embedding provider** for semantic memory (T060): Voyage AI, OpenAI, or a local model through the OpenAI-compatible endpoint.
-2. **`EXA_API_KEY` and `PARALLEL_API_KEY` in Claude sessions** (like `ANTHROPIC_KEY`) for T047's and T048's live tests; optional `TAVILY_API_KEY` (Tavily's live tests run keyless without it).
-3. **Delete the `review/t022-base` branch**, and the merged `claude/*` session branches including `claude/t013-flow-tests` and `claude/festive-napier-f0b111` (all their work is on `main`).
+1. **Docker Desktop runs** of `make k8s-up` and `make compose-up` (T006, T113).
+2. **First embedding provider** for semantic memory (T060).
+3. **Next larger goal**: E15's skills store and console editors (T076, T077), E16's runtimes and jobs, or cloud deploy (managed Postgres: RDS, Cloud SQL, Neon, ...).
+4. **Exa and Parallel in the deployed configs**: `deploy/k8s` and `deploy/compose` don't serve the search toolsets yet. Adding them needs `credentials.backend: postgres` and `AGENTKIT_CREDENTIALS_KEY` on the api and toolsets containers.
+5. **Delete merged branches**: `review/t022-base` and the merged `claude/*` session branches.
 
 ## Owner decisions recorded
 

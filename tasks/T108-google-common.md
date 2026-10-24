@@ -2,7 +2,7 @@
 id: T108
 title: "connectors/google/common: the HTTP client, token sources, settings, paging and text limits the Google connectors share"
 epic: E21
-status: review
+status: done
 depends_on: [T049]
 ---
 

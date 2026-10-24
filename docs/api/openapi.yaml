@@ -6713,9 +6713,10 @@
           },
           "interaction": {
             "enum": [
-              "autonomous"
+              "autonomous",
+              "supervised"
             ],
-            "description": "How the task treats a tool that needs a person: autonomous (the default, and the only mode served) never waits for one."
+            "description": "How the task treats a tool that needs a person: autonomous (the default) never waits for one and refuses such a call; supervised (for an agent that may wait) suspends the task until POST /v1/runs/{id}/input answers it, telling its user with a run_status notification, then goes on in the background."
           },
           "policy": {
             "$ref": "#/components/schemas/ToolPolicy"

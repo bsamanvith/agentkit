@@ -140,26 +140,30 @@ func (s *searchTool) run(ctx context.Context, in searchInput, mode string) (sear
 		return searchOutput{}, err
 	}
 	var resp searchResponse
-	if err := s.c.post(ctx, "/v1/search", req, &resp); err != nil {
+	c, err := s.c.forCall(ctx)
+	if err != nil {
 		return searchOutput{}, err
 	}
-	s.c.logWarnings(ctx, "parallel_search", resp.Warnings)
+	if err := c.post(ctx, "/v1/search", req, &resp); err != nil {
+		return searchOutput{}, err
+	}
+	c.logWarnings(ctx, "parallel_search", resp.Warnings)
 	out := searchOutput{Results: []searchResult{}}
 	for _, r := range resp.Results {
 		if len(out.Results) == n {
 			break
 		}
-		u := s.c.clean(r.URL, maxURLChars)
+		u := c.clean(r.URL, maxURLChars)
 		if u == "" {
 			continue
 		}
 		res := searchResult{
 			URL:     u,
-			Title:   s.c.clean(deref(r.Title), maxTitleChars),
-			Content: truncateContent(s.c.redact(joinExcerpts(r.Excerpts)), s.cfg.searchChars, searchHint),
+			Title:   c.clean(deref(r.Title), maxTitleChars),
+			Content: truncateContent(c.redact(joinExcerpts(r.Excerpts)), s.cfg.searchChars, searchHint),
 		}
 		if d := deref(r.PublishDate); d != "" {
-			res.PublishedDate = s.c.clean(d, 64)
+			res.PublishedDate = c.clean(d, 64)
 		}
 		out.Results = append(out.Results, res)
 	}

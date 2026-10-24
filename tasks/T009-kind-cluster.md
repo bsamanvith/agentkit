@@ -1,10 +1,12 @@
 ---
 id: T009
-title: kind cluster and k8s overlays
+title: "kind cluster and k8s overlays (superseded by T006)"
 epic: E07
-status: todo
+status: done
 depends_on: [T005, T007]
 ---
+
+> **Superseded by [T006](T006-compose-and-dev-script.md) (closed 2026-10-24, owner).** The local cluster is the owner's Docker Desktop Kubernetes (`make k8s-up`, `deploy/k8s`), not kind: kind does not run in cloud sessions, and the owner chose not to create a new cluster (2026-10-17). Nothing of this task is left to build; the k8s secrets backend for credentials, if wanted, is a new task.
 
 # T009: kind cluster and k8s overlays
 

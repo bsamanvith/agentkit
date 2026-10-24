@@ -110,6 +110,7 @@ Decision: **the restriction stays, as intended for now.**
 - The harness never builds such a message itself: tool results always go back alone, in one message.
 - `Validate` only matters for transcripts given back to the harness, and every transcript the harness and `agentstep` save passes it.
 - Mixing in text would mean a user steering an agent mid-turn. That needs the deferred between-turns hook (T022 "Deferred") and a looser `Validate`, which T022 already lists as a follow-up ("a replaceable `Validate`").
+- **Update 2026-10-24:** steering (T086) made `Validate` accept text after a message's tool results. The live test now expects that, and Claude still accepts the message (re-run with the real API on 2026-10-24).
 - The live test asserts both sides, so a change on either side is noticed.
 
 ### Manual: the flow demo across processes (real Claude)

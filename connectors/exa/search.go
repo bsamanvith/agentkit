@@ -125,6 +125,10 @@ func searchCall(ctx context.Context, c *client, s settings, in searchIn, searchT
 	if err != nil {
 		return searchOut{}, err
 	}
+	c, err = c.forCall(ctx)
+	if err != nil {
+		return searchOut{}, err
+	}
 	body, err := c.post(ctx, searchPath, req)
 	if err != nil {
 		return searchOut{}, err

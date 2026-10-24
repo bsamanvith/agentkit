@@ -8,7 +8,9 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/bsamanvith/agentkit/internal/testkit"
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/llm"
@@ -260,5 +262,47 @@ func TestRunRequestInteraction(t *testing.T) {
 		if code != http.StatusBadRequest || e.Code != agentapi.CodeInvalidRequest {
 			t.Errorf("%s: %d %+v, want 400 invalid_request", name, code, e)
 		}
+	}
+}
+
+// A supervised task (T084) of an agent that may wait (interactive, which a
+// task narrows) waits for a person where its policy says so: it
+// is suspended on the held call, its user is told (a run_status
+// notification, suspended), and the answer lets it go on in the background
+// to the end; nothing ran before the answer. An autonomous task with the
+// same policy never waits: the held call is denied.
+func TestSupervisedTaskWaitsForInput(t *testing.T) {
+	t.Parallel()
+	m := script(t,
+		llmtest.ToolCalls(llm.ToolUse{ID: "c1", Name: "note", Input: json.RawMessage(`{"s": "hi"}`)}), llmtest.Text("done"),
+		llmtest.ToolCalls(llm.ToolUse{ID: "c2", Name: "note", Input: json.RawMessage(`{"s": "no"}`)}), llmtest.Text("gave up"),
+	)
+	var notes atomic.Int64
+	r := interruptRig(t, m, &notes)
+	stream := r.notifications("caller", "", "")
+
+	task := r.task(`{"input":"write a note","interaction":"supervised"}`)
+	got := stream.untilEnded(task.ID)
+	if s := statuses(got); !slices.Equal(s, []string{agentapi.StatusRunning, agentapi.StatusSuspended}) {
+		t.Fatalf("notifications %s, want running then suspended", jsonOf(got))
+	}
+	run := r.waitTask(task.ID)
+	if run.Status != agentapi.StatusSuspended || len(run.Interrupts) != 1 || run.Interrupts[0].ID != "c1" || run.Interrupts[0].Kind != "approval" {
+		t.Fatalf("task %+v, want suspended on the held note", run)
+	}
+	if notes.Load() != 0 {
+		t.Fatal("the held note ran before its approval")
+	}
+	if resp, body := r.input(task.ID, `{"answers":[{"id":"c1","approved":true}]}`); resp.StatusCode != http.StatusOK {
+		t.Fatalf("answer = %d %s", resp.StatusCode, body)
+	}
+	testkit.Eventually(t, 30*time.Second, func() bool { return r.getRun(task.ID).Status == agentapi.StatusDone })
+	if run := r.getRun(task.ID); run.Answer != "done" || notes.Load() != 1 || !run.Background {
+		t.Errorf("answered task %+v (notes %d), want done in the background after the note ran once", run, notes.Load())
+	}
+
+	auto := r.waitTask(r.task(`{"input":"write a note"}`).ID)
+	if auto.Status != agentapi.StatusDone || auto.Answer != "gave up" || notes.Load() != 1 {
+		t.Errorf("autonomous task %+v (notes %d), want done without the held note", auto, notes.Load())
 	}
 }

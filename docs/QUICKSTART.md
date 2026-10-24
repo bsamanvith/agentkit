@@ -404,7 +404,7 @@ A token needs a valid signature (`RS256` or `ES256` unless `algorithms` says oth
 
 `roles`: `user` may chat (`agent:run`, `agent:read`), `admin` may also manage toolsets (`agent:admin`) and see agents' system prompts. `toolsets` defaults to all (`*`). Signing in (`POST /v1/auth/login`) sets an `HttpOnly`, `SameSite=Strict` session cookie, which works for `/v1` only (never `/mcp`); a session ends after 12 hours idle or 7 days, or at sign-out. Requests other than GET with a session need the `X-Agentkit-CSRF` header from `GET /v1/auth/me` and a same-origin `Origin`. After 10 failed sign-ins for a username (or 100 from an address) each further try waits, doubling up to 15 minutes (429 with `Retry-After`). Off loopback, serve behind a TLS proxy and list it in `trusted_proxies` (addresses or CIDR prefixes): its `X-Forwarded-For` then names the client, and its `X-Forwarded-Proto: https` makes the cookie `Secure` (`__Host-agentkit_session`); without one the server warns at startup. Users alone are enough off loopback, unless `mcp-server` is a component (it needs a key or `auth.jwt`). `GET /v1/auth/config` (no credentials) says which sign-ins the console should offer.
 
-Tasks: `POST /v1/tasks {"input": ..., "agent"?, "policy"?, "notify"?: {"url": ...}}` starts a background run and answers `202` at once. The server owns it: closing a connection never stops it (only `POST /v1/runs/{id}/cancel` does), and after a crash the recovery loop resumes it once its lease runs out (`AGENTKIT_RECOVERY_INTERVAL`, default `30s`, is how often it looks). Follow it with `GET /v1/runs/{id}/events` from any number of clients, resuming with `Last-Event-ID`; list them with `GET /v1/runs?background=true&status=running`. Its end is posted to the webhook when `AGENTKIT_WEBHOOK_SECRET` (at least 32 bytes; each tenant's secret derives from it) is set: a JSON `run.ended` with the run, signed `Agentkit-Signature: t=<unix>,v1=<hex HMAC-SHA256 of "<t>.<body>">` under the tenant's secret (`GET /v1/webhooks/secret`, scope `agent:admin`), with `Agentkit-Webhook-Id` (the run's ID: keep the first) and `Agentkit-Webhook-Attempt`; it is retried with backoff for 24h, and the attempts show in the run's `notify`. Webhooks never reach private or loopback addresses except the hosts in `AGENTKIT_WEBHOOK_ALLOW_HOSTS` (comma-separated). Package `pkg/webhook` has `Verify` for receivers.
+Tasks: `POST /v1/tasks {"input": ..., "agent"?, "policy"?, "interaction"?, "notify"?: {"url": ...}}` starts a background run and answers `202` at once. A task never waits for a person (`autonomous`, the default) unless it is `"interaction": "supervised"` and its agent may wait: it then suspends on an `ask_user` question or a held call (the console lists it under "Waiting for you", and its user's `GET /v1/events` gets a `run_status` `suspended`), and `POST /v1/runs/{id}/input` answers it and lets it go on in the background. The server owns it: closing a connection never stops it (only `POST /v1/runs/{id}/cancel` does), and after a crash the recovery loop resumes it once its lease runs out (`AGENTKIT_RECOVERY_INTERVAL`, default `30s`, is how often it looks). Follow it with `GET /v1/runs/{id}/events` from any number of clients, resuming with `Last-Event-ID`; list them with `GET /v1/runs?background=true&status=running`. Its end is posted to the webhook when `AGENTKIT_WEBHOOK_SECRET` (at least 32 bytes; each tenant's secret derives from it) is set: a JSON `run.ended` with the run, signed `Agentkit-Signature: t=<unix>,v1=<hex HMAC-SHA256 of "<t>.<body>">` under the tenant's secret (`GET /v1/webhooks/secret`, scope `agent:admin`), with `Agentkit-Webhook-Id` (the run's ID: keep the first) and `Agentkit-Webhook-Attempt`; it is retried with backoff for 24h, and the attempts show in the run's `notify`. Webhooks never reach private or loopback addresses except the hosts in `AGENTKIT_WEBHOOK_ALLOW_HOSTS` (comma-separated). Package `pkg/webhook` has `Verify` for receivers.
 
 Triggers: `POST /v1/triggers {"id": ..., "prompt": ..., "schedule"?: ..., "webhook"?: true, "agent"?, "conversation_id"?}` (scope `agent:admin`; also `GET`, `PATCH`, `DELETE /v1/triggers/{id}`, `POST .../pause` and `.../resume`) starts a task of the agent on its prompt at each time of a cron schedule (five fields or `@hourly`, `@daily`...; `CRON_TZ=<zone> ` first for a time zone, default UTC), or each time its inbound webhook is called. The prompt's `{{trigger}}`, `{{time}}` and `{{date}}` are filled in; each firing runs in a new conversation, or continues `conversation_id`. Every firing is recorded (`GET /v1/triggers/{id}/firings`: time, run, outcome). Across replicas sharing a store each due time fires once; a firing while the trigger's previous run goes on is recorded as `skipped`; after downtime a schedule fires once for all the times it missed, then goes on from now. With `AGENTKIT_WEBHOOK_SECRET` set, a trigger with `"webhook": true` gets a path `/v1/hooks/<random id>` and a secret (`GET /v1/triggers/{id}`; `PATCH {"rotate_webhook": true}` replaces both): POST it a JSON body signed as [Standard Webhooks](https://www.standardwebhooks.com/) (`webhook-id`, `webhook-timestamp` within 5 minutes, `webhook-signature: v1,<base64 HMAC-SHA256 of "<id>.<timestamp>.<body>">`). The body (at most 64 KiB) goes to the run after the prompt as a `<third_party_data>` block marked as data, never as instructions; an unsigned, badly signed, stale, replayed (same `webhook-id`) or oversized delivery is refused and starts nothing.
 
@@ -445,14 +445,21 @@ curl -sN localhost:8080/v1/runs -H "Authorization: Bearer $AGENTKIT_API_TOKEN" -
 `deploy/local/agent/search.json` adds three web search toolsets to the demo tools, each served over MCP at its own route, and has these agents: `default`, a plain assistant with the demo tools, `search`, a research assistant with the web search toolsets, and `workspace` (section 7):
 
 - `tavily`: `tavily_search` (web search) and `tavily_extract` (a page's content), at `/mcp/tavily`. No key needed.
-- `exa`: `exa_search` and `exa_extract` through [Exa](https://exa.ai), at `/mcp/exa`. Needs `EXA_API_KEY`.
-- `parallel`: `parallel_search` and `parallel_extract` through [Parallel](https://parallel.ai), at `/mcp/parallel`. Needs `PARALLEL_API_KEY`.
+- `exa`: `exa_search` and `exa_extract` through [Exa](https://exa.ai), at `/mcp/exa`. Each user connects their own Exa key.
+- `parallel`: `parallel_search` and `parallel_extract` through [Parallel](https://parallel.ai), at `/mcp/parallel`. Each user connects their own Parallel key.
 
 ```sh
-export EXA_API_KEY=...        # optional: without it Exa is skipped
-export PARALLEL_API_KEY=...   # optional: without it Parallel is skipped
 scripts/try-agent.sh --agent search     # uses search.json; AGENTKIT_CONFIG picks another
 ```
+
+Exa and Parallel have no server key in `search.json`: their specs name a credential slot of scope `user` (`"credential": {"slot": "exa", "scope": "user"}`), so each signed-in user stores their own key in the credential vault (section 5, `credentials`), from the console's Connections page or the API, and every call uses the key of the user it runs for:
+
+```sh
+curl -X PUT localhost:8080/v1/credentials/exa -H "Authorization: Bearer $MY_KEY" -d '{"kind": "api_key", "api_key": "..."}'
+curl -X PUT localhost:8080/v1/credentials/parallel -H "Authorization: Bearer $MY_KEY" -d '{"kind": "api_key", "api_key": "..."}'
+```
+
+The caller must be a user: a local user signed in to the console, or an API key with a `user` (`AGENTKIT_API_TOKEN` has none). Until a user connects a key, that user's calls answer "exa is not connected for this account" and the agent carries on with the other tools; `GET /v1/credentials` and `GET /v1/toolsets` show each slot's status for the caller. The slots need a vault, so a server without `AGENTKIT_CREDENTIALS_KEY` skips both toolsets (they are optional); `scripts/try-agent.sh` makes a key for its run (memory backend: keys are lost when it stops). In the split deployment, the agent API and the toolsets component open the same vault (`credentials.backend` `postgres`, the same `AGENTKIT_CREDENTIALS_KEY`), and the calling user reaches the toolsets component with each call. A single-user setup can still read one server key from the environment instead: drop `credential` and set `EXA_API_KEY` or `PARALLEL_API_KEY` (or name another variable in `api_key_env`; a spec cannot have both).
 
 Then ask the `search` agent something current, e.g. `{"message":"What is the latest Go release? Cite the source.","agent":"search"}`: the run's events show a `tool_call` to one of the search tools, and the answer cites URLs. `GET /v1/toolsets` shows which search toolsets are ready, and for a skipped one the reason and the key variable it reads (never the key).
 
@@ -464,13 +471,13 @@ No Tavily key is needed: without one the toolset runs keyless, at Tavily's free 
 
 ### Exa
 
-Exa needs an API key (dashboard.exa.ai); the config names the environment variable it is read from, never the key itself. Without `EXA_API_KEY` the server still starts: the `exa` toolset is optional, so it is skipped, the log says which variable is missing, and `/readyz` reports `degraded`. With `--docker`, pass the key into the container (`-e EXA_API_KEY`).
+Exa needs an API key (dashboard.exa.ai): each user's own, from a credential slot (above), or one server key from the environment, whose variable the config names (never the key itself). Without a slot and without `EXA_API_KEY` the server still starts: the `exa` toolset is optional, so it is skipped, the log says which variable is missing, and `/readyz` reports `degraded`. With `--docker`, pass the key into the container (`-e EXA_API_KEY`).
 
 Settings of an `exa` toolset (all optional; unknown fields, including a literal `api_key`, fail startup):
 
 | Field | Default | Meaning |
 |---|---|---|
-| `api_key_env` | `EXA_API_KEY` | environment variable holding the key |
+| `api_key_env` | `EXA_API_KEY` | environment variable holding the key, for a spec without a credential slot |
 | `base_url` | `https://api.exa.ai` | another server, e.g. a local replay (`https`, or `http` to loopback only) |
 | `timeout` | `30s` | per call, including one retry on 429 |
 | `max_content_chars` | `{"search": 4000, "extract": 20000}` | cap on each result's content; a cut ends with e.g. `…[truncated 12,400 characters; call exa_extract on this URL for the full page]` |
@@ -484,13 +491,13 @@ Settings of an `exa` toolset (all optional; unknown fields, including a literal 
 
 ### Parallel
 
-Parallel needs an API key (platform.parallel.ai). The config names the environment variable it is read from, never the key itself. Without `PARALLEL_API_KEY` the server still starts: the `parallel` toolset is optional, so it is skipped, and `/readyz` reports `degraded` and names the variable. With the container (section 4), pass the key with `-e PARALLEL_API_KEY` (`scripts/try-agent.sh --docker` passes it when set).
+Parallel needs an API key (platform.parallel.ai): each user's own, from a credential slot (above), or one server key from the environment, whose variable the config names (never the key itself). Without a slot and without `PARALLEL_API_KEY` the server still starts: the `parallel` toolset is optional, so it is skipped, and `/readyz` reports `degraded` and names the variable. With the container (section 4), pass the key with `-e PARALLEL_API_KEY` (`scripts/try-agent.sh --docker` passes it when set).
 
 Settings of a `parallel` toolset (all optional; unknown fields, including a literal `api_key`, fail startup; full reference: [connectors/parallel](../connectors/parallel/doc.go)):
 
 | Field | Default | Meaning |
 |---|---|---|
-| `api_key_env` | `PARALLEL_API_KEY` | environment variable holding the key |
+| `api_key_env` | `PARALLEL_API_KEY` | environment variable holding the key, for a spec without a credential slot |
 | `base_url` | `https://api.parallel.ai` | another server, e.g. a local replay (`https`, or `http` to loopback only) |
 | `timeout` | `30s` | per request attempt (one retry on 429) |
 | `max_content_chars` | `{"search": 4000, "extract": 20000}` | cap on each result's content; a cut ends with e.g. `…[truncated 12,400 characters; call parallel_extract on this URL for more of the page]` |

@@ -2,7 +2,7 @@
 id: T004
 title: fakellm scripted model server
 epic: E01
-status: review
+status: done
 depends_on: [T003]
 ---
 
@@ -34,7 +34,7 @@ Local runs and e2e tests must be deterministic and must not need an API key. `fa
 - [x] `stream: true` returns a valid SSE event sequence (`message_start` ... `message_stop`) — checked with a golden file. — `internal/fakellm.TestStreamGolden` (`internal/fakellm/testdata/stream.golden`)
 - [x] No match and no fallback returns a 4xx with a clear error body. — `internal/fakellm.TestNoAnswerIsAClientError`
 - [x] The official Anthropic Go SDK, pointed at `fakellm`, can complete a request (proves wire compatibility). — `internal/fakellm.TestOfficialSDK` (a streamed tool call accumulated by the SDK, its result sent back with SDK params, a non-streamed answer)
-- [ ] The `fakellm` image builds, runs as non-root and its size is recorded (T005: "T004 checks its image the same way"). *Not run here: no Docker in this session. CI's `image` job builds it and checks it against its own 12 MB budget (`IMAGE_BUDGET_MB_fakellm`) on every push; the binary is measured in docs/SIZES.md. By hand: `docker run --rm fakellm version` and the healthcheck.*
+- [x] The `fakellm` image builds, runs as non-root and its size is recorded (T005: "T004 checks its image the same way"). *Not run here: no Docker in this session. CI's `image` job builds it and checks it against its own 12 MB budget (`IMAGE_BUDGET_MB_fakellm`) on every push; the binary is measured in docs/SIZES.md. By hand: `docker run --rm fakellm version` and the healthcheck.* **Ticked 2026-10-24** from CI on bsamanvith/agentkit#113 (run 40099895001): the `image` job builds it with `make image BIN=fakellm` and passes `make image-size BIN=fakellm` (its 12 MB budget, which records the size in the job log); it runs as uid 65532 (`USER 65532:65532` on distroless `nonroot`, the Dockerfile every image shares).
 
 ## Notes
 

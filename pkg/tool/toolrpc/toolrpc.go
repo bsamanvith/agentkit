@@ -7,7 +7,9 @@
 // This is agentkit's own protocol between its components; MCP
 // (pkg/mcp/server) is the one for everyone else. It keeps what MCP has no
 // place for: tool metadata whole, and the identity of tool errors
-// ([tool.ErrNotFound], [tool.ErrInvalidInput], [tool.ErrToolFailed]).
+// ([tool.ErrNotFound], [tool.ErrInvalidInput], [tool.ErrToolFailed]), and
+// who a call acts for: the context's tenant and user (pkg/tenancy) reach the
+// server's tool, so a user's own credential works on a toolsets component.
 package toolrpc
 
 import (
@@ -19,6 +21,7 @@ import (
 	"slices"
 
 	"github.com/bsamanvith/agentkit/pkg/rpc"
+	"github.com/bsamanvith/agentkit/pkg/tenancy"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 )
 
@@ -85,6 +88,10 @@ type invokeReq struct {
 	Toolset string          `json:"toolset"`
 	Tool    string          `json:"tool"`
 	Input   json.RawMessage `json:"input,omitempty"`
+	// Caller is the tenant and user the call acts for: a toolset whose
+	// credential slot is the tenant's or the user's reads it from the
+	// context, on the server as in process.
+	Caller tenancy.Carried `json:"caller,omitzero"`
 }
 
 type invokeResp struct {
@@ -139,6 +146,10 @@ func Register(s *rpc.Server, sets []Toolset, regs map[string]tool.Registry) erro
 		if err != nil {
 			return invokeResp{}, err
 		}
+		ctx, err = r.Caller.Into(ctx)
+		if err != nil {
+			return invokeResp{}, fmt.Errorf("%w: caller: %w", rpc.ErrBadRequest, err)
+		}
 		out, err := reg.Invoke(ctx, r.Tool, r.Input)
 		return invokeResp{Output: out}, err
 	})
@@ -179,7 +190,7 @@ func (r *registry) List(ctx context.Context) ([]tool.Definition, error) {
 }
 
 func (r *registry) Invoke(ctx context.Context, name string, input json.RawMessage) (json.RawMessage, error) {
-	resp, err := invokeMethod.Call(ctx, r.c.conn, invokeReq{Toolset: r.name, Tool: name, Input: input})
+	resp, err := invokeMethod.Call(ctx, r.c.conn, invokeReq{Toolset: r.name, Tool: name, Input: input, Caller: tenancy.Carry(ctx)})
 	if err != nil {
 		// A toolsets component that went away, or no longer serves this
 		// toolset, is a failed call, as a local connector's dropped

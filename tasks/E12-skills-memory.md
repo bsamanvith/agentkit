@@ -32,11 +32,11 @@ Everything here plugs in from outside the harness (PLAN: "the harness holds no s
 
 ## Tasks
 
-- [ ] [T057](T057-skills.md) `pkg/skill`: Agent Skills loading, catalog in the system prompt, `skill_load`/`skill_read` tools
-- [ ] [T058](T058-memory-context-store.md) `pkg/memory`: context store (Claude memory-tool shape), memory toolset, opt-in config
+- [x] [T057](T057-skills.md) `pkg/skill`: Agent Skills loading, catalog in the system prompt, `skill_load`/`skill_read` tools
+- [x] [T058](T058-memory-context-store.md) `pkg/memory`: context store (Claude memory-tool shape), memory toolset, opt-in config
 - [x] [T059](T059-memory-search-keyword.md) Search store interface, conformance suite, keyword backends (BM25 in memory; SQLite FTS5 with T029), `auto_recall`
 - [ ] [T060](T060-memory-search-semantic.md) Embedders and semantic and hybrid search (in-memory vectors, then SQLite)
-- [ ] [T112](T112-knowledge-base.md) Knowledge bases: a folder of documents cut into passages and searched as a toolset (`knowledge`), with a sample handbook and evals
+- [x] [T112](T112-knowledge-base.md) Knowledge bases: a folder of documents cut into passages and searched as a toolset (`knowledge`), with a sample handbook and evals
 
 T057 and T058 can start now (new packages). T059 after T058's scoping helpers (or in parallel, sharing only `ctx` scoping rules). T060 after T059. The clients (E11) show memory later: a "memories" panel to view and delete, since users must be able to see what is remembered.
 

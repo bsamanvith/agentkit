@@ -2,7 +2,7 @@
 id: T063
 title: "Agents over MCP: /mcp/agentkit for Claude Code and other harnesses"
 epic: E11
-status: review
+status: done
 depends_on: [T062, T053]
 ---
 
@@ -36,7 +36,7 @@ The owner wants to drive and test our agents from Claude Code and other CLI harn
 - [x] **Timeout:** an `agent_run` past its timeout returns status `running` and IDs; `run_get` later shows `done`. `TestAgentRunTimeout` (the API there interrupts at once a run nobody follows, so it also shows the run is kept going), `TestCallTimeoutCutsTheWait`.
 - [x] **Not offered to agents:** an agent configured with the `agentkit` toolset fails startup with a clear message. `TestServeAgentkitToolsetMistakes` (both config forms and the runner).
 - [x] **Auth:** once T040 is in, `/mcp/agentkit` needs credentials and a principal sees only its tenant's conversations. `TestAuth` (pkg/agenttools: no key, a wrong key, a key without the toolset; tenants; a key that does not allow all of an agent's toolsets; a read-only key), `TestServeAgentsOverMCP`.
-- [ ] **Live (`-tags live`):** Claude Code is not available in CI, so a Go MCP client stands in: `agent_run` against real Claude with the Tavily toolset (keyless) returns an answer with a `tavily_search` call in the summary. Written (`TestLiveAgentsOverMCP`, cmd/agentkit) but not run: no Anthropic key in the session.
+- [x] **Live (`-tags live`):** Claude Code is not available in CI, so a Go MCP client stands in: `agent_run` against real Claude with the Tavily toolset (keyless) returns an answer with a `tavily_search` call in the summary. Written (`TestLiveAgentsOverMCP`, cmd/agentkit) . **Run 2026-10-24** with the project's Anthropic key (`make test-live`, all live tests pass): `TestLiveAgentsOverMCP` passed (its search.json paths made absolute, `searchConfig`).
 - [x] **Mutation list** recorded (Notes).
 
 ## Notes

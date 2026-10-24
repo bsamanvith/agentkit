@@ -240,11 +240,14 @@ func waitFor[T any](ctx context.Context, wait time.Duration, log *slog.Logger, w
 	}
 }
 
-// credentialOfServed is a toolset's credential: as the toolsets component
-// reports it for one of its toolsets, else from this process's environment.
+// credentialOfServed is a toolset's credential: its credential slot, which
+// this process's vault keeps wherever the toolset runs (a user connects
+// their key here; the toolsets component reads it from the same vault), else
+// as the toolsets component reports it for one of its toolsets, else from
+// this process's environment.
 func (c cli) credentialOfServed(s toolset.Spec, built map[string]tool.Registry, problems []toolset.Problem) agentapi.Credential {
 	info, ok := remoteInfo(s.Name, built, problems)
-	if !ok {
+	if !ok || s.Credential != nil {
 		return credentialOf(s, c.env)
 	}
 	return agentapi.Credential{Status: info.Credential.Status, Env: info.Credential.Env}

@@ -55,6 +55,12 @@ if [ -z "$token" ]; then
   token="$(openssl rand -hex 16 2>/dev/null || true)"
   [ -n "$token" ] || token="try-agent-$(date +%s)-$$-local"
 fi
+# The credential vault's key: search.json's Exa and Parallel keep each
+# user's own key there (memory backend: gone when this stops).
+creds_key="${AGENTKIT_CREDENTIALS_KEY:-}"
+if [ -z "$creds_key" ] && command -v openssl >/dev/null; then
+  creds_key="k1:$(openssl rand -base64 32)"
+fi
 mkdir -p bin
 log="bin/try-agent.log"
 
@@ -80,7 +86,7 @@ if [ "$use_docker" = 1 ]; then
   [ ! -d "$config_dir/knowledge" ] || skills+=(-v "$config_dir/knowledge:/etc/agentkit/knowledge:ro")
   echo "==> starting container $container on port $port"
   docker run -d --rm --name "$container" --stop-timeout 20 -p "${port}:8080" ${skills[@]+"${skills[@]}"} \
-    -e ANTHROPIC_API_KEY="$key" -e AGENTKIT_API_TOKEN="$token" \
+    -e ANTHROPIC_API_KEY="$key" -e AGENTKIT_API_TOKEN="$token" -e AGENTKIT_CREDENTIALS_KEY="$creds_key" \
     -e AGENTKIT_COMPONENTS=agent,web,mcp-server \
     -e TAVILY_API_KEY -e EXA_API_KEY -e PARALLEL_API_KEY \
     -v "$PWD/$config:/etc/agentkit/config.json:ro" \
@@ -91,7 +97,7 @@ else
   echo "==> building bin/agentkit"
   go build -o bin/agentkit ./cmd/agentkit
   echo "==> starting agentkit serve on 127.0.0.1:${port} (log: $log)"
-  ANTHROPIC_API_KEY="$key" AGENTKIT_API_TOKEN="$token" \
+  ANTHROPIC_API_KEY="$key" AGENTKIT_API_TOKEN="$token" AGENTKIT_CREDENTIALS_KEY="$creds_key" \
     AGENTKIT_COMPONENTS=agent,web,mcp-server AGENTKIT_ADDR="127.0.0.1:${port}" \
     bin/agentkit serve -config "$config" >"$log" 2>&1 &
   pid=$!

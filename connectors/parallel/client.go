@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bsamanvith/agentkit/connectors/internal/apikey"
 	"github.com/bsamanvith/agentkit/connectors/internal/httpx"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 )
@@ -28,14 +29,28 @@ func badInput(format string, args ...any) error {
 	return &inputError{msg: fmt.Sprintf(format, args...)}
 }
 
-// client calls Parallel's API with the key.
+// client calls Parallel's API. Each call uses its own copy
+// ([client.forCall]), which holds the caller's key.
 type client struct {
 	http    *http.Client
 	baseURL string
-	key     string
+	keys    apikey.Key
+	key     string // the call's, set by forCall
 	timeout time.Duration
 	clock   clock.Clock
 	log     *slog.Logger
+}
+
+// forCall returns a copy of c with the key of ctx's caller: the one from
+// the environment, or the caller's own from the toolset's credential slot.
+func (c *client) forCall(ctx context.Context) (*client, error) {
+	key, err := c.keys.Get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	cc := *c
+	cc.key = key
+	return &cc, nil
 }
 
 // post sends body as JSON to path and decodes a 2xx response into out. It

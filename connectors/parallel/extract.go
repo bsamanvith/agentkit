@@ -85,13 +85,17 @@ func (e *extractTool) run(ctx context.Context, in extractInput) (extractOutput, 
 		return extractOutput{}, err
 	}
 	var resp extractResponse
-	if err := e.c.post(ctx, "/v1/extract", req, &resp); err != nil {
+	c, err := e.c.forCall(ctx)
+	if err != nil {
 		return extractOutput{}, err
 	}
-	e.c.logWarnings(ctx, "parallel_extract", resp.Warnings)
+	if err := c.post(ctx, "/v1/extract", req, &resp); err != nil {
+		return extractOutput{}, err
+	}
+	c.logWarnings(ctx, "parallel_extract", resp.Warnings)
 	out := extractOutput{Results: []extractResult{}, Failed: []extractFailed{}}
 	for _, r := range resp.Results {
-		u := e.c.clean(r.URL, maxURLChars)
+		u := c.clean(r.URL, maxURLChars)
 		if u == "" || len(out.Results) == len(req.URLs) {
 			continue
 		}
@@ -101,16 +105,16 @@ func (e *extractTool) run(ctx context.Context, in extractInput) (extractOutput, 
 		}
 		out.Results = append(out.Results, extractResult{
 			URL:     u,
-			Title:   e.c.clean(deref(r.Title), maxTitleChars),
-			Content: truncateContent(e.c.redact(text), e.cfg.extractChars, hint),
+			Title:   c.clean(deref(r.Title), maxTitleChars),
+			Content: truncateContent(c.redact(text), e.cfg.extractChars, hint),
 		})
 	}
 	for _, f := range resp.Errors {
-		u := e.c.clean(f.URL, maxURLChars)
+		u := c.clean(f.URL, maxURLChars)
 		if u == "" || len(out.Failed) == len(req.URLs) {
 			continue
 		}
-		out.Failed = append(out.Failed, extractFailed{URL: u, Error: e.c.clean(failure(f.ErrorType, f.HTTPStatusCode, f.Content), maxErrorChars)})
+		out.Failed = append(out.Failed, extractFailed{URL: u, Error: c.clean(failure(f.ErrorType, f.HTTPStatusCode, f.Content), maxErrorChars)})
 	}
 	return out, nil
 }

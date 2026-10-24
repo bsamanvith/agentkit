@@ -2,7 +2,7 @@
 id: T067
 title: "A2A server: Agent Cards, message and task methods over our runs, streaming"
 epic: E13
-status: review
+status: done
 depends_on: [T062]
 ---
 
@@ -31,7 +31,7 @@ Other agent systems (and orchestrators) talk A2A. Serving each of our agents as 
 - [x] A task started over A2A appears in `GET /v1/conversations` and its run in `GET /v1/runs/{id}`.
 - [x] Cancel maps to our run cancel; unknown task is `TaskNotFoundError`; a message to a terminal task is `UnsupportedOperationError`.
 - [x] Auth: with T040, A2A paths require credentials and respect tenants.
-- [ ] Live (`-tags live`): real Claude answers an A2A `SendStreamingMessage`. Mutation list recorded.
+- [x] Live (`-tags live`): real Claude answers an A2A `SendStreamingMessage`. Mutation list recorded. **Run 2026-10-24** with the project's Anthropic key (`make test-live`, all live tests pass): `pkg/a2a` `TestLiveStreamingMessage` passed; the mutation list is in Notes ("Mutation self-check").
 
 ## Notes
 

@@ -22,8 +22,10 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/bsamanvith/agentkit/connectors/exa"
 	"github.com/bsamanvith/agentkit/connectors/tavily"
+	"github.com/bsamanvith/agentkit/pkg/credentials"
+	"github.com/bsamanvith/agentkit/pkg/credentials/memory"
+	"github.com/bsamanvith/agentkit/pkg/tool"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
@@ -57,8 +59,9 @@ func tavilyCassette(t *testing.T, name string) []byte {
 
 // TestSearchConfigBuilds: deploy/local/agent/search.json is a valid serve
 // config, and its toolsets build from this binary's catalog (tavily
-// compiled in, no key needed; exa and parallel skipped as optional without
-// EXA_API_KEY and PARALLEL_API_KEY).
+// compiled in, no key needed). Exa and Parallel use each user's own key
+// from the credential vault: without a vault they are skipped as optional,
+// with one they are built, needing no server key.
 func TestSearchConfigBuilds(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join("..", "..", "deploy", "local", "agent", "search.json")
@@ -73,37 +76,31 @@ func TestSearchConfigBuilds(t *testing.T) {
 			cfg.MCP.Toolsets[i].Settings = json.RawMessage(fmt.Sprintf(`{"root": %q, "create_root": true}`, filepath.Join(t.TempDir(), "workspace")))
 		}
 	}
-	env := serveEnv{components: []string{"agent", mcpServerName}}
-	built, problems, err := buildToolsets(t.Context(), env, cfg, path, slog.New(slog.DiscardHandler))
-	if err != nil {
-		t.Fatalf("build: %v", err)
-	}
-	// The real catalog reads the keys through os.LookupEnv: a keyed toolset
-	// is built when its variable is set and skipped for the missing key when
-	// it is not.
-	skipped := map[string]toolset.Problem{}
-	for _, p := range problems {
-		skipped[p.Toolset] = p
-	}
-	for name, variable := range map[string]string{"exa": "EXA_API_KEY", "parallel": "PARALLEL_API_KEY"} {
-		p, isSkipped := skipped[name]
-		delete(skipped, name)
-		if _, set := os.LookupEnv(variable); set {
-			if isSkipped || built[name] == nil {
-				t.Errorf("%s: problem %v, want it built with %s set", name, p.Err, variable)
+	var built map[string]tool.Registry
+	for _, vault := range []credentials.Vault{nil, credentials.NewVault(memory.New(), credentials.NewSealer(testRing(t)))} {
+		env := serveEnv{components: []string{"agent", mcpServerName}, vault: vault}
+		var problems []toolset.Problem
+		built, problems, err = buildToolsets(t.Context(), env, cfg, path, slog.New(slog.DiscardHandler))
+		if err != nil {
+			t.Fatalf("build: %v", err)
+		}
+		skipped := map[string]toolset.Problem{}
+		for _, p := range problems {
+			skipped[p.Toolset] = p
+		}
+		for _, name := range []string{"exa", "parallel"} {
+			p, isSkipped := skipped[name]
+			delete(skipped, name)
+			switch {
+			case vault == nil && (!isSkipped || !errors.Is(p.Err, toolset.ErrNoCredentials)):
+				t.Errorf("%s with no vault: problem %v, want it skipped for the missing vault", name, p.Err)
+			case vault != nil && (isSkipped || built[name] == nil):
+				t.Errorf("%s with a vault: problem %v, want it built", name, p.Err)
 			}
-			continue
 		}
-		missingKey := strings.Contains(p.Error(), variable)
-		if name == "exa" {
-			missingKey = errors.Is(p.Err, exa.ErrMissingKey)
+		if len(skipped) != 0 {
+			t.Errorf("other toolsets skipped: %v", skipped)
 		}
-		if !isSkipped || !missingKey {
-			t.Errorf("%s: problem %v, want it skipped for its missing %s", name, p.Err, variable)
-		}
-	}
-	if len(skipped) != 0 {
-		t.Errorf("other toolsets skipped: %v", skipped)
 	}
 	defs, err := built["tavily"].List(t.Context())
 	if err != nil || len(defs) != 2 || defs[0].Name != "tavily_extract" || defs[1].Name != "tavily_search" {

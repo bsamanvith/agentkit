@@ -2,7 +2,7 @@
 id: T112
 title: "pkg/knowledge: knowledge bases as a toolset (ingest, chunk, retrieve), with a sample and evals"
 epic: E12
-status: review
+status: done
 depends_on: [T059, T060, T026]
 ---
 

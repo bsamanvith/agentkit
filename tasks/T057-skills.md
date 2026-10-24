@@ -2,7 +2,7 @@
 id: T057
 title: "pkg/skill: Agent Skills for the harness (catalog, load, read)"
 epic: E12
-status: review
+status: done
 depends_on: [T026, T036]
 ---
 
@@ -44,7 +44,7 @@ Skills are packaged know-how (instructions plus reference files) that the agent 
 - [x] **Invalid skills fail with an error naming the skill and the rule:** missing front matter, a bad name, an empty description, oversize files, duplicate names, a symlink out of the folder. — `TestLoadInvalid` (22 cases, each an `*skill.Error` with `Folder` and `Rule`), `TestLoadSymlinkOnDisk`, `TestFrontMatterRefusals`, `TestNewCatalogDuplicates`; through serve: `TestServeSkillsInvalid`
 - [x] **Confinement:** `skill_read` refuses `..`, absolute paths, symlinks leaving the folder and binary files (table test). `FuzzSkillPath` never escapes the folder. — `TestReadConfinement` (through the tool, on `fstest.MapFS`, with files swapped for links after the load), `TestReadConfinementOnDisk` (`os.Root` and `os.DirFS`), `FuzzSkillPath` (ran 20 s locally, 176k execs)
 - [x] **Stable catalog:** `SystemText` is byte-identical across loads and skill orderings (golden file). — `TestSystemTextStable`, `testdata/catalog.golden.txt`
-- [ ] **End to end** (fake model): the model sees only the catalog in the system prompt, calls `skill_load`, then `skill_read`, and gets the files. Live (`-tags live`): real Claude, given a task that matches a demo skill's description, calls `skill_load` for it.
+- [x] **End to end** (fake model): the model sees only the catalog in the system prompt, calls `skill_load`, then `skill_read`, and gets the files. Live (`-tags live`): real Claude, given a task that matches a demo skill's description, calls `skill_load` for it. Fake model: `cmd/agentkit` `TestServeSkills`. **Run 2026-10-24** with the project's Anthropic key (`make test-live`, all live tests pass): `TestLiveSkillLoad` passed (`skill_load` then `skill_read` of research-brief).
   - fake model: done, `TestEndToEnd` (harness) and `cmd/agentkit.TestServeSkills` (through serve's wiring and the agent API).
   - live: **not run**, so the box stays unticked. `cmd/agentkit.TestLiveSkillLoad` (`-tags live`) is written and compiles; it skipped here because this session has no Anthropic credentials (`ANTHROPIC_API_KEY` unset, no `ant`). Run `go test -tags live -run TestLiveSkillLoad ./cmd/agentkit` with a key.
 - [x] **Mutation list** recorded (at least: path check skipped for a nested `..`, catalog order unstable, full skill bodies in the system prompt). — below

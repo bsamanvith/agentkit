@@ -1,0 +1,6 @@
+{
+  "method": "GET",
+  "path": "/v4/spreadsheets/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/values/Summary!A1:C4",
+  "query": {"majorDimension": ["ROWS"], "valueRenderOption": ["FORMATTED_VALUE"]},
+  "synthetic": true
+}

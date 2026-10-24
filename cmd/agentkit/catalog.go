@@ -10,6 +10,7 @@ import (
 	"github.com/bsamanvith/agentkit/connectors/google/calendar"
 	"github.com/bsamanvith/agentkit/connectors/google/drive"
 	"github.com/bsamanvith/agentkit/connectors/google/gmail"
+	"github.com/bsamanvith/agentkit/connectors/google/sheets"
 	"github.com/bsamanvith/agentkit/connectors/parallel"
 	"github.com/bsamanvith/agentkit/connectors/tavily"
 	"github.com/bsamanvith/agentkit/pkg/coretools"
@@ -39,5 +40,6 @@ func newCatalog(logger *slog.Logger, configDir string) (*toolset.Catalog, error)
 		parallel.Factory(parallel.WithLookupEnv(os.LookupEnv), parallel.WithLogger(logger)),
 		drive.Factory(drive.WithLookupEnv(os.LookupEnv), drive.WithLogger(logger)),
 		calendar.Factory(calendar.WithLookupEnv(os.LookupEnv), calendar.WithLogger(logger)),
+		sheets.Factory(sheets.WithLookupEnv(os.LookupEnv), sheets.WithLogger(logger)),
 	}, append(mcpClientFactories(logger), a2aClientFactories(logger)...)...)...)
 }

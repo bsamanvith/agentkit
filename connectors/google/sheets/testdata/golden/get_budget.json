@@ -1,0 +1,19 @@
+{
+  "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+  "title": "2026 budget",
+  "url": "https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
+  "tabs": [
+    {
+      "title": "Summary",
+      "sheet_id": 0,
+      "rows": 1000,
+      "columns": 26
+    },
+    {
+      "title": "Q3 costs",
+      "sheet_id": 918273645,
+      "rows": 200,
+      "columns": 8
+    }
+  ]
+}

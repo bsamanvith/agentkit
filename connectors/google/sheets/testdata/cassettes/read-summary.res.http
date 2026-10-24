@@ -1,0 +1,13 @@
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=UTF-8
+
+{
+  "range": "Summary!A1:C4",
+  "majorDimension": "ROWS",
+  "values": [
+    ["Team", "Budget", "Spent"],
+    ["Platform", "$120,000", "$98,450"],
+    ["Support", "$45,000", "$47,210"],
+    ["Total", "$165,000", "$145,660"]
+  ]
+}

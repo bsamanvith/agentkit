@@ -113,12 +113,11 @@ func loadsOf(m llm.Message) []string {
 	return out
 }
 
-// setupDeferral splits the offered tools into those sent from the first turn
+// setupDeferral splits the offered tools, by match, into those sent from the first turn
 // and the deferred ones, and loads what the transcript loaded already. It
 // returns the tools sent from the first turn, the search tool among them
 // when there is anything to defer.
-func (r *run) setupDeferral(offered []tool.Definition) ([]tool.Definition, error) {
-	match := r.h.cfg.deferred
+func (r *run) setupDeferral(offered []tool.Definition, match func(string) bool) ([]tool.Definition, error) {
 	if match == nil {
 		return offered, nil
 	}

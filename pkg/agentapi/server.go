@@ -513,6 +513,10 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 		}
 		start.Interaction = m
 	}
+	if req.Tools != nil && !hasMessage {
+		writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "tools needs a message: a resumed run keeps the tools it started with"})
+		return
+	}
 	convID := req.ConversationID
 	var ag *agent
 	if convID != "" {
@@ -557,6 +561,14 @@ func (s *Server) postRun(w http.ResponseWriter, r *http.Request) {
 			writeError(w, code, apiErr)
 			return
 		}
+	}
+	if req.Tools != nil {
+		c, msg := toolChoice(ag, *req.Tools)
+		if msg != "" {
+			writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: msg})
+			return
+		}
+		start.Tools = c
 	}
 	prompt := harness.UserText(req.Message)
 	if a := req.UIAction; a != nil {

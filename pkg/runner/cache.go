@@ -25,6 +25,7 @@ type view struct {
 	flush       int
 	policy      *policy.Policy
 	interaction harness.Interaction
+	tools       *harness.ToolChoice
 	policyErr   error
 	// pending is the turn the log's last entry, an interrupt, says waits
 	// for people; nil when the last entry is of another kind.
@@ -136,12 +137,12 @@ func (v *view) apply(e store.Entry) {
 	}
 	switch e.Kind {
 	case store.KindPrompt:
-		v.flush, v.policy, v.interaction, v.policyErr = 0, nil, "", nil
+		v.flush, v.policy, v.interaction, v.tools, v.policyErr = 0, nil, "", nil, nil
 		rec, err := DecodeRecord(e)
 		if err != nil {
 			v.policyErr = err
 		} else if rec.Prompt != nil {
-			v.flush, v.policy, v.interaction = rec.Prompt.FlushEvery, rec.Prompt.ToolPolicy, rec.Prompt.Interaction
+			v.flush, v.policy, v.interaction, v.tools = rec.Prompt.FlushEvery, rec.Prompt.ToolPolicy, rec.Prompt.Interaction, rec.Prompt.Tools
 		}
 	case store.KindCompaction:
 		// A cold read starts here, without the prompt: the compaction
@@ -150,7 +151,7 @@ func (v *view) apply(e store.Entry) {
 		if err != nil {
 			v.policyErr = err
 		} else if rec.Compaction != nil {
-			v.policy, v.interaction = rec.Compaction.ToolPolicy, rec.Compaction.Interaction
+			v.policy, v.interaction, v.tools = rec.Compaction.ToolPolicy, rec.Compaction.Interaction, rec.Compaction.Tools
 		}
 	case store.KindTurn:
 		if rec, err := DecodeRecord(e); err == nil && rec.Turn != nil {

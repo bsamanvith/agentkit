@@ -16,6 +16,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/connectors/internal/httpx"
 	"github.com/bsamanvith/agentkit/pkg/clock"
+	"github.com/bsamanvith/agentkit/pkg/credentials"
 )
 
 const (
@@ -67,6 +68,22 @@ func (e *Env) TokensFor(service, envName string) (TokenSource, error) {
 	}
 	e.Logger.Info(service+" toolset auth", "mode", "environment", "access_token_env", envName)
 	return src, nil
+}
+
+// TokensForSpec returns the source for a toolset built from s (after
+// [Settings.Validate]) and src, the credential slot its spec names (nil for
+// none): the slot's per-user token when there is one, else the injected
+// source or the environment variable, as [Env.TokensFor]. A slot and
+// access_token_env together are two places for one token, and refused.
+func (e *Env) TokensForSpec(service string, s Settings, src credentials.Source) (TokenSource, error) {
+	if src == nil {
+		return e.TokensFor(service, s.AccessTokenEnv)
+	}
+	if s.tokenEnvSet {
+		return nil, fmt.Errorf("access_token_env and the toolset's credential slot are two places for the token: give one")
+	}
+	e.Logger.Info(service+" toolset auth", "mode", "credential slot")
+	return FromSource(src), nil
 }
 
 // Client sends requests to one Google API. It is shared by a toolset's tools

@@ -61,7 +61,13 @@ var (
 	// approvals' calls as denied and drop the answers: it fails the run with
 	// [rpc.ErrUnknownMethod] instead.
 	interruptRunMethod = rpc.Stream[runReq, event]{Name: Service + "/RunWithInterrupts", Errors: codes}
-	compactMethod      = rpc.Unary[compactReq, harness.Summary]{Name: Service + "/Compact", Errors: codes}
+	// toolsRunMethod is Run for a run that chooses its tools (toolsets,
+	// tool search). It is the newest method, so a runner that serves it
+	// serves every other one: a run with a choice is always sent as it,
+	// and a runner older than it fails the run rather than offer the
+	// toolsets the run left out.
+	toolsRunMethod = rpc.Stream[runReq, event]{Name: Service + "/RunWithTools", Errors: codes}
+	compactMethod  = rpc.Unary[compactReq, harness.Summary]{Name: Service + "/Compact", Errors: codes}
 )
 
 // ErrCannotCompact means the server's agent cannot compact (it is not a
@@ -109,6 +115,9 @@ type runReq struct {
 	Interaction harness.Interaction `json:"interaction,omitempty"`
 	Pending     *harness.Pending    `json:"pending,omitempty"`
 	Answers     []harness.Answer    `json:"answers,omitempty"`
+	// Tools is the input's choice of tools; a request with one is sent as
+	// toolsRunMethod.
+	Tools *harness.ToolChoice `json:"tools,omitempty"`
 	// Caller is the tenant and user the run acts for, which its tools
 	// (on a toolsets component too) read their credentials by.
 	Caller tenancy.Carried `json:"caller,omitzero"`
@@ -195,7 +204,7 @@ func Register(s *rpc.Server, agents map[string]runner.Agent) error {
 			}
 			in := harness.Input{
 				Transcript: r.Transcript, At: r.At, ToolPolicy: r.ToolPolicy,
-				Interaction: r.Interaction, Pending: r.Pending, Answers: r.Answers,
+				Interaction: r.Interaction, Pending: r.Pending, Answers: r.Answers, Tools: r.Tools,
 			}
 			if r.Message != nil {
 				in.Message = *r.Message
@@ -219,6 +228,7 @@ func Register(s *rpc.Server, agents map[string]runner.Agent) error {
 	runMethod.Handle(s, run)
 	policyRunMethod.Handle(s, run)
 	interruptRunMethod.Handle(s, run)
+	toolsRunMethod.Handle(s, run)
 	return nil
 }
 
@@ -264,7 +274,7 @@ func (a *agent) Run(ctx context.Context, in harness.Input) iter.Seq2[harness.Eve
 	return func(yield func(harness.Event, error) bool) {
 		req := runReq{
 			Agent: a.name, Transcript: in.Transcript, At: in.At, ToolPolicy: in.ToolPolicy,
-			Interaction: in.Interaction, Pending: in.Pending, Answers: in.Answers,
+			Interaction: in.Interaction, Pending: in.Pending, Answers: in.Answers, Tools: in.Tools,
 			Caller: tenancy.Carry(ctx),
 		}
 		if in.Message.Role != "" || len(in.Message.Content) > 0 {
@@ -273,6 +283,8 @@ func (a *agent) Run(ctx context.Context, in harness.Input) iter.Seq2[harness.Eve
 		}
 		method, waits := runMethod, mayWait(in)
 		switch {
+		case req.Tools != nil:
+			method = toolsRunMethod
 		case waits:
 			method = interruptRunMethod
 		case req.ToolPolicy != nil:
@@ -281,6 +293,8 @@ func (a *agent) Run(ctx context.Context, in harness.Input) iter.Seq2[harness.Eve
 		for w, err := range method.Call(ctx, a.c.conn, req) {
 			if err != nil {
 				switch {
+				case req.Tools != nil && errors.Is(err, rpc.ErrUnknownMethod):
+					err = fmt.Errorf("agent %q: the runner is too old to choose the run's tools: %w", a.name, err)
 				case waits && errors.Is(err, rpc.ErrUnknownMethod):
 					err = fmt.Errorf("agent %q: the runner is too old to wait for people: %w", a.name, err)
 				case req.ToolPolicy != nil && errors.Is(err, rpc.ErrUnknownMethod):

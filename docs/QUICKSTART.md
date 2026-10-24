@@ -585,6 +585,8 @@ An agent with many tools wastes context, and confuses the model, if every defini
 
 Each entry is a toolset name (all its tools) or a glob on tool names; `true` defers every toolset tool. Skill and memory tools are never deferred. An agent with deferred tools gets one more, `tool_search`: the model gives a few keywords (or a tool's name), and the best matches by name, description and tags are loaded for the rest of the conversation, a later run or a resume included (each result records what it loaded, in the transcript). A skill that lists the tools loads them too. With Claude (`model.tool_search: "native"`, the default) every request lists every tool with `defer_loading` and the search result references the found tools, so the tool list never changes and the prompt cache holds; with `"emulated"` (OpenAI-compatible models) a found tool is added to the next request. Loading changes no policy: a loaded tool's calls are checked like any other's. The console shows "Loaded N tools" as a step.
 
+A run can choose too, for itself and its resumes: `"tools": {"toolsets": ["github"], "search": "search"}` in `POST /v1/runs` keeps only the named toolsets of the agent (absent: all; `[]`: none) and holds their tools back behind `tool_search` (`"search"`) or sends them all (`"direct"`, which overrides the agent's `defer_loading`). Tools of no toolset (skills, memory, `ask_user`) are always kept. The console's chat sets it with its Tools button. A name that is not one of the agent's toolsets is 400.
+
 ## 8. Other MCP servers' tools
 
 A toolset of type `mcp` is another MCP server's tools, used by agents and served again at `/mcp/<name>` like any connector:

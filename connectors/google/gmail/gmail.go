@@ -132,7 +132,7 @@ func (f *factory) Build(_ context.Context, in toolset.BuildInput) ([]tool.Tool, 
 		return nil, err
 	}
 	env := f.env // the toolset's own copy: settings override the base URL
-	tokens, err := env.TokensFor(Type, s.AccessTokenEnv)
+	tokens, err := env.TokensForSpec(Type, s.Settings, in.Credentials)
 	if err != nil {
 		return nil, fmt.Errorf("%w: gmail: %w", toolset.ErrInvalidSettings, err)
 	}

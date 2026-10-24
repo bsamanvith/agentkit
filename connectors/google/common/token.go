@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/bsamanvith/agentkit/pkg/credentials"
 )
 
 // TokenSource yields the OAuth 2.0 access token to send. It is called for
@@ -47,4 +49,30 @@ func EnvTokens(lookup func(string) (string, bool), name string) (TokenSource, er
 		return nil, fmt.Errorf("$%s is not set", name)
 	}
 	return TokenSourceFunc(func(context.Context) (string, error) { return v, nil }), nil
+}
+
+// ErrNotOAuth reports a credential slot that holds another kind of
+// credential (an API key, a user name and password) than the OAuth2 token
+// of a Google account.
+var ErrNotOAuth = errors.New("the connected credential is not a Google account")
+
+// FromSource returns a source of the access token of the user each call
+// runs for, from the toolset's credential slot (T116): the slot's OAuth2
+// token, refreshed by src as it expires. A caller who has not connected an
+// account gets [ErrNoToken].
+func FromSource(src credentials.Source) TokenSource {
+	return TokenSourceFunc(func(ctx context.Context) (string, error) {
+		c, err := src.Get(ctx)
+		if errors.Is(err, credentials.ErrNotConnected) {
+			return "", ErrNoToken
+		}
+		if err != nil {
+			return "", err
+		}
+		tok, ok := c.(credentials.OAuth2)
+		if !ok {
+			return "", fmt.Errorf("%w (it is %s): connect the Google account instead", ErrNotOAuth, c.Kind())
+		}
+		return tok.AccessToken.Reveal(), nil
+	})
 }

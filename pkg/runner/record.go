@@ -99,6 +99,9 @@ type PromptRecord struct {
 	// Interaction is the run's [Interaction], kept the same way; empty when
 	// the run set none.
 	Interaction harness.Interaction `json:"interaction,omitempty"`
+	// Tools is the run's [Tools]: the toolsets it chose and its tool
+	// search mode; nil when the run chose none.
+	Tools *harness.ToolChoice `json:"tools,omitempty"`
 }
 
 // CanceledRecord is the record of a cancel marker.

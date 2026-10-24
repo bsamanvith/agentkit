@@ -159,7 +159,10 @@ func WithBeforeTool(f BeforeToolFunc) Option {
 func WithToolPolicy(p policy.Policy, toolsetOf func(name string) string) Option {
 	return func(c *config) {
 		own := p.Clone() // not p: the option may be applied more than once
-		c.policy, c.toolsetOf = &own, toolsetOf
+		c.policy = &own
+		if toolsetOf != nil {
+			c.toolsetOf = toolsetOf
+		}
 	}
 }
 

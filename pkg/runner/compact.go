@@ -75,6 +75,8 @@ type CompactionRecord struct {
 	// Interaction is that prompt's [PromptRecord.Interaction], kept the
 	// same way.
 	Interaction harness.Interaction `json:"interaction,omitempty"`
+	// Tools is the run's [PromptRecord.Tools], carried as ToolPolicy is.
+	Tools *harness.ToolChoice `json:"tools,omitempty"`
 }
 
 // The reasons of a [CompactionRecord].
@@ -133,7 +135,7 @@ func (x *exec) compact(ctx context.Context, c Compactor, v *view, reason string,
 		Messages: msgs,
 		RunID:    v.lastRun,
 		Covers:   v.seq,
-		Record:   mustJSON(Record{Compaction: &CompactionRecord{At: x.r.clk.Now(), Reason: reason, Usage: s.Usage, ToolPolicy: v.policy, Interaction: v.interaction}}),
+		Record:   mustJSON(Record{Compaction: &CompactionRecord{At: x.r.clk.Now(), Reason: reason, Usage: s.Usage, ToolPolicy: v.policy, Interaction: v.interaction, Tools: v.tools}}),
 	})
 	if err != nil {
 		return fmt.Errorf("compact: %w", err)

@@ -264,6 +264,7 @@ function Answer({
           {...(a.usage ? { usage: a.usage } : {})}
           {...(a.turns ? { turns: a.turns } : {})}
           {...(a.durationMs !== undefined ? { durationMs: a.durationMs } : {})}
+          {...(a.model ? { model: a.model } : {})}
         />
       )}
     </Message>

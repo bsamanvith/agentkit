@@ -5792,6 +5792,10 @@
           "prompt": {
             "$ref": "#/components/schemas/TimedMessage"
           },
+          "model": {
+            "type": "string",
+            "description": "run_start: the model the run runs, \"<provider>/<id>\" (T125); absent for an agent that names none."
+          },
           "turn": {
             "type": "integer",
             "description": "text_delta, tool_call, tool_result, turn_done: the turn, from 1."

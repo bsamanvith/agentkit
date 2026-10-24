@@ -125,6 +125,9 @@ type Event struct {
 	// run_start
 	ConversationID string        `json:"conversation_id,omitempty"`
 	Prompt         *TimedMessage `json:"prompt,omitempty"`
+	// Model is the model the run runs (Run.Model, T125): run_start only,
+	// absent for an agent that names none.
+	Model string `json:"model,omitempty"`
 
 	// text_delta, tool_call, tool_result, turn_done: the turn, from 1.
 	Turn int `json:"turn,omitempty"`
@@ -231,7 +234,8 @@ func (e Event) MarshalJSON() ([]byte, error) {
 			header
 			ConversationID string        `json:"conversation_id"`
 			Prompt         *TimedMessage `json:"prompt,omitempty"`
-		}{h, e.ConversationID, e.Prompt})
+			Model          string        `json:"model,omitempty"`
+		}{h, e.ConversationID, e.Prompt, e.Model})
 	case TypeTextDelta:
 		return json.Marshal(struct {
 			header

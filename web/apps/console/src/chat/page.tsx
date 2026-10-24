@@ -2,7 +2,7 @@
 // agent picker at /new, and a conversation at /c/{id}. Runs live in the app's
 // run store (runs.ts), so this page only shows them.
 
-import { Composer, threadFromHistory, type ToolDisplay, type Turn } from "@agentkit/agent-ui";
+import { Composer, modelLabel, threadFromHistory, type ToolDisplay, type Turn } from "@agentkit/agent-ui";
 import { ApiError, NetworkError, type Agent, type AgentClient, type Conversation } from "@agentkit/agent-ui/api";
 import { Status } from "@agentkit/ui";
 import { Button } from "@agentkit/ui/components/button";
@@ -27,6 +27,7 @@ import { iconButton, Loaded, Page } from "../pages/page";
 import { readiness } from "../pages/readiness";
 import { composerId, preloadMarkdown, withMeta } from "./shared";
 import { useConversationState, useDraft, useRuns, useToolChoice } from "./use-runs";
+import { ModelPicker } from "./model-picker";
 import { ToolPicker } from "./tool-picker";
 import type { Problem } from "./runs";
 import { Notice, Thread } from "./thread";
@@ -97,8 +98,8 @@ function useOnline(): boolean {
   return online;
 }
 
-/** The text of a send that didn't start (docs/UI.md "States"). */
-function problemText(p: { error: Error }, agent: string): string {
+/** The text of a send that didn't start (docs/UI.md "States"); model is the one the chat picked. */
+function problemText(p: { error: Error }, agent: string, model?: string): string {
   const e = p.error;
   if (e instanceof NetworkError) return "Couldn't reach the server. Your message is back in the box.";
   if (!(e instanceof ApiError)) return e.message;
@@ -113,6 +114,12 @@ function problemText(p: { error: Error }, agent: string): string {
       return `The server couldn't read this request: ${e.message}`;
     case "agent_mismatch":
       return `This conversation belongs to ${agent}.`;
+    case "model_provider_mismatch":
+      return model
+        ? `This conversation ran on another provider's model. Start a new chat to use ${modelLabel(model)}.`
+        : "This conversation ran on another provider's model. Start a new chat to use this one.";
+    case "model_not_allowed":
+      return `${agent} can't run on ${model ? modelLabel(model) : "this model"}. Pick another model.`;
     case "not_found":
       return "This conversation no longer exists. Your message is back in the box.";
     default:
@@ -303,7 +310,18 @@ function NewChatPage() {
       muted
       body="bare"
       autoFocus={!wantFocus}
-      lead={agent ? <AgentPicker agents={list} chosen={agent} onPick={setPicked} /> : undefined}
+      lead={
+        agent ? (
+          <div className="flex min-w-0 items-center gap-1">
+            <AgentPicker agents={list} chosen={agent} onPick={setPicked} />
+            <ModelPicker
+              agent={agent}
+              value={choice.model ?? agent.models?.default ?? ""}
+              onPick={(m) => setChoice({ ...choice, model: m })}
+            />
+          </div>
+        ) : undefined
+      }
       aside={<NewChatLink />}
     >
       <Thread
@@ -340,7 +358,7 @@ function NewChatPage() {
       <Bottom>
         {problem ? (
           <Notice tone="bad" role="alert">
-            {problemText(problem, agent?.name ?? "")}
+            {problemText(problem, agent?.name ?? "", choice.model)}
           </Notice>
         ) : null}
         <Composer
@@ -416,6 +434,22 @@ function ConversationPage({ id }: { id: string }) {
     return conv ? withMeta(threadFromHistory(conv.messages), state.meta) : [];
   }, [live, busy, conv, state.meta]);
 
+  // The model the chat runs: its pick, else its last run's this tab saw, else the default.
+  const lastModel = turns.findLast((t) => t.role === "assistant" && t.model !== undefined);
+  const model =
+    choice.model ?? (lastModel?.role === "assistant" ? lastModel.model : undefined) ?? agent?.models?.default ?? "";
+  const mismatch = state.problem?.error instanceof ApiError && state.problem.error.code === "model_provider_mismatch";
+  /** New chat with the agent on the model picked, the message moved to it (T127). */
+  function newChatOnModel() {
+    // The message is back in this conversation's draft (RunStore); it moves.
+    runs.choices.set(`new:${agentName}`, { model });
+    setChoice({ ...choice, model: undefined });
+    runs.drafts.set("new", runs.drafts.get(id));
+    runs.drafts.set(id, "");
+    runs.dismiss(id);
+    navigate(`/new?agent=${encodeURIComponent(agentName)}`, { state: { focus: "composer" } satisfies NavState });
+  }
+
   const firstUser = turns.find((t) => t.role === "user");
   const title = firstUser?.text.split("\n")[0]?.slice(0, 120) || (conv || live ? "New chat" : "Conversation");
   useChatKeys(running, () => runs.stop(id));
@@ -459,7 +493,16 @@ function ConversationPage({ id }: { id: string }) {
       title={title}
       body="bare"
       autoFocus={!sent}
-      lead={agentName ? <AgentChip name={agentName} removed={removed} /> : undefined}
+      lead={
+        agentName ? (
+          <div className="flex min-w-0 items-center gap-1">
+            <AgentChip name={agentName} removed={removed} />
+            {agent && !removed ? (
+              <ModelPicker agent={agent} value={model} onPick={(m) => setChoice({ ...choice, model: m })} />
+            ) : null}
+          </div>
+        ) : undefined
+      }
       aside={
         <>
           <DropdownMenu modal={false}>
@@ -555,12 +598,19 @@ function ConversationPage({ id }: { id: string }) {
             tone="bad"
             role="alert"
             actions={
-              <Button variant="ghost" size="sm" onClick={() => runs.dismiss(id)}>
-                Dismiss
-              </Button>
+              <>
+                {mismatch ? (
+                  <Button variant="outline" size="sm" onClick={newChatOnModel}>
+                    New chat
+                  </Button>
+                ) : null}
+                <Button variant="ghost" size="sm" onClick={() => runs.dismiss(id)}>
+                  Dismiss
+                </Button>
+              </>
             }
           >
-            {problemText(state.problem, agentName)}
+            {problemText(state.problem, agentName, choice.model)}
           </Notice>
         ) : null}
         <Composer

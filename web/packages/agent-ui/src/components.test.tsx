@@ -212,6 +212,8 @@ describe("usageText", () => {
       }),
     ).toBe("2 turns · 1,134 tokens (1,000 cached) · 3.2 s");
     expect(usageText({ turns: 1 })).toBe("1 turn");
+    expect(usageText({ turns: 1, model: "anthropic/claude-opus-5-5" })).toBe("1 turn · claude-opus-5-5");
+    expect(usageText({ model: "openai/gpt-5-mini" })).toBe("openai/gpt-5-mini");
     expect(usageText({})).toBe("");
   });
 });

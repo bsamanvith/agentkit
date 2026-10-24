@@ -5,6 +5,7 @@
   "agent": {
     "system": "The console browser tests' agent. Its model is e2e/fake-model.ts.",
     "toolsets": ["demo"],
+    "models": { "allow": ["claude-sonnet-5-5"] },
     "ui": "a2ui"
   }
 }

@@ -70,6 +70,8 @@ export type RunEvent = {
   conversation_id?: string;
   /** run_start: the message the run started from, when the server has it ({at, message}, undecoded). */
   prompt?: unknown;
+  /** run_start: the model the run runs, "<provider>/<id>" (T125). */
+  model?: string;
   turn?: number;
   block?: number;
   text?: string;
@@ -108,6 +110,27 @@ export type Agent = {
   version?: number;
   /** An agent of the config file, on a server that keeps agents: the API can't change it. */
   read_only?: boolean;
+  /** The models the agent may run, which a run picks with RunRequest.model (T125). */
+  models?: AgentModels;
+  /** Admins: the descriptions the agent gives its tools instead of their own (T126). */
+  tool_descriptions?: Record<string, string>;
+};
+
+/** An agent's models (pkg/agentapi/wire.AgentModels): names are "<provider>/<id>". */
+export type AgentModels = {
+  default: string;
+  /** The models allowed by name, the default first. */
+  allow: string[];
+  allow_patterns?: string[];
+  /** What a picker offers: the default, the names allowed, then the known models a pattern allows. */
+  choices: string[];
+};
+
+/** GET /v1/models. */
+export type ModelList = {
+  v: number;
+  default: string;
+  providers: { name: string; models: string[] }[];
 };
 
 /** GET /v1/agents/{name}/versions: one version of a stored agent. It never changes. */
@@ -463,6 +486,8 @@ export type RunRequest = {
   ui_action?: UIActionRequest;
   /** Narrows the agent's tools for this run (pkg/agentapi/wire.ToolChoice). */
   tools?: ToolChoice;
+  /** The model of the run, among the agent's models (Agent.models); absent: the conversation's, or the default. */
+  model?: string;
 };
 
 /** How a run offers its toolsets' tools: all sent, or found with tool_search. */

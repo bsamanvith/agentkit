@@ -76,7 +76,7 @@ func replay(run store.Run, entries []store.Entry) (replayed, error) {
 		at = e.At
 		r.events = append(r.events, e)
 	}
-	start := Event{Type: TypeRunStart, ConversationID: run.ConversationID, At: run.CreatedAt}
+	start := Event{Type: TypeRunStart, ConversationID: run.ConversationID, At: run.CreatedAt, Model: run.Model}
 	if len(entries) > 0 && entries[0].Kind == store.KindPrompt {
 		rec, err := runner.DecodeRecord(entries[0])
 		if err != nil {

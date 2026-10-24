@@ -250,3 +250,26 @@ func TestModelsNeedForModel(t *testing.T) {
 		}
 	}
 }
+
+// A run's run_start names its model, as it streams and when its events are
+// read again.
+func TestRunStartNamesTheModel(t *testing.T) {
+	t.Parallel()
+	m := newModelRig(t)
+	b, _ := json.Marshal(agentapi.RunRequest{Message: "hi", Agent: "multi", Model: "claude-sonnet-5-5"})
+	s := m.open(m.post(t.Context(), string(b), ""))
+	evs := s.all()
+	want, _ := modelset.Canonical("claude-sonnet-5-5")
+	if evs[0].Type != agentapi.TypeRunStart || evs[0].Model != want {
+		t.Fatalf("first event %+v, want run_start on %q", evs[0], want)
+	}
+	resp, body := m.do(http.MethodGet, "/v1/runs/"+s.runID()+"/events", "", "Accept", "text/event-stream")
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), `"model":"`+want+`"`) {
+		t.Errorf("GET events = %d %s, want run_start's model", resp.StatusCode, body)
+	}
+	// The default model is named too.
+	evs = m.open(m.post(t.Context(), runBody("hi", ""), "")).all()
+	if def, _ := modelset.Canonical(haiku); evs[0].Model != def {
+		t.Errorf("a run on the default: run_start model %q, want %q", evs[0].Model, def)
+	}
+}

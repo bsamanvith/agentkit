@@ -4,7 +4,6 @@ package main
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -22,10 +21,7 @@ func TestLiveServeSearch(t *testing.T) {
 	if key == "" && token == "" {
 		t.Skip("set ANTHROPIC_API_KEY (the server runs with an empty HOME, so an `ant` profile is not seen)")
 	}
-	config, err := os.ReadFile(filepath.Join("..", "..", "deploy", "local", "agent", "search.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	config := searchConfig(t)
 	env := []string{
 		envComponents + "=agent,mcp-server", envAPIToken + "=" + e2eToken,
 		"ANTHROPIC_API_KEY=" + key, "ANTHROPIC_AUTH_TOKEN=" + token,
@@ -35,7 +31,7 @@ func TestLiveServeSearch(t *testing.T) {
 			env = append(env, k+"="+v)
 		}
 	}
-	p := startServe(t, string(config), 20*time.Second, env...)
+	p := startServe(t, config, 20*time.Second, env...)
 	a := agentClient{t: t, url: p.url, token: e2eToken, agent: "search"}
 
 	events := a.stream("What is the latest stable release of the Go programming language? Search the web, and cite the source URL.", "", nil)

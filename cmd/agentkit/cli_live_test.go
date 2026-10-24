@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -24,10 +23,7 @@ func TestLiveAskSearch(t *testing.T) {
 	if key == "" && token == "" {
 		t.Skip("set ANTHROPIC_API_KEY (the server runs with an empty HOME, so an `ant` profile is not seen)")
 	}
-	config, err := os.ReadFile(filepath.Join("..", "..", "deploy", "local", "agent", "search.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	config := searchConfig(t)
 	env := []string{
 		envComponents + "=agent,mcp-server", envAPIToken + "=" + e2eToken,
 		"ANTHROPIC_API_KEY=" + key, "ANTHROPIC_AUTH_TOKEN=" + token,
@@ -38,7 +34,7 @@ func TestLiveAskSearch(t *testing.T) {
 			proxy = append(proxy, k+"="+v)
 		}
 	}
-	p := startServe(t, string(config), 20*time.Second, append(env, proxy...)...)
+	p := startServe(t, config, 20*time.Second, append(env, proxy...)...)
 
 	cmd := exec.Command(binary(t), "ask", "-json", "-agent", "search",
 		"What is the latest stable release of the Go programming language? Search the web, and cite the source URL.")
@@ -49,7 +45,7 @@ func TestLiveAskSearch(t *testing.T) {
 	cmd.Env = append(cmd.Env, proxy...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	err = cmd.Run()
+	err := cmd.Run()
 	t.Logf("agentkit ask: %v\nstderr:\n%s", err, &stderr)
 	if err != nil {
 		t.Fatalf("exit %d", cmd.ProcessState.ExitCode())

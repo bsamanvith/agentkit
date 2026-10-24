@@ -6,6 +6,10 @@ packages:
 saveExact: true
 # A dependency's install scripts don't run unless listed here.
 onlyBuiltDependencies: []
+# Security fixes of transitive dependencies, until their parents take them:
+# undici 8.12.2 (GHSA-xjj6-f33q-929c), under jsdom.
+overrides:
+  undici: 8.12.2
 minimumReleaseAgeExclude:
   - "@typescript-eslint/eslint-plugin@8.71.2"
   - "@typescript-eslint/parser@8.71.2"
@@ -71,3 +75,4 @@ minimumReleaseAgeExclude:
   - "@vitest/spy@5.0.4"
   - radix-ui@1.8.0
   - vitest@5.0.4
+  - undici@8.12.2

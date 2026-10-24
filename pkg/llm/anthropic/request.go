@@ -207,6 +207,9 @@ func (s *splicer) message(msg llm.Message) (anthropic.BetaMessageParam, error) {
 			cut = i
 		}
 	}
+	// after holds the text of results that load tools, sent after every
+	// other block of the message.
+	var after []anthropic.BetaContentBlockParamUnion
 	for i, b := range msg.Content {
 		switch b := b.(type) {
 		case llm.Text:
@@ -226,11 +229,6 @@ func (s *splicer) message(msg llm.Message) (anthropic.BetaMessageParam, error) {
 			})
 		case llm.ToolResult:
 			r := anthropic.BetaToolResultBlockParam{ToolUseID: b.ToolUseID}
-			if b.Content != "" {
-				r.Content = []anthropic.BetaToolResultBlockParamContentUnion{
-					{OfText: &anthropic.BetaTextBlockParam{Text: b.Content}},
-				}
-			}
 			// Tools the result loads: the API expands each reference into
 			// the deferred tool's definition (tool search, done by the
 			// harness rather than by the API's own search tool).
@@ -241,6 +239,21 @@ func (s *splicer) message(msg llm.Message) (anthropic.BetaMessageParam, error) {
 				r.Content = append(r.Content, anthropic.BetaToolResultBlockParamContentUnion{
 					OfToolReference: &anthropic.BetaToolReferenceBlockParam{ToolName: name},
 				})
+			}
+			switch {
+			case b.Content == "":
+			case len(r.Content) > 0:
+				// The API refuses tool references mixed with other content
+				// in one result ("Tool definitions ... cannot be mixed with
+				// other content"): the result's text (a skill's
+				// instructions, say) goes after the message's results.
+				after = append(after, anthropic.BetaContentBlockParamUnion{OfText: &anthropic.BetaTextBlockParam{
+					Text: "The output of tool call " + b.ToolUseID + ", which loaded the tools above:\n\n" + b.Content,
+				}})
+			default:
+				r.Content = []anthropic.BetaToolResultBlockParamContentUnion{
+					{OfText: &anthropic.BetaTextBlockParam{Text: b.Content}},
+				}
 			}
 			if b.IsError {
 				r.IsError = param.NewOpt(true)
@@ -264,6 +277,7 @@ func (s *splicer) message(msg llm.Message) (anthropic.BetaMessageParam, error) {
 			return mp, fmt.Errorf("%w: unsupported block %T", llm.ErrInvalidRequest, b)
 		}
 	}
+	mp.Content = append(mp.Content, after...)
 	return mp, nil
 }
 

@@ -3,7 +3,6 @@
 package main
 
 import (
-	"errors"
 	"os"
 	"os/exec"
 	"strings"
@@ -51,9 +50,9 @@ func TestLiveRunUsesTool(t *testing.T) {
 	}
 }
 
-// TestLiveMixedToolResultsAndText checks the T022 concern: harness Validate
-// rejects a user message that holds both tool results and text. Does Claude
-// accept one?
+// TestLiveMixedToolResultsAndText checks the T022 concern: a user message
+// that holds tool results and then text (what steering sends, T086). The
+// harness's Validate accepts it since steering, and so must Claude.
 func TestLiveMixedToolResultsAndText(t *testing.T) {
 	t.Parallel()
 	requireCredentials(t)
@@ -92,8 +91,8 @@ func TestLiveMixedToolResultsAndText(t *testing.T) {
 
 	verr := transcript.Validate()
 	t.Logf("harness Validate: %v", verr)
-	if !errors.Is(verr, harness.ErrInvalidInput) {
-		t.Errorf("Validate = %v; the restriction recorded in T024 has changed, update the notes", verr)
+	if verr != nil {
+		t.Errorf("Validate = %v; text after the tool results (steering) must be accepted", verr)
 	}
 
 	req.Messages = transcript

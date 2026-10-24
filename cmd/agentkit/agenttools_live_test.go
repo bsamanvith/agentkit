@@ -5,7 +5,6 @@ package main
 import (
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -24,10 +23,7 @@ func TestLiveAgentsOverMCP(t *testing.T) {
 	if key == "" && token == "" {
 		t.Skip("set ANTHROPIC_API_KEY (the server runs with an empty HOME, so an `ant` profile is not seen)")
 	}
-	config, err := os.ReadFile(filepath.Join("..", "..", "deploy", "local", "agent", "search.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	config := searchConfig(t)
 	env := []string{
 		envComponents + "=agent,mcp-server", envAPIToken + "=" + e2eToken,
 		"ANTHROPIC_API_KEY=" + key, "ANTHROPIC_AUTH_TOKEN=" + token,
@@ -37,7 +33,7 @@ func TestLiveAgentsOverMCP(t *testing.T) {
 			env = append(env, k+"="+v)
 		}
 	}
-	p := startServe(t, string(config), 20*time.Second, env...)
+	p := startServe(t, config, 20*time.Second, env...)
 	cs := connectMCP(t, p.url+"/mcp/agentkit", &http.Client{Transport: bearer{e2eToken, http.DefaultTransport}})
 
 	var run agenttools.Run

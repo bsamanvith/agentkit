@@ -26,7 +26,10 @@ import (
 )
 
 // Service is the service's name: a component serving it mounts its server at
-// rpc.PathPrefix + Service + "/".
+// rpc.PathPrefix + Service + "/". [RegisterAs] and [NewClientAs] serve and
+// call the same methods under another name, so one process can serve two
+// sets of registries (its toolsets, and its agents' memory tools) without
+// their names meeting.
 const Service = "toolsets"
 
 // ErrNoToolset means the server serves no toolset of that name (or serves
@@ -54,13 +57,21 @@ type Credential struct {
 	Env    string `json:"env,omitempty"`
 }
 
-// The service's methods. Each names its toolset; Invoke names the tool by
-// its own name in the toolset.
-var (
-	toolsetsMethod = rpc.Unary[struct{}, toolsetsResp]{Name: Service + "/Toolsets"}
-	listMethod     = rpc.Unary[listReq, listResp]{Name: Service + "/List", Errors: codes}
-	invokeMethod   = rpc.Unary[invokeReq, invokeResp]{Name: Service + "/Invoke", Errors: codes}
-)
+// methods are a service's methods. Each names its toolset; Invoke names the
+// tool by its own name in the toolset.
+type methods struct {
+	toolsets rpc.Unary[struct{}, toolsetsResp]
+	list     rpc.Unary[listReq, listResp]
+	invoke   rpc.Unary[invokeReq, invokeResp]
+}
+
+func methodsOf(service string) methods {
+	return methods{
+		toolsets: rpc.Unary[struct{}, toolsetsResp]{Name: service + "/Toolsets"},
+		list:     rpc.Unary[listReq, listResp]{Name: service + "/List", Errors: codes},
+		invoke:   rpc.Unary[invokeReq, invokeResp]{Name: service + "/Invoke", Errors: codes},
+	}
+}
 
 // codes are the errors that keep their identity across the wire.
 var codes = []rpc.Code{
@@ -105,6 +116,13 @@ type invokeResp struct {
 // one (every toolset of sets that is not Skipped). It fails for a toolset
 // listed twice, a built one without a registry, or a registry not in sets.
 func Register(s *rpc.Server, sets []Toolset, regs map[string]tool.Registry) error {
+	return RegisterAs(s, Service, sets, regs)
+}
+
+// RegisterAs is [Register] under the service name service, which
+// [NewClientAs] calls.
+func RegisterAs(s *rpc.Server, service string, sets []Toolset, regs map[string]tool.Registry) error {
+	m := methodsOf(service)
 	sets = slices.Clone(sets)
 	seen := map[string]bool{}
 	for _, ts := range sets {
@@ -130,10 +148,10 @@ func Register(s *rpc.Server, sets []Toolset, regs map[string]tool.Registry) erro
 		}
 		return nil, fmt.Errorf("%w: %q", ErrNoToolset, name)
 	}
-	toolsetsMethod.Handle(s, func(context.Context, struct{}) (toolsetsResp, error) {
+	m.toolsets.Handle(s, func(context.Context, struct{}) (toolsetsResp, error) {
 		return toolsetsResp{Toolsets: slices.Clone(sets)}, nil
 	})
-	listMethod.Handle(s, func(ctx context.Context, r listReq) (listResp, error) {
+	m.list.Handle(s, func(ctx context.Context, r listReq) (listResp, error) {
 		reg, err := registry(r.Toolset)
 		if err != nil {
 			return listResp{}, err
@@ -141,7 +159,7 @@ func Register(s *rpc.Server, sets []Toolset, regs map[string]tool.Registry) erro
 		defs, err := reg.List(ctx)
 		return listResp{Tools: defs}, err
 	})
-	invokeMethod.Handle(s, func(ctx context.Context, r invokeReq) (invokeResp, error) {
+	m.invoke.Handle(s, func(ctx context.Context, r invokeReq) (invokeResp, error) {
 		reg, err := registry(r.Toolset)
 		if err != nil {
 			return invokeResp{}, err
@@ -157,15 +175,23 @@ func Register(s *rpc.Server, sets []Toolset, regs map[string]tool.Registry) erro
 }
 
 // Client calls a server's toolsets. It is safe for concurrent use.
-type Client struct{ conn rpc.Conn }
+type Client struct {
+	conn rpc.Conn
+	m    methods
+}
 
 // NewClient returns a client that calls through conn: rpc.Dial for a server
 // in another container, rpc.Pipe for one in process.
-func NewClient(conn rpc.Conn) *Client { return &Client{conn: conn} }
+func NewClient(conn rpc.Conn) *Client { return NewClientAs(conn, Service) }
+
+// NewClientAs is [NewClient] for the service name service ([RegisterAs]).
+func NewClientAs(conn rpc.Conn, service string) *Client {
+	return &Client{conn: conn, m: methodsOf(service)}
+}
 
 // Toolsets lists the server's toolsets, built and skipped.
 func (c *Client) Toolsets(ctx context.Context) ([]Toolset, error) {
-	resp, err := toolsetsMethod.Call(ctx, c.conn, struct{}{})
+	resp, err := c.m.toolsets.Call(ctx, c.conn, struct{}{})
 	return resp.Toolsets, err
 }
 
@@ -182,7 +208,7 @@ type registry struct {
 var _ tool.Registry = (*registry)(nil)
 
 func (r *registry) List(ctx context.Context) ([]tool.Definition, error) {
-	resp, err := listMethod.Call(ctx, r.c.conn, listReq{Toolset: r.name})
+	resp, err := r.c.m.list.Call(ctx, r.c.conn, listReq{Toolset: r.name})
 	if err != nil {
 		return nil, fmt.Errorf("toolset %q: %w", r.name, err)
 	}
@@ -190,7 +216,7 @@ func (r *registry) List(ctx context.Context) ([]tool.Definition, error) {
 }
 
 func (r *registry) Invoke(ctx context.Context, name string, input json.RawMessage) (json.RawMessage, error) {
-	resp, err := invokeMethod.Call(ctx, r.c.conn, invokeReq{Toolset: r.name, Tool: name, Input: input, Caller: tenancy.Carry(ctx)})
+	resp, err := r.c.m.invoke.Call(ctx, r.c.conn, invokeReq{Toolset: r.name, Tool: name, Input: input, Caller: tenancy.Carry(ctx)})
 	if err != nil {
 		// A toolsets component that went away, or no longer serves this
 		// toolset, is a failed call, as a local connector's dropped

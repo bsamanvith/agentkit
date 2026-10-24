@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -14,15 +15,18 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
+	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/agentclient"
 	"github.com/bsamanvith/agentkit/pkg/auth"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/llmtest"
+	"github.com/bsamanvith/agentkit/pkg/memory"
 	"github.com/bsamanvith/agentkit/pkg/store/scoped"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
@@ -290,28 +294,169 @@ func authKeyEntry(id, tenant, user, key string) (string, error) {
 	return string(b), err
 }
 
-// TestMemoryIsRefusedOnARunner: the tenant does not cross to a runner
-// component yet, so an agent with memory that runs on one fails startup,
-// in the runner and in an agent API that sends it runs.
-func TestMemoryIsRefusedOnARunner(t *testing.T) {
+// TestRunnerMemoryNeedsURL: a runner keeps no memory, so an agent with
+// memory fails its startup without $AGENTKIT_MEMORY_URL, naming it; auto
+// recall, which would run on the runner, is refused there and in the agent
+// API that sends it runs.
+func TestRunnerMemoryNeedsURL(t *testing.T) {
 	t.Parallel()
+	load := func(memory string) serveConfig {
+		path := filepath.Join(t.TempDir(), "agentkit.json")
+		if err := os.WriteFile(path, []byte(`{"agent": {"model": {"id": "m"}, "memory": `+memory+`}}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := loadServeConfig(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return cfg
+	}
+	c := cli{getenv: func(string) string { return "" }, newModel: func(modelFlags) (llm.Model, error) { return llmtest.NewFake(t), nil }}
+	log := slog.New(slog.DiscardHandler)
+	env := serveEnv{components: []string{runnerName}, addr: "127.0.0.1:0", shutdownTimeout: time.Second}
+	store := load(`{"store": {"backend": "memory"}}`)
+	if _, err := c.newRunner(t.Context(), store, nil, env, clock.Real(), log); err == nil || !strings.Contains(err.Error(), "agent.memory: the runner keeps no memory: set $AGENTKIT_MEMORY_URL") {
+		t.Errorf("runner with a memory agent and no memory URL: %v", err)
+	}
+	recall := load(`{"index": {"backend": "memory", "auto_recall": true}}`)
+	env.memoryURL = "http://127.0.0.1:1"
+	if _, err := c.newRunner(t.Context(), recall, nil, env, clock.Real(), log); err == nil || !strings.Contains(err.Error(), "agent.memory.index.auto_recall") {
+		t.Errorf("runner with auto recall: %v, want it refused", err)
+	}
+	env = serveEnv{components: []string{agentapi.Name}, addr: "127.0.0.1:0", shutdownTimeout: time.Second, runnerURL: "http://127.0.0.1:1"}
+	if _, _, err := c.newAgents(t.Context(), recall, nil, nil, env, nil, scoped.Memory(nil), nil, clock.Real(), log); err == nil || !strings.Contains(err.Error(), "agent.memory.index.auto_recall") {
+		t.Errorf("agent API on a runner with auto recall: %v, want it refused", err)
+	}
+}
+
+// TestSplitMemory: an agent on a runner keeps its memory in the agent API
+// (the runner holds none) and reads it back in a new conversation, each of
+// two users apart; the memory tool's texts are those of one process; the
+// agent's other tools never call the agent API.
+func TestSplitMemory(t *testing.T) {
+	t.Parallel()
+	keys := ""
+	for i, user := range []string{"u1", "u2"} {
+		e, err := auth.KeyEntry(auth.APIKey{ID: fmt.Sprintf("k%d", i+1), Tenant: "acme", User: user, Scopes: []string{"*"}, Toolsets: []string{"*"}}, "secret-key-of-user-"+user)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := json.Marshal(e)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i > 0 {
+			keys += ","
+		}
+		keys += string(b)
+	}
 	path := filepath.Join(t.TempDir(), "agentkit.json")
-	if err := os.WriteFile(path, []byte(`{"agent": {"model": {"id": "m"}, "memory": {"store": {"backend": "memory"}}}}`), 0o600); err != nil {
+	config := `{"auth": {"api_keys": [` + keys + `]},
+	  "mcp": {"toolsets": [{"name": "demo", "type": "demo"}]},
+	  "agents": [{"name": "default", "model": {"id": "m"}, "toolsets": ["demo"],
+	    "memory": {"store": {"backend": "memory", "scope": "user", "max_file_bytes": 64}}}]}`
+	if err := os.WriteFile(path, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := loadServeConfig(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := cli{getenv: func(string) string { return "" }, newModel: func(modelFlags) (llm.Model, error) { return llmtest.NewFake(t), nil }}
+	fake := llmtest.NewFake(t,
+		memoryCall("u1-save", `{"command":"create","path":"/memories/me.md","file_text":"Units: metric\n"}`), llmtest.Text("ok"),
+		memoryCall("u1-big", `{"command":"create","path":"/memories/big.md","file_text":"`+strings.Repeat("x", 65)+`"}`), llmtest.Text("ok"),
+		llmtest.ToolCalls(llm.ToolUse{ID: "echo", Name: "echo", Input: json.RawMessage(`{"text":"hi"}`)}), llmtest.Text("ok"),
+		memoryCall("u2-view", `{"command":"view","path":"/memories"}`), llmtest.Text("ok"),
+		memoryCall("u1-view", `{"command":"view","path":"/memories/me.md"}`), llmtest.Text("ok"),
+	)
+	// The two servers name each other: start both on handlers set later.
+	var apiH, runH http.Handler
+	apiSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { apiH.ServeHTTP(w, r) }))
+	t.Cleanup(apiSrv.Close)
+	runSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { runH.ServeHTTP(w, r) }))
+	t.Cleanup(runSrv.Close)
 	log := slog.New(slog.DiscardHandler)
-	env := serveEnv{components: []string{runnerName}, addr: "127.0.0.1:0", shutdownTimeout: time.Second}
-	if _, err := c.newRunner(t.Context(), cfg, nil, env, clock.Real(), log); err == nil || !strings.Contains(err.Error(), "agent.memory") {
-		t.Errorf("runner with a memory agent: %v, want an error naming agent.memory", err)
+	c := cli{
+		getenv:   func(string) string { return "" },
+		catalog:  func() (*toolset.Catalog, error) { return toolset.NewCatalog(toolset.Demo()) },
+		newModel: func(modelFlags) (llm.Model, error) { return fake, nil },
 	}
-	env = serveEnv{components: []string{agentapi.Name}, addr: "127.0.0.1:0", shutdownTimeout: time.Second, runnerURL: "http://127.0.0.1:1"}
-	if _, _, err := c.newAgents(t.Context(), cfg, nil, nil, env, nil, scoped.Memory(nil), nil, clock.Real(), log); err == nil || !strings.Contains(err.Error(), "agent.memory") {
-		t.Errorf("agent API on a runner with a memory agent: %v, want an error naming agent.memory", err)
+	const token = "rpc-token-0123456789abcdef"
+	runEnv := serveEnv{components: []string{runnerName}, addr: "127.0.0.1:0", shutdownTimeout: time.Second, rpcToken: token, memoryURL: apiSrv.URL}
+	built, _, err := c.buildToolsets(t.Context(), runEnv, cfg, path, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := c.newRunner(t.Context(), cfg, built, runEnv, clock.Real(), log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runH = run.Component.Handler()
+	apiEnv := serveEnv{components: []string{agentapi.Name}, addr: "127.0.0.1:0", shutdownTimeout: time.Second, rpcToken: token, runnerURL: runSrv.URL}
+	authn, err := c.authenticator(t.Context(), cfg, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, _, err := c.newAgents(t.Context(), cfg, built, nil, apiEnv, authn, scoped.Memory(nil), nil, clock.Real(), log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ac := m.Component.(*agentComponent)
+	if ac.memory == nil {
+		t.Fatal("the agent API serves no memory")
+	}
+	mux := http.NewServeMux()
+	mux.Handle("/v1/", ac.Handler())
+	var invokes atomic.Int32 // memory tool calls the agent API answered
+	mux.Handle("/rpc/memory/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/Invoke") {
+			invokes.Add(1)
+		}
+		ac.memory.Handler().ServeHTTP(w, r)
+	}))
+	apiH = mux
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = ac.Shutdown(ctx)
+		_ = run.Component.Shutdown(ctx)
+	})
+	client := func(user string) *agentclient.Client {
+		cl, err := agentclient.New(apiSrv.URL, agentclient.WithToken("secret-key-of-user-"+user))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return cl
+	}
+	for _, user := range []string{"u1", "u1", "u1", "u2", "u1"} {
+		if _, err := client(user).Run(t.Context(), agentclient.RunRequest{Message: "hi", Agent: "default"}); err != nil {
+			t.Fatalf("run as %s: %v", user, err)
+		}
+	}
+	reqs := fake.Requests()
+	if out, ok := toolResult(reqs[1], "u1-save"); !ok || out != "File created successfully at: /memories/me.md" {
+		t.Errorf("u1's save: %q, ok %v", out, ok)
+	}
+	if out, ok := toolResult(reqs[3], "u1-big"); ok || !strings.Contains(out, "The memory is full") {
+		t.Errorf("u1's write past the file limit: %q, ok %v; want the memory tool's limit text", out, ok)
+	}
+	if out, ok := toolResult(reqs[5], "echo"); !ok || !strings.Contains(out, "hi") {
+		t.Errorf("echo: %q, ok %v", out, ok)
+	}
+	if out, ok := toolResult(reqs[7], "u2-view"); !ok || strings.Contains(out, "me.md") {
+		t.Errorf("u2's view: %q, ok %v; want no u1 file", out, ok)
+	}
+	if out, ok := toolResult(reqs[9], "u1-view"); !ok || !strings.Contains(out, "Units: metric") {
+		t.Errorf("u1's view in a new conversation: %q, ok %v", out, ok)
+	}
+	if n := invokes.Load(); n != 4 {
+		t.Errorf("the agent API answered %d tool calls, want the 4 memory calls", n)
+	}
+	resp, err := http.Post(apiSrv.URL+"/rpc/memory/Toolsets", "application/json", strings.NewReader("{}")) //nolint:noctx // local server
+	if err != nil || resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("memory without the token: %v %v, want 401", resp, err)
+	} else {
+		resp.Body.Close()
 	}
 }
 
@@ -334,5 +479,91 @@ func TestMemoryConfigErrors(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("memory %s: %v, want an error with %q", c.memory, err, c.want)
 		}
+	}
+}
+
+// TestMemoryToolNames: the runner's copy of the memory tools' names is
+// pkg/memory's.
+func TestMemoryToolNames(t *testing.T) {
+	t.Parallel()
+	recall := []string{memory.RecallGetTool, memory.RecallSaveTool, memory.RecallSearchTool}
+	if memoryToolName != memory.ToolName || !slices.Equal(recallToolNames, recall) {
+		t.Errorf("names %q %q, want %q %q", memoryToolName, recallToolNames, memory.ToolName, recall)
+	}
+}
+
+// TestMemoryAPI: what an agent saved through its tool, its user sees
+// through GET /v1/agents/{name}/memory (files deeper than a listing goes
+// counted in the usage, the limits the config's) and deletes with DELETE;
+// another user sees none of it.
+func TestMemoryAPI(t *testing.T) {
+	t.Parallel()
+	keys := ""
+	for i, user := range []string{"u1", "u2"} {
+		e, err := authKeyEntry(fmt.Sprintf("k%d", i+1), "acme", user, "secret-key-of-user-"+user)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i > 0 {
+			keys += ","
+		}
+		keys += e
+	}
+	config := `{"auth": {"api_keys": [` + keys + `]},
+	  "agents": [{"name": "default", "model": {"id": "m"},
+	    "memory": {"store": {"backend": "memory", "scope": "user", "max_files": 7}}}]}`
+	fake := llmtest.NewFake(t,
+		memoryCall("a", `{"command":"create","path":"/memories/prefs.md","file_text":"Units: metric\n"}`),
+		memoryCall("b", `{"command":"create","path":"/memories/trips/2026/lisbon/notes.md","file_text":"May"}`),
+		llmtest.Text("ok"),
+	)
+	s, err := startAgents(t, config, map[string]*llmtest.Fake{"m": fake})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.client(t, "secret-key-of-user-u1").Run(t.Context(), agentclient.RunRequest{Message: "remember"}); err != nil {
+		t.Fatal(err)
+	}
+	call := func(method, path, user string) (int, wire.MemoryView) {
+		req, err := http.NewRequestWithContext(t.Context(), method, s.url+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer secret-key-of-user-"+user)
+		resp, err := s.ts.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var v wire.MemoryView
+		if resp.StatusCode == http.StatusOK {
+			if err := json.NewDecoder(resp.Body).Decode(&v); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return resp.StatusCode, v
+	}
+	code, v := call("GET", "/v1/agents/default/memory", "u1")
+	if code != 200 || v.Scope != "user" || v.Usage != (wire.MemoryUsage{Bytes: 17, Files: 2}) ||
+		v.Limits != (wire.MemoryLimits{FileBytes: memory.DefaultMaxFileBytes, ScopeBytes: memory.DefaultMaxScopeBytes, Files: 7}) {
+		t.Errorf("u1's memory = %d %+v", code, v)
+	}
+	if code, v := call("GET", "/v1/agents/default/memory?path=/memories/prefs.md", "u1"); code != 200 || v.Text != "Units: metric\n" {
+		t.Errorf("u1's file = %d %+v", code, v)
+	}
+	if code, v := call("GET", "/v1/agents/default/memory", "u2"); code != 200 || v.Usage.Files != 0 || len(v.Entries) != 0 {
+		t.Errorf("u2's memory = %d %+v, want empty", code, v)
+	}
+	if code, _ := call("DELETE", "/v1/agents/default/memory?path=/memories/trips", "u2"); code != 404 {
+		t.Errorf("u2 deleting u1's directory = %d, want 404", code)
+	}
+	if code, _ := call("DELETE", "/v1/agents/default/memory?path=/memories", "u1"); code != 400 {
+		t.Errorf("deleting the root = %d, want 400", code)
+	}
+	if code, _ := call("DELETE", "/v1/agents/default/memory?path=/memories/trips", "u1"); code != 204 {
+		t.Errorf("u1 deleting a directory = %d, want 204", code)
+	}
+	if code, v := call("GET", "/v1/agents/default/memory", "u1"); code != 200 || v.Usage != (wire.MemoryUsage{Bytes: 14, Files: 1}) {
+		t.Errorf("u1's memory after the delete = %d %+v", code, v)
 	}
 }

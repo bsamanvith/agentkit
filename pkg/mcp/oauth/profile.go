@@ -37,6 +37,10 @@ type Profile struct {
 	// AuthParams are added to the authorization URL, such as Google's
 	// access_type=offline and prompt=consent.
 	AuthParams map[string]string
+	// AuthInParams sends a pre-registered client's id and secret in the
+	// token request's form rather than trying HTTP basic first (HubSpot
+	// takes them only in the form).
+	AuthInParams bool
 	// OmitResource leaves the resource parameter (RFC 8707) out of the
 	// authorization and token requests. Microsoft's v2 endpoints refuse
 	// resource together with scopes.
@@ -76,8 +80,8 @@ func (p Profile) refreshScope() string {
 	return p.RefreshScope
 }
 
-// Profiles returns the presets: "mcp" (the spec), "salesforce", "google"
-// and "microsoft". Each is a fresh copy. The provider presets carry no client
+// Profiles returns the presets: "mcp" (the spec), "salesforce", "google",
+// "microsoft" and "hubspot". Each is a fresh copy. The provider presets carry no client
 // (the operator registers one with the provider and sets ClientID and
 // ClientSecret), and Salesforce and Microsoft need their endpoints set for
 // the account (see [SalesforceEndpoints], [MicrosoftEndpoints]).
@@ -98,6 +102,14 @@ func Profiles() map[string]Profile {
 			TokenURL:     "https://oauth2.googleapis.com/token",
 			RefreshScope: "-",
 			AuthParams:   map[string]string{"access_type": "offline", "prompt": "consent"},
+		},
+		// HubSpot: a public app; a refresh token always comes, without
+		// asking; the client goes in the token request's form.
+		"hubspot": {
+			AuthURL:      "https://app.hubspot.com/oauth/authorize",
+			TokenURL:     "https://api.hubapi.com/oauth/v1/token",
+			RefreshScope: "-",
+			AuthInParams: true,
 		},
 		// Microsoft identity platform v2: offline_access for a refresh
 		// token; resource is refused alongside v2 scopes.

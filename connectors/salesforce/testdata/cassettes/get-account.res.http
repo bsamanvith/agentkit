@@ -1,0 +1,11 @@
+HTTP/1.1 200 OK
+Content-Type: application/json;charset=UTF-8
+
+{
+  "attributes": {"type": "Account", "url": "/services/data/v61.0/sobjects/Account/001D000000IqhSLIAZ"},
+  "Name": "Northwind Traders",
+  "Industry": "Food & Beverage",
+  "AnnualRevenue": 12500000,
+  "IsDeleted": false,
+  "Id": "001D000000IqhSLIAZ"
+}

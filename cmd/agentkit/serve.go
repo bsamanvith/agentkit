@@ -124,6 +124,8 @@ type serveEnv struct {
 	// toolsets come from, empty for in process; the token between them.
 	runnerURL, toolsetsURL, rpcToken string
 	dependencyWait                   time.Duration
+	// memoryURL is the agent API whose memory a runner's agents use.
+	memoryURL string
 	// credentialKeys seal the credential vault ($AGENTKIT_CREDENTIALS_KEY);
 	// nil when unset. Parsed at startup so a bad ring fails there.
 	credentialKeys *credentials.KeyRing
@@ -441,6 +443,7 @@ func (c cli) serveEnv() (serveEnv, error) {
 		e.shutdownTimeout = d
 	}
 	e.runnerURL, e.toolsetsURL, e.rpcToken = c.env(envRunnerURL), c.env(envToolsetsURL), c.env(envRPCToken)
+	e.memoryURL = c.env(envMemoryURL)
 	switch {
 	case e.rpcToken != "" && len(e.rpcToken) < 16:
 		return e, fmt.Errorf("%s: the token must be at least 16 bytes", envRPCToken)

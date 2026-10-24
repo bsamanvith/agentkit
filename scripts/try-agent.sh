@@ -88,7 +88,7 @@ if [ "$use_docker" = 1 ]; then
   docker run -d --rm --name "$container" --stop-timeout 20 -p "${port}:8080" ${skills[@]+"${skills[@]}"} \
     -e ANTHROPIC_API_KEY="$key" -e AGENTKIT_API_TOKEN="$token" -e AGENTKIT_CREDENTIALS_KEY="$creds_key" \
     -e AGENTKIT_COMPONENTS=agent,web,mcp-server \
-    -e TAVILY_API_KEY -e EXA_API_KEY -e PARALLEL_API_KEY \
+    -e TAVILY_API_KEY -e EXA_API_KEY -e PARALLEL_API_KEY -e HUBSPOT_ACCESS_TOKEN -e SALESFORCE_ACCESS_TOKEN \
     -v "$PWD/$config:/etc/agentkit/config.json:ro" \
     agentkit:latest >/dev/null
   log="(docker logs $container)"

@@ -2,25 +2,18 @@ package common
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"slices"
-	"strings"
+
+	"github.com/bsamanvith/agentkit/connectors/internal/rest"
 )
 
-// maxMessageChars caps text taken from Google's error bodies.
-const maxMessageChars = 300
-
-// InputError is an error the model can fix by changing its input. A tool turns
-// it into [tool.ErrInvalidInput]: use [AsToolError] in the tool's function.
-type InputError struct{ msg string }
-
-func (e *InputError) Error() string { return e.msg }
+// InputError is an error the model can fix by changing its input. A tool
+// made by [Func] reports it as [tool.ErrInvalidInput].
+type InputError = rest.InputError
 
 // Invalid returns an [InputError].
-func Invalid(format string, args ...any) error {
-	return &InputError{msg: fmt.Sprintf(format, args...)}
-}
+func Invalid(format string, args ...any) error { return rest.Invalid(format, args...) }
 
 // apiError is the body Google's APIs use for errors:
 //
@@ -58,50 +51,7 @@ var rateReasons = []string{
 	"quotaExceeded", "dailyLimitExceeded", "sharingRateLimitExceeded",
 }
 
-// errorReasons returns the reasons of an error body, as parseError does.
-func errorReasons(body []byte) []string {
-	_, reasons := parseError(body)
-	return reasons
-}
-
+// isRateLimited says whether a 403 is a rate or quota limit (a 429 always is).
 func isRateLimited(status int, reasons []string) bool {
-	if status == http.StatusTooManyRequests {
-		return true
-	}
 	return status == http.StatusForbidden && slices.ContainsFunc(reasons, func(r string) bool { return slices.Contains(rateReasons, r) })
-}
-
-// statusError maps a non-2xx response to the error the model sees. service
-// names the API in messages ("gmail").
-func (c *Client) statusError(status int, body []byte, token string) error {
-	msg, reasons := parseError(body)
-	msg = clean(msg, token, maxMessageChars)
-	switch {
-	case status >= 200 && status < 300:
-		return nil
-	case status == http.StatusBadRequest || status == http.StatusUnprocessableEntity:
-		if msg == "" {
-			msg = "no details"
-		}
-		return Invalid("%s rejected the request (status %d): %s", c.service, status, msg)
-	case status == http.StatusUnauthorized:
-		return fmt.Errorf("%s rejected the access token (status %d); the Google account must be reconnected", c.service, status)
-	case isRateLimited(status, reasons):
-		return fmt.Errorf("%s rate limited the request", c.service)
-	case status == http.StatusForbidden:
-		// Google's reason is what tells "scope not granted" from "not your
-		// file", and holds nothing secret.
-		return fmt.Errorf("%s denied access (status %d)%s", c.service, status, detail(msg))
-	case status == http.StatusNotFound:
-		return fmt.Errorf("%s: not found (status %d)%s", c.service, status, detail(msg))
-	default:
-		return fmt.Errorf("%s returned status %d", c.service, status)
-	}
-}
-
-func detail(msg string) string {
-	if msg == "" {
-		return ""
-	}
-	return ": " + strings.TrimSpace(msg)
 }

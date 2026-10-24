@@ -1,0 +1,26 @@
+HTTP/1.1 200 OK
+Content-Type: application/json;charset=UTF-8
+
+{
+  "totalSize": 3,
+  "done": false,
+  "nextRecordsUrl": "/services/data/v61.0/query/01gD0000002HU6KIAW-2000",
+  "records": [
+    {
+      "attributes": {"type": "Contact", "url": "/services/data/v61.0/sobjects/Contact/003D000000QV9n2IAD"},
+      "Id": "003D000000QV9n2IAD",
+      "Name": "Ana Ruiz",
+      "Email": "ana.ruiz@northwind.example",
+      "Account": {"attributes": {"type": "Account", "url": "/services/data/v61.0/sobjects/Account/001D000000IqhSLIAZ"}, "Name": "Northwind Traders"},
+      "Description": "Head of Operations. Prefers email; approves renewals up to 50k and joins the quarterly business review with finance."
+    },
+    {
+      "attributes": {"type": "Contact", "url": "/services/data/v61.0/sobjects/Contact/003D000000QV9n3IAD"},
+      "Id": "003D000000QV9n3IAD",
+      "Name": "Lee Chen",
+      "Email": "lee.chen@northwind.example",
+      "Account": {"attributes": {"type": "Account", "url": "/services/data/v61.0/sobjects/Account/001D000000IqhSLIAZ"}, "Name": "Northwind Traders"},
+      "Description": null
+    }
+  ]
+}

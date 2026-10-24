@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"slices"
 	"time"
@@ -67,6 +68,10 @@ func (s *source) refresh(ctx context.Context, k flightKey) (Credential, error) {
 		next := OAuth2{
 			AccessToken: NewSecret(tok.AccessToken), RefreshToken: NewSecret(tok.RefreshToken),
 			Expiry: s.expiry(tok), Scopes: o.Scopes, TokenType: tok.TokenType,
+			Extra: KeptExtras(o.Extra, app.KeepExtras, tok.Extra),
+		}
+		if next.Expiry.IsZero() && app.DefaultTTL > 0 {
+			next.Expiry = s.p.clock.Now().Add(app.DefaultTTL).UTC()
 		}
 		if next.RefreshToken.IsZero() { // the endpoint kept the old one
 			next.RefreshToken = o.RefreshToken
@@ -157,6 +162,22 @@ func (s *source) clientToken(ctx context.Context, k flightKey) (Credential, erro
 	s.p.mu.Unlock()
 	s.p.log.Debug("client credentials token fetched", "toolset", s.toolset, "slot", k.slot, "tenant", k.tenant, "expiry", o.Expiry)
 	return o, nil
+}
+
+// KeptExtras is old with the fields named by keep that extra (a token
+// response's Extra) holds as non-empty strings set over it; nil when there
+// are none.
+func KeptExtras(old map[string]string, keep []string, extra func(string) any) map[string]string {
+	out := maps.Clone(old)
+	for _, k := range keep {
+		if v, ok := extra(k).(string); ok && v != "" {
+			if out == nil {
+				out = map[string]string{}
+			}
+			out[k] = v
+		}
+	}
+	return out
 }
 
 // expiry is when tok expires by this source's clock.

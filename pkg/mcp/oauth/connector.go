@@ -388,6 +388,9 @@ func (c *Connector) Start(ctx context.Context, owner Owner, srv Server) (Pending
 	if prof.AuthURL != "" {
 		p.ClientID, p.Secret = prof.ClientID, prof.ClientSecret
 		p.AuthStyle = int(oauth2.AuthStyleAutoDetect)
+		if prof.AuthInParams {
+			p.AuthStyle = int(oauth2.AuthStyleInParams)
+		}
 	}
 	if rs := prof.refreshScope(); addRefresh && rs != "" && !slices.Contains(scopes, rs) {
 		scopes = append(scopes, rs)

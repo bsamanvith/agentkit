@@ -1,0 +1,14 @@
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=UTF-8
+
+{
+  "spreadsheetId": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+  "tableRange": "'Q3 costs'!A1:C41",
+  "updates": {
+    "spreadsheetId": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+    "updatedRange": "'Q3 costs'!A42:C42",
+    "updatedRows": 1,
+    "updatedColumns": 3,
+    "updatedCells": 3
+  }
+}

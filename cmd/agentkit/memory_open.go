@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/memory"
@@ -84,7 +85,7 @@ func openMemory(ctx context.Context, a agentDef, legacy bool, clk clock.Clock, g
 	}()
 	var tools []tool.Tool
 	if c := a.Memory.Store; c != nil {
-		t, closeFn, err := openMemoryStore(ctx, label+".store", *c, getenv)
+		t, api, closeFn, err := openMemoryStore(ctx, label+".store", *c, getenv)
 		if err != nil {
 			return nil, err
 		}
@@ -92,6 +93,7 @@ func openMemory(ctx context.Context, a agentDef, legacy bool, clk clock.Clock, g
 			m.closers = append(m.closers, closeFn)
 		}
 		tools = append(tools, t)
+		m.api = api
 	}
 	if c := a.Memory.Index; c != nil {
 		ts, prepare, closeFn, err := openMemoryIndex(ctx, label+".index", *c, clk, getenv)
@@ -115,29 +117,30 @@ func openMemory(ctx context.Context, a agentDef, legacy bool, clk clock.Clock, g
 	return m, nil
 }
 
-// openMemoryStore opens the context store and its tool.
-func openMemoryStore(ctx context.Context, label string, c memoryStoreConfig, getenv func(string) string) (tool.Tool, func() error, error) {
+// openMemoryStore opens the context store, its tool, and the store as the
+// agent API shows it to users.
+func openMemoryStore(ctx context.Context, label string, c memoryStoreConfig, getenv func(string) string) (tool.Tool, agentapi.Memory, func() error, error) {
 	open, ok := memoryBackends()[c.Backend]
 	if !ok {
 		names := slices.Sorted(maps.Keys(memoryBackends()))
-		return nil, nil, fmt.Errorf("%s.backend %q: want %q", label, c.Backend, strings.Join(names, `" or "`))
+		return nil, nil, nil, fmt.Errorf("%s.backend %q: want %q", label, c.Backend, strings.Join(names, `" or "`))
 	}
 	cfg, err := memory.Config{
 		Scope:  memory.Scope(c.Scope),
 		Limits: memory.Limits{MaxFileBytes: c.MaxFileBytes, MaxScopeBytes: c.MaxScopeBytes, MaxFiles: c.MaxFiles},
 	}.Resolve()
 	if err != nil {
-		return nil, nil, fmt.Errorf("%s: %w", label, err)
+		return nil, nil, nil, fmt.Errorf("%s: %w", label, err)
 	}
 	s, closeFn, err := open(ctx, c, cfg, getenv)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%s: %w", label, err)
+		return nil, nil, nil, fmt.Errorf("%s: %w", label, err)
 	}
 	mt, err := memory.NewTool(s)
 	if err != nil {
-		return nil, nil, errors.Join(fmt.Errorf("%s: %w", label, err), closeOrNil(closeFn))
+		return nil, nil, nil, errors.Join(fmt.Errorf("%s: %w", label, err), closeOrNil(closeFn))
 	}
-	return mt, closeFn, nil
+	return mt, storeMemory{s: s, cfg: cfg}, closeFn, nil
 }
 
 // openMemoryIndex opens the search store, its tools and, with auto_recall,

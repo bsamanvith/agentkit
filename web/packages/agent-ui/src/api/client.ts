@@ -16,6 +16,7 @@ import {
   type Conversation,
   type ConversationSummary,
   type CredentialInfo,
+  type MemoryView,
   type PutCredentialRequest,
   type RegistrySearch,
   type RegistryServer,
@@ -280,6 +281,23 @@ export class AgentClient {
     const v = (await this.#json(resp, path)) as Partial<AgentVersion> | null;
     if (typeof v?.version !== "number") throw new BadResponseError(`${path}: the response is not a version`);
     return v as AgentVersion;
+  }
+
+  /** GET /v1/agents/{name}/memory: a file or directory of the caller's memory of the agent; 404 when it keeps none. */
+  async getMemory(agent: string, path = "/memories", opts: RequestOptions = {}): Promise<MemoryView> {
+    const url = `/v1/agents/${encodeURIComponent(agent)}/memory?path=${encodeURIComponent(path)}`;
+    const v = await this.getJSON<Partial<MemoryView> | null>(url, opts);
+    if (typeof v?.path !== "string" || typeof v.dir !== "boolean" || typeof v.usage !== "object" || !v.limits) {
+      throw new BadResponseError(`${url}: the response is not a memory view`);
+    }
+    return v as MemoryView;
+  }
+
+  /** DELETE /v1/agents/{name}/memory: deletes a file, or a directory and everything in it. */
+  async deleteMemory(agent: string, path: string, opts: RequestOptions = {}): Promise<void> {
+    const url = `/v1/agents/${encodeURIComponent(agent)}/memory?path=${encodeURIComponent(path)}`;
+    const resp = await this.#send("DELETE", url, undefined, "application/json", opts.signal);
+    await resp.body?.cancel();
   }
 
   /** GET /v1/credentials: the slots and the caller's status; 404 when the server keeps no credentials. */

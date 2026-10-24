@@ -1,0 +1,6 @@
+{
+  "method": "POST",
+  "path": "/crm/v3/objects/contacts",
+  "body": {"properties": {"email": "sam.okafor@contoso.example", "firstname": "Sam", "lastname": "Okafor"}},
+  "synthetic": true
+}

@@ -59,6 +59,7 @@ type config struct {
 	admin          ToolsetAdmin
 	mcpRegistry    MCPRegistry
 	credentials    Credentials
+	memories       map[string]Memory
 	registry       AgentRegistry
 	token          string
 	authn          auth.Authenticator

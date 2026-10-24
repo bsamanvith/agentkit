@@ -1,0 +1,6 @@
+{
+  "method": "GET",
+  "path": "/services/data/v61.0/search",
+  "query": {"q": ["FIND {Northwind} IN ALL FIELDS RETURNING Account(Id, Name), Contact(Id, Name, Email) LIMIT 5"]},
+  "synthetic": true
+}

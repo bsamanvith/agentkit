@@ -35,3 +35,18 @@ func (s *Server) NotificationStreams() int {
 	defer s.nmu.Unlock()
 	return s.nOpen
 }
+
+// Retains reports whether the server still keeps the run's events in memory
+// (its hub), rather than replaying them from the store. A run's client hears
+// run_done just before the server files the run as finished, which is when
+// older runs are let go.
+func (s *Server) Retains(runID string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for k := range s.hubs {
+		if k.runID == runID {
+			return true
+		}
+	}
+	return false
+}

@@ -4469,18 +4469,48 @@
         }
       }
     },
-    "/v1/models": {
+    "/v1/agents/{name}/memory": {
       "get": {
-        "operationId": "listModels",
-        "summary": "List the model providers and known models",
-        "description": "The providers of models this server builds, and the model names it knows of each, for pickers. A model's name is \"<provider>/<id>\". Each agent says which models it allows (GET /v1/agents/{name} models).",
+        "operationId": "getMemory",
+        "summary": "View an agent's memory",
+        "description": "The caller's memory of the agent: a file's text, or a directory's listing (two levels deep), with what the whole memory uses against its limits. An agent whose memory is scope user keeps each user's own, and only a user's credential reads it; one with scope tenant shares it across the tenant. Memory is plain readable text.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "The agent's name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "description": "A file or directory under /memories; by default /memories itself.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "The providers.",
+            "description": "The file or directory.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ModelList"
+                  "$ref": "#/components/schemas/MemoryView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: the path is not under /memories, or not a path memory has.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -4504,7 +4534,95 @@
             }
           },
           "403": {
-            "description": "forbidden: the request's credential does not have the scope agent:read.",
+            "description": "forbidden: the request's credential does not have the scope agent:read; or the agent keeps each user's own memory and the credential is not a user's.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such agent, the agent keeps no memory, or nothing is at the path.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteMemory",
+        "summary": "Delete from an agent's memory",
+        "description": "Deletes a file, or a directory and everything in it, from the caller's memory of the agent. A tenant's shared memory (scope tenant) needs agent:admin.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "The agent's name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "description": "The file or directory under /memories to delete.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "400": {
+            "description": "invalid_request: the path is not under /memories, or is /memories itself.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run; or the agent keeps each user's own memory and the credential is not a user's; or the memory is the tenant's and the credential does not have agent:admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such agent, the agent keeps no memory, or nothing is at the path.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4650,6 +4768,53 @@
           },
           "404": {
             "description": "not_found: no such thread in the tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/models": {
+      "get": {
+        "operationId": "listModels",
+        "summary": "List the model providers and known models",
+        "description": "The providers of models this server builds, and the model names it knows of each, for pickers. A model's name is \"<provider>/<id>\". Each agent says which models it allows (GET /v1/agents/{name} models).",
+        "responses": {
+          "200": {
+            "description": "The providers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:read.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5766,88 +5931,6 @@
         },
         "required": [
           "id"
-        ]
-      },
-      "AgentModels": {
-        "type": "object",
-        "description": "The models an agent may run (T125). A run picks one with RunRequest.model.",
-        "properties": {
-          "default": {
-            "type": "string",
-            "description": "The model of a run that names none, \"<provider>/<id>\"; empty for an agent that names no model."
-          },
-          "allow": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "The models allowed by name, the default first."
-          },
-          "allow_patterns": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Patterns (RE2) that allow every model name they match whole."
-          },
-          "choices": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "The models to offer a person: allow, then the models of GET /v1/models that a pattern allows."
-          }
-        },
-        "required": [
-          "default",
-          "allow",
-          "choices"
-        ]
-      },
-      "ModelList": {
-        "type": "object",
-        "description": "The body of GET /v1/models.",
-        "properties": {
-          "v": {
-            "type": "integer",
-            "const": 1
-          },
-          "default": {
-            "type": "string",
-            "description": "The provider of a model name without \"/\"."
-          },
-          "providers": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ModelProvider"
-            }
-          }
-        },
-        "required": [
-          "v",
-          "default",
-          "providers"
-        ]
-      },
-      "ModelProvider": {
-        "type": "object",
-        "description": "A model provider this server builds.",
-        "properties": {
-          "name": {
-            "type": "string",
-            "description": "The part of a model name before \"/\"."
-          },
-          "models": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Model names the server knows, for suggestions. The provider may serve others, which patterns may allow."
-          }
-        },
-        "required": [
-          "name",
-          "models"
         ]
       },
       "AgentToolset": {
@@ -7760,6 +7843,201 @@
         "required": [
           "v",
           "threads"
+        ]
+      },
+      "MemoryView": {
+        "type": "object",
+        "description": "One path of the caller's memory of an agent.",
+        "properties": {
+          "v": {
+            "type": "integer"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "tenant",
+              "user"
+            ],
+            "description": "user: the caller's own memory; tenant: one the tenant shares."
+          },
+          "path": {
+            "type": "string"
+          },
+          "dir": {
+            "type": "boolean",
+            "description": "The path is a directory: entries lists it, two levels deep. Otherwise text is the file's."
+          },
+          "size": {
+            "type": "integer",
+            "description": "The file's bytes, or the bytes of every file under the directory."
+          },
+          "text": {
+            "type": "string"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemoryEntry"
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/MemoryUsage"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/MemoryLimits"
+          }
+        },
+        "required": [
+          "v",
+          "agent",
+          "scope",
+          "path",
+          "dir",
+          "size",
+          "usage",
+          "limits"
+        ]
+      },
+      "MemoryEntry": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "dir": {
+            "type": "boolean"
+          },
+          "size": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "dir",
+          "size"
+        ]
+      },
+      "MemoryUsage": {
+        "type": "object",
+        "description": "What the whole memory holds.",
+        "properties": {
+          "bytes": {
+            "type": "integer"
+          },
+          "files": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bytes",
+          "files"
+        ]
+      },
+      "MemoryLimits": {
+        "type": "object",
+        "description": "The agent's memory caps.",
+        "properties": {
+          "file_bytes": {
+            "type": "integer",
+            "description": "One file's bytes."
+          },
+          "scope_bytes": {
+            "type": "integer",
+            "description": "All files' bytes together."
+          },
+          "files": {
+            "type": "integer",
+            "description": "How many files."
+          }
+        },
+        "required": [
+          "file_bytes",
+          "scope_bytes",
+          "files"
+        ]
+      },
+      "AgentModels": {
+        "type": "object",
+        "description": "The models an agent may run (T125). A run picks one with RunRequest.model.",
+        "properties": {
+          "default": {
+            "type": "string",
+            "description": "The model of a run that names none, \"<provider>/<id>\"; empty for an agent that names no model."
+          },
+          "allow": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The models allowed by name, the default first."
+          },
+          "allow_patterns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Patterns (RE2) that allow every model name they match whole."
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The models to offer a person: allow, then the models of GET /v1/models that a pattern allows."
+          }
+        },
+        "required": [
+          "default",
+          "allow",
+          "choices"
+        ]
+      },
+      "ModelList": {
+        "type": "object",
+        "description": "The body of GET /v1/models.",
+        "properties": {
+          "v": {
+            "type": "integer",
+            "const": 1
+          },
+          "default": {
+            "type": "string",
+            "description": "The provider of a model name without \"/\"."
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelProvider"
+            }
+          }
+        },
+        "required": [
+          "v",
+          "default",
+          "providers"
+        ]
+      },
+      "ModelProvider": {
+        "type": "object",
+        "description": "A model provider this server builds.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The part of a model name before \"/\"."
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Model names the server knows, for suggestions. The provider may serve others, which patterns may allow."
+          }
+        },
+        "required": [
+          "name",
+          "models"
         ]
       }
     }

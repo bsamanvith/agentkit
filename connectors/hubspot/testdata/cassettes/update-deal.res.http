@@ -1,0 +1,18 @@
+HTTP/1.1 200 OK
+Content-Type: application/json;charset=utf-8
+
+{
+  "id": "5501",
+  "properties": {
+    "amount": "48000",
+    "createdate": "2026-08-01T11:00:00.000Z",
+    "dealname": "Northwind renewal 2027",
+    "dealstage": "closedwon",
+    "hs_lastmodifieddate": "2026-10-24T18:31:00.000Z",
+    "hs_object_id": "5501",
+    "pipeline": "default"
+  },
+  "createdAt": "2026-08-01T11:00:00.000Z",
+  "updatedAt": "2026-10-24T18:31:00.000Z",
+  "archived": false
+}

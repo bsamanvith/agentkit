@@ -34,6 +34,10 @@ const (
 	// toolsetsName is the toolsets component: the toolsets of mcp.toolsets,
 	// served at /rpc/toolsets/ to runners and agent APIs elsewhere.
 	toolsetsName = "toolsets"
+	// memoryService is the agent API's service of its agents' memory tools,
+	// one registry per agent by its name (toolrpc's protocol), at
+	// /rpc/memory/, for the agents that run on a runner.
+	memoryService = "memory"
 
 	// envRunnerURL makes the agent API run its agents on the runner at
 	// this URL (http://runner:8080) instead of in process.
@@ -42,6 +46,10 @@ const (
 	// take their toolsets from the toolsets component at this URL instead
 	// of building them.
 	envToolsetsURL = "AGENTKIT_TOOLSETS_URL"
+	// envMemoryURL is where the runner reaches its agents' memory: the
+	// agent API (http://api:8080), which serves each agent's memory tools at
+	// /rpc/memory/ (memoryService). Needed only for agents with memory.
+	envMemoryURL = "AGENTKIT_MEMORY_URL"
 	// envRPCToken is the bearer token between components: the runner and
 	// toolsets components require it, and their callers send it. Required
 	// to serve them on an address that is not loopback.
@@ -99,18 +107,33 @@ func (c cli) newRunner(ctx context.Context, cfg serveConfig, built map[string]to
 	var (
 		skipped []string
 		skills  skillReport
+		memory  *toolrpc.Client // the agent API's memory, once an agent needs it
 	)
 	for _, a := range cfg.Agents {
 		if len(a.RuntimeToolsets) > 0 {
 			// TODO(T096): read them from the store here too.
 			return component.Mount{}, fmt.Errorf("%s.runtime_toolsets: the %s component cannot use toolsets added at run time yet; run the agent in the agent API's process", a.label(cfg.legacy), runnerName)
 		}
+		var mem *agentMemory
 		if a.Memory != nil {
-			// TODO(T058 follow-up): the tenant does not cross to the runner
-			// yet, so every memory call would be refused.
-			return component.Mount{}, fmt.Errorf("%s.memory: the %s component cannot give an agent memory yet; run the agent in the agent API's process", a.label(cfg.legacy), runnerName)
+			// The agent API keeps the memory and serves its tools; the
+			// caller's tenant and user cross with each call (toolrpc).
+			if env.memoryURL == "" {
+				return component.Mount{}, fmt.Errorf("%s.memory: the %s keeps no memory: set $%s to the agent API that does (http://api:8080)", a.label(cfg.legacy), runnerName, envMemoryURL)
+			}
+			if err := checkRemoteMemory(a.label(cfg.legacy), a.Memory); err != nil {
+				return component.Mount{}, err
+			}
+			if memory == nil {
+				conn, err := rpc.Dial(env.memoryURL, rpc.WithBearer(env.rpcToken))
+				if err != nil {
+					return component.Mount{}, fmt.Errorf("%s: %w", envMemoryURL, err)
+				}
+				memory = toolrpc.NewClientAs(conn, memoryService)
+			}
+			mem = remoteMemory(a.Memory, memory.Registry(a.Name))
 		}
-		h, sk, ks, err := c.newHarness(ctx, cfg, a, built, nil, nil, nil, clk, log)
+		h, sk, ks, err := c.newHarness(ctx, cfg, a, built, nil, mem, nil, clk, log)
 		if err != nil {
 			return component.Mount{}, err
 		}

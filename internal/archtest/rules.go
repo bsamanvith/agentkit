@@ -460,6 +460,7 @@ func ModuleRules() Rules {
 		// tests cover them).
 		ConnectorLibraries: []string{
 			"connectors/internal/httpx", "connectors/internal/trunc", "connectors/internal/apikey",
+			"connectors/internal/rest",
 			"connectors/google/common",
 		},
 		// The agent API's wire types live in their own package so that

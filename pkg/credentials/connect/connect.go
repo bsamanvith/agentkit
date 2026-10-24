@@ -58,6 +58,11 @@ type App struct {
 	// AuthParams are added to the authorization URL, such as Google's
 	// access_type=offline and prompt=consent (a provider profile's).
 	AuthParams map[string]string
+	// KeepExtras and DefaultTTL are as in [credentials.OAuth2App]: token
+	// response fields to keep (Salesforce's instance_url), and the
+	// lifetime of a token whose response has no expires_in.
+	KeepExtras []string
+	DefaultTTL time.Duration
 }
 
 // Dynamic connects the slots of the toolsets a tenant adds at run time:

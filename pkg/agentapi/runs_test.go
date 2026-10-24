@@ -174,6 +174,7 @@ func TestEventsOfAnEvictedRun(t *testing.T) {
 	first := r.run("echo x", "")
 	before := r.getRun(first.runID())
 	r.run("next", first.conversationID()) // evicts the first run's events
+	eventually(t, "the first run's events are let go", func() bool { return !r.srv.Retains(first.runID()) })
 	got := r.events(first.runID(), "")
 	if !slices.Equal(types(got), types(first.events)) || got[len(got)-1].Answer != "Done." {
 		t.Errorf("replayed %v, want %v, answered", types(got), types(first.events))

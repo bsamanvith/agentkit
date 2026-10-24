@@ -101,6 +101,8 @@ services:
     environment:
       AGENTKIT_COMPONENTS: runner
       AGENTKIT_TOOLSETS_URL: http://toolsets:8080
+      # Agents with a memory section keep it in the API's store.
+      AGENTKIT_MEMORY_URL: http://api:8080
       AGENTKIT_RPC_TOKEN: ${AGK_RPC_TOKEN}
       ANTHROPIC_API_KEY: ${AGK_ANTHROPIC_API_KEY:-}
     depends_on:

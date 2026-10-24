@@ -545,6 +545,24 @@ func TestProfiles(t *testing.T) {
 			t.Errorf("scope %q lacks refresh_token", e.as.LastAuthorize().Get("scope"))
 		}
 	})
+	t.Run("hubspot sends its client in the form and asks for no refresh scope", func(t *testing.T) {
+		t.Parallel()
+		e := newEnv(t, setup{as: oauthtest.AuthServerOptions{Clients: map[string]string{"hs": "hss"}, TTL: time.Hour}})
+		p := oauth.Profiles()["hubspot"]
+		if p.AuthURL != "https://app.hubspot.com/oauth/authorize" || p.TokenURL != "https://api.hubapi.com/oauth/v1/token" {
+			t.Errorf("hubspot endpoints %s %s", p.AuthURL, p.TokenURL)
+		}
+		p.AuthURL, p.TokenURL = e.as.URL+"/authorize", e.as.URL+"/token"
+		p.ClientID, p.ClientSecret, p.Scopes = "hs", oauth.NewSecret("hss"), []string{"oauth", "crm.objects.contacts.read"}
+		e.srv.Profile = p
+		e.connect(t, alice)
+		if sc := e.as.LastAuthorize().Get("scope"); sc != "oauth crm.objects.contacts.read" {
+			t.Errorf("scope %q, want the profile's scopes only", sc)
+		}
+		if !e.as.LastTokenAuthInParams() {
+			t.Errorf("the token request sent the client in a header, want the form")
+		}
+	})
 	t.Run("OnToken can refuse", func(t *testing.T) {
 		t.Parallel()
 		e := newEnv(t, setup{as: spec, profile: oauth.Profile{OnToken: func(*oauth.Token) error { return errors.New("no") }}})

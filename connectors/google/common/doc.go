@@ -23,16 +23,17 @@
 //
 // # The client
 //
-// [Client.Do] sends one request and returns the body of a 2xx. It reads at
-// most 8 MiB, applies a timeout to each attempt, and maps failures to the
-// errors tools return: Google's 400 and 422 give [tool.ErrInvalidInput] with
+// [Client] is the token connectors' shared client (connectors/internal/rest)
+// reading Google's error bodies: [Client.Do] sends one request and returns
+// the body of a 2xx, reads at most 8 MiB, and maps failures to the errors
+// tools return. Google's 400, 409 and 422 give [tool.ErrInvalidInput] with
 // Google's message (at most 300 characters); every other failure gives
-// [tool.ErrToolFailed] with a cause the model or the user can act on ("google
-// rejected the access token", "rate limited"). A 429, or a 403 whose reason is
-// a rate or quota limit, is retried once after its Retry-After (up to 10 s,
-// and only while the context allows). A 401 is retried once with a fresh
-// token when the source can refresh ([Invalidator]). Nothing else is retried:
-// a request that sends mail or deletes a file may already have run.
+// [tool.ErrToolFailed] with a cause the model or the user can act on ("gmail
+// rejected the access token", "rate limited"). A 429, or a 403 whose reason
+// is a rate or quota limit, is retried once after its Retry-After (up to
+// 10 s, and only while the context allows). A 401 is retried once with a
+// fresh token when the source can refresh ([Invalidator]). Nothing else is
+// retried: a request that sends mail or deletes a file may already have run.
 //
 // # Paging and text
 //

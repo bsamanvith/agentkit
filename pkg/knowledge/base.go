@@ -57,8 +57,9 @@ var (
 
 // Load reads the documents under fsys's root: every regular file, or link
 // to one, whose extension is one of [Extensions], in lexical order of their
-// paths. Names
-// that start with "." (files and folders) are skipped, as are empty files.
+// paths. A link is followed as fsys follows it: an os.Root's FS refuses
+// one that leaves the root, os.DirFS does not. Names that start with "."
+// (files and folders) are skipped, as are empty files.
 // A file over MaxDocumentBytes, or not UTF-8, is ErrInvalid, naming it.
 func Load(fsys fs.FS) ([]Document, error) {
 	var docs []Document

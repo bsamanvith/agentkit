@@ -112,7 +112,9 @@ export function ToolPicker({
         {changed ? (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => onChange({})}>Reset to the agent&apos;s tools</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onChange(choice.model ? { model: choice.model } : {})}>
+              Reset to the agent&apos;s tools
+            </DropdownMenuItem>
           </>
         ) : null}
       </DropdownMenuContent>

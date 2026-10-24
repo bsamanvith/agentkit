@@ -927,6 +927,9 @@ func (s *Server) drive(ctx context.Context, cancel context.CancelCauseFunc, x *r
 				final = &reply
 			}
 			if e, ok := wireEvent(h.runID, h.convID, baseTurns, ev.Harness); ok {
+				if e.Type == TypeRunStart {
+					e.Model = x.Run.Model
+				}
 				em.emit(ctx, e, !streamedOnly(e.Type))
 				if h.ui {
 					for _, u := range uiEvents(e, ev.Harness, uiCalls) {
@@ -966,7 +969,7 @@ func (s *Server) drive(ctx context.Context, cancel context.CancelCauseFunc, x *r
 	}
 	now := s.cfg.clock.Now()
 	if !started { // the run failed before it started: announce it anyway
-		em.emit(ctx, Event{V: WireVersion, Type: TypeRunStart, RunID: h.runID, ConversationID: h.convID, At: now}, true)
+		em.emit(ctx, Event{V: WireVersion, Type: TypeRunStart, RunID: h.runID, ConversationID: h.convID, At: now, Model: x.Run.Model}, true)
 	}
 	end := Event{V: WireVersion, Type: TypeRunError, RunID: h.runID, At: now}
 	switch {

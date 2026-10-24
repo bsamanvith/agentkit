@@ -19,7 +19,7 @@ export { StepGroup, type StepGroupProps } from "./step-group";
 export { SourceChip } from "./source-chip";
 export { Message, type MessageProps } from "./message";
 export { Composer, type ComposerProps } from "./composer";
-export { UsageLine, usageText } from "./usage-line";
+export { modelLabel, UsageLine, usageText } from "./usage-line";
 export {
   answerText,
   applyEvent,

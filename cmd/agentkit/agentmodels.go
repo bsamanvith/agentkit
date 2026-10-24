@@ -92,6 +92,14 @@ func (d agentDef) onModel(set *modelset.Set, model string) agentDef {
 	if v.MaxTokens != 0 {
 		d.Model.MaxTokens = v.MaxTokens
 	}
+	if len(v.ToolDescriptions) > 0 {
+		descs := maps.Clone(d.ToolDescriptions)
+		if descs == nil {
+			descs = map[string]string{}
+		}
+		maps.Copy(descs, v.ToolDescriptions)
+		d.ToolDescriptions = descs
+	}
 	return d
 }
 

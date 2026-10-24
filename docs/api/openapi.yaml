@@ -5937,6 +5937,13 @@
           "read_only": {
             "type": "boolean",
             "description": "An agent of the server's config file, on a server that keeps agent definitions: it cannot be changed through the API."
+          },
+          "tool_descriptions": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "The descriptions the agent gives its tools instead of their own, by the names its model sees (T126): only where system is shown (admins)."
           }
         },
         "required": [

@@ -24,7 +24,7 @@ Owner request (2026-10-24): build agents in the console, choosing which tools th
 ## Tasks
 
 - [x] [T125](T125-agent-models.md) Supported models and per-model variants in agent definitions; `model` on runs; `GET /v1/models`
-- [ ] [T126](T126-tool-description-overrides.md) Tool description overrides per agent and per model variant
+- [x] [T126](T126-tool-description-overrides.md) Tool description overrides per agent and per model variant
 - [ ] [T077](T077-console-agent-builder.md) Console agent builder (E15): tools with description overrides, models, instructions, limits; save, publish, versions
 - [ ] [T127](T127-chat-model-picker.md) Model select in the chat composer, and the model on runs in the transcript
 - [ ] [T128](T128-llm-gemini.md) `pkg/llm/gemini` (E08), when a key is available

@@ -19,7 +19,7 @@
 | Agent protocols: A2UI, A2A | [E13](E13-agent-protocols.md) | Done (live runs passed 2026-10-24) |
 | Tasks (background agents) and agent messaging | [E14](E14-background-agents-messaging.md) | Done; supervised tasks wait for a person (T084, 2026-10-24) |
 | Agent definitions as versioned data | [E15](E15-agent-definitions.md) | T075 done; T077 (console agent builder) planned 2026-10-24 with E24; T076 (skills store) **to plan** |
-| Agents with a choice of model | [E24](E24-agent-models.md) | Planned 2026-10-24: T125 models, T126 tool description overrides, T127 chat model select, T128 Gemini (waits for a key) |
+| Agents with a choice of model | [E24](E24-agent-models.md) | T125 models and T126 tool description overrides done; next T127 chat model select, T128 Gemini (waits for a key) |
 | Runtimes and jobs | [E16](E16-runtimes-jobs.md) | **Shaped**, T078–T081 to plan (the ids collide with existing tasks: renumber when planned); owner's call |
 | Tool safety and control | [E17](E17-tool-safety-control.md) | Done (live runs passed 2026-10-24) |
 | Streaming and the server backend | [E18](E18-streaming-backend.md) | Done |

@@ -156,7 +156,8 @@ func (c cli) storedAgentBuilder(cfg serveConfig, built map[string]tool.Registry,
 			Name: a.Name, Description: a.Description, System: a.System,
 			Model:    wireModel(a.Model),
 			Toolsets: a.Toolsets, PrefixToolNames: a.PrefixToolNames, RuntimeToolsets: a.RuntimeToolsets,
-			Isolation: iso, Harness: h,
+			ToolDescriptions: a.ToolDescriptions,
+			Isolation:        iso, Harness: h,
 		}
 		set, err := a.modelSet(a.label(cfg.legacy)) // checked by check
 		if err == nil {

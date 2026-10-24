@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -83,6 +84,10 @@ type Agent struct {
 	// mcp/servers), so a tenant that has not added one gets none of its
 	// tools.
 	RuntimeToolsets []string
+	// ToolDescriptions are the descriptions the agent gives its tools
+	// instead of their own (T126), by the names its model sees, as the
+	// harness lists them; GET /v1/agents/{name} shows them to admins.
+	ToolDescriptions map[string]string
 	// Skills and Memory describe the agent's skills and long-term memory.
 	Skills []string
 	Memory bool
@@ -330,6 +335,9 @@ func (s *Server) getAgent(w http.ResponseWriter, r *http.Request) {
 	// The system prompt is for admins (and an open server).
 	if p, ok := auth.From(r.Context()); !ok || p.HasScope(ScopeAdminAgents) {
 		v.System = a.System
+		if len(a.ToolDescriptions) > 0 {
+			v.ToolDescriptions = maps.Clone(a.ToolDescriptions)
+		}
 	}
 	writeJSON(w, http.StatusOK, v)
 }

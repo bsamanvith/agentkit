@@ -57,6 +57,10 @@ type agentDef struct {
 	// PrefixToolNames names every tool "<toolset>__<tool>"; without it a tool
 	// name in two toolsets fails startup.
 	PrefixToolNames bool `json:"prefix_tool_names"`
+	// ToolDescriptions override the descriptions of the agent's tools, by
+	// the name its model sees (T126): how this agent should use a tool.
+	// The schema is never overridden. A variant of models adds its own.
+	ToolDescriptions map[string]string `json:"tool_descriptions"`
 	// RuntimeToolsets names toolsets admins add through the API (POST
 	// /v1/toolsets) that the agent may use, in the tenant of each run, as
 	// "<toolset>__<tool>" whatever PrefixToolNames says. A tenant that has
@@ -462,6 +466,11 @@ func (c cli) newHarness(ctx context.Context, cfg serveConfig, a agentDef, built 
 			return fail(err)
 		}
 		opts = append(opts, deferOpts...)
+	}
+	if len(a.ToolDescriptions) > 0 || slices.ContainsFunc(a.Models.Variants, func(v modelset.Variant) bool { return len(v.ToolDescriptions) > 0 }) {
+		if tools, err = describeTools(ctx, label, tools, a); err != nil {
+			return fail(err)
+		}
 	}
 	h, err := harness.New(model, tools, opts...)
 	if err != nil {

@@ -443,8 +443,9 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 			Name: a.Name, Description: a.Description, System: a.System,
 			Model:    wireModel(a.Model),
 			Toolsets: a.Toolsets, PrefixToolNames: a.PrefixToolNames, RuntimeToolsets: a.RuntimeToolsets,
-			Isolation: iso,
-			UI:        a.UI,
+			ToolDescriptions: a.ToolDescriptions,
+			Isolation:        iso,
+			UI:               a.UI,
 		}
 		if err := a.check(cfg.legacy); err != nil {
 			return fail(err)

@@ -441,6 +441,8 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 		// The memory of the agents that run on the runner, served to it.
 		memSets []toolrpc.Toolset
 		memRegs = map[string]tool.Registry{}
+		// What each agent's users see of its memory (GET /v1/agents/{name}/memory).
+		memories = map[string]agentapi.Memory{}
 	)
 	fail := func(err error) (component.Mount, *agentapi.Server, error) {
 		if admin != nil {
@@ -497,6 +499,9 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 				closers = append(closers, mem.close)
 				memSets = append(memSets, toolrpc.Toolset{Name: a.Name, Type: memoryService})
 				memRegs[a.Name] = mem.tools
+				if mem.api != nil {
+					memories[a.Name] = mem.api
+				}
 			}
 			if len(a.CanMessage) > 0 {
 				// The sender does not cross to the runner.
@@ -518,6 +523,9 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 			}
 			if mem != nil {
 				closers = append(closers, mem.close)
+				if mem.api != nil {
+					memories[a.Name] = mem.api
+				}
 			}
 			msgTools, err := messagingTools(msgr, a.Name)
 			if err != nil {
@@ -587,6 +595,7 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 	srv, err := agentapi.NewAgents(agents, append(authOpts,
 		agentapi.WithStore(st),
 		agentapi.WithBus(b),
+		agentapi.WithMemory(memories),
 		agentapi.WithRunnerOptions(runnerOpts...),
 		agentapi.WithToolsets(c.toolsetCatalog(cfg, specs, built, problems, env)...),
 		agentapi.WithMaxConcurrentRuns(cfg.API.MaxConcurrentRuns),

@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
+	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/agentclient"
 	"github.com/bsamanvith/agentkit/pkg/auth"
 	"github.com/bsamanvith/agentkit/pkg/clock"
@@ -488,5 +489,81 @@ func TestMemoryToolNames(t *testing.T) {
 	recall := []string{memory.RecallGetTool, memory.RecallSaveTool, memory.RecallSearchTool}
 	if memoryToolName != memory.ToolName || !slices.Equal(recallToolNames, recall) {
 		t.Errorf("names %q %q, want %q %q", memoryToolName, recallToolNames, memory.ToolName, recall)
+	}
+}
+
+// TestMemoryAPI: what an agent saved through its tool, its user sees
+// through GET /v1/agents/{name}/memory (files deeper than a listing goes
+// counted in the usage, the limits the config's) and deletes with DELETE;
+// another user sees none of it.
+func TestMemoryAPI(t *testing.T) {
+	t.Parallel()
+	keys := ""
+	for i, user := range []string{"u1", "u2"} {
+		e, err := authKeyEntry(fmt.Sprintf("k%d", i+1), "acme", user, "secret-key-of-user-"+user)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i > 0 {
+			keys += ","
+		}
+		keys += e
+	}
+	config := `{"auth": {"api_keys": [` + keys + `]},
+	  "agents": [{"name": "default", "model": {"id": "m"},
+	    "memory": {"store": {"backend": "memory", "scope": "user", "max_files": 7}}}]}`
+	fake := llmtest.NewFake(t,
+		memoryCall("a", `{"command":"create","path":"/memories/prefs.md","file_text":"Units: metric\n"}`),
+		memoryCall("b", `{"command":"create","path":"/memories/trips/2026/lisbon/notes.md","file_text":"May"}`),
+		llmtest.Text("ok"),
+	)
+	s, err := startAgents(t, config, map[string]*llmtest.Fake{"m": fake})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.client(t, "secret-key-of-user-u1").Run(t.Context(), agentclient.RunRequest{Message: "remember"}); err != nil {
+		t.Fatal(err)
+	}
+	call := func(method, path, user string) (int, wire.MemoryView) {
+		req, err := http.NewRequestWithContext(t.Context(), method, s.url+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer secret-key-of-user-"+user)
+		resp, err := s.ts.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var v wire.MemoryView
+		if resp.StatusCode == http.StatusOK {
+			if err := json.NewDecoder(resp.Body).Decode(&v); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return resp.StatusCode, v
+	}
+	code, v := call("GET", "/v1/agents/default/memory", "u1")
+	if code != 200 || v.Scope != "user" || v.Usage != (wire.MemoryUsage{Bytes: 17, Files: 2}) ||
+		v.Limits != (wire.MemoryLimits{FileBytes: memory.DefaultMaxFileBytes, ScopeBytes: memory.DefaultMaxScopeBytes, Files: 7}) {
+		t.Errorf("u1's memory = %d %+v", code, v)
+	}
+	if code, v := call("GET", "/v1/agents/default/memory?path=/memories/prefs.md", "u1"); code != 200 || v.Text != "Units: metric\n" {
+		t.Errorf("u1's file = %d %+v", code, v)
+	}
+	if code, v := call("GET", "/v1/agents/default/memory", "u2"); code != 200 || v.Usage.Files != 0 || len(v.Entries) != 0 {
+		t.Errorf("u2's memory = %d %+v, want empty", code, v)
+	}
+	if code, _ := call("DELETE", "/v1/agents/default/memory?path=/memories/trips", "u2"); code != 404 {
+		t.Errorf("u2 deleting u1's directory = %d, want 404", code)
+	}
+	if code, _ := call("DELETE", "/v1/agents/default/memory?path=/memories", "u1"); code != 400 {
+		t.Errorf("deleting the root = %d, want 400", code)
+	}
+	if code, _ := call("DELETE", "/v1/agents/default/memory?path=/memories/trips", "u1"); code != 204 {
+		t.Errorf("u1 deleting a directory = %d, want 204", code)
+	}
+	if code, v := call("GET", "/v1/agents/default/memory", "u1"); code != 200 || v.Usage != (wire.MemoryUsage{Bytes: 14, Files: 1}) {
+		t.Errorf("u1's memory after the delete = %d %+v", code, v)
 	}
 }

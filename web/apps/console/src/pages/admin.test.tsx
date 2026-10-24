@@ -96,15 +96,55 @@ const asAdmin: Me = {
 };
 const asUser: Me = { ...asAdmin, username: "uma", roles: ["user"], scopes: ["agent:run", "agent:read"] };
 
-type Fake = { seen: Request[]; bodies: string[]; stored: CredentialInfo[] };
+type Fake = { seen: Request[]; bodies: string[]; stored: CredentialInfo[]; notes: Map<string, string> };
+
+/** GET /v1/agents/{name}/memory over notes (path to text), as the server views a path. */
+function memoryView(notes: Map<string, string>, path: string, scope: string): Response {
+  const usage = { bytes: [...notes.values()].reduce((n, t) => n + t.length, 0), files: notes.size };
+  const base = {
+    v: 1,
+    agent: "researcher",
+    scope,
+    usage,
+    limits: { file_bytes: 16384, scope_bytes: 1048576, files: 200 },
+  };
+  const text = notes.get(path);
+  if (text !== undefined) return Response.json({ ...base, path, dir: false, size: text.length, text });
+  const under = [...notes].filter(([p]) => p.startsWith(path + "/"));
+  if (under.length === 0 && path !== "/memories") {
+    return Response.json({ v: 1, error: { code: "not_found", message: "no such path" } }, { status: 404 });
+  }
+  const entries = new Map<string, { path: string; dir: boolean; size: number }>();
+  for (const [p, t] of under) {
+    const rel = p.slice(path.length + 1).split("/");
+    for (let i = 1; i < rel.length && i <= 2; i++) {
+      const d = `${path}/${rel.slice(0, i).join("/")}`;
+      const e = entries.get(d) ?? { path: d, dir: true, size: 0 };
+      e.size += t.length;
+      entries.set(d, e);
+    }
+    if (rel.length <= 2) entries.set(p, { path: p, dir: false, size: t.length });
+  }
+  const size = under.reduce((n, [, t]) => n + t.length, 0);
+  return Response.json({ ...base, path, dir: true, size, entries: [...entries.values()] });
+}
 
 /**
  * A fake /v1 with a session for me. As on the server, the system prompt is
  * sent to admins only, and a user gets 403 on admin endpoints; what the
  * console sends is kept in bodies (so a test can see a key left only once).
  */
-function fakeServer(me: Me, opts: { vault?: boolean; system?: boolean; tools?: unknown[] } = {}): Fake {
-  const fake: Fake = { seen: [], bodies: [], stored: [] };
+function fakeServer(
+  me: Me,
+  opts: {
+    vault?: boolean;
+    system?: boolean;
+    tools?: unknown[];
+    memory?: { scope: string; notes: [string, string][] };
+  } = {},
+): Fake {
+  const fake: Fake = { seen: [], bodies: [], stored: [], notes: new Map(opts.memory?.notes) };
+  const agents = agentsList.map((a) => ({ ...a, memory: opts.memory !== undefined }));
   const admin = me.roles.includes("admin");
   vi.stubGlobal(
     "fetch",
@@ -117,9 +157,16 @@ function fakeServer(me: Me, opts: { vault?: boolean; system?: boolean; tools?: u
       const error = (status: number, code: string) =>
         Response.json({ v: 1, error: { code, message: code } }, { status });
       if (path === "/v1/auth/me") return Response.json({ v: 1, ...me });
-      if (path === "/v1/agents") return Response.json({ v: 1, agents: agentsList });
+      if (path === "/v1/agents") return Response.json({ v: 1, agents });
+      if (path === "/v1/agents/researcher/memory" && opts.memory) {
+        const at = url.searchParams.get("path") ?? "/memories";
+        if (req.method === "GET") return memoryView(fake.notes, at, opts.memory.scope);
+        if (opts.memory.scope === "tenant" && !admin) return error(403, "forbidden");
+        for (const p of [...fake.notes.keys()]) if (p === at || p.startsWith(at + "/")) fake.notes.delete(p);
+        return new Response(null, { status: 204 });
+      }
       if (path.startsWith("/v1/agents/")) {
-        const a = agentsList.find((x) => x.name === decodeURIComponent(path.split("/")[3] ?? ""));
+        const a = agents.find((x) => x.name === decodeURIComponent(path.split("/")[3] ?? ""));
         if (!a) return error(404, "not_found");
         return Response.json({
           v: 1,
@@ -216,6 +263,78 @@ describe("the agents page", () => {
     expect(await h1("researcher")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByLabelText("Loading")).not.toBeInTheDocument());
     expect(screen.queryByText("System prompt (admins only)")).not.toBeInTheDocument();
+  });
+});
+
+describe("an agent's memory", () => {
+  const notes: [string, string][] = [
+    ["/memories/prefs.md", "Prefers short answers."],
+    ["/memories/projects/bikes.md", "Northwind: road bikes."],
+  ];
+
+  it("shows the notes, their use of the limits, and a note's text", async () => {
+    fakeServer(asAdmin, { memory: { scope: "user", notes } });
+    renderAt("/agents/researcher");
+    const files = await screen.findByRole("list", { name: "Memory files" });
+    expect(screen.getByText("Your notes: 44 B of 1 MB, 2 of 200 files, at most 16 KB a file.")).toBeInTheDocument();
+    // Only what is directly in the folder; the folder opens.
+    expect(
+      within(files)
+        .getAllByRole("listitem")
+        .map((li) => li.textContent),
+    ).toEqual(["prefs.md22 BDelete", "projects/22 BDelete"]);
+    await userEvent.click(within(files).getByRole("button", { name: "projects/" }));
+    await userEvent.click(await screen.findByRole("button", { name: "bikes.md" }));
+    expect(await screen.findByLabelText("The text of bikes.md")).toHaveTextContent("Northwind: road bikes.");
+    await userEvent.click(screen.getByRole("button", { name: "Back to projects" }));
+    expect(await screen.findByRole("button", { name: "bikes.md" })).toBeInTheDocument();
+  });
+
+  it("deletes a note after asking, and goes back up when its folder empties", async () => {
+    const fake = fakeServer(asAdmin, { memory: { scope: "user", notes } });
+    renderAt("/agents/researcher");
+    await userEvent.click(await screen.findByRole("button", { name: "projects/" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Delete bikes.md" }));
+    const dialog = screen.getByRole("dialog", { name: "Delete bikes.md?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(fake.notes.size).toBe(2);
+    await userEvent.click(screen.getByRole("button", { name: "Delete bikes.md" }));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" }));
+    expect(await screen.findByText("bikes.md deleted.")).toHaveAttribute("role", "status");
+    expect(fake.notes.has("/memories/projects/bikes.md")).toBe(false);
+    expect(
+      fake.seen.some(
+        (r) =>
+          r.method === "DELETE" &&
+          r.url.endsWith("/v1/agents/researcher/memory?path=%2Fmemories%2Fprojects%2Fbikes.md"),
+      ),
+    ).toBe(true);
+    // The folder went with its last note: the page is back at the top.
+    const files = await screen.findByRole("list", { name: "Memory files" });
+    await waitFor(() => expect(within(files).getAllByRole("listitem")).toHaveLength(1));
+  });
+
+  it("lets only agent:admin delete the tenant's shared notes", async () => {
+    // An admin by role whose key lacks agent:admin: the API would refuse.
+    fakeServer({ ...asAdmin, scopes: ["agent:run", "agent:read", "admin:*"] }, { memory: { scope: "tenant", notes } });
+    const { unmount } = renderAt("/agents/researcher");
+    expect(await screen.findByText(/^Notes everyone in the tenant shares/)).toBeInTheDocument();
+    await screen.findByRole("list", { name: "Memory files" });
+    expect(screen.queryByRole("button", { name: /^Delete/ })).not.toBeInTheDocument();
+    unmount();
+    vi.unstubAllGlobals();
+    fakeServer(asAdmin, { memory: { scope: "tenant", notes } });
+    renderAt("/agents/researcher");
+    expect(await screen.findByRole("button", { name: "Delete prefs.md" })).toBeInTheDocument();
+  });
+
+  it("isn't there for an agent without memory", async () => {
+    const fake = fakeServer(asAdmin);
+    renderAt("/agents/researcher");
+    expect(await h1("researcher")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByLabelText("Loading")).not.toBeInTheDocument());
+    expect(screen.queryByRole("heading", { name: "Memory" })).not.toBeInTheDocument();
+    expect(fake.seen.some((r) => r.url.includes("/memory"))).toBe(false);
   });
 });
 

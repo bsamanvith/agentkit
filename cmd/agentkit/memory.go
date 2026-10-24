@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 )
@@ -109,6 +110,9 @@ type agentMemory struct {
 	native bool
 	// prepare is auto recall; nil when off.
 	prepare harness.PrepareFunc
+	// api is the context store as the agent API shows it to its users
+	// (memory_api.go); nil without a store, and on a runner.
+	api     agentapi.Memory
 	closers []func() error
 }
 

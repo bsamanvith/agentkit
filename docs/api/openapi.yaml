@@ -4469,6 +4469,171 @@
         }
       }
     },
+    "/v1/agents/{name}/memory": {
+      "get": {
+        "operationId": "getMemory",
+        "summary": "View an agent's memory",
+        "description": "The caller's memory of the agent: a file's text, or a directory's listing (two levels deep), with what the whole memory uses against its limits. An agent whose memory is scope user keeps each user's own, and only a user's credential reads it; one with scope tenant shares it across the tenant. Memory is plain readable text.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "The agent's name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "description": "A file or directory under /memories; by default /memories itself.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file or directory.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: the path is not under /memories, or not a path memory has.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:read; or the agent keeps each user's own memory and the credential is not a user's.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such agent, the agent keeps no memory, or nothing is at the path.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteMemory",
+        "summary": "Delete from an agent's memory",
+        "description": "Deletes a file, or a directory and everything in it, from the caller's memory of the agent. A tenant's shared memory (scope tenant) needs agent:admin.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "The agent's name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "description": "The file or directory under /memories to delete.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "400": {
+            "description": "invalid_request: the path is not under /memories, or is /memories itself.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: the server needs credentials (an API key, or its token) and the request's bearer token is missing or wrong.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer realm=\"agentkit\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: the request's credential does not have the scope agent:run; or the agent keeps each user's own memory and the credential is not a user's; or the memory is the tenant's and the credential does not have agent:admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such agent, the agent keeps no memory, or nothing is at the path.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/threads": {
       "get": {
         "operationId": "listThreads",
@@ -7608,6 +7773,119 @@
         "required": [
           "v",
           "threads"
+        ]
+      },
+      "MemoryView": {
+        "type": "object",
+        "description": "One path of the caller's memory of an agent.",
+        "properties": {
+          "v": {
+            "type": "integer"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "tenant",
+              "user"
+            ],
+            "description": "user: the caller's own memory; tenant: one the tenant shares."
+          },
+          "path": {
+            "type": "string"
+          },
+          "dir": {
+            "type": "boolean",
+            "description": "The path is a directory: entries lists it, two levels deep. Otherwise text is the file's."
+          },
+          "size": {
+            "type": "integer",
+            "description": "The file's bytes, or the bytes of every file under the directory."
+          },
+          "text": {
+            "type": "string"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemoryEntry"
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/MemoryUsage"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/MemoryLimits"
+          }
+        },
+        "required": [
+          "v",
+          "agent",
+          "scope",
+          "path",
+          "dir",
+          "size",
+          "usage",
+          "limits"
+        ]
+      },
+      "MemoryEntry": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "dir": {
+            "type": "boolean"
+          },
+          "size": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "dir",
+          "size"
+        ]
+      },
+      "MemoryUsage": {
+        "type": "object",
+        "description": "What the whole memory holds.",
+        "properties": {
+          "bytes": {
+            "type": "integer"
+          },
+          "files": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bytes",
+          "files"
+        ]
+      },
+      "MemoryLimits": {
+        "type": "object",
+        "description": "The agent's memory caps.",
+        "properties": {
+          "file_bytes": {
+            "type": "integer",
+            "description": "One file's bytes."
+          },
+          "scope_bytes": {
+            "type": "integer",
+            "description": "All files' bytes together."
+          },
+          "files": {
+            "type": "integer",
+            "description": "How many files."
+          }
+        },
+        "required": [
+          "file_bytes",
+          "scope_bytes",
+          "files"
         ]
       }
     }

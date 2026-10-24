@@ -2,7 +2,7 @@
 id: T085
 title: "Deferred tool loading and skills that load tools"
 epic: E17
-status: review
+status: done
 depends_on: [T082, T057]
 ---
 
@@ -40,7 +40,7 @@ Agents with many tools waste context and confuse models if every definition is s
 - [x] **Search and load** (fake model): with 30 deferred tools, the first request carries only the non-deferred tools plus `tool_search`; after a search, the found tool is available for the rest of the run and after a resume. `TestDeferredSearchAndLoad` (emulated: first request, after the search, a follow-up run, a resume of the cut transcript), `TestDeferredNative`, `TestDeferredToolKeptOnResume` (runner: crash after the loading turn, resume from the store), `TestServeDeferLoading`/`TestServeDeferLoadingEmulated` (serve, config to wire record); invariant `checkTools` in every harness test and `TestSimulatedRuns`.
 - [x] **Skills:** `skill_load` of a skill listing `tools:` makes them available; a listed tool the agent doesn't have is ignored with a logged warning. `TestLoadSkillLoadsItsTools`, `TestDeferredLoader`, `TestDeferredTranscriptLoadsOnlyDeferredTools`, `TestServeDeferLoading` (`nope_tool` ignored), `TestSkillToolWarnings`.
 - [x] **Policy:** policy denials still apply to loaded tools. `TestDeferredPolicyStillApplies`.
-- [ ] **Live** (`-tags live`): real Claude finds and uses a deferred tool. `TestLiveDeferredTool` (`cmd/agentkit/deferred_live_test.go`, native and emulated) and `TestLiveDeferredSkillLoad` (native `skill_load`) compile; not run: no `ANTHROPIC_API_KEY` in this session. Status stays `review` until it runs.
+- [x] **Live** (`-tags live`): real Claude finds and uses a deferred tool. `TestLiveDeferredTool` (`cmd/agentkit/deferred_live_test.go`, native and emulated) and `TestLiveDeferredSkillLoad` (native `skill_load`) compile; . **Run 2026-10-24** with the project's Anthropic key (`make test-live`, all live tests pass): `TestLiveDeferredTool` (native and emulated) passed. `TestLiveDeferredSkillLoad` first failed with a 400 ("Tool definitions ... cannot be mixed with other content": the API refuses tool references and text in one tool_result); the Anthropic adapter now sends the text after the message's results, and it passes.
 - [x] **Mutation list** recorded (Notes).
 
 ## Notes

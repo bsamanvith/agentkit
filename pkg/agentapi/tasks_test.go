@@ -532,7 +532,7 @@ func TestTaskNotify(t *testing.T) {
 		`{"input":"hi","notify":{"url":"https://10.0.0.1/hook"}}`,
 		`{"input":"hi","notify":{"url":"ftp://hooks.example/x"}}`,
 		`{"input":"hi","notify":{}}`,
-		`{"input":"hi","interaction":"supervised"}`,
+		`{"input":"hi","interaction":"interactive"}`,
 		`{"input":"hi","policy":{"rules":"no"}}`,
 		`{"input":"hi","stray":1}`,
 	} {

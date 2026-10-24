@@ -49,11 +49,11 @@ Both talk to the public agent API (`/v1`, HTTP + SSE; [E09](E09-agent-api.md)). 
 - [x] [T054](T054-cli-client.md) `agentkit chat` and `agentkit ask` (interactive and headless; read its "For T050" Notes before writing evals on `ask -json`)
 - [x] [T062](T062-api-agents-catalog.md) API: several agents, conversation listing, toolsets and tools catalog, OpenAPI spec (`docs/api/openapi.yaml`; read its "Endpoints (for T055/T064)" and "For T063" Notes first)
 - [x] [T092](T092-create-conversation.md) `POST /v1/conversations`: create an empty conversation, then run in it; `agentclient.CreateConversation`, `agentkit create` (owner's request, 2026-10-12; read its "For T055" Notes before building the chat page)
-- [ ] [T063](T063-agents-over-mcp.md) Agents over MCP (`/mcp/agentkit`), so Claude Code and other harnesses can drive them
-- [ ] [T061](T061-local-users-login.md) Local users and login sessions (E07 track, needs T039)
+- [x] [T063](T063-agents-over-mcp.md) Agents over MCP (`/mcp/agentkit`), so Claude Code and other harnesses can drive them
+- [x] [T061](T061-local-users-login.md) Local users and login sessions (E07 track, needs T039)
 - [x] [T078](T078-web-workspace.md) Web workspace: React + TS + shadcn/ui, packages `ui` / `agent-ui` / `apps/console`, embedding, CI (`make web`, `make web-check`, `make web-smoke`; read its "For T055, T064 and T066" and "Found out of scope" Notes, and `web/README.md`, first)
 - [x] [T070](T070-console-ux-design.md) Console UX design session: layout, navigation, states, components, mockup v3 (before T055). Approved by the owner on 2026-10-12, with the review's fixes; the same day, Connections (per-user credentials, org later) replaced the Credentials page (Decision 11). Read its Notes, "Review (2026-10-12)", "For T055" and "Found out of scope", first
-- [ ] [T055](T055-web-client.md) Console chat, agent picker, conversation list, on T078's shell (read its "From T078's handoff" section; interrupted runs per T100)
+- [x] [T055](T055-web-client.md) Console chat, agent picker, conversation list, on T078's shell (read its "From T078's handoff" section; interrupted runs per T100)
 - [x] [T064](T064-console-admin-pages.md) Console admin pages: agents, toolsets and tools, credentials (editing agents and skills: E15's T075 and T077)
 
 Later, from T078's review (small, take them when the console's numbers call for them):

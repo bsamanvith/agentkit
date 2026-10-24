@@ -2,7 +2,7 @@
 id: T058
 title: "pkg/memory: context store, memory toolset, opt-in config"
 epic: E12
-status: review
+status: done
 depends_on: [T027, T036]
 ---
 
@@ -38,7 +38,7 @@ The agent's own notes: preferences, project facts, progress across conversations
 - [x] **Limits:** writes past the per-file and per-scope limits fail cleanly and change nothing. (`memorytest` `Limits`; every failed command in every test is checked to change nothing)
 - [x] **Opt-in:** an agent without `memory` config offers no memory tool (fake model records the tools). (`TestAgentWithoutMemoryHasNoMemoryTool`)
 - [x] **End to end** (fake model): run 1 saves a preference; run 2 in a **new conversation** views it and uses it. (`TestMemoryAcrossConversations`, through serve's agent component on the SQLite backend, and again after a restart on the same file)
-- [ ] **Live (`-tags live`):** real Claude saves and later recalls a stated preference across two conversations. (`TestLiveRecallAcrossConversations` in `pkg/memory`, as a plain definition and as the native type. Written, not run: no Anthropic credentials in this session. Run `make test-live`.)
+- [x] **Live (`-tags live`):** real Claude saves and later recalls a stated preference across two conversations. (`TestLiveRecallAcrossConversations` in `pkg/memory`, as a plain definition and as the native type.) **Run 2026-10-24** with the project's Anthropic key (`make test-live`, all live tests pass): `TestLiveRecallAcrossConversations` passed, as a definition and as the native type.
 - [x] **Mutation list** recorded (below).
 
 ## Notes

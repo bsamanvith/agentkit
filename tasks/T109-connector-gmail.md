@@ -2,7 +2,7 @@
 id: T109
 title: "connectors/google/gmail: search, read, label, draft and send mail"
 epic: E21
-status: review
+status: done
 depends_on: [T108]
 ---
 

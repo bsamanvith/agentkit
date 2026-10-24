@@ -50,9 +50,15 @@ type TaskMessage struct {
 
 // Interaction modes of a task: whether it may wait for a person.
 const (
-	// InteractionAutonomous: the task never waits for a person (the default,
-	// and for now the only mode).
+	// InteractionAutonomous: the task never waits for a person (the
+	// default): a call that would need one is denied, and the model told.
 	InteractionAutonomous = "autonomous"
+	// InteractionSupervised: the task waits for a person where the policy
+	// or a tool asks for one. It is then suspended (the console's "waiting
+	// for you"), its user gets a run_status notification, and POST
+	// /v1/runs/{id}/input answers it, after which it goes on in the
+	// background.
+	InteractionSupervised = "supervised"
 )
 
 // TaskRequest is the body of POST /v1/tasks: a background run of an agent on
@@ -64,8 +70,8 @@ type TaskRequest struct {
 	Agent string `json:"agent,omitempty"`
 	// Input is the task: the user message the run starts from.
 	Input string `json:"input"`
-	// Interaction is how the task treats a tool that needs a person; only
-	// [InteractionAutonomous], the default, is served.
+	// Interaction is how the task treats a tool that needs a person:
+	// [InteractionAutonomous] (the default) or [InteractionSupervised].
 	Interaction string `json:"interaction,omitempty"`
 	// Policy narrows the agent's tool policy for the task, as
 	// [RunRequest.ToolPolicy].

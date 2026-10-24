@@ -2,7 +2,7 @@
 id: T110
 title: "connectors/google/calendar: list calendars and events, create, update and delete events, free/busy"
 epic: E21
-status: review
+status: done
 depends_on: [T108]
 ---
 

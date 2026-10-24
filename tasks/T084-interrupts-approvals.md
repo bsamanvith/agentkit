@@ -2,7 +2,7 @@
 id: T084
 title: "Interrupts and approvals: interaction modes, ask_user, approval holds, suspend and answer"
 epic: E17
-status: review
+status: done
 depends_on: [T083, T030]
 ---
 
@@ -38,8 +38,8 @@ Some tools need a person: `ask_user` asks a question, and tools needing approval
 
 ## Acceptance criteria
 
-- [ ] **Question, interactive:** `ask_user` suspends; the answer resumes; the transcript is valid throughout and after a process restart while suspended (replay e2e).
-  - Everything is covered except the replay e2e:
+- [x] **Question, interactive:** `ask_user` suspends; the answer resumes; the transcript is valid throughout and after a process restart while suspended (replay e2e).
+  - The restart while suspended: `pkg/runner` `TestQuestionSuspendsAcrossARestart` (another process, over the same store, takes the answer and resumes the run; ticked 2026-10-24). Before it:
     - harness: `pkg/harness.TestQuestionSuspendsAndTheAnswerResumes`, and `checkSuspended` in every harness test;
     - the `ask_user` tool: `pkg/coretools.TestAskUserInterrupts`;
     - restart: `pkg/runner.TestQuestionSuspendsAcrossARestart` (the answer goes to a new process, which reads the pending turn from the log); invariants 2 and 7 check the transcript after every test;
@@ -54,8 +54,8 @@ Some tools need a person: `ask_user` asks a question, and tools needing approval
   - `pkg/harness.TestAutonomousNeverWaits`;
   - `pkg/runner.TestAutonomousRunsNeverWait` (the mode survives a crash and resume);
   - `pkg/agentapi.TestRunRequestInteraction` (`"interaction": "autonomous"` in `POST /v1/runs`).
-- [ ] **Supervised:** the task shows `waiting for input`, and a notification event is emitted.
-  - Tasks (T071) and notifications (E14) do not exist yet.
+- [x] **Supervised:** the task shows `waiting for input`, and a notification event is emitted. Done 2026-10-24: `POST /v1/tasks` takes `"interaction": "supervised"` (narrowing an agent that may wait); the task is `suspended` (the console's "Waiting for you"), its user's `/v1/events` gets `run_status` `suspended`, and `/input` lets it go on in the background. `pkg/agentapi` `TestSupervisedTaskWaitsForInput`.
+  - (Before 2026-10-24: tasks (T071) and notifications (E14) did not exist yet.)
   - A supervised run suspends exactly like an interactive one (the harness's `waits()`).
   - The CLI prints "waiting for input" for a suspended run, but there is no task and no notification: **unticked**.
 - [x] **Simulation:** a seeded simulation with interrupts, answers, crashes and duplicate answers keeps the runner invariants.

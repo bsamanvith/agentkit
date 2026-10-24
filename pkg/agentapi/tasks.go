@@ -34,15 +34,17 @@ func (s *Server) postTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "the body must be a JSON object {\"input\": ..., \"agent\": ...}: " + err.Error()})
 		return
 	}
-	// A task never waits for a person (T084's autonomous mode, whatever the
-	// agent's): supervised tasks need a "waiting for input" state (E14).
+	// A task never waits for a person unless it is supervised (T084),
+	// whatever the agent's interaction: nobody is watching it.
 	start := StartOptions{Background: true, Interaction: harness.Autonomous}
 	switch {
 	case strings.TrimSpace(req.Input) == "":
 		writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "input is empty"})
 		return
+	case req.Interaction == wire.InteractionSupervised:
+		start.Interaction = harness.Supervised
 	case req.Interaction != "" && req.Interaction != wire.InteractionAutonomous:
-		writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "interaction " + quote(req.Interaction) + " is not served: a task runs \"autonomous\", never waiting for a person"})
+		writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "interaction " + quote(req.Interaction) + " is not served: a task is \"autonomous\" or \"supervised\""})
 		return
 	case req.Notify != nil && req.Notify.URL == "":
 		writeError(w, http.StatusBadRequest, &Error{Code: CodeInvalidRequest, Message: "notify needs a url"})

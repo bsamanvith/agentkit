@@ -2,7 +2,7 @@
 id: T101
 title: "CI hardening: pin actions by SHA, no persisted credentials, least permissions"
 epic: E01
-status: review
+status: done
 depends_on: []
 ---
 
@@ -22,8 +22,8 @@ Left for later by T078's review (2026-10-13): the CI jobs use actions by tag (`a
 ## Acceptance criteria
 
 - [x] **Pinned:** every `uses:` in `.github/workflows/` is a 40-character SHA; the lint fails on a tag (tried and recorded).
-- [ ] **No persisted credentials:** `.git/config` in a CI job holds no token after checkout (a step checks it).
-- [ ] **Unchanged results:** all jobs (check, fuzz, image, web, integration) are green, with the same jobs required as before.
+- [x] **No persisted credentials:** `.git/config` in a CI job holds no token after checkout (a step checks it).
+- [x] **Unchanged results:** all jobs (check, fuzz, image, web, integration) are green, with the same jobs required as before. **Ticked 2026-10-24** from CI on bsamanvith/agentkit#113 (run 40099895001): every job checks out with `persist-credentials: false` and then runs `scripts/check-no-git-credentials.sh`; check, image, smoke, web and integration are green with the same required jobs.
 
 ## References
 

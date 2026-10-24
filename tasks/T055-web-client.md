@@ -2,7 +2,7 @@
 id: T055
 title: "Console shell, login page, chat with agent picker, conversation list"
 epic: E11
-status: review
+status: done
 depends_on: [T036, T053, T070, T078]
 ---
 

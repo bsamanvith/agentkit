@@ -2,7 +2,7 @@
 id: T065
 title: "A2UI in the harness: ui_render tool, catalog validation, ui events, ui_action messages"
 epic: E13
-status: review
+status: done
 depends_on: [T062]
 ---
 
@@ -31,7 +31,7 @@ Agents should be able to show UI (forms, choices, cards), not only text, streame
 - [x] Fake model calls `ui_render`: the stream carries the `ui` event in order between turns; an invalid surface gives a tool error and the model's corrected retry succeeds.
 - [x] A `ui_action` continues the conversation; the transcript stays valid and append-only.
 - [x] An agent without `ui: "a2ui"` has no `ui_render` tool.
-- [ ] Live (`-tags live`): real Claude, asked to let the user pick between options, produces a valid surface on the first or second try.
+- [x] Live (`-tags live`): real Claude, asked to let the user pick between options, produces a valid surface on the first or second try. **Run 2026-10-24** with the project's Anthropic key (`make test-live`, all live tests pass): `cmd/agentkit` `TestLiveUIRender` passed (a valid surface first try).
 - [x] `FuzzValidate` never panics; mutation list recorded.
 
 ## Notes

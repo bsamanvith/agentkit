@@ -2,7 +2,7 @@
 id: T102
 title: Split images (API, runner, toolsets) on a generic RPC, and the all-in-one image
 epic: E01
-status: review
+status: done
 depends_on: [T037]
 ---
 
@@ -99,7 +99,7 @@ all-in-one `agentkit`, `agentkit-local` and `agentkit-dev`, and one image per
 component, `agentkit-api`, `agentkit-runner` and `agentkit-toolsets`; no
 migrate image (the api image runs `migrate` as a job or init container).
 
-- [ ] `make image`, `make image-local`, `make image-dev` and `make images-split` build the six images; each passes its own budget (`make image-size`, `make image-size-<variant>`); and the split images, run as containers, pass the per-image smoke on Postgres (`scripts/smoke.sh --images`: the checks of the next three criteria, against the images). — CI job `image` (check.yml). Not run here: no Docker in this session.
+- [x] `make image`, `make image-local`, `make image-dev` and `make images-split` build the six images; each passes its own budget (`make image-size`, `make image-size-<variant>`); and the split images, run as containers, pass the per-image smoke on Postgres (`scripts/smoke.sh --images`: the checks of the next three criteria, against the images). — CI job `image` (check.yml). Not run here: no Docker in this session. **Ticked 2026-10-24** from CI on bsamanvith/agentkit#113 (run 40099895001): the `image` job builds the six images (`make image`, `image-local`, `image-dev`, `images-split`), checks each budget, and passes `scripts/smoke.sh --images` on Postgres.
 - [x] `agentkit-api`, `agentkit-runner` and `agentkit-toolsets` (binaries built with each image's tags, wired as deploy/k8s wires them) each start, report ready on `/readyz` for their own components only (`agent,web`; `runner`; `toolsets,mcp-server`), serve their surface (`/v1/agents` and `/`; `/rpc/runner/`; `/rpc/toolsets/` and `/mcp/demo`) and answer 404 for the others'. — test: `TestComponents` (test/e2e/components_test.go), run by `make smoke` (CI's web job) and `make integration`
 - [x] The packages each image's binary links match its tags: api links no model SDK (Anthropic, openaicompat), MCP SDK, SQLite, connectors or skills; runner no MCP SDK, pgx, SQLite, go-redis or connectors; toolsets no model SDK, pgx, SQLite, go-redis or skills; local no pgx or go-redis; dev no SQLite (`go list -deps`). — test: `scripts/check-deps.sh` (`make deps-check`, in `make check`)
 - [x] `agentkit migrate` from the image that holds the store (`agentkit-api`) migrates an empty Postgres and exits 0, and a second run exits 0 with nothing to do (schema and `schema_migrations` unchanged). — test: `scripts/migrate-check.sh`, run by `scripts/smoke.sh` on Postgres (`make integration STORE=postgres`; CI's image job against the image); also `TestMigrateCommand` (CI integration job)

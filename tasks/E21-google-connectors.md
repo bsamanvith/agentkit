@@ -42,9 +42,9 @@ connectors/
 
 ## Tasks
 
-- [x] [T108](T108-google-common.md) `connectors/google/common`: client, token sources, settings, paging, text limits; the family layout and archtest rule — in review (draft PR #23)
-- [x] [T109](T109-connector-gmail.md) `connectors/google/gmail`: search, read, labels, drafts, send — in review: on the kit with synthetic cassettes; live test and recording wait for a Google test account
-- [ ] [T110](T110-connector-google-calendar.md) `connectors/google/calendar`: calendars, events, free/busy
+- [x] [T108](T108-google-common.md) `connectors/google/common`: client, token sources, settings, paging, text limits; the family layout and archtest rule
+- [x] [T109](T109-connector-gmail.md) `connectors/google/gmail`: search, read, labels, drafts, send — on the kit with synthetic cassettes; recording real ones waits for a Google test account
+- [x] [T110](T110-connector-google-calendar.md) `connectors/google/calendar`: calendars, events, free/busy
 - [ ] [T111](T111-connector-google-drive.md) `connectors/google/drive`: search, read, create, share, trash
 
 T108 comes first and is small; T109, T110 and T111 run in parallel after it. Wiring each factory into `cmd/agentkit/catalog.go` is one line per connector (keep every side on rebase); the image log gets a row if the binary grows by 100 KB or more ([AGENTS.md](../AGENTS.md#sizes)).

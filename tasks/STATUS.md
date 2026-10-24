@@ -18,8 +18,8 @@
 | Skills and memory | [E12](E12-skills-memory.md) | Done; T060 (semantic search) waits for an embedding provider's key |
 | Agent protocols: A2UI, A2A | [E13](E13-agent-protocols.md) | Done (live runs passed 2026-10-24) |
 | Tasks (background agents) and agent messaging | [E14](E14-background-agents-messaging.md) | Done; supervised tasks wait for a person (T084, 2026-10-24) |
-| Agent definitions as versioned data | [E15](E15-agent-definitions.md) | T075 done; T077 (console agent builder) planned 2026-10-24 with E24; T076 (skills store) **to plan** |
-| Agents with a choice of model | [E24](E24-agent-models.md) | T125 models, T126 tool description overrides and T127 chat model picker done; next T077 console agent builder, T128 Gemini (waits for a key) |
+| Agent definitions as versioned data | [E15](E15-agent-definitions.md) | T075 and T077 (console agent builder) done; T076 (skills store) **to plan** |
+| Agents with a choice of model | [E24](E24-agent-models.md) | T125 models, T126 tool description overrides, T127 chat model picker and T077 console agent builder done; T128 Gemini waits for a key |
 | Runtimes and jobs | [E16](E16-runtimes-jobs.md) | **Shaped**, T078–T081 to plan (the ids collide with existing tasks: renumber when planned); owner's call |
 | Tool safety and control | [E17](E17-tool-safety-control.md) | Done (live runs passed 2026-10-24) |
 | Streaming and the server backend | [E18](E18-streaming-backend.md) | Done |
@@ -57,7 +57,7 @@ T001 · T002 · T003 · T004 · T005 · T007 · T008 · T009 · T011 · T012 · 
 
 1. **Docker Desktop runs** of `make k8s-up` and `make compose-up` (T006, T113).
 2. **First embedding provider** for semantic memory (T060).
-3. **Next larger goal**: E15's skills store and console editors (T076, T077), E16's runtimes and jobs, or cloud deploy (managed Postgres: RDS, Cloud SQL, Neon, ...).
+3. **Next larger goal**: E15's skills store and its console editor (T076), E16's runtimes and jobs, or cloud deploy (managed Postgres: RDS, Cloud SQL, Neon, ...).
 4. **Exa and Parallel in the deployed configs**: `deploy/k8s` and `deploy/compose` don't serve the search toolsets yet. Adding them needs `credentials.backend: postgres` and `AGENTKIT_CREDENTIALS_KEY` on the api and toolsets containers.
 5. **Delete merged branches**: `review/t022-base` and the merged `claude/*` session branches.
 

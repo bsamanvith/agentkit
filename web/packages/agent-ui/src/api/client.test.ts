@@ -802,4 +802,46 @@ describe("toolsets added at run time and the MCP Registry (T096, T097)", () => {
       new AgentClient({ fetch: jsonFetch({ v: 1 }, seen) }).saveAgentVersion("h", { definition: {} }),
     ).rejects.toBeInstanceOf(BadResponseError);
   });
+
+  it("publishes, deletes a draft and lists the models", async () => {
+    const seen: Request[] = [];
+    const list = { v: 1, latest: 3, published: 2, versions: [] };
+    expect(await new AgentClient({ fetch: jsonFetch(list, seen) }).publishAgent("h", 2)).toMatchObject({
+      latest: 3,
+      published: 2,
+    });
+    expect(`${seen[0]!.method} ${new URL(seen[0]!.url).pathname}`).toBe("POST /v1/agents/h/publish");
+    expect(await seen[0]!.json()).toEqual({ version: 2 });
+    await new AgentClient({ fetch: jsonFetch(null, seen, 204) }).deleteAgentVersion("h", 3).catch(() => {});
+    expect(`${seen[1]!.method} ${new URL(seen[1]!.url).pathname}`).toBe("DELETE /v1/agents/h/versions/3");
+    const models = {
+      v: 1,
+      default: "anthropic",
+      providers: [{ name: "anthropic", models: ["anthropic/m"] }, { name: "x" }],
+    };
+    expect(await new AgentClient({ fetch: jsonFetch(models, seen) }).listModels()).toEqual({
+      v: 1,
+      default: "anthropic",
+      providers: [
+        { name: "anthropic", models: ["anthropic/m"] },
+        { name: "x", models: [] },
+      ],
+    });
+  });
+
+  it("keeps the fields of a refused definition", async () => {
+    const body = {
+      v: 1,
+      error: {
+        code: "invalid_definition",
+        message: "no",
+        fields: [{ field: "models.allow[0]", message: "bad" }, { message: "whole" }, { nope: 1 }],
+      },
+    };
+    const err = await new AgentClient({ fetch: jsonFetch(body, [], 400) })
+      .saveAgentVersion("h", { definition: {} })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).fields).toEqual([{ field: "models.allow[0]", message: "bad" }, { message: "whole" }]);
+  });
 });

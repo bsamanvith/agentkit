@@ -3,7 +3,9 @@ import type { RouteObject } from "react-router";
 import { RouteError } from "./pages/error";
 import {
   TasksPage,
+  AgentBuilderPage,
   AgentPage,
+  AgentVersionsPage,
   AgentsPage,
   ChatPage,
   ConnectDonePage,
@@ -48,7 +50,11 @@ export const routes: RouteObject[] = inShell([
   { path: "/new", element: <ChatPage /> },
   { path: "/c/:id", element: <ChatPage /> },
   { path: "/agents", element: <AgentsPage /> },
+  { path: "/agents/new", element: <AgentBuilderPage /> },
   { path: "/agents/:name", element: <AgentPage /> },
+  { path: "/agents/:name/edit", element: <AgentBuilderPage /> },
+  { path: "/agents/:name/versions", element: <AgentVersionsPage /> },
+  { path: "/agents/:name/versions/:v", element: <AgentVersionsPage /> },
   { path: "/toolsets", element: <ToolsetsPage /> },
   { path: "/toolsets/new", element: <McpAddPage /> },
   { path: "/toolsets/:name", element: <ToolsetPage /> },

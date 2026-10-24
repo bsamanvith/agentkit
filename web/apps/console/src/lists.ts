@@ -14,16 +14,28 @@ export const listAgents = (c: AgentClient, signal: AbortSignal) => c.listAgents(
 export const listToolsets = (c: AgentClient, signal: AbortSignal) => c.listToolsets({ signal });
 
 /**
- * The section's list, or null in a section that doesn't load it, and a way
- * to load the toolsets again after a page changed them (added, reviewed).
+ * The section's list, or null in a section that doesn't load it, and ways
+ * to load a list again after a page changed it (a toolset added or
+ * reviewed, an agent saved or published).
  */
 export type Lists = {
   agents: Resource<Agent[]> | null;
   toolsets: Resource<Toolset[]> | null;
+  reloadAgents: () => void;
   reloadToolsets: () => void;
 };
 
-export const ListsContext = createContext<Lists>({ agents: null, toolsets: null, reloadToolsets: () => {} });
+export const ListsContext = createContext<Lists>({
+  agents: null,
+  toolsets: null,
+  reloadAgents: () => {},
+  reloadToolsets: () => {},
+});
+
+/** Whether the server keeps agent definitions (T075): it marks its config agents read-only, or lists stored ones. */
+export function keepsAgents(agents: Agent[]): boolean {
+  return agents.some((a) => a.read_only === true || a.version !== undefined);
+}
 
 export function useLists(): Lists {
   return useContext(ListsContext);

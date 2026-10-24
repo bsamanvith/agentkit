@@ -66,6 +66,6 @@ agents or toolsets, edit `base/config.json` (shared with Compose and
 The agent `support` answers from the `handbook` knowledge base, the sample
 Northwind Bikes handbook in `deploy/local/agent/knowledge`. `up` stores those
 documents in the ConfigMap `agentkit-knowledge`, which the toolsets pod
-mounts at `/etc/agentkit/knowledge`, and restarts the toolsets when they
-changed. To serve your own documents, put Markdown files in that folder (it
+mounts at `/etc/agentkit/knowledge`, and restarts the pods when they
+changed (the runner and the API read the toolsets' list when they start). To serve your own documents, put Markdown files in that folder (it
 must stay flat: a ConfigMap has no subfolders) and run `make k8s-up`.

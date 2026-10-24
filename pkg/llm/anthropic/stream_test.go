@@ -285,6 +285,31 @@ func TestErrorMapping(t *testing.T) {
 	}
 }
 
+// TestNoCredentialsIsAuth: with no key anywhere the SDK fails before it
+// sends a request, and that is ErrAuth, not a retryable overload.
+func TestNoCredentialsIsAuth(t *testing.T) {
+	for _, k := range []string{
+		"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_FEDERATION_RULE_ID",
+		"ANTHROPIC_ORGANIZATION_ID", "ANTHROPIC_IDENTITY_TOKEN_FILE", "ANTHROPIC_PROFILE",
+	} {
+		t.Setenv(k, "")
+	}
+	t.Setenv("ANTHROPIC_CONFIG_DIR", t.TempDir())
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("a request was sent without credentials")
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(srv.Close)
+	m, err := anthropicllm.New(anthropicllm.WithBaseURL(srv.URL), anthropicllm.WithClientOptions(option.WithMaxRetries(0)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = llm.Collect(m.Generate(t.Context(), userText("Hello.")))
+	if !errors.Is(err, llm.ErrAuth) || llm.IsRetryable(err) {
+		t.Fatalf("err = %v, want ErrAuth, not retryable", err)
+	}
+}
+
 // stall answers like the API, sends a ping, then keeps the stream open
 // without another byte until the client goes away or the test ends.
 func stall(t *testing.T) *httptest.Server {

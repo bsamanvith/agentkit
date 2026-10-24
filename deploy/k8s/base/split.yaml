@@ -91,6 +91,9 @@ spec:
             - name: ANTHROPIC_API_KEY
               valueFrom: {secretKeyRef: {name: agentkit, key: anthropic-api-key}}
           ports: [{name: http, containerPort: 8080}]
+          # Startup waits up to AGENTKIT_DEPENDENCY_WAIT (a minute) for the
+          # toolsets before it listens: give it 90s before liveness counts.
+          startupProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 2, failureThreshold: 45}
           readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 5}
           livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 10}
           securityContext:
@@ -136,6 +139,9 @@ spec:
             - name: AGENTKIT_API_TOKEN
               valueFrom: {secretKeyRef: {name: agentkit, key: api-token}}
           ports: [{name: http, containerPort: 8080}]
+          # Startup waits up to AGENTKIT_DEPENDENCY_WAIT (a minute) for the
+          # toolsets before it listens: give it 90s before liveness counts.
+          startupProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 2, failureThreshold: 45}
           readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 5}
           livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 10}
           securityContext:

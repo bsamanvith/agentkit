@@ -120,12 +120,12 @@ up() {
 		echo "compose-local: no ANTHROPIC_API_KEY: the console works, runs fail with model_auth until you set it and run up again" >&2
 	fi
 	if [ "$target" = allinone ]; then
-		dc --profile allinone up -d "${recreate[@]}" allinone
+		dc --profile allinone up -d ${recreate[@]+"${recreate[@]}"} allinone
 		wait_ready "$allinone_url" allinone
 		echo
 		echo "Console: $allinone_url (all in one, SQLite)"
 	else
-		dc up -d "${recreate[@]}"
+		dc up -d ${recreate[@]+"${recreate[@]}"}
 		wait_ready "$split_url" toolsets runner api
 		echo
 		echo "Console: $split_url"

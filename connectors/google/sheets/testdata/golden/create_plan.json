@@ -1,0 +1,19 @@
+{
+  "spreadsheet_id": "1PlanXyZ0123456789abcdefABCDEFghijkLMNOPqrs",
+  "title": "Offsite plan",
+  "url": "https://docs.google.com/spreadsheets/d/1PlanXyZ0123456789abcdefABCDEFghijkLMNOPqrs/edit",
+  "tabs": [
+    {
+      "title": "Agenda",
+      "sheet_id": 0,
+      "rows": 1000,
+      "columns": 26
+    },
+    {
+      "title": "Travel",
+      "sheet_id": 1,
+      "rows": 1000,
+      "columns": 26
+    }
+  ]
+}

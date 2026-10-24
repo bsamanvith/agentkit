@@ -1,0 +1,17 @@
+HTTP/1.1 201 Created
+Content-Type: application/json;charset=utf-8
+
+{
+  "id": "1102",
+  "properties": {
+    "createdate": "2026-10-24T18:30:00.000Z",
+    "email": "sam.okafor@contoso.example",
+    "firstname": "Sam",
+    "hs_object_id": "1102",
+    "lastmodifieddate": "2026-10-24T18:30:00.000Z",
+    "lastname": "Okafor"
+  },
+  "createdAt": "2026-10-24T18:30:00.000Z",
+  "updatedAt": "2026-10-24T18:30:00.000Z",
+  "archived": false
+}

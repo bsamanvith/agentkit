@@ -1,0 +1,11 @@
+{
+  "id": "1102",
+  "object": "contacts",
+  "properties": {
+    "email": "sam.okafor@contoso.example",
+    "firstname": "Sam",
+    "lastname": "Okafor"
+  },
+  "created_at": "2026-10-24T18:30:00.000Z",
+  "updated_at": "2026-10-24T18:30:00.000Z"
+}

@@ -226,7 +226,7 @@ IMAGE ?= $(BIN)
 # then to 35 and 37 as feature tasks landed (docs/SIZES.md says why).
 # Log every size change, with its reason, in docs/SIZES.md (AGENTS.md, Sizes).
 # An image with a budget of its own (IMAGE_BUDGET_MB_<image>) gets that one.
-IMAGE_BUDGET_MB ?= $(or $(IMAGE_BUDGET_MB_$(IMAGE)),37)
+IMAGE_BUDGET_MB ?= $(or $(IMAGE_BUDGET_MB_$(IMAGE)),38)
 # fakellm (T004) is a test-only image, standard library only: 12 MB, about
 # 1 MB over its binary plus the base. Growth there means something linked in.
 IMAGE_BUDGET_MB_fakellm ?= 12
@@ -250,7 +250,7 @@ TAGS_dev := noagui nosqlite
 TAGS_api := nomodels noconnectors nomcp noagui nosqlite
 TAGS_runner := noconnectors nomcp noweb noa2a noagui nosqlite nopostgres noredis noagent
 TAGS_toolsets := nomodels noweb noa2a noagui nosqlite nopostgres noredis noagent
-IMAGE_BUDGET_MB_local ?= 31
+IMAGE_BUDGET_MB_local ?= 32
 IMAGE_BUDGET_MB_dev ?= 33
 IMAGE_BUDGET_MB_api ?= 23
 IMAGE_BUDGET_MB_runner ?= 20

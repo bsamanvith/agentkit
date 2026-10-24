@@ -1,0 +1,7 @@
+{
+  "method": "POST",
+  "path": "/v4/spreadsheets",
+  "query": {"fields": ["spreadsheetId,spreadsheetUrl,properties.title,sheets.properties(sheetId,title,gridProperties(rowCount,columnCount))"]},
+  "body": {"properties": {"title": "Offsite plan"}, "sheets": [{"properties": {"title": "Agenda"}}, {"properties": {"title": "Travel"}}]},
+  "synthetic": true
+}

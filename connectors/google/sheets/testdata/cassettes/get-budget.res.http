@@ -1,0 +1,12 @@
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=UTF-8
+
+{
+  "spreadsheetId": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+  "spreadsheetUrl": "https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
+  "properties": {"title": "2026 budget"},
+  "sheets": [
+    {"properties": {"sheetId": 0, "title": "Summary", "gridProperties": {"rowCount": 1000, "columnCount": 26}}},
+    {"properties": {"sheetId": 918273645, "title": "Q3 costs", "gridProperties": {"rowCount": 200, "columnCount": 8}}}
+  ]
+}

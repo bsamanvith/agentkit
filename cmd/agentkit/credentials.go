@@ -204,6 +204,7 @@ func (c cli) oauth2Apps(cfg credentialsConfig) ([]oauth2App, error) {
 				return nil, fmt.Errorf("%s: %w", where, err)
 			}
 			a.AuthURL, a.TokenURL = cmp.Or(a.AuthURL, p.authURL), cmp.Or(a.TokenURL, p.tokenURL)
+			a.AuthStyle = cmp.Or(a.AuthStyle, p.authStyle)
 			if p.refreshScope != "" && !slices.Contains(a.Scopes, p.refreshScope) {
 				a.Scopes = append(slices.Clone(a.Scopes), p.refreshScope)
 			}
@@ -274,6 +275,7 @@ const oauthCallbackPath = "/oauth/callback"
 // providerProfile is what a provider preset sets.
 type providerProfile struct {
 	authURL, tokenURL, refreshScope string
+	authStyle                       string // "" or "params"
 	params                          map[string]string
 }
 

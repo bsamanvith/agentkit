@@ -1,0 +1,6 @@
+{
+  "method": "GET",
+  "path": "/v4/spreadsheets/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+  "query": {"fields": ["spreadsheetId,spreadsheetUrl,properties.title,sheets.properties(sheetId,title,gridProperties(rowCount,columnCount))"]},
+  "synthetic": true
+}

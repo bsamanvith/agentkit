@@ -1,0 +1,10 @@
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=UTF-8
+
+{
+  "spreadsheetId": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+  "updatedRange": "Summary!B4:C4",
+  "updatedRows": 1,
+  "updatedColumns": 2,
+  "updatedCells": 2
+}

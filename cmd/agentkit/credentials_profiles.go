@@ -24,6 +24,9 @@ func oauthProfile(name string) (providerProfile, error) {
 		return providerProfile{}, fmt.Errorf("profile %q: want %q", name, strings.Join(slices.Sorted(maps.Keys(all)), `", "`))
 	}
 	out := providerProfile{authURL: p.AuthURL, tokenURL: p.TokenURL, params: maps.Clone(p.AuthParams)}
+	if p.AuthInParams {
+		out.authStyle = "params"
+	}
 	switch p.RefreshScope {
 	case "-":
 	case "":

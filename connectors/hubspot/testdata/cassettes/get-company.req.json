@@ -1,0 +1,6 @@
+{
+  "method": "GET",
+  "path": "/crm/v3/objects/companies/9001",
+  "query": {"properties": ["name,domain,description"], "associations": ["contacts,deals"]},
+  "synthetic": true
+}

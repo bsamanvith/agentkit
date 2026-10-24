@@ -1,0 +1,12 @@
+{
+  "method": "POST",
+  "path": "/crm/v3/objects/contacts/search",
+  "body": {
+    "query": "northwind",
+    "filterGroups": [{"filters": [{"propertyName": "lifecyclestage", "operator": "EQ", "value": "customer"}]}],
+    "properties": ["email", "firstname", "lastname", "jobtitle"],
+    "limit": 2,
+    "sorts": [{"propertyName": "hs_lastmodifieddate", "direction": "DESCENDING"}]
+  },
+  "synthetic": true
+}

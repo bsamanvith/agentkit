@@ -1,0 +1,12 @@
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=UTF-8
+
+{
+  "spreadsheetId": "1PlanXyZ0123456789abcdefABCDEFghijkLMNOPqrs",
+  "spreadsheetUrl": "https://docs.google.com/spreadsheets/d/1PlanXyZ0123456789abcdefABCDEFghijkLMNOPqrs/edit",
+  "properties": {"title": "Offsite plan"},
+  "sheets": [
+    {"properties": {"sheetId": 0, "title": "Agenda", "gridProperties": {"rowCount": 1000, "columnCount": 26}}},
+    {"properties": {"sheetId": 1, "title": "Travel", "gridProperties": {"rowCount": 1000, "columnCount": 26}}}
+  ]
+}

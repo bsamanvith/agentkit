@@ -340,6 +340,15 @@ func TestConnectConfig(t *testing.T) {
 	if apps, err := c.oauth2Apps(credentialsConfig{OAuth2: []oauth2AppConfig{s}}); err != nil || strings.Join(apps[0].scope, " ") != "api refresh_token" {
 		t.Errorf("salesforce = %+v, %v", apps, err)
 	}
+	h := oauth2AppConfig{
+		Slot: "hubspot", Profile: "hubspot", ClientID: "app", ClientSecretEnv: "S", Scopes: []string{"oauth", "crm.objects.contacts.read"},
+		RedirectURL: "https://agents.example.com/oauth/callback",
+	}
+	if apps, err := c.oauth2Apps(credentialsConfig{OAuth2: []oauth2AppConfig{h}}); err != nil ||
+		apps[0].authURL != "https://app.hubspot.com/oauth/authorize" || apps[0].app.TokenURL != "https://api.hubapi.com/oauth/v1/token" ||
+		apps[0].app.AuthStyle != credentials.AuthInParams || strings.Join(apps[0].scope, " ") != "oauth crm.objects.contacts.read" {
+		t.Errorf("hubspot = %+v, %v", apps, err)
+	}
 	if oauthCallbackPath != connect.CallbackPath {
 		t.Errorf("serve mounts the callback at %s, the flows redirect to %s", oauthCallbackPath, connect.CallbackPath)
 	}

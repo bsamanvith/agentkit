@@ -2,7 +2,7 @@
 id: T117
 title: "connectors/google/sheets: read, append and update spreadsheet values"
 epic: E22
-status: todo
+status: done
 depends_on: [T116]
 ---
 
@@ -30,13 +30,15 @@ depends_on: [T116]
 
 ## Acceptance criteria
 
-- [ ] **Kit:** passes `toolsettest.RunConnector` with synthetic cassettes and a fuzz target per read tool — tests: `TestConformance`, `FuzzResponses*`
-- [ ] A1 ranges are checked before any request (empty, a tab name with a quote, a range over the cell cap) — test: `TestRangeValidation`
-- [ ] A read over `max_cells` is cut with a marker naming the next range — test: `TestReadCutsAtMaxCells`
-- [ ] Default settings expose only the read tools; writes are medium risk and need `read_only: false` — test: `TestGatingFollowsSettings`
-- [ ] Append and update send `USER_ENTERED` and the rows as given — test: `TestWritesSendUserEnteredValues`
-- [ ] A slot token is used per caller (shared with T116's test) — test: `TestUsesSlotToken`
+- [x] **Kit:** passes `toolsettest.RunConnector` with synthetic cassettes and a fuzz target per read tool — tests: `TestConformance`, `FuzzResponses*`
+- [x] A1 ranges are checked before any request (empty, a tab name with a quote, a range over the cell cap) — test: `TestRangeValidation`
+- [x] A read over `max_cells` is cut with a marker naming the next range — test: `TestReadCutsAtMaxCells`
+- [x] Default settings expose only the read tools; writes are medium risk and need `read_only: false` — test: `TestGatingFollowsSettings`
+- [x] Append and update send `USER_ENTERED` and the rows as given — test: `TestWritesSendUserEnteredValues`
+- [x] A slot token is used per caller (shared with T116's test) — test: `TestUsesSlotToken`
 
 ## Notes
 
--
+- Settings also take `max_cell_chars` (default 5,000): one cell's text is cut like any other long content, so a huge cell cannot use the read's whole budget.
+- The read cut is on whole rows, so `next_range` always starts a row; `TestNextRange` covers ranges with and without an end row and with a quoted tab.
+- Wired into `catalog.go` and `credentialEnv`; the deploy configs come with T120. Size: [docs/SIZES.md](../docs/SIZES.md) row of 2026-10-24.

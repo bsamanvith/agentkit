@@ -1,0 +1,7 @@
+{
+  "method": "PUT",
+  "path": "/v4/spreadsheets/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/values/Summary!B4:C4",
+  "query": {"valueInputOption": ["USER_ENTERED"]},
+  "body": {"majorDimension": "ROWS", "values": [["=SUM(B2:B3)", "=SUM(C2:C3)"]]},
+  "synthetic": true
+}

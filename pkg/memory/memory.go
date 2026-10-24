@@ -185,6 +185,9 @@ var (
 	ErrInvalidLine = errors.New("memory: invalid line")
 	// ErrLimit is a write past a limit; the error is a *LimitError.
 	ErrLimit = errors.New("memory: limit exceeded")
+	// ErrNotText is a write of something that is not readable text
+	// ([CheckText]).
+	ErrNotText = errors.New("memory: not readable text")
 	// ErrInvalid is any other invalid argument, such as an empty old text.
 	ErrInvalid = errors.New("memory: invalid argument")
 )

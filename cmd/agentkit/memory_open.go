@@ -21,23 +21,26 @@ import (
 // (the runner refuses it), so the noagent tag leaves this file and the
 // stores it opens out. The config it reads is in memory.go.
 
-// memoryBackend opens a store; closing it is the returned func (nil when
-// there is nothing to close).
-type memoryBackend func(ctx context.Context, c memoryStoreConfig, cfg memory.Config) (memory.Store, func() error, error)
+// memoryBackend opens a store, reading the environment (the store's URL)
+// with getenv; closing it is the returned func (nil when there is nothing to
+// close).
+type memoryBackend func(ctx context.Context, c memoryStoreConfig, cfg memory.Config, getenv func(string) string) (memory.Store, func() error, error)
 
 // memoryBackends are the context store backends this binary can open, by the
-// name a config's memory.store.backend gives. SQLite is in its own file,
-// which the nosqlite tag leaves out (memory_sqlite.go).
+// name a config's memory.store.backend gives. SQLite and Postgres are in
+// files of their own, which the nosqlite and nopostgres tags leave out
+// (memory_sqlite.go, memory_postgres.go).
 func memoryBackends() map[string]memoryBackend {
 	return map[string]memoryBackend{
-		"memory": func(_ context.Context, c memoryStoreConfig, cfg memory.Config) (memory.Store, func() error, error) {
+		"memory": func(_ context.Context, c memoryStoreConfig, cfg memory.Config, _ func(string) string) (memory.Store, func() error, error) {
 			if c.Path != "" {
 				return nil, nil, fmt.Errorf("backend %q keeps nothing in a file: leave out path", "memory")
 			}
 			s, err := inmem.New(cfg)
 			return s, nil, err
 		},
-		"sqlite": openSQLiteMemory,
+		"sqlite":   openSQLiteMemory,
+		"postgres": openPostgresMemory,
 	}
 }
 
@@ -81,7 +84,7 @@ func openMemory(ctx context.Context, a agentDef, legacy bool, clk clock.Clock, g
 	}()
 	var tools []tool.Tool
 	if c := a.Memory.Store; c != nil {
-		t, closeFn, err := openMemoryStore(ctx, label+".store", *c)
+		t, closeFn, err := openMemoryStore(ctx, label+".store", *c, getenv)
 		if err != nil {
 			return nil, err
 		}
@@ -113,7 +116,7 @@ func openMemory(ctx context.Context, a agentDef, legacy bool, clk clock.Clock, g
 }
 
 // openMemoryStore opens the context store and its tool.
-func openMemoryStore(ctx context.Context, label string, c memoryStoreConfig) (tool.Tool, func() error, error) {
+func openMemoryStore(ctx context.Context, label string, c memoryStoreConfig, getenv func(string) string) (tool.Tool, func() error, error) {
 	open, ok := memoryBackends()[c.Backend]
 	if !ok {
 		names := slices.Sorted(maps.Keys(memoryBackends()))
@@ -126,7 +129,7 @@ func openMemoryStore(ctx context.Context, label string, c memoryStoreConfig) (to
 	if err != nil {
 		return nil, nil, fmt.Errorf("%s: %w", label, err)
 	}
-	s, closeFn, err := open(ctx, c, cfg)
+	s, closeFn, err := open(ctx, c, cfg, getenv)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%s: %w", label, err)
 	}

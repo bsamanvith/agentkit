@@ -825,3 +825,51 @@ func TestTokenEndpointRedirectNotFollowed(t *testing.T) {
 	default:
 	}
 }
+
+// A refresh keeps the token's kept extras (Salesforce's instance_url) the
+// response does not repeat, takes the ones it does, and gives a token with
+// no expires_in the app's default lifetime.
+func TestRefreshKeepsExtras(t *testing.T) {
+	t.Parallel()
+	ts := credentialstest.NewTokenServer(t, credentialstest.TokenServerOptions{Prefix: canary + "-", ExpiresIn: -1})
+	ts.AddRefreshToken("rt-a")
+	ts.AddRefreshToken("rt-b")
+	app := credentials.OAuth2App{
+		ClientID: ts.ClientID, ClientSecret: credentials.NewSecret(ts.ClientSecret), TokenURL: ts.URL,
+		KeepExtras: []string{"instance_url"}, DefaultTTL: 2 * time.Hour,
+	}
+	r := newSrcRig(t, credentials.WithOAuth2App("crm", app))
+	ctx := scopeCtx(t, "tenant-a", "u1")
+	src := r.source(r.sources, "crm", credentials.ScopeUser)
+
+	old := expiring("rt-a")
+	old.Extra = map[string]string{"instance_url": "https://acme.my.salesforce.com"}
+	r.put(ctx, "u1", "crm", old)
+	c, err := src.Get(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := c.(credentials.OAuth2)
+	if o.Extra["instance_url"] != "https://acme.my.salesforce.com" {
+		t.Errorf("Extra %v, want the old instance_url kept", o.Extra)
+	}
+	if d := time.Until(o.Expiry); d < 2*time.Hour-time.Minute || d > 2*time.Hour+time.Minute {
+		t.Errorf("Expiry in %v, want the default 2h", d)
+	}
+
+	ts.SetOptions(credentialstest.TokenServerOptions{
+		Prefix: canary + "-", ExpiresIn: -1,
+		Extra: map[string]any{"instance_url": "https://acme2.my.salesforce.com", "id": "https://login.salesforce.com/id/00D/005"},
+	})
+	_, meta := r.stored(ctx, "u1", "crm")
+	if _, err := r.vault.Put(ctx, "u1", "crm", expiring("rt-b"), meta.Version); err != nil {
+		t.Fatal(err)
+	}
+	c, err = src.Get(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := c.(credentials.OAuth2).Extra; len(e) != 1 || e["instance_url"] != "https://acme2.my.salesforce.com" {
+		t.Errorf("Extra %v, want only the new instance_url", e)
+	}
+}

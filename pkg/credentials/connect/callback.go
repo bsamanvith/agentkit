@@ -163,11 +163,15 @@ func (s *Service) exchange(tctx context.Context, f flow, code string) error {
 		AccessToken: credentials.NewSecret(tok.AccessToken), RefreshToken: credentials.NewSecret(tok.RefreshToken),
 		Scopes: slices.Clone(app.Scopes), TokenType: tok.TokenType,
 	}
-	if tok.ExpiresIn > 0 {
+	switch {
+	case tok.ExpiresIn > 0:
 		cred.Expiry = s.clk.Now().Add(timeSeconds(tok.ExpiresIn)).UTC()
-	} else if !tok.Expiry.IsZero() {
+	case !tok.Expiry.IsZero():
 		cred.Expiry = tok.Expiry.UTC()
+	case app.DefaultTTL > 0:
+		cred.Expiry = s.clk.Now().Add(app.DefaultTTL).UTC()
 	}
+	cred.Extra = credentials.KeptExtras(nil, app.KeepExtras, tok.Extra)
 	if sc, ok := tok.Extra("scope").(string); ok && sc != "" {
 		cred.Scopes = strings.Fields(sc)
 	}

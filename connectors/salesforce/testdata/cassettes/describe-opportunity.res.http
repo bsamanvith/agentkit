@@ -1,0 +1,16 @@
+HTTP/1.1 200 OK
+Content-Type: application/json;charset=UTF-8
+
+{
+  "name": "Opportunity",
+  "label": "Opportunity",
+  "createable": true,
+  "fields": [
+    {"name": "Id", "label": "Opportunity ID", "type": "id", "nillable": false, "createable": false, "updateable": false, "defaultedOnCreate": true, "referenceTo": [], "picklistValues": []},
+    {"name": "AccountId", "label": "Account ID", "type": "reference", "nillable": true, "createable": true, "updateable": true, "defaultedOnCreate": false, "referenceTo": ["Account"], "picklistValues": []},
+    {"name": "Name", "label": "Name", "type": "string", "nillable": false, "createable": true, "updateable": true, "defaultedOnCreate": false, "referenceTo": [], "picklistValues": []},
+    {"name": "StageName", "label": "Stage", "type": "picklist", "nillable": false, "createable": true, "updateable": true, "defaultedOnCreate": false, "referenceTo": [],
+     "picklistValues": [{"value": "Prospecting", "active": true}, {"value": "Negotiation/Review", "active": true}, {"value": "Closed Won", "active": true}, {"value": "Legacy", "active": false}]},
+    {"name": "CloseDate", "label": "Close Date", "type": "date", "nillable": false, "createable": true, "updateable": true, "defaultedOnCreate": false, "referenceTo": [], "picklistValues": []}
+  ]
+}

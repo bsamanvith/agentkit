@@ -124,6 +124,14 @@ type OAuth2App struct {
 	TokenURL     string
 	// AuthStyle says how the client authenticates to the token endpoint.
 	AuthStyle AuthStyle
+	// KeepExtras names token response fields kept in [OAuth2].Extra, such
+	// as Salesforce's instance_url; a refresh keeps the ones it does not
+	// repeat. They must not be secret.
+	KeepExtras []string
+	// DefaultTTL is the access token's lifetime when the token response
+	// has no expires_in (Salesforce), so it is refreshed in time. Zero
+	// treats such a token as never expiring.
+	DefaultTTL time.Duration
 }
 
 // AuthStyle is how an OAuth2 client sends its id and secret.

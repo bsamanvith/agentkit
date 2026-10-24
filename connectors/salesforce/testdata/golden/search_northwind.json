@@ -1,0 +1,15 @@
+{
+  "records": [
+    {
+      "Id": "001D000000IqhSLIAZ",
+      "Name": "Northwind Traders",
+      "type": "Account"
+    },
+    {
+      "Email": "ana.ruiz@northwind.example",
+      "Id": "003D000000QV9n2IAD",
+      "Name": "Ana Ruiz",
+      "type": "Contact"
+    }
+  ]
+}

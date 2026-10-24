@@ -1,0 +1,5 @@
+{
+  "method": "GET",
+  "path": "/services/data/v61.0/sobjects/Opportunity/describe",
+  "synthetic": true
+}

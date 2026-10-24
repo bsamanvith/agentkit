@@ -1,0 +1,9 @@
+HTTP/1.1 200 OK
+Content-Type: application/json;charset=UTF-8
+
+{
+  "searchRecords": [
+    {"attributes": {"type": "Account", "url": "/services/data/v61.0/sobjects/Account/001D000000IqhSLIAZ"}, "Id": "001D000000IqhSLIAZ", "Name": "Northwind Traders"},
+    {"attributes": {"type": "Contact", "url": "/services/data/v61.0/sobjects/Contact/003D000000QV9n2IAD"}, "Id": "003D000000QV9n2IAD", "Name": "Ana Ruiz", "Email": "ana.ruiz@northwind.example"}
+  ]
+}

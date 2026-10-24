@@ -1,0 +1,46 @@
+{
+  "name": "Opportunity",
+  "label": "Opportunity",
+  "fields": [
+    {
+      "name": "Id",
+      "label": "Opportunity ID",
+      "type": "id"
+    },
+    {
+      "name": "AccountId",
+      "label": "Account ID",
+      "type": "reference",
+      "updateable": true,
+      "reference_to": [
+        "Account"
+      ]
+    },
+    {
+      "name": "Name",
+      "label": "Name",
+      "type": "string",
+      "required": true,
+      "updateable": true
+    },
+    {
+      "name": "StageName",
+      "label": "Stage",
+      "type": "picklist",
+      "required": true,
+      "updateable": true,
+      "picklist": [
+        "Prospecting",
+        "Negotiation/Review",
+        "Closed Won"
+      ]
+    },
+    {
+      "name": "CloseDate",
+      "label": "Close Date",
+      "type": "date",
+      "required": true,
+      "updateable": true
+    }
+  ]
+}

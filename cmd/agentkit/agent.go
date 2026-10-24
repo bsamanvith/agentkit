@@ -578,14 +578,15 @@ func (c cli) toolsetCatalog(cfg serveConfig, specs []toolset.Spec, built map[str
 // TODO: connectors should report their credential themselves (a factory
 // method), so this table cannot fall behind them.
 var credentialEnv = map[string]string{
-	"tavily":   "TAVILY_API_KEY",
-	"exa":      "EXA_API_KEY",
-	"parallel": "PARALLEL_API_KEY",
-	"gmail":    "GOOGLE_ACCESS_TOKEN",
-	"calendar": "GOOGLE_ACCESS_TOKEN",
-	"drive":    "GOOGLE_ACCESS_TOKEN",
-	"sheets":   "GOOGLE_ACCESS_TOKEN",
-	"hubspot":  "HUBSPOT_ACCESS_TOKEN",
+	"tavily":     "TAVILY_API_KEY",
+	"exa":        "EXA_API_KEY",
+	"parallel":   "PARALLEL_API_KEY",
+	"gmail":      "GOOGLE_ACCESS_TOKEN",
+	"calendar":   "GOOGLE_ACCESS_TOKEN",
+	"drive":      "GOOGLE_ACCESS_TOKEN",
+	"sheets":     "GOOGLE_ACCESS_TOKEN",
+	"hubspot":    "HUBSPOT_ACCESS_TOKEN",
+	"salesforce": "SALESFORCE_ACCESS_TOKEN",
 }
 
 // credentialOf says where a toolset's key comes from and whether it is set:

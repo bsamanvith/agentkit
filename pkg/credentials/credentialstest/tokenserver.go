@@ -47,8 +47,12 @@ type TokenServer struct {
 type TokenServerOptions struct {
 	// Prefix starts every token issued (a test's canary, say).
 	Prefix string
-	// ExpiresIn is the expires_in of each token issued (default 3600).
+	// ExpiresIn is the expires_in of each token issued (default 3600;
+	// negative leaves expires_in out, as Salesforce does).
 	ExpiresIn int
+	// Extra is added to every token response, such as Salesforce's
+	// instance_url.
+	Extra map[string]any
 	// RevokeUsed makes a refresh token single use: a second refresh with
 	// it is invalid_grant, as a server with refresh token rotation and
 	// reuse detection answers.
@@ -216,7 +220,12 @@ func (s *TokenServer) serve(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]any{
 		"access_token": fmt.Sprintf("%sat-%d", s.opts.Prefix, s.n),
 		"token_type":   "Bearer",
-		"expires_in":   s.opts.ExpiresIn,
+	}
+	if s.opts.ExpiresIn > 0 {
+		resp["expires_in"] = s.opts.ExpiresIn
+	}
+	for k, v := range s.opts.Extra {
+		resp[k] = v
 	}
 	switch form.Get("grant_type") {
 	case "refresh_token":

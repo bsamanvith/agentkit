@@ -55,8 +55,9 @@ var (
 	ErrEmpty = errors.New("knowledge: the base has no documents")
 )
 
-// Load reads the documents under fsys's root: every regular file whose
-// extension is one of [Extensions], in lexical order of their paths. Names
+// Load reads the documents under fsys's root: every regular file, or link
+// to one, whose extension is one of [Extensions], in lexical order of their
+// paths. Names
 // that start with "." (files and folders) are skipped, as are empty files.
 // A file over MaxDocumentBytes, or not UTF-8, is ErrInvalid, naming it.
 func Load(fsys fs.FS) ([]Document, error) {
@@ -71,12 +72,29 @@ func Load(fsys fs.FS) ([]Document, error) {
 			}
 			return nil
 		}
-		if !d.Type().IsRegular() || !slices.Contains(Extensions, strings.ToLower(path.Ext(p))) {
+		if !slices.Contains(Extensions, strings.ToLower(path.Ext(p))) {
 			return nil
 		}
-		info, err := d.Info()
+		var info fs.FileInfo
+		switch {
+		case d.Type().IsRegular():
+			info, err = d.Info()
+		case d.Type()&fs.ModeSymlink != 0:
+			// A Kubernetes ConfigMap volume holds each file as a link
+			// into its "..data" folder. Stat follows the link; under
+			// os.Root it fails for a link that leaves the root, and such
+			// a link, or a broken one, is skipped.
+			if info, err = fs.Stat(fsys, p); err != nil {
+				return nil
+			}
+		default:
+			return nil
+		}
 		if err != nil {
 			return err
+		}
+		if !info.Mode().IsRegular() {
+			return nil
 		}
 		if info.Size() > MaxDocumentBytes {
 			return fmt.Errorf("%w: %s: %d bytes, at most %d", ErrInvalid, p, info.Size(), MaxDocumentBytes)

@@ -149,10 +149,17 @@ func (c cli) openVaultParts(ctx context.Context, cfg credentialsConfig, ring *cr
 //	            "scopes": ["https://www.googleapis.com/auth/gmail.readonly"],
 //	            "redirect_url": "https://agents.example.com/oauth/callback"}]
 type oauth2AppConfig struct {
-	Slot            string `json:"slot"`
-	TokenURL        string `json:"token_url"`
-	ClientID        string `json:"client_id"`
+	Slot     string `json:"slot"`
+	TokenURL string `json:"token_url"`
+	ClientID string `json:"client_id"`
+	// ClientIDEnv names a variable holding the client id instead, so one
+	// config serves deployments with their own apps.
+	ClientIDEnv     string `json:"client_id_env"`
 	ClientSecretEnv string `json:"client_secret_env"`
+	// Optional skips the entry when its client id or secret variable is
+	// not set: the slot is still listed, and says the server can't connect
+	// it (a shared config that works before every provider is set up).
+	Optional bool `json:"optional"`
 	// AuthStyle is how the client authenticates to the token endpoint:
 	// "header" (HTTP basic, the default) or "params" (in the form).
 	AuthStyle string `json:"auth_style"`
@@ -230,7 +237,19 @@ func (c cli) oauth2Apps(cfg credentialsConfig) ([]oauth2App, error) {
 		if a.ClientSecretEnv == "" {
 			return nil, fmt.Errorf("%s: client_secret_env names the variable with the client secret (the file never holds it)", where)
 		}
+		if a.ClientID != "" && a.ClientIDEnv != "" {
+			return nil, fmt.Errorf("%s: client_id and client_id_env: set one", where)
+		}
+		if a.ClientIDEnv != "" {
+			a.ClientID = c.env(a.ClientIDEnv)
+		}
 		secret := c.env(a.ClientSecretEnv)
+		if a.Optional && (a.ClientID == "" || secret == "") {
+			continue
+		}
+		if a.ClientID == "" && a.ClientIDEnv != "" {
+			return nil, fmt.Errorf("%s: $%s (client_id_env) is not set", where, a.ClientIDEnv)
+		}
 		if secret == "" {
 			return nil, fmt.Errorf("%s: $%s (client_secret_env) is not set", where, a.ClientSecretEnv)
 		}
@@ -294,8 +313,10 @@ type providerProfile struct {
 // optional one is skipped).
 func (c cli) credentialSources(vault credentials.Vault, cfg credentialsConfig, log *slog.Logger) (toolset.SourceProvider, error) {
 	if vault == nil {
-		if len(cfg.OAuth2) > 0 {
-			return nil, fmt.Errorf("credentials.oauth2 needs the credential vault: set $%s", envCredentialsKey)
+		for _, a := range cfg.OAuth2 {
+			if !a.Optional {
+				return nil, fmt.Errorf("credentials.oauth2 needs the credential vault: set $%s", envCredentialsKey)
+			}
 		}
 		return toolset.SourceFunc(func(_, slot string, _ credentials.Scope) (credentials.Source, error) {
 			return nil, fmt.Errorf("%w: slot %q needs the credential vault: set $%s (<id>:<base64 of %d random bytes>)",

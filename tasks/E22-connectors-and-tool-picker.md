@@ -35,6 +35,7 @@ Three parts, each usable on its own:
 - [x] [T117](T117-connector-google-sheets.md) `connectors/google/sheets`
 - [x] [T118](T118-connector-hubspot.md) `connectors/hubspot`
 - [x] [T119](T119-connector-salesforce.md) `connectors/salesforce`
-- [ ] [T120](T120-console-connectors-page.md) Console: the Connectors page, and the deployed configs that serve every connector
+- [x] [T120](T120-console-connectors-page.md) Console: the Connectors page, and the deployed configs that serve every connector
+- [ ] [T130](T130-deployed-connectors.md) Serve every connector in the k8s and Compose deployments
 
 T114 then T115; T116 then T117; T118 and T119 alongside; T120 last (it lists what the others add). Each image change of 100 KB or more gets a row in [docs/SIZES.md](../docs/SIZES.md); a budget is raised by the minimum.

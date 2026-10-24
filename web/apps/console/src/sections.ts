@@ -16,7 +16,7 @@ export function mayAdmin(me: Me | null): boolean {
 export type Section = { to: string; label: string; icon: LucideIcon; admin?: boolean };
 
 const chats: Section = { to: "/", label: "Chats", icon: MessagesSquare };
-const connections: Section = { to: "/connections", label: "Connections", icon: KeyRound };
+const connections: Section = { to: "/connections", label: "Connectors", icon: KeyRound };
 /** Background runs and the threads between agents (T074; T087 renames it Tasks). */
 export const tasks: Section = { to: "/tasks", label: "Tasks", icon: ListChecks };
 

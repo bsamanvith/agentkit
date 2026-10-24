@@ -1,12 +1,15 @@
-// The Connections page's rows (docs/UI.md "Connections"): one per credential
-// a connector that an agent uses needs. A slot (GET /v1/credentials) is a
-// row per scope: the caller's own key or account, or the tenant's shared
-// one; a toolset that reads a server key from the environment (GET
-// /v1/toolsets) is a row the console shows but doesn't manage. Rows that
-// need you come first. No row holds a value: the API sends none.
+// The Connectors page's cards (docs/UI.md "Connectors"): one per credential
+// a connector of the server needs. A slot (GET /v1/credentials) is a card
+// per scope, whether or not an agent uses it yet: the caller's own key or
+// account, or the tenant's shared one; a toolset an agent uses that reads a
+// server key from the environment (GET /v1/toolsets) is a card the console
+// shows but doesn't manage. Cards are grouped by provider, and within a
+// group those that need you come first. No card holds a value: the API
+// sends none.
 
 import type { Agent, CredentialInfo, Toolset } from "@agentkit/agent-ui/api";
 import type { StatusTone } from "@agentkit/ui";
+import { connectorInfo, groups, type Group } from "./connectors-catalog";
 import { credentialWords, shortDate } from "./credential";
 
 export type Action = "connect" | "replace" | "reconnect" | "disconnect";
@@ -16,6 +19,13 @@ export type Row = {
   id: string;
   /** The slot, or the toolset that reads a server key. */
   name: string;
+  /** The connector's name ("Gmail"), else name. */
+  title: string;
+  group: Group;
+  /** What the connector does, when the console knows it. */
+  does: string;
+  /** Where to get a key ("dashboard.exa.ai"), for a key connector the console knows. */
+  keyHelp?: string;
   /** "API key", "Account", "Server key". */
   kind: string;
   /** "Yours", "Shared": whose credential it is; "" for a server key. */
@@ -42,12 +52,18 @@ const kindWords: Record<string, string> = {
   client_credentials: "client credentials",
 };
 
-function slotRow(c: CredentialInfo, mayManage: boolean, usedBy: string[]): Row {
+function slotRow(c: CredentialInfo, type: string | undefined, mayManage: boolean, usedBy: string[]): Row {
   const mine = c.scope === "user";
+  const info = connectorInfo(type);
+  const account = c.oauth || c.kind === "oauth2" || info?.auth === "account";
   const base = {
     id: `slot:${c.slot}:${c.scope}`,
     name: c.slot,
-    kind: c.oauth || c.kind === "oauth2" ? "Account" : "API key",
+    title: info?.name ?? c.slot,
+    group: info?.group ?? "Other",
+    does: info?.does ?? "",
+    keyHelp: info?.keyHelp,
+    kind: account ? "Account" : "API key",
     owner: mine ? "Yours" : "Shared",
     usedBy,
     slot: { name: c.slot, scope: c.scope, oauth: c.oauth },
@@ -64,7 +80,25 @@ function slotRow(c: CredentialInfo, mayManage: boolean, usedBy: string[]): Row {
       tone: "ok",
       word: "Connected",
       detail: when ? `${what} ${when}` : what,
-      actions: !mayManage ? [] : c.kind === "oauth2" ? ["reconnect", "disconnect"] : ["replace", "disconnect"],
+      actions: !mayManage
+        ? []
+        : c.kind === "oauth2"
+          ? c.oauth
+            ? ["reconnect", "disconnect"]
+            : ["disconnect"]
+          : ["replace", "disconnect"],
+      needsYou: false,
+    };
+  }
+  if (account && !c.oauth) {
+    // An account connector whose OAuth app the server doesn't have: a key
+    // pasted in would be refused, so there is nothing to do here.
+    return {
+      ...base,
+      tone: "neutral",
+      word: "Not set up",
+      detail: `This server isn't set up to connect ${base.title} accounts. An admin adds its OAuth app (credentials.oauth2).`,
+      actions: mayManage && c.status !== "not_connected" ? ["disconnect"] : [],
       needsYou: false,
     };
   }
@@ -93,7 +127,7 @@ function slotRow(c: CredentialInfo, mayManage: boolean, usedBy: string[]): Row {
 }
 
 /**
- * The rows. credentials is null when the server keeps none (404): then a
+ * The cards. credentials is null when the server keeps none (404): then a
  * toolset with a slot can't be connected, and says so.
  */
 export function connectionRows(
@@ -104,20 +138,28 @@ export function connectionRows(
 ): Row[] {
   const usedBy = (names: string[]) =>
     agents.filter((a) => a.toolsets.some((t) => names.includes(t.name))).map((a) => a.name);
+  const typeOf = (names: string[]) => toolsets.find((t) => names.includes(t.name))?.type;
   const rows: Row[] = [];
   for (const c of credentials ?? []) {
-    rows.push(slotRow(c, c.scope === "user" || mayManageTenant, usedBy(c.toolsets)));
+    rows.push(slotRow(c, typeOf(c.toolsets), c.scope === "user" || mayManageTenant, usedBy(c.toolsets)));
   }
   for (const t of toolsets) {
     const cred = t.credential;
     if (!cred || cred.status === "not_needed") continue;
-    if (cred.slot && credentials !== null) continue; // its slot's row says it
+    if (cred.slot && credentials !== null) continue; // its slot's card says it
+    // A server key is the deployment's business: listed only when an agent uses it.
+    if (!cred.slot && usedBy([t.name]).length === 0) continue;
     // Without a vault a slot can't be set, whatever the toolset says.
     const w = credentialWords(cred.slot ? { ...cred, status: "missing" } : cred);
     if (!w) continue;
+    const info = connectorInfo(t.type);
+    const name = cred.slot ?? t.name;
     rows.push({
       id: cred.slot ? `slot:${cred.slot}:${cred.scope ?? ""}` : `env:${t.name}`,
-      name: cred.slot ?? t.name,
+      name,
+      title: info?.name ?? name,
+      group: info?.group ?? "Other",
+      does: info?.does ?? "",
       kind: cred.slot ? "Key or account" : "Server key",
       owner: "",
       tone: w.tone,
@@ -133,11 +175,22 @@ export function connectionRows(
       needsYou: false,
     });
   }
-  // One row per connector an agent uses (a slot shared by two toolsets is one row already).
+  // One card per credential (a slot shared by two toolsets is one card already).
   const seen = new Set<string>();
   return rows
-    .filter((r) => r.usedBy.length > 0 && !seen.has(r.id) && seen.add(r.id))
-    .sort((a, b) => Number(b.needsYou) - Number(a.needsYou) || a.name.localeCompare(b.name));
+    .filter((r) => !seen.has(r.id) && seen.add(r.id))
+    .sort(
+      (a, b) =>
+        groups.indexOf(a.group) - groups.indexOf(b.group) ||
+        Number(b.needsYou) - Number(a.needsYou) ||
+        a.title.localeCompare(b.title),
+    );
+}
+
+/** Whether a card matches the filter box's text (name, connector, what it does). */
+export function matches(row: Row, text: string): boolean {
+  const q = text.trim().toLowerCase();
+  return q === "" || [row.name, row.title, row.does, row.group].some((s) => s.toLowerCase().includes(q));
 }
 
 /** Where /connections/done goes back to when the provider was opened in this tab. */

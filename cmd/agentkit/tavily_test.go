@@ -88,7 +88,7 @@ func TestSearchConfigBuilds(t *testing.T) {
 		for _, p := range problems {
 			skipped[p.Toolset] = p
 		}
-		for _, name := range []string{"exa", "parallel"} {
+		for _, name := range []string{"exa", "parallel", "gmail", "calendar", "drive", "sheets", "hubspot", "salesforce"} {
 			p, isSkipped := skipped[name]
 			delete(skipped, name)
 			switch {
@@ -110,7 +110,10 @@ func TestSearchConfigBuilds(t *testing.T) {
 	for _, a := range cfg.Agents {
 		toolsets[a.Name] = a.Toolsets
 	}
-	if want := map[string][]string{"default": {"demo"}, "search": {"tavily", "exa", "parallel"}, "workspace": {"files", "math"}, "support": {"handbook"}}; !maps.EqualFunc(toolsets, want, slices.Equal) {
+	if want := map[string][]string{
+		"default": {"demo"}, "search": {"tavily", "exa", "parallel"}, "workspace": {"files", "math"}, "support": {"handbook"},
+		"assistant": {"gmail", "calendar", "drive", "sheets", "hubspot", "salesforce", "exa", "parallel"},
+	}; !maps.EqualFunc(toolsets, want, slices.Equal) {
 		t.Errorf("agents' toolsets %v, want %v", toolsets, want)
 	}
 }

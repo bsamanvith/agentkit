@@ -442,7 +442,7 @@ curl -sN localhost:8080/v1/runs -H "Authorization: Bearer $AGENTKIT_API_TOKEN" -
 
 ## 6. Web search
 
-`deploy/local/agent/search.json` adds three web search toolsets to the demo tools, each served over MCP at its own route, and has these agents: `default`, a plain assistant with the demo tools, `search`, a research assistant with the web search toolsets, and `workspace` (section 7):
+`deploy/local/agent/search.json` adds three web search toolsets to the demo tools, each served over MCP at its own route, and has these agents: `default`, a plain assistant with the demo tools, `search`, a research assistant with the web search toolsets, `assistant`, which has every account connector (Gmail, Calendar, Drive, Sheets, HubSpot, Salesforce) and Exa and Parallel behind tool search ("Connecting accounts" below), and `workspace` (section 7):
 
 - `tavily`: `tavily_search` (web search) and `tavily_extract` (a page's content), at `/mcp/tavily`. No key needed.
 - `exa`: `exa_search` and `exa_extract` through [Exa](https://exa.ai), at `/mcp/exa`. Each user connects their own Exa key.
@@ -452,7 +452,7 @@ curl -sN localhost:8080/v1/runs -H "Authorization: Bearer $AGENTKIT_API_TOKEN" -
 scripts/try-agent.sh --agent search     # uses search.json; AGENTKIT_CONFIG picks another
 ```
 
-Exa and Parallel have no server key in `search.json`: their specs name a credential slot of scope `user` (`"credential": {"slot": "exa", "scope": "user"}`), so each signed-in user stores their own key in the credential vault (section 5, `credentials`), from the console's Connections page or the API, and every call uses the key of the user it runs for:
+Exa and Parallel have no server key in `search.json`: their specs name a credential slot of scope `user` (`"credential": {"slot": "exa", "scope": "user"}`), so each signed-in user stores their own key in the credential vault (section 5, `credentials`), from the console's Connectors page or the API, and every call uses the key of the user it runs for:
 
 ```sh
 curl -X PUT localhost:8080/v1/credentials/exa -H "Authorization: Bearer $MY_KEY" -d '{"kind": "api_key", "api_key": "..."}'
@@ -511,9 +511,9 @@ Settings of a `parallel` toolset (all optional; unknown fields, including a lite
 
 ### Gmail
 
-The `gmail` toolset (`gmail_search_messages`, `gmail_read_message`, `gmail_read_thread`, `gmail_list_labels`, `gmail_modify_labels`, `gmail_create_draft`, and with `"allow_send": true` the send tools) acts on one Google account. It is not in `search.json`: it needs an OAuth access token, which per-user sign-in (T096) will supply. Until then, for your own account, put a token with the Gmail scopes (`gmail.readonly`, `gmail.compose`, `gmail.modify`) in `GOOGLE_ACCESS_TOKEN`; it expires in about an hour. Add `{"name": "gmail", "type": "gmail", "optional": true}` to a config's toolsets. Without the variable the toolset is skipped. Sending is off unless the settings turn it on, and a send tool asks for approval. Settings and limits: [connectors/google/gmail](../connectors/google/gmail/doc.go).
+The `gmail` toolset (`gmail_search_messages`, `gmail_read_message`, `gmail_read_thread`, `gmail_list_labels`, `gmail_modify_labels`, `gmail_create_draft`, and with `"allow_send": true` the send tools) acts on one Google account. `search.json` serves it with a per-user slot ("Connecting accounts" below). Without a vault, for your own account, put a token with the Gmail scopes (`gmail.readonly`, `gmail.compose`, `gmail.modify`) in `GOOGLE_ACCESS_TOKEN`; it expires in about an hour. and use `{"name": "gmail", "type": "gmail", "optional": true}` (no slot). Without the variable the toolset is skipped. Sending is off unless the settings turn it on, and a send tool asks for approval. Settings and limits: [connectors/google/gmail](../connectors/google/gmail/doc.go).
 
-The `drive` toolset (`drive_search_files`, `drive_get_file`, `drive_read_file`, `drive_list_folder`; with `"read_only": false` also `drive_create_file`, `drive_update_file` and `drive_trash_file`; with `"allow_share": true` as well, `drive_share_file`) acts on one Google account's Drive. It is not in `search.json`: it needs an OAuth access token, which per-user sign-in (T096) will supply. Until then put a token with the Drive scope (`drive.readonly` for reading, `drive` for the write tools) in `GOOGLE_ACCESS_TOKEN`; it expires in about an hour. Add `{"name": "drive", "type": "drive", "optional": true}` to a config's toolsets. Without the variable the toolset is skipped. Trashing and sharing ask for approval, nothing deletes permanently, and nothing shares with "anyone with the link". Settings and limits: [connectors/google/drive](../connectors/google/drive/doc.go).
+The `drive` toolset (`drive_search_files`, `drive_get_file`, `drive_read_file`, `drive_list_folder`; with `"read_only": false` also `drive_create_file`, `drive_update_file` and `drive_trash_file`; with `"allow_share": true` as well, `drive_share_file`) acts on one Google account's Drive. `search.json` serves it with a per-user slot. Without a vault, put a token with the Drive scope (`drive.readonly` for reading, `drive` for the write tools) in `GOOGLE_ACCESS_TOKEN`; it expires in about an hour. and use `{"name": "drive", "type": "drive", "optional": true}` (no slot). Without the variable the toolset is skipped. Trashing and sharing ask for approval, nothing deletes permanently, and nothing shares with "anyone with the link". Settings and limits: [connectors/google/drive](../connectors/google/drive/doc.go).
 
 The `sheets` toolset (`sheets_get_spreadsheet`, `sheets_read_range`; with `"read_only": false` also `sheets_append_rows`, `sheets_update_range` and `sheets_create_spreadsheet`) reads and writes Google Sheets cells by A1 range (`Budget!A1:D20`, or a tab name alone for the whole tab). A read stops at `max_cells` (2,000 by default) on a whole row and names the range to read next. Writes are parsed as if typed (`USER_ENTERED`), so `=SUM(B2:B9)` becomes a formula. Like Drive it needs a token with the Sheets scope (`spreadsheets.readonly`, or `spreadsheets` for writes) in `GOOGLE_ACCESS_TOKEN`, or a per-user credential slot (`"credential": {"slot": "sheets", "scope": "user"}`). Add `{"name": "sheets", "type": "sheets", "optional": true}` to a config's toolsets. Settings and limits: [connectors/google/sheets](../connectors/google/sheets/doc.go).
 
@@ -524,6 +524,25 @@ The `hubspot` toolset (`hubspot_search`, `hubspot_get_record`; with `"read_only"
 ### Salesforce
 
 The `salesforce` toolset (`salesforce_query` for SOQL SELECTs, `salesforce_search` for text across objects, `salesforce_get_record`, `salesforce_describe_object`; with `"read_only": false` also `salesforce_create_record` and `salesforce_update_record`) works on one user's org through the REST API. Nothing deletes. Each user connects their own org: give the toolset a slot, `{"name": "salesforce", "type": "salesforce", "optional": true, "credential": {"slot": "salesforce", "scope": "user"}}`, and register a connected app in `credentials.oauth2` with `"profile": "salesforce"`, `"scopes": ["api"]` and the login host's `auth_url` and `token_url` (`https://login.salesforce.com/services/oauth2/authorize` and `.../token`). The profile keeps the token's `instance_url`, so each call goes to that user's org, which must be on a Salesforce domain. For development without a vault, put a token in `SALESFORCE_ACCESS_TOKEN` and the org in the `instance_url` setting. A query returns at most `max_records` (200) records a page and names the next page. Settings and limits: [connectors/salesforce](../connectors/salesforce/doc.go).
+
+### Connecting accounts
+
+`search.json` serves `gmail`, `calendar`, `drive`, `sheets`, `hubspot` and `salesforce`, each optional with a per-user slot, and a `credentials.oauth2` entry for each whose client id and secret come from the environment. Every entry is `"optional": true`: with its variables unset the server still starts, and the console's **Connectors** page lists the slot as "Not set up" with no Connect button. Register an app with each provider you want, with the redirect URL `http://localhost:8080/oauth/callback`, and set its two variables before `scripts/try-agent.sh` (which makes the vault key):
+
+| Provider | Register | Variables | Scopes asked for |
+|---|---|---|---|
+| Google (Gmail, Calendar, Drive, Sheets) | Google Cloud console: an OAuth client of type "Web application"; enable the Gmail, Calendar, Drive and Sheets APIs; while the consent screen is in testing, add yourself as a test user | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | `gmail.readonly`, `gmail.compose`, `gmail.modify`; `calendar.readonly`; `drive.readonly`; `spreadsheets.readonly` |
+| HubSpot | developers.hubspot.com: a public app, Auth tab | `HUBSPOT_OAUTH_CLIENT_ID`, `HUBSPOT_OAUTH_CLIENT_SECRET` | `oauth`, `tickets`, `crm.objects.contacts.read`, `crm.objects.companies.read`, `crm.objects.deals.read` |
+| Salesforce | Setup, App Manager: a connected app with OAuth on (scopes "api" and "refresh_token, offline_access") | `SALESFORCE_OAUTH_CLIENT_ID` (the consumer key), `SALESFORCE_OAUTH_CLIENT_SECRET` | `api`, `refresh_token` |
+
+One Google client serves all four Google slots, each connected on its own (a person can connect Calendar and not Gmail). The scopes match the toolsets' read-only defaults (Gmail's drafts and labels aside); turning writes on in a toolset's settings needs the matching scopes added to its entry. A sandbox Salesforce org signs in at `test.salesforce.com`: change that entry's `auth_url` and `token_url`.
+
+```sh
+export GOOGLE_OAUTH_CLIENT_ID=... GOOGLE_OAUTH_CLIENT_SECRET=...
+scripts/try-agent.sh --agent assistant
+```
+
+Open the console, go to **Connectors**, and connect each account (a popup to the provider). Then chat with `assistant`: its tools are deferred (`"defer_loading": true`), so it finds the ones a request needs with `tool_search` instead of having all of them in its context. The chat's **Tools** menu narrows a chat to some toolsets or switches between direct and search.
 
 ## 7. Core tools: math and files
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The split deployment (docs/COMPONENTS.md) in Docker Compose:
 # deploy/compose/compose.yaml, with Postgres and the console on
-# http://localhost:30081. The twin of scripts/k8s-local.sh (make k8s-up, on
+# http://127.0.0.1:30081. The twin of scripts/k8s-local.sh (make k8s-up, on
 # 30080): the same images, config and environment. See deploy/compose/README.md.
 #
 #   scripts/compose-local.sh up [allinone]     build the images, start, wait until usable
@@ -14,7 +14,7 @@
 #                                              the volumes (Postgres, SQLite) and the secrets file
 #
 # allinone is one container of the agentkit-local image on SQLite, on
-# http://localhost:30082, instead of the split deployment.
+# http://127.0.0.1:30082, instead of the split deployment.
 #
 # Environment: ANTHROPIC_API_KEY (or ANTHROPIC_KEY) for the runner, stored in
 # deploy/compose/.env on up; SKIP_BUILD=1 to start the images already built.
@@ -23,8 +23,11 @@ cd "$(dirname "$0")/.."
 
 compose_file=deploy/compose/compose.yaml
 envfile=deploy/compose/.env # read by Compose itself: it sits next to compose.yaml
-split_url=http://localhost:30081
-allinone_url=http://localhost:30082
+# 127.0.0.1, not localhost: Compose publishes the ports on IPv4 loopback
+# alone, and localhost may resolve to ::1 first, where something else (a
+# Kubernetes NodePort, say) can hold the same port.
+split_url=http://127.0.0.1:30081
+allinone_url=http://127.0.0.1:30082
 # Ours alone: a value of the same name in the shell would override the file.
 unset AGK_RPC_TOKEN AGK_API_TOKEN AGK_PG_PASSWORD AGK_ANTHROPIC_API_KEY
 
@@ -120,12 +123,12 @@ up() {
 		echo "compose-local: no ANTHROPIC_API_KEY: the console works, runs fail with model_auth until you set it and run up again" >&2
 	fi
 	if [ "$target" = allinone ]; then
-		dc --profile allinone up -d "${recreate[@]}" allinone
+		dc --profile allinone up -d ${recreate[@]+"${recreate[@]}"} allinone
 		wait_ready "$allinone_url" allinone
 		echo
 		echo "Console: $allinone_url (all in one, SQLite)"
 	else
-		dc up -d "${recreate[@]}"
+		dc up -d ${recreate[@]+"${recreate[@]}"}
 		wait_ready "$split_url" toolsets runner api
 		echo
 		echo "Console: $split_url"

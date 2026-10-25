@@ -110,7 +110,7 @@ if [ "$(id -u)" = 0 ]; then
 fi
 redis_pid=
 stop() {
-	"${as_pg[@]}" "$pgbin/pg_ctl" -D "$dir/pg" -m immediate stop >/dev/null 2>&1 || true
+	${as_pg[@]+"${as_pg[@]}"} "$pgbin/pg_ctl" -D "$dir/pg" -m immediate stop >/dev/null 2>&1 || true
 	[ -n "$redis_pid" ] && kill "$redis_pid" 2>/dev/null
 	wait 2>/dev/null || true
 	rm -rf "$dir"
@@ -120,14 +120,14 @@ trap 'exit 130' INT TERM
 
 mkdir "$dir/pg"
 [ ${#as_pg[@]} -gt 0 ] && chown postgres: "$dir/pg"
-"${as_pg[@]}" "$pgbin/initdb" -D "$dir/pg" -U agentkit --auth=trust -E UTF8 --locale=C >"$dir/initdb.log" 2>&1 ||
+${as_pg[@]+"${as_pg[@]}"} "$pgbin/initdb" -D "$dir/pg" -U agentkit --auth=trust -E UTF8 --locale=C >"$dir/initdb.log" 2>&1 ||
 	{ cat "$dir/initdb.log" >&2; die "initdb failed"; }
 # max_connections is postgres:17's default, as CI's service runs it: the
 # packages' tests share it at once, and more here would hide an overrun there.
-"${as_pg[@]}" "$pgbin/pg_ctl" -D "$dir/pg" -l "$dir/pg/server.log" -w \
+${as_pg[@]+"${as_pg[@]}"} "$pgbin/pg_ctl" -D "$dir/pg" -l "$dir/pg/server.log" -w \
 	-o "-p $pgport -k $dir/pg -c listen_addresses=127.0.0.1 -c fsync=off -c max_connections=100" start >/dev/null ||
 	{ cat "$dir/pg/server.log" >&2; die "Postgres did not start on port $pgport"; }
-"${as_pg[@]}" "$pgbin/createdb" -h 127.0.0.1 -p "$pgport" -U agentkit agentkit_test ||
+${as_pg[@]+"${as_pg[@]}"} "$pgbin/createdb" -h 127.0.0.1 -p "$pgport" -U agentkit agentkit_test ||
 	die "createdb failed"
 
 "$redis" --port "$redisport" --bind 127.0.0.1 --save '' --appendonly no >"$dir/redis.log" 2>&1 &
@@ -164,7 +164,7 @@ step "agent API suite on Postgres" \
 	env AGENTAPI_TEST_STORE="$AGENTKIT_PG_URL" go test -race -count=1 ./pkg/agentapi/...
 # The smoke suite gets a database of its own: its migrate must not meet the
 # schemas the store tests left behind.
-"${as_pg[@]}" "$pgbin/createdb" -h 127.0.0.1 -p "$pgport" -U agentkit agentkit_smoke
+${as_pg[@]+"${as_pg[@]}"} "$pgbin/createdb" -h 127.0.0.1 -p "$pgport" -U agentkit agentkit_smoke
 step "smoke suite on Postgres (fake model): migrate, then serve with AGENTKIT_STORE_MIGRATE=off" \
 	env PSQL="$pgbin/psql" AGENTKIT_STORE="postgres://agentkit@127.0.0.1:$pgport/agentkit_smoke?sslmode=disable" scripts/smoke.sh
 live

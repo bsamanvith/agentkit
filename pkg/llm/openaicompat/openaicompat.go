@@ -7,15 +7,13 @@ import (
 	"fmt"
 	"io"
 	"iter"
-	"math"
-	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/llm"
+	"github.com/bsamanvith/agentkit/pkg/llm/internal/llmhttp"
 )
 
 // Provider is the provider name of the [llm.Opaque] blocks this adapter makes.
@@ -35,16 +33,6 @@ const DefaultIdleTimeout = 10 * time.Minute
 // connection failure or a 408, 409, 429 or 5xx response, unless
 // [WithMaxRetries] says otherwise.
 const DefaultMaxRetries = 2
-
-const (
-	// maxRetryAfter is the longest Retry-After a retry waits for; a longer
-	// one returns the error instead.
-	maxRetryAfter = 2 * time.Minute
-	// maxBackoff caps the backoff between retries without a Retry-After.
-	maxBackoff = 8 * time.Second
-	// maxErrorBody is how much of an error response is read.
-	maxErrorBody = 64 << 10
-)
 
 // Model is an llm.Model backed by an OpenAI-compatible Chat Completions
 // endpoint. It is safe for concurrent use.
@@ -227,9 +215,9 @@ func (m *Model) Generate(ctx context.Context, req llm.Request) iter.Seq2[llm.Eve
 		defer resp.Body.Close()
 
 		var r reader
-		evs := newEvents(resp.Body)
+		evs := llmhttp.NewEvents(resp.Body)
 		for {
-			data, err := evs.next()
+			data, err := evs.Next()
 			if errors.Is(err, io.EOF) {
 				break
 			}
@@ -281,32 +269,9 @@ var errStalled = errors.New("openaicompat: stream stalled")
 // connection failures and retryable statuses. Any other response is
 // returned as an *Error; a connection failure as the client's error.
 func (m *Model) send(ctx context.Context, body []byte) (*http.Response, error) {
-	for attempt := 0; ; attempt++ {
-		resp, err := m.post(ctx, body)
-		if err == nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			return resp, nil
-		}
-		var wait time.Duration
-		retry := attempt < m.maxRetries && ctx.Err() == nil
-		if err == nil {
-			data, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
-			_ = resp.Body.Close()
-			err = responseError(resp, data)
-			wait, retry = retryAfter(resp, attempt, retry)
-		} else {
-			wait = backoff(attempt)
-		}
-		if !retry {
-			return nil, err
-		}
-		t := time.NewTimer(wait)
-		select {
-		case <-ctx.Done():
-			t.Stop()
-			return nil, err
-		case <-t.C:
-		}
-	}
+	return llmhttp.Send(ctx, m.maxRetries, func(ctx context.Context) (*http.Response, error) {
+		return m.post(ctx, body)
+	}, func(resp *http.Response, data []byte) error { return responseError(resp, data) })
 }
 
 // post sends one attempt.
@@ -324,63 +289,4 @@ func (m *Model) post(ctx context.Context, body []byte) (*http.Response, error) {
 		req.Header.Set("Authorization", "Bearer "+m.apiKey)
 	}
 	return m.hc.Do(req)
-}
-
-// retryAfter says whether a failed response is retried and after how long.
-// A retry is allowed when the attempts are not used up (retry); it happens
-// for 408, 409, 429 and 5xx, or as an X-Should-Retry header says, after the
-// wait the server asks for (Retry-After-Ms, then Retry-After, in seconds or
-// as a date), unless that is longer than maxRetryAfter.
-func retryAfter(resp *http.Response, attempt int, retry bool) (time.Duration, bool) {
-	if !retry {
-		return 0, false
-	}
-	switch resp.Header.Get("X-Should-Retry") {
-	case "true":
-	case "false":
-		return 0, false
-	default:
-		s := resp.StatusCode
-		if s != http.StatusRequestTimeout && s != http.StatusConflict && s != http.StatusTooManyRequests && s < 500 {
-			return 0, false
-		}
-	}
-	for _, h := range []struct {
-		name string
-		unit time.Duration
-	}{{"Retry-After-Ms", time.Millisecond}, {"Retry-After", time.Second}} {
-		v := resp.Header.Get(h.name)
-		if v == "" {
-			continue
-		}
-		var d time.Duration
-		if n, err := strconv.ParseFloat(v, 64); err == nil {
-			if math.IsNaN(n) || n < 0 {
-				continue
-			}
-			if n > float64(maxRetryAfter/h.unit) {
-				return 0, false
-			}
-			d = time.Duration(n * float64(h.unit))
-		} else if t, err := http.ParseTime(v); err == nil && h.unit == time.Second {
-			d = max(time.Until(t), 0)
-			if d > maxRetryAfter {
-				return 0, false
-			}
-		} else {
-			continue
-		}
-		return d, true
-	}
-	return backoff(attempt), true
-}
-
-// backoff is the wait before retry attempt+1 when the server names none:
-// half a second doubling up to maxBackoff, less up to a quarter at random.
-func backoff(attempt int) time.Duration {
-	d := maxBackoff
-	if attempt < 5 {
-		d = min(time.Duration(float64(500*time.Millisecond)*math.Pow(2, float64(attempt))), maxBackoff)
-	}
-	return d - rand.N(d/4+1)
 }

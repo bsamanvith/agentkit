@@ -64,14 +64,15 @@ integration: ## Integration tests, no Docker: STORE=sqlite (default, light) or p
 LIVE_REQUIRED ?=
 
 .PHONY: test-live
-test-live: ## Live tests against real model providers (ANTHROPIC_API_KEY, or ANTHROPIC_KEY as in Claude sessions); LIVE_REQUIRED=1 fails without a key
+test-live: ## Live tests against real model providers (ANTHROPIC_API_KEY, or ANTHROPIC_KEY as in Claude sessions; Gemini's with GEMINI_API_KEY or GEMINI_KEY); LIVE_REQUIRED=1 fails without an Anthropic key
 	@if [ -n "$(LIVE_REQUIRED)" ] && [ -z "$${ANTHROPIC_API_KEY:-$$ANTHROPIC_KEY}" ]; then \
 		echo "test-live: ANTHROPIC_API_KEY is not set, and LIVE_REQUIRED=1 needs it: the live tests would all skip." >&2; \
 		echo "test-live: in GitHub Actions, add the repository secret ANTHROPIC_API_KEY (Settings > Secrets and variables > Actions)." >&2; \
 		[ "$$GITHUB_ACTIONS" != true ] || echo "::error title=no ANTHROPIC_API_KEY::make test-live LIVE_REQUIRED=1: the repository secret ANTHROPIC_API_KEY is missing or empty, so the live tests did not run." >&2; \
 		exit 1; \
 	fi
-	ANTHROPIC_API_KEY="$${ANTHROPIC_API_KEY:-$$ANTHROPIC_KEY}" $(GO) test $(TESTFLAGS) -tags live -count=1 ./...
+	ANTHROPIC_API_KEY="$${ANTHROPIC_API_KEY:-$$ANTHROPIC_KEY}" GEMINI_API_KEY="$${GEMINI_API_KEY:-$$GEMINI_KEY}" \
+		$(GO) test $(TESTFLAGS) -tags live -count=1 ./...
 
 .PHONY: record-anthropic
 record-anthropic: ## Re-record the Anthropic adapter's fixtures from the real API (ANTHROPIC_API_KEY or ANTHROPIC_KEY; review the diff)
@@ -264,7 +265,7 @@ TAGS_api := nomodels noconnectors nomcp noagui nosqlite
 TAGS_runner := noconnectors nomcp noweb noa2a noagui nosqlite nopostgres noredis noagent
 TAGS_toolsets := nomodels noweb noa2a noagui nosqlite nopostgres noredis noagent
 IMAGE_BUDGET_MB_local ?= 32
-IMAGE_BUDGET_MB_dev ?= 33
+IMAGE_BUDGET_MB_dev ?= 34
 IMAGE_BUDGET_MB_api ?= 24
 IMAGE_BUDGET_MB_runner ?= 20
 IMAGE_BUDGET_MB_toolsets ?= 18

@@ -179,11 +179,11 @@ type messagingConfig struct {
 
 // agentModelConfig chooses the model.
 type agentModelConfig struct {
-	// Provider names the model adapter (modelProviders): "anthropic", or
-	// "openai" for any OpenAI-compatible server.
+	// Provider names the model adapter (modelProviders): "anthropic",
+	// "gemini", or "openai" for any OpenAI-compatible server.
 	Provider string `json:"provider"`
 	// ID is the model ID: defaultModelID when empty for anthropic,
-	// required for openai.
+	// defaultGeminiModelID for gemini, required for openai.
 	ID string `json:"id"`
 	// BaseURL is the server of an openai model, ending before
 	// /chat/completions (http://localhost:11434/v1 for Ollama); empty for
@@ -198,7 +198,7 @@ type agentModelConfig struct {
 	// MaxTokens limits each reply's output; 0 for the adapter's default.
 	MaxTokens int `json:"max_tokens"`
 	// ContextWindow is the model's context window in tokens (0:
-	// defaultContextWindow), and CompactAt the share of it a request may
+	// defaultContextWindow, geminiContextWindow for gemini), and CompactAt the share of it a request may
 	// fill before the conversation is compacted ahead of its next run (0:
 	// harness.DefaultCompactShare).
 	ContextWindow int     `json:"context_window"`
@@ -207,7 +207,8 @@ type agentModelConfig struct {
 	// "native", the default for anthropic (every request lists every tool,
 	// the API keeps the deferred ones out of the model's context until a
 	// tool_search result references them), or "emulated", the only choice
-	// for openai (the harness adds a tool to the requests once found).
+	// for openai and gemini (the harness adds a tool to the requests once
+	// found).
 	ToolSearch string `json:"tool_search"`
 }
 
@@ -218,15 +219,30 @@ const (
 	defaultOpenAIKeyEnv = "OPENAI_API_KEY"
 )
 
-// id is the model ID, with the default for anthropic. An ID written as the
-// model's name, "anthropic/claude-…", is the ID after its provider's
-// prefix, so the name is not "anthropic/anthropic/claude-…" and the API is
-// not asked for a model of that ID. Not for openai: its servers' IDs have
-// slashes of their own ("openai/gpt-4o" on OpenRouter).
+// providerGemini is the provider of Google's Gemini models, and
+// defaultGeminiModelID its model when the config names none
+// (gemini.DefaultModel; TestDefaultGeminiModelIsTheAdapters keeps them
+// equal).
+const (
+	providerGemini       = "gemini"
+	defaultGeminiModelID = "gemini-3.5-flash"
+)
+
+// id is the model ID, with the default for anthropic and gemini. An ID
+// written as the model's name, "anthropic/claude-…", is the ID after its
+// provider's prefix, so the name is not "anthropic/anthropic/claude-…" and
+// the API is not asked for a model of that ID. Not for openai: its servers'
+// IDs have slashes of their own ("openai/gpt-4o" on OpenRouter).
 func (m agentModelConfig) id() string {
 	p := cmp.Or(m.Provider, defaultProvider)
-	if m.ID == "" && p == defaultProvider {
-		return defaultModelID
+	if m.ID == "" {
+		switch p {
+		case defaultProvider:
+			return defaultModelID
+		case providerGemini:
+			return defaultGeminiModelID
+		}
+		return ""
 	}
 	if p != providerOpenAI {
 		return strings.TrimPrefix(m.ID, p+"/")
@@ -244,12 +260,20 @@ func (m agentModelConfig) flags(getenv func(string) string) modelFlags {
 	return f
 }
 
-// defaultContextWindow is the context window of Claude models.
-const defaultContextWindow = 200_000
+// defaultContextWindow is the context window of Claude models, and
+// geminiContextWindow that of Gemini's.
+const (
+	defaultContextWindow = 200_000
+	geminiContextWindow  = 1_048_576
+)
 
 // window is the model's context window, for compaction.
 func (m agentModelConfig) window() harness.ContextWindow {
-	return harness.ContextWindow{Tokens: cmp.Or(m.ContextWindow, defaultContextWindow), Share: m.CompactAt}
+	def := defaultContextWindow
+	if m.Provider == providerGemini {
+		def = geminiContextWindow
+	}
+	return harness.ContextWindow{Tokens: cmp.Or(m.ContextWindow, def), Share: m.CompactAt}
 }
 
 func defaultAgentDef() agentDef {
@@ -343,7 +367,7 @@ func (d agentDef) check(legacy bool) error {
 	if d.Model.Provider == providerOpenAI && d.Model.ID == "" {
 		return fmt.Errorf("%s.model.id: provider %q needs the model ID the server knows (\"gpt-5-mini\", \"llama3.2\")", label, providerOpenAI)
 	}
-	if d.Model.Provider == providerOpenAI && d.Memory != nil && d.Memory.NativeTool {
+	if cmp.Or(d.Model.Provider, defaultProvider) != defaultProvider && d.Memory != nil && d.Memory.NativeTool {
 		return fmt.Errorf("%s.memory.native_tool: Claude's native memory tool needs provider %q", label, defaultProvider)
 	}
 	if _, err := d.modelSet(label); err != nil {
@@ -361,8 +385,8 @@ func (d agentDef) check(legacy bool) error {
 	switch d.Model.ToolSearch {
 	case "", toolSearchEmulated:
 	case toolSearchNative:
-		if d.Model.Provider == providerOpenAI {
-			return fmt.Errorf("%s.model.tool_search: %q is for provider %q; openai models use %q", label, toolSearchNative, defaultProvider, toolSearchEmulated)
+		if p := cmp.Or(d.Model.Provider, defaultProvider); p != defaultProvider {
+			return fmt.Errorf("%s.model.tool_search: %q is for provider %q; %s models use %q", label, toolSearchNative, defaultProvider, p, toolSearchEmulated)
 		}
 	default:
 		return fmt.Errorf("%s.model.tool_search %q: want %q or %q", label, d.Model.ToolSearch, toolSearchNative, toolSearchEmulated)

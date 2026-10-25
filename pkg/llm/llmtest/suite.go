@@ -42,8 +42,9 @@ type Scenario struct {
 type Option func(*config)
 
 type config struct {
-	opaque llm.Opaque
-	stall  time.Duration
+	opaque        llm.Opaque
+	stall         time.Duration
+	noCacheWrites bool
 }
 
 // WithOpaque sets the opaque block the "opaque" scenario expects the model to
@@ -60,6 +61,11 @@ func WithOpaque(o llm.Opaque) Option { return func(c *config) { c.opaque = o } }
 // context. d must be well under 10 s. An adapter should set it: without a
 // limit, a dropped connection holds a run until its deadline.
 func WithStallTimeout(d time.Duration) Option { return func(c *config) { c.stall = d } }
+
+// WithoutCacheWrites says that the model's provider reports no cache
+// writes (Gemini caches implicitly and counts only what it read): the
+// scenarios expect [llm.Usage.CacheWriteTokens] to be zero.
+func WithoutCacheWrites() Option { return func(c *config) { c.noCacheWrites = true } }
 
 // watchdog is how long the suite waits for a model that should have stopped.
 const watchdog = 10 * time.Second
@@ -94,6 +100,9 @@ func RunModel(t *testing.T, newModel func(t *testing.T, s Scenario) llm.Model, o
 
 	textReply := Text("Hello from the model, streamed in several pieces.").
 		WithUsage(llm.Usage{InputTokens: 12, OutputTokens: 9, CacheReadTokens: 3, CacheWriteTokens: 4})
+	if cfg.noCacheWrites {
+		textReply.Response.Usage.CacheWriteTokens = 0
+	}
 	run("text", []Reply{textReply}, func(t *testing.T, m llm.Model) {
 		got := generate(t, m, userRequest("Say hello."), textReply)
 		if got.Stop.Kind != llm.StopEndTurn {

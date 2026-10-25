@@ -3,13 +3,14 @@
 # namespace and no store: an overlay adds those. deploy/k8s/local is the one
 # for Docker Desktop's cluster (make k8s-up, deploy/k8s/README.md).
 #
-# Every pod reads the secret "agentkit": rpc-token, api-token and
-# anthropic-api-key. The API also reads credentials-key, the credential
-# vault's key ring (without it the connectors that need a user's account or
-# key are skipped), and the OAuth apps the Connectors page connects accounts
-# with, each optional: google-, hubspot- and salesforce-oauth-client-id and
-# -client-secret (docs/QUICKSTART.md "Connecting accounts"). The toolsets pod
-# keeps no vault: it reads each call's credential from the API
+# Every pod reads the secret "agentkit": rpc-token, api-token,
+# anthropic-api-key and, if it has one, gemini-api-key. The API also reads
+# credentials-key, the credential vault's key ring (without it the
+# connectors that need a user's account or key are skipped), and the OAuth
+# apps the Connectors page connects accounts with, each optional: google-,
+# hubspot- and salesforce-oauth-client-id and -client-secret
+# (docs/QUICKSTART.md "Connecting accounts"). The toolsets pod keeps no
+# vault: it reads each call's credential from the API
 # (AGENTKIT_CREDENTIALS_URL).
 #
 # The store is in memory here (one API replica, lost on restart); an overlay sets AGENTKIT_STORE to a postgres:// URL (and
@@ -101,6 +102,9 @@ spec:
               valueFrom: {secretKeyRef: {name: agentkit, key: rpc-token}}
             - name: ANTHROPIC_API_KEY
               valueFrom: {secretKeyRef: {name: agentkit, key: anthropic-api-key}}
+            # Optional: a secret made before Gemini has no gemini-api-key.
+            - name: GEMINI_API_KEY
+              valueFrom: {secretKeyRef: {name: agentkit, key: gemini-api-key, optional: true}}
           ports: [{name: http, containerPort: 8080}]
           # Startup waits up to AGENTKIT_DEPENDENCY_WAIT (a minute) for the
           # toolsets before it listens: give it 90s before liveness counts.

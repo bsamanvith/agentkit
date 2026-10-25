@@ -13,9 +13,12 @@ import (
 // nomodels tag leaves out, so an image whose agents run on a remote runner
 // (agentkit-api) links no model adapter:
 //
-//	nomodels  no Anthropic adapter (models_anthropic.go) and no
-//	          OpenAI-compatible one (models_openai.go); agent-api needs
-//	          $AGENTKIT_RUNNER_URL, and run and flow demo fail
+//	nomodels  no Anthropic adapter (models_anthropic.go), no
+//	          OpenAI-compatible one (models_openai.go) and no Gemini one
+//	          (models_gemini.go); agent-api needs $AGENTKIT_RUNNER_URL, and
+//	          run and flow demo fail
+//	nogemini  no Gemini adapter, and no gemini provider: a config that
+//	          names it fails as for an unknown provider
 //
 // defaultModelID is anthropic.DefaultModel, which a nomodels build cannot
 // name; TestDefaultModelIsTheAdapters keeps them equal.
@@ -29,10 +32,14 @@ const defaultProvider = "anthropic"
 // implementing llm.Model, a file here that builds it (behind a tag of its
 // own, as models_anthropic.go is behind nomodels) and its line in this table.
 func modelProviders() map[string]func(modelFlags) (llm.Model, error) {
-	return map[string]func(modelFlags) (llm.Model, error){
+	p := map[string]func(modelFlags) (llm.Model, error){
 		defaultProvider: newClaude,
 		providerOpenAI:  newOpenAI,
 	}
+	if newGemini != nil { // nil with nogemini
+		p[providerGemini] = newGemini
+	}
+	return p
 }
 
 // buildModel builds the model of f's provider.

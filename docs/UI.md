@@ -122,6 +122,7 @@ A **connector** is a toolset that calls an outside service: Exa, Parallel, Gmail
   - **A card:** the connector's name, its slot in mono, one line on what it does, status, "Used by" (agents) and the actions. The words come from the console (`connectors-catalog.ts`), not the server.
   - **Filter:** with more than eight cards, a search box filters by name, slot, group and description; "No connector matches “x”." when none does.
   - **Not set up:** an account connector whose OAuth app the server doesn't have (no `credentials.oauth2` entry, or an optional one with its variables unset; the server lists the slot with `oauth: false`) reads "Not set up: This server isn't set up to connect Gmail accounts. An admin adds its OAuth app (credentials.oauth2)." and has no Connect button. A connected account there can still be disconnected.
+  - **No user:** a caller with no user (the deployment's API token) gets none of the slots each user keeps for themselves (`GET /v1/credentials` leaves them out, `GET /v1/toolsets` lists them with scope `user`). The page names those connectors and says to sign out and sign in with a username and password to connect your own, instead of "Nothing to connect".
   - **Statuses**, each a dot plus words:
     - **Connected**, with what the server knows: "Your key, added 12 Oct" or "Connected as @samanvith";
     - **Not connected**;

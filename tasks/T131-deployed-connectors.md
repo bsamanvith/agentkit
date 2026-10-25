@@ -37,3 +37,4 @@ depends_on: [T120]
 ## Notes
 
 - `oauth-callback` is now on the API's `/readyz` in the deployments: it has a vault.
+- Follow-up (2026-10-25, retest on `make cloud-k8s-up`): the deployments' only sign-in was the API token, which has no user, so `GET /v1/credentials` listed no user slots and the page said "Nothing to connect". `k8s-local.sh` and `compose-local.sh` now make a console user `admin` (a random password; its argon2id hash in the secret `agentkit-console` or `deploy/compose/users.json`, read as `AGENTKIT_USERS_FILE`) and print it (`login`); the page tells a caller with no user to sign in as one (`needUser`, tests in `admin.test.tsx`). Checked on `make cloud-compose-up` and `make cloud-k8s-up`: admin signs in and lists all eight slots.

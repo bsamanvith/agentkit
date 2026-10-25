@@ -8,7 +8,8 @@
 # come from deploy/compose/.env, which compose-local.sh writes on the first up
 # and keeps (git ignores it): AGK_RPC_TOKEN, AGK_API_TOKEN, AGK_PG_PASSWORD,
 # AGK_ANTHROPIC_API_KEY, AGK_CREDENTIALS_KEY (the credential vault's key
-# ring). Each component gets only the ones it needs, as the cluster's secret
+# ring), AGK_CONSOLE_PASSWORD (the console's user admin, whose hash is in
+# users.json next to it). Each component gets only the ones it needs, as the cluster's secret
 # gives them. The OAuth apps of the Connectors page come from the
 # environment or that file when set: GOOGLE_, HUBSPOT_ and
 # SALESFORCE_OAUTH_CLIENT_ID and _CLIENT_SECRET (docs/QUICKSTART.md
@@ -24,6 +25,12 @@ name: agentkit
 configs:
   agentkit:
     file: ../k8s/base/config.json
+  # The console's user, admin in the default tenant (the API token's), who
+  # connects their own accounts on the Connectors page: the token has no
+  # user to keep them for. compose-local.sh writes the file, with only the
+  # password's hash, and prints the password.
+  users:
+    file: users.json
 
 # What every agentkit container shares: the cluster's security context, its
 # probes (the image's own self-check, as distroless has no shell or curl) and
@@ -129,12 +136,16 @@ services:
       # Where the browser reaches the console: the OAuth redirect and return
       # URLs of the config's credentials are on it.
       AGENTKIT_PUBLIC_URL: http://localhost:30081
+      AGENTKIT_USERS_FILE: /etc/agentkit-users.json
       GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
       HUBSPOT_OAUTH_CLIENT_ID: ${HUBSPOT_OAUTH_CLIENT_ID:-}
       HUBSPOT_OAUTH_CLIENT_SECRET: ${HUBSPOT_OAUTH_CLIENT_SECRET:-}
       SALESFORCE_OAUTH_CLIENT_ID: ${SALESFORCE_OAUTH_CLIENT_ID:-}
       SALESFORCE_OAUTH_CLIENT_SECRET: ${SALESFORCE_OAUTH_CLIENT_SECRET:-}
+    configs:
+      - {source: agentkit, target: /etc/agentkit/config.json}
+      - {source: users, target: /etc/agentkit-users.json}
     # Loopback only: the console and /v1 for this machine.
     ports: ["127.0.0.1:30081:8080"]
     depends_on:
@@ -156,12 +167,16 @@ services:
       ANTHROPIC_API_KEY: ${AGK_ANTHROPIC_API_KEY:-}
       AGENTKIT_CREDENTIALS_KEY: ${AGK_CREDENTIALS_KEY:-}
       AGENTKIT_PUBLIC_URL: http://localhost:30082
+      AGENTKIT_USERS_FILE: /etc/agentkit-users.json
       GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
       HUBSPOT_OAUTH_CLIENT_ID: ${HUBSPOT_OAUTH_CLIENT_ID:-}
       HUBSPOT_OAUTH_CLIENT_SECRET: ${HUBSPOT_OAUTH_CLIENT_SECRET:-}
       SALESFORCE_OAUTH_CLIENT_ID: ${SALESFORCE_OAUTH_CLIENT_ID:-}
       SALESFORCE_OAUTH_CLIENT_SECRET: ${SALESFORCE_OAUTH_CLIENT_SECRET:-}
+    configs:
+      - {source: agentkit, target: /etc/agentkit/config.json}
+      - {source: users, target: /etc/agentkit-users.json}
     volumes: [allinone:/var/lib/agentkit]
     tmpfs: [/tmp]
     ports: ["127.0.0.1:30082:8080"]

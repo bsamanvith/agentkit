@@ -12,7 +12,7 @@ import { hasScope, isAdmin } from "../access";
 import { App } from "../app";
 import { routes } from "../routes";
 import { mayAdmin } from "../sections";
-import { connectionRows, connectReturnKey, isLocalPath, matches } from "./connections-model";
+import { connectionRows, connectReturnKey, isLocalPath, matches, needUser } from "./connections-model";
 import { credentialWords } from "./credential";
 import { mcpAddCommand, mcpURL, shellWord } from "./mcp";
 import { fields, typeOf } from "./schema";
@@ -555,6 +555,19 @@ describe("the connectors page", () => {
     await userEvent.type(screen.getByRole("searchbox", { name: "Filter connectors" }), "zzz");
     expect(screen.getByText("No connector matches “zzz”.")).toBeInTheDocument();
   });
+
+  it("tells a caller with no user to sign in as one to connect their own", async () => {
+    // The deployment's API token: GET /v1/credentials leaves out each user's own slots.
+    const token: Me = { tenant: "default", roles: [], scopes: ["*"], credential: "api_key" };
+    fakeServer(token, { toolsets: all.map((n) => ts(n)) });
+    renderAt("/connections");
+    expect(
+      await screen.findByText(
+        /^Exa, Gmail, Google Calendar, Google Drive, Google Sheets, HubSpot, Salesforce are connected by each user for themselves, and this sign-in has no user/,
+      ),
+    ).toHaveTextContent("Sign out and sign in with a username and password to connect your own.");
+    expect(screen.queryByRole("article", { name: /^Gmail/ })).not.toBeInTheDocument();
+  });
 });
 
 describe("/connections/done in the same tab", () => {
@@ -830,6 +843,29 @@ describe("connectionRows", () => {
     });
     const expired = info({ status: "needs_reconnect", oauth: true });
     expect(connectionRows([expired], [], used, false)[0]).toMatchObject({ needsYou: true, word: "Needs reconnect" });
+  });
+});
+
+describe("needUser", () => {
+  const user = (name: string, type: string): Toolset => ({
+    name,
+    type,
+    status: "skipped",
+    tool_count: 0,
+    credential: { status: "not_connected", slot: name, scope: "user" },
+  });
+  it("names the user slots GET /v1/credentials left out, once each, and none without a vault", () => {
+    const listed: CredentialInfo = {
+      slot: "mail",
+      scope: "user",
+      status: "not_connected",
+      oauth: false,
+      toolsets: ["mail"],
+    };
+    const ts = [user("exa", "exa"), user("exa2", "exa"), user("mail", "mail"), user("crm", "crm"), ...toolsets];
+    expect(needUser([listed], ts)).toEqual(["crm", "Exa"]);
+    expect(needUser([listed], [user("mail", "mail")])).toEqual([]);
+    expect(needUser(null, ts)).toEqual([]);
   });
 });
 

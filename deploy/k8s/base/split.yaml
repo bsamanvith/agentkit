@@ -8,7 +8,10 @@
 # vault's key ring (without it the connectors that need a user's account or
 # key are skipped), and the OAuth apps the Connectors page connects accounts
 # with, each optional: google-, hubspot- and salesforce-oauth-client-id and
-# -client-secret (docs/QUICKSTART.md "Connecting accounts"). The toolsets pod
+# -client-secret (docs/QUICKSTART.md "Connecting accounts"). The API mounts
+# users.json of the secret "agentkit-console": the console's users
+# (AGENTKIT_USERS_FILE, scripts/k8s-local.sh makes admin), who connect their
+# own accounts and keys there; the API token has no user to keep them for. The toolsets pod
 # keeps no vault: it reads each call's credential from the API
 # (AGENTKIT_CREDENTIALS_URL).
 #
@@ -163,6 +166,8 @@ spec:
               valueFrom: {secretKeyRef: {name: agentkit, key: salesforce-oauth-client-id, optional: true}}
             - name: SALESFORCE_OAUTH_CLIENT_SECRET
               valueFrom: {secretKeyRef: {name: agentkit, key: salesforce-oauth-client-secret, optional: true}}
+            # The console's users (the secret agentkit-console).
+            - {name: AGENTKIT_USERS_FILE, value: /etc/agentkit-console/users.json}
           ports: [{name: http, containerPort: 8080}]
           # Startup waits up to AGENTKIT_DEPENDENCY_WAIT (a minute) for the
           # toolsets before it listens: give it 90s before liveness counts.
@@ -174,8 +179,13 @@ spec:
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities: {drop: [ALL]}
-          volumeMounts: [{name: config, mountPath: /etc/agentkit, readOnly: true}]
-      volumes: [{name: config, configMap: {name: agentkit-config}}]
+          volumeMounts:
+            - {name: config, mountPath: /etc/agentkit, readOnly: true}
+            - {name: console, mountPath: /etc/agentkit-console, readOnly: true}
+      volumes:
+        - {name: config, configMap: {name: agentkit-config}}
+        - name: console
+          secret: {secretName: agentkit-console, items: [{key: users.json, path: users.json}]}
 ---
 apiVersion: v1
 kind: Service

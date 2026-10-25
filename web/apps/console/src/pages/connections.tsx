@@ -30,6 +30,7 @@ import {
   inPopup,
   isLocalPath,
   matches,
+  needUser,
   resultText,
   type Action,
   type ConnectResult,
@@ -59,6 +60,11 @@ async function loadConnections(c: AgentClient, signal: AbortSignal): Promise<Dat
 function noteFor(r: ConnectResult): Record<string, { text: string; ok: boolean }> {
   const t = resultText(r);
   return { [`slot:${r.slot}:user`]: t, [`slot:${r.slot}:tenant`]: t };
+}
+
+/** Why the connectors each user connects for themselves aren't listed: the caller has no user. */
+function signInText(names: string[]): string {
+  return `${names.join(", ")} ${names.length === 1 ? "is" : "are"} connected by each user for themselves, and this sign-in has no user (the server's API token, say). Sign out and sign in with a username and password to connect your own.`;
 }
 
 /** An error to show in a dialog or under a row: the server's message, never a value we sent. */
@@ -439,6 +445,7 @@ export function ConnectionsPage() {
   const data = fresh?.epoch === epoch ? fresh.data : res.state === "ready" ? res.data : null;
   const rows = data ? connectionRows(data.credentials, data.toolsets, data.agents, canSetTenantCredentials(me)) : [];
 
+  const userOnly = data ? needUser(data.credentials, data.toolsets) : [];
   const shown = rows.filter((r) => matches(r, filter));
   return (
     <Page title="Connectors">
@@ -455,11 +462,20 @@ export function ConnectionsPage() {
           AGENTKIT_CREDENTIALS_KEY and restarts. Server keys still work.
         </p>
       ) : null}
+      {userOnly.length > 0 && rows.length > 0 ? (
+        <p className="text-(length:--ak-text-sm) text-ak-muted">{signInText(userOnly)}</p>
+      ) : null}
       {data ? (
         rows.length === 0 ? (
-          <Empty icon={KeyRound} title="Nothing to connect">
-            <p className="text-ak-muted">None of this server&apos;s connectors needs a key or an account.</p>
-          </Empty>
+          userOnly.length > 0 ? (
+            <Empty icon={KeyRound} title="Sign in as a user to connect">
+              <p className="text-ak-muted">{signInText(userOnly)}</p>
+            </Empty>
+          ) : (
+            <Empty icon={KeyRound} title="Nothing to connect">
+              <p className="text-ak-muted">None of this server&apos;s connectors needs a key or an account.</p>
+            </Empty>
+          )
         ) : (
           <>
             {rows.length > 8 ? (

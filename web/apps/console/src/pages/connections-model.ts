@@ -238,3 +238,18 @@ export function resultText(r: ConnectResult): { text: string; ok: boolean } {
       return { text: "Connecting took too long or failed. Try again.", ok: false };
   }
 }
+
+/**
+ * The connectors (their names, "Exa") whose slots are each user's own but
+ * that GET /v1/credentials left out: the caller has no user to keep them for
+ * (the deployment's API token), so they can't be connected with this
+ * sign-in. Empty when the server keeps no credentials.
+ */
+export function needUser(credentials: CredentialInfo[] | null, toolsets: Toolset[]): string[] {
+  if (credentials === null) return [];
+  const listed = new Set(credentials.map((c) => c.slot));
+  const names = toolsets
+    .filter((t) => t.credential?.slot && t.credential.scope === "user" && !listed.has(t.credential.slot))
+    .map((t) => connectorInfo(t.type)?.name ?? t.name);
+  return [...new Set(names)].sort((a, b) => a.localeCompare(b));
+}

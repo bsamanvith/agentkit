@@ -6,12 +6,13 @@
 #
 #   scripts/compose-local.sh up [allinone]     build the images, start, wait until usable
 #   scripts/compose-local.sh status            containers, health and the console's URLs
-#   scripts/compose-local.sh token             print the API token the console asks for
+#   scripts/compose-local.sh login             print the console's sign-ins: user admin, API token
+#   scripts/compose-local.sh token             print the API token
 #   scripts/compose-local.sh logs [svc]        follow a service's logs (api with migrate, runner,
 #                                              toolsets, postgres, allinone)
 #   scripts/compose-local.sh smoke [allinone]  run the smoke suite (test/e2e) against it
 #   scripts/compose-local.sh down [-v]         stop and remove the containers; -v also deletes
-#                                              the volumes (Postgres, SQLite) and the secrets file
+#                                              the volumes (Postgres, SQLite), the secrets file and users.json
 #
 # allinone is one container of the agentkit-local image on SQLite, on
 # http://127.0.0.1:30082, instead of the split deployment.
@@ -25,13 +26,14 @@ cd "$(dirname "$0")/.."
 
 compose_file=deploy/compose/compose.yaml
 envfile=deploy/compose/.env # read by Compose itself: it sits next to compose.yaml
+usersfile=deploy/compose/users.json # the console's users (compose.yaml, configs.users)
 # 127.0.0.1, not localhost: Compose publishes the ports on IPv4 loopback
 # alone, and localhost may resolve to ::1 first, where something else (a
 # Kubernetes NodePort, say) can hold the same port.
 split_url=http://127.0.0.1:30081
 allinone_url=http://127.0.0.1:30082
 # Ours alone: a value of the same name in the shell would override the file.
-unset AGK_RPC_TOKEN AGK_API_TOKEN AGK_PG_PASSWORD AGK_ANTHROPIC_API_KEY AGK_CREDENTIALS_KEY
+unset AGK_RPC_TOKEN AGK_API_TOKEN AGK_PG_PASSWORD AGK_ANTHROPIC_API_KEY AGK_CREDENTIALS_KEY AGK_CONSOLE_PASSWORD
 
 die() { echo "compose-local: $*" >&2; exit 1; }
 dc() {
@@ -62,10 +64,11 @@ need_env() {
 	fi
 }
 
-# ensure_env writes the secrets file with new random tokens the first time,
+# ensure_env IMAGE writes the secrets file with new random tokens the first time,
 # and keeps them after that: Postgres was initialized with its password. A
 # model key in the environment replaces the stored one (Compose then
 # recreates the containers that read it). Nothing here prints a value.
+# IMAGE is an agentkit image built already, to hash the console's password.
 ensure_env() {
 	local key="${ANTHROPIC_API_KEY:-${ANTHROPIC_KEY:-}}"
 	case "$key" in *"'"* | *$'\n'*) die "ANTHROPIC_API_KEY holds a quote or a newline" ;; esac
@@ -92,6 +95,23 @@ ensure_env() {
 	if [ -z "$(env_get AGK_CREDENTIALS_KEY)" ]; then
 		(umask 077 && echo "AGK_CREDENTIALS_KEY=k1:$(openssl rand -base64 32)" >>"$envfile")
 		echo "compose-local: added AGK_CREDENTIALS_KEY" >&2
+	fi
+	# The console's user (compose.yaml, configs.users): a random password,
+	# and a users file with its argon2id hash, made by the image itself
+	# (agentkit users hash-password). The file is readable by all, as the
+	# containers run as another uid: it holds the hash, never the password.
+	if [ -z "$(env_get AGK_CONSOLE_PASSWORD)" ] || [ ! -s "$usersfile" ]; then
+		local pw hash
+		pw="$(openssl rand -hex 12)"
+		hash="$(printf '%s\n' "$pw" | docker run --rm -i --network none "$1" users hash-password)" ||
+			die "could not hash the console's password with $1"
+		printf '{"users": [{"username": "admin", "password_hash": "%s", "tenant": "default", "roles": ["admin"]}]}\n' "$hash" >"$usersfile.tmp"
+		chmod 644 "$usersfile.tmp"
+		mv "$usersfile.tmp" "$usersfile"
+		local tmp="$envfile.tmp"
+		(umask 077 && grep -v '^AGK_CONSOLE_PASSWORD=' "$envfile" >"$tmp" && echo "AGK_CONSOLE_PASSWORD=$pw" >>"$tmp")
+		mv "$tmp" "$envfile"
+		echo "compose-local: added the console's user admin" >&2
 	fi
 }
 
@@ -132,7 +152,7 @@ up() {
 		# The images are :latest: recreate so the rebuilt ones run.
 		recreate=(--force-recreate)
 	fi
-	ensure_env
+	if [ "$target" = allinone ]; then ensure_env agentkit-local:latest; else ensure_env agentkit-api:latest; fi
 	if [ -z "$(env_get AGK_ANTHROPIC_API_KEY)" ]; then
 		echo "compose-local: no ANTHROPIC_API_KEY: the console works, runs fail with model_auth until you set it and run up again" >&2
 	fi
@@ -147,7 +167,14 @@ up() {
 		echo
 		echo "Console: $split_url"
 	fi
-	echo "API token (the console asks for it): $(env_get AGK_API_TOKEN)"
+	login
+}
+
+# login prints the console's sign-ins: the user's, and the API token.
+login() {
+	[ -f "$envfile" ] || die "no $envfile yet: run scripts/compose-local.sh up"
+	echo "Console sign-in: admin, password $(env_get AGK_CONSOLE_PASSWORD) (connects your own accounts and keys)"
+	echo "API token (the console accepts it too; it has no user, so it can't connect accounts): $(env_get AGK_API_TOKEN)"
 }
 
 case "${1:-help}" in
@@ -157,12 +184,13 @@ status)
 	need_env
 	dc --profile allinone ps -a
 	echo
-	echo "Console: $split_url (all in one: $allinone_url); token: scripts/compose-local.sh token"
+	echo "Console: $split_url (all in one: $allinone_url); sign-in: scripts/compose-local.sh login"
 	;;
 token)
 	[ -f "$envfile" ] || die "no $envfile yet: run scripts/compose-local.sh up"
 	env_get AGK_API_TOKEN
 	;;
+login) login ;;
 logs)
 	check_docker
 	need_env
@@ -181,12 +209,12 @@ down)
 	if [ "${2:-}" = -v ]; then
 		dc --profile allinone down -v --remove-orphans
 		# The password belongs to the Postgres volume just deleted.
-		rm -f "$envfile"
+		rm -f "$envfile" "$usersfile"
 	elif [ -n "${2:-}" ]; then
 		die "down takes nothing or -v, not $2"
 	else
 		dc --profile allinone down --remove-orphans
 	fi
 	;;
-*) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; [ "${1:-help}" = help ] ;;
+*) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; [ "${1:-help}" = help ] ;;
 esac

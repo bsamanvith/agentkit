@@ -29,8 +29,10 @@ make k8s-up
 of the `docker-desktop` context, and returns when every pod is ready. Docker
 Desktop's cluster uses the local images directly: nothing is pushed or loaded.
 
-Open **http://localhost:30080** and paste the API token `make k8s-up`
-printed (`scripts/k8s-local.sh token` prints it again).
+Open **http://localhost:30080** and sign in as `admin` with the password
+`make k8s-up` printed (`scripts/k8s-local.sh login` prints it again). The
+console also takes the API token it prints, but the token has no user, so
+it can't connect accounts or keys on the Connectors page.
 
 | Command | Does |
 |---|---|
@@ -38,8 +40,9 @@ printed (`scripts/k8s-local.sh token` prints it again).
 | `make k8s-status` | Pods, services, the console's URL |
 | `make k8s-smoke` | The smoke suite (test/e2e) against it: health, auth, console, toolsets, one chat run (calls the model) |
 | `scripts/k8s-local.sh logs api` | Follow a component's logs: `api` (with its migrate step), `runner`, `toolsets`, `postgres` |
-| `scripts/k8s-local.sh token` | The API token, for the console and `agentkit` CLI (`AGENTKIT_SERVER=http://localhost:30080`) |
-| `make k8s-down` | Delete the namespace: pods, secret and Postgres data |
+| `scripts/k8s-local.sh login` | The console's sign-ins: user `admin` and its password, and the API token |
+| `scripts/k8s-local.sh token` | The API token, for the `agentkit` CLI (`AGENTKIT_SERVER=http://localhost:30080`) and the smoke suite |
+| `make k8s-down` | Delete the namespace: pods, secrets and Postgres data |
 
 `SKIP_BUILD=1 make k8s-up` deploys the images already built. `KUBE_CONTEXT`
 picks another context; the script never creates a cluster and passes the
@@ -57,7 +60,10 @@ What runs, and what it may use:
 Idle, they use about 45 MiB together.
 
 The secret `agentkit` holds random RPC and API tokens, the Postgres password
-and URL, the model key and the credential vault's key ring. It is made on the first `up` and kept after that,
+and URL, the model key and the credential vault's key ring; the secret
+`agentkit-console` holds the console's user `admin`: its password, and
+`users.json` with its argon2id hash, which the API reads
+(`AGENTKIT_USERS_FILE`). Both are made on the first `up` and kept after that,
 since Postgres keeps the password it started with; a different
 `ANTHROPIC_API_KEY` on a later `up` replaces the stored key. To change the
 agents or toolsets, edit `base/config.json` (shared with Compose and

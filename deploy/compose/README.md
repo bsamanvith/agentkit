@@ -30,8 +30,10 @@ Compose project `agentkit`, and returns when every service is healthy and the
 console answers. Images are used from the local store, never pulled, except
 `postgres:17-alpine` (and `busybox` for allinone) on the first `up`.
 
-Open **http://127.0.0.1:30081** and paste the API token `make compose-up`
-printed (`scripts/compose-local.sh token` prints it again).
+Open **http://127.0.0.1:30081** and sign in as `admin` with the password
+`make compose-up` printed (`scripts/compose-local.sh login` prints it again).
+The console also takes the API token it prints, but the token has no user,
+so it can't connect accounts or keys on the Connectors page.
 
 | Command | Does |
 |---|---|
@@ -39,9 +41,10 @@ printed (`scripts/compose-local.sh token` prints it again).
 | `make compose-status` | Containers, their health, the console's URL |
 | `make compose-smoke` | The smoke suite (test/e2e) against it: health, auth, console, toolsets, one chat run (calls the model) |
 | `scripts/compose-local.sh logs api` | Follow a service's logs: `api` (with `migrate`), `runner`, `toolsets`, `postgres`, `allinone` |
-| `scripts/compose-local.sh token` | The API token, for the console and `agentkit` CLI (`AGENTKIT_SERVER=http://127.0.0.1:30081`) |
+| `scripts/compose-local.sh login` | The console's sign-ins: user `admin` and its password, and the API token |
+| `scripts/compose-local.sh token` | The API token, for the `agentkit` CLI (`AGENTKIT_SERVER=http://127.0.0.1:30081`) and the smoke suite |
 | `scripts/compose-local.sh down` | Stop and remove the containers; keep the Postgres data and the secrets |
-| `make compose-down` | `down -v`: also delete the volumes (Postgres data) and the secrets file |
+| `make compose-down` | `down -v`: also delete the volumes (Postgres data), the secrets file and `users.json` |
 
 `SKIP_BUILD=1 make compose-up` starts the images already built. Plain
 `docker compose` works too, from this folder or with
@@ -91,13 +94,17 @@ images are distroless, with no shell or curl). The ports are bound to
   RPC and API tokens, the Postgres password and the model key, as
   `AGK_RPC_TOKEN`, `AGK_API_TOKEN`, `AGK_PG_PASSWORD` and
   `AGK_ANTHROPIC_API_KEY`, and the credential vault's key ring
-  `AGK_CREDENTIALS_KEY`. Compose reads it for the `${...}` values of
+  `AGK_CREDENTIALS_KEY`, and the console's password `AGK_CONSOLE_PASSWORD`
+  (its argon2id hash is in `users.json` beside it, readable by the
+  containers, which `api` and `allinone` read as `AGENTKIT_USERS_FILE`).
+  Compose reads it for the `${...}` values of
   `compose.yaml`, and each service gets only what it needs: the model key to
   the runner, the store URL to `migrate` and `api`. `up` writes it the first
   time and keeps it after that, since Postgres keeps the password it started
   with; a different `ANTHROPIC_API_KEY` on a later `up` replaces the stored
   key and the runner is recreated. `make compose-down` deletes it with the
-  data. Nothing prints a secret except the API token.
+  data. Nothing prints a secret except the API token and the
+  console's password.
 - **Connector keys** (`TAVILY_API_KEY`, ...) go in the `toolsets` service's
   `environment`, and only there.
 - **Connectors**: the agent `assistant` has every connector behind tool

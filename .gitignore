@@ -21,6 +21,8 @@ go.work.sum
 # Env and local data
 .env
 .env.*
+# scripts/compose-local.sh's console users (a password hash)
+/deploy/compose/users.json
 .data/
 *.db
 *.sqlite

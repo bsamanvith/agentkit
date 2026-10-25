@@ -309,16 +309,17 @@ Fixed host ports, so scripts and tests never guess: 30080 (Kubernetes), 30081 an
 `scripts/compose-local.sh` and `scripts/k8s-local.sh` take the same commands:
 
 ```
-up            build the images, start, block until every service is ready; print the console's URL and token
+up            build the images, start, block until every service is ready; print the console's URL and sign-ins
 status        containers or pods, health, URLs
-token         the API token the console asks for
+login         the console's sign-ins: user admin (who connects accounts) and the API token
+token         the API token
 logs [svc]    follow a service's logs (api with its migrate step, runner, toolsets, postgres)
 smoke         run the e2e suite (test/e2e) against what is running
 down          compose: down keeps the data, down -v (make compose-down) deletes it; k8s: delete the namespace
 ```
 
 - `up` waits on the components' own readiness (`/readyz`, through `agentkit healthcheck -ready` inside the distroless containers and from the host), so when it returns, the stack is usable. `SKIP_BUILD=1` reuses the images already built.
-- The secrets (random RPC and API tokens, the Postgres password, the model key) are made on the first `up` and kept after that, since Postgres keeps the password it started with: in the `agentkit` Secret on Kubernetes, in `deploy/compose/.env` (ignored by git) for Compose. Nothing prints a secret but the API token.
+- The secrets (random RPC and API tokens, the Postgres password, the model key) are made on the first `up` and kept after that, since Postgres keeps the password it started with: in the `agentkit` Secret on Kubernetes, in `deploy/compose/.env` (ignored by git) for Compose. So is the console's user `admin` (a random password and a users file with its argon2id hash, made with the image's `agentkit users hash-password`): the API token has no user, and only a user connects their own accounts. Nothing prints a secret but the API token and that password.
 - `Makefile` holds build, lint and test targets (`compose-*`, `k8s-*`, `smoke`, `integration`) and delegates environment work to the scripts. The `local-env` skill picks a way for a change and reads the logs when it fails.
 - `make vulncheck` runs govulncheck (pinned in the Makefile) on the code, its modules and the stdlib of go.mod's `toolchain`. It needs the network; CI's `check` job and the nightly workflow run it.
 

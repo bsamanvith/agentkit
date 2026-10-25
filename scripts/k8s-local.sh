@@ -6,7 +6,8 @@
 #
 #   scripts/k8s-local.sh up        build the images, deploy, wait until ready
 #   scripts/k8s-local.sh status    pods, services and the console's URL
-#   scripts/k8s-local.sh token     print the API token the console asks for
+#   scripts/k8s-local.sh login     print the console's sign-ins: user admin, API token
+#   scripts/k8s-local.sh token     print the API token
 #   scripts/k8s-local.sh logs [c]  follow a component's logs (api, runner, toolsets, postgres)
 #   scripts/k8s-local.sh smoke     run the smoke suite (test/e2e) against it
 #   scripts/k8s-local.sh down      delete the namespace: pods, secret and data
@@ -72,6 +73,23 @@ ensure_secret() {
 	# A secret from before the credential vault gets its key ring.
 	if [ -z "$(secret_value credentials-key)" ]; then
 		kn patch secret agentkit --type merge --patch-file /dev/stdin >/dev/null <<<"{\"stringData\":{\"credentials-key\":\"k1:$(openssl rand -base64 32)\"}}"
+		echo changed
+	fi
+	# The console's user, admin, who connects their own accounts (the API
+	# token has no user): the secret agentkit-console, a random password and
+	# a users file with its argon2id hash for $AGENTKIT_USERS_FILE, made by
+	# the API image itself (agentkit users hash-password).
+	if ! kn get secret agentkit-console >/dev/null 2>&1; then
+		local c cpw hash
+		c="$(mktemp -d)"
+		cpw="$(openssl rand -hex 12)"
+		hash="$(printf '%s\n' "$cpw" | docker run --rm -i --network none agentkit-api:latest users hash-password)" ||
+			die "could not hash the console's password with agentkit-api:latest"
+		printf '%s' "$cpw" >"$c/password"
+		printf '{"users": [{"username": "admin", "password_hash": "%s", "tenant": "default", "roles": ["admin"]}]}' "$hash" >"$c/users.json"
+		kn create secret generic agentkit-console --from-file="$c" >/dev/null
+		rm -rf "$c"
+		echo "k8s-local: created secret $ns/agentkit-console, the console's user admin" >&2
 		echo changed
 	fi
 	# The OAuth apps of the Connectors page, from the environment when set
@@ -141,20 +159,27 @@ up() {
 	done
 	echo
 	echo "Console: $url"
-	echo "API token (the console asks for it): $(secret_value api-token)"
+	login
+}
+
+# login prints the console's sign-ins: the user's, and the API token.
+login() {
+	echo "Console sign-in: admin, password $(kn get secret agentkit-console -o go-template='{{with .data.password}}{{base64decode .}}{{end}}') (connects your own accounts and keys)"
+	echo "API token (the console accepts it too; it has no user, so it can't connect accounts): $(secret_value api-token)"
 }
 
 status() {
 	check_context
 	kn get pods,services
 	echo
-	echo "Console: $url (token: scripts/k8s-local.sh token)"
+	echo "Console: $url (sign-in: scripts/k8s-local.sh login)"
 }
 
 case "${1:-help}" in
 up) up ;;
 status) status ;;
 token) check_context && secret_value api-token && echo ;;
+login) check_context && login ;;
 logs)
 	check_context
 	c="${2:-api}"
@@ -168,5 +193,5 @@ down)
 	check_context
 	k delete namespace "$ns" --ignore-not-found --wait
 	;;
-*) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; [ "${1:-help}" = help ] ;;
+*) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; [ "${1:-help}" = help ] ;;
 esac

@@ -17,7 +17,9 @@
 # http://127.0.0.1:30082, instead of the split deployment.
 #
 # Environment: ANTHROPIC_API_KEY (or ANTHROPIC_KEY) for the runner, stored in
-# deploy/compose/.env on up; SKIP_BUILD=1 to start the images already built.
+# deploy/compose/.env on up; SKIP_BUILD=1 to start the images already built;
+# EXTRA_CA_FILE, a PEM file of CAs the containers trust too, behind a
+# TLS-intercepting proxy (deploy/compose/extra-ca.yaml).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -32,7 +34,13 @@ allinone_url=http://127.0.0.1:30082
 unset AGK_RPC_TOKEN AGK_API_TOKEN AGK_PG_PASSWORD AGK_ANTHROPIC_API_KEY
 
 die() { echo "compose-local: $*" >&2; exit 1; }
-dc() { docker compose -f "$compose_file" "$@"; }
+dc() {
+	if [ -n "${EXTRA_CA_FILE:-}" ]; then
+		EXTRA_CA_FILE="$(realpath "$EXTRA_CA_FILE")" docker compose -f "$compose_file" -f deploy/compose/extra-ca.yaml "$@"
+	else
+		docker compose -f "$compose_file" "$@"
+	fi
+}
 
 check_docker() {
 	command -v docker >/dev/null || die "docker not found: install Docker Desktop"

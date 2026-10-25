@@ -70,9 +70,18 @@ Image size is tracked, and every change to it is explained.
 
 ## Cloud sessions
 
-Claude Code cloud sessions have no Docker. `.claude/hooks/session-start.sh`
-prepares one (Go modules, the linter, the web workspace, Postgres and Redis
-binaries), so `make check`, `make web-check` and these run as on a laptop:
+`.claude/hooks/session-start.sh` prepares a Claude Code cloud session (Go
+modules, the linter, the web workspace, Postgres and Redis binaries), so
+`make check`, `make web-check` and these run as on a laptop:
+
+- `make cloud-k8s-up`, `make cloud-k8s-smoke`, `make cloud-k8s-down`: the
+  split deployment on a one-node k3s the script starts in the session
+  (Docker is installed but stopped, kind cannot run; `scripts/cloud-k8s.sh`
+  says why each step is needed). A few minutes; the console is on
+  http://localhost:30080 and the smoke suite calls the real model.
+- `make cloud-compose-up`, `make cloud-compose-smoke`: the same in Docker
+  Compose, console on http://127.0.0.1:30081 (`scripts/cloud-k8s.sh compose
+  down` stops it).
 
 - `make integration`: the agent API's suite on SQLite and the smoke suite
   (the split deployment as processes, fake model). Seconds.

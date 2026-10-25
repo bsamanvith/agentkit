@@ -218,10 +218,18 @@ const (
 	defaultOpenAIKeyEnv = "OPENAI_API_KEY"
 )
 
-// id is the model ID, with the default for anthropic.
+// id is the model ID, with the default for anthropic. An ID written as the
+// model's name, "anthropic/claude-…", is the ID after its provider's
+// prefix, so the name is not "anthropic/anthropic/claude-…" and the API is
+// not asked for a model of that ID. Not for openai: its servers' IDs have
+// slashes of their own ("openai/gpt-4o" on OpenRouter).
 func (m agentModelConfig) id() string {
-	if m.ID == "" && cmp.Or(m.Provider, defaultProvider) == defaultProvider {
+	p := cmp.Or(m.Provider, defaultProvider)
+	if m.ID == "" && p == defaultProvider {
 		return defaultModelID
+	}
+	if p != providerOpenAI {
+		return strings.TrimPrefix(m.ID, p+"/")
 	}
 	return m.ID
 }

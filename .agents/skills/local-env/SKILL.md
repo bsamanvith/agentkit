@@ -18,7 +18,7 @@ description: Run an agentkit change in a real deployment on this machine and che
 | Docker Compose | `make compose-up`, `make compose-smoke` (console http://127.0.0.1:30081) | Docker with Compose v2, a key | The split images and their wiring on Postgres, with no cluster ([deploy/compose/README.md](../../../deploy/compose/README.md)); `scripts/compose-local.sh up allinone` for the `agentkit-local` image on SQLite (port 30082) |
 | Docker Desktop's Kubernetes | `make k8s-up`, `make k8s-smoke` (console http://localhost:30080) | Docker Desktop with Kubernetes on, `kubectl` | Manifests, probes, Postgres in the cluster ([deploy/k8s/README.md](../../../deploy/k8s/README.md)) |
 
-Check what the machine has before choosing (`docker info`, `docker compose version`, `kubectl config get-contexts`, `echo ${ANTHROPIC_API_KEY:+key}`). Compose and Kubernetes are parallel: offer both when the user wants containers, Compose when there is no cluster, Kubernetes when the change touches `deploy/k8s`. A change to `deploy/compose` or `deploy/k8s` should keep the other in step. Cloud sessions have no Docker: use the first three ([AGENTS.md](../../../AGENTS.md#cloud-sessions)).
+Check what the machine has before choosing (`docker info`, `docker compose version`, `kubectl config get-contexts`, `echo ${ANTHROPIC_API_KEY:+key}`). Compose and Kubernetes are parallel: offer both when the user wants containers, Compose when there is no cluster, Kubernetes when the change touches `deploy/k8s`. A change to `deploy/compose` or `deploy/k8s` should keep the other in step. In a cloud session, Kubernetes is `make cloud-k8s-up` (k3s in the session; [AGENTS.md](../../../AGENTS.md#cloud-sessions)).
 
 ## 2. Bring it up and smoke it
 

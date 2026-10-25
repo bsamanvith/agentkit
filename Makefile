@@ -326,6 +326,20 @@ k8s-smoke: ## Run the smoke suite (test/e2e) against the local deployment; one c
 k8s-down: ## Delete the local deployment: its pods, secret and Postgres data
 	scripts/k8s-local.sh down
 
+# The same deployment on a k3s started inside a Claude Code cloud session
+# (scripts/cloud-k8s.sh: Docker, k3s, the proxy's CA).
+.PHONY: cloud-k8s-up cloud-k8s-smoke cloud-k8s-down cloud-compose-up cloud-compose-smoke
+cloud-k8s-up: ## Cloud sessions: start Docker and k3s here, build, deploy the split deployment; console on http://localhost:30080
+	scripts/cloud-k8s.sh up
+cloud-k8s-smoke: ## Cloud sessions: the smoke suite against cloud-k8s-up (calls the model)
+	scripts/cloud-k8s.sh smoke
+cloud-k8s-down: ## Cloud sessions: delete the deployment and stop k3s
+	scripts/cloud-k8s.sh down
+cloud-compose-up: ## Cloud sessions: start Docker here and run make compose-up; console on http://127.0.0.1:30081
+	scripts/cloud-k8s.sh compose up
+cloud-compose-smoke: ## Cloud sessions: the smoke suite against cloud-compose-up (calls the model)
+	scripts/cloud-k8s.sh compose smoke
+
 # The same split deployment in Docker Compose (deploy/compose/README.md), on
 # http://127.0.0.1:30081: the other way to run it locally. scripts/compose-local.sh
 # up allinone runs the agentkit-local image alone on SQLite instead.

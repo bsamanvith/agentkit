@@ -64,3 +64,29 @@ func TestOpenAIProvider(t *testing.T) {
 		t.Error("a base URL without a scheme was accepted")
 	}
 }
+
+// TestModelIDWrittenAsName: an ID written as the model's name,
+// "anthropic/<id>", is that model, not "anthropic/anthropic/<id>"; an
+// openai ID keeps its slashes.
+func TestModelIDWrittenAsName(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		cfg      agentModelConfig
+		name, id string
+	}{
+		{agentModelConfig{ID: "anthropic/claude-x"}, "anthropic/claude-x", "claude-x"},
+		{agentModelConfig{Provider: "anthropic", ID: "anthropic/claude-x"}, "anthropic/claude-x", "claude-x"},
+		{agentModelConfig{Provider: "anthropic", ID: "claude-x"}, "anthropic/claude-x", "claude-x"},
+		{agentModelConfig{Provider: providerOpenAI, ID: "openai/gpt-4o"}, "openai/openai/gpt-4o", "openai/gpt-4o"},
+	} {
+		if got := tc.cfg.name(); got != tc.name {
+			t.Errorf("%+v: name() = %q, want %q", tc.cfg, got, tc.name)
+		}
+		if got := tc.cfg.flags(func(string) string { return "" }).model; got != tc.id {
+			t.Errorf("%+v: the adapter's model = %q, want %q", tc.cfg, got, tc.id)
+		}
+		if got := wireModel(tc.cfg).ID; got != tc.id {
+			t.Errorf("%+v: wireModel ID = %q, want %q", tc.cfg, got, tc.id)
+		}
+	}
+}

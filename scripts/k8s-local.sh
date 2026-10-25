@@ -13,7 +13,10 @@
 #
 # Environment: KUBE_CONTEXT (default docker-desktop); ANTHROPIC_API_KEY (or
 # ANTHROPIC_KEY) for the runner, stored in the secret on up; SKIP_BUILD=1 to
-# deploy the images already built.
+# deploy the images already built (FORCE_RESTART=1 restarts the pods anyway,
+# for images loaded into the cluster another way); EXTRA_CA_FILE, a PEM file
+# of CAs the pods trust too, behind a TLS-intercepting proxy
+# (scripts/cloud-k8s.sh sets these).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -94,10 +97,23 @@ up() {
 	# read the toolsets' list once, at startup, and must not read it from the
 	# old toolsets pod.
 	local restart=
-	if [ "${SKIP_BUILD:-}" != 1 ] || [ "$keychanged" = changed ] || [[ "$kb" == *configured* ]]; then
+	if [ "${SKIP_BUILD:-}" != 1 ] || [ "${FORCE_RESTART:-}" = 1 ] || [ "$keychanged" = changed ] || [[ "$kb" == *configured* ]]; then
 		restart=1
 	fi
+	if [ -n "${EXTRA_CA_FILE:-}" ]; then
+		kn create configmap agentkit-extra-ca --from-file=ca.crt="$EXTRA_CA_FILE" \
+			--dry-run=client -o yaml | kn apply -f - >/dev/null
+	fi
 	for d in "${deployments[@]}"; do
+		if [ -n "${EXTRA_CA_FILE:-}" ]; then
+			# Go reads every file of SSL_CERT_DIR's folders: the image's
+			# CAs, then the extra ones.
+			kn patch "deployment/$d" --type strategic -p '{"spec":{"template":{"spec":{
+				"volumes":[{"name":"extra-ca","configMap":{"name":"agentkit-extra-ca"}}],
+				"containers":[{"name":"'"$d"'",
+					"env":[{"name":"SSL_CERT_DIR","value":"/etc/ssl/certs:/etc/ssl/extra"}],
+					"volumeMounts":[{"name":"extra-ca","mountPath":"/etc/ssl/extra","readOnly":true}]}]}}}}' >/dev/null
+		fi
 		if [ -n "$restart" ]; then
 			kn rollout restart "deployment/$d" >/dev/null
 		fi

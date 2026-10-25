@@ -66,7 +66,11 @@ install_tools() {
 k3s_ready() { kubectl get --raw /readyz >/dev/null 2>&1; }
 
 run_k3s() {
-	nohup k3s server --disable traefik,metrics-server,servicelb --disable-helm-controller \
+	# k3s inherits the session's proxy: the API server would send its calls
+	# to the kubelet (kubectl logs, exec) through it, and they fail.
+	local direct
+	direct="$(hostname -I | tr ' ' '\n' | grep -v '^$' | paste -sd, -),10.42.0.0/16,10.43.0.0/16,.svc,.cluster.local"
+	NO_PROXY="${NO_PROXY:+$NO_PROXY,}$direct" no_proxy="${no_proxy:+$no_proxy,}$direct" nohup k3s server --disable traefik,metrics-server,servicelb --disable-helm-controller \
 		--write-kubeconfig-mode 644 >/tmp/k3s.log 2>&1 &
 }
 

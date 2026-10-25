@@ -67,10 +67,14 @@ type agentWiring struct {
 	// memory serves the memory of the agents that run on a runner
 	// (/rpc/memory/); nil when none has memory.
 	memory *rpcComponent
+	// credentials serves the vault's sources to the toolsets component
+	// (/rpc/credentials/); nil unless the toolsets are elsewhere.
+	credentials *rpcComponent
 }
 
 // mounts are what the agent API serves beside /v1/: the memory of its agents
-// that run on a runner, and the OAuth callback, when it keeps credentials.
+// that run on a runner, the credentials of the toolsets that run elsewhere,
+// and the OAuth callback, when it keeps credentials.
 func (w *agentWiring) mounts() []component.Mount {
 	if w == nil {
 		return nil
@@ -78,6 +82,9 @@ func (w *agentWiring) mounts() []component.Mount {
 	var m []component.Mount
 	if w.memory != nil {
 		m = append(m, component.Mount{Pattern: rpc.PathPrefix + memoryService + "/", Component: w.memory})
+	}
+	if w.credentials != nil {
+		m = append(m, component.Mount{Pattern: rpc.PathPrefix + credentialsService + "/", Component: w.credentials})
 	}
 	if w.callback == nil {
 		return m
@@ -116,7 +123,7 @@ func (c cli) buildAgents(ctx context.Context, w *agentWiring, cfg serveConfig, b
 	w.srv, w.env = srv, env
 	ac, _ := m.Component.(*agentComponent)
 	if ac != nil {
-		w.callback, w.msg, w.memory = ac.callback, ac.messenger, ac.memory
+		w.callback, w.msg, w.memory, w.credentials = ac.callback, ac.messenger, ac.memory, ac.credentials
 		if cm, ok := ac.admin.(interface{ ClientMetadata() http.Handler }); ok && ac.callback != nil {
 			w.clientMetadata = cm.ClientMetadata()
 		}
@@ -286,6 +293,9 @@ type agentComponent struct {
 	// memory serves the memory of the agents that run on a runner; nil
 	// when none has memory.
 	memory *rpcComponent
+	// credentials serves the vault's sources to the toolsets component;
+	// nil unless the toolsets are elsewhere.
+	credentials *rpcComponent
 	*agentapi.Server
 	skipped []string
 	// runner runs the agents when they run elsewhere ($AGENTKIT_RUNNER_URL);
@@ -644,7 +654,11 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 		}
 		memComp = &rpcComponent{name: memoryService, server: ms}
 	}
-	ac := &agentComponent{memory: memComp, Server: srv, skipped: skipped, skillReport: skills, runner: remote, runnerURL: env.runnerURL, agents: agentNames(cfg), toolsetsURL: env.toolsetsURL, admin: admin, closers: closers, callback: callback, messenger: msgr}
+	credComp, err := c.credentialsServer(cfg, specs, env, log)
+	if err != nil {
+		return fail(err)
+	}
+	ac := &agentComponent{memory: memComp, credentials: credComp, Server: srv, skipped: skipped, skillReport: skills, runner: remote, runnerURL: env.runnerURL, agents: agentNames(cfg), toolsetsURL: env.toolsetsURL, admin: admin, closers: closers, callback: callback, messenger: msgr}
 	for _, name := range slices.Sorted(maps.Keys(built)) {
 		if r, ok := built[name].(remoteToolset); ok {
 			ac.toolsets = r

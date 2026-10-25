@@ -152,7 +152,10 @@ const (
 // replicas sharing the vault end with one token chain), and caches client
 // credentials tokens in memory. Make one with [NewSources].
 type Sources struct {
-	vault       Vault
+	vault Vault
+	// fetch, for sources made by [NewRemoteSources], gets each credential
+	// from elsewhere instead of the vault.
+	fetch       Fetcher
 	apps        map[string]OAuth2App
 	clock       clock.Clock
 	margin      time.Duration
@@ -248,6 +251,33 @@ func NewSources(v Vault, opts ...SourcesOption) (*Sources, error) {
 	s.tokenClient, s.storedClient = noRedirects(s.tokenClient), noRedirects(s.storedClient)
 	if s.margin < 0 || s.timeout <= 0 {
 		return nil, errors.New("credentials: NewSources: the margin must not be negative and the timeout must be positive")
+	}
+	return s, nil
+}
+
+// Fetcher gets the calling tenant's or user's usable credential at slot
+// from elsewhere: the agent API that keeps the vault, from a toolsets
+// component that has none (package credrpc). It answers as [Source.Get]
+// does there: a fresh token, never one to refresh, and an error that
+// matches [ErrNotConnected] when there is none to use. ctx carries the
+// caller (pkg/tenancy).
+type Fetcher interface {
+	Fetch(ctx context.Context, toolset, slot string, scope Scope) (Credential, error)
+}
+
+// NewRemoteSources returns sources whose credentials f fetches on each use:
+// the process keeps no vault, refreshes nothing and caches nothing. Only
+// [WithLogger] of the options applies.
+func NewRemoteSources(f Fetcher, opts ...SourcesOption) (*Sources, error) {
+	if f == nil {
+		return nil, errors.New("credentials: NewRemoteSources: nil fetcher")
+	}
+	s := &Sources{fetch: f, apps: map[string]OAuth2App{}, clock: clock.Real(), log: slog.New(slog.DiscardHandler)}
+	for _, o := range opts {
+		o(s)
+	}
+	if s.log == nil {
+		return nil, errors.New("credentials: NewRemoteSources: nil logger")
 	}
 	return s, nil
 }
@@ -408,6 +438,9 @@ func (s *source) load(ctx context.Context, k flightKey) (Credential, Meta, error
 }
 
 func (s *source) get(ctx context.Context, k flightKey) (Credential, error) {
+	if s.p.fetch != nil {
+		return s.fetch(ctx, k)
+	}
 	cred, meta, err := s.load(ctx, k)
 	if err != nil {
 		return nil, err
@@ -428,6 +461,28 @@ func (s *source) get(ctx context.Context, k flightKey) (Credential, error) {
 		return s.own(s.p.once(ctx, k, func(ctx context.Context) (Credential, error) { return s.clientToken(ctx, k) }))
 	}
 	return cred, nil
+}
+
+// fetch is get for remote sources: the fetcher's not connected becomes
+// this toolset's, and another failure a SourceError that keeps its cause
+// out of the message.
+func (s *source) fetch(ctx context.Context, k flightKey) (Credential, error) {
+	cred, err := s.p.fetch.Fetch(ctxFor(ctx, k), s.toolset, s.slot, s.scope)
+	switch {
+	case errors.Is(err, ErrNotConnected):
+		return nil, s.notConnected()
+	case err != nil:
+		if cerr := ctx.Err(); cerr != nil {
+			return nil, cerr
+		}
+		s.p.log.Error("fetching a credential", "toolset", s.toolset, "slot", k.slot, "tenant", k.tenant, "err", err)
+		return nil, &SourceError{Toolset: s.toolset, Reason: "its credential could not be read", Err: err}
+	}
+	switch cred.(type) {
+	case APIKey, Basic, OAuth2:
+		return cred, nil
+	}
+	return nil, &SourceError{Toolset: s.toolset, Reason: "its credential could not be read", Err: fmt.Errorf("credentials: fetched a %T, want an API key, basic or OAuth2 token", cred)}
 }
 
 // own names this source's toolset in an error of a flight that another

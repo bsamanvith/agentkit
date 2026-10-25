@@ -57,11 +57,23 @@ What runs, and what it may use:
 Idle, they use about 45 MiB together.
 
 The secret `agentkit` holds random RPC and API tokens, the Postgres password
-and URL, and the model key. It is made on the first `up` and kept after that,
+and URL, the model key and the credential vault's key ring. It is made on the first `up` and kept after that,
 since Postgres keeps the password it started with; a different
 `ANTHROPIC_API_KEY` on a later `up` replaces the stored key. To change the
 agents or toolsets, edit `base/config.json` (shared with Compose and
 `make smoke`) and run `make k8s-up`.
+
+The agent `assistant` has every connector (Gmail, Calendar, Drive, Sheets,
+HubSpot, Salesforce, Exa, Parallel) behind tool search; each user connects
+their own accounts and keys on the console's **Connectors** page, kept in the
+vault in Postgres. Exa and Parallel need only a key. For the account
+connectors, register an OAuth app with each provider with the redirect URL
+`http://localhost:30080/oauth/callback` and export its variables
+(`GOOGLE_OAUTH_CLIENT_ID` and `_SECRET`, likewise `HUBSPOT_` and
+`SALESFORCE_`) before `make k8s-up`, which copies them into the secret and
+restarts the API (docs/QUICKSTART.md, "Connecting accounts"). Unset, a
+slot shows "Not set up". The toolsets pod has no vault: it reads each call's
+credential from the API (`AGENTKIT_CREDENTIALS_URL`).
 
 The agent `support` answers from the `handbook` knowledge base, the sample
 Northwind Bikes handbook in `deploy/local/agent/knowledge`. `up` stores those

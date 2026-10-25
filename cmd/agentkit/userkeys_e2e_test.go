@@ -7,7 +7,10 @@ package main
 // calling it over /rpc/, one credential vault behind both (in a deployment,
 // the shared Postgres). Each user connects their own Exa key through the
 // credentials API, and the agent's exa_search calls Exa with that user's
-// key; a user who has connected none is told so, and the run goes on.
+// key; a user who has connected none is told so, and the run goes on. The
+// toolsets component either opens the vault too, or keeps none and reads
+// each call's key from the agent API (T131: AGENTKIT_CREDENTIALS_URL, as
+// deploy/k8s and deploy/compose run it).
 
 import (
 	"context"
@@ -39,6 +42,15 @@ import (
 
 func TestUsersConnectTheirOwnExaKey(t *testing.T) {
 	t.Parallel()
+	for name, fromAPI := range map[string]bool{"shared vault": false, "credentials from the API": true} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			testUsersConnectTheirOwnExaKey(t, fromAPI)
+		})
+	}
+}
+
+func testUsersConnectTheirOwnExaKey(t *testing.T, fromAPI bool) {
 	// A fake Exa that echoes the key it got in the result's text.
 	var mu sync.Mutex
 	var sent []string
@@ -82,8 +94,16 @@ func TestUsersConnectTheirOwnExaKey(t *testing.T) {
 	)
 	c := cli{getenv: func(string) string { return "" }, newModel: func(modelFlags) (llm.Model, error) { return model, nil }}
 
-	// The toolsets component: it builds the exa toolset over the vault.
+	// The agent API's address, served once it is built.
+	var apiHandler http.Handler
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { apiHandler.ServeHTTP(w, r) }))
+
+	// The toolsets component: it builds the exa toolset over the vault, or
+	// over the agent API's.
 	tenv := serveEnv{components: []string{toolsetsName}, addr: "127.0.0.1:0", vault: parts.vault, vaultParts: parts}
+	if fromAPI {
+		tenv = serveEnv{components: []string{toolsetsName}, addr: "127.0.0.1:0", credentialsURL: api.URL}
+	}
 	built, problems, err := c.buildToolsets(t.Context(), tenv, cfg, path, log)
 	if err != nil || len(problems) != 0 {
 		t.Fatalf("toolsets: buildToolsets: %v, %v", problems, err)
@@ -119,7 +139,18 @@ func TestUsersConnectTheirOwnExaKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	api := httptest.NewServer(am.Component.Handler())
+	ac := am.Component.(*agentComponent)
+	if ac.credentials == nil {
+		t.Fatal("the agent API serves no credentials to its remote toolsets")
+	}
+	m := (&agentWiring{credentials: ac.credentials}).mounts()
+	if len(m) != 1 || m[0].Pattern != "/rpc/"+credentialsService+"/" {
+		t.Fatalf("mounts = %+v, want the credentials at /rpc/%s/", m, credentialsService)
+	}
+	mux := http.NewServeMux()
+	mux.Handle("/", am.Component.Handler())
+	mux.Handle(m[0].Pattern, m[0].Component.Handler())
+	apiHandler = mux
 	t.Cleanup(func() {
 		api.Close()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

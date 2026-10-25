@@ -12,6 +12,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/pkg/credentials"
 	"github.com/bsamanvith/agentkit/pkg/credentials/connect"
+	"github.com/bsamanvith/agentkit/pkg/credentials/credrpc"
 	"github.com/bsamanvith/agentkit/pkg/netguard"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
@@ -88,3 +89,34 @@ func (o oauthClientMetadata) Name() string                   { return "oauth-cli
 func (o oauthClientMetadata) Handler() http.Handler          { return o.h }
 func (o oauthClientMetadata) Ready(context.Context) error    { return nil }
 func (o oauthClientMetadata) Shutdown(context.Context) error { return nil }
+
+// credentialsServer serves the vault's sources to a toolsets component
+// elsewhere ($AGENTKIT_TOOLSETS_URL), for the slots the served toolsets
+// name (package credrpc): the agent API refreshes, the toolsets component
+// gets fresh tokens. nil when the toolsets run here or there is no vault.
+func (c cli) credentialsServer(cfg serveConfig, specs []toolset.Spec, env serveEnv, log *slog.Logger) (*rpcComponent, error) {
+	if env.vault == nil || env.toolsetsURL == "" {
+		return nil, nil
+	}
+	slots := map[string]credentials.Scope{}
+	for _, s := range specs {
+		if s.Credential != nil {
+			slots[s.Credential.Slot] = cmp.Or(s.Credential.Scope, credentials.ScopeTenant)
+		}
+	}
+	if len(slots) == 0 {
+		return nil, nil
+	}
+	sources, err := c.credentialSources(env.vault, cfg.Credentials, log)
+	if err != nil {
+		return nil, err
+	}
+	srv, err := newRPCServer(credentialsService, env, log)
+	if err != nil {
+		return nil, err
+	}
+	if err := credrpc.Register(srv, sources, slots); err != nil {
+		return nil, err
+	}
+	return &rpcComponent{name: credentialsService, server: srv}, nil
+}

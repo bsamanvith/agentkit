@@ -3,6 +3,8 @@ package oauth
 import (
 	"fmt"
 	"time"
+
+	"github.com/bsamanvith/agentkit/pkg/credentials/providers"
 )
 
 // Profile is how one provider's OAuth differs from the MCP spec. The zero
@@ -80,44 +82,21 @@ func (p Profile) refreshScope() string {
 	return p.RefreshScope
 }
 
-// Profiles returns the presets: "mcp" (the spec), "salesforce", "google",
-// "microsoft" and "hubspot". Each is a fresh copy. The provider presets carry no client
+// Profiles returns the presets: "mcp" (the spec), and the providers of
+// package providers: "salesforce", "google", "microsoft" and "hubspot". Each
+// is a fresh copy. The provider presets carry no client
 // (the operator registers one with the provider and sets ClientID and
 // ClientSecret), and Salesforce and Microsoft need their endpoints set for
 // the account (see [SalesforceEndpoints], [MicrosoftEndpoints]).
 func Profiles() map[string]Profile {
-	return map[string]Profile{
-		"mcp": {},
-		// Salesforce: a connected app; no expires_in in the token response;
-		// instance_url names the org's API host.
-		"salesforce": {
-			RefreshScope: "refresh_token",
-			DefaultTTL:   time.Hour,
-			KeepExtras:   []string{"instance_url"},
-		},
-		// Google: a refresh token only with access_type=offline, and again
-		// on reconnect only with prompt=consent.
-		"google": {
-			AuthURL:      "https://accounts.google.com/o/oauth2/v2/auth",
-			TokenURL:     "https://oauth2.googleapis.com/token",
-			RefreshScope: "-",
-			AuthParams:   map[string]string{"access_type": "offline", "prompt": "consent"},
-		},
-		// HubSpot: a public app; a refresh token always comes, without
-		// asking; the client goes in the token request's form.
-		"hubspot": {
-			AuthURL:      "https://app.hubspot.com/oauth/authorize",
-			TokenURL:     "https://api.hubapi.com/oauth/v1/token",
-			RefreshScope: "-",
-			AuthInParams: true,
-		},
-		// Microsoft identity platform v2: offline_access for a refresh
-		// token; resource is refused alongside v2 scopes.
-		"microsoft": {
-			RefreshScope: "offline_access",
-			OmitResource: true,
-		},
+	out := map[string]Profile{"mcp": {}}
+	for name, p := range providers.Presets() {
+		out[name] = Profile{
+			AuthURL: p.AuthURL, TokenURL: p.TokenURL, RefreshScope: p.RefreshScope, AuthParams: p.AuthParams,
+			AuthInParams: p.AuthInParams, OmitResource: p.OmitResource, DefaultTTL: p.DefaultTTL, KeepExtras: p.KeepExtras,
+		}
 	}
+	return out
 }
 
 // SalesforceEndpoints sets p's endpoints for a Salesforce login host, such

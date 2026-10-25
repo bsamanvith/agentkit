@@ -12,7 +12,7 @@ import { hasScope, isAdmin } from "../access";
 import { App } from "../app";
 import { routes } from "../routes";
 import { mayAdmin } from "../sections";
-import { connectionRows, connectReturnKey, isLocalPath } from "./connections-model";
+import { connectionRows, connectReturnKey, isLocalPath, matches } from "./connections-model";
 import { credentialWords } from "./credential";
 import { mcpAddCommand, mcpURL, shellWord } from "./mcp";
 import { fields, typeOf } from "./schema";
@@ -140,6 +140,8 @@ function fakeServer(
     vault?: boolean;
     system?: boolean;
     tools?: unknown[];
+    credentials?: CredentialInfo[];
+    toolsets?: Toolset[];
     memory?: { scope: string; notes: [string, string][] };
   } = {},
 ): Fake {
@@ -174,7 +176,7 @@ function fakeServer(
           ...(admin && opts.system !== false ? { system: "You are careful. Cite sources." } : {}),
         });
       }
-      if (path === "/v1/toolsets") return Response.json({ v: 1, toolsets });
+      if (path === "/v1/toolsets") return Response.json({ v: 1, toolsets: [...toolsets, ...(opts.toolsets ?? [])] });
       if (path === "/v1/toolsets/demo/tools") {
         return Response.json({ v: 1, toolset: "demo", status: "ready", tools: opts.tools ?? [echo] });
       }
@@ -186,6 +188,7 @@ function fakeServer(
           v: 1,
           credentials: [
             mail ?? { slot: "mail", scope: "user", status: "not_connected", oauth: false, toolsets: ["mail"] },
+            ...(opts.credentials ?? []),
           ],
         });
       }
@@ -424,14 +427,14 @@ describe("the connections page", () => {
   it("shows statuses and variable names, sets a key once, and never shows it", async () => {
     const fake = fakeServer(asUser);
     renderAt("/connections");
-    expect(await h1("Connections")).toBeInTheDocument();
-    const mail = await screen.findByRole("row", { name: /^mail/ });
+    expect(await h1("Connectors")).toBeInTheDocument();
+    const mail = await screen.findByRole("article", { name: /^mail/ });
     expect(within(mail).getByText("Not connected")).toBeInTheDocument();
-    const parallel = screen.getByRole("row", { name: /^parallel/ });
+    const parallel = screen.getByRole("article", { name: /^Parallel/ });
     expect(within(parallel).getByText("Server key not set")).toBeInTheDocument();
     expect(within(parallel).getByText(/Set PARALLEL_API_KEY/)).toBeInTheDocument();
     expect(within(parallel).queryByRole("button")).not.toBeInTheDocument(); // server keys aren't managed here
-    expect(screen.queryByRole("row", { name: /^demo/ })).not.toBeInTheDocument(); // needs none
+    expect(screen.queryByRole("article", { name: /^demo/ })).not.toBeInTheDocument(); // needs none
 
     await userEvent.click(within(mail).getByRole("button", { name: "Connect mail" }));
     const dialog = screen.getByRole("dialog", { name: "Connect mail" });
@@ -442,7 +445,7 @@ describe("the connections page", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    const after = await screen.findByRole("row", { name: /^mail/ });
+    const after = await screen.findByRole("article", { name: /^mail/ });
     await waitFor(() => expect(within(after).getByText("Connected")).toBeInTheDocument());
     expect(within(after).getByText("Your key, added 12 Oct 2026")).toBeInTheDocument();
     expect(fake.bodies).toEqual([JSON.stringify({ scope: "user", kind: "api_key", api_key: canary })]);
@@ -459,12 +462,12 @@ describe("the connections page", () => {
       { slot: "mail", scope: "user", status: "connected", kind: "api_key", oauth: false, toolsets: ["mail"] },
     ];
     renderAt("/connections");
-    const mail = await screen.findByRole("row", { name: /^mail/ });
+    const mail = await screen.findByRole("article", { name: /^mail/ });
     await userEvent.click(within(mail).getByRole("button", { name: "Disconnect mail" }));
     const dialog = screen.getByRole("dialog", { name: "Disconnect mail?" });
     expect(dialog).toHaveTextContent("mail stops working for you until you connect again. Used by researcher.");
     await userEvent.click(within(dialog).getByRole("button", { name: "Disconnect" }));
-    await waitFor(() => expect(within(screen.getByRole("row", { name: /^mail/ })).getByText("Not connected")));
+    await waitFor(() => expect(within(screen.getByRole("article", { name: /^mail/ })).getByText("Not connected")));
     expect(fake.seen.some((r) => r.method === "DELETE" && r.url.endsWith("/v1/credentials/mail?scope=user"))).toBe(
       true,
     );
@@ -474,8 +477,83 @@ describe("the connections page", () => {
     fakeServer(asUser, { vault: false });
     renderAt("/connections");
     expect(await screen.findByText(/keys and accounts can't be connected here/)).toBeInTheDocument();
-    expect(screen.getByRole("row", { name: /^parallel/ })).toHaveTextContent("Server key not set");
-    expect(screen.getByRole("row", { name: /^mail/ })).toHaveTextContent("Not available");
+    expect(screen.getByRole("article", { name: /^Parallel/ })).toHaveTextContent("Server key not set");
+    expect(screen.getByRole("article", { name: /^mail/ })).toHaveTextContent("Not available");
+  });
+});
+
+describe("the connectors page", () => {
+  const slot = (name: string, oauth: boolean): CredentialInfo => ({
+    slot: name,
+    scope: "user",
+    status: "not_connected",
+    oauth,
+    toolsets: [name],
+  });
+  const ts = (name: string, type = name): Toolset => ({
+    name,
+    type,
+    status: "skipped",
+    tool_count: 0,
+    credential: { status: "not_connected", slot: name, scope: "user" },
+  });
+  const all = ["gmail", "drive", "sheets", "calendar", "hubspot", "salesforce", "exa"];
+  const oauth = new Set(["gmail", "drive", "sheets", "calendar", "hubspot"]);
+
+  it("lists every slot by provider", async () => {
+    fakeServer(asUser, { credentials: all.map((n) => slot(n, oauth.has(n))), toolsets: all.map((n) => ts(n)) });
+    renderAt("/connections");
+    expect(await h1("Connectors")).toBeInTheDocument();
+    await screen.findByRole("article", { name: /^Gmail/ });
+    const groups = screen.getAllByRole("region").map((r) => [
+      within(r).getByRole("heading", { level: 2 }).textContent,
+      within(r)
+        .getAllByRole("article")
+        .map((a) => a.querySelector("h3")?.firstChild?.textContent),
+    ]);
+    expect(groups).toEqual([
+      ["Google", ["Gmail", "Google Calendar", "Google Drive", "Google Sheets"]],
+      ["CRM", ["HubSpot", "Salesforce"]],
+      ["Search", ["Exa", "Parallel"]],
+      ["Other", ["mail"]],
+    ]);
+    // No agent uses Gmail, and it is listed anyway.
+    const gmail = screen.getByRole("article", { name: /^Gmail/ });
+    expect(gmail).toHaveTextContent("No agent uses it yet");
+    expect(gmail).toHaveTextContent("Search, read and label mail");
+    expect(within(gmail).getByRole("button", { name: "Connect Gmail" })).toBeInTheDocument();
+    // An API key connector gets the key dialog, with where to get one.
+    await userEvent.click(
+      within(screen.getByRole("article", { name: /^Exa/ })).getByRole("button", { name: "Connect Exa" }),
+    );
+    expect(screen.getByRole("dialog", { name: "Connect Exa" })).toHaveTextContent("Get a key at dashboard.exa.ai.");
+  });
+
+  it("says an unconfigured OAuth slot can't be connected here, with no Connect button", async () => {
+    fakeServer(asUser, { credentials: [slot("salesforce", false)], toolsets: [ts("salesforce")] });
+    renderAt("/connections");
+    const sf = await screen.findByRole("article", { name: /^Salesforce/ });
+    expect(sf).toHaveTextContent("Not set up");
+    expect(sf).toHaveTextContent("This server isn't set up to connect Salesforce accounts.");
+    expect(within(sf).queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("filters the cards when there are more than eight", async () => {
+    const many = [...all, "parallel2", "tavily"];
+    fakeServer(asUser, {
+      credentials: many.map((n) => slot(n, oauth.has(n))),
+      toolsets: many.map((n) => ts(n, n === "parallel2" ? "parallel" : n)),
+    });
+    renderAt("/connections");
+    await screen.findByRole("article", { name: /^Gmail/ });
+    await userEvent.type(screen.getByRole("searchbox", { name: "Filter connectors" }), "crm");
+    expect(screen.getAllByRole("article").map((a) => a.querySelector("h3")?.firstChild?.textContent)).toEqual([
+      "HubSpot",
+      "Salesforce",
+    ]);
+    await userEvent.clear(screen.getByRole("searchbox", { name: "Filter connectors" }));
+    await userEvent.type(screen.getByRole("searchbox", { name: "Filter connectors" }), "zzz");
+    expect(screen.getByText("No connector matches “zzz”.")).toBeInTheDocument();
   });
 });
 
@@ -485,7 +563,7 @@ describe("/connections/done in the same tab", () => {
     sessionStorage.setItem(connectReturnKey, "/connections");
     const router = createMemoryRouter(routes, { initialEntries: ["/connections/done?slot=mail&result=connected"] });
     render(<App router={router} />);
-    expect(await h1("Connections")).toBeInTheDocument();
+    expect(await h1("Connectors")).toBeInTheDocument();
     expect(router.state.location.pathname).toBe("/connections");
     await waitFor(() => expect(screen.getByText("mail connected.")).toBeInTheDocument());
     expect(sessionStorage.getItem(connectReturnKey)).toBeNull();
@@ -499,7 +577,7 @@ describe("/connections/done in the same tab", () => {
       sessionStorage.setItem(connectReturnKey, saved);
       const router = createMemoryRouter(routes, { initialEntries: ["/connections/done?slot=mail&result=denied"] });
       render(<App router={router} />);
-      expect(await h1("Connections")).toBeInTheDocument();
+      expect(await h1("Connectors")).toBeInTheDocument();
       expect(router.state.location.pathname).toBe("/connections");
       expect(
         await screen.findByText("You didn't allow access. Nothing was saved.", { selector: "[role=alert]" }),
@@ -541,14 +619,14 @@ describe("roles", () => {
     const sections = screen.getByRole("navigation", { name: "Sections" });
     expect(within(sections).queryByRole("link", { name: "Agents" })).not.toBeInTheDocument();
     expect(within(sections).queryByRole("link", { name: "Toolsets" })).not.toBeInTheDocument();
-    expect(within(sections).getByRole("link", { name: "Connections" })).toBeInTheDocument();
+    expect(within(sections).getByRole("link", { name: "Connectors" })).toBeInTheDocument();
     expect(screen.queryByText("System prompt (admins only)")).not.toBeInTheDocument();
   });
 
   it("shows the admin navigation to an admin", async () => {
     fakeServer(asAdmin);
     renderAt("/connections");
-    await h1("Connections");
+    await h1("Connectors");
     const sections = screen.getByRole("navigation", { name: "Sections" });
     await waitFor(() => expect(within(sections).getByRole("link", { name: "Agents" })).toBeInTheDocument());
     expect(within(sections).getByRole("link", { name: "Toolsets" })).toBeInTheDocument();
@@ -567,7 +645,7 @@ describe("roles", () => {
       }),
     );
     renderAt("/connections");
-    await h1("Connections");
+    await h1("Connectors");
     const sections = screen.getByRole("navigation", { name: "Sections" });
     expect(within(sections).queryByRole("link", { name: "Agents" })).not.toBeInTheDocument();
     expect(within(sections).queryByRole("link", { name: "Toolsets" })).not.toBeInTheDocument();
@@ -692,21 +770,45 @@ describe("connectionRows", () => {
     ...c,
   });
 
-  it("puts what needs you first, and leaves out what no agent uses or needs nothing", () => {
+  it("groups by provider, puts what needs you first, lists unused slots, and leaves out unused server keys", () => {
     const rows = connectionRows(
-      [info({ slot: "crm", status: "connected", kind: "api_key", toolsets: ["crm"] }), info({})],
+      [
+        info({ slot: "crm", status: "connected", kind: "api_key", toolsets: ["crm"] }),
+        info({}),
+        info({ slot: "gmail", toolsets: ["gmail"] }),
+      ],
       [
         ...toolsets,
         { name: "unused", type: "exa", status: "ready", tool_count: 1, credential: { status: "missing", env: "X" } },
+        {
+          name: "gmail",
+          type: "gmail",
+          status: "skipped",
+          tool_count: 0,
+          credential: { status: "not_connected", slot: "gmail", scope: "user" },
+        },
       ],
       [{ ...agentsList[0]!, toolsets: [...agentsList[0]!.toolsets, { name: "crm", status: "ready", tools: [] }] }],
       false,
     );
-    expect(rows.map((r) => [r.name, r.word, r.actions.join("+")])).toEqual([
-      ["mail", "Not connected", "connect"],
-      ["crm", "Connected", "replace+disconnect"],
-      ["parallel", "Server key not set", ""],
+    expect(rows.map((r) => [r.group, r.title, r.word, r.actions.join("+"), r.usedBy.join("+")])).toEqual([
+      ["Google", "Gmail", "Not set up", "", ""],
+      ["Search", "Parallel", "Server key not set", "", "researcher"],
+      ["Other", "mail", "Not connected", "connect", "researcher"],
+      ["Other", "crm", "Connected", "replace+disconnect", "researcher"],
     ]);
+  });
+
+  it("matches the filter on the slot, the connector's name and what it does", () => {
+    const [gmail] = connectionRows(
+      [info({ slot: "gmail", toolsets: ["gmail"], oauth: true })],
+      [{ name: "gmail", type: "gmail", status: "ready", tool_count: 6 }],
+      [],
+      false,
+    );
+    expect(gmail).toMatchObject({ title: "Gmail", kind: "Account", word: "Not connected", actions: ["connect"] });
+    for (const q of ["", "gmail", "GMAIL", "drafts", "google"]) expect(matches(gmail!, q)).toBe(true);
+    expect(matches(gmail!, "salesforce")).toBe(false);
   });
 
   it("lets only those with credentials:admin manage the tenant's", () => {

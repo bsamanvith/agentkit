@@ -29,6 +29,7 @@ import {
   type Variant,
 } from "./agent-def";
 import { Loading } from "./page";
+import { connectorInfo } from "./connectors-catalog";
 
 /** What a section's fields need from the page. */
 export type FormProps = {
@@ -727,7 +728,7 @@ export function ToolsSection(props: FormProps) {
                 <label htmlFor={boxId} className="flex min-w-0 flex-1 flex-col text-(length:--ak-text-sm)">
                   <span className="font-mono text-ak-text">{t.name}</span>
                   <span className="text-xs text-ak-muted">
-                    {t.type}
+                    {connectorInfo(t.type)?.name ?? t.type}
                     {t.runtime ? " · added at run time" : ""} · {t.tool_count} {t.tool_count === 1 ? "tool" : "tools"}
                   </span>
                 </label>

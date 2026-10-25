@@ -1,4 +1,4 @@
-// A toolset's credential in words (docs/UI.md "Toolsets" and "Connections"):
+// A toolset's credential in words (docs/UI.md "Toolsets" and "Connectors"):
 // where it comes from and whether it is there. Only names reach the page,
 // never values (the API sends none).
 
@@ -33,7 +33,7 @@ export function credentialWords(c: ToolsetCredential | undefined): CredentialWor
           source,
           tone: "warn",
           word: "Not connected",
-          detail: c.scope === "user" ? "Connect it in Connections." : "An admin sets it in Connections.",
+          detail: c.scope === "user" ? "Connect it in Connectors." : "An admin sets it in Connectors.",
         };
       default: // missing: the server keeps no credentials
         return {

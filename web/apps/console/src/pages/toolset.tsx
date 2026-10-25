@@ -205,7 +205,7 @@ export function ToolsetDetail({ toolset: t }: { toolset: Toolset }) {
                 <span className="flex flex-wrap items-center gap-x-2">
                   <Status tone={cred.tone}>{cred.word}</Status>
                   <Link to="/connections" className="text-ak-text-2 underline underline-offset-2">
-                    Connections
+                    Connectors
                   </Link>
                 </span>
               </span>

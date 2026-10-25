@@ -1,5 +1,5 @@
-// Connections (docs/UI.md "Connections"): everyone's page of the keys and
-// accounts the agents they use need. A key is set in a dialog and sent once
+// Connectors (docs/UI.md "Connectors"): everyone's page of the keys and
+// accounts the server's connectors need, as cards grouped by provider. A key is set in a dialog and sent once
 // (PUT /v1/credentials/{slot}); an account is connected through the
 // provider in a popup (POST /v1/credentials/{slot}/connect), which ends at
 // /connections/done and reports back here. Values never reach the page:
@@ -29,12 +29,14 @@ import {
   connectWindow,
   inPopup,
   isLocalPath,
+  matches,
   resultText,
   type Action,
   type ConnectResult,
   type Row,
   type Slot,
 } from "./connections-model";
+import { groups } from "./connectors-catalog";
 import { Empty, Loaded, Page } from "./page";
 import { Modal } from "./parts";
 
@@ -86,8 +88,8 @@ function KeyDialog({
   const input = useRef<HTMLInputElement>(null);
   const mine = slot.scope === "user";
   const title = replacing
-    ? `Replace ${mine ? "your" : "the tenant's"} ${row.name} key`
-    : `Connect ${row.name}${mine ? "" : " for everyone"}`;
+    ? `Replace ${mine ? "your" : "the tenant's"} ${row.title} key`
+    : `Connect ${row.title}${mine ? "" : " for everyone"}`;
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const key = input.current?.value.trim() ?? "";
@@ -148,6 +150,7 @@ function KeyDialog({
           </p>
         ) : null}
         <p id="conn-key-help" className="text-xs text-ak-muted">
+          {row.keyHelp ? `Get a key at ${row.keyHelp}. ` : ""}
           {mine
             ? "Used only for your runs. It's sent once and never shown again, not even in part."
             : "Shared with everyone in the tenant. It's sent once and never shown again, not even in part."}
@@ -188,12 +191,12 @@ function DisconnectDialog({
     });
   };
   return (
-    <Modal title={`Disconnect ${row.name}?`} onClose={onClose}>
+    <Modal title={`Disconnect ${row.title}?`} onClose={onClose}>
       <p className="text-(length:--ak-text-sm) text-ak-text-2">
         {mine
-          ? `${row.name} stops working for you until you connect again.`
-          : `${row.name} stops working for everyone who uses the tenant's until it's set again.`}{" "}
-        Used by {row.usedBy.join(", ")}. It isn&apos;t revoked at the provider.
+          ? `${row.title} stops working for you until you connect again.`
+          : `${row.title} stops working for everyone who uses the tenant's until it's set again.`}{" "}
+        {row.usedBy.length > 0 ? `Used by ${row.usedBy.join(", ")}. ` : ""}It isn&apos;t revoked at the provider.
       </p>
       {error ? (
         <p role="alert" className="mt-2 text-(length:--ak-text-sm) text-ak-bad">
@@ -222,6 +225,91 @@ const actionWords: Record<Action, string> = {
 type Dialog = { row: Row; slot: Slot; kind: "key" | "replace" | "disconnect" } | null;
 type Waiting = { rowId: string; popup: Window | null } | null;
 
+/** One connector's card: what it is, its status, and what you can do. */
+function ConnectorCard({
+  row,
+  waiting,
+  note,
+  onAct,
+  onCancel,
+}: {
+  row: Row;
+  waiting: boolean;
+  note?: { text: string; ok: boolean };
+  onAct: (a: Action) => void;
+  onCancel: () => void;
+}) {
+  const id = `card-${row.id.replaceAll(":", "-")}`;
+  return (
+    <li data-row={row.id}>
+      <article
+        aria-labelledby={id}
+        className="flex h-full flex-col gap-2 rounded-md border bg-ak-surface p-3 text-(length:--ak-text-sm)"
+      >
+        <div className="flex items-baseline justify-between gap-2">
+          <h3 id={id} className="font-medium text-ak-text">
+            {row.title}
+            {row.title !== row.name ? (
+              <span className="ml-1.5 font-mono text-xs font-normal text-ak-muted">{row.name}</span>
+            ) : null}
+          </h3>
+          <span className="text-xs text-ak-muted">{[row.kind, row.owner].filter(Boolean).join(" · ")}</span>
+        </div>
+        {row.does ? <p className="text-ak-text-2">{row.does}</p> : null}
+        <div>
+          {waiting ? (
+            <Status tone="neutral">Waiting for {row.title}… Finish in the window that opened.</Status>
+          ) : (
+            <Status tone={row.tone}>{row.word}</Status>
+          )}
+          {row.detail && !waiting ? <span className="mt-0.5 block text-xs text-ak-muted">{row.detail}</span> : null}
+          {note?.text && !note.ok ? (
+            <span role="alert" className="mt-1 block text-xs text-ak-bad">
+              {note.text}
+            </span>
+          ) : null}
+        </div>
+        <p className="text-xs text-ak-muted">
+          {row.usedBy.length > 0 ? (
+            <>
+              Used by <span className="font-mono">{row.usedBy.join(", ")}</span>
+            </>
+          ) : (
+            "No agent uses it yet"
+          )}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {waiting ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              aria-label={`Cancel connecting ${row.title}`}
+              onClick={onCancel}
+            >
+              Cancel
+            </Button>
+          ) : (
+            row.actions.map((a) => (
+              <Button
+                key={a}
+                type="button"
+                size="sm"
+                variant={a === "disconnect" ? "ghost" : row.needsYou ? "default" : "outline"}
+                aria-haspopup={a === "disconnect" || !row.slot?.oauth ? "dialog" : undefined}
+                aria-label={`${actionWords[a]} ${row.title}`}
+                onClick={() => onAct(a)}
+              >
+                {actionWords[a]}
+              </Button>
+            ))
+          )}
+        </div>
+      </article>
+    </li>
+  );
+}
+
 export function ConnectionsPage() {
   const { client, me, epoch } = useApi();
   const location = useLocation();
@@ -239,6 +327,7 @@ export function ConnectionsPage() {
     handed ? noteFor(handed) : {},
   );
   const [said, setSaid] = useState(() => (handed ? resultText(handed).text : ""));
+  const [filter, setFilter] = useState("");
   const refresh = () => {
     const at = epoch;
     loadConnections(client, new AbortController().signal).then(
@@ -350,11 +439,12 @@ export function ConnectionsPage() {
   const data = fresh?.epoch === epoch ? fresh.data : res.state === "ready" ? res.data : null;
   const rows = data ? connectionRows(data.credentials, data.toolsets, data.agents, canSetTenantCredentials(me)) : [];
 
+  const shown = rows.filter((r) => matches(r, filter));
   return (
-    <Page title="Connections">
+    <Page title="Connectors">
       <p className="text-ak-text-2">
-        Connect your own key or account for the services your agents use. Yours are used only for your runs, and nobody
-        else sees them, admins included.
+        Connect your own accounts and keys for the services your agents use. Yours are used only for your runs, and
+        nobody else sees them, admins included. In a chat, the Tools menu picks which of them the agent may use.
       </p>
       <div role="status" className="sr-only">
         {said}
@@ -368,100 +458,51 @@ export function ConnectionsPage() {
       {data ? (
         rows.length === 0 ? (
           <Empty icon={KeyRound} title="Nothing to connect">
-            <p className="text-ak-muted">None of the agents you can use needs a key or an account.</p>
+            <p className="text-ak-muted">None of this server&apos;s connectors needs a key or an account.</p>
           </Empty>
         ) : (
-          <table className="w-full border-collapse text-left text-(length:--ak-text-sm) max-md:block">
-            <thead className="text-xs text-ak-muted max-md:sr-only">
-              <tr>
-                <th scope="col" className="py-1.5 pr-3 font-medium">
-                  Connector
-                </th>
-                <th scope="col" className="py-1.5 pr-3 font-medium">
-                  Kind
-                </th>
-                <th scope="col" className="py-1.5 pr-3 font-medium">
-                  Status
-                </th>
-                <th scope="col" className="py-1.5 pr-3 font-medium">
-                  Used by
-                </th>
-                <th scope="col" className="py-1.5 font-medium">
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody className="max-md:flex max-md:flex-col max-md:gap-3">
-              {rows.map((row) => {
-                const isWaiting = waiting?.rowId === row.id;
-                const note = notes[row.id];
-                return (
-                  <tr
-                    key={row.id}
-                    data-row={row.id}
-                    className="border-t align-top max-md:flex max-md:flex-col max-md:gap-1 max-md:rounded-md max-md:border max-md:p-3"
-                  >
-                    <th scope="row" className="py-2.5 pr-3 font-normal max-md:py-0">
-                      <span className="font-mono text-ak-text">{row.name}</span>
-                      {row.owner ? <span className="block text-xs text-ak-muted">{row.owner}</span> : null}
-                    </th>
-                    <td className="py-2.5 pr-3 text-ak-text-2 max-md:py-0">{row.kind}</td>
-                    <td className="py-2.5 pr-3 max-md:py-0">
-                      {isWaiting ? (
-                        <Status tone="neutral">Waiting for {row.name}… Finish in the window that opened.</Status>
-                      ) : (
-                        <Status tone={row.tone}>{row.word}</Status>
-                      )}
-                      {row.detail && !isWaiting ? (
-                        <span className="mt-0.5 block text-xs text-ak-muted">{row.detail}</span>
-                      ) : null}
-                      {note?.text && !note.ok ? (
-                        <span role="alert" className="mt-1 block text-xs text-ak-bad">
-                          {note.text}
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="py-2.5 pr-3 font-mono text-ak-text-2 max-md:py-0">{row.usedBy.join(", ")}</td>
-                    <td className="py-2.5 max-md:py-0">
-                      <div className="flex flex-wrap justify-end gap-2 max-md:justify-start">
-                        {isWaiting ? (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            aria-label={`Cancel connecting ${row.name}`}
-                            onClick={() => {
-                              waiting?.popup?.close();
-                              setWaiting(null);
-                            }}
-                          >
-                            Cancel
-                          </Button>
-                        ) : (
-                          row.actions.map((a) => (
-                            <Button
-                              key={a}
-                              type="button"
-                              size="sm"
-                              variant={a === "disconnect" ? "ghost" : row.needsYou ? "default" : "outline"}
-                              aria-haspopup={a === "disconnect" || !row.slot?.oauth ? "dialog" : undefined}
-                              aria-label={`${actionWords[a]} ${row.name}`}
-                              onClick={() => act(row, a)}
-                            >
-                              {actionWords[a]}
-                            </Button>
-                          ))
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <>
+            {rows.length > 8 ? (
+              <Input
+                type="search"
+                aria-label="Filter connectors"
+                placeholder="Filter connectors"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                className="max-w-80"
+              />
+            ) : null}
+            {shown.length === 0 ? <p className="text-ak-muted">No connector matches “{filter}”.</p> : null}
+            {groups
+              .filter((g) => shown.some((r) => r.group === g))
+              .map((g) => (
+                <section key={g} aria-labelledby={`group-${g}`} className="flex flex-col gap-2">
+                  <h2 id={`group-${g}`} className="text-(length:--ak-text-sm) font-medium text-ak-muted">
+                    {g}
+                  </h2>
+                  <ul className="grid gap-3 md:grid-cols-2">
+                    {shown
+                      .filter((r) => r.group === g)
+                      .map((row) => (
+                        <ConnectorCard
+                          key={row.id}
+                          row={row}
+                          waiting={waiting?.rowId === row.id}
+                          note={notes[row.id]}
+                          onAct={(a) => act(row, a)}
+                          onCancel={() => {
+                            waiting?.popup?.close();
+                            setWaiting(null);
+                          }}
+                        />
+                      ))}
+                  </ul>
+                </section>
+              ))}
+          </>
         )
       ) : (
-        <Loaded res={res} what="connections">
+        <Loaded res={res} what="connectors">
           {() => null}
         </Loaded>
       )}
@@ -470,7 +511,7 @@ export function ConnectionsPage() {
           row={dialog.row}
           slot={dialog.slot}
           onClose={() => setDialog(null)}
-          onDone={() => changed(`${dialog.row.name} disconnected.`)}
+          onDone={() => changed(`${dialog.row.title} disconnected.`)}
         />
       ) : dialog ? (
         <KeyDialog
@@ -478,7 +519,7 @@ export function ConnectionsPage() {
           slot={dialog.slot}
           replacing={dialog.kind === "replace"}
           onClose={() => setDialog(null)}
-          onSaved={() => changed(`${dialog.row.name} connected.`)}
+          onSaved={() => changed(`${dialog.row.title} connected.`)}
         />
       ) : null}
     </Page>

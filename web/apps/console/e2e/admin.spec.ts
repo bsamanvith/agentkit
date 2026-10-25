@@ -143,14 +143,12 @@ test("toolsets: a skipped one with its reason, the MCP command without a token, 
   expect(errors).toEqual([]);
 });
 
-test("connections: statuses and names, a key set once, an account connected, no value on the page", async ({
-  page,
-}) => {
+test("connectors: statuses and names, a key set once, an account connected, no value on the page", async ({ page }) => {
   const errors = watchErrors(page);
   const traffic = watchTraffic(page);
   await signIn(page, users.user, "/connections");
-  await expect(page.getByRole("heading", { level: 1, name: "Connections" })).toBeVisible();
-  const row = (name: string) => page.getByRole("row", { name: new RegExp(`^${name}`) });
+  await expect(page.getByRole("heading", { level: 1, name: "Connectors" })).toBeVisible();
+  const row = (name: string) => page.getByRole("article", { name: new RegExp(`^${name}`, "i") });
   await expect(row("exa")).toContainText("Using the server key");
   await expect(row("exa")).toContainText("EXA_API_KEY");
   await expect(row("parallel")).toContainText("Server key not set");
@@ -201,9 +199,9 @@ test("connections: statuses and names, a key set once, an account connected, no 
   expect(errors).toEqual([]);
 });
 
-test("connections: Cancel at the provider says nothing was saved", async ({ page }) => {
+test("connectors: Cancel at the provider says nothing was saved", async ({ page }) => {
   await signIn(page, users.admin, "/connections");
-  const mail = page.getByRole("row", { name: /^mail/ });
+  const mail = page.getByRole("article", { name: /^mail/ });
   await expect(mail).toContainText("Not connected");
   const popupOpened = page.waitForEvent("popup");
   await mail.getByRole("button", { name: "Connect mail" }).click();
@@ -214,14 +212,14 @@ test("connections: Cancel at the provider says nothing was saved", async ({ page
   await expect(mail).toContainText("Not connected");
 });
 
-test("connections: with popups blocked, the same tab goes to the provider and comes back", async ({ page }) => {
+test("connectors: with popups blocked, the same tab goes to the provider and comes back", async ({ page }) => {
   const errors = watchErrors(page);
   const traffic = watchTraffic(page);
   await page.addInitScript(() => {
     window.open = () => null; // a popup blocker
   });
   await signIn(page, users.admin, "/connections");
-  const mail = page.getByRole("row", { name: /^mail/ });
+  const mail = page.getByRole("article", { name: /^mail/ });
   await expect(mail).toContainText("Not connected");
   await mail.getByRole("button", { name: "Connect mail" }).click();
   await expect(page).toHaveURL(new RegExp(`^http://127.0.0.1:${providerPort}/`));
@@ -239,7 +237,7 @@ test("on a phone, the pages fit without sideways scroll", async ({ page }) => {
   const errors = watchErrors(page);
   await page.setViewportSize({ width: 375, height: 812 });
   await signIn(page, users.admin, "/connections");
-  await expect(page.getByRole("row", { name: /^mail/ })).toBeVisible();
+  await expect(page.getByRole("article", { name: /^mail/ })).toBeVisible();
   for (const path of ["/connections", "/toolsets/demo", "/agents/researcher"]) {
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
@@ -254,7 +252,7 @@ test("roles: a user sees no admin navigation, gets the 403 page, and the API ref
   await signIn(page, users.user, "/agents/researcher");
   await expect(page.getByRole("heading", { level: 1, name: "Admins only" })).toBeVisible();
   const sections = page.getByRole("navigation", { name: "Sections" });
-  await expect(sections.getByRole("link", { name: "Connections" })).toBeVisible();
+  await expect(sections.getByRole("link", { name: "Connectors" })).toBeVisible();
   await expect(sections.getByRole("link", { name: "Agents" })).toHaveCount(0);
   await expect(sections.getByRole("link", { name: "Toolsets" })).toHaveCount(0);
   await expect(page.getByText("You are the admin pages' test agent.")).toHaveCount(0);

@@ -8,15 +8,15 @@ Three columns, each with one job:
 
 | Column | What it holds |
 |---|---|
-| **Rail** (56 px, icons with labels in a tooltip and for screen readers) | The sections: **Chats**; **Tasks** (everyone; its badge counts tasks waiting for you); **Connections** (everyone); a divider; **Agents**, **Skills** and **Toolsets** (admin only). At the bottom: **Shortcuts** (`?`) and the **user menu** (name, role, tenant; theme; Memories later; sign out). |
-| **List** (288 px desktop, 248 px laptop, collapsible) | The current section's list. In Chats it is **the conversation list**; in Tasks the tasks, agent threads and (admins) triggers; in Agents, Skills and Toolsets their items. Connections has no list (one page). The agent builder, versions and the skill editor are full-width pages that hide it. |
+| **Rail** (56 px, icons with labels in a tooltip and for screen readers) | The sections: **Chats**; **Tasks** (everyone; its badge counts tasks waiting for you); **Connectors** (everyone; "Connections" before T120); a divider; **Agents**, **Skills** and **Toolsets** (admin only). At the bottom: **Shortcuts** (`?`) and the **user menu** (name, role, tenant; theme; Memories later; sign out). |
+| **List** (288 px desktop, 248 px laptop, collapsible) | The current section's list. In Chats it is **the conversation list**; in Tasks the tasks, agent threads and (admins) triggers; in Agents, Skills and Toolsets their items. Connectors has no list (one page). The agent builder, versions and the skill editor are full-width pages that hide it. |
 | **Content** | The chat, or the selected item's detail. |
 
 Decisions (reasons in T070 Notes):
 
 - **Conversations have one home: the Chats list.** No separate Conversations page and no "Recent" block. The list has **New chat**, **search**, an **agent filter**, date groups (Today, Yesterday, Previous 7 days, Older), a status mark on rows that need attention (running, interrupted, finished while you were elsewhere), and loads more by cursor as you scroll. Each row: the title, then the agent name in mono and the time. A **⋯** menu (Copy ID, Delete) shows on hover or focus, and always on touch.
   - **Search** matches titles. Until `GET /v1/conversations` gains a `q` parameter (asked of T062, see T070 Notes), it filters the loaded rows: its placeholder says "Search loaded chats", and with more pages on the server the results end with **Load older to search more**.
-- **Connections are everyone's** (owner, 2026-10-12): each user connects their own key or account for each connector, so the page sits above the divider for every role. Admins add connectors in the server config; the console doesn't. An "Add connector" screen is asked of T087 (T070 Notes). Details: "Connections".
+- **Connections are everyone's** (owner, 2026-10-12): each user connects their own key or account for each connector, so the page sits above the divider for every role. Admins add connectors in the server config; the console doesn't. An "Add connector" screen is asked of T087 (T070 Notes). Details: "Connectors".
 - **Admin pages live in the rail**, under a divider, with their own list column (list on the left, detail on the right, as in Linear and Vercel settings). A `user` sees Chats, Tasks and Connections. Hiding them is a convenience; the API answers 403 (a direct link shows the 403 page).
 - **The agent picker** sits in the chat header's left slot, in both cases:
   - **New chat:** a button showing the chosen agent with a chevron. It opens a searchable list (name, description, and readiness for you: "All 3 toolsets ready", or what is missing, such as "Connect Exa"). The default is the agent of your last new chat (kept in `localStorage`) if it still exists, else `default`, else the first. The empty chat shows the chosen agent's description and readiness above the composer.
@@ -49,8 +49,8 @@ Every view has a URL, so links, Back and reloads work. Rail items, list rows and
 | `/c/{conversation_id}` | A conversation. A new chat moves here when `run_start` gives its ID (replacing `/new` in history) |
 | `/agents`, `/agents/{name}` | Agents list, agent detail |
 | `/toolsets`, `/toolsets/{name}` | Toolsets list, toolset detail |
-| `/connections` | Connections |
-| `/connections/done` | Where an account connection returns from the provider. In a popup, it reports the result to the page that opened it and closes. In the same tab, it goes back to the saved route with the result. Opened with no connection pending, it goes to `/connections` (see "Connections") |
+| `/connections` | Connectors |
+| `/connections/done` | Where an account connection returns from the provider. In a popup, it reports the result to the page that opened it and closes. In the same tab, it goes back to the saved route with the result. Opened with no connection pending, it goes to `/connections` (see "Connectors") |
 | `/agents/new`, `/agents/{name}/edit` | The agent builder (full width) |
 | `/agents/{name}/versions`, `/agents/{name}/versions/{v}` | An agent's versions and the diff (full width) |
 | `/skills`, `/skills/{name}`, `/skills/{name}/edit`, `/skills/upload` | Skills list and detail, the skill editor (full width), upload |
@@ -75,7 +75,7 @@ Every view has a URL, so links, Back and reloads work. Rail items, list rows and
 | **Chats list** | user, admin | The caller's conversations (see IA). Delete asks first; when the conversation is answering, the confirm says it also stops the answer. | `GET /v1/conversations?agent=&limit=&cursor=`, `DELETE /v1/conversations/{id}` | T055, T062 |
 | **Agents** | admin | List: name (mono), description, a status dot with its word for screen readers (ready, or a warning when a toolset it uses is skipped or needs your connection). Detail: description; model and effort; toolsets with status; skills; memory; UI (text or A2UI); the system prompt (admin only, collapsed); **Chat with this agent**. Part 2 adds the version ("Published v3 · draft v4" or "From the server config"), the interaction mode, the tool policy with its counts ("8 allowed · 3 flagged"), the deferred tools, and **Edit** with **Versions** (stored agents) or **Duplicate** (config agents). | `GET /v1/agents`, `GET /v1/agents/{name}`, T075's versions | T064, T077 |
 | **Toolsets** | admin | List: name, status dot, tool count. Detail: status (ready, or skipped with the reason), the credential it needs and who provides it ("API key · each user connects their own · server key `EXA_API_KEY` not set"; later the org connection), the MCP URL and a copyable `claude mcp add` command (token placeholder, never the token; a note says the token is an API token from your admin, `AGENTKIT_API_TOKEN` on a single-token server), then each tool as a disclosure with a chevron: name, description, a readable field list (name, type, required, help) and the raw schema on demand. A skipped toolset shows how to fix it instead of the command. The command wraps on phones. | `GET /v1/toolsets`, `GET /v1/toolsets/{name}/tools` | T064 |
-| **Connections** | everyone | One row per connector that an agent you can use needs: connector and provider, kind (API key or account), your status, the agents that use it, and the action (Connect, Replace key, Reconnect, Disconnect). Rows that need you come first. Values are never sent to the page. On phones each row is a card. The rail badge counts connectors that need you (see "Connections"). | T045's `GET/PUT/DELETE /v1/credentials`, `POST /v1/credentials/{slot}/connect` (and the asks in T070 Notes) | T064, T045 |
+| **Connectors** | everyone | A card per connector the server serves with a slot, grouped by provider (Google, CRM, Search, Other), even when no agent uses it yet: name, what it does, your status, the agents that use it, and the action (Connect, Replace key, Reconnect, Disconnect). Cards that need you come first in a group. Values are never sent to the page. The rail badge counts connectors that need you (see "Connectors"). | T045's `GET/PUT/DELETE /v1/credentials`, `POST /v1/credentials/{slot}/connect` (and the asks in T070 Notes) | T064, T045 |
 | **Tasks** | user (own), admin | List: tabs **Tasks**, **Threads**, **Triggers** (admins); tasks grouped Waiting for you, Running and paused, Finished; agent filter; **Start a task**. Task view: status and actions, who started it, mode, policy, usage, Result, the transcript, and the steering box. See "Tasks". | `POST /v1/tasks`, `GET /v1/runs?background=true`, `GET /v1/runs/{id}`, `GET /v1/runs/{id}/events`, `POST /v1/runs/{id}/cancel`, `POST /v1/runs/{id}/input`; T086's messages, pause and resume | T074 |
 | **Thread** | user (own), admin | The two agents, hops (3 of 8), tokens (7,400 of 500,000), the messages in order (asked, replied, notice), each linked to the task it started; a stopped thread says why. | `GET /v1/threads`, `GET /v1/threads/{id}` (T073) | T074 |
 | **Triggers** | admin | A table: name and kind, agent, when (words, cron with `CRON_TZ`, next firing), last firing and recent firings, Pause/Resume; **New trigger**. | T072 | T074 |
@@ -106,16 +106,22 @@ Every view has a URL, so links, Back and reloads work. Rail items, list rows and
 - **Session ended (401):** the card opens over the app with "Your session ended. Sign in again; your draft is kept." as the dialog's description. An error after a failed attempt shows under the fields, and the reason stays. The app behind is `inert`. If the same user signs in (compared with the last `/me`), the draft and route are restored; another user gets a fresh start. A message that got the 401 goes back into the composer as the draft.
 - **Sign out** (or **Forget token** in token mode): if an answer is running it asks first, because signing out stops it. It calls `POST /v1/auth/logout`, then clears everything the console holds (drafts, cached lists and threads, the token, the last agent) except the theme, and unmounts the app. If logout fails, it still clears locally and says "Signed out on this device. The server session ends when it expires."
 
-### Connections
+### Connectors
 
-A **connector** is a toolset that calls an outside service: Exa, Parallel, GitHub, Gmail. Admins add connectors in the server config. A **connection** is what a connector signs in with: an **API key** you paste, or an **account** you connect through the provider (OAuth).
+(Called "Connections" until T120; the route is still `/connections`.)
+
+A **connector** is a toolset that calls an outside service: Exa, Parallel, Gmail, Google Calendar, Drive and Sheets, HubSpot, Salesforce. Admins add connectors in the server config. A **connection** is what a connector signs in with: an **API key** you paste, or an **account** you connect through the provider (OAuth).
 
 - **Who owns a connection** (owner, 2026-10-12):
   - **Now: each user, one per connector.** Your connection is used only for your runs (chats and, later, your tasks). Nobody else sees it, admins included.
   - **Later: the org.** An admin can set an **org connection** for a connector, shared with every user by default. If you have your own, **yours wins** for you; disconnect it to fall back to the org's. Per connector, an admin can turn off "Members can use their own", and then only the org's is used.
   - **Server keys** from the environment (`EXA_API_KEY`) stay as the deployment's fallback, used when no one else provides a key. The console shows them as "Server key" and doesn't manage them.
   - **Order at call time:** yours, then the org's (later), then the server key; else the connector works keyless if it can (Tavily, with lower limits), or the call fails as not connected.
-- **The page** (`/connections`): a table, one row per connector that an agent you can use needs. Connectors without credentials (the demo tools) aren't listed. Columns: connector (name and provider), kind (API key, account), status, used by (agents), action. Rows that need you come first.
+- **The page** (`/connections`, "Connectors" in the rail): a card per connector the server serves with a credential slot, **including slots no agent uses yet** ("No agent uses it yet"), so a person can connect an account before an agent needs it. Connectors without credentials (the demo tools) aren't listed; a server key appears only when an agent you can use needs it.
+  - **Groups**, each a section with a heading, in this order: **Google** (Gmail, Calendar, Drive, Sheets), **CRM** (HubSpot, Salesforce), **Search** (Exa, Parallel, Tavily), **Other** (any type the console doesn't know, under its slot name). Inside a group, cards that need you come first, then by name.
+  - **A card:** the connector's name, its slot in mono, one line on what it does, status, "Used by" (agents) and the actions. The words come from the console (`connectors-catalog.ts`), not the server.
+  - **Filter:** with more than eight cards, a search box filters by name, slot, group and description; "No connector matches “x”." when none does.
+  - **Not set up:** an account connector whose OAuth app the server doesn't have (no `credentials.oauth2` entry, or an optional one with its variables unset; the server lists the slot with `oauth: false`) reads "Not set up: This server isn't set up to connect Gmail accounts. An admin adds its OAuth app (credentials.oauth2)." and has no Connect button. A connected account there can still be disconnected.
   - **Statuses**, each a dot plus words:
     - **Connected**, with what the server knows: "Your key, added 12 Oct" or "Connected as @samanvith";
     - **Not connected**;
@@ -181,7 +187,7 @@ E17's interrupts (T084), with the decisions of the tool policy (T083).
 - **Answered elsewhere:** a second answer gets `409 not_pending`. The card then shows the answer that stands ("Approved by samanvith · answered in another tab"), never a second decision. `409 run_final` (the run ended or was canceled) shows "Not answered: the run was canceled."
 - **Cancel run** asks first. The waiting calls won't run, their cards read "not answered", and a note says "Run canceled by you". The conversation then takes a new message.
 - **Notifications** for a task that starts waiting: a toast ("ops-helper is waiting for you: Check every toolset after deploy", **Review**) and the Tasks badge. The toast never takes the answer: **Review** opens the task at its first open card, so the decision is made with the whole input in view.
-- **Not an interrupt:** a missing connection still fails the call (see "Connections").
+- **Not an interrupt:** a missing connection still fails the call (see "Connectors").
 
 ### Tool policy in transcripts
 
@@ -375,7 +381,7 @@ Each has a design in the mockup (the **State** menu in its top bar) or here.
 | **No agents** | Chat | "No agents are configured. An admin adds them to the server config (`agents:`)." Composer disabled. Admins get a link to the configuration docs. |
 | **Agent removed** | Chat | A conversation whose agent is no longer configured: the chip reads "researcher (removed)", the composer is disabled with "This agent no longer exists, so this conversation is read-only.", and **New chat** is offered. |
 | **Toolset skipped** | Toolsets, Agents, picker, new chat | A toolset the server couldn't start (an MCP server that didn't answer, a bad config): amber dot and "Skipped: the MCP server at … didn't answer". The agent shows a warning dot and "1 of 3 toolsets skipped"; the agent still works with the rest. A missing key is not a skip any more; it is a connection (next rows). |
-| **Needs your connection** | Connections, picker, new chat, chat | "Not connected" with **Connect**; the picker and the agent card say "Connect Exa"; in a chat, the amber step and the Connect card (see "Connections"). |
+| **Needs your connection** | Connections, picker, new chat, chat | "Not connected" with **Connect**; the picker and the agent card say "Connect Exa"; in a chat, the amber step and the Connect card (see "Connectors"). |
 | **Needs reconnect** | Connections, picker, chat | "Access expired or was revoked" with **Reconnect**. |
 | **Connecting** | Connections | Key: the Save button is busy and the field disabled. Account: "Waiting for GitHub… Finish in the window that opened" with **Cancel**. |
 | **Connect failed** | Connections | Key rejected: "Exa didn't accept this key." under the field. Account: "You didn't allow access. Nothing was saved." or "Connecting took too long or failed. Try again." |

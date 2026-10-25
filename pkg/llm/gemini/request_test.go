@@ -127,8 +127,11 @@ func TestOptions(t *testing.T) {
 		{"request limit", with(nil, 50), []gemini.Option{gemini.WithMaxTokens(10)}, `{"maxOutputTokens":50}`},
 		{"model limit", with(nil, 0), []gemini.Option{gemini.WithMaxTokens(10)}, `{"maxOutputTokens":10}`},
 		{"level from the model", with(nil, 0), []gemini.Option{gemini.WithOptions(gemini.Options{ThinkingLevel: "low"})}, `{"thinkingConfig":{"thinkingLevel":"low"}}`},
-		{"level from the request wins", with(&gemini.Options{ThinkingLevel: "high", IncludeThoughts: true}, 0),
-			[]gemini.Option{gemini.WithOptions(gemini.Options{ThinkingLevel: "low"})}, `{"thinkingConfig":{"includeThoughts":true,"thinkingLevel":"high"}}`},
+		{
+			"level from the request wins", with(&gemini.Options{ThinkingLevel: "high", IncludeThoughts: true}, 0),
+			[]gemini.Option{gemini.WithOptions(gemini.Options{ThinkingLevel: "low"})},
+			`{"thinkingConfig":{"includeThoughts":true,"thinkingLevel":"high"}}`,
+		},
 		{"thoughts from the model", with(gemini.Options{}, 0), []gemini.Option{gemini.WithOptions(gemini.Options{IncludeThoughts: true})}, `{"thinkingConfig":{"includeThoughts":true}}`},
 		{"nil pointer means none", with(nilOptions, 0), []gemini.Option{gemini.WithOptions(gemini.Options{ThinkingLevel: "low"})}, `{"thinkingConfig":{"thinkingLevel":"low"}}`},
 		{"another adapter's options are ignored", with(struct{ Effort string }{"max"}, 0), nil, ""},

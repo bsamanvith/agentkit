@@ -3,6 +3,7 @@ package gemini
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/bsamanvith/agentkit/pkg/llm"
@@ -181,7 +182,7 @@ func userContent(msg llm.Message, names map[string]string) (content, error) {
 			c.Parts = append(c.Parts, part{FunctionResponse: &functionResponse{ID: b.ToolUseID, Name: name, Response: resp}})
 		case llm.Opaque:
 			if b.Provider == Provider {
-				return content{}, fmt.Errorf("block %d: a Gemini part in a user message", j)
+				return content{}, fmt.Errorf("block %d: an opaque gemini block in a user message", j)
 			}
 		default:
 			return content{}, fmt.Errorf("block %d: %T is not allowed in a user message", j, b)
@@ -249,17 +250,17 @@ func modelContent(msg llm.Message, names map[string]string) (content, error) {
 func opaquePart(data json.RawMessage) (sig string, raw json.RawMessage, err error) {
 	var members map[string]json.RawMessage
 	if json.Unmarshal(data, &members) != nil || members == nil {
-		return "", nil, fmt.Errorf("Gemini block is not a JSON object")
+		return "", nil, errors.New("opaque gemini block is not a JSON object")
 	}
 	if s, ok := members["thoughtSignature"]; ok && len(members) == 1 {
 		if json.Unmarshal(s, &sig) != nil || sig == "" {
-			return "", nil, fmt.Errorf("Gemini block: thoughtSignature is not a string")
+			return "", nil, errors.New("opaque gemini block: thoughtSignature is not a string")
 		}
 		return sig, nil, nil
 	}
 	var buf bytes.Buffer
 	if err := json.Compact(&buf, data); err != nil {
-		return "", nil, fmt.Errorf("Gemini block: %w", err)
+		return "", nil, fmt.Errorf("opaque gemini block: %w", err)
 	}
 	return "", buf.Bytes(), nil
 }

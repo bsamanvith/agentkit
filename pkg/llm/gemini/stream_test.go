@@ -206,11 +206,15 @@ func TestStopReasons(t *testing.T) {
 		want   llm.StopReason
 	}{
 		{"max tokens", chunks(parts("MAX_TOKENS", `{"text":"cut o"}`)), llm.StopReason{Kind: llm.StopMaxTokens}},
-		{"safety", chunks(`{"candidates":[{"content":{"parts":[]},"finishReason":"SAFETY","finishMessage":"Blocked.","safetyRatings":[{"category":"HARM_CATEGORY_HARASSMENT","probability":"HIGH","blocked":true},{"category":"HARM_CATEGORY_HATE_SPEECH","probability":"LOW"}],"index":0}]}`),
-			llm.StopReason{Kind: llm.StopRefusal, Category: "HARM_CATEGORY_HARASSMENT", Explanation: "Blocked."}},
+		{
+			"safety", chunks(`{"candidates":[{"content":{"parts":[]},"finishReason":"SAFETY","finishMessage":"Blocked.","safetyRatings":[{"category":"HARM_CATEGORY_HARASSMENT","probability":"HIGH","blocked":true},{"category":"HARM_CATEGORY_HATE_SPEECH","probability":"LOW"}],"index":0}]}`),
+			llm.StopReason{Kind: llm.StopRefusal, Category: "HARM_CATEGORY_HARASSMENT", Explanation: "Blocked."},
+		},
 		{"recitation", chunks(parts("RECITATION")), llm.StopReason{Kind: llm.StopRefusal, Category: "RECITATION"}},
-		{"prompt blocked", chunks(`{"promptFeedback":{"blockReason":"PROHIBITED_CONTENT","blockReasonMessage":"No."},"usageMetadata":{"promptTokenCount":4}}`),
-			llm.StopReason{Kind: llm.StopRefusal, Category: "PROHIBITED_CONTENT", Explanation: "No."}},
+		{
+			"prompt blocked", chunks(`{"promptFeedback":{"blockReason":"PROHIBITED_CONTENT","blockReasonMessage":"No."},"usageMetadata":{"promptTokenCount":4}}`),
+			llm.StopReason{Kind: llm.StopRefusal, Category: "PROHIBITED_CONTENT", Explanation: "No."},
+		},
 		{"other", chunks(parts("OTHER", `{"text":"x"}`)), llm.StopReason{Kind: llm.StopOther, Raw: "OTHER"}},
 	}
 	for _, c := range cases {

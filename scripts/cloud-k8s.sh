@@ -67,7 +67,11 @@ install_tools() {
 k3s_ready() { kubectl get --raw /readyz >/dev/null 2>&1; }
 
 run_k3s() {
-	nohup k3s server --disable traefik,metrics-server,servicelb --disable-helm-controller \
+	# k3s inherits the session's proxy: the API server would send its calls
+	# to the kubelet (kubectl logs, exec) through it, and they fail.
+	local direct
+	direct="$(hostname -I | tr ' ' '\n' | grep -v '^$' | paste -sd, -),10.42.0.0/16,10.43.0.0/16,.svc,.cluster.local"
+	NO_PROXY="${NO_PROXY:+$NO_PROXY,}$direct" no_proxy="${no_proxy:+$no_proxy,}$direct" nohup k3s server --disable traefik,metrics-server,servicelb --disable-helm-controller \
 		--write-kubeconfig-mode 644 >/tmp/k3s.log 2>&1 &
 }
 
@@ -110,8 +114,8 @@ down() {
 	fi
 	stop_k3s
 	# What k3s-killall.sh does: the pods' processes outlive k3s, and their
-	# mounts outlive them.
-	ps -eo pid=,args= | awk '/containerd-shim/ && /k3s/ {print $1}' | xargs -r kill
+	# mounts outlive them. A shim can exit between ps and kill.
+	ps -eo pid=,args= | awk '/containerd-shim/ && /k3s/ {print $1}' | xargs -r kill 2>/dev/null || true
 	mount | awk '$3 ~ "^(/var/lib/kubelet|/run/k3s|/var/lib/rancher/k3s)/" {print $3}' | sort -r | xargs -r umount -l
 }
 

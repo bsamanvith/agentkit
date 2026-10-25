@@ -8,6 +8,7 @@ package e2e
 
 import (
 	"bufio"
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -276,9 +277,60 @@ func TestToolSearch(t *testing.T) {
 	}
 }
 
+// TestBuilder defines an agent through the API, as the console's agent
+// builder does (POST /v1/agents/{name}/versions, published), and runs it
+// on its default model and on the other model it allows, as the chat's
+// model picker does. In the split deployment the agent API builds no
+// agent: the runner builds this one from the definition (T132). The fake
+// model echoes on "echo"; a real one is asked to. AGENTKIT_SMOKE_CHAT=0
+// skips it.
+func TestBuilder(t *testing.T) {
+	if os.Getenv("AGENTKIT_SMOKE_CHAT") == "0" {
+		skipOrFail(t, "AGENTKIT_SMOKE_CHAT=0")
+	}
+	tg := newTarget(t)
+	def := `{"definition": {
+		"description": "Saved by the smoke suite (test/e2e TestBuilder).",
+		"system": "You are a terse test agent. Use the echo tool when asked to echo.",
+		"toolsets": ["demo"],
+		"models": {"allow": ["anthropic/claude-sonnet-5-5"]}
+	}, "message": "smoke", "publish": true}`
+	resp := tg.do(t, http.MethodPost, "/v1/agents/smoke-builder/versions", def, true)
+	b, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		t.Fatalf("api: saving a stored agent: %s: %s", resp.Status, b)
+	}
+	var agent struct {
+		Models struct {
+			Default string   `json:"default"`
+			Allow   []string `json:"allow"`
+		} `json:"models"`
+	}
+	tg.getJSON(t, "api", "/v1/agents/smoke-builder", &agent)
+	if !slices.Contains(agent.Models.Allow, "anthropic/claude-sonnet-5-5") {
+		t.Errorf("api: the stored agent allows %v, want claude-sonnet-5-5 too", agent.Models.Allow)
+	}
+	for _, model := range []string{"", "anthropic/claude-sonnet-5-5"} {
+		body := `{"agent":"smoke-builder","message":"Please echo the word kiwi with the echo tool."`
+		if model != "" {
+			body += `,"model":"` + model + `"`
+		}
+		_, events := tg.run(t, body+"}")
+		ran := events[0].Model
+		if want := cmp.Or(model, agent.Models.Default); ran != want {
+			t.Errorf("runner: the run on %q ran %q, want %q", model, ran, want)
+		}
+		if !slices.ContainsFunc(events, func(ev runEvent) bool { return ev.Type == "tool_result" }) {
+			t.Errorf("runner: the stored agent on %q called no tool (events: %v)", model, types(events))
+		}
+	}
+}
+
 // runEvent is what the suite reads of a run's event.
 type runEvent struct {
 	Type    string `json:"type"`
+	Model   string `json:"model"`
 	Name    string `json:"name"`
 	Text    string `json:"text"`
 	Content string `json:"content"`

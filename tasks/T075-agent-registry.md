@@ -171,5 +171,6 @@ client calls and the two commands). Every image stays under its budget
 ### Follow-ups
 - Stored connector instances (see Decisions), and export/import of the
   toolsets added at run time.
-- Stored agents on a separate runner component (the runner reads the
-  registry, as T096's TODO says for runtime toolsets).
+- Stored agents on a separate runner component: done in
+  [T132](T132-stored-agents-on-runner.md) (each run carries the
+  definition, which the runner builds).

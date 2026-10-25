@@ -95,9 +95,10 @@ type registryConfig struct {
 }
 
 // on reports whether the registry runs with env: this build has it
-// (registryBuilt), it is not turned off, and the agents run here.
+// (registryBuilt), it is not turned off, and something builds stored
+// agents: this process (modelsBuilt), or the runner the agents run on.
 func (r registryConfig) on(env serveEnv) bool {
-	return registryBuilt && (r.Enabled == nil || *r.Enabled) && env.runnerURL == ""
+	return registryBuilt && (r.Enabled == nil || *r.Enabled) && (modelsBuilt || env.runnerURL != "")
 }
 
 // serveFile is the top level of the config file.
@@ -335,8 +336,9 @@ func buildToolsets(ctx context.Context, env serveEnv, cfg serveConfig, configPat
 }
 
 // servedSpecs returns the toolsets the components use: every one in
-// mcp.toolsets when mcp-server or toolsets runs, or the agent API with its
-// registry on, else those the agents name (agent-api, runner).
+// mcp.toolsets when mcp-server or toolsets runs, the agent API with its
+// registry on, or a runner (which builds the registry's agents), else
+// those the agents name.
 func servedSpecs(env serveEnv, cfg serveConfig) ([]toolset.Spec, error) {
 	var specs []toolset.Spec
 	for _, name := range []string{agentapi.Name, runnerName} {
@@ -360,9 +362,12 @@ func servedSpecs(env serveEnv, cfg serveConfig) ([]toolset.Spec, error) {
 			specs = rest
 		}
 	}
-	// The agents stored through the API (registry.go) may use any toolset
-	// of the file, so the agent API builds them all.
-	if slices.Contains(env.components, agentapi.Name) && cfg.Registry.on(env) {
+	// The agents stored through the API (stored.go) may use any toolset
+	// of the file, so the agent API has them all, and so does the runner
+	// that builds them for it.
+	stored := slices.Contains(env.components, agentapi.Name) && cfg.Registry.on(env) ||
+		slices.Contains(env.components, runnerName) && (cfg.Registry.Enabled == nil || *cfg.Registry.Enabled)
+	if stored {
 		rest, _, err := splitAgentTools(cfg.MCP.Toolsets)
 		if err != nil {
 			return nil, err

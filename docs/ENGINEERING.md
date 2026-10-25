@@ -298,8 +298,8 @@ Connectors call paid APIs, so their tests follow one recipe, in [CONNECTORS.md](
 |---|---|---|---|
 | One process | `scripts/try-agent.sh` (`--docker` for the `agentkit` image) | `agent,web,mcp-server` in one process, memory store, real model | A real agent run, tools, MCP at `/mcp/<toolset>` |
 | Split, processes | `make smoke` (`scripts/smoke.sh`) | API, runner, toolsets built with each image's tags, the fake model; memory store, or Postgres with `AGENTKIT_STORE` | Default check; CI runs it. No Docker, no key |
-| Split, Compose | `make compose-up` (`scripts/compose-local.sh`), console on http://localhost:30081 | The split images, `migrate`, Postgres 17 ([deploy/compose](../deploy/compose/README.md)) | The images and their wiring, Postgres, on any Docker |
-| All in one, Compose | `scripts/compose-local.sh up allinone`, console on http://localhost:30082 | The `agentkit-local` image alone on SQLite | The one-machine image |
+| Split, Compose | `make compose-up` (`scripts/compose-local.sh`), console on http://127.0.0.1:30081 | The split images, `migrate`, Postgres 17 ([deploy/compose](../deploy/compose/README.md)) | The images and their wiring, Postgres, on any Docker |
+| All in one, Compose | `scripts/compose-local.sh up allinone`, console on http://127.0.0.1:30082 | The `agentkit-local` image alone on SQLite | The one-machine image |
 | Split, Kubernetes | `make k8s-up` (`scripts/k8s-local.sh`), console on http://localhost:30080 | The split images, the API's migrate init container, Postgres 17 as a StatefulSet ([deploy/k8s](../deploy/k8s/README.md)) | Manifests, probes, services, the cluster's secret |
 
 Fixed host ports, so scripts and tests never guess: 30080 (Kubernetes), 30081 and 30082 (Compose, bound to 127.0.0.1), 18480 to 18483 (`make smoke`'s API, model, toolsets and runner; `PORT` moves them).

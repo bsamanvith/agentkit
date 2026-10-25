@@ -10,7 +10,7 @@
 ## Two ways to run it locally
 
 The same split deployment also runs in Docker Compose, with no cluster:
-`make compose-up`, console on http://localhost:30081
+`make compose-up`, console on http://127.0.0.1:30081
 ([deploy/compose/README.md](../compose/README.md)). Both use the same images,
 config file and environment; this one is for manifests, probes and anything
 that needs real Kubernetes.

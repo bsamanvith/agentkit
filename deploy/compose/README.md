@@ -13,7 +13,7 @@ at once.
 |---|---|---|
 | Needs | Docker Desktop (or any Docker with Compose v2) | Docker Desktop with Kubernetes turned on |
 | Start | `make compose-up` | `make k8s-up` |
-| Console | http://localhost:30081 | http://localhost:30080 |
+| Console | http://127.0.0.1:30081 | http://localhost:30080 |
 | Smoke suite | `make compose-smoke` | `make k8s-smoke` |
 | Delete it all | `make compose-down` | `make k8s-down` |
 
@@ -30,7 +30,7 @@ Compose project `agentkit`, and returns when every service is healthy and the
 console answers. Images are used from the local store, never pulled, except
 `postgres:17-alpine` (and `busybox` for allinone) on the first `up`.
 
-Open **http://localhost:30081** and paste the API token `make compose-up`
+Open **http://127.0.0.1:30081** and paste the API token `make compose-up`
 printed (`scripts/compose-local.sh token` prints it again).
 
 | Command | Does |
@@ -39,7 +39,7 @@ printed (`scripts/compose-local.sh token` prints it again).
 | `make compose-status` | Containers, their health, the console's URL |
 | `make compose-smoke` | The smoke suite (test/e2e) against it: health, auth, console, toolsets, one chat run (calls the model) |
 | `scripts/compose-local.sh logs api` | Follow a service's logs: `api` (with `migrate`), `runner`, `toolsets`, `postgres`, `allinone` |
-| `scripts/compose-local.sh token` | The API token, for the console and `agentkit` CLI (`AGENTKIT_SERVER=http://localhost:30081`) |
+| `scripts/compose-local.sh token` | The API token, for the console and `agentkit` CLI (`AGENTKIT_SERVER=http://127.0.0.1:30081`) |
 | `scripts/compose-local.sh down` | Stop and remove the containers; keep the Postgres data and the secrets |
 | `make compose-down` | `down -v`: also delete the volumes (Postgres data) and the secrets file |
 
@@ -52,7 +52,7 @@ printed (`scripts/compose-local.sh token` prints it again).
 `scripts/compose-local.sh up allinone` builds `agentkit-local` (`make
 image-local`) and runs it alone: the agent API, console, turn loops and
 toolsets in one process, on SQLite in the volume `allinone`, with the console
-on **http://localhost:30082**. Same token; `scripts/compose-local.sh smoke
+on **http://127.0.0.1:30082**. Same token; `scripts/compose-local.sh smoke
 allinone` runs the suite against it. It is the Compose profile `allinone`,
 so `make compose-up` never starts it.
 

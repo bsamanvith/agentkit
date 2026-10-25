@@ -1,6 +1,6 @@
 # The split deployment (docs/COMPONENTS.md) in Docker Compose, the twin of
 # deploy/k8s/local: the agent API with the console, a runner and the toolsets,
-# Postgres for the store, and the console on http://localhost:30081 (the
+# Postgres for the store, and the console on http://127.0.0.1:30081 (the
 # cluster's is on 30080, so both can run at once). scripts/compose-local.sh
 # runs it (make compose-up); see deploy/compose/README.md.
 #
@@ -11,7 +11,7 @@
 # cluster's secret gives them.
 #
 # Profile allinone: one container of the agentkit-local image, every
-# component in one process on SQLite, console on http://localhost:30082
+# component in one process on SQLite, console on http://127.0.0.1:30082
 # (scripts/compose-local.sh up allinone).
 name: agentkit
 

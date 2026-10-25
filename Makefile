@@ -327,10 +327,10 @@ k8s-down: ## Delete the local deployment: its pods, secret and Postgres data
 	scripts/k8s-local.sh down
 
 # The same split deployment in Docker Compose (deploy/compose/README.md), on
-# http://localhost:30081: the other way to run it locally. scripts/compose-local.sh
+# http://127.0.0.1:30081: the other way to run it locally. scripts/compose-local.sh
 # up allinone runs the agentkit-local image alone on SQLite instead.
 .PHONY: compose-up compose-status compose-smoke compose-down
-compose-up: ## Build the split images and start them, with Postgres, in Docker Compose; console on http://localhost:30081
+compose-up: ## Build the split images and start them, with Postgres, in Docker Compose; console on http://127.0.0.1:30081
 	scripts/compose-local.sh up
 compose-status: ## Show the Compose deployment's containers, health and console URL
 	scripts/compose-local.sh status

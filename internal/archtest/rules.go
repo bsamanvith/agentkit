@@ -340,6 +340,9 @@ func ModuleRules() Rules {
 			"pkg/mcp/oauth": {
 				"pkg/auth", "pkg/tenancy", "pkg/clock", "pkg/clock/clocktest", "pkg/mcp/oauth/oauthtest",
 				"pkg/credentials", "pkg/credentials/memory",
+				// The provider presets it shares with the vault's OAuth2
+				// clients (T131).
+				"pkg/credentials/providers",
 			},
 			// MCP servers added at run time (T096): the API's admin
 			// contract, the MCP client, the SSRF guard and the store's
@@ -415,6 +418,12 @@ func ModuleRules() Rules {
 			"pkg/credentials":                 {"pkg/tenancy", "pkg/clock", "pkg/credentials/credentialstest", "pkg/credentials/memory"},
 			"pkg/credentials/memory":          {"pkg/credentials", "pkg/tenancy", "pkg/credentials/credentialstest"},
 			"pkg/credentials/credentialstest": {"pkg/credentials", "pkg/tenancy"},
+			// The providers' OAuth presets (T131): data, knowing nothing.
+			"pkg/credentials/providers": {},
+			// Credentials on the wire (T131): the vault's sources over the
+			// transport, for a toolsets component with no vault; never a
+			// backend but in its tests.
+			"pkg/credentials/credrpc": {"pkg/credentials", "pkg/rpc", "pkg/tenancy", "pkg/credentials/memory"},
 			// Connecting accounts (T045): the agent API's credentials
 			// contract over the vault. Its tests run the flow against the
 			// fake provider on the memory and file backends, and call a

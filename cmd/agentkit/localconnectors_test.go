@@ -41,18 +41,38 @@ var localConnectors = map[string]func(json.RawMessage) ([]string, error){
 	"salesforce": func(json.RawMessage) ([]string, error) { return salesforce.Scopes, nil },
 }
 
-// TestLocalConfigServesConnectors: the local config serves every connector
-// optional with a per-user slot, and an assistant that has them all behind
-// tool search. With no provider apps set up it still starts, and lists
-// each slot as one this server can't connect; with them, every slot can
-// be connected, asking for the scopes its toolset's settings need.
+// TestLocalConfigServesConnectors: the local config (scripts/try-agent.sh)
+// and the deployed one (Kubernetes and Compose, its URLs paths on
+// $AGENTKIT_PUBLIC_URL) serve every connector optional with a per-user
+// slot, and an assistant that has them all behind tool search. With no
+// provider apps set up each still starts, and lists each slot as one this
+// server can't connect; with them, every slot can be connected, asking for
+// the scopes its toolset's settings need and coming back to the server's
+// callback.
 func TestLocalConfigServesConnectors(t *testing.T) {
 	t.Parallel()
-	path := filepath.Join("..", "..", "deploy", "local", "agent", "search.json")
-	cfg, err := loadServeConfig(path)
-	if err != nil {
-		t.Fatal(err)
+	for _, tc := range []struct{ name, path, publicURL string }{
+		{"local", filepath.Join("..", "..", "deploy", "local", "agent", "search.json"), "http://localhost:8080"},
+		{"deployed", filepath.Join("..", "..", "deploy", "k8s", "base", "config.json"), "http://localhost:30080"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cfg, err := loadServeConfig(tc.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.name == "deployed" {
+				cfg.Credentials = cfg.Credentials.withPublicURL(tc.publicURL)
+			}
+			servesConnectors(t, cfg, tc.publicURL)
+		})
 	}
+}
+
+// servesConnectors checks cfg as TestLocalConfigServesConnectors says, for
+// a server at publicURL.
+func servesConnectors(t *testing.T, cfg serveConfig, publicURL string) {
+	t.Helper()
 	specs := map[string]toolset.Spec{}
 	for _, s := range cfg.MCP.Toolsets {
 		specs[s.Name] = s
@@ -114,7 +134,7 @@ func TestLocalConfigServesConnectors(t *testing.T) {
 			if name == "without apps" {
 				continue
 			}
-			res, _, err := svc.Connect(ctx, "u1", slot, wire.ConnectRequest{ReturnURL: "http://localhost:8080/connections/done"})
+			res, _, err := svc.Connect(ctx, "u1", slot, wire.ConnectRequest{ReturnURL: publicURL + "/connections/done"})
 			if err != nil {
 				t.Errorf("connect %s: %v", slot, err)
 				continue
@@ -143,6 +163,9 @@ func TestLocalConfigServesConnectors(t *testing.T) {
 			}
 			if u.Query().Get("client_id") != "x-"+provider+"_OAUTH_CLIENT_ID" {
 				t.Errorf("connect %s: client_id %q", slot, u.Query().Get("client_id"))
+			}
+			if got := u.Query().Get("redirect_uri"); got != publicURL+"/oauth/callback" {
+				t.Errorf("connect %s: redirect_uri %q, want %s/oauth/callback", slot, got, publicURL)
 			}
 		}
 	}

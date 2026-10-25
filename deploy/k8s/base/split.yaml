@@ -4,8 +4,15 @@
 # for Docker Desktop's cluster (make k8s-up, deploy/k8s/README.md).
 #
 # Every pod reads the secret "agentkit": rpc-token, api-token and
-# anthropic-api-key. The store is in memory here (one API replica, lost on
-# restart); an overlay sets AGENTKIT_STORE to a postgres:// URL (and
+# anthropic-api-key. The API also reads credentials-key, the credential
+# vault's key ring (without it the connectors that need a user's account or
+# key are skipped), and the OAuth apps the Connectors page connects accounts
+# with, each optional: google-, hubspot- and salesforce-oauth-client-id and
+# -client-secret (docs/QUICKSTART.md "Connecting accounts"). The toolsets pod
+# keeps no vault: it reads each call's credential from the API
+# (AGENTKIT_CREDENTIALS_URL).
+#
+# The store is in memory here (one API replica, lost on restart); an overlay sets AGENTKIT_STORE to a postgres:// URL (and
 # AGENTKIT_BUS to redis:// for more replicas) to keep it. Every pod mounts
 # the same config, the ConfigMap agentkit-config that kustomization.yaml makes
 # from config.json.
@@ -41,7 +48,9 @@ spec:
             # MCP clients send the API token to /mcp/<name>.
             - name: AGENTKIT_API_TOKEN
               valueFrom: {secretKeyRef: {name: agentkit, key: api-token}}
-            # Connector keys go here, and only here (TAVILY_API_KEY, ...).
+            # Each user's connector keys and accounts: the API's vault.
+            - {name: AGENTKIT_CREDENTIALS_URL, value: "http://api:8080"}
+            # Server-wide connector keys go here, and only here (TAVILY_API_KEY, ...).
           ports: [{name: http, containerPort: 8080}]
           readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 5}
           livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 10}
@@ -140,6 +149,20 @@ spec:
               valueFrom: {secretKeyRef: {name: agentkit, key: rpc-token}}
             - name: AGENTKIT_API_TOKEN
               valueFrom: {secretKeyRef: {name: agentkit, key: api-token}}
+            - name: AGENTKIT_CREDENTIALS_KEY
+              valueFrom: {secretKeyRef: {name: agentkit, key: credentials-key, optional: true}}
+            - name: GOOGLE_OAUTH_CLIENT_ID
+              valueFrom: {secretKeyRef: {name: agentkit, key: google-oauth-client-id, optional: true}}
+            - name: GOOGLE_OAUTH_CLIENT_SECRET
+              valueFrom: {secretKeyRef: {name: agentkit, key: google-oauth-client-secret, optional: true}}
+            - name: HUBSPOT_OAUTH_CLIENT_ID
+              valueFrom: {secretKeyRef: {name: agentkit, key: hubspot-oauth-client-id, optional: true}}
+            - name: HUBSPOT_OAUTH_CLIENT_SECRET
+              valueFrom: {secretKeyRef: {name: agentkit, key: hubspot-oauth-client-secret, optional: true}}
+            - name: SALESFORCE_OAUTH_CLIENT_ID
+              valueFrom: {secretKeyRef: {name: agentkit, key: salesforce-oauth-client-id, optional: true}}
+            - name: SALESFORCE_OAUTH_CLIENT_SECRET
+              valueFrom: {secretKeyRef: {name: agentkit, key: salesforce-oauth-client-secret, optional: true}}
           ports: [{name: http, containerPort: 8080}]
           # Startup waits up to AGENTKIT_DEPENDENCY_WAIT (a minute) for the
           # toolsets before it listens: give it 90s before liveness counts.

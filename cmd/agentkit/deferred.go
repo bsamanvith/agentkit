@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -61,7 +62,7 @@ func (m agentModelConfig) toolSearch() string {
 	if m.ToolSearch != "" {
 		return m.ToolSearch
 	}
-	if m.Provider == providerOpenAI {
+	if cmp.Or(m.Provider, defaultProvider) != defaultProvider {
 		return toolSearchEmulated
 	}
 	return toolSearchNative

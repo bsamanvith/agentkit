@@ -52,6 +52,7 @@ type countingModels struct {
 	mu     sync.Mutex
 	fakes  map[string]*modelRecorder
 	builds map[string]int
+	flags  map[string]modelFlags // the last build's, by id
 }
 
 // modelRecorder answers every request with its id and keeps the requests.
@@ -80,7 +81,7 @@ func (r *modelRecorder) systems() []string {
 }
 
 func newCountingModels(t *testing.T, ids ...string) *countingModels {
-	m := &countingModels{t: t, fakes: map[string]*modelRecorder{}, builds: map[string]int{}}
+	m := &countingModels{t: t, fakes: map[string]*modelRecorder{}, builds: map[string]int{}, flags: map[string]modelFlags{}}
 	for _, id := range ids {
 		m.fakes[id] = &modelRecorder{id: id, t: t}
 	}
@@ -95,6 +96,7 @@ func (m *countingModels) build(f modelFlags) (llm.Model, error) {
 		return nil, fmt.Errorf("no fake model %q", f.model)
 	}
 	m.builds[f.model]++
+	m.flags[f.model] = f
 	return r, nil
 }
 
@@ -251,7 +253,7 @@ func TestStoredAgentModels(t *testing.T) {
 	ctx := t.Context()
 	for _, tc := range []struct{ name, models, field, says string }{
 		{"bad pattern", `{"allow_patterns": ["("]}`, "models.allow_patterns[0]", "not a pattern"},
-		{"unknown provider", `{"allow": ["gemini/x"]}`, "models.allow[0]", `provider "gemini"`},
+		{"unknown provider", `{"allow": ["mistral/x"]}`, "models.allow[0]", `provider "mistral"`},
 		{"bad name", `{"allow": ["a b"]}`, "models.allow[0]", "invalid model name"},
 		{"variant not allowed", `{"variants": [{"match": "m2"}]}`, "models.variants[0].match", "not a model the agent allows"},
 		{"system and append", `{"allow": ["m2"], "variants": [{"match": "m2", "system": "a", "system_append": "b"}]}`, "models.variants[0].system_append", "not both"},

@@ -19,7 +19,7 @@
 | Agent protocols: A2UI, A2A | [E13](E13-agent-protocols.md) | Done (live runs passed 2026-10-24) |
 | Tasks (background agents) and agent messaging | [E14](E14-background-agents-messaging.md) | Done; supervised tasks wait for a person (T084, 2026-10-24) |
 | Agent definitions as versioned data | [E15](E15-agent-definitions.md) | T075 and T077 (console agent builder) done; T076 (skills store) **to plan** |
-| Agents with a choice of model | [E24](E24-agent-models.md) | T125 models, T126 tool description overrides, T127 chat model picker and T077 console agent builder done; T128 Gemini waits for a key |
+| Agents with a choice of model | [E24](E24-agent-models.md) | T125 models, T126 tool description overrides, T127 chat model picker, T077 console agent builder and T128 Gemini done |
 | Runtimes and jobs | [E16](E16-runtimes-jobs.md) | **Shaped**, T078–T081 to plan (the ids collide with existing tasks: renumber when planned); owner's call |
 | Tool safety and control | [E17](E17-tool-safety-control.md) | Done (live runs passed 2026-10-24) |
 | Streaming and the server backend | [E18](E18-streaming-backend.md) | Done |
@@ -28,7 +28,7 @@
 | Agent memory: plain text, size-capped, visible | [E23](E23-agent-memory.md) | T121 (readable text only), T122 (Postgres backend), T123 (memory on the split runner), T124 (memory API, console Memory section), T129 (memory loaded into messages, grep past a threshold) done |
 | Google connectors | [E21](E21-google-connectors.md) | Gmail, Calendar done on synthetic cassettes; T111 Drive waits for a Google test account |
 | Connectors page, chat tool picker, tool search | [E22](E22-connectors-and-tool-picker.md) | **Done** 2026-10-25: T114–T120 (owner's request), T131 (every connector on k8s and Compose) |
-| More model providers | [E08](E08-model-providers.md) | T025 (OpenAI-compatible) waits for an OpenAI key or an Ollama endpoint |
+| More model providers | [E08](E08-model-providers.md) | T128 Gemini done; T025 (OpenAI-compatible) waits for an OpenAI key or an Ollama endpoint |
 | Agent skills | [E02](E02-agent-skills.md) | Done; T010 waits for one check with Codex |
 
 ## Verified with the real model (2026-10-24)

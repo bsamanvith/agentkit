@@ -219,6 +219,14 @@ Inside the container the server listens on `:8080` (not loopback), so `AGENTKIT_
 
 The key is read on the process that runs the agent (the runner, when split) from the variable `api_key_env` names, `OPENAI_API_KEY` by default; if it is unset, no key is sent. Plain `http://` base URLs work, with a key too, for a server on the same host or inside a cluster (`http://vllm:8000/v1`); the key then crosses the network unencrypted, so use `https://` anywhere else. Set `model.context_window` to the model's window: the default, 200000, is Claude's.
 
+`"provider": "gemini"` runs an agent on Google's Gemini API, with the key in `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) on the process that runs the agent. The model defaults to `gemini-3.5-flash`, the context window to 1048576, and `effort` is its thinking level (`xhigh` and `max` are `high`):
+
+```json
+{"name": "gem", "model": {"provider": "gemini", "id": "gemini-3.8-flash", "effort": "low"}}
+```
+
+Gemini signs its reasoning, and a conversation sends those signatures back with each turn; like Claude's thinking, they are why a conversation cannot switch provider (below, "Choosing the model"). Tool search on Gemini is `emulated`, and `memory.native_tool` is Claude's only.
+
 A run names its agent (`{"message": "...", "agent": "math"}`); without one it gets the agent named `default` (or the only agent). A conversation stays with its agent: continuing it with another is `409 agent_mismatch`.
 
 Each entry of `agents`:
@@ -227,12 +235,12 @@ Each entry of `agents`:
 |---|---|---|
 | `name` | required | `^[a-zA-Z0-9_-]{1,64}$`, unique |
 | `description` | none | shown in `GET /v1/agents` |
-| `model.provider` | `anthropic` | `anthropic` (Claude), or `openai` for any OpenAI-compatible server (below) |
-| `model.id` | `claude-haiku-5-5` for `anthropic`; required for `openai` | model ID, as the server names it |
+| `model.provider` | `anthropic` | `anthropic` (Claude), `gemini` (Google's Gemini API), or `openai` for any OpenAI-compatible server (below) |
+| `model.id` | `claude-haiku-5-5` for `anthropic`, `gemini-3.5-flash` for `gemini`; required for `openai` | model ID, as the server names it |
 | `model.base_url`, `model.api_key_env` | `$OPENAI_BASE_URL` or OpenAI; `OPENAI_API_KEY` | `openai` only: the server, ending before `/chat/completions`, and the variable holding its key |
-| `model.effort` | adapter default (medium) | `low` … `max`; for `openai`, sent as `reasoning_effort` |
+| `model.effort` | adapter default (medium) | `low` … `max`; for `openai`, sent as `reasoning_effort`; for `gemini`, the thinking level (`xhigh` and `max` are `high`) |
 | `model.max_tokens` | adapter default | output limit per model call |
-| `model.context_window`, `model.compact_at` | 200000, 0.8 | when a request fills this share of the window, the conversation is compacted (summarized) before its next run; a request that does not fit at all is compacted and retried once |
+| `model.context_window`, `model.compact_at` | 200000 (1048576 for `gemini`), 0.8 | when a request fills this share of the window, the conversation is compacted (summarized) before its next run; a request that does not fit at all is compacted and retried once |
 | `models` | none (`model` alone) | other models the agent may run, which each run picks (`POST /v1/runs` `"model"`, `agentkit ask -model`; below, "Choosing the model") |
 | `system` | a short generic prompt | system prompt |
 | `toolsets` | none | names from `mcp.toolsets` the agent may use |
@@ -241,7 +249,7 @@ Each entry of `agents`:
 | `runtime_toolsets` | none | toolsets admins add while the server runs (section 8); the agent gets their approved tools as `<toolset>__<tool>` |
 | `skills` | none | folders of Agent Skills (`"path"` or `{"path": ..., "optional": true}`), relative to the config file (section 7, "Skills") |
 | `defer_loading` | none | tools the model is not sent until it finds them: `true` for every toolset tool, or a list of toolset names and tool-name globs (section 7, "Deferred tools") |
-| `model.tool_search` | `native` for `anthropic`, `emulated` for `openai` | who holds deferred tools back: the Claude API (`native`), or agentkit (`emulated`) |
+| `model.tool_search` | `native` for `anthropic`, `emulated` for `openai` and `gemini` | who holds deferred tools back: the Claude API (`native`), or agentkit (`emulated`) |
 | `max_turns`, `max_total_tokens` | 25, unlimited | budgets per run |
 | `tool_policy` | `all` | which tool calls the agent may make (below) |
 | `interaction` | `autonomous` | whether its tool calls may wait for people: `interactive` or `supervised` (an `ask_user` question, or a call the policy wants approved, suspends the run until answered), or `autonomous` (never: `ask_user` is not offered, and such a call is refused) |
@@ -335,7 +343,7 @@ Environment: `AGENTKIT_COMPONENTS` (any of `agent`, `web`, `mcp-server`, comma-s
 
 ### Choosing the model
 
-An agent runs `model` unless a run names another it allows. A model is named `<provider>/<id>` (`anthropic/claude-opus-5-5`, `openai/gpt-5-mini`); a bare id is `anthropic`'s.
+An agent runs `model` unless a run names another it allows. A model is named `<provider>/<id>` (`anthropic/claude-opus-5-5`, `gemini/gemini-3.8-flash`, `openai/gpt-5-mini`); a bare id is `anthropic`'s.
 
 ```json
 "models": {
@@ -352,7 +360,7 @@ An agent runs `model` unless a run names another it allows. A model is named `<p
 - `variants` change the agent on some models; the first whose `match` (a name, or a pattern after `re:`) fits applies. `system` replaces the prompt, `system_append` adds to it; `effort` and `max_tokens` replace the model's. `tool_descriptions` go over the agent's own for those models.
 - A run's `model` that the agent does not allow is `400 model_not_allowed`. Without one, a run continues on its conversation's last model, or the agent's default. Switching to another provider in a conversation is `409 model_provider_mismatch` (a provider cannot read another's thinking blocks): start a new conversation. `GET /v1/runs/{id}` shows each run's `model`, and a resume keeps it.
 - `GET /v1/agents/{name}` lists the agent's `models` (`choices` are what a picker offers: the names, then the known models a pattern allows); `GET /v1/models` lists the providers this server builds and the models it knows of each.
-- Each model the agent allows by name is built at startup (or when a stored agent is saved), so a bad one fails there; a model only a pattern allows is built on its first run. A model of another provider than `model` uses that provider's defaults (`$OPENAI_BASE_URL` and `OPENAI_API_KEY` for `openai`).
+- Each model the agent allows by name is built at startup (or when a stored agent is saved), so a bad one fails there; a model only a pattern allows is built on its first run. A model of another provider than `model` uses that provider's defaults (`$OPENAI_BASE_URL` and `OPENAI_API_KEY` for `openai`, `GEMINI_API_KEY` for `gemini`).
 
 ### Tool policies
 

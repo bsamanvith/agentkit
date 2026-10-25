@@ -43,7 +43,8 @@
   "agents": [{
     "name": "default",
     "description": "A helpful assistant with the demo tools.",
-    "toolsets": ["demo"]
+    "toolsets": ["demo"],
+    "models": {"allow_patterns": ["anthropic/claude-.*", "gemini/gemini-.*"]}
   }, {
     "name": "support",
     "description": "Northwind Bikes' support assistant, which answers from the support handbook.",

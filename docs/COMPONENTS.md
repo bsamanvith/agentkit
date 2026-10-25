@@ -110,6 +110,7 @@ part out:
 | `nopostgres` | the Postgres store, its credential and memory backends and `migrate` | `AGENTKIT_STORE=postgres`, `credentials.backend: "postgres"` and `memory.store.backend: "postgres"` fail |
 | `noredis` | the Redis bus | `AGENTKIT_BUS=redis` fails |
 | `nomodels` | the model SDK | the `agent` component needs `AGENTKIT_RUNNER_URL`; no `runner` |
+| `nogemini` | the Gemini adapter | no `gemini` provider: a config naming it fails as for an unknown provider (no image sets it yet) |
 | `noconnectors` | every connector but the demo | the toolsets come from `AGENTKIT_TOOLSETS_URL` |
 | `nomcp` | the MCP server | no `mcp-server` component |
 | `noweb` | the console | no `web` component |

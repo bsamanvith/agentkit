@@ -21,6 +21,7 @@ at once.
 
 ```sh
 export ANTHROPIC_API_KEY=sk-ant-...   # optional: without it, runs fail with model_auth
+export GEMINI_API_KEY=...             # optional: for agents that run gemini/... models
 make compose-up
 ```
 
@@ -88,15 +89,16 @@ images are distroless, with no shell or curl). The ports are bound to
   folder and restart `toolsets` to change them. The files must be readable by
   uid 65532.
 - **Secrets**: `deploy/compose/.env` (mode 600, ignored by git) holds random
-  RPC and API tokens, the Postgres password and the model key, as
-  `AGK_RPC_TOKEN`, `AGK_API_TOKEN`, `AGK_PG_PASSWORD` and
-  `AGK_ANTHROPIC_API_KEY`, and the credential vault's key ring
-  `AGK_CREDENTIALS_KEY`. Compose reads it for the `${...}` values of
-  `compose.yaml`, and each service gets only what it needs: the model key to
+  RPC and API tokens, the Postgres password and the model keys, as
+  `AGK_RPC_TOKEN`, `AGK_API_TOKEN`, `AGK_PG_PASSWORD`,
+  `AGK_ANTHROPIC_API_KEY` and `AGK_GEMINI_API_KEY`, and the credential
+  vault's key ring `AGK_CREDENTIALS_KEY`. Compose reads it for the `${...}`
+  values of `compose.yaml`, and each service gets only what it needs: the
+  model keys to
   the runner, the store URL to `migrate` and `api`. `up` writes it the first
   time and keeps it after that, since Postgres keeps the password it started
-  with; a different `ANTHROPIC_API_KEY` on a later `up` replaces the stored
-  key and the runner is recreated. `make compose-down` deletes it with the
+  with; a different `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` on a later `up`
+  replaces the stored key and the runner is recreated. `make compose-down` deletes it with the
   data. Nothing prints a secret except the API token.
 - **Connector keys** (`TAVILY_API_KEY`, ...) go in the `toolsets` service's
   `environment`, and only there.

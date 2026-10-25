@@ -13,6 +13,8 @@ import "fmt"
 //	noredis       no Redis bus (pkg/bus/busopen/redis.go)
 //	nomodels      no model adapter (models_anthropic.go) and no skills
 //	              (skills_load.go): agents run on a runner
+//	nogemini      no Gemini adapter (models_gemini.go), and no gemini
+//	              provider
 //	noconnectors  no connectors but the demo (catalog.go): toolsets come from
 //	              the toolsets component
 //	nomcp         no MCP server (mcpserver.go)

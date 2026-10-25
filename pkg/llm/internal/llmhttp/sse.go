@@ -1,4 +1,6 @@
-package openaicompat
+// Package llmhttp is what the plain net/http model adapters share: reading
+// a server-sent event stream and sending a request with retries.
+package llmhttp
 
 import (
 	"bufio"
@@ -6,32 +8,33 @@ import (
 	"io"
 )
 
-// maxEventBytes bounds one event of the stream (and one line of it). A chunk
+// MaxEventBytes bounds one event of the stream (and one line of it). A chunk
 // is a few hundred bytes; a server that sends more without a line break is
 // not sending a reply.
-const maxEventBytes = 8 << 20
+const MaxEventBytes = 8 << 20
 
-// events reads a text/event-stream (the HTML server-sent events format) as
-// far as Chat Completions uses it: the data of each event, its data lines
+// Events reads a text/event-stream (the HTML server-sent events format) as
+// far as model APIs use it: the data of each event, its data lines
 // joined with "\n". Comments (keep-alives), event names, IDs and retry
 // fields are skipped, and so are events without data.
-type events struct {
+type Events struct {
 	sc   *bufio.Scanner
 	data []byte
 }
 
-func newEvents(r io.Reader) *events {
+// NewEvents reads the events of r.
+func NewEvents(r io.Reader) *Events {
 	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 0, 4096), maxEventBytes)
+	sc.Buffer(make([]byte, 0, 4096), MaxEventBytes)
 	sc.Split(scanLines)
-	return &events{sc: sc}
+	return &Events{sc: sc}
 }
 
-// next returns the data of the next event. At the end of the stream it
+// Next returns the data of the next event. At the end of the stream it
 // returns io.EOF, after dispatching an event the stream ended in the middle
 // of, as a cut-off chunk is better reported as garbled than not at all. The
 // data is valid until the next call.
-func (e *events) next() ([]byte, error) {
+func (e *Events) Next() ([]byte, error) {
 	e.data = e.data[:0]
 	hasData := false
 	for e.sc.Scan() {
@@ -52,7 +55,7 @@ func (e *events) next() ([]byte, error) {
 		}
 		e.data = append(e.data, value...)
 		hasData = true
-		if len(e.data) > maxEventBytes {
+		if len(e.data) > MaxEventBytes {
 			return nil, bufio.ErrTooLong
 		}
 	}

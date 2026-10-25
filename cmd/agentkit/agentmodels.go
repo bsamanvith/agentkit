@@ -31,6 +31,13 @@ var knownModels = map[string][]string{
 		"anthropic/claude-haiku-5-5",
 	},
 	providerOpenAI: {},
+	// The Gemini API's text models with function calling (2026-10).
+	providerGemini: {
+		"gemini/gemini-3.1-pro-preview",
+		"gemini/gemini-3.8-flash",
+		"gemini/gemini-3.5-flash",
+		"gemini/gemini-3.5-flash-lite",
+	},
 }
 
 // modelCatalog is knownModels for the providers this binary builds, for

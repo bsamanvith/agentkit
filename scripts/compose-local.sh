@@ -16,7 +16,8 @@
 # allinone is one container of the agentkit-local image on SQLite, on
 # http://127.0.0.1:30082, instead of the split deployment.
 #
-# Environment: ANTHROPIC_API_KEY (or ANTHROPIC_KEY) for the runner, stored in
+# Environment: ANTHROPIC_API_KEY (or ANTHROPIC_KEY) for the runner, and
+# optionally GEMINI_API_KEY (or GEMINI_KEY) for agents on Gemini, stored in
 # deploy/compose/.env on up; SKIP_BUILD=1 to start the images already built;
 # EXTRA_CA_FILE, a PEM file of CAs the containers trust too, behind a
 # TLS-intercepting proxy (deploy/compose/extra-ca.yaml).
@@ -31,7 +32,7 @@ envfile=deploy/compose/.env # read by Compose itself: it sits next to compose.ya
 split_url=http://127.0.0.1:30081
 allinone_url=http://127.0.0.1:30082
 # Ours alone: a value of the same name in the shell would override the file.
-unset AGK_RPC_TOKEN AGK_API_TOKEN AGK_PG_PASSWORD AGK_ANTHROPIC_API_KEY AGK_CREDENTIALS_KEY
+unset AGK_RPC_TOKEN AGK_API_TOKEN AGK_PG_PASSWORD AGK_ANTHROPIC_API_KEY AGK_GEMINI_API_KEY AGK_CREDENTIALS_KEY
 
 die() { echo "compose-local: $*" >&2; exit 1; }
 dc() {
@@ -67,8 +68,9 @@ need_env() {
 # model key in the environment replaces the stored one (Compose then
 # recreates the containers that read it). Nothing here prints a value.
 ensure_env() {
-	local key="${ANTHROPIC_API_KEY:-${ANTHROPIC_KEY:-}}"
+	local key="${ANTHROPIC_API_KEY:-${ANTHROPIC_KEY:-}}" gemini="${GEMINI_API_KEY:-${GEMINI_KEY:-}}"
 	case "$key" in *"'"* | *$'\n'*) die "ANTHROPIC_API_KEY holds a quote or a newline" ;; esac
+	case "$gemini" in *"'"* | *$'\n'*) die "GEMINI_API_KEY holds a quote or a newline" ;; esac
 	if [ ! -f "$envfile" ]; then
 		(
 			umask 077
@@ -78,20 +80,30 @@ ensure_env() {
 				echo "AGK_API_TOKEN=$(openssl rand -hex 24)"
 				echo "AGK_PG_PASSWORD=$(openssl rand -hex 16)"
 				echo "AGK_ANTHROPIC_API_KEY='$key'"
+				echo "AGK_GEMINI_API_KEY='$gemini'"
 				echo "AGK_CREDENTIALS_KEY=k1:$(openssl rand -base64 32)"
 			} >"$envfile"
 		)
 		echo "compose-local: wrote $envfile" >&2
-	elif [ -n "$key" ] && [ "$key" != "$(env_get AGK_ANTHROPIC_API_KEY)" ]; then
-		local tmp="$envfile.tmp"
-		(umask 077 && grep -v '^AGK_ANTHROPIC_API_KEY=' "$envfile" >"$tmp" && echo "AGK_ANTHROPIC_API_KEY='$key'" >>"$tmp")
-		mv "$tmp" "$envfile"
-		echo "compose-local: stored the new ANTHROPIC_API_KEY" >&2
+		return
 	fi
+	store_key AGK_ANTHROPIC_API_KEY "$key" ANTHROPIC_API_KEY
+	store_key AGK_GEMINI_API_KEY "$gemini" GEMINI_API_KEY
 	# A file from before the credential vault gets its key ring.
 	if [ -z "$(env_get AGK_CREDENTIALS_KEY)" ]; then
 		(umask 077 && echo "AGK_CREDENTIALS_KEY=k1:$(openssl rand -base64 32)" >>"$envfile")
 		echo "compose-local: added AGK_CREDENTIALS_KEY" >&2
+	fi
+}
+
+# store_key NAME VALUE LABEL replaces the secrets file's NAME with VALUE,
+# when VALUE is set and differs.
+store_key() {
+	if [ -n "$2" ] && [ "$2" != "$(env_get "$1")" ]; then
+		local tmp="$envfile.tmp"
+		(umask 077 && grep -v "^$1=" "$envfile" >"$tmp" && echo "$1='$2'" >>"$tmp")
+		mv "$tmp" "$envfile"
+		echo "compose-local: stored the new $3" >&2
 	fi
 }
 
@@ -188,5 +200,5 @@ down)
 		dc --profile allinone down --remove-orphans
 	fi
 	;;
-*) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; [ "${1:-help}" = help ] ;;
+*) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; [ "${1:-help}" = help ] ;;
 esac

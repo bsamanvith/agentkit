@@ -1,0 +1,4 @@
+HTTP/1.1 503 Service Unavailable
+Content-Type: application/json; charset=UTF-8
+
+{"error":{"code":503,"message":"This model is currently experiencing high demand.","status":"UNAVAILABLE","details":[{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"0.05s"}]}}

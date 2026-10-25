@@ -7,10 +7,10 @@
 # The images are the ones make images-split builds, never pulled. The secrets
 # come from deploy/compose/.env, which compose-local.sh writes on the first up
 # and keeps (git ignores it): AGK_RPC_TOKEN, AGK_API_TOKEN, AGK_PG_PASSWORD,
-# AGK_ANTHROPIC_API_KEY, AGK_CREDENTIALS_KEY (the credential vault's key
-# ring). Each component gets only the ones it needs, as the cluster's secret
-# gives them. The OAuth apps of the Connectors page come from the
-# environment or that file when set: GOOGLE_, HUBSPOT_ and
+# AGK_ANTHROPIC_API_KEY, AGK_GEMINI_API_KEY, AGK_CREDENTIALS_KEY (the
+# credential vault's key ring). Each component gets only the ones it needs,
+# as the cluster's secret gives them. The OAuth apps of the Connectors page
+# come from the environment or that file when set: GOOGLE_, HUBSPOT_ and
 # SALESFORCE_OAUTH_CLIENT_ID and _CLIENT_SECRET (docs/QUICKSTART.md
 # "Connecting accounts").
 #
@@ -111,6 +111,7 @@ services:
       AGENTKIT_MEMORY_URL: http://api:8080
       AGENTKIT_RPC_TOKEN: ${AGK_RPC_TOKEN}
       ANTHROPIC_API_KEY: ${AGK_ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${AGK_GEMINI_API_KEY:-}
     depends_on:
       toolsets: {condition: service_started}
 
@@ -154,6 +155,7 @@ services:
       AGENTKIT_API_TOKEN: ${AGK_API_TOKEN:?run scripts/compose-local.sh up allinone}
       AGENTKIT_STORE: sqlite:/var/lib/agentkit/agentkit.db
       ANTHROPIC_API_KEY: ${AGK_ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${AGK_GEMINI_API_KEY:-}
       AGENTKIT_CREDENTIALS_KEY: ${AGK_CREDENTIALS_KEY:-}
       AGENTKIT_PUBLIC_URL: http://localhost:30082
       GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}

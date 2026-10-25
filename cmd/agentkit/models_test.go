@@ -78,6 +78,8 @@ func TestModelIDWrittenAsName(t *testing.T) {
 		{agentModelConfig{Provider: "anthropic", ID: "anthropic/claude-x"}, "anthropic/claude-x", "claude-x"},
 		{agentModelConfig{Provider: "anthropic", ID: "claude-x"}, "anthropic/claude-x", "claude-x"},
 		{agentModelConfig{Provider: providerOpenAI, ID: "openai/gpt-4o"}, "openai/openai/gpt-4o", "openai/gpt-4o"},
+		{agentModelConfig{Provider: providerGemini, ID: "gemini/gemini-x"}, "gemini/gemini-x", "gemini-x"},
+		{agentModelConfig{Provider: providerGemini}, "gemini/" + defaultGeminiModelID, defaultGeminiModelID},
 	} {
 		if got := tc.cfg.name(); got != tc.name {
 			t.Errorf("%+v: name() = %q, want %q", tc.cfg, got, tc.name)

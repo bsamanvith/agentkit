@@ -114,8 +114,8 @@ down() {
 	fi
 	stop_k3s
 	# What k3s-killall.sh does: the pods' processes outlive k3s, and their
-	# mounts outlive them.
-	ps -eo pid=,args= | awk '/containerd-shim/ && /k3s/ {print $1}' | xargs -r kill
+	# mounts outlive them. A shim can exit between ps and kill.
+	ps -eo pid=,args= | awk '/containerd-shim/ && /k3s/ {print $1}' | xargs -r kill 2>/dev/null || true
 	mount | awk '$3 ~ "^(/var/lib/kubelet|/run/k3s|/var/lib/rancher/k3s)/" {print $3}' | sort -r | xargs -r umount -l
 }
 

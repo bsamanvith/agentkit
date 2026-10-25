@@ -62,16 +62,22 @@ func TestComponents(t *testing.T) {
 		runner   = probe{method: http.MethodPost, path: "/rpc/runner/Agents", body: "{}", header: rpc, ok: contains(`"default"`)}
 		toolsets = probe{method: http.MethodPost, path: "/rpc/toolsets/Toolsets", body: "{}", header: rpc, ok: contains(`"demo"`)}
 		// The memory of agents on the runner (the notes agent's), which the agent API keeps.
-		memory  = probe{method: http.MethodPost, path: "/rpc/memory/Toolsets", body: "{}", header: rpc, ok: contains(`"notes"`)}
+		memory = probe{method: http.MethodPost, path: "/rpc/memory/Toolsets", body: "{}", header: rpc, ok: contains(`"notes"`)}
+		// Each user's connector credentials, which the agent API keeps and the
+		// toolsets component reads: no caller, so none to give.
+		credentials = probe{
+			method: http.MethodPost, path: "/rpc/credentials/Get", header: rpc, ok: contains(`credentials.not_connected`),
+			body: `{"toolset":"exa","slot":"exa","scope":"user"}`,
+		}
 		mcpDemo = probe{
 			method: http.MethodPost, path: "/mcp/demo", header: mcp, ok: contains(`"serverInfo"`),
 			body: `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}`,
 		}
 	)
 	for _, c := range []component{
-		{"api", tg.url, []string{"agent", "web", "memory"}, []probe{agents, console, memory}, []probe{runner, toolsets, mcpDemo}},
-		{"runner", runnerURL, []string{"runner"}, []probe{runner}, []probe{agents, console, toolsets, mcpDemo, memory}},
-		{"toolsets", toolsetsURL, []string{"toolsets", "mcp-server"}, []probe{toolsets, mcpDemo}, []probe{agents, console, runner, memory}},
+		{"api", tg.url, []string{"agent", "web", "memory", "credentials", "oauth-callback"}, []probe{agents, console, memory, credentials}, []probe{runner, toolsets, mcpDemo}},
+		{"runner", runnerURL, []string{"runner"}, []probe{runner}, []probe{agents, console, toolsets, mcpDemo, memory, credentials}},
+		{"toolsets", toolsetsURL, []string{"toolsets", "mcp-server"}, []probe{toolsets, mcpDemo}, []probe{agents, console, runner, memory, credentials}},
 	} {
 		t.Run(c.who, func(t *testing.T) {
 			var ready struct {

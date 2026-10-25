@@ -31,6 +31,9 @@ spec:
             - name: AGENTKIT_STORE
               valueFrom: {secretKeyRef: {name: agentkit, key: store-url}}
             - {name: AGENTKIT_STORE_MIGRATE, value: "off"}
+            # Where the browser reaches the console: the OAuth redirect and
+            # return URLs of the config's credentials are on it.
+            - {name: AGENTKIT_PUBLIC_URL, value: "http://localhost:30080"}
 ---
 apiVersion: v1
 kind: Service

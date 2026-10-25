@@ -90,7 +90,8 @@ images are distroless, with no shell or curl). The ports are bound to
 - **Secrets**: `deploy/compose/.env` (mode 600, ignored by git) holds random
   RPC and API tokens, the Postgres password and the model key, as
   `AGK_RPC_TOKEN`, `AGK_API_TOKEN`, `AGK_PG_PASSWORD` and
-  `AGK_ANTHROPIC_API_KEY`. Compose reads it for the `${...}` values of
+  `AGK_ANTHROPIC_API_KEY`, and the credential vault's key ring
+  `AGK_CREDENTIALS_KEY`. Compose reads it for the `${...}` values of
   `compose.yaml`, and each service gets only what it needs: the model key to
   the runner, the store URL to `migrate` and `api`. `up` writes it the first
   time and keeps it after that, since Postgres keeps the password it started
@@ -99,3 +100,11 @@ images are distroless, with no shell or curl). The ports are bound to
   data. Nothing prints a secret except the API token.
 - **Connector keys** (`TAVILY_API_KEY`, ...) go in the `toolsets` service's
   `environment`, and only there.
+- **Connectors**: the agent `assistant` has every connector behind tool
+  search, and each user connects their own accounts and keys on the
+  console's **Connectors** page (the vault is in Postgres, or SQLite for
+  the all-in-one). For the account connectors, register an OAuth app with
+  each provider with the redirect URL `http://localhost:30081/oauth/callback`
+  (`30082` for the all-in-one) and put `GOOGLE_OAUTH_CLIENT_ID` and
+  `_SECRET` (likewise `HUBSPOT_`, `SALESFORCE_`) in `.env`
+  (docs/QUICKSTART.md, "Connecting accounts").

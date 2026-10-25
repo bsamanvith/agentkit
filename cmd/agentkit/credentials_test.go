@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -88,5 +89,83 @@ func TestCredentialsNoVault(t *testing.T) {
 	}
 	if v := openTestVault(t, cli{}, credentialsConfig{}); v == nil {
 		t.Error("openVault with a key and no config gave no vault (want memory)")
+	}
+}
+
+// TestStoreBackend: credentials.backend "store" keeps the vault where
+// $AGENTKIT_STORE is, keeps none without a key ring, and refuses a path or
+// a store it cannot share.
+func TestStoreBackend(t *testing.T) {
+	t.Parallel()
+	for store, want := range map[string]string{
+		"": "memory", "memory": "memory", "sqlite:/data/agentkit.db": "sqlite",
+		"postgres://db/agentkit": "postgres", "postgresql://db/agentkit": "postgres", "redis://x": "",
+	} {
+		got, err := storeBackend(store)
+		if got != want || (err != nil) != (want == "") {
+			t.Errorf("storeBackend(%q) = %q, %v; want %q", store, got, err, want)
+		}
+	}
+	on := func(store string) cli {
+		return cli{getenv: func(k string) string {
+			if k == envStore {
+				return store
+			}
+			return ""
+		}}
+	}
+	cfg := credentialsConfig{Backend: "store"}
+	parts, closeFn, err := on("memory").openVaultParts(t.Context(), cfg, nil)
+	if err != nil || parts != nil || closeFn == nil {
+		t.Errorf("no key ring: %v, %v; want no vault and no error", parts, err)
+	}
+	parts, closeFn, err = on("memory").openVaultParts(t.Context(), cfg, testRing(t))
+	if err != nil || parts == nil || parts.vault == nil {
+		t.Fatalf("key ring on the memory store: %v, %v; want a vault", parts, err)
+	}
+	if err := closeFn(); err != nil {
+		t.Error(err)
+	}
+	if _, _, err := on("redis://x").openVaultParts(t.Context(), cfg, testRing(t)); err == nil {
+		t.Error("a store the vault can't share: no error")
+	}
+	for _, ring := range []*credentials.KeyRing{nil, testRing(t)} {
+		if _, _, err := on("memory").openVaultParts(t.Context(), credentialsConfig{Backend: "store", Path: "/x"}, ring); err == nil {
+			t.Errorf("a path with backend store (ring %v): no error", ring != nil)
+		}
+	}
+}
+
+// TestCredentialsOnPublicURL: the redirect and return URLs that are paths
+// are on $AGENTKIT_PUBLIC_URL, full URLs stay; with no public URL a return
+// path is dropped and a redirect path is refused by name.
+func TestCredentialsOnPublicURL(t *testing.T) {
+	t.Parallel()
+	cfg := credentialsConfig{
+		ReturnURLs: []string{"/connections/done", "https://app.example.com/done"},
+		OAuth2: []oauth2AppConfig{
+			{RedirectURL: "/oauth/callback"},
+			{RedirectURL: "https://api.example.com/oauth/callback"},
+		},
+	}
+	got := cfg.withPublicURL("http://localhost:30080")
+	if want := []string{"http://localhost:30080/connections/done", "https://app.example.com/done"}; !slices.Equal(got.ReturnURLs, want) {
+		t.Errorf("return_urls = %v, want %v", got.ReturnURLs, want)
+	}
+	if got.OAuth2[0].RedirectURL != "http://localhost:30080/oauth/callback" || got.OAuth2[1].RedirectURL != "https://api.example.com/oauth/callback" {
+		t.Errorf("redirect_urls = %q, %q", got.OAuth2[0].RedirectURL, got.OAuth2[1].RedirectURL)
+	}
+	if cfg.ReturnURLs[0] != "/connections/done" || cfg.OAuth2[0].RedirectURL != "/oauth/callback" {
+		t.Error("withPublicURL changed the config it was given")
+	}
+	none := cfg.withPublicURL("")
+	if want := []string{"https://app.example.com/done"}; !slices.Equal(none.ReturnURLs, want) {
+		t.Errorf("no public URL: return_urls = %v, want %v", none.ReturnURLs, want)
+	}
+	app := credentialsConfig{OAuth2: []oauth2AppConfig{{
+		Slot: "x", ClientID: "id", ClientSecretEnv: "X_SECRET", AuthURL: "https://x.example.com/auth", TokenURL: "https://x.example.com/token", RedirectURL: "/oauth/callback",
+	}}}
+	if _, err := (cli{getenv: func(string) string { return "secret" }}).oauth2Apps(app); err == nil || !strings.Contains(err.Error(), envPublicURL) {
+		t.Errorf("a redirect path with no public URL: %v, want an error naming $%s", err, envPublicURL)
 	}
 }

@@ -90,7 +90,7 @@ describe("sectionOf", () => {
     ["/agents", "Agents"],
     ["/agents/researcher", "Agents"],
     ["/toolsets/web", "Toolsets"],
-    ["/connections", "Connections"],
+    ["/connections", "Connectors"],
     ["/agentsx", "Chats"],
     ["/nowhere", "Chats"],
   ])("%s is %s", (path, label) => {
@@ -783,9 +783,9 @@ describe("the shell", () => {
     expect(screen.getByRole("button", { name: "List" })).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("has no list in Connections", async () => {
+  it("has no list in Connectors", async () => {
     renderAt("/connections");
-    expect(await screen.findByRole("heading", { level: 1, name: "Connections" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Connectors" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "List" })).not.toBeInTheDocument();
   });
 

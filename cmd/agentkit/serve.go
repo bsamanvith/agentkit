@@ -128,6 +128,9 @@ type serveEnv struct {
 	dependencyWait                   time.Duration
 	// memoryURL is the agent API whose memory a runner's agents use.
 	memoryURL string
+	// credentialsURL is the agent API a toolsets component without a
+	// vault reads credentials from.
+	credentialsURL string
 	// credentialKeys seal the credential vault ($AGENTKIT_CREDENTIALS_KEY);
 	// nil when unset. Parsed at startup so a bad ring fails there.
 	credentialKeys *credentials.KeyRing
@@ -173,6 +176,7 @@ func (c cli) serve(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	cfg.Credentials = cfg.Credentials.withPublicURL(env.publicURL)
 	if env.requireAuth, err = c.requireAuth(cfg); err != nil {
 		return err
 	}
@@ -432,7 +436,7 @@ func (c cli) buildToolsets(ctx context.Context, env serveEnv, cfg serveConfig, c
 	if err != nil {
 		return nil, nil, err
 	}
-	sources, err := c.credentialSources(env.vault, cfg.Credentials, log)
+	sources, err := c.toolsetSources(env, cfg.Credentials, log)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -481,6 +485,7 @@ func (c cli) serveEnv() (serveEnv, error) {
 	}
 	e.runnerURL, e.toolsetsURL, e.rpcToken = c.env(envRunnerURL), c.env(envToolsetsURL), c.env(envRPCToken)
 	e.memoryURL = c.env(envMemoryURL)
+	e.credentialsURL = c.env(envCredentialsURL)
 	switch {
 	case e.rpcToken != "" && len(e.rpcToken) < 16:
 		return e, fmt.Errorf("%s: the token must be at least 16 bytes", envRPCToken)

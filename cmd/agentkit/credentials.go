@@ -14,9 +14,11 @@ import (
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/credentials"
+	"github.com/bsamanvith/agentkit/pkg/credentials/credrpc"
 	"github.com/bsamanvith/agentkit/pkg/credentials/file"
 	"github.com/bsamanvith/agentkit/pkg/credentials/memory"
 	"github.com/bsamanvith/agentkit/pkg/netguard"
+	"github.com/bsamanvith/agentkit/pkg/rpc"
 	"github.com/bsamanvith/agentkit/pkg/toolset"
 )
 
@@ -31,7 +33,9 @@ type credentialsConfig struct {
 	// "sqlite" (the SQLite store's file: path, by default the one
 	// $AGENTKIT_STORE names; local images) or "postgres" (the Postgres
 	// store's database, which $AGENTKIT_STORE names: replicas; dev and
-	// cloud images).
+	// cloud images), or "store": the backend of the store $AGENTKIT_STORE
+	// names (sqlite or postgres, memory for none), and no vault at all
+	// without the key ring, so one config serves every deployment.
 	Backend string `json:"backend"`
 	// Path is the file of "file" and "sqlite".
 	Path string `json:"path"`
@@ -41,12 +45,40 @@ type credentialsConfig struct {
 	// ReturnURLs are where a connect flow may send the browser back to
 	// when it ends (POST /v1/credentials/{slot}/connect's return_url): the
 	// console's /connections/done, say. A return URL must have the scheme,
-	// host and path of one of them.
+	// host and path of one of them. A path is on $AGENTKIT_PUBLIC_URL.
 	ReturnURLs []string `json:"return_urls"`
 	// AllowHosts are internal hosts a stored client credentials token_url
 	// may name (PUT /v1/credentials/{slot}); every other one must be https
 	// on a public address (the SSRF guard, pkg/netguard).
 	AllowHosts []string `json:"allow_hosts"`
+}
+
+// withPublicURL is c with its redirect and return URLs that are paths
+// (/oauth/callback) on publicURL ($AGENTKIT_PUBLIC_URL), so one config
+// serves deployments at different addresses. Without a public URL a
+// redirect path stays, which an entry that is used then fails on, and a
+// return path is dropped: no flow can return there.
+func (c credentialsConfig) withPublicURL(publicURL string) credentialsConfig {
+	isPath := func(u string) bool { return strings.HasPrefix(u, "/") && !strings.HasPrefix(u, "//") }
+	c.ReturnURLs = slices.Clone(c.ReturnURLs)
+	if publicURL == "" {
+		c.ReturnURLs = slices.DeleteFunc(c.ReturnURLs, isPath)
+		return c
+	}
+	on := func(u string) string {
+		if isPath(u) {
+			return publicURL + u
+		}
+		return u
+	}
+	c.OAuth2 = slices.Clone(c.OAuth2)
+	for i := range c.OAuth2 {
+		c.OAuth2[i].RedirectURL = on(c.OAuth2[i].RedirectURL)
+	}
+	for i := range c.ReturnURLs {
+		c.ReturnURLs[i] = on(c.ReturnURLs[i])
+	}
+	return c
 }
 
 // credentialsEnv is what a backend reads besides its config: the store
@@ -86,6 +118,21 @@ func credentialBackends() map[string]credentialBackend {
 	}
 }
 
+// storeBackend is the vault backend of credentials.backend "store": the
+// one of the store $AGENTKIT_STORE names, or memory for the in-memory
+// store.
+func storeBackend(store string) (string, error) {
+	switch {
+	case store == "", store == "memory":
+		return "memory", nil
+	case strings.HasPrefix(store, "postgres://"), strings.HasPrefix(store, "postgresql://"):
+		return "postgres", nil
+	case strings.HasPrefix(store, "sqlite:"):
+		return "sqlite", nil
+	}
+	return "", fmt.Errorf(`credentials: backend "store": $%s names no store the vault can share (sqlite:... or postgres://...)`, envStore)
+}
+
 // openVault opens the credential vault: nil when neither a credentials
 // section nor a key ring is given (nothing uses credentials then), and the
 // function that closes its backend. A backend that keeps credentials past
@@ -113,6 +160,21 @@ func (c cli) openVaultParts(ctx context.Context, cfg credentialsConfig, ring *cr
 	noop := func() error { return nil }
 	if cfg.Backend == "" {
 		cfg.Backend = "memory"
+	}
+	if cfg.Backend == "store" {
+		// One config for every deployment of it: the vault goes where the
+		// store is, and without a key ring there is none.
+		if cfg.Path != "" {
+			return nil, nil, errors.New(`credentials: backend "store" uses the store's database: leave out path`)
+		}
+		if ring == nil {
+			return nil, noop, nil
+		}
+		b, err := storeBackend(c.env(envStore))
+		if err != nil {
+			return nil, nil, err
+		}
+		cfg.Backend = b
 	}
 	open, ok := credentialBackends()[cfg.Backend]
 	if !ok {
@@ -149,10 +211,17 @@ func (c cli) openVaultParts(ctx context.Context, cfg credentialsConfig, ring *cr
 //	            "scopes": ["https://www.googleapis.com/auth/gmail.readonly"],
 //	            "redirect_url": "https://agents.example.com/oauth/callback"}]
 type oauth2AppConfig struct {
-	Slot            string `json:"slot"`
-	TokenURL        string `json:"token_url"`
-	ClientID        string `json:"client_id"`
+	Slot     string `json:"slot"`
+	TokenURL string `json:"token_url"`
+	ClientID string `json:"client_id"`
+	// ClientIDEnv names a variable holding the client id instead, so one
+	// config serves deployments with their own apps.
+	ClientIDEnv     string `json:"client_id_env"`
 	ClientSecretEnv string `json:"client_secret_env"`
+	// Optional skips the entry when its client id or secret variable is
+	// not set: the slot is still listed, and says the server can't connect
+	// it (a shared config that works before every provider is set up).
+	Optional bool `json:"optional"`
 	// AuthStyle is how the client authenticates to the token endpoint:
 	// "header" (HTTP basic, the default) or "params" (in the form).
 	AuthStyle string `json:"auth_style"`
@@ -168,7 +237,8 @@ type oauth2AppConfig struct {
 	// Scopes are asked for when connecting.
 	Scopes []string `json:"scopes"`
 	// RedirectURL is the server's callback as registered with the
-	// provider: the server's public origin and /oauth/callback.
+	// provider: the server's public origin and /oauth/callback, or the
+	// path alone on $AGENTKIT_PUBLIC_URL.
 	RedirectURL string `json:"redirect_url"`
 	// AuthParams are added to the authorization URL.
 	AuthParams map[string]string `json:"auth_params"`
@@ -230,7 +300,19 @@ func (c cli) oauth2Apps(cfg credentialsConfig) ([]oauth2App, error) {
 		if a.ClientSecretEnv == "" {
 			return nil, fmt.Errorf("%s: client_secret_env names the variable with the client secret (the file never holds it)", where)
 		}
+		if a.ClientID != "" && a.ClientIDEnv != "" {
+			return nil, fmt.Errorf("%s: client_id and client_id_env: set one", where)
+		}
+		if a.ClientIDEnv != "" {
+			a.ClientID = c.env(a.ClientIDEnv)
+		}
 		secret := c.env(a.ClientSecretEnv)
+		if a.Optional && (a.ClientID == "" || secret == "") {
+			continue
+		}
+		if a.ClientID == "" && a.ClientIDEnv != "" {
+			return nil, fmt.Errorf("%s: $%s (client_id_env) is not set", where, a.ClientIDEnv)
+		}
 		if secret == "" {
 			return nil, fmt.Errorf("%s: $%s (client_secret_env) is not set", where, a.ClientSecretEnv)
 		}
@@ -255,6 +337,9 @@ func (c cli) oauth2Apps(cfg credentialsConfig) ([]oauth2App, error) {
 		}
 		if !secureURL(a.AuthURL) {
 			return nil, fmt.Errorf("%s: auth_url %q: want an https URL (http only on a loopback host)", where, a.AuthURL)
+		}
+		if strings.HasPrefix(a.RedirectURL, "/") {
+			return nil, fmt.Errorf("%s: redirect_url %q is a path: set $%s to the server's public URL (http://localhost:30080)", where, a.RedirectURL, envPublicURL)
 		}
 		if u, err := url.Parse(a.RedirectURL); err != nil || !secureURL(a.RedirectURL) || !strings.HasSuffix(u.Path, oauthCallbackPath) {
 			return nil, fmt.Errorf("%s: redirect_url %q: want the server's public URL and %s, https (http only on a loopback host)", where, a.RedirectURL, oauthCallbackPath)
@@ -293,6 +378,21 @@ type providerProfile struct {
 	params                          map[string]string
 }
 
+// toolsetSources is what toolset.Build gives the specs that name a
+// credential slot: the vault's sources, or with no vault and
+// $AGENTKIT_CREDENTIALS_URL set (a toolsets component of the split
+// deployment), sources that fetch each credential from that agent API.
+func (c cli) toolsetSources(env serveEnv, cfg credentialsConfig, log *slog.Logger) (toolset.SourceProvider, error) {
+	if env.vault != nil || env.credentialsURL == "" {
+		return c.credentialSources(env.vault, cfg, log)
+	}
+	conn, err := rpc.Dial(env.credentialsURL, rpc.WithBearer(env.rpcToken))
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", envCredentialsURL, err)
+	}
+	return credentials.NewRemoteSources(credrpc.NewClient(conn), credentials.WithLogger(log.With("component", "credentials")))
+}
+
 // credentialSources is what toolset.Build gives the specs that name a
 // credential slot: the sources over the vault, with the OAuth2 clients of
 // credentials.oauth2. With no vault, every slot is refused, naming the key
@@ -300,8 +400,10 @@ type providerProfile struct {
 // optional one is skipped).
 func (c cli) credentialSources(vault credentials.Vault, cfg credentialsConfig, log *slog.Logger) (toolset.SourceProvider, error) {
 	if vault == nil {
-		if len(cfg.OAuth2) > 0 {
-			return nil, fmt.Errorf("credentials.oauth2 needs the credential vault: set $%s", envCredentialsKey)
+		for _, a := range cfg.OAuth2 {
+			if !a.Optional {
+				return nil, fmt.Errorf("credentials.oauth2 needs the credential vault: set $%s", envCredentialsKey)
+			}
 		}
 		return toolset.SourceFunc(func(_, slot string, _ credentials.Scope) (credentials.Source, error) {
 			return nil, fmt.Errorf("%w: slot %q needs the credential vault: set $%s (<id>:<base64 of %d random bytes>)",

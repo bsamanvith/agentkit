@@ -130,7 +130,7 @@ done
 (cd web/apps/console && exec node e2e/fake-model.ts "$model") >"$dir/model.log" 2>&1 &
 pids+=($!)
 start toolsets AGENTKIT_COMPONENTS=toolsets,mcp-server AGENTKIT_ADDR="127.0.0.1:$toolsets" \
-	AGENTKIT_API_TOKEN="$token"
+	AGENTKIT_API_TOKEN="$token" AGENTKIT_CREDENTIALS_URL="http://127.0.0.1:$port"
 start runner AGENTKIT_COMPONENTS=runner AGENTKIT_ADDR="127.0.0.1:$runner" \
 	AGENTKIT_TOOLSETS_URL="http://127.0.0.1:$toolsets" AGENTKIT_MEMORY_URL="http://127.0.0.1:$port" \
 	ANTHROPIC_API_KEY=smoke-dummy-key ANTHROPIC_BASE_URL="http://127.0.0.1:$model"
@@ -142,7 +142,7 @@ if [ -n "${AGENTKIT_STORE:-}" ]; then
 fi
 start api AGENTKIT_COMPONENTS=agent,web AGENTKIT_ADDR="127.0.0.1:$port" \
 	AGENTKIT_RUNNER_URL="http://127.0.0.1:$runner" AGENTKIT_TOOLSETS_URL="http://127.0.0.1:$toolsets" \
-	AGENTKIT_API_TOKEN="$token" ${store[@]+"${store[@]}"}
+	AGENTKIT_API_TOKEN="$token" AGENTKIT_CREDENTIALS_KEY="k1:$(openssl rand -base64 32)" ${store[@]+"${store[@]}"}
 
 for url in "$model/healthz" "$toolsets/readyz" "$runner/readyz" "$port/readyz"; do
 	for _ in $(seq 300); do

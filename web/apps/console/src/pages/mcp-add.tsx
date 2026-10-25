@@ -508,7 +508,7 @@ function SignInStep({
       )}
       {oauth ? (
         <Callout tone="info" title="It signs people in with MCP OAuth.">
-          With Each person signs in, everyone connects their own account on Connections, and the agents use it only for
+          With Each person signs in, everyone connects their own account on Connectors, and the agents use it only for
           their runs. You connect yours next, to list its tools.
         </Callout>
       ) : null}
@@ -532,7 +532,7 @@ function SignInStep({
               "user",
               "Each person signs in",
               oauth
-                ? "MCP OAuth: each person connects their own account on Connections. Someone who hasn't gets “not connected” from its tools, never someone else's account."
+                ? "MCP OAuth: each person connects their own account on Connectors. Someone who hasn't gets “not connected” from its tools, never someone else's account."
                 : "For a server that signs people in with MCP OAuth; this one didn't ask for it.",
               !oauth,
             ],
@@ -827,7 +827,7 @@ function ConnectBox({
           return;
         }
         setBusy(false);
-        setNote("The sign-in window was blocked. Allow popups, or connect on Connections, then Check again.");
+        setNote("The sign-in window was blocked. Allow popups, or connect on Connectors, then Check again.");
       },
       (e: unknown) => {
         popup?.close();

@@ -31,7 +31,7 @@ envfile=deploy/compose/.env # read by Compose itself: it sits next to compose.ya
 split_url=http://127.0.0.1:30081
 allinone_url=http://127.0.0.1:30082
 # Ours alone: a value of the same name in the shell would override the file.
-unset AGK_RPC_TOKEN AGK_API_TOKEN AGK_PG_PASSWORD AGK_ANTHROPIC_API_KEY
+unset AGK_RPC_TOKEN AGK_API_TOKEN AGK_PG_PASSWORD AGK_ANTHROPIC_API_KEY AGK_CREDENTIALS_KEY
 
 die() { echo "compose-local: $*" >&2; exit 1; }
 dc() {
@@ -78,6 +78,7 @@ ensure_env() {
 				echo "AGK_API_TOKEN=$(openssl rand -hex 24)"
 				echo "AGK_PG_PASSWORD=$(openssl rand -hex 16)"
 				echo "AGK_ANTHROPIC_API_KEY='$key'"
+				echo "AGK_CREDENTIALS_KEY=k1:$(openssl rand -base64 32)"
 			} >"$envfile"
 		)
 		echo "compose-local: wrote $envfile" >&2
@@ -86,6 +87,11 @@ ensure_env() {
 		(umask 077 && grep -v '^AGK_ANTHROPIC_API_KEY=' "$envfile" >"$tmp" && echo "AGK_ANTHROPIC_API_KEY='$key'" >>"$tmp")
 		mv "$tmp" "$envfile"
 		echo "compose-local: stored the new ANTHROPIC_API_KEY" >&2
+	fi
+	# A file from before the credential vault gets its key ring.
+	if [ -z "$(env_get AGK_CREDENTIALS_KEY)" ]; then
+		(umask 077 && echo "AGK_CREDENTIALS_KEY=k1:$(openssl rand -base64 32)" >>"$envfile")
+		echo "compose-local: added AGK_CREDENTIALS_KEY" >&2
 	fi
 }
 

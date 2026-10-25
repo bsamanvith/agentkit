@@ -12,6 +12,7 @@ import (
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/component"
+	"github.com/bsamanvith/agentkit/pkg/credentials/credrpc"
 	"github.com/bsamanvith/agentkit/pkg/rpc"
 	"github.com/bsamanvith/agentkit/pkg/runner"
 	"github.com/bsamanvith/agentkit/pkg/runner/runnerrpc"
@@ -38,6 +39,10 @@ const (
 	// one registry per agent by its name (toolrpc's protocol), at
 	// /rpc/memory/, for the agents that run on a runner.
 	memoryService = "memory"
+	// credentialsService is the agent API's credential sources for the
+	// slots of its toolsets (package credrpc), at /rpc/credentials/, for a
+	// toolsets component that keeps no vault.
+	credentialsService = credrpc.Service
 
 	// envRunnerURL makes the agent API run its agents on the runner at
 	// this URL (http://runner:8080) instead of in process.
@@ -50,6 +55,11 @@ const (
 	// agent API (http://api:8080), which serves each agent's memory tools at
 	// /rpc/memory/ (memoryService). Needed only for agents with memory.
 	envMemoryURL = "AGENTKIT_MEMORY_URL"
+	// envCredentialsURL is where a toolsets component without a vault
+	// reads the caller's credential for a toolset's slot: the agent API
+	// (http://api:8080), which serves its sources at /rpc/credentials/
+	// (credentialsService) when its toolsets are elsewhere.
+	envCredentialsURL = "AGENTKIT_CREDENTIALS_URL"
 	// envRPCToken is the bearer token between components: the runner and
 	// toolsets components require it, and their callers send it. Required
 	// to serve them on an address that is not loopback.

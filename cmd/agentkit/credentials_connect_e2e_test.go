@@ -289,6 +289,51 @@ func TestCredentialsPutCLI(t *testing.T) {
 	}
 }
 
+// TestOAuth2AppFromEnv: client_id_env reads the client id from the
+// environment, and an optional entry whose id or secret is unset is left
+// out (its slot then can't be connected here) instead of failing startup.
+func TestOAuth2AppFromEnv(t *testing.T) {
+	t.Parallel()
+	vars := map[string]string{"ID": "app-from-env", "S": "s3cret"}
+	c := cli{getenv: func(k string) string { return vars[k] }}
+	a := oauth2AppConfig{
+		Slot: "gmail", Profile: "google", ClientIDEnv: "ID", ClientSecretEnv: "S",
+		RedirectURL: "http://localhost:8080/oauth/callback",
+	}
+	apps, err := c.oauth2Apps(credentialsConfig{OAuth2: []oauth2AppConfig{a}})
+	if err != nil || len(apps) != 1 || apps[0].app.ClientID != "app-from-env" {
+		t.Fatalf("client_id_env: %+v, %v", apps, err)
+	}
+	both := a
+	both.ClientID = "app"
+	if _, err := c.oauth2Apps(credentialsConfig{OAuth2: []oauth2AppConfig{both}}); err == nil {
+		t.Error("client_id and client_id_env both set: accepted")
+	}
+	for name, change := range map[string]func(*oauth2AppConfig){
+		"no id":     func(a *oauth2AppConfig) { a.ClientIDEnv = "UNSET" },
+		"no secret": func(a *oauth2AppConfig) { a.ClientSecretEnv = "UNSET" },
+	} {
+		b := a
+		change(&b)
+		if _, err := c.oauth2Apps(credentialsConfig{OAuth2: []oauth2AppConfig{b}}); err == nil {
+			t.Errorf("%s, required: accepted", name)
+		}
+		b.Optional = true
+		if apps, err := c.oauth2Apps(credentialsConfig{OAuth2: []oauth2AppConfig{b}}); err != nil || len(apps) != 0 {
+			t.Errorf("%s, optional: %+v, %v; want it left out", name, apps, err)
+		}
+	}
+	// With no vault an optional entry doesn't fail startup; a required one does.
+	opt := a
+	opt.Optional = true
+	if _, err := c.credentialSources(nil, credentialsConfig{OAuth2: []oauth2AppConfig{opt}}, slog.New(slog.DiscardHandler)); err != nil {
+		t.Errorf("optional entry, no vault: %v", err)
+	}
+	if _, err := c.credentialSources(nil, credentialsConfig{OAuth2: []oauth2AppConfig{a}}, slog.New(slog.DiscardHandler)); err == nil {
+		t.Error("required entry, no vault: accepted")
+	}
+}
+
 // The connect flow's config is checked at startup: endpoints https (http
 // only on loopback), a redirect URL at /oauth/callback, a known profile,
 // and the profile's presets applied.

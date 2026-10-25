@@ -7,8 +7,12 @@
 # The images are the ones make images-split builds, never pulled. The secrets
 # come from deploy/compose/.env, which compose-local.sh writes on the first up
 # and keeps (git ignores it): AGK_RPC_TOKEN, AGK_API_TOKEN, AGK_PG_PASSWORD,
-# AGK_ANTHROPIC_API_KEY. Each component gets only the ones it needs, as the
-# cluster's secret gives them.
+# AGK_ANTHROPIC_API_KEY, AGK_CREDENTIALS_KEY (the credential vault's key
+# ring). Each component gets only the ones it needs, as the cluster's secret
+# gives them. The OAuth apps of the Connectors page come from the
+# environment or that file when set: GOOGLE_, HUBSPOT_ and
+# SALESFORCE_OAUTH_CLIENT_ID and _CLIENT_SECRET (docs/QUICKSTART.md
+# "Connecting accounts").
 #
 # Profile allinone: one container of the agentkit-local image, every
 # component in one process on SQLite, console on http://127.0.0.1:30082
@@ -89,7 +93,9 @@ services:
       AGENTKIT_RPC_TOKEN: ${AGK_RPC_TOKEN:?run scripts/compose-local.sh up}
       # MCP clients send the API token to /mcp/<name>.
       AGENTKIT_API_TOKEN: ${AGK_API_TOKEN:?run scripts/compose-local.sh up}
-      # Connector keys go here, and only here (TAVILY_API_KEY, ...).
+      # Each user's connector keys and accounts: the API's vault.
+      AGENTKIT_CREDENTIALS_URL: http://api:8080
+      # Server-wide connector keys go here, and only here (TAVILY_API_KEY, ...).
     # Files a toolset reads go under /etc/agentkit next to the config, one
     # bind mount each, relative to this file: the handbook knowledge base
     # of config.json (deploy/local/agent/knowledge).
@@ -119,6 +125,16 @@ services:
       AGENTKIT_API_TOKEN: ${AGK_API_TOKEN}
       AGENTKIT_STORE: postgres://agentkit:${AGK_PG_PASSWORD}@postgres:5432/agentkit?sslmode=disable
       AGENTKIT_STORE_MIGRATE: "off"
+      AGENTKIT_CREDENTIALS_KEY: ${AGK_CREDENTIALS_KEY:-}
+      # Where the browser reaches the console: the OAuth redirect and return
+      # URLs of the config's credentials are on it.
+      AGENTKIT_PUBLIC_URL: http://localhost:30081
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      HUBSPOT_OAUTH_CLIENT_ID: ${HUBSPOT_OAUTH_CLIENT_ID:-}
+      HUBSPOT_OAUTH_CLIENT_SECRET: ${HUBSPOT_OAUTH_CLIENT_SECRET:-}
+      SALESFORCE_OAUTH_CLIENT_ID: ${SALESFORCE_OAUTH_CLIENT_ID:-}
+      SALESFORCE_OAUTH_CLIENT_SECRET: ${SALESFORCE_OAUTH_CLIENT_SECRET:-}
     # Loopback only: the console and /v1 for this machine.
     ports: ["127.0.0.1:30081:8080"]
     depends_on:
@@ -138,6 +154,14 @@ services:
       AGENTKIT_API_TOKEN: ${AGK_API_TOKEN:?run scripts/compose-local.sh up allinone}
       AGENTKIT_STORE: sqlite:/var/lib/agentkit/agentkit.db
       ANTHROPIC_API_KEY: ${AGK_ANTHROPIC_API_KEY:-}
+      AGENTKIT_CREDENTIALS_KEY: ${AGK_CREDENTIALS_KEY:-}
+      AGENTKIT_PUBLIC_URL: http://localhost:30082
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      HUBSPOT_OAUTH_CLIENT_ID: ${HUBSPOT_OAUTH_CLIENT_ID:-}
+      HUBSPOT_OAUTH_CLIENT_SECRET: ${HUBSPOT_OAUTH_CLIENT_SECRET:-}
+      SALESFORCE_OAUTH_CLIENT_ID: ${SALESFORCE_OAUTH_CLIENT_ID:-}
+      SALESFORCE_OAUTH_CLIENT_SECRET: ${SALESFORCE_OAUTH_CLIENT_SECRET:-}
     volumes: [allinone:/var/lib/agentkit]
     tmpfs: [/tmp]
     ports: ["127.0.0.1:30082:8080"]

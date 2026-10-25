@@ -42,12 +42,13 @@ check_context() {
 
 # secret_value KEY prints the secret's KEY, decoded.
 secret_value() {
-	kn get secret agentkit -o go-template="{{index .data \"$1\" | base64decode}}"
+	kn get secret agentkit -o go-template="{{with index .data \"$1\"}}{{base64decode .}}{{end}}"
 }
 
 # ensure_secret creates the secret with new random tokens the first time, and
 # keeps them after that: Postgres was initialized with its password. A model
-# key in the environment replaces the stored one; it prints "changed" then.
+# key or an OAuth app in the environment replaces the stored one; it prints
+# "changed" then.
 ensure_secret() {
 	local key="${ANTHROPIC_API_KEY:-${ANTHROPIC_KEY:-}}"
 	if ! kn get secret agentkit >/dev/null 2>&1; then
@@ -61,12 +62,31 @@ ensure_secret() {
 		printf '%s' "$pw" >"$d/postgres-password"
 		printf 'postgres://agentkit:%s@postgres:5432/agentkit?sslmode=disable' "$pw" >"$d/store-url"
 		printf '%s' "$key" >"$d/anthropic-api-key"
+		printf 'k1:%s' "$(openssl rand -base64 32)" >"$d/credentials-key"
 		kn create secret generic agentkit --from-file="$d" >/dev/null
 		echo "k8s-local: created secret $ns/agentkit" >&2
 	elif [ -n "$key" ] && [ "$key" != "$(secret_value anthropic-api-key)" ]; then
 		kn patch secret agentkit --type merge --patch-file /dev/stdin >/dev/null <<<"{\"stringData\":{\"anthropic-api-key\":\"$key\"}}"
 		echo changed
 	fi
+	# A secret from before the credential vault gets its key ring.
+	if [ -z "$(secret_value credentials-key)" ]; then
+		kn patch secret agentkit --type merge --patch-file /dev/stdin >/dev/null <<<"{\"stringData\":{\"credentials-key\":\"k1:$(openssl rand -base64 32)\"}}"
+		echo changed
+	fi
+	# The OAuth apps of the Connectors page, from the environment when set
+	# (docs/QUICKSTART.md "Connecting accounts").
+	local v name val
+	for v in GOOGLE_OAUTH_CLIENT_ID GOOGLE_OAUTH_CLIENT_SECRET HUBSPOT_OAUTH_CLIENT_ID HUBSPOT_OAUTH_CLIENT_SECRET \
+		SALESFORCE_OAUTH_CLIENT_ID SALESFORCE_OAUTH_CLIENT_SECRET; do
+		val="${!v:-}"
+		name="$(tr '[:upper:]_' '[:lower:]-' <<<"$v")"
+		case "$val" in *'"'* | *'\'* | *$'\n'*) echo "k8s-local: $v holds a quote, backslash or newline; skipped" >&2 && continue ;; esac
+		if [ -n "$val" ] && [ "$val" != "$(secret_value "$name")" ]; then
+			kn patch secret agentkit --type merge --patch-file /dev/stdin >/dev/null <<<"{\"stringData\":{\"$name\":\"$val\"}}"
+			echo changed
+		fi
+	done
 }
 
 up() {
@@ -97,7 +117,7 @@ up() {
 	# read the toolsets' list once, at startup, and must not read it from the
 	# old toolsets pod.
 	local restart=
-	if [ "${SKIP_BUILD:-}" != 1 ] || [ "${FORCE_RESTART:-}" = 1 ] || [ "$keychanged" = changed ] || [[ "$kb" == *configured* ]]; then
+	if [ "${SKIP_BUILD:-}" != 1 ] || [ "${FORCE_RESTART:-}" = 1 ] || [ -n "$keychanged" ] || [[ "$kb" == *configured* ]]; then
 		restart=1
 	fi
 	if [ -n "${EXTRA_CA_FILE:-}" ]; then

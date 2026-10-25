@@ -679,7 +679,13 @@ func TestRetention(t *testing.T) {
 	if n := deltas(runs[2].ID); n < 2 {
 		t.Fatalf("a kept run has %d text deltas, want its live ones", n)
 	}
-	if n := deltas(runs[0].ID); n != 1 {
+	// The last run joins the finished ones just after its response is
+	// written, so the oldest is let go of a moment later.
+	n := deltas(runs[0].ID)
+	for deadline := time.Now().Add(10 * time.Second); n != 1 && time.Now().Before(deadline); n = deltas(runs[0].ID) {
+		time.Sleep(time.Millisecond)
+	}
+	if n != 1 {
 		t.Errorf("the oldest run, past the count, has %d text deltas, want 1 (replayed)", n)
 	}
 	r.clock.Advance(2 * time.Hour)

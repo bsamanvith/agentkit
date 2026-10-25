@@ -9,8 +9,10 @@
 #   scripts/try-agent.sh --agent search
 #                                    talk to that agent (default: the config's default
 #                                    agent); the config then defaults to search.json,
-#                                    which has the agents "default", "search", "workspace"
-#                                    and "support" (answers from the sample knowledge base)
+#                                    which has the agents "default", "search", "workspace",
+#                                    "support" (answers from the sample knowledge base) and
+#                                    "assistant" (the accounts you connect on Connectors;
+#                                    docs/QUICKSTART.md "Connecting accounts")
 #
 # Needs: Go (any recent version; the right toolchain is fetched from go.mod) or
 # Docker for --docker, curl, and an Anthropic key in ANTHROPIC_API_KEY (or
@@ -89,6 +91,8 @@ if [ "$use_docker" = 1 ]; then
     -e ANTHROPIC_API_KEY="$key" -e AGENTKIT_API_TOKEN="$token" -e AGENTKIT_CREDENTIALS_KEY="$creds_key" \
     -e AGENTKIT_COMPONENTS=agent,web,mcp-server \
     -e TAVILY_API_KEY -e EXA_API_KEY -e PARALLEL_API_KEY -e HUBSPOT_ACCESS_TOKEN -e SALESFORCE_ACCESS_TOKEN \
+    -e GOOGLE_OAUTH_CLIENT_ID -e GOOGLE_OAUTH_CLIENT_SECRET -e HUBSPOT_OAUTH_CLIENT_ID -e HUBSPOT_OAUTH_CLIENT_SECRET \
+    -e SALESFORCE_OAUTH_CLIENT_ID -e SALESFORCE_OAUTH_CLIENT_SECRET \
     -v "$PWD/$config:/etc/agentkit/config.json:ro" \
     agentkit:latest >/dev/null
   log="(docker logs $container)"

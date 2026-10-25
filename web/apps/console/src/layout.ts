@@ -5,7 +5,7 @@ import { createContext, useContext } from "react";
 export type Layout = {
   /** < 768 px: no rail; the list is in the drawer. */
   phone: boolean;
-  /** Whether this section has a list column (Connections has none). */
+  /** Whether this section has a list column (Connectors has none). */
   hasList: boolean;
   /** Laptop and desktop: whether the list column is shown. */
   listShown: boolean;

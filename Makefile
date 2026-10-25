@@ -7,6 +7,8 @@ GOLANGCI := bin/golangci-lint-$(GOLANGCI_VERSION)
 ACTIONLINT_VERSION := v1.7.12
 ACTIONLINT := bin/actionlint-$(ACTIONLINT_VERSION)
 ZIZMOR_VERSION := 1.30.1
+GOVULNCHECK_VERSION := v1.9.0
+GOVULNCHECK := bin/govulncheck-$(GOVULNCHECK_VERSION)
 # Under -race the SQLite store's suites took about 11 minutes on 4 cores (most
 # of it the race build of modernc.org/sqlite, not fsync: synchronous=NORMAL
 # saved nothing), past go test's 10-minute default. T056 cut that about
@@ -162,6 +164,17 @@ $(ACTIONLINT):
 	GOBIN=$(CURDIR)/bin GOTOOLCHAIN=$$($(GO) env GOVERSION) $(GO) install github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION)
 	mv bin/actionlint $@
 
+.PHONY: vulncheck
+vulncheck: $(GOVULNCHECK) ## Report known vulnerabilities (Go's database) reachable from the code, stdlib included; needs the network
+	$(GOVULNCHECK) ./...
+
+$(GOVULNCHECK):
+	@mkdir -p bin
+	@# It checks the stdlib of the go command it runs, which follows go.mod's
+	@# toolchain line (not the Go it was built with).
+	GOBIN=$(CURDIR)/bin GOTOOLCHAIN=$$($(GO) env GOVERSION) $(GO) install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
+	mv bin/govulncheck $@
+
 .PHONY: tools
 tools: $(GOLANGCI) ## Install the pinned linter into bin/
 
@@ -252,7 +265,7 @@ TAGS_runner := noconnectors nomcp noweb noa2a noagui nosqlite nopostgres noredis
 TAGS_toolsets := nomodels noweb noa2a noagui nosqlite nopostgres noredis noagent
 IMAGE_BUDGET_MB_local ?= 32
 IMAGE_BUDGET_MB_dev ?= 33
-IMAGE_BUDGET_MB_api ?= 23
+IMAGE_BUDGET_MB_api ?= 24
 IMAGE_BUDGET_MB_runner ?= 20
 IMAGE_BUDGET_MB_toolsets ?= 18
 # Binaries that get an image; fakellm joins when cmd/fakellm exists (T004).

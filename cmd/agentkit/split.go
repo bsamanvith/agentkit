@@ -88,9 +88,13 @@ func (r *rpcComponent) Ready(context.Context) error {
 }
 
 // newRPCServer is the server of a runner or toolsets component, refusing an
-// address that is not loopback without a token.
+// address that is not loopback without a token, and any address without one
+// when authentication is required.
 func newRPCServer(name string, env serveEnv, log *slog.Logger) (*rpc.Server, error) {
-	if env.rpcToken == "" && !isLoopback(env.addr) {
+	switch {
+	case env.rpcToken == "" && env.requireAuth:
+		return nil, fmt.Errorf("serving the %s with authentication required ($%s) needs a token in $%s (its callers send the same)", name, envRequireAuth, envRPCToken)
+	case env.rpcToken == "" && !isLoopback(env.addr):
 		return nil, fmt.Errorf("serving the %s on %s, which is not a loopback address, needs a token in $%s (its callers send the same)", name, env.addr, envRPCToken)
 	}
 	return rpc.NewServer(rpc.WithToken(env.rpcToken), rpc.WithLogger(log.With("component", name))), nil
@@ -138,6 +142,17 @@ func (c cli) newRunner(ctx context.Context, cfg serveConfig, built map[string]to
 			return component.Mount{}, err
 		}
 		agents[a.Name] = h
+		set, err := a.modelSet(a.label(cfg.legacy))
+		if err != nil {
+			return component.Mount{}, err
+		}
+		if !set.Single() {
+			b, err := newModelBuilds(ctx, set, c.modelBuild(cfg, a, set, agentapi.Agent{Name: a.Name}, built, nil, nil, nil, clk, log))
+			if err != nil {
+				return component.Mount{}, err
+			}
+			agents[a.Name] = modelHarness{Harness: h, builds: b}
+		}
 		skipped = appendNew(skipped, sk...)
 		skills.add(a, ks)
 	}

@@ -158,6 +158,14 @@ A **connector** is a toolset that calls an outside service: Exa, Parallel, Gmail
 
 A **Tools** button sits in the composer, left of Send (T115). It opens a menu of the agent's toolsets, each a checkbox with its tool count and, when the person hasn't connected its key or account, "Not connected" and a link to Connections; then how the agent gets them: **Agent's default**, **Direct** (every chosen tool in its context) or **Search** (held back behind `tool_search`, loaded when the agent looks for them); and "Reset to the agent's tools" once something changed. The button reads "3/5" and "· Search". The choice is kept per conversation in localStorage (a new chat: per agent until its first send) and sent as `tools` with every message of that chat; nothing changed sends nothing. A chat can only narrow its agent's toolsets, never add one (E22).
 
+### The model picker
+
+An agent that allows more than one model (T125) gets a **model select** beside the agent picker, in New chat and in a conversation (T127). It lists the agent's `models.choices`: the default first (marked "The agent's default"), the models it allows by name, then the server's known models (`GET /v1/models`) that its patterns allow. Names show without `anthropic/`; other providers keep theirs ("openai/gpt-5-mini"). An agent with one model shows none.
+
+- **The pick** is the chat's, kept with its tool choice in localStorage (a new chat: per agent until its first send, then the conversation's), and sent as `model` with every message; nothing picked sends nothing, and the server keeps the conversation on its last model. A resume sends no model.
+- **Each answer** names its model at the end of its usage line ("2 turns · 1,234 tokens · 3.2 s · claude-sonnet-5-5"), from its run's `run_start`.
+- **Another provider's model** in a conversation that ran on one is `409 model_provider_mismatch`: the notice says "Start a new chat to use openai/gpt-5-mini." and **New chat** opens one with the agent on that model, the message moved to it.
+
 ### Interrupts and approvals
 
 E17's interrupts (T084), with the decisions of the tool policy (T083).
@@ -246,12 +254,14 @@ T071's background runs, T086's steering, T073's threads and T072's triggers.
 
 T075's stored, versioned definitions, edited by T077; E17's mode and policy; T085's deferred tools.
 
+**Built (T077):** the page and its sections Name and description, Models, Instructions, Tools (with description overrides), Interaction and Limits; field errors and the summary; Save draft, the conflict dialog, Publish…; read-only config agents with Duplicate; the Versions page. Not yet: the test chat, Skills, Tool policy, Memory and the defer switches. A new agent is listed under Agents once published (the list shows published agents). Duplicate (`/agents/new?from={name}`) copies a stored agent's newest definition; a config agent's, only what `GET /v1/agents/{name}` shows.
+
 - **A full-width page** at `/agents/new` and `/agents/{name}/edit`.
   - Header: Back, "Edit researcher" (`h1`), the version state ("Published v3 · draft v4", "Unsaved changes"), **Test**, **Versions**, **Save draft** (`Mod+S`), **Publish…**.
   - Desktop: section nav (172 px), the form, and the test chat (380 px). Laptop: the form alone, with **Test** opening the chat as a panel over it (Esc closes it). Phone: read-only, the latest version as text, with "Editing an agent needs a wider screen."
 - **Sections:**
   - **Name** (fixed once created: chats, tasks and versions refer to it) and description.
-  - **Model**: a text field with suggestions, because there is no models API; and effort.
+  - **Models** (E24): the default model (suggestions from `GET /v1/models`) and its effort; **Also allowed**, models by name as chips; **Allowed by pattern**, each with a live "Matches: …" over the models the server knows; **Variants**: on a model or `re:` pattern, instructions added after or instead of the agent's, effort, max tokens and tool description overrides.
   - **Instructions**: the system prompt (mono, with a character count).
   - **Skills**: checkboxes. A skill whose tools match nothing of this agent says so.
   - **Tools**, **Interaction** and **Tool policy** (below).
@@ -260,7 +270,7 @@ T075's stored, versioned definitions, edited by T077; E17's mode and policy; T08
 - **Tools:**
   - One block per toolset: a checkbox to use it, its type and state, and a **Defer all** switch.
   - In it, one row per tool:
-    - the name and description;
+    - the name and description, and **Override description** (T126): a text field starting from the tool's own, which stays shown greyed; **Use its own** removes the override;
     - kind and risk tags, plus "asks" for a tool that sets `requires_approval`;
     - a **Deferred** switch;
     - a policy select. It shows what the policy decides ("Policy: needs approval") and offers "Always allowed / flagged / needs approval / denied". Each of those writes an exact-name rule at the top of the rules.

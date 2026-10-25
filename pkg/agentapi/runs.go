@@ -189,7 +189,7 @@ func (s *Server) runView(ctx context.Context, run store.Run) (Run, error) {
 // reading its events (a suspended run's interrupts are its log's last entry).
 func (s *Server) runSummary(ctx context.Context, run store.Run) Run {
 	now := s.cfg.clock.Now()
-	v := Run{V: WireVersion, ID: run.ID, ConversationID: run.ConversationID, Pool: run.Pool, AgentVersion: run.AgentVersion, Status: runStatus(run, now), CreatedAt: run.CreatedAt, Usage: run.Usage, Background: !run.Interactive}
+	v := Run{V: WireVersion, ID: run.ID, ConversationID: run.ConversationID, Pool: run.Pool, AgentVersion: run.AgentVersion, Model: run.Model, Status: runStatus(run, now), CreatedAt: run.CreatedAt, Usage: run.Usage, Background: !run.Interactive}
 	if c, err := s.store.GetConversation(ctx, run.ConversationID); err == nil {
 		v.Agent = c.Agent
 	}
@@ -716,7 +716,7 @@ func (s *Server) relaunch(ctx context.Context, w http.ResponseWriter, r *http.Re
 		return nil, replayed{}, false
 	}
 	// The run goes on with the version of its agent it started on.
-	a, err := s.agentFor(ctx, c.Agent, run.AgentVersion)
+	a, err := s.agentFor(ctx, c.Agent, run.AgentVersion, "")
 	if err != nil && !errors.Is(err, errNoAgent) {
 		s.internal(w, "reading agent "+quote(c.Agent), err)
 		return nil, replayed{}, false
@@ -979,7 +979,7 @@ func (s *Server) inputRun(w http.ResponseWriter, r *http.Request) {
 		s.internal(w, "reading conversation "+quote(run.ConversationID), err)
 		return
 	}
-	ag, err := s.agentFor(ctx, c.Agent, run.AgentVersion)
+	ag, err := s.agentFor(ctx, c.Agent, run.AgentVersion, "")
 	if err != nil && !errors.Is(err, errNoAgent) {
 		s.internal(w, "reading agent "+quote(c.Agent), err)
 		return

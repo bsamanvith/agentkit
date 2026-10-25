@@ -357,6 +357,79 @@ func TestJWKSEndpointDown(t *testing.T) {
 	wantInvalid(t, "provider down from the start", r2.do(r2.token(nil), "/v1/runs"))
 }
 
+func TestStaleKeysAreCapped(t *testing.T) {
+	t.Parallel()
+	r := newRig(t)
+	if res := r.do(r.token(nil), "/v1/runs"); res.status != http.StatusOK {
+		t.Fatalf("first token: %d", res.status)
+	}
+	// Fetched at t0 with no cache headers: the set expires at t0 + 1 h and is
+	// used, the provider down, until 24 h past that.
+	r.iss.SetDown(true)
+	r.clk.Advance(jwt.DefaultMaxCacheAge + 24*time.Hour)
+	if res := r.do(r.token(nil), "/v1/runs"); res.status != http.StatusOK {
+		t.Errorf("a cached key 24 h past expiry: %d, want 200", res.status)
+	}
+	r.clk.Advance(time.Second)
+	wantInvalid(t, "a cached key over 24 h past expiry", r.do(r.token(nil), "/v1/runs"))
+
+	// Back up: with no usable keys, the next fetch is due 5 s after the last.
+	r.iss.SetDown(false)
+	r.clk.Advance(5 * time.Second)
+	if res := r.do(r.token(nil), "/v1/runs"); res.status != http.StatusOK {
+		t.Errorf("the provider back: %d, want 200", res.status)
+	}
+}
+
+func TestFirstFetchFailedRetriesSooner(t *testing.T) {
+	t.Parallel()
+	r := newRig(t)
+	r.iss.SetDown(true)
+	wantInvalid(t, "provider down from the start", r.do(r.token(nil), "/v1/runs"))
+	if n := r.iss.Fetches(); n != 1 {
+		t.Fatalf("fetches = %d, want 1", n)
+	}
+	// With no keys, a burst within 5 s fetches nothing, and a burst after
+	// 5 s fetches once.
+	burst := func() {
+		var wg sync.WaitGroup
+		for range 50 {
+			wg.Go(func() {
+				if _, err := r.a.Authenticate(bearer(r.token(nil))); !errors.Is(err, auth.ErrInvalidCredentials) {
+					t.Errorf("provider down: %v, want invalid credentials", err)
+				}
+			})
+		}
+		wg.Wait()
+	}
+	r.clk.Advance(5*time.Second - time.Nanosecond)
+	burst()
+	if n := r.iss.Fetches(); n != 1 {
+		t.Errorf("fetches within 5 s = %d, want 1", n)
+	}
+	r.clk.Advance(time.Nanosecond)
+	burst()
+	if n := r.iss.Fetches(); n != 2 {
+		t.Errorf("fetches after 5 s = %d, want 2", n)
+	}
+
+	// Back up: a token is accepted 5 s later, not a minute.
+	r.iss.SetDown(false)
+	r.clk.Advance(5 * time.Second)
+	if res := r.do(r.token(nil), "/v1/runs"); res.status != http.StatusOK {
+		t.Errorf("the provider back after 5 s: %d, want 200", res.status)
+	}
+	if n := r.iss.Fetches(); n != 3 {
+		t.Errorf("fetches = %d, want 3", n)
+	}
+	// With keys, the interval is MinRefreshInterval again.
+	r.clk.Advance(5 * time.Second)
+	r.do(r.track(r.iss.SignAs(t, r.kid, "unknown", r.claims(nil))), "/v1/runs")
+	if n := r.iss.Fetches(); n != 3 {
+		t.Errorf("fetches for an unknown kid 5 s after a good fetch = %d, want 3", n)
+	}
+}
+
 func TestLeewayBoundaries(t *testing.T) {
 	t.Parallel()
 	const leeway = 60 * time.Second
@@ -640,4 +713,34 @@ func mustJSON(t *testing.T, v any) []byte {
 		t.Fatal(err)
 	}
 	return b
+}
+
+// TestConformanceWithHeader runs the shared suite on tokens read from a
+// proxy's header (WithHeader), as Cloudflare Access sends them.
+func TestConformanceWithHeader(t *testing.T) {
+	t.Parallel()
+	const header = "Cf-Access-Jwt-Assertion"
+	apply := func(r *http.Request, secret string) { r.Header.Set(header, secret) }
+	authtest.RunAuthenticator(t, func(t *testing.T) authtest.Subject {
+		r := newRig(t)
+		a, err := jwt.New(jwt.Config{Issuer: r.iss.URL(), Audience: audience, JWKSURL: r.iss.JWKSURL()},
+			jwt.WithClock(r.clk), jwt.WithHTTPClient(r.iss.Client()), jwt.WithHeader(header))
+		if err != nil {
+			t.Fatal(err)
+		}
+		via := auth.Credential{Kind: jwt.KindJWT, ID: r.iss.URL()}
+		return authtest.Subject{
+			Authenticator: a,
+			Credentials: []authtest.Credential{
+				{
+					Name: "acme's ann", Secret: r.token(nil), Apply: apply,
+					Want: auth.Principal{Tenant: mustTenant(t, "acme"), User: "ann", Scopes: []string{"agent:run", "agent:read", "mcp:crm"}, Toolsets: []string{"crm"}, Via: via},
+				},
+				{
+					Name: "globex's service", Secret: r.token(map[string]any{"tenant": "globex", "sub": nil, "scope": "mcp:gmail"}), Apply: apply,
+					Want: auth.Principal{Tenant: mustTenant(t, "globex"), Scopes: []string{"mcp:gmail"}, Toolsets: []string{"gmail"}, Via: via},
+				},
+			},
+		}
+	})
 }

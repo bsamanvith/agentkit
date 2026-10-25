@@ -704,6 +704,31 @@ describe("the catalog and credentials (T064)", () => {
     }
   });
 
+  it("views and deletes an agent's memory, refusing what is not a view", async () => {
+    const seen: Request[] = [];
+    const view = {
+      v: 1,
+      agent: "a/b",
+      scope: "user",
+      path: "/memories",
+      dir: true,
+      size: 3,
+      entries: [],
+      usage: { bytes: 3, files: 1 },
+      limits: { file_bytes: 16384, scope_bytes: 1048576, files: 200 },
+    };
+    const c = new AgentClient({ fetch: jsonFetch(view, seen) });
+    expect(await c.getMemory("a/b")).toMatchObject({ dir: true, usage: { files: 1 } });
+    await c.deleteMemory("a/b", "/memories/x y.md");
+    expect(seen.map((r) => `${r.method} ${new URL(r.url).pathname}${new URL(r.url).search}`)).toEqual([
+      "GET /v1/agents/a%2Fb/memory?path=%2Fmemories",
+      "DELETE /v1/agents/a%2Fb/memory?path=%2Fmemories%2Fx%20y.md",
+    ]);
+    await expect(
+      new AgentClient({ fetch: jsonFetch({ v: 1, path: "/memories" }, seen) }).getMemory("a"),
+    ).rejects.toBeInstanceOf(BadResponseError);
+  });
+
   it("says the server keeps no credentials with a 404", async () => {
     const body = { v: 1, error: { code: "not_found", message: "this server keeps no credentials" } };
     const err = await new AgentClient({ fetch: jsonFetch(body, [], 404) }).listCredentials().catch((e: unknown) => e);
@@ -776,5 +801,47 @@ describe("toolsets added at run time and the MCP Registry (T096, T097)", () => {
     await expect(
       new AgentClient({ fetch: jsonFetch({ v: 1 }, seen) }).saveAgentVersion("h", { definition: {} }),
     ).rejects.toBeInstanceOf(BadResponseError);
+  });
+
+  it("publishes, deletes a draft and lists the models", async () => {
+    const seen: Request[] = [];
+    const list = { v: 1, latest: 3, published: 2, versions: [] };
+    expect(await new AgentClient({ fetch: jsonFetch(list, seen) }).publishAgent("h", 2)).toMatchObject({
+      latest: 3,
+      published: 2,
+    });
+    expect(`${seen[0]!.method} ${new URL(seen[0]!.url).pathname}`).toBe("POST /v1/agents/h/publish");
+    expect(await seen[0]!.json()).toEqual({ version: 2 });
+    await new AgentClient({ fetch: jsonFetch(null, seen, 204) }).deleteAgentVersion("h", 3).catch(() => {});
+    expect(`${seen[1]!.method} ${new URL(seen[1]!.url).pathname}`).toBe("DELETE /v1/agents/h/versions/3");
+    const models = {
+      v: 1,
+      default: "anthropic",
+      providers: [{ name: "anthropic", models: ["anthropic/m"] }, { name: "x" }],
+    };
+    expect(await new AgentClient({ fetch: jsonFetch(models, seen) }).listModels()).toEqual({
+      v: 1,
+      default: "anthropic",
+      providers: [
+        { name: "anthropic", models: ["anthropic/m"] },
+        { name: "x", models: [] },
+      ],
+    });
+  });
+
+  it("keeps the fields of a refused definition", async () => {
+    const body = {
+      v: 1,
+      error: {
+        code: "invalid_definition",
+        message: "no",
+        fields: [{ field: "models.allow[0]", message: "bad" }, { message: "whole" }, { nope: 1 }],
+      },
+    };
+    const err = await new AgentClient({ fetch: jsonFetch(body, [], 400) })
+      .saveAgentVersion("h", { definition: {} })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).fields).toEqual([{ field: "models.allow[0]", message: "bad" }, { message: "whole" }]);
   });
 });

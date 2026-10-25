@@ -1,12 +1,12 @@
 ---
-id: T130
+id: T131
 title: "Serve every connector in the k8s and Compose deployments"
 epic: E22
 status: todo
 depends_on: [T120]
 ---
 
-# T130: Connectors in the deployed configs
+# T131: Connectors in the deployed configs
 
 ## Context
 

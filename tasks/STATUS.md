@@ -18,15 +18,16 @@
 | Skills and memory | [E12](E12-skills-memory.md) | Done; T060 (semantic search) waits for an embedding provider's key |
 | Agent protocols: A2UI, A2A | [E13](E13-agent-protocols.md) | Done (live runs passed 2026-10-24) |
 | Tasks (background agents) and agent messaging | [E14](E14-background-agents-messaging.md) | Done; supervised tasks wait for a person (T084, 2026-10-24) |
-| Agent definitions as versioned data | [E15](E15-agent-definitions.md) | T075 done; T076 (skills store) and T077 (console editors) **to plan**: owner's call |
+| Agent definitions as versioned data | [E15](E15-agent-definitions.md) | T075 and T077 (console agent builder) done; T076 (skills store) **to plan** |
+| Agents with a choice of model | [E24](E24-agent-models.md) | T125 models, T126 tool description overrides, T127 chat model picker and T077 console agent builder done; T128 Gemini waits for a key |
 | Runtimes and jobs | [E16](E16-runtimes-jobs.md) | **Shaped**, T078–T081 to plan (the ids collide with existing tasks: renumber when planned); owner's call |
 | Tool safety and control | [E17](E17-tool-safety-control.md) | Done (live runs passed 2026-10-24) |
 | Streaming and the server backend | [E18](E18-streaming-backend.md) | Done |
 | External MCP servers | [E19](E19-external-mcp-servers.md) | Done |
 | Runner pools | [E20](E20-runner-pools.md) | T104, T105 done; T106 (gVisor) and T107 (microVM) **paused** by the owner (2026-10-22) |
-| Agent memory: plain text, size-capped, visible | [E23](E23-agent-memory.md) | T121 (readable text only), T122 (Postgres backend), T123 (memory on the split runner) done; T124 (Memory page) next |
+| Agent memory: plain text, size-capped, visible | [E23](E23-agent-memory.md) | T121 (readable text only), T122 (Postgres backend), T123 (memory on the split runner), T124 (memory API, console Memory section), T129 (memory loaded into messages, grep past a threshold) done |
 | Google connectors | [E21](E21-google-connectors.md) | Gmail, Calendar done on synthetic cassettes; T111 Drive waits for a Google test account |
-| Connectors page, chat tool picker, tool search | [E22](E22-connectors-and-tool-picker.md) | **Done** 2026-10-24: T114–T120 (owner's request); T130 (k8s and Compose configs) next |
+| Connectors page, chat tool picker, tool search | [E22](E22-connectors-and-tool-picker.md) | **Done** 2026-10-24: T114–T120 (owner's request); T131 (k8s and Compose configs) next |
 | More model providers | [E08](E08-model-providers.md) | T025 (OpenAI-compatible) waits for an OpenAI key or an Ollama endpoint |
 | Agent skills | [E02](E02-agent-skills.md) | Done; T010 waits for one check with Codex |
 
@@ -36,7 +37,7 @@
 
 ## Done
 
-T001 · T002 · T003 · T004 · T005 · T007 · T008 · T009 · T011 · T012 · T013 · T014 · T015 · T016 · T017 · T018 · T019 · T020 · T021 · T022 · T023 · T024 · T026 · T027 · T028 · T029 · T030 · T031 · T032 · T033 · T034 · T035 · T036 · T037 · T038 · T039 · T040 · T041 · T042 · T043 · T044 · T045 · T046 · T047 · T048 · T049 · T050 · T051 · T052 · T053 · T054 · T055 · T057 · T058 · T059 · T061 · T062 · T063 · T064 · T065 · T066 · T067 · T068 · T069 · T070 · T071 · T072 · T073 · T074 · T075 · T078 · T082 · T083 · T084 · T085 · T086 · T088 · T089 · T090 · T091 · T092 · T093 · T094 · T095 · T096 · T097 · T098 · T099 · T100 · T101 · T102 · T103 · T104 · T105 · T108 · T109 · T110 · T112 · T121 · T122 · T123
+T001 · T002 · T003 · T004 · T005 · T007 · T008 · T009 · T011 · T012 · T013 · T014 · T015 · T016 · T017 · T018 · T019 · T020 · T021 · T022 · T023 · T024 · T026 · T027 · T028 · T029 · T030 · T031 · T032 · T033 · T034 · T035 · T036 · T037 · T038 · T039 · T040 · T041 · T042 · T043 · T044 · T045 · T046 · T047 · T048 · T049 · T050 · T051 · T052 · T053 · T054 · T055 · T057 · T058 · T059 · T061 · T062 · T063 · T064 · T065 · T066 · T067 · T068 · T069 · T070 · T071 · T072 · T073 · T074 · T075 · T078 · T082 · T083 · T084 · T085 · T086 · T088 · T089 · T090 · T091 · T092 · T093 · T094 · T095 · T096 · T097 · T098 · T099 · T100 · T101 · T102 · T103 · T104 · T105 · T108 · T109 · T110 · T112 · T121 · T122 · T123 · T124 · T129
 
 ## Open
 
@@ -50,13 +51,14 @@ T001 · T002 · T003 · T004 · T005 · T007 · T008 · T009 · T011 · T012 · 
 | [T060](T060-memory-search-semantic.md) | Review | the first embedding provider (Voyage AI, OpenAI, or local) and its key |
 | [T087](T087-console-ux-design-2.md) | Review | the owner's approval of mockup v4 |
 | [T111](T111-connector-google-drive.md) | Review | a Google test account to record real cassettes, then the mutation list |
+| [T130](T130-require-auth-cf-access.md) | Review | bsamanvith/agentkit#112: review fixes in progress; tests to pass the gate and CI |
 | [T106](T106-sandbox-pool.md), [T107](T107-vm-pool.md) | Paused | the owner (2026-10-22: only the shared runner for now) |
 
 ## Waiting on the owner
 
 1. **Docker Desktop runs** of `make k8s-up` and `make compose-up` (T006, T113).
 2. **First embedding provider** for semantic memory (T060).
-3. **Next larger goal**: E15's skills store and console editors (T076, T077), E16's runtimes and jobs, or cloud deploy (managed Postgres: RDS, Cloud SQL, Neon, ...).
+3. **Next larger goal**: E15's skills store and its console editor (T076), E16's runtimes and jobs, or cloud deploy (managed Postgres: RDS, Cloud SQL, Neon, ...).
 4. **Exa and Parallel in the deployed configs**: `deploy/k8s` and `deploy/compose` don't serve the search toolsets yet. Adding them needs `credentials.backend: postgres` and `AGENTKIT_CREDENTIALS_KEY` on the api and toolsets containers.
 5. **Delete merged branches**: `review/t022-base` and the merged `claude/*` session branches.
 

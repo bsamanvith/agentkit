@@ -62,13 +62,30 @@ var (
 	// [rpc.ErrUnknownMethod] instead.
 	interruptRunMethod = rpc.Stream[runReq, event]{Name: Service + "/RunWithInterrupts", Errors: codes}
 	// toolsRunMethod is Run for a run that chooses its tools (toolsets,
-	// tool search). It is the newest method, so a runner that serves it
-	// serves every other one: a run with a choice is always sent as it,
-	// and a runner older than it fails the run rather than offer the
-	// toolsets the run left out.
+	// tool search). A runner older than it fails the run rather than offer
+	// the toolsets the run left out.
 	toolsRunMethod = rpc.Stream[runReq, event]{Name: Service + "/RunWithTools", Errors: codes}
+	// modelRunMethod is Run on a model other than the agent's default
+	// (T125). It is the newest method, so a runner that serves it serves
+	// every other one: a run on another model is always sent as it, and a
+	// runner older than models, which would run the default instead,
+	// fails the run with [rpc.ErrUnknownMethod].
+	modelRunMethod = rpc.Stream[runReq, event]{Name: Service + "/RunWithModel", Errors: codes}
 	compactMethod  = rpc.Unary[compactReq, harness.Summary]{Name: Service + "/Compact", Errors: codes}
 )
+
+// ErrNoModel means the server's agent does not run the model a run names:
+// it is not a [ModelAgent], or its ForModel refused the model.
+var ErrNoModel = errors.New("model not run here")
+
+// ModelAgent is a served agent that runs on other models than its
+// default: ForModel returns it as it runs on model ("<provider>/<id>"),
+// failing for one it does not allow. A run that names a model runs on
+// what ForModel returns; one that names none runs the agent itself.
+type ModelAgent interface {
+	runner.Agent
+	ForModel(ctx context.Context, model string) (runner.Agent, error)
+}
 
 // ErrCannotCompact means the server's agent cannot compact (it is not a
 // [runner.Compactor]).
@@ -79,6 +96,7 @@ var ErrCannotCompact = errors.New("agent cannot compact")
 var codes = []rpc.Code{
 	{Name: "runner.no_agent", Err: ErrNoAgent},
 	{Name: "runner.cannot_compact", Err: ErrCannotCompact},
+	{Name: "runner.no_model", Err: ErrNoModel},
 	{Name: "harness.invalid_input", Err: harness.ErrInvalidInput},
 	{Name: "harness.invalid_config", Err: harness.ErrInvalidConfig},
 	{Name: "harness.budget_exceeded", Err: harness.ErrBudgetExceeded},
@@ -103,6 +121,9 @@ type agentsResp struct {
 
 type runReq struct {
 	Agent string `json:"agent"`
+	// Model is the model to run the agent on, "" for its default; a run
+	// with one is sent as modelRunMethod.
+	Model string `json:"model,omitempty"`
 	// Message is nil to resume a transcript without a new message.
 	Message    *llm.Message  `json:"message,omitempty"`
 	Transcript []llm.Message `json:"transcript,omitempty"`
@@ -202,6 +223,17 @@ func Register(s *rpc.Server, agents map[string]runner.Agent) error {
 				yield(event{}, fmt.Errorf("%w: caller: %w", rpc.ErrBadRequest, err))
 				return
 			}
+			if r.Model != "" {
+				ma, ok := a.(ModelAgent)
+				if !ok {
+					yield(event{}, fmt.Errorf("%w: agent %q runs only its default model, not %q", ErrNoModel, r.Agent, r.Model))
+					return
+				}
+				if a, err = ma.ForModel(ctx, r.Model); err != nil {
+					yield(event{}, fmt.Errorf("%w: agent %q on %q: %w", ErrNoModel, r.Agent, r.Model, err))
+					return
+				}
+			}
 			in := harness.Input{
 				Transcript: r.Transcript, At: r.At, ToolPolicy: r.ToolPolicy,
 				Interaction: r.Interaction, Pending: r.Pending, Answers: r.Answers, Tools: r.Tools,
@@ -229,6 +261,7 @@ func Register(s *rpc.Server, agents map[string]runner.Agent) error {
 	policyRunMethod.Handle(s, run)
 	interruptRunMethod.Handle(s, run)
 	toolsRunMethod.Handle(s, run)
+	modelRunMethod.Handle(s, run)
 	return nil
 }
 
@@ -252,9 +285,18 @@ func (c *Client) Agent(name string, window harness.ContextWindow) runner.Compact
 	return &agent{c: c, name: name, window: window}
 }
 
+// ModelAgent returns the server's agent name as it runs on model
+// ("<provider>/<id>"), as [Client.Agent] does for its default: the server
+// fails each run with [ErrNoModel] when its agent does not run that model.
+// Compaction is the agent's, on its default model.
+func (c *Client) ModelAgent(name, model string, window harness.ContextWindow) runner.Compactor {
+	return &agent{c: c, name: name, model: model, window: window}
+}
+
 type agent struct {
 	c      *Client
 	name   string
+	model  string
 	window harness.ContextWindow
 }
 
@@ -273,7 +315,7 @@ func (a *agent) ShouldCompact(u llm.Usage) bool { return a.window.Full(u) }
 func (a *agent) Run(ctx context.Context, in harness.Input) iter.Seq2[harness.Event, error] {
 	return func(yield func(harness.Event, error) bool) {
 		req := runReq{
-			Agent: a.name, Transcript: in.Transcript, At: in.At, ToolPolicy: in.ToolPolicy,
+			Agent: a.name, Model: a.model, Transcript: in.Transcript, At: in.At, ToolPolicy: in.ToolPolicy,
 			Interaction: in.Interaction, Pending: in.Pending, Answers: in.Answers, Tools: in.Tools,
 			Caller: tenancy.Carry(ctx),
 		}
@@ -283,6 +325,8 @@ func (a *agent) Run(ctx context.Context, in harness.Input) iter.Seq2[harness.Eve
 		}
 		method, waits := runMethod, mayWait(in)
 		switch {
+		case req.Model != "":
+			method = modelRunMethod
 		case req.Tools != nil:
 			method = toolsRunMethod
 		case waits:
@@ -293,6 +337,8 @@ func (a *agent) Run(ctx context.Context, in harness.Input) iter.Seq2[harness.Eve
 		for w, err := range method.Call(ctx, a.c.conn, req) {
 			if err != nil {
 				switch {
+				case req.Model != "" && errors.Is(err, rpc.ErrUnknownMethod):
+					err = fmt.Errorf("agent %q: the runner is too old to run another model than the agent's default: %w", a.name, err)
 				case req.Tools != nil && errors.Is(err, rpc.ErrUnknownMethod):
 					err = fmt.Errorf("agent %q: the runner is too old to choose the run's tools: %w", a.name, err)
 				case waits && errors.Is(err, rpc.ErrUnknownMethod):

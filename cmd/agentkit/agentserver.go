@@ -441,6 +441,8 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 		// The memory of the agents that run on the runner, served to it.
 		memSets []toolrpc.Toolset
 		memRegs = map[string]tool.Registry{}
+		// What each agent's users see of its memory (GET /v1/agents/{name}/memory).
+		memories = map[string]agentapi.Memory{}
 	)
 	fail := func(err error) (component.Mount, *agentapi.Server, error) {
 		if admin != nil {
@@ -458,10 +460,18 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 		isolations[a.Name] = iso
 		def := agentapi.Agent{
 			Name: a.Name, Description: a.Description, System: a.System,
-			Model:    wire.Model{Provider: a.Model.Provider, ID: a.Model.id(), Effort: a.Model.Effort},
+			Model:    wireModel(a.Model),
 			Toolsets: a.Toolsets, PrefixToolNames: a.PrefixToolNames, RuntimeToolsets: a.RuntimeToolsets,
-			Isolation: iso,
-			UI:        a.UI,
+			ToolDescriptions: a.ToolDescriptions,
+			Isolation:        iso,
+			UI:               a.UI,
+		}
+		if err := a.check(cfg.legacy); err != nil {
+			return fail(err)
+		}
+		set, err := a.modelSet(a.label(cfg.legacy))
+		if err != nil {
+			return fail(err)
 		}
 		if a.Notify != nil {
 			if a.Notify.URL == "" {
@@ -497,6 +507,9 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 				closers = append(closers, mem.close)
 				memSets = append(memSets, toolrpc.Toolset{Name: a.Name, Type: memoryService})
 				memRegs[a.Name] = mem.tools
+				if mem.api != nil {
+					memories[a.Name] = mem.api
+				}
 			}
 			if len(a.CanMessage) > 0 {
 				// The sender does not cross to the runner.
@@ -506,6 +519,14 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 				return fail(err)
 			}
 			def.Runner = remote.Agent(a.Name, a.Model.window())
+			if def, err = withModels(ctx, def, set, func(_ context.Context, m string) (agentapi.Agent, error) {
+				d := a.onModel(set, m)
+				on := def
+				on.Model, on.System, on.Runner = wireModel(d.Model), d.System, remote.ModelAgent(a.Name, m, d.Model.window())
+				return on, nil
+			}); err != nil {
+				return fail(err)
+			}
 			for _, name := range a.Toolsets {
 				if slices.ContainsFunc(problems, func(p toolset.Problem) bool { return p.Toolset == name }) {
 					skipped = appendNew(skipped, name) // the runner skips it too
@@ -518,6 +539,9 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 			}
 			if mem != nil {
 				closers = append(closers, mem.close)
+				if mem.api != nil {
+					memories[a.Name] = mem.api
+				}
 			}
 			msgTools, err := messagingTools(msgr, a.Name)
 			if err != nil {
@@ -528,6 +552,9 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 				return fail(err)
 			}
 			def.Harness = h
+			if def, err = withModels(ctx, def, set, c.modelBuild(cfg, a, set, def, built, admin, mem, msgTools, clk, log)); err != nil {
+				return fail(err)
+			}
 			skipped = appendNew(skipped, sk...)
 			skills.add(a, ks)
 		}
@@ -587,8 +614,10 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 	srv, err := agentapi.NewAgents(agents, append(authOpts,
 		agentapi.WithStore(st),
 		agentapi.WithBus(b),
+		agentapi.WithMemory(memories),
 		agentapi.WithRunnerOptions(runnerOpts...),
 		agentapi.WithToolsets(c.toolsetCatalog(cfg, specs, built, problems, env)...),
+		agentapi.WithModels(modelCatalog()...),
 		agentapi.WithMaxConcurrentRuns(cfg.API.MaxConcurrentRuns),
 		agentapi.WithRunTimeout(time.Duration(cfg.API.RunTimeout)),
 		agentapi.WithRetention(cfg.API.MaxRuns, cfg.API.MaxConversations, time.Duration(cfg.API.Retention)),

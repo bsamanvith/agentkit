@@ -1,3 +1,4 @@
+import type { Agent } from "@agentkit/agent-ui/api";
 import { Status } from "@agentkit/ui";
 import { Button } from "@agentkit/ui/components/button";
 import { Bot, ChevronRight, Info, Wrench, type LucideIcon } from "lucide-react";
@@ -183,6 +184,37 @@ function ItemPage<T extends { name: string }>({
   );
 }
 
+/**
+ * An agent's actions: Chat; on a server that keeps agents, Edit and
+ * Versions for a stored one, Duplicate for either (T077).
+ */
+function AgentActions({ agent: a }: { agent: Agent }) {
+  const at = `/agents/${encodeURIComponent(a.name)}`;
+  const stored = a.version !== undefined && a.read_only !== true;
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      {stored ? (
+        <>
+          <Button asChild variant="ghost" size="sm">
+            <Link to={`${at}/versions`}>Versions</Link>
+          </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link to={`${at}/edit`}>Edit</Link>
+          </Button>
+        </>
+      ) : null}
+      {stored || a.read_only ? (
+        <Button asChild variant="outline" size="sm">
+          <Link to={`/agents/new?from=${encodeURIComponent(a.name)}`}>Duplicate</Link>
+        </Button>
+      ) : null}
+      <Button asChild size="sm">
+        <Link to={`/new?agent=${encodeURIComponent(a.name)}`}>Chat with {a.name}</Link>
+      </Button>
+    </span>
+  );
+}
+
 export function AgentPage() {
   return (
     <ItemPage
@@ -190,11 +222,7 @@ export function AgentPage() {
       res={useLists().agents}
       row={agentRow}
       detail={(a) => <AgentDetail agent={a} />}
-      action={(a) => (
-        <Button asChild size="sm">
-          <Link to={`/new?agent=${encodeURIComponent(a.name)}`}>Chat with {a.name}</Link>
-        </Button>
-      )}
+      action={(a) => <AgentActions agent={a} />}
     />
   );
 }

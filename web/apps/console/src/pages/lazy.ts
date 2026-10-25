@@ -1,15 +1,18 @@
 // The pages, fetched when first shown (React.lazy; web/README.md "Size"):
 // the first load is the shell, which shows a skeleton until the page's
-// chunk arrives. Admin pages share one chunk.
+// chunk arrives. Admin pages share one chunk; the agent builder has its own.
 
 import { lazy } from "react";
 
 const admin = () => import("./admin");
 const tasks = () => import("../tasks/pages");
+const builder = () => import("./builder");
 
 export const ChatPage = lazy(() => import("../chat/page").then((m) => ({ default: m.ChatPage })));
 export const AgentsPage = lazy(() => admin().then((m) => ({ default: m.AgentsPage })));
 export const AgentPage = lazy(() => admin().then((m) => ({ default: m.AgentPage })));
+export const AgentBuilderPage = lazy(() => builder().then((m) => ({ default: m.AgentBuilderPage })));
+export const AgentVersionsPage = lazy(() => builder().then((m) => ({ default: m.AgentVersionsPage })));
 export const ToolsetsPage = lazy(() => admin().then((m) => ({ default: m.ToolsetsPage })));
 export const ToolsetPage = lazy(() => admin().then((m) => ({ default: m.ToolsetPage })));
 export const McpAddPage = lazy(() => admin().then((m) => ({ default: m.McpAddPage })));

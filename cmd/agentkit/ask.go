@@ -49,7 +49,7 @@ func (c cli) ask(ctx context.Context, args []string) int {
 		return exitClient
 	}
 
-	req := agentclient.RunRequest{Message: message, ConversationID: f.conversation, Agent: f.agent}
+	req := agentclient.RunRequest{Message: message, ConversationID: f.conversation, Agent: f.agent, Model: f.model}
 	var s *agentclient.Stream
 	for attempt := 0; ; attempt++ {
 		s, err = client.Stream(ctx, req)

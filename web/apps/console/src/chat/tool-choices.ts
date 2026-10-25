@@ -1,15 +1,24 @@
 // The chat's tool choice, per conversation plus one for New chat ("new"),
 // in memory and in localStorage (T115): which of the agent's toolsets the
 // model gets, and whether their tools are sent directly or found with tool
-// search. Only what the person changed is kept; nothing kept means the
-// agent's defaults, and the run then carries no "tools" at all.
+// search; and the model picked (T127). Only what the person changed is
+// kept; nothing kept means the agent's defaults, and the run then carries
+// no "tools" and no "model" at all.
 
 import type { ToolChoice, Toolset, ToolSearchMode } from "@agentkit/agent-ui/api";
 
 const prefix = "agentkit.tools.";
 
-/** A chat's choice: the toolsets checked (absent: all) and the mode (absent: the agent's). */
-export type Choice = { toolsets?: string[]; search?: ToolSearchMode };
+/**
+ * A chat's choice: the toolsets checked (absent: all), the mode (absent:
+ * the agent's) and the model (absent: the conversation's, or the agent's
+ * default).
+ */
+export type Choice = { toolsets?: string[]; search?: ToolSearchMode; model?: string };
+
+function isEmpty(c: Choice): boolean {
+  return c.toolsets === undefined && c.search === undefined && c.model === undefined;
+}
 
 function read(raw: string | null): Choice {
   if (!raw) return {};
@@ -18,6 +27,7 @@ function read(raw: string | null): Choice {
     const out: Choice = {};
     if (Array.isArray(v.toolsets) && v.toolsets.every((t) => typeof t === "string")) out.toolsets = v.toolsets;
     if (v.search === "direct" || v.search === "search") out.search = v.search;
+    if (typeof v.model === "string" && v.model !== "") out.model = v.model;
     return out;
   } catch {
     return {};
@@ -43,7 +53,7 @@ export class ToolChoices {
       } catch {
         v = none; // storage blocked: memory only
       }
-      if (v.toolsets === undefined && v.search === undefined) v = none;
+      if (isEmpty(v)) v = none;
       this.#mem.set(key, v);
     }
     return v;
@@ -53,7 +63,8 @@ export class ToolChoices {
     const v: Choice = {};
     if (c.toolsets !== undefined) v.toolsets = [...c.toolsets];
     if (c.search !== undefined) v.search = c.search;
-    const empty = v.toolsets === undefined && v.search === undefined;
+    if (c.model !== undefined) v.model = c.model;
+    const empty = isEmpty(v);
     this.#mem.set(key, empty ? none : v);
     try {
       if (empty) localStorage.removeItem(prefix + key);

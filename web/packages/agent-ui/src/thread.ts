@@ -62,6 +62,8 @@ export type AssistantTurn = {
    */
   state: "streaming" | "done" | "failed" | "stopped" | "lost";
   runId?: string;
+  /** The model the run ran, from its run_start (T125). */
+  model?: string;
   usage?: Usage;
   turns?: number;
   durationMs?: number;
@@ -215,7 +217,7 @@ export function applyEvent(a: AssistantTurn, ev: RunEvent, now: number): Assista
   const took = a.startedAt !== undefined ? now - a.startedAt : undefined;
   switch (ev.type) {
     case "run_start":
-      return { ...a, runId: ev.run_id };
+      return { ...a, runId: ev.run_id, ...(ev.model ? { model: ev.model } : {}) };
     case "text_delta":
       return typeof ev.text === "string" ? { ...a, parts: addText(a.parts, ev.text) } : a;
     case "tool_call":

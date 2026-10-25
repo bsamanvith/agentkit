@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/bsamanvith/agentkit/pkg/agentapi"
+	"github.com/bsamanvith/agentkit/pkg/agentapi/wire"
 	"github.com/bsamanvith/agentkit/pkg/agentclient"
 	"github.com/bsamanvith/agentkit/pkg/auth"
 	"github.com/bsamanvith/agentkit/pkg/clock"
@@ -137,6 +138,59 @@ func toolResult(req llm.Request, id string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// lastText is the text of the last message of req, its blocks joined.
+func lastText(req llm.Request) string {
+	if len(req.Messages) == 0 {
+		return ""
+	}
+	var parts []string
+	for _, b := range req.Messages[len(req.Messages)-1].Content {
+		if t, ok := b.(llm.Text); ok {
+			parts = append(parts, t.Text)
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
+// TestMemoryLoads: each new message starts with the agent's memory: nothing
+// while it is empty, every file's text while it is small, and past
+// load_bytes the file list, after which the agent greps it.
+func TestMemoryLoads(t *testing.T) {
+	t.Parallel()
+	config := `{"agents": [{"name": "default", "model": {"id": "m"},
+	  "memory": {"store": {"backend": "memory", "load_bytes": 40}}}]}`
+	fake := llmtest.NewFake(t,
+		memoryCall("save", `{"command":"create","path":"/memories/prefs.md","file_text":"Units: metric\n"}`), llmtest.Text("ok"),
+		memoryCall("more", `{"command":"create","path":"/memories/notes.md","file_text":"`+strings.Repeat("x", 30)+`"}`), llmtest.Text("ok"),
+		memoryCall("grep", `{"command":"grep","pattern":"(?i)units"}`), llmtest.Text("Metric."),
+	)
+	s, err := startAgents(t, config, map[string]*llmtest.Fake{"m": fake})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := s.client(t, "")
+	for range 3 {
+		if _, err := c.Run(t.Context(), agentclient.RunRequest{Message: "Which units do I like?"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reqs := fake.Requests()
+	if got := lastText(reqs[0]); got != "Which units do I like?" {
+		t.Errorf("with no memory, the message is %q", got)
+	}
+	if got := lastText(reqs[2]); !strings.HasPrefix(got, "<memory>\n") || !strings.HasSuffix(got, "</memory>\nWhich units do I like?") ||
+		!strings.Contains(got, "<file path=\"/memories/prefs.md\">\nUnits: metric\n</file>") {
+		t.Errorf("with a small memory, the message is\n%s", got)
+	}
+	got := lastText(reqs[4])
+	if !strings.Contains(got, "holds 2 files, 44 in all") || !strings.Contains(got, "grep command") || strings.Contains(got, "Units: metric") {
+		t.Errorf("past load_bytes, the message is\n%s", got)
+	}
+	if out, ok := toolResult(reqs[5], "grep"); !ok || out != "/memories/prefs.md:1: Units: metric" {
+		t.Errorf("grep: %q, ok %v", out, ok)
+	}
 }
 
 // TestAgentWithoutMemoryHasNoMemoryTool: only an agent with a memory
@@ -448,8 +502,15 @@ func TestSplitMemory(t *testing.T) {
 	if out, ok := toolResult(reqs[9], "u1-view"); !ok || !strings.Contains(out, "Units: metric") {
 		t.Errorf("u1's view in a new conversation: %q, ok %v", out, ok)
 	}
-	if n := invokes.Load(); n != 4 {
-		t.Errorf("the agent API answered %d tool calls, want the 4 memory calls", n)
+	// Each run starts with the memory, loaded from the agent API too.
+	if got := lastText(reqs[8]); !strings.Contains(got, "<file path=\"/memories/me.md\">\nUnits: metric\n</file>") {
+		t.Errorf("u1's new message does not start with u1's memory:\n%s", got)
+	}
+	if got := lastText(reqs[6]); got != "hi" {
+		t.Errorf("u2's new message is %q, want u2's empty memory loaded as nothing", got)
+	}
+	if n := invokes.Load(); n != 4+5 {
+		t.Errorf("the agent API answered %d tool calls, want the 4 memory calls and 5 loads", n)
 	}
 	resp, err := http.Post(apiSrv.URL+"/rpc/memory/Toolsets", "application/json", strings.NewReader("{}")) //nolint:noctx // local server
 	if err != nil || resp.StatusCode != http.StatusUnauthorized {
@@ -469,6 +530,7 @@ func TestMemoryConfigErrors(t *testing.T) {
 		{`{"store": {"backend": "memory", "scope": "team"}}`, "", `scope "team"`},
 		{`{"store": {"backend": "memory", "max_files": -1}}`, "", "negative limit"},
 		{`{"store": {"backend": "memory"}, "extra": 1}`, "", "extra"},
+		{`{"store": {"backend": "memory", "load_bytes": -2}}`, "", "load_bytes -2"},
 		// A toolset with a tool of the same name.
 		{`{"store": {"backend": "memory"}}`, `"mine"`, `has a tool named "memory"`},
 	} {
@@ -488,5 +550,81 @@ func TestMemoryToolNames(t *testing.T) {
 	recall := []string{memory.RecallGetTool, memory.RecallSaveTool, memory.RecallSearchTool}
 	if memoryToolName != memory.ToolName || !slices.Equal(recallToolNames, recall) {
 		t.Errorf("names %q %q, want %q %q", memoryToolName, recallToolNames, memory.ToolName, recall)
+	}
+}
+
+// TestMemoryAPI: what an agent saved through its tool, its user sees
+// through GET /v1/agents/{name}/memory (files deeper than a listing goes
+// counted in the usage, the limits the config's) and deletes with DELETE;
+// another user sees none of it.
+func TestMemoryAPI(t *testing.T) {
+	t.Parallel()
+	keys := ""
+	for i, user := range []string{"u1", "u2"} {
+		e, err := authKeyEntry(fmt.Sprintf("k%d", i+1), "acme", user, "secret-key-of-user-"+user)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i > 0 {
+			keys += ","
+		}
+		keys += e
+	}
+	config := `{"auth": {"api_keys": [` + keys + `]},
+	  "agents": [{"name": "default", "model": {"id": "m"},
+	    "memory": {"store": {"backend": "memory", "scope": "user", "max_files": 7}}}]}`
+	fake := llmtest.NewFake(t,
+		memoryCall("a", `{"command":"create","path":"/memories/prefs.md","file_text":"Units: metric\n"}`),
+		memoryCall("b", `{"command":"create","path":"/memories/trips/2026/lisbon/notes.md","file_text":"May"}`),
+		llmtest.Text("ok"),
+	)
+	s, err := startAgents(t, config, map[string]*llmtest.Fake{"m": fake})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.client(t, "secret-key-of-user-u1").Run(t.Context(), agentclient.RunRequest{Message: "remember"}); err != nil {
+		t.Fatal(err)
+	}
+	call := func(method, path, user string) (int, wire.MemoryView) {
+		req, err := http.NewRequestWithContext(t.Context(), method, s.url+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer secret-key-of-user-"+user)
+		resp, err := s.ts.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var v wire.MemoryView
+		if resp.StatusCode == http.StatusOK {
+			if err := json.NewDecoder(resp.Body).Decode(&v); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return resp.StatusCode, v
+	}
+	code, v := call("GET", "/v1/agents/default/memory", "u1")
+	if code != 200 || v.Scope != "user" || v.Usage != (wire.MemoryUsage{Bytes: 17, Files: 2}) ||
+		v.Limits != (wire.MemoryLimits{FileBytes: memory.DefaultMaxFileBytes, ScopeBytes: memory.DefaultMaxScopeBytes, Files: 7}) {
+		t.Errorf("u1's memory = %d %+v", code, v)
+	}
+	if code, v := call("GET", "/v1/agents/default/memory?path=/memories/prefs.md", "u1"); code != 200 || v.Text != "Units: metric\n" {
+		t.Errorf("u1's file = %d %+v", code, v)
+	}
+	if code, v := call("GET", "/v1/agents/default/memory", "u2"); code != 200 || v.Usage.Files != 0 || len(v.Entries) != 0 {
+		t.Errorf("u2's memory = %d %+v, want empty", code, v)
+	}
+	if code, _ := call("DELETE", "/v1/agents/default/memory?path=/memories/trips", "u2"); code != 404 {
+		t.Errorf("u2 deleting u1's directory = %d, want 404", code)
+	}
+	if code, _ := call("DELETE", "/v1/agents/default/memory?path=/memories", "u1"); code != 400 {
+		t.Errorf("deleting the root = %d, want 400", code)
+	}
+	if code, _ := call("DELETE", "/v1/agents/default/memory?path=/memories/trips", "u1"); code != 204 {
+		t.Errorf("u1 deleting a directory = %d, want 204", code)
+	}
+	if code, v := call("GET", "/v1/agents/default/memory", "u1"); code != 200 || v.Usage != (wire.MemoryUsage{Bytes: 14, Files: 1}) {
+		t.Errorf("u1's memory after the delete = %d %+v", code, v)
 	}
 }

@@ -1,13 +1,15 @@
 // An agent's detail (docs/UI.md "Agents", the mockup's agentsView): its
 // description, model, toolsets with their status, skills, memory and what it
-// answers with, and its system prompt, which GET /v1/agents/{name} sends to
-// admins only (the API decides; the page shows what it gets).
+// answers with, its system prompt, which GET /v1/agents/{name} sends to
+// admins only (the API decides; the page shows what it gets), and the notes
+// its memory keeps for the caller (agent-memory.tsx).
 
 import type { Agent } from "@agentkit/agent-ui/api";
 import { Status } from "@agentkit/ui";
 import { ChevronRight } from "lucide-react";
 import { Link } from "react-router";
 import { useResource } from "../api";
+import { AgentMemory } from "./agent-memory";
 import { Loaded } from "./page";
 import { Callout, Facts } from "./parts";
 
@@ -89,6 +91,7 @@ export function AgentDetail({ agent }: { agent: Agent }) {
         ]}
       />
       <SystemPrompt name={agent.name} />
+      {agent.memory ? <AgentMemory key={agent.name} agent={agent.name} /> : null}
     </>
   );
 }

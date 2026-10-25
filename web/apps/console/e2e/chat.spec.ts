@@ -170,3 +170,19 @@ test("tool search in a chat: the agent finds the echo tool, then calls it", asyn
   await expect(thread.getByRole("button", { name: /Find|tool_search/i }).first()).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("a chat picks another model the agent allows, and the run reports it", async ({ page }) => {
+  const errors = watchErrors(page);
+  await signIn(page);
+  await page.goto("/new");
+  await page.getByRole("button", { name: "Model: claude-haiku-5-5" }).click();
+  await page.getByRole("menuitemradio", { name: /claude-sonnet-5-5/ }).click();
+  await expect(page.getByRole("button", { name: "Model: claude-sonnet-5-5" })).toBeVisible();
+
+  await send(page, "Which model");
+  const thread = page.getByRole("log");
+  await expect(thread.getByText("You said: Which model", { exact: false })).toBeVisible();
+  await ended(page);
+  await expect(thread.getByText(/ · claude-sonnet-5-5$/)).toBeVisible();
+  expect(errors).toEqual([]);
+});

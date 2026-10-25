@@ -162,7 +162,7 @@ func (s *Server) mayDirect(ctx context.Context, w http.ResponseWriter, r *http.R
 		s.internal(w, "reading conversation "+quote(run.ConversationID), err)
 		return false
 	}
-	a, err := s.agentFor(ctx, c.Agent, run.AgentVersion)
+	a, err := s.agentFor(ctx, c.Agent, run.AgentVersion, "")
 	if err != nil && !errors.Is(err, errNoAgent) {
 		s.internal(w, "reading agent "+quote(c.Agent), err)
 		return false

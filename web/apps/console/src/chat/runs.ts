@@ -23,7 +23,7 @@ import type { Drafts } from "./drafts";
 import { ToolChoices } from "./tool-choices";
 
 /** What is kept of an answer that ended in this tab: its history doesn't carry usage or errors. */
-export type AnswerMeta = Pick<AssistantTurn, "state" | "usage" | "turns" | "durationMs" | "error" | "runId">;
+export type AnswerMeta = Pick<AssistantTurn, "state" | "usage" | "turns" | "durationMs" | "error" | "runId" | "model">;
 
 /** The run on screen: the thread when it was sent, the message (none when resuming) and the answer. */
 export type Live = {
@@ -124,16 +124,17 @@ export class RunStore {
     void this.#start(
       client,
       id,
-      this.#withTools(id, { message: text, conversation_id: id }),
+      this.#withChoice(id, { message: text, conversation_id: id }),
       { base, user, exchange },
       agent,
     );
   }
 
-  /** req with the chat's tool choice, if it made one. */
-  #withTools(id: string, req: RunRequest): RunRequest {
+  /** req with the chat's tool choice and model, if it made them. */
+  #withChoice(id: string, req: RunRequest): RunRequest {
     const tools = this.choices.request(id);
-    return tools ? { ...req, tools } : req;
+    const model = this.choices.get(id).model;
+    return { ...req, ...(tools ? { tools } : {}), ...(model ? { model } : {}) };
   }
 
   /**
@@ -154,7 +155,7 @@ export class RunStore {
         context: action.context,
       },
     };
-    void this.#start(client, id, this.#withTools(id, req), { base, user, exchange }, agent);
+    void this.#start(client, id, this.#withChoice(id, req), { base, user, exchange }, agent);
   }
 
   /** Resumes an interrupted conversation: a run with no message, which adds no bubble. */
@@ -185,7 +186,7 @@ export class RunStore {
     this.#timers.delete(id);
     if (!s.live?.user || !s.problem?.busy) return;
     const { base, user, exchange } = s.live;
-    const req = this.#withTools(id, { message: user.text, conversation_id: id });
+    const req = this.#withChoice(id, { message: user.text, conversation_id: id });
     void this.#start(client, id, req, { base, user, exchange }, agent, true);
   }
 
@@ -291,10 +292,10 @@ export class RunStore {
 
   #ended(id: string, answer: AssistantTurn, exchange: number) {
     this.#pending.delete(id);
-    const { state, usage, turns, durationMs, error, runId } = answer;
+    const { state, usage, turns, durationMs, error, runId, model } = answer;
     this.#update(id, (s) => {
       const meta = new Map(s.meta);
-      meta.set(exchange, { state, usage, turns, durationMs, error, runId });
+      meta.set(exchange, { state, usage, turns, durationMs, error, runId, ...(model ? { model } : {}) });
       return {
         ...s,
         live: s.live ? { ...s.live, user: s.live.user && { ...s.live.user, pending: false }, answer } : undefined,

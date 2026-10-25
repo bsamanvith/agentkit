@@ -42,16 +42,16 @@ func TestMemoryPostgres(t *testing.T) {
 
 	cfg := memoryStoreConfig{Backend: "postgres", Scope: "user"}
 	off := cliWithEnv(map[string]string{envStore: store, envStoreMigrate: "off"})
-	if _, _, err := openMemoryStore(ctx, "agent.memory.store", cfg, off.env); err == nil || !strings.Contains(err.Error(), "older") {
+	if _, _, _, err := openMemoryStore(ctx, "agent.memory.store", cfg, off.env); err == nil || !strings.Contains(err.Error(), "older") {
 		t.Fatalf("open on an unmigrated database with migrations off: %v, want the schema refused", err)
 	}
 	on := cliWithEnv(map[string]string{envStore: store})
-	a, closeA, err := openMemoryStore(ctx, "agent.memory.store", cfg, on.env)
+	a, _, closeA, err := openMemoryStore(ctx, "agent.memory.store", cfg, on.env)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = closeA() })
-	b, closeB, err := openMemoryStore(ctx, "agent.memory.store", cfg, off.env)
+	b, _, closeB, err := openMemoryStore(ctx, "agent.memory.store", cfg, off.env)
 	if err != nil {
 		t.Fatal(err)
 	}

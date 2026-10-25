@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/bsamanvith/agentkit/pkg/agentapi"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/memory"
@@ -76,6 +77,9 @@ func openMemory(ctx context.Context, a agentDef, legacy bool, clk clock.Clock, g
 	if a.Memory.NativeTool && a.Memory.Store == nil {
 		return nil, fmt.Errorf("%s.native_tool: the native memory tool needs a store", label)
 	}
+	if err := checkLoadBytes(label, a.Memory.Store); err != nil {
+		return nil, err
+	}
 	m := &agentMemory{native: a.Memory.NativeTool}
 	defer func() {
 		if err != nil {
@@ -84,7 +88,7 @@ func openMemory(ctx context.Context, a agentDef, legacy bool, clk clock.Clock, g
 	}()
 	var tools []tool.Tool
 	if c := a.Memory.Store; c != nil {
-		t, closeFn, err := openMemoryStore(ctx, label+".store", *c, getenv)
+		t, api, closeFn, err := openMemoryStore(ctx, label+".store", *c, getenv)
 		if err != nil {
 			return nil, err
 		}
@@ -92,6 +96,7 @@ func openMemory(ctx context.Context, a agentDef, legacy bool, clk clock.Clock, g
 			m.closers = append(m.closers, closeFn)
 		}
 		tools = append(tools, t)
+		m.api = api
 	}
 	if c := a.Memory.Index; c != nil {
 		ts, prepare, closeFn, err := openMemoryIndex(ctx, label+".index", *c, clk, getenv)
@@ -102,42 +107,53 @@ func openMemory(ctx context.Context, a agentDef, legacy bool, clk clock.Clock, g
 			m.closers = append(m.closers, closeFn)
 		}
 		tools = append(tools, ts...)
-		m.prepare = prepare
+		if prepare != nil {
+			m.prepare = append(m.prepare, prepare)
+		}
 	}
 	reg, err := tool.NewRegistry(tools)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", label, err)
 	}
 	m.tools = reg
+	if c := a.Memory.Store; c != nil && c.loads() {
+		// The memory first, then what auto recall finds.
+		m.prepare = append([]harness.PrepareFunc{loadMemory(reg)}, m.prepare...)
+	}
 	for _, t := range tools {
 		m.names = append(m.names, t.Definition().Name)
 	}
 	return m, nil
 }
 
-// openMemoryStore opens the context store and its tool.
-func openMemoryStore(ctx context.Context, label string, c memoryStoreConfig, getenv func(string) string) (tool.Tool, func() error, error) {
+// openMemoryStore opens the context store, its tool, and the store as the
+// agent API shows it to users.
+func openMemoryStore(ctx context.Context, label string, c memoryStoreConfig, getenv func(string) string) (tool.Tool, agentapi.Memory, func() error, error) {
 	open, ok := memoryBackends()[c.Backend]
 	if !ok {
 		names := slices.Sorted(maps.Keys(memoryBackends()))
-		return nil, nil, fmt.Errorf("%s.backend %q: want %q", label, c.Backend, strings.Join(names, `" or "`))
+		return nil, nil, nil, fmt.Errorf("%s.backend %q: want %q", label, c.Backend, strings.Join(names, `" or "`))
 	}
 	cfg, err := memory.Config{
 		Scope:  memory.Scope(c.Scope),
 		Limits: memory.Limits{MaxFileBytes: c.MaxFileBytes, MaxScopeBytes: c.MaxScopeBytes, MaxFiles: c.MaxFiles},
 	}.Resolve()
 	if err != nil {
-		return nil, nil, fmt.Errorf("%s: %w", label, err)
+		return nil, nil, nil, fmt.Errorf("%s: %w", label, err)
 	}
 	s, closeFn, err := open(ctx, c, cfg, getenv)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%s: %w", label, err)
+		return nil, nil, nil, fmt.Errorf("%s: %w", label, err)
 	}
-	mt, err := memory.NewTool(s)
+	var opts []memory.ToolOption
+	if c.LoadBytes != 0 {
+		opts = append(opts, memory.WithLoadBytes(c.LoadBytes))
+	}
+	mt, err := memory.NewTool(s, opts...)
 	if err != nil {
-		return nil, nil, errors.Join(fmt.Errorf("%s: %w", label, err), closeOrNil(closeFn))
+		return nil, nil, nil, errors.Join(fmt.Errorf("%s: %w", label, err), closeOrNil(closeFn))
 	}
-	return mt, closeFn, nil
+	return mt, storeMemory{s: s, cfg: cfg}, closeFn, nil
 }
 
 // openMemoryIndex opens the search store, its tools and, with auto_recall,

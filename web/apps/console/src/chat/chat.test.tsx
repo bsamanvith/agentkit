@@ -26,6 +26,8 @@ function fakeServer() {
     conversations: new Map<string, { agent: string; status: string; messages: unknown[]; title: string }>(),
     aborted: 0,
     createError: undefined as { status: number; code: string } | undefined,
+    /** The researcher's models (the model picker); absent: one model. */
+    researcherModels: undefined as { default: string; allow: string[]; choices: string[] } | undefined,
     /** The researcher's toolsets, and GET /v1/toolsets (the tool picker). */
     researcherToolsets: [] as { name: string; status: string; tools: string[] }[],
     toolsets: [] as {
@@ -79,6 +81,7 @@ function fakeServer() {
             default: true,
             toolsets: state.researcherToolsets,
             model: { id: "m" },
+            ...(state.researcherModels ? { models: state.researcherModels } : {}),
           },
           { name: "writer", description: "Writes", default: false, toolsets: [], model: { id: "m" } },
         ],
@@ -566,5 +569,80 @@ describe("the tool picker", () => {
     expect(await screen.findByRole("button", { name: "Tools: 2 of 2" })).toBeInTheDocument();
     await userEvent.type(box(), "Plain{Enter}");
     await waitFor(() => expect(runBody(server)).toEqual({ message: "Plain", conversation_id: "conv_1" }));
+  });
+});
+
+describe("the model picker", () => {
+  const models = {
+    default: "anthropic/m1",
+    allow: ["anthropic/m1", "anthropic/m2"],
+    choices: ["anthropic/m1", "anthropic/m2", "openai/g1"],
+  };
+  const runBody = (server: ReturnType<typeof fakeServer>) =>
+    server.seen.filter((r) => r.path === "/v1/runs" && r.method === "POST").at(-1)?.body;
+
+  it("lists the agent's models, sends the pick and shows the run's model", async () => {
+    const server = fakeServer();
+    server.researcherModels = models;
+    server.scripts.push([
+      { type: "run_start", conversation_id: "conv_1", model: "anthropic/m2" },
+      { type: "text_delta", text: "Hi" },
+      { type: "run_done", answer: "Hi", turns: 1 },
+    ]);
+    renderAt("/new");
+    await userEvent.click(await screen.findByRole("button", { name: "Model: m1" }));
+    const items = await screen.findAllByRole("menuitemradio");
+    expect(items.map((i) => i.textContent)).toEqual(["m1The agent's default", "m2", "openai/g1"]);
+    await userEvent.click(screen.getByRole("menuitemradio", { name: /^m2/ }));
+    expect(screen.getByRole("button", { name: "Model: m2" })).toBeInTheDocument();
+    await userEvent.type(box(), "Hello{Enter}");
+    await waitFor(() =>
+      expect(runBody(server)).toEqual({ message: "Hello", conversation_id: "conv_1", model: "anthropic/m2" }),
+    );
+    const thread = await screen.findByRole("log", { name: "Hello" });
+    expect(await within(thread).findByText(/^1 turn · .* · m2$/)).toBeInTheDocument();
+    // The conversation keeps the pick; a new chat starts from the default.
+    expect(await screen.findByRole("button", { name: "Model: m2" })).toBeInTheDocument();
+    await userEvent.type(box(), "Again{Enter}");
+    await waitFor(() =>
+      expect(runBody(server)).toEqual({ message: "Again", conversation_id: "conv_1", model: "anthropic/m2" }),
+    );
+  });
+
+  it("is not shown for an agent with one model, and no model is sent", async () => {
+    const server = fakeServer();
+    server.researcherModels = { default: "anthropic/m1", allow: ["anthropic/m1"], choices: ["anthropic/m1"] };
+    renderAt("/new?agent=writer"); // writer names no models at all
+    expect(await screen.findByRole("button", { name: "Agent: writer" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Model:/ })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Agent: writer" }));
+    await userEvent.click(await screen.findByRole("menuitemradio", { name: /researcher/ }));
+    expect(await screen.findByRole("button", { name: "Agent: researcher" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Model:/ })).not.toBeInTheDocument();
+    await userEvent.type(box(), "Plain{Enter}");
+    await waitFor(() => expect(runBody(server)).toEqual({ message: "Plain", conversation_id: "conv_1" }));
+  });
+
+  it("offers a new chat, with the message, when the model is another provider's", async () => {
+    const server = fakeServer();
+    server.researcherModels = models;
+    withConversation(server);
+    server.scripts.push({ status: 409, code: "model_provider_mismatch" });
+    const router = renderAt("/c/conv_1");
+    await userEvent.click(await screen.findByRole("button", { name: "Model: m1" }));
+    await userEvent.click(await screen.findByRole("menuitemradio", { name: /openai\/g1/ }));
+    await userEvent.type(box(), "Use g1{Enter}");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Start a new chat to use openai/g1.");
+    await userEvent.click(screen.getByRole("button", { name: "New chat" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/new"));
+    expect(router.state.location.search).toBe("?agent=researcher");
+    expect(await screen.findByRole("button", { name: "Model: openai/g1" })).toBeInTheDocument();
+    expect(box()).toHaveValue("Use g1");
+    await userEvent.type(box(), "{Enter}");
+    // The fake numbers new conversations from conv_1 again.
+    await waitFor(() =>
+      expect(runBody(server)).toEqual({ message: "Use g1", conversation_id: "conv_1", model: "openai/g1" }),
+    );
+    expect(server.seen.filter((r) => r.path === "/v1/conversations" && r.method === "POST")).toHaveLength(1);
   });
 });

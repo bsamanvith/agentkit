@@ -29,6 +29,7 @@ browser ──/v1──▶ agent ──runner.Agent──▶ runner ──tool.R
 | Link | Interface | In process | Over the wire |
 |---|---|---|---|
 | agent → runner | `runner.Agent` | the agent's `*harness.Harness` | `runnerrpc.Client.Agent(name)`, with `AGENTKIT_RUNNER_URL` |
+| agent → runner (stored agents) | `runner.Agent` | `buildStored`'s harness | `runnerrpc.Client.StoredAgent(name, definition)`: each run carries the version's definition, which the runner checks and builds (`runnerrpc.WithStored`, an LRU by the definition's bytes); the agent API checks a new version with `CheckStored` before it saves it (T132) |
 | runner, agent → toolsets | `tool.Registry` | the registries `toolset.Build` returns | `toolrpc.Client.Registry(name)`, with `AGENTKIT_TOOLSETS_URL` |
 | runner → agent (memory) | `tool.Registry` | the agent's memory tools (`openMemory`) | `toolrpc.NewClientAs(conn, "memory").Registry(agent)`, with `AGENTKIT_MEMORY_URL`; the agent API serves them at `/rpc/memory/` |
 | toolsets → agent (credentials) | `credentials.Fetcher` | the vault's sources (`credentialSources`) | `credentials.NewRemoteSources(credrpc.NewClient(conn))`, with `AGENTKIT_CREDENTIALS_URL`; the agent API serves the slots the toolsets name at `/rpc/credentials/`, access tokens and keys only (refresh tokens and client secrets stay) |

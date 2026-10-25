@@ -24,5 +24,6 @@ Owner decision (2026-10-12, [docs/PRODUCT.md](../docs/PRODUCT.md)): agents, skil
 - [x] [T075](T075-agent-registry.md) Agent registry: stored, versioned agent definitions and toolset instances; publish and rollback; config as read-only; export/import
 - [ ] T076 Skills store: upload skill folders, versions, validation, used by the harness (after T057) *(to plan)*
 - [x] [T077](T077-console-agent-builder.md) Console agent builder: tools with description overrides, models (E24), instructions, limits, save, publish, versions; skills picker, policy editor and test chat later (T087 design)
+- [ ] [T132](T132-stored-agents-on-runner.md) Stored agents on the split runner: the builder and the model picker on k8s and Compose
 
 Order: T075 after T029 and T062. T076 after T057 and T075. T077 after the console basics.

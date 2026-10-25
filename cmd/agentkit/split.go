@@ -1,7 +1,9 @@
 package main
 
 import (
+	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -166,7 +168,17 @@ func (c cli) newRunner(ctx context.Context, cfg serveConfig, built map[string]to
 		skipped = appendNew(skipped, sk...)
 		skills.add(a, ks)
 	}
-	if err := runnerrpc.Register(s, agents); err != nil {
+	var opts []runnerrpc.Option
+	if cfg.Registry.Enabled == nil || *cfg.Registry.Enabled {
+		// The agent API's stored agents, which it does not build (T132):
+		// each run carries its definition, built here with the checks
+		// the agent API makes.
+		stored := newRunnerStored(cmp.Or(cfg.Registry.CacheSize, maxRunnerStoredBuilds), func(ctx context.Context, name string, raw json.RawMessage) (agentapi.Agent, error) {
+			return c.buildStored(ctx, cfg, built, nil, clk, log, name, raw)
+		})
+		opts = append(opts, runnerrpc.WithStored(stored.Build))
+	}
+	if err := runnerrpc.Register(s, agents, opts...); err != nil {
 		return component.Mount{}, err
 	}
 	// As the agent API's drain (WithDrain): on SIGTERM, runs going on get

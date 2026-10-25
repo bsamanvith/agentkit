@@ -604,7 +604,7 @@ func (c cli) newAgents(ctx context.Context, cfg serveConfig, built map[string]to
 		authOpts = append(authOpts, agentapi.WithCredentials(creds))
 		callback = creds.Callback()
 	}
-	reg, err := c.newRegistry(cfg, env, st, built, admin, clk, log)
+	reg, err := c.newRegistry(cfg, env, st, built, admin, remote, clk, log)
 	if err != nil {
 		return fail(err)
 	}

@@ -21,6 +21,7 @@ Turn on Kubernetes in Docker Desktop (Settings, Kubernetes) once. Then:
 
 ```sh
 export ANTHROPIC_API_KEY=sk-ant-...   # optional: without it, runs fail with model_auth
+export GEMINI_API_KEY=...             # optional: for agents that run gemini/... models
 make k8s-up
 ```
 
@@ -57,9 +58,10 @@ What runs, and what it may use:
 Idle, they use about 45 MiB together.
 
 The secret `agentkit` holds random RPC and API tokens, the Postgres password
-and URL, the model key and the credential vault's key ring. It is made on the first `up` and kept after that,
+and URL, the model keys and the credential vault's key ring. It is made on the first `up` and kept after that,
 since Postgres keeps the password it started with; a different
-`ANTHROPIC_API_KEY` on a later `up` replaces the stored key. To change the
+`ANTHROPIC_API_KEY` or `GEMINI_API_KEY` on a later `up` replaces the stored
+key. To change the
 agents or toolsets, edit `base/config.json` (shared with Compose and
 `make smoke`) and run `make k8s-up`.
 

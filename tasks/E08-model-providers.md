@@ -10,5 +10,5 @@ Native adapters beyond Anthropic, each passing `llmtest.RunModel` against record
 
 - [ ] [T025](T025-llm-openai-compatible.md) `pkg/llm/openaicompat`: OpenAI-compatible adapter (OpenAI, Grok, Groq, vLLM, Ollama, and gateways such as the LiteLLM proxy)
 - [x] [T035](T035-rerecord-anthropic-fixtures.md) Re-record the Anthropic adapter fixtures from the real API (do now: a key is available)
-- [ ] [T128](T128-llm-gemini.md) `pkg/llm/gemini`: Gemini adapter (owner, 2026-10-24: "soon"), after T125
+- [x] [T128](T128-llm-gemini.md) `pkg/llm/gemini`: Gemini adapter (owner, 2026-10-24: "soon"), after T125
 - Later, unplanned: Bedrock.

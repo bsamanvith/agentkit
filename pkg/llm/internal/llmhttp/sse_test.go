@@ -1,4 +1,4 @@
-package openaicompat
+package llmhttp
 
 import (
 	"bufio"
@@ -14,10 +14,10 @@ import (
 // readAll reads every event of stream, then the error that ended it (nil at
 // the end of the stream).
 func readAll(r io.Reader) ([]string, error) {
-	e := newEvents(r)
+	e := NewEvents(r)
 	var got []string
 	for {
-		data, err := e.next()
+		data, err := e.Next()
 		if errors.Is(err, io.EOF) {
 			return got, nil
 		}
@@ -84,7 +84,7 @@ func TestEventsArriveLive(t *testing.T) {
 			go func() { _, _ = io.WriteString(pw, event+"data: b") }()
 			got := make(chan string, 1)
 			go func() {
-				data, _ := newEvents(pr).next()
+				data, _ := NewEvents(pr).Next()
 				got <- string(data)
 			}()
 			select {
@@ -103,11 +103,11 @@ func TestEventsArriveLive(t *testing.T) {
 // read into memory.
 func TestEventsTooLong(t *testing.T) {
 	t.Parallel()
-	_, err := readAll(io.LimitReader(endless{}, maxEventBytes+1024))
+	_, err := readAll(io.LimitReader(endless{}, MaxEventBytes+1024))
 	if !errors.Is(err, bufio.ErrTooLong) {
 		t.Errorf("err = %v, want bufio.ErrTooLong", err)
 	}
-	many := strings.Repeat("data: "+strings.Repeat("x", 1<<20)+"\n", maxEventBytes>>20+1)
+	many := strings.Repeat("data: "+strings.Repeat("x", 1<<20)+"\n", MaxEventBytes>>20+1)
 	if _, err := readAll(strings.NewReader(many)); !errors.Is(err, bufio.ErrTooLong) {
 		t.Errorf("many data lines: err = %v, want bufio.ErrTooLong", err)
 	}

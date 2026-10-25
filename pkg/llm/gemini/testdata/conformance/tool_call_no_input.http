@@ -1,0 +1,5 @@
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+
+data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"now","id":"toolu_2"}}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-replay","responseId":"replay"}
+

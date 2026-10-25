@@ -24,7 +24,8 @@
 #     (/root/.ccr/ca-bundle.crt) the image builds and the pods must trust:
 #     BUILD_CA for the builds, EXTRA_CA_FILE for the pods.
 #
-# Environment: ANTHROPIC_API_KEY or ANTHROPIC_KEY, as for k8s-local.sh.
+# Environment: ANTHROPIC_API_KEY or ANTHROPIC_KEY, and optionally GEMINI_API_KEY
+# or GEMINI_KEY, as for k8s-local.sh.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

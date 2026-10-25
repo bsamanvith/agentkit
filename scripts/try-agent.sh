@@ -16,9 +16,11 @@
 #
 # Needs: Go (any recent version; the right toolchain is fetched from go.mod) or
 # Docker for --docker, curl, and an Anthropic key in ANTHROPIC_API_KEY (or
-# ANTHROPIC_KEY). Optional: PORT (default 8080), AGENTKIT_API_TOKEN (default:
-# random), AGENTKIT_CONFIG (default deploy/local/agent/config.json, or
-# deploy/local/agent/search.json with --agent).
+# ANTHROPIC_KEY). Optional: a Gemini key in GEMINI_API_KEY (or GEMINI_KEY)
+# for the gemini/... models the default agent allows, PORT (default 8080),
+# AGENTKIT_API_TOKEN (default: random), AGENTKIT_CONFIG (default
+# deploy/local/agent/config.json, or deploy/local/agent/search.json with
+# --agent).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -30,7 +32,7 @@ while [ $# -gt 0 ]; do
     --docker) use_docker=1 ;;
     --agent) [ $# -ge 2 ] || { echo "--agent needs a name" >&2; exit 2; }; agent="$2"; shift ;;
     --agent=*) agent="${1#--agent=}" ;;
-    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1 (try --help)" >&2; exit 2 ;;
   esac
   shift
@@ -44,6 +46,7 @@ die() { echo "try-agent: $*" >&2; exit 1; }
 
 key="${ANTHROPIC_API_KEY:-${ANTHROPIC_KEY:-}}"
 [ -n "$key" ] || die "set ANTHROPIC_API_KEY (or ANTHROPIC_KEY) to your Anthropic API key"
+gemini="${GEMINI_API_KEY:-${GEMINI_KEY:-}}"
 command -v curl >/dev/null || die "curl is required"
 
 port="${PORT:-8080}"
@@ -88,7 +91,7 @@ if [ "$use_docker" = 1 ]; then
   [ ! -d "$config_dir/knowledge" ] || skills+=(-v "$config_dir/knowledge:/etc/agentkit/knowledge:ro")
   echo "==> starting container $container on port $port"
   docker run -d --rm --name "$container" --stop-timeout 20 -p "${port}:8080" ${skills[@]+"${skills[@]}"} \
-    -e ANTHROPIC_API_KEY="$key" -e AGENTKIT_API_TOKEN="$token" -e AGENTKIT_CREDENTIALS_KEY="$creds_key" \
+    -e ANTHROPIC_API_KEY="$key" -e GEMINI_API_KEY="$gemini" -e AGENTKIT_API_TOKEN="$token" -e AGENTKIT_CREDENTIALS_KEY="$creds_key" \
     -e AGENTKIT_COMPONENTS=agent,web,mcp-server \
     -e TAVILY_API_KEY -e EXA_API_KEY -e PARALLEL_API_KEY -e HUBSPOT_ACCESS_TOKEN -e SALESFORCE_ACCESS_TOKEN \
     -e GOOGLE_OAUTH_CLIENT_ID -e GOOGLE_OAUTH_CLIENT_SECRET -e HUBSPOT_OAUTH_CLIENT_ID -e HUBSPOT_OAUTH_CLIENT_SECRET \
@@ -101,7 +104,7 @@ else
   echo "==> building bin/agentkit"
   go build -o bin/agentkit ./cmd/agentkit
   echo "==> starting agentkit serve on 127.0.0.1:${port} (log: $log)"
-  ANTHROPIC_API_KEY="$key" AGENTKIT_API_TOKEN="$token" AGENTKIT_CREDENTIALS_KEY="$creds_key" \
+  ANTHROPIC_API_KEY="$key" GEMINI_API_KEY="$gemini" AGENTKIT_API_TOKEN="$token" AGENTKIT_CREDENTIALS_KEY="$creds_key" \
     AGENTKIT_COMPONENTS=agent,web,mcp-server AGENTKIT_ADDR="127.0.0.1:${port}" \
     bin/agentkit serve -config "$config" >"$log" 2>&1 &
   pid=$!

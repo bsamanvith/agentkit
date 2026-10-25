@@ -2,7 +2,7 @@
 id: T128
 title: "pkg/llm/gemini: Gemini adapter"
 epic: E08
-status: todo
+status: done
 depends_on: [T125]
 ---
 
@@ -19,9 +19,20 @@ The owner will add Gemini soon (2026-10-24). With T125 a provider is one package
 
 ## Acceptance criteria
 
-- [ ] `llmtest.RunModel` passes on recorded fixtures; live test behind `GEMINI_API_KEY`.
-- [ ] An agent allowing `gemini/*` runs on it from the console.
+- [x] `llmtest.RunModel` passes on recorded fixtures; live test behind `GEMINI_API_KEY`.
+- [x] An agent allowing `gemini/*` runs on it from the console.
 
 ## Notes
 
-- Waits for a Gemini key.
+- Done 2026-10-25. The fixtures are written by hand from recorded replies, as
+  the suite needs (`llmtest.Scenario`); `llmtest.WithoutCacheWrites` because
+  Gemini reports none. Thought signatures ride in opaque blocks
+  (`pkg/llm/gemini` doc). The SSE reader and retries moved to
+  `pkg/llm/internal/llmhttp`, shared with `openaicompat`.
+- Live (2026-10-25, the owner's free-tier key): `TestLive*` pass on
+  `gemini-3.5-flash` and `gemini-3.5-flash-lite`; `gemini-3.8-flash` answered
+  503 (high demand) most of the morning, and `gemini-3.1-pro-preview` has no
+  free-tier quota (429). A served agent ran parallel tool calls on
+  `gemini/gemini-3.5-flash` from the console.
+- `make test-live` and the local deploy scripts take `GEMINI_API_KEY` or
+  `GEMINI_KEY` (the cloud environment's name).

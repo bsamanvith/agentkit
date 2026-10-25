@@ -1,0 +1,157 @@
+{
+  "systemInstruction": {
+    "parts": [
+      {
+        "text": "You are a careful assistant."
+      }
+    ]
+  },
+  "contents": [
+    {
+      "role": "user",
+      "parts": [
+        {
+          "text": "Find Go news."
+        }
+      ]
+    },
+    {
+      "role": "model",
+      "parts": [
+        {
+          "text": "The user wants Go news & a time.",
+          "thought": true
+        },
+        {
+          "text": "Searching."
+        },
+        {
+          "functionCall": {
+            "id": "call_1",
+            "name": "search",
+            "args": {
+              "q": "go <1.27>"
+            }
+          },
+          "thoughtSignature": "c2lnMQ=="
+        },
+        {
+          "functionCall": {
+            "id": "call_2",
+            "name": "now",
+            "args": {}
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "parts": [
+        {
+          "functionResponse": {
+            "id": "call_1",
+            "name": "search",
+            "response": {
+              "output": "[{\"title\":\"Go 1.27 released\"}]"
+            }
+          }
+        },
+        {
+          "functionResponse": {
+            "id": "call_2",
+            "name": "now",
+            "response": {
+              "error": "clock unavailable"
+            }
+          }
+        },
+        {
+          "text": "Only the headline, please."
+        }
+      ]
+    },
+    {
+      "role": "model",
+      "parts": [
+        {
+          "text": "Go 1.27 is out.",
+          "thoughtSignature": "c2lnMg=="
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "parts": [
+        {
+          "text": "Thanks."
+        },
+        {
+          "text": "Anything else?"
+        }
+      ]
+    },
+    {
+      "role": "model",
+      "parts": [
+        {
+          "text": "",
+          "thoughtSignature": "c2lnMw=="
+        },
+        {
+          "executableCode": {
+            "language": "PYTHON",
+            "code": "print(1)"
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "parts": [
+        {
+          "text": "And?"
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "parts": [
+        {
+          "text": "Summarize it."
+        }
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "functionDeclarations": [
+        {
+          "name": "search",
+          "description": "Search the news.",
+          "parametersJsonSchema": {
+            "type": "object",
+            "properties": {
+              "q": {
+                "type": "string",
+                "maxLength": 200
+              }
+            },
+            "required": [
+              "q"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "now"
+        }
+      ]
+    }
+  ],
+  "generationConfig": {
+    "maxOutputTokens": 1024,
+    "thinkingConfig": {
+      "thinkingLevel": "high"
+    }
+  }
+}

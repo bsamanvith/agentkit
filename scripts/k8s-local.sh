@@ -12,10 +12,11 @@
 #   scripts/k8s-local.sh down      delete the namespace: pods, secret and data
 #
 # Environment: KUBE_CONTEXT (default docker-desktop); ANTHROPIC_API_KEY (or
-# ANTHROPIC_KEY) for the runner, stored in the secret on up; SKIP_BUILD=1 to
-# deploy the images already built (FORCE_RESTART=1 restarts the pods anyway,
-# for images loaded into the cluster another way); EXTRA_CA_FILE, a PEM file
-# of CAs the pods trust too, behind a TLS-intercepting proxy
+# ANTHROPIC_KEY) for the runner, and optionally GEMINI_API_KEY (or GEMINI_KEY)
+# for agents on Gemini, stored in the secret on up; SKIP_BUILD=1 to deploy
+# the images already built (FORCE_RESTART=1 restarts the pods anyway, for
+# images loaded into the cluster another way); EXTRA_CA_FILE, a PEM file of
+# CAs the pods trust too, behind a TLS-intercepting proxy
 # (scripts/cloud-k8s.sh sets these).
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -50,7 +51,7 @@ secret_value() {
 # key or an OAuth app in the environment replaces the stored one; it prints
 # "changed" then.
 ensure_secret() {
-	local key="${ANTHROPIC_API_KEY:-${ANTHROPIC_KEY:-}}"
+	local key="${ANTHROPIC_API_KEY:-${ANTHROPIC_KEY:-}}" gemini="${GEMINI_API_KEY:-${GEMINI_KEY:-}}"
 	if ! kn get secret agentkit >/dev/null 2>&1; then
 		local d pw
 		d="$(mktemp -d)"
@@ -62,17 +63,25 @@ ensure_secret() {
 		printf '%s' "$pw" >"$d/postgres-password"
 		printf 'postgres://agentkit:%s@postgres:5432/agentkit?sslmode=disable' "$pw" >"$d/store-url"
 		printf '%s' "$key" >"$d/anthropic-api-key"
+		printf '%s' "$gemini" >"$d/gemini-api-key"
 		printf 'k1:%s' "$(openssl rand -base64 32)" >"$d/credentials-key"
 		kn create secret generic agentkit --from-file="$d" >/dev/null
 		echo "k8s-local: created secret $ns/agentkit" >&2
-	elif [ -n "$key" ] && [ "$key" != "$(secret_value anthropic-api-key)" ]; then
+		return
+	fi
+	local changed=
+	if [ -n "$key" ] && [ "$key" != "$(secret_value anthropic-api-key)" ]; then
 		kn patch secret agentkit --type merge --patch-file /dev/stdin >/dev/null <<<"{\"stringData\":{\"anthropic-api-key\":\"$key\"}}"
-		echo changed
+		changed=1
+	fi
+	if [ -n "$gemini" ] && [ "$gemini" != "$(secret_value gemini-api-key)" ]; then
+		kn patch secret agentkit --type merge --patch-file /dev/stdin >/dev/null <<<"{\"stringData\":{\"gemini-api-key\":\"$gemini\"}}"
+		changed=1
 	fi
 	# A secret from before the credential vault gets its key ring.
 	if [ -z "$(secret_value credentials-key)" ]; then
 		kn patch secret agentkit --type merge --patch-file /dev/stdin >/dev/null <<<"{\"stringData\":{\"credentials-key\":\"k1:$(openssl rand -base64 32)\"}}"
-		echo changed
+		changed=1
 	fi
 	# The OAuth apps of the Connectors page, from the environment when set
 	# (docs/QUICKSTART.md "Connecting accounts").
@@ -84,9 +93,10 @@ ensure_secret() {
 		case "$val" in *'"'* | *'\'* | *$'\n'*) echo "k8s-local: $v holds a quote, backslash or newline; skipped" >&2 && continue ;; esac
 		if [ -n "$val" ] && [ "$val" != "$(secret_value "$name")" ]; then
 			kn patch secret agentkit --type merge --patch-file /dev/stdin >/dev/null <<<"{\"stringData\":{\"$name\":\"$val\"}}"
-			echo changed
+			changed=1
 		fi
 	done
+	[ -z "$changed" ] || echo changed
 }
 
 up() {
@@ -168,5 +178,5 @@ down)
 	check_context
 	k delete namespace "$ns" --ignore-not-found --wait
 	;;
-*) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; [ "${1:-help}" = help ] ;;
+*) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; [ "${1:-help}" = help ] ;;
 esac

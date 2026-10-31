@@ -28,6 +28,7 @@
 | Agent memory: plain text, size-capped, visible | [E23](E23-agent-memory.md) | T121 (readable text only), T122 (Postgres backend), T123 (memory on the split runner), T124 (memory API, console Memory section), T129 (memory loaded into messages, grep past a threshold) done |
 | Google connectors | [E21](E21-google-connectors.md) | Gmail, Calendar done on synthetic cassettes; T111 Drive waits for a Google test account |
 | Connectors page, chat tool picker, tool search | [E22](E22-connectors-and-tool-picker.md) | **Done** 2026-10-25: T114–T120 (owner's request), T131 (every connector on k8s and Compose) |
+| Farm app: plots, verification, the farm assistant | [E25](E25-farm-app.md) | T133 (plots with verified boundaries, assistant) in review (2026-10-31) |
 | More model providers | [E08](E08-model-providers.md) | T128 Gemini done; T025 (OpenAI-compatible) waits for an OpenAI key or an Ollama endpoint |
 | Agent skills | [E02](E02-agent-skills.md) | Done; T010 waits for one check with Codex |
 

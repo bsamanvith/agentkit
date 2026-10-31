@@ -197,6 +197,21 @@ web: ## Build the console into pkg/web/dist, its text files gzipped (commit it w
 	$(PNPM) --dir web build
 	$(GO) run ./pkg/web/pack.go pkg/web/dist
 
+# The farm app (apps/farm, web/apps/farm): its own binary, with its web build
+# embedded like the console's. Farmers are on slow mobile data, so its first
+# load has its own budget.
+FARM_WEB_BUDGET_KB ?= 160
+
+.PHONY: farm-web
+farm-web: ## Build the farm app's web client into apps/farm/webdist/dist, gzipped (commit it with the sources)
+	$(PNPM) --dir web install --frozen-lockfile
+	$(PNPM) --dir web --filter @agentkit/farm build
+	$(GO) run ./pkg/web/pack.go apps/farm/webdist/dist
+
+.PHONY: farm
+farm: ## Run the farm app on http://127.0.0.1:8090 (FARM_DB, FARM_COUNTRY; the assistant with ANTHROPIC_API_KEY or GEMINI_API_KEY)
+	$(GO) run ./apps/farm/cmd/farm
+
 .PHONY: web-check
 web-check: ## Web: lint, format, typecheck, unit tests, audit, build; fail if pkg/web/dist is stale or over budget
 	$(PNPM) --dir web install --frozen-lockfile
@@ -207,6 +222,7 @@ web-check: ## Web: lint, format, typecheck, unit tests, audit, build; fail if pk
 	PNPM=$(PNPM) web/scripts/audit.sh
 	web/scripts/check-build.sh
 	web/scripts/check-size.sh
+	WEB_APP=farm WEB_DIST=apps/farm/webdist/dist WEB_BUDGET_KB=$(FARM_WEB_BUDGET_KB) web/scripts/check-size.sh
 
 .PHONY: web-smoke
 web-smoke: ## Browser smoke test (Playwright) against agentkit serve; uses installed browsers, never downloads

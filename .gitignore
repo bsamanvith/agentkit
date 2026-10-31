@@ -34,3 +34,6 @@ go.work.sum
 
 # The binary `go build ./cmd/agentkit` leaves at the root
 /agentkit
+
+# make farm keeps its plots here.
+/farm.db*

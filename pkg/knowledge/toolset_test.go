@@ -72,7 +72,7 @@ func TestToolsetTools(t *testing.T) {
 			t.Errorf("%s: kind %q, risk %q; want read, low", d.Name, d.Kind, d.Risk)
 		}
 	}
-	if strings.Join(names, ",") != "knowledge_list,knowledge_read,knowledge_search" {
+	if strings.Join(names, ",") != "knowledge_list,knowledge_outline,knowledge_read,knowledge_search" {
 		t.Errorf("tools %v", names)
 	}
 }

@@ -2,10 +2,13 @@
 // verification and the assistant. Bodies are JSON both ways; errors are
 // {"error": "..."} with the status that says what kind:
 //
-//	400  the request is malformed (farm.ErrInvalid)
+//	400  the request is malformed (farm.ErrInvalid, agro.ErrInvalid), or
+//	     names a soil or crop the library does not have
 //	404  no such farm or conversation
-//	422  the boundary failed verification; the body also has its "report"
-//	503  the assistant is not configured (no model key)
+//	422  the boundary failed verification, the body also has its "report";
+//	     or the plan has errors, the body has its "plan_report"
+//	503  the assistant is not configured (no model key), planning is not
+//	     configured, or the climate could not be looked up
 //
 // Routes:
 //
@@ -19,6 +22,18 @@
 //	DELETE /api/farms/{id}             delete a farm
 //	GET    /api/farms/{id}/geojson     the farm as a GeoJSON Feature
 //	POST   /api/assistant              ask the farm assistant
+//
+// Crop planning (with [WithPlanner]):
+//
+//	GET    /api/soils                  the soil library
+//	GET    /api/crops                  the crop library
+//	GET    /api/farms/{id}/climate     the climate normals at the farm
+//	PUT    /api/farms/{id}/profile     set the farm's land and water profile
+//	POST   /api/farms/{id}/recommend   what to plant and when (planner.Ask)
+//	POST   /api/farms/{id}/layout      cut the farm into strips {"parts": [...]}
+//	POST   /api/farms/{id}/plan/check  check a plan, save nothing
+//	PUT    /api/farms/{id}/plan        check and save a plan
+//	DELETE /api/farms/{id}/plan        remove the plan
 package farmapi
 
 import (
@@ -29,8 +44,10 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/bsamanvith/agentkit/apps/farm/agro"
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
 	"github.com/bsamanvith/agentkit/apps/farm/farmagent"
+	"github.com/bsamanvith/agentkit/apps/farm/planner"
 )
 
 // MaxBody bounds a request body: a boundary of farm.MaxCorners corners
@@ -48,6 +65,10 @@ type Option func(*api)
 // WithAssistant serves /api/assistant with a; without it, that route is 503.
 func WithAssistant(a Assistant) Option { return func(x *api) { x.assistant = a } }
 
+// WithPlanner serves the crop planning routes with p; without it, they are
+// 503.
+func WithPlanner(p *planner.Planner) Option { return func(x *api) { x.planner = p } }
+
 // WithCountry reports the country plots are expected in, in /api/config.
 func WithCountry(code string) Option { return func(x *api) { x.country = code } }
 
@@ -57,6 +78,7 @@ func WithLogger(l *slog.Logger) Option { return func(x *api) { x.log = l } }
 type api struct {
 	svc       *farm.Service
 	assistant Assistant
+	planner   *planner.Planner
 	country   string
 	log       *slog.Logger
 }
@@ -78,6 +100,15 @@ func New(svc *farm.Service, opts ...Option) http.Handler {
 	mux.HandleFunc("DELETE /api/farms/{id}", a.remove)
 	mux.HandleFunc("GET /api/farms/{id}/geojson", a.geojson)
 	mux.HandleFunc("POST /api/assistant", a.ask)
+	mux.HandleFunc("GET /api/soils", a.planning(a.soils))
+	mux.HandleFunc("GET /api/crops", a.planning(a.crops))
+	mux.HandleFunc("GET /api/farms/{id}/climate", a.planning(a.climate))
+	mux.HandleFunc("PUT /api/farms/{id}/profile", a.planning(a.profile))
+	mux.HandleFunc("POST /api/farms/{id}/recommend", a.planning(a.recommend))
+	mux.HandleFunc("POST /api/farms/{id}/layout", a.planning(a.layout))
+	mux.HandleFunc("POST /api/farms/{id}/plan/check", a.planning(a.checkPlan))
+	mux.HandleFunc("PUT /api/farms/{id}/plan", a.planning(a.savePlan))
+	mux.HandleFunc("DELETE /api/farms/{id}/plan", a.planning(a.clearPlan))
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusNotFound, errorBody{Error: "no such route"})
 	})
@@ -85,8 +116,9 @@ func New(svc *farm.Service, opts ...Option) http.Handler {
 }
 
 type errorBody struct {
-	Error  string       `json:"error"`
-	Report *farm.Report `json:"report,omitempty"`
+	Error      string           `json:"error"`
+	Report     *farm.Report     `json:"report,omitempty"`
+	PlanReport *agro.PlanReport `json:"plan_report,omitempty"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -98,10 +130,16 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
 	var inv *farm.InvalidError
+	var bad *planner.PlanError
 	switch {
 	case errors.As(err, &inv):
 		writeJSON(w, http.StatusUnprocessableEntity, errorBody{Error: err.Error(), Report: &inv.Report})
-	case errors.Is(err, farm.ErrInvalid):
+	case errors.As(err, &bad):
+		writeJSON(w, http.StatusUnprocessableEntity, errorBody{Error: err.Error(), PlanReport: &bad.Report})
+	case errors.Is(err, agro.ErrNoClimate):
+		a.log.WarnContext(r.Context(), "farm api: no climate", "path", r.URL.Path, "err", err)
+		writeJSON(w, http.StatusServiceUnavailable, errorBody{Error: "the climate at the plot could not be looked up; try again later"})
+	case errors.Is(err, farm.ErrInvalid), errors.Is(err, agro.ErrInvalid), errors.Is(err, agro.ErrUnknown):
 		writeJSON(w, http.StatusBadRequest, errorBody{Error: err.Error()})
 	case errors.Is(err, farm.ErrNotFound), errors.Is(err, farmagent.ErrUnknownConversation):
 		writeJSON(w, http.StatusNotFound, errorBody{Error: err.Error()})
@@ -127,7 +165,7 @@ func decode(w http.ResponseWriter, r *http.Request, v any) error {
 }
 
 func (a *api) config(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"assistant": a.assistant != nil, "country": a.country})
+	writeJSON(w, http.StatusOK, map[string]any{"assistant": a.assistant != nil, "planner": a.planner != nil, "country": a.country})
 }
 
 func (a *api) units(w http.ResponseWriter, _ *http.Request) {
@@ -268,4 +306,122 @@ func (a *api) ask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, reply)
+}
+
+// planning answers 503 when the planner is not configured.
+func (a *api) planning(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if a.planner == nil {
+			writeJSON(w, http.StatusServiceUnavailable, errorBody{Error: "crop planning is not configured"})
+			return
+		}
+		h(w, r)
+	}
+}
+
+func (a *api) soils(w http.ResponseWriter, _ *http.Request) {
+	lib := a.planner.Library()
+	writeJSON(w, http.StatusOK, map[string]any{"soils": lib.Soils(), "source": lib.SoilsSource, "textures": agro.Textures()})
+}
+
+func (a *api) crops(w http.ResponseWriter, _ *http.Request) {
+	lib := a.planner.Library()
+	writeJSON(w, http.StatusOK, map[string]any{"crops": lib.Crops(), "source": lib.CropsSource, "water": agro.WaterKinds()})
+}
+
+func (a *api) climate(w http.ResponseWriter, r *http.Request) {
+	c, err := a.planner.Climate(r.Context(), r.PathValue("id"))
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, c)
+}
+
+func (a *api) profile(w http.ResponseWriter, r *http.Request) {
+	var p agro.Profile
+	if err := decode(w, r, &p); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	f, err := a.planner.SetProfile(r.Context(), r.PathValue("id"), p)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, f)
+}
+
+func (a *api) recommend(w http.ResponseWriter, r *http.Request) {
+	var ask planner.Ask
+	if err := decode(w, r, &ask); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	rec, err := a.planner.Recommend(r.Context(), r.PathValue("id"), ask)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rec)
+}
+
+type layoutBody struct {
+	Parts []agro.Part `json:"parts"`
+}
+
+type planBody struct {
+	Plan   agro.Plan       `json:"plan"`
+	Report agro.PlanReport `json:"report"`
+}
+
+func (a *api) layout(w http.ResponseWriter, r *http.Request) {
+	var body layoutBody
+	if err := decode(w, r, &body); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	plan, rep, err := a.planner.Layout(r.Context(), r.PathValue("id"), body.Parts)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, planBody{plan, rep})
+}
+
+func (a *api) checkPlan(w http.ResponseWriter, r *http.Request) {
+	var plan agro.Plan
+	if err := decode(w, r, &plan); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	rep, err := a.planner.Check(r.Context(), r.PathValue("id"), plan)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rep)
+}
+
+func (a *api) savePlan(w http.ResponseWriter, r *http.Request) {
+	var plan agro.Plan
+	if err := decode(w, r, &plan); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	f, err := a.planner.SavePlan(r.Context(), r.PathValue("id"), plan)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, f)
+}
+
+func (a *api) clearPlan(w http.ResponseWriter, r *http.Request) {
+	f, err := a.planner.ClearPlan(r.Context(), r.PathValue("id"))
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, f)
 }

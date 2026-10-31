@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/bsamanvith/agentkit/apps/farm/agro"
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
 	"github.com/bsamanvith/agentkit/apps/farm/geo"
 	"github.com/bsamanvith/agentkit/pkg/tool"
@@ -21,6 +22,19 @@ type Summary struct {
 	Checks   []farm.Check   `json:"checks,omitempty"`
 	Corners  int            `json:"corners"`
 	Source   farm.Source    `json:"source,omitempty"`
+	// Profile is the land and water the farmer told us about.
+	Profile *agro.Profile `json:"profile,omitempty"`
+	// Plan is the saved season plan, zone by zone, and its check.
+	Plan       []PlanZone      `json:"plan,omitempty"`
+	PlanStatus agro.PlanStatus `json:"plan_status,omitempty"`
+}
+
+// PlanZone is a zone of a saved plan as the tools show it.
+type PlanZone struct {
+	Crop  string  `json:"crop"`
+	With  string  `json:"with,omitempty"`
+	Share float64 `json:"share"`
+	Sow   string  `json:"sow"`
 }
 
 func summarise(f farm.Farm, withChecks bool) Summary {
@@ -31,6 +45,19 @@ func summarise(f farm.Farm, withChecks bool) Summary {
 	}
 	if withChecks {
 		s.Checks = f.Report.Checks
+	}
+	s.Profile = f.Profile
+	if f.Plan != nil {
+		for i, z := range f.Plan.Zones {
+			pz := PlanZone{Crop: z.Crop, With: z.With, Sow: z.Sow}
+			if r := f.PlanReport; r != nil && i < len(r.Zones) {
+				pz.Share = r.Zones[i].Share
+			}
+			s.Plan = append(s.Plan, pz)
+		}
+		if f.PlanReport != nil {
+			s.PlanStatus = f.PlanReport.Status
+		}
 	}
 	return s
 }
@@ -83,7 +110,7 @@ func Tools(svc *farm.Service) ([]tool.Tool, error) {
 	if err != nil {
 		return nil, err
 	}
-	get, err := tool.Func("get_farm", "Get one of the farmer's plots: its size, location, verification status and every check of its boundary.",
+	get, err := tool.Func("get_farm", "Get one of the farmer's plots: its size, location, verification status and every check of its boundary, its land and water profile, and its saved season plan.",
 		func(ctx context.Context, in getIn) (Summary, error) {
 			f, err := svc.Get(ctx, in.ID)
 			if err != nil {

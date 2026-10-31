@@ -8,6 +8,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/bsamanvith/agentkit/apps/farm/agro"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 )
 
@@ -108,6 +109,31 @@ func (s *Service) Update(ctx context.Context, id string, d Draft) (Farm, error) 
 		return Farm{}, &InvalidError{Report: rep}
 	}
 	f.Name, f.Declared, f.Boundary, f.Report = d.Name, d.Declared, d.Boundary, rep
+	f.UpdatedAt = s.clock.Now().UTC()
+	if err := s.store.Update(ctx, f); err != nil {
+		return Farm{}, err
+	}
+	return f, nil
+}
+
+// SetProfile replaces a farm's land and water profile; nil clears it. The
+// caller checks the profile against its library.
+func (s *Service) SetProfile(ctx context.Context, id string, p *agro.Profile) (Farm, error) {
+	return s.change(ctx, id, func(f *Farm) { f.Profile = p })
+}
+
+// SetPlan replaces a farm's plan and its report; nil clears both. The
+// caller checks the plan.
+func (s *Service) SetPlan(ctx context.Context, id string, p *agro.Plan, rep *agro.PlanReport) (Farm, error) {
+	return s.change(ctx, id, func(f *Farm) { f.Plan, f.PlanReport = p, rep })
+}
+
+func (s *Service) change(ctx context.Context, id string, edit func(*Farm)) (Farm, error) {
+	f, err := s.store.Get(ctx, id)
+	if err != nil {
+		return Farm{}, err
+	}
+	edit(&f)
 	f.UpdatedAt = s.clock.Now().UTC()
 	if err := s.store.Update(ctx, f); err != nil {
 		return Farm{}, err

@@ -27,3 +27,13 @@
 .leaflet-container {
   font: inherit;
 }
+.leaflet-tooltip.zone-label {
+  border: 0;
+  background: rgb(0 0 0 / 0.55);
+  color: white;
+  box-shadow: none;
+  font-weight: 600;
+}
+.leaflet-tooltip.zone-label::before {
+  display: none;
+}

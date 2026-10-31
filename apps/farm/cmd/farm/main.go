@@ -7,7 +7,8 @@
 // The farm assistant runs on Claude when ANTHROPIC_API_KEY (or
 // ANTHROPIC_KEY) is set, else on Gemini with GEMINI_API_KEY (or
 // GEMINI_KEY); -model picks one, or "off". Plots are looked up on
-// OpenStreetMap's Nominatim unless -geocoder is "off".
+// OpenStreetMap's Nominatim unless -geocoder is "off"; the climate at a plot
+// comes from NASA POWER unless -climate is "off".
 package main
 
 import (
@@ -24,11 +25,15 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bsamanvith/agentkit/apps/farm/agro"
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
 	"github.com/bsamanvith/agentkit/apps/farm/farm/sqlite"
 	"github.com/bsamanvith/agentkit/apps/farm/farmagent"
 	"github.com/bsamanvith/agentkit/apps/farm/farmapi"
+	"github.com/bsamanvith/agentkit/apps/farm/handbook"
+	"github.com/bsamanvith/agentkit/apps/farm/nasapower"
 	"github.com/bsamanvith/agentkit/apps/farm/nominatim"
+	"github.com/bsamanvith/agentkit/apps/farm/planner"
 	"github.com/bsamanvith/agentkit/apps/farm/webdist"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/anthropic"
@@ -44,7 +49,7 @@ const csp = "default-src 'self'; script-src 'self'; style-src 'self'; " +
 	"form-action 'self'; frame-ancestors 'none'"
 
 type config struct {
-	addr, db, country, geocoder, model, modelID string
+	addr, db, country, geocoder, climate, model, modelID string
 }
 
 func main() {
@@ -54,6 +59,7 @@ func main() {
 	fs.StringVar(&c.db, "db", env("FARM_DB", "farm.db"), "SQLite file ($FARM_DB)")
 	fs.StringVar(&c.country, "country", env("FARM_COUNTRY", "IN"), "ISO code of the country plots should be in; empty for any ($FARM_COUNTRY)")
 	fs.StringVar(&c.geocoder, "geocoder", env("FARM_GEOCODER", nominatim.DefaultURL), `Nominatim server, or "off" ($FARM_GEOCODER)`)
+	fs.StringVar(&c.climate, "climate", env("FARM_CLIMATE", nasapower.DefaultURL), `NASA POWER server, or "off" ($FARM_CLIMATE)`)
 	fs.StringVar(&c.model, "model", env("FARM_MODEL", "auto"), `assistant's provider: auto, anthropic, gemini or off ($FARM_MODEL)`)
 	fs.StringVar(&c.modelID, "model-id", env("FARM_MODEL_ID", ""), "model ID (default: the provider's default) ($FARM_MODEL_ID)")
 	_ = fs.Parse(os.Args[1:])
@@ -94,13 +100,33 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 	if err != nil {
 		return err
 	}
-	aopts := []farmapi.Option{farmapi.WithCountry(c.country), farmapi.WithLogger(log)}
+	lib, err := agro.Default()
+	if err != nil {
+		return err
+	}
+	var climate agro.ClimateSource
+	if c.climate != "off" {
+		if climate, err = nasapower.New(nasapower.WithURL(c.climate)); err != nil {
+			return err
+		}
+	}
+	plan := planner.New(svc, lib, climate)
+	aopts := []farmapi.Option{farmapi.WithCountry(c.country), farmapi.WithLogger(log), farmapi.WithPlanner(plan)}
 	model, provider, err := buildModel(c)
 	if err != nil {
 		return err
 	}
 	if model != nil {
-		a, err := farmagent.NewAssistant(model, svc)
+		book, err := handbook.New(ctx)
+		if err != nil {
+			return err
+		}
+		skills, err := farmagent.Skills()
+		if err != nil {
+			return err
+		}
+		a, err := farmagent.NewAssistant(model, svc, farmagent.WithPlanner(plan),
+			farmagent.WithKnowledge(book, handbook.Description), farmagent.WithSkills(skills))
 		if err != nil {
 			return err
 		}
@@ -117,7 +143,7 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 		return err
 	}
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
-	log.Info("farm: serving", "url", "http://"+ln.Addr().String(), "db", c.db, "assistant", provider, "geocoder", c.geocoder)
+	log.Info("farm: serving", "url", "http://"+ln.Addr().String(), "db", c.db, "assistant", provider, "geocoder", c.geocoder, "climate", c.climate)
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
 	select {

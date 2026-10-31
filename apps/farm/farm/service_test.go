@@ -6,6 +6,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/bsamanvith/agentkit/apps/farm/agro"
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
 	"github.com/bsamanvith/agentkit/apps/farm/farm/farmtest"
 	"github.com/bsamanvith/agentkit/apps/farm/geo"
@@ -107,5 +108,44 @@ func TestServiceChecksOverlapsWithOtherFarmsOnly(t *testing.T) {
 	}
 	if _, err := s.Update(ctx, f.ID, farm.Draft{Name: "x", Boundary: farm.Boundary{Corners: corners(geo.Point{Lat: 1, Lng: 1})}}); !errors.Is(err, farm.ErrInvalid) {
 		t.Errorf("Update to an invalid boundary: %v, want ErrInvalid", err)
+	}
+}
+
+func TestServiceKeepsProfileAndPlanAcrossEdits(t *testing.T) {
+	t.Parallel()
+	s, _ := service(t)
+	ctx := context.Background()
+	d := farm.Draft{Name: "East field", Boundary: farm.Boundary{Corners: acre(), Source: farm.SourceGPS}}
+	f, err := s.Create(ctx, d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prof := &agro.Profile{Soil: "black", PreviousCrop: "cotton"}
+	plan := &agro.Plan{Zones: []agro.Zone{{Crop: "chickpea", Sow: "2026-11-10"}}}
+	if _, err := s.SetProfile(ctx, f.ID, prof); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetPlan(ctx, f.ID, plan, &agro.PlanReport{Status: agro.PlanSound}); err != nil {
+		t.Fatal(err)
+	}
+	d.Name = "East field (north)"
+	if _, err := s.Update(ctx, f.ID, d); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Get(ctx, f.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Profile == nil || got.Profile.Soil != "black" || got.Plan == nil || got.PlanReport == nil || got.Name != d.Name {
+		t.Errorf("after an edit: profile %+v, plan %+v, name %q", got.Profile, got.Plan, got.Name)
+	}
+	if _, err := s.SetPlan(ctx, f.ID, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Get(ctx, f.ID); got.Plan != nil || got.PlanReport != nil {
+		t.Error("the plan was not cleared")
+	}
+	if _, err := s.SetProfile(ctx, "farm_missing", prof); !errors.Is(err, farm.ErrNotFound) {
+		t.Errorf("missing farm: err %v, want ErrNotFound", err)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/bsamanvith/agentkit/apps/farm/agro"
 	"github.com/bsamanvith/agentkit/apps/farm/geo"
 )
 
@@ -74,9 +75,16 @@ type Farm struct {
 	Declared *Area    `json:"declared,omitempty"`
 	Boundary Boundary `json:"boundary"`
 	// Report is the boundary's verification, as of its last change.
-	Report    Report    `json:"report"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Report Report `json:"report"`
+	// Profile is what the farmer told us about the land and water; nil
+	// until they do.
+	Profile *agro.Profile `json:"profile,omitempty"`
+	// Plan is the season's plan, checked when it was saved, with its
+	// report; nil until there is one.
+	Plan       *agro.Plan       `json:"plan,omitempty"`
+	PlanReport *agro.PlanReport `json:"plan_report,omitempty"`
+	CreatedAt  time.Time        `json:"created_at"`
+	UpdatedAt  time.Time        `json:"updated_at"`
 }
 
 // Store keeps farms. Implementations are safe for concurrent use and pass

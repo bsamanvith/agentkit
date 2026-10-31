@@ -1,5 +1,7 @@
 #!/bin/sh
-# Fails if the console's first load is over its budget. It runs on slow links
+# Fails if an app's first load is over its budget: the console's by
+# default, or WEB_APP's build in WEB_DIST with WEB_BUDGET_KB (make web-check
+# checks the farm app's too). It runs on slow links
 # and low-end machines, so raising the budget is a decision, like the image's
 # (make image-size).
 #
@@ -10,7 +12,8 @@
 # only when needed, so they don't count. Run from the repository root (make
 # web-check does).
 set -eu
-dist=pkg/web/dist
+dist=${WEB_DIST:-pkg/web/dist}
+app=${WEB_APP:-console}
 budget=${WEB_BUDGET_KB:-240}
 
 # sent prints the bytes pkg/web sends for a file of the build: its packed
@@ -38,8 +41,8 @@ for f in "$dist"/assets/*-latin-wght-*.woff2; do
 done
 [ "$fonts" -gt 0 ] || { echo "no Latin fonts (*-latin-wght-*.woff2) in $dist/assets: did their names change?" >&2; exit 1; }
 total=$((total + fonts))
-echo "console first load: $total bytes ($fonts of fonts), budget $((budget * 1000)) (${budget} KB)"
+echo "$app first load: $total bytes ($fonts of fonts), budget $((budget * 1000)) (${budget} KB)"
 if [ "$total" -gt $((budget * 1000)) ]; then
-	echo "the console is over its size budget: lazy-load what the first screen doesn't need (React.lazy), or drop a dependency" >&2
+	echo "the $app is over its size budget: lazy-load what the first screen doesn't need (React.lazy), or drop a dependency" >&2
 	exit 1
 fi

@@ -442,3 +442,19 @@ func TestBadPack(t *testing.T) {
 		}
 	}
 }
+
+// TestWithCSP: an app that loads from other origins (map tiles) sets its
+// own policy, on every response.
+func TestWithCSP(t *testing.T) {
+	t.Parallel()
+	const csp = "default-src 'self'; img-src 'self' https://tile.openstreetmap.org"
+	h := web.New(build(), web.WithCSP(csp)).Handler()
+	for _, p := range []string{"/", "/assets/app-abc123.js", "/missing.png"} {
+		if got := get(t, h, http.MethodGet, p).Header.Get("Content-Security-Policy"); got != csp {
+			t.Errorf("GET %s: CSP %q, want %q", p, got, csp)
+		}
+	}
+	if got := get(t, web.New(build()).Handler(), http.MethodGet, "/").Header.Get("Content-Security-Policy"); got != web.CSP {
+		t.Errorf("default CSP %q, want web.CSP", got)
+	}
+}

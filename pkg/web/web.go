@@ -199,14 +199,26 @@ func acceptsGzip(r *http.Request) bool {
 type Component struct {
 	files map[string]file // by path, "assets/index-x.js"
 	err   error           // why the build can't be served, if it can't
+	csp   string
 }
+
+// Option configures [New].
+type Option func(*Component)
+
+// WithCSP replaces the Content-Security-Policy ([CSP]), for an app that
+// loads from other origins, such as map tiles. Keep it as strict as the app
+// allows.
+func WithCSP(csp string) Option { return func(c *Component) { c.csp = csp } }
 
 // New serves the build in files (Dist for the embedded one), read into
 // memory once. A packed file (name.gz, see [Pack]) is served as name, and
 // decompressed for the clients that don't accept gzip; other files are
 // served as they are. A build without index.html is served but not ready.
-func New(files fs.FS) *Component {
-	c := &Component{files: map[string]file{}}
+func New(files fs.FS, opts ...Option) *Component {
+	c := &Component{files: map[string]file{}, csp: CSP}
+	for _, o := range opts {
+		o(c)
+	}
 	c.err = fs.WalkDir(files, ".", func(name string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
@@ -267,7 +279,7 @@ func isReserved(clean string) bool {
 
 func (c *Component) serve(w http.ResponseWriter, r *http.Request) {
 	h := w.Header()
-	h.Set("Content-Security-Policy", CSP)
+	h.Set("Content-Security-Policy", c.csp)
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Referrer-Policy", "no-referrer")
 	clean := path.Clean("/" + r.URL.Path)

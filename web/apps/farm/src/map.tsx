@@ -5,7 +5,10 @@ import type { Corner, Point } from "./types";
 
 const satellite = () =>
   L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
-    maxZoom: 19,
+    // Rural India has imagery to zoom 18; closer, stretch it rather than
+    // show "Map data not yet available".
+    maxNativeZoom: 18,
+    maxZoom: 20,
     attribution: "Imagery © Esri, Maxar, Earthstar Geographics",
   });
 const streets = () =>

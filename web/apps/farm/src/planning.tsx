@@ -344,7 +344,9 @@ function OptionCard({ o, onAdd }: { o: Option; onAdd: () => void }) {
       )}
       <div className="text-muted-foreground">
         Water: needs about {o.water.need_mm} mm, rain gives {o.water.rain_mm} mm
-        {o.water.short_mm > 0 && <span className="text-ak-bad"> · {o.water.short_mm} mm short</span>}
+        {o.risks.some((n) => n.id === "water.short") && (
+          <span className="text-ak-bad"> · {o.water.short_mm} mm short</span>
+        )}
       </div>
       <ul className="flex flex-col gap-0.5">
         {o.risks.map((n) => (

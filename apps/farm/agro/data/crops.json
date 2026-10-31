@@ -1,0 +1,2038 @@
+{
+ "source": "Starter values: temperature and water ranges follow FAO ECOCROP where it has the crop, seasons and spacing follow ICAR and state university packages of practice for India. Temperatures are monthly means in °C; water is the crop's whole-season need in mm (perennials: per year); days run from sowing or planting to (first) harvest. Review before relying on them.",
+ "crops": [
+  {
+   "id": "rice",
+   "name": "Rice (paddy)",
+   "names": {
+    "hi": "धान",
+    "te": "వరి"
+   },
+   "family": "Poaceae",
+   "kind": "cereal",
+   "perennial": false,
+   "days": [
+    100,
+    150
+   ],
+   "temp_opt": [
+    22,
+    32
+   ],
+   "temp_abs": [
+    15,
+    36
+   ],
+   "water_mm": [
+    1000,
+    2000
+   ],
+   "ph": [
+    5.0,
+    7.5
+   ],
+   "textures": [
+    "loam",
+    "silt_loam",
+    "clay_loam",
+    "clay"
+   ],
+   "tolerates": [
+    "waterlogging"
+   ],
+   "row_cm": 20,
+   "plant_cm": 15,
+   "seasons": [
+    "kharif",
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "China",
+    "South-East Asia"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "intercrops": []
+  },
+  {
+   "id": "wheat",
+   "name": "Wheat",
+   "names": {
+    "hi": "गेहूं",
+    "te": "గోధుమ"
+   },
+   "family": "Poaceae",
+   "kind": "cereal",
+   "perennial": false,
+   "days": [
+    110,
+    140
+   ],
+   "temp_opt": [
+    15,
+    23
+   ],
+   "temp_abs": [
+    5,
+    30
+   ],
+   "water_mm": [
+    350,
+    550
+   ],
+   "ph": [
+    6.0,
+    8.0
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "silt_loam",
+    "clay_loam"
+   ],
+   "tolerates": [
+    "frost"
+   ],
+   "row_cm": 22,
+   "plant_cm": 5,
+   "seasons": [
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "China",
+    "Europe",
+    "North America"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "intercrops": [
+    "mustard"
+   ]
+  },
+  {
+   "id": "maize",
+   "name": "Maize",
+   "names": {
+    "hi": "मक्का",
+    "te": "మొక్కజొన్న"
+   },
+   "family": "Poaceae",
+   "kind": "cereal",
+   "perennial": false,
+   "days": [
+    90,
+    120
+   ],
+   "temp_opt": [
+    21,
+    30
+   ],
+   "temp_abs": [
+    12,
+    35
+   ],
+   "water_mm": [
+    500,
+    800
+   ],
+   "ph": [
+    5.5,
+    7.5
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "silt_loam",
+    "clay_loam"
+   ],
+   "tolerates": [],
+   "row_cm": 60,
+   "plant_cm": 20,
+   "seasons": [
+    "kharif",
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "Mexico",
+    "USA",
+    "China"
+   ],
+   "climate_analog": false,
+   "tall": true,
+   "intercrops": [
+    "soybean",
+    "green_gram",
+    "black_gram",
+    "pigeon_pea",
+    "turmeric"
+   ]
+  },
+  {
+   "id": "sorghum",
+   "name": "Sorghum (jowar)",
+   "names": {
+    "hi": "ज्वार",
+    "te": "జొన్న"
+   },
+   "family": "Poaceae",
+   "kind": "cereal",
+   "perennial": false,
+   "days": [
+    100,
+    120
+   ],
+   "temp_opt": [
+    25,
+    32
+   ],
+   "temp_abs": [
+    15,
+    38
+   ],
+   "water_mm": [
+    400,
+    650
+   ],
+   "ph": [
+    5.5,
+    8.5
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam",
+    "clay"
+   ],
+   "tolerates": [
+    "drought"
+   ],
+   "row_cm": 45,
+   "plant_cm": 15,
+   "seasons": [
+    "kharif",
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "Africa",
+    "USA"
+   ],
+   "climate_analog": false,
+   "tall": true,
+   "intercrops": [
+    "pigeon_pea",
+    "green_gram"
+   ]
+  },
+  {
+   "id": "pearl_millet",
+   "name": "Pearl millet (bajra)",
+   "names": {
+    "hi": "बाजरा",
+    "te": "సజ్జ"
+   },
+   "family": "Poaceae",
+   "kind": "cereal",
+   "perennial": false,
+   "days": [
+    75,
+    95
+   ],
+   "temp_opt": [
+    25,
+    33
+   ],
+   "temp_abs": [
+    18,
+    40
+   ],
+   "water_mm": [
+    250,
+    450
+   ],
+   "ph": [
+    6.0,
+    8.0
+   ],
+   "textures": [
+    "sand",
+    "loamy_sand",
+    "sandy_loam",
+    "loam"
+   ],
+   "tolerates": [
+    "drought"
+   ],
+   "row_cm": 45,
+   "plant_cm": 15,
+   "seasons": [
+    "kharif",
+    "zaid"
+   ],
+   "grown_in": [
+    "India",
+    "Africa"
+   ],
+   "climate_analog": false,
+   "tall": true,
+   "intercrops": [
+    "green_gram",
+    "pigeon_pea"
+   ]
+  },
+  {
+   "id": "finger_millet",
+   "name": "Finger millet (ragi)",
+   "names": {
+    "hi": "रागी",
+    "te": "రాగి"
+   },
+   "family": "Poaceae",
+   "kind": "cereal",
+   "perennial": false,
+   "days": [
+    100,
+    130
+   ],
+   "temp_opt": [
+    20,
+    30
+   ],
+   "temp_abs": [
+    15,
+    35
+   ],
+   "water_mm": [
+    400,
+    600
+   ],
+   "ph": [
+    5.0,
+    8.0
+   ],
+   "textures": [
+    "loamy_sand",
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [
+    "drought"
+   ],
+   "row_cm": 22,
+   "plant_cm": 10,
+   "seasons": [
+    "kharif"
+   ],
+   "grown_in": [
+    "India",
+    "East Africa"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "intercrops": [
+    "pigeon_pea"
+   ]
+  },
+  {
+   "id": "foxtail_millet",
+   "name": "Foxtail millet (korra)",
+   "names": {
+    "hi": "कंगनी",
+    "te": "కొర్ర"
+   },
+   "family": "Poaceae",
+   "kind": "cereal",
+   "perennial": false,
+   "days": [
+    75,
+    90
+   ],
+   "temp_opt": [
+    20,
+    30
+   ],
+   "temp_abs": [
+    15,
+    35
+   ],
+   "water_mm": [
+    250,
+    400
+   ],
+   "ph": [
+    5.5,
+    8.0
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [
+    "drought"
+   ],
+   "row_cm": 22,
+   "plant_cm": 10,
+   "seasons": [
+    "kharif"
+   ],
+   "grown_in": [
+    "India",
+    "China"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "intercrops": [
+    "pigeon_pea"
+   ]
+  },
+  {
+   "id": "chickpea",
+   "name": "Chickpea (Bengal gram)",
+   "names": {
+    "hi": "चना",
+    "te": "శనగ"
+   },
+   "family": "Fabaceae",
+   "kind": "pulse",
+   "perennial": false,
+   "days": [
+    95,
+    120
+   ],
+   "temp_opt": [
+    15,
+    25
+   ],
+   "temp_abs": [
+    8,
+    30
+   ],
+   "water_mm": [
+    200,
+    350
+   ],
+   "ph": [
+    6.0,
+    8.5
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam",
+    "clay"
+   ],
+   "tolerates": [
+    "drought"
+   ],
+   "row_cm": 30,
+   "plant_cm": 10,
+   "seasons": [
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "Ethiopia",
+    "Turkey",
+    "Australia"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "intercrops": [
+    "mustard"
+   ]
+  },
+  {
+   "id": "pigeon_pea",
+   "name": "Pigeon pea (red gram)",
+   "names": {
+    "hi": "अरहर",
+    "te": "కంది"
+   },
+   "family": "Fabaceae",
+   "kind": "pulse",
+   "perennial": false,
+   "days": [
+    150,
+    200
+   ],
+   "temp_opt": [
+    20,
+    30
+   ],
+   "temp_abs": [
+    15,
+    35
+   ],
+   "water_mm": [
+    600,
+    1000
+   ],
+   "ph": [
+    5.0,
+    8.0
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam",
+    "clay"
+   ],
+   "tolerates": [
+    "drought"
+   ],
+   "row_cm": 90,
+   "plant_cm": 20,
+   "seasons": [
+    "kharif"
+   ],
+   "grown_in": [
+    "India",
+    "East Africa",
+    "Myanmar"
+   ],
+   "climate_analog": false,
+   "tall": true,
+   "intercrops": [
+    "sorghum",
+    "groundnut",
+    "green_gram",
+    "black_gram",
+    "cotton",
+    "maize",
+    "finger_millet",
+    "foxtail_millet",
+    "soybean",
+    "pearl_millet",
+    "sunflower"
+   ]
+  },
+  {
+   "id": "green_gram",
+   "name": "Green gram (moong)",
+   "names": {
+    "hi": "मूंग",
+    "te": "పెసర"
+   },
+   "family": "Fabaceae",
+   "kind": "pulse",
+   "perennial": false,
+   "days": [
+    60,
+    75
+   ],
+   "temp_opt": [
+    25,
+    35
+   ],
+   "temp_abs": [
+    18,
+    40
+   ],
+   "water_mm": [
+    250,
+    400
+   ],
+   "ph": [
+    6.0,
+    7.5
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [],
+   "row_cm": 30,
+   "plant_cm": 10,
+   "seasons": [
+    "kharif",
+    "zaid",
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "China",
+    "South-East Asia"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "intercrops": [
+    "pigeon_pea",
+    "maize",
+    "sorghum",
+    "cotton",
+    "pearl_millet",
+    "sesame",
+    "sugarcane",
+    "mango",
+    "guava",
+    "moringa"
+   ]
+  },
+  {
+   "id": "black_gram",
+   "name": "Black gram (urad)",
+   "names": {
+    "hi": "उड़द",
+    "te": "మినుము"
+   },
+   "family": "Fabaceae",
+   "kind": "pulse",
+   "perennial": false,
+   "days": [
+    70,
+    90
+   ],
+   "temp_opt": [
+    25,
+    35
+   ],
+   "temp_abs": [
+    18,
+    38
+   ],
+   "water_mm": [
+    300,
+    450
+   ],
+   "ph": [
+    6.0,
+    7.8
+   ],
+   "textures": [
+    "loam",
+    "clay_loam",
+    "clay"
+   ],
+   "tolerates": [],
+   "row_cm": 30,
+   "plant_cm": 10,
+   "seasons": [
+    "kharif",
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "Myanmar"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "intercrops": [
+    "pigeon_pea",
+    "maize",
+    "cotton",
+    "sugarcane",
+    "mango",
+    "guava",
+    "moringa"
+   ]
+  },
+  {
+   "id": "groundnut",
+   "name": "Groundnut",
+   "names": {
+    "hi": "मूंगफली",
+    "te": "వేరుశనగ"
+   },
+   "family": "Fabaceae",
+   "kind": "oilseed",
+   "perennial": false,
+   "days": [
+    100,
+    130
+   ],
+   "temp_opt": [
+    24,
+    30
+   ],
+   "temp_abs": [
+    18,
+    36
+   ],
+   "water_mm": [
+    450,
+    700
+   ],
+   "ph": [
+    6.0,
+    7.5
+   ],
+   "textures": [
+    "loamy_sand",
+    "sandy_loam",
+    "loam"
+   ],
+   "tolerates": [],
+   "row_cm": 30,
+   "plant_cm": 10,
+   "seasons": [
+    "kharif",
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "China",
+    "Africa",
+    "USA"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "intercrops": [
+    "pigeon_pea",
+    "sunflower",
+    "mango"
+   ]
+  },
+  {
+   "id": "soybean",
+   "name": "Soybean",
+   "names": {
+    "hi": "सोयाबीन",
+    "te": "సోయా చిక్కుడు"
+   },
+   "family": "Fabaceae",
+   "kind": "oilseed",
+   "perennial": false,
+   "days": [
+    90,
+    110
+   ],
+   "temp_opt": [
+    20,
+    30
+   ],
+   "temp_abs": [
+    15,
+    35
+   ],
+   "water_mm": [
+    450,
+    700
+   ],
+   "ph": [
+    6.0,
+    7.5
+   ],
+   "textures": [
+    "loam",
+    "silt_loam",
+    "clay_loam",
+    "clay"
+   ],
+   "tolerates": [],
+   "row_cm": 45,
+   "plant_cm": 5,
+   "seasons": [
+    "kharif"
+   ],
+   "grown_in": [
+    "India",
+    "USA",
+    "Brazil",
+    "China"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "intercrops": [
+    "pigeon_pea",
+    "maize"
+   ]
+  },
+  {
+   "id": "mustard",
+   "name": "Mustard",
+   "names": {
+    "hi": "सरसों",
+    "te": "ఆవాలు"
+   },
+   "family": "Brassicaceae",
+   "kind": "oilseed",
+   "perennial": false,
+   "days": [
+    110,
+    140
+   ],
+   "temp_opt": [
+    15,
+    25
+   ],
+   "temp_abs": [
+    8,
+    30
+   ],
+   "water_mm": [
+    250,
+    400
+   ],
+   "ph": [
+    6.0,
+    8.5
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "silt_loam",
+    "clay_loam"
+   ],
+   "tolerates": [
+    "frost",
+    "salinity"
+   ],
+   "row_cm": 30,
+   "plant_cm": 10,
+   "seasons": [
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "China",
+    "Canada"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "intercrops": [
+    "chickpea",
+    "wheat"
+   ]
+  },
+  {
+   "id": "sunflower",
+   "name": "Sunflower",
+   "names": {
+    "hi": "सूरजमुखी",
+    "te": "పొద్దుతిరుగుడు"
+   },
+   "family": "Asteraceae",
+   "kind": "oilseed",
+   "perennial": false,
+   "days": [
+    90,
+    110
+   ],
+   "temp_opt": [
+    20,
+    28
+   ],
+   "temp_abs": [
+    15,
+    35
+   ],
+   "water_mm": [
+    400,
+    600
+   ],
+   "ph": [
+    6.0,
+    8.0
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam",
+    "clay"
+   ],
+   "tolerates": [
+    "drought"
+   ],
+   "row_cm": 60,
+   "plant_cm": 30,
+   "seasons": [
+    "kharif",
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "Ukraine",
+    "Russia",
+    "Argentina"
+   ],
+   "climate_analog": false,
+   "tall": true,
+   "intercrops": [
+    "groundnut",
+    "pigeon_pea"
+   ]
+  },
+  {
+   "id": "sesame",
+   "name": "Sesame",
+   "names": {
+    "hi": "तिल",
+    "te": "నువ్వులు"
+   },
+   "family": "Pedaliaceae",
+   "kind": "oilseed",
+   "perennial": false,
+   "days": [
+    80,
+    100
+   ],
+   "temp_opt": [
+    25,
+    32
+   ],
+   "temp_abs": [
+    20,
+    38
+   ],
+   "water_mm": [
+    300,
+    450
+   ],
+   "ph": [
+    5.5,
+    8.0
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam"
+   ],
+   "tolerates": [
+    "drought"
+   ],
+   "row_cm": 30,
+   "plant_cm": 10,
+   "seasons": [
+    "kharif",
+    "zaid"
+   ],
+   "grown_in": [
+    "India",
+    "Myanmar",
+    "Sudan",
+    "China"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "intercrops": [
+    "green_gram"
+   ]
+  },
+  {
+   "id": "cotton",
+   "name": "Cotton",
+   "names": {
+    "hi": "कपास",
+    "te": "పత్తి"
+   },
+   "family": "Malvaceae",
+   "kind": "fibre",
+   "perennial": false,
+   "days": [
+    150,
+    180
+   ],
+   "temp_opt": [
+    22,
+    32
+   ],
+   "temp_abs": [
+    16,
+    38
+   ],
+   "water_mm": [
+    700,
+    1200
+   ],
+   "ph": [
+    5.8,
+    8.0
+   ],
+   "textures": [
+    "loam",
+    "clay_loam",
+    "clay"
+   ],
+   "tolerates": [
+    "salinity"
+   ],
+   "row_cm": 90,
+   "plant_cm": 60,
+   "seasons": [
+    "kharif"
+   ],
+   "grown_in": [
+    "India",
+    "China",
+    "USA",
+    "Brazil"
+   ],
+   "climate_analog": false,
+   "tall": true,
+   "intercrops": [
+    "green_gram",
+    "black_gram",
+    "pigeon_pea"
+   ]
+  },
+  {
+   "id": "sugarcane",
+   "name": "Sugarcane",
+   "names": {
+    "hi": "गन्ना",
+    "te": "చెరకు"
+   },
+   "family": "Poaceae",
+   "kind": "cash",
+   "perennial": false,
+   "days": [
+    300,
+    365
+   ],
+   "temp_opt": [
+    24,
+    32
+   ],
+   "temp_abs": [
+    15,
+    38
+   ],
+   "water_mm": [
+    1500,
+    2500
+   ],
+   "ph": [
+    6.0,
+    8.0
+   ],
+   "textures": [
+    "loam",
+    "silt_loam",
+    "clay_loam"
+   ],
+   "tolerates": [],
+   "row_cm": 120,
+   "plant_cm": 30,
+   "seasons": [
+    "rabi",
+    "zaid"
+   ],
+   "grown_in": [
+    "India",
+    "Brazil",
+    "China"
+   ],
+   "climate_analog": false,
+   "tall": true,
+   "intercrops": [
+    "green_gram",
+    "black_gram",
+    "onion"
+   ]
+  },
+  {
+   "id": "turmeric",
+   "name": "Turmeric",
+   "names": {
+    "hi": "हल्दी",
+    "te": "పసుపు"
+   },
+   "family": "Zingiberaceae",
+   "kind": "spice",
+   "perennial": false,
+   "days": [
+    240,
+    270
+   ],
+   "temp_opt": [
+    20,
+    30
+   ],
+   "temp_abs": [
+    15,
+    35
+   ],
+   "water_mm": [
+    1500,
+    2000
+   ],
+   "ph": [
+    5.0,
+    7.5
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [],
+   "row_cm": 45,
+   "plant_cm": 20,
+   "seasons": [
+    "kharif"
+   ],
+   "grown_in": [
+    "India"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "intercrops": [
+    "maize",
+    "chilli",
+    "coconut"
+   ]
+  },
+  {
+   "id": "chilli",
+   "name": "Chilli",
+   "names": {
+    "hi": "मिर्च",
+    "te": "మిర్చి"
+   },
+   "family": "Solanaceae",
+   "kind": "vegetable",
+   "perennial": false,
+   "days": [
+    150,
+    180
+   ],
+   "temp_opt": [
+    20,
+    30
+   ],
+   "temp_abs": [
+    15,
+    35
+   ],
+   "water_mm": [
+    500,
+    800
+   ],
+   "ph": [
+    6.0,
+    7.5
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam",
+    "clay"
+   ],
+   "tolerates": [],
+   "row_cm": 60,
+   "plant_cm": 45,
+   "seasons": [
+    "kharif",
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "Mexico",
+    "China"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "intercrops": [
+    "onion",
+    "turmeric",
+    "mango"
+   ]
+  },
+  {
+   "id": "tomato",
+   "name": "Tomato",
+   "names": {
+    "hi": "टमाटर",
+    "te": "టమాట"
+   },
+   "family": "Solanaceae",
+   "kind": "vegetable",
+   "perennial": false,
+   "days": [
+    90,
+    120
+   ],
+   "temp_opt": [
+    18,
+    27
+   ],
+   "temp_abs": [
+    10,
+    32
+   ],
+   "water_mm": [
+    400,
+    600
+   ],
+   "ph": [
+    6.0,
+    7.0
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [],
+   "row_cm": 60,
+   "plant_cm": 45,
+   "seasons": [
+    "rabi",
+    "kharif"
+   ],
+   "grown_in": [
+    "India",
+    "China",
+    "Mexico",
+    "USA"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "intercrops": [
+    "onion"
+   ]
+  },
+  {
+   "id": "onion",
+   "name": "Onion",
+   "names": {
+    "hi": "प्याज",
+    "te": "ఉల్లి"
+   },
+   "family": "Amaryllidaceae",
+   "kind": "vegetable",
+   "perennial": false,
+   "days": [
+    120,
+    150
+   ],
+   "temp_opt": [
+    13,
+    24
+   ],
+   "temp_abs": [
+    8,
+    30
+   ],
+   "water_mm": [
+    350,
+    550
+   ],
+   "ph": [
+    6.0,
+    7.5
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "silt_loam"
+   ],
+   "tolerates": [],
+   "row_cm": 15,
+   "plant_cm": 10,
+   "seasons": [
+    "rabi",
+    "kharif"
+   ],
+   "grown_in": [
+    "India",
+    "China",
+    "Egypt"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "intercrops": [
+    "chilli",
+    "tomato",
+    "sugarcane"
+   ]
+  },
+  {
+   "id": "brinjal",
+   "name": "Brinjal (eggplant)",
+   "names": {
+    "hi": "बैंगन",
+    "te": "వంకాయ"
+   },
+   "family": "Solanaceae",
+   "kind": "vegetable",
+   "perennial": false,
+   "days": [
+    130,
+    150
+   ],
+   "temp_opt": [
+    20,
+    30
+   ],
+   "temp_abs": [
+    15,
+    35
+   ],
+   "water_mm": [
+    500,
+    700
+   ],
+   "ph": [
+    5.5,
+    7.0
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [],
+   "row_cm": 75,
+   "plant_cm": 60,
+   "seasons": [
+    "kharif",
+    "rabi",
+    "zaid"
+   ],
+   "grown_in": [
+    "India",
+    "China"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "intercrops": []
+  },
+  {
+   "id": "okra",
+   "name": "Okra (bhindi)",
+   "names": {
+    "hi": "भिंडी",
+    "te": "బెండ"
+   },
+   "family": "Malvaceae",
+   "kind": "vegetable",
+   "perennial": false,
+   "days": [
+    90,
+    110
+   ],
+   "temp_opt": [
+    22,
+    32
+   ],
+   "temp_abs": [
+    18,
+    38
+   ],
+   "water_mm": [
+    400,
+    600
+   ],
+   "ph": [
+    6.0,
+    7.5
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [],
+   "row_cm": 45,
+   "plant_cm": 30,
+   "seasons": [
+    "kharif",
+    "zaid"
+   ],
+   "grown_in": [
+    "India",
+    "Nigeria"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "intercrops": []
+  },
+  {
+   "id": "potato",
+   "name": "Potato",
+   "names": {
+    "hi": "आलू",
+    "te": "బంగాళాదుంప"
+   },
+   "family": "Solanaceae",
+   "kind": "vegetable",
+   "perennial": false,
+   "days": [
+    90,
+    120
+   ],
+   "temp_opt": [
+    15,
+    20
+   ],
+   "temp_abs": [
+    7,
+    25
+   ],
+   "water_mm": [
+    400,
+    600
+   ],
+   "ph": [
+    5.0,
+    6.5
+   ],
+   "textures": [
+    "loamy_sand",
+    "sandy_loam",
+    "loam"
+   ],
+   "tolerates": [],
+   "row_cm": 60,
+   "plant_cm": 20,
+   "seasons": [
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "China",
+    "Europe",
+    "Andes"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "intercrops": []
+  },
+  {
+   "id": "sweet_potato",
+   "name": "Sweet potato",
+   "names": {
+    "hi": "शकरकंद",
+    "te": "చిలగడదుంప"
+   },
+   "family": "Convolvulaceae",
+   "kind": "vegetable",
+   "perennial": false,
+   "days": [
+    110,
+    150
+   ],
+   "temp_opt": [
+    21,
+    28
+   ],
+   "temp_abs": [
+    15,
+    35
+   ],
+   "water_mm": [
+    500,
+    700
+   ],
+   "ph": [
+    5.5,
+    6.5
+   ],
+   "textures": [
+    "loamy_sand",
+    "sandy_loam",
+    "loam"
+   ],
+   "tolerates": [
+    "drought"
+   ],
+   "row_cm": 60,
+   "plant_cm": 20,
+   "seasons": [
+    "kharif",
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "China",
+    "Africa"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "intercrops": []
+  },
+  {
+   "id": "watermelon",
+   "name": "Watermelon",
+   "names": {
+    "hi": "तरबूज",
+    "te": "పుచ్చకాయ"
+   },
+   "family": "Cucurbitaceae",
+   "kind": "vegetable",
+   "perennial": false,
+   "days": [
+    80,
+    100
+   ],
+   "temp_opt": [
+    22,
+    30
+   ],
+   "temp_abs": [
+    18,
+    38
+   ],
+   "water_mm": [
+    400,
+    600
+   ],
+   "ph": [
+    6.0,
+    7.5
+   ],
+   "textures": [
+    "sand",
+    "loamy_sand",
+    "sandy_loam",
+    "loam"
+   ],
+   "tolerates": [],
+   "row_cm": 200,
+   "plant_cm": 60,
+   "seasons": [
+    "zaid"
+   ],
+   "grown_in": [
+    "India",
+    "China",
+    "Africa"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "intercrops": []
+  },
+  {
+   "id": "banana",
+   "name": "Banana",
+   "names": {
+    "hi": "केला",
+    "te": "అరటి"
+   },
+   "family": "Musaceae",
+   "kind": "fruit",
+   "perennial": true,
+   "days": [
+    330,
+    420
+   ],
+   "temp_opt": [
+    24,
+    30
+   ],
+   "temp_abs": [
+    15,
+    36
+   ],
+   "water_mm": [
+    1500,
+    2500
+   ],
+   "ph": [
+    6.0,
+    7.5
+   ],
+   "textures": [
+    "loam",
+    "silt_loam",
+    "clay_loam"
+   ],
+   "tolerates": [],
+   "row_cm": 180,
+   "plant_cm": 180,
+   "seasons": [
+    "kharif",
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "Ecuador",
+    "Philippines"
+   ],
+   "climate_analog": false,
+   "tall": true,
+   "intercrops": [
+    "coconut"
+   ]
+  },
+  {
+   "id": "mango",
+   "name": "Mango",
+   "names": {
+    "hi": "आम",
+    "te": "మామిడి"
+   },
+   "family": "Anacardiaceae",
+   "kind": "fruit",
+   "perennial": true,
+   "days": [
+    1460,
+    1825
+   ],
+   "temp_opt": [
+    24,
+    30
+   ],
+   "temp_abs": [
+    10,
+    42
+   ],
+   "water_mm": [
+    750,
+    2500
+   ],
+   "ph": [
+    5.5,
+    7.5
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [
+    "drought"
+   ],
+   "row_cm": 1000,
+   "plant_cm": 1000,
+   "seasons": [
+    "kharif"
+   ],
+   "grown_in": [
+    "India",
+    "Mexico",
+    "Thailand"
+   ],
+   "climate_analog": false,
+   "tall": true,
+   "intercrops": [
+    "green_gram",
+    "black_gram",
+    "groundnut",
+    "chilli"
+   ]
+  },
+  {
+   "id": "papaya",
+   "name": "Papaya",
+   "names": {
+    "hi": "पपीता",
+    "te": "బొప్పాయి"
+   },
+   "family": "Caricaceae",
+   "kind": "fruit",
+   "perennial": true,
+   "days": [
+    270,
+    330
+   ],
+   "temp_opt": [
+    22,
+    30
+   ],
+   "temp_abs": [
+    12,
+    38
+   ],
+   "water_mm": [
+    1500,
+    2000
+   ],
+   "ph": [
+    6.0,
+    7.0
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam"
+   ],
+   "tolerates": [],
+   "row_cm": 180,
+   "plant_cm": 180,
+   "seasons": [
+    "kharif",
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "Mexico",
+    "Brazil"
+   ],
+   "climate_analog": false,
+   "tall": true,
+   "intercrops": []
+  },
+  {
+   "id": "guava",
+   "name": "Guava",
+   "names": {
+    "hi": "अमरूद",
+    "te": "జామ"
+   },
+   "family": "Myrtaceae",
+   "kind": "fruit",
+   "perennial": true,
+   "days": [
+    730,
+    1095
+   ],
+   "temp_opt": [
+    23,
+    30
+   ],
+   "temp_abs": [
+    10,
+    42
+   ],
+   "water_mm": [
+    1000,
+    2000
+   ],
+   "ph": [
+    4.5,
+    8.2
+   ],
+   "textures": [
+    "loamy_sand",
+    "sandy_loam",
+    "loam",
+    "clay_loam",
+    "clay"
+   ],
+   "tolerates": [
+    "drought",
+    "salinity"
+   ],
+   "row_cm": 600,
+   "plant_cm": 600,
+   "seasons": [
+    "kharif"
+   ],
+   "grown_in": [
+    "India",
+    "Mexico",
+    "Brazil"
+   ],
+   "climate_analog": false,
+   "tall": true,
+   "intercrops": [
+    "green_gram",
+    "black_gram"
+   ]
+  },
+  {
+   "id": "coconut",
+   "name": "Coconut",
+   "names": {
+    "hi": "नारियल",
+    "te": "కొబ్బరి"
+   },
+   "family": "Arecaceae",
+   "kind": "fruit",
+   "perennial": true,
+   "days": [
+    1825,
+    2190
+   ],
+   "temp_opt": [
+    25,
+    30
+   ],
+   "temp_abs": [
+    18,
+    36
+   ],
+   "water_mm": [
+    1300,
+    2300
+   ],
+   "ph": [
+    5.0,
+    8.0
+   ],
+   "textures": [
+    "sand",
+    "loamy_sand",
+    "sandy_loam",
+    "loam"
+   ],
+   "tolerates": [
+    "salinity"
+   ],
+   "row_cm": 750,
+   "plant_cm": 750,
+   "seasons": [
+    "kharif"
+   ],
+   "grown_in": [
+    "India",
+    "Indonesia",
+    "Philippines"
+   ],
+   "climate_analog": false,
+   "tall": true,
+   "intercrops": [
+    "banana",
+    "turmeric"
+   ]
+  },
+  {
+   "id": "moringa",
+   "name": "Moringa (drumstick)",
+   "names": {
+    "hi": "सहजन",
+    "te": "మునగ"
+   },
+   "family": "Moringaceae",
+   "kind": "vegetable",
+   "perennial": true,
+   "days": [
+    180,
+    240
+   ],
+   "temp_opt": [
+    25,
+    35
+   ],
+   "temp_abs": [
+    15,
+    42
+   ],
+   "water_mm": [
+    250,
+    1500
+   ],
+   "ph": [
+    6.0,
+    8.0
+   ],
+   "textures": [
+    "loamy_sand",
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [
+    "drought"
+   ],
+   "row_cm": 250,
+   "plant_cm": 250,
+   "seasons": [
+    "kharif"
+   ],
+   "grown_in": [
+    "India",
+    "Africa",
+    "Philippines"
+   ],
+   "climate_analog": false,
+   "tall": true,
+   "intercrops": [
+    "green_gram",
+    "black_gram"
+   ]
+  },
+  {
+   "id": "dragon_fruit",
+   "name": "Dragon fruit (pitaya)",
+   "names": {
+    "hi": "ड्रैगन फ्रूट",
+    "te": "డ్రాగన్ ఫ్రూట్"
+   },
+   "family": "Cactaceae",
+   "kind": "fruit",
+   "perennial": true,
+   "days": [
+    365,
+    540
+   ],
+   "temp_opt": [
+    20,
+    30
+   ],
+   "temp_abs": [
+    10,
+    38
+   ],
+   "water_mm": [
+    600,
+    1300
+   ],
+   "ph": [
+    5.5,
+    7.0
+   ],
+   "textures": [
+    "loamy_sand",
+    "sandy_loam",
+    "loam"
+   ],
+   "tolerates": [
+    "drought"
+   ],
+   "row_cm": 300,
+   "plant_cm": 200,
+   "seasons": [
+    "kharif"
+   ],
+   "grown_in": [
+    "Mexico",
+    "Central America",
+    "Vietnam"
+   ],
+   "climate_analog": true,
+   "tall": false,
+   "intercrops": []
+  },
+  {
+   "id": "avocado",
+   "name": "Avocado",
+   "names": {
+    "hi": "एवोकाडो",
+    "te": "అవకాడో"
+   },
+   "family": "Lauraceae",
+   "kind": "fruit",
+   "perennial": true,
+   "days": [
+    1095,
+    1460
+   ],
+   "temp_opt": [
+    18,
+    26
+   ],
+   "temp_abs": [
+    10,
+    33
+   ],
+   "water_mm": [
+    1000,
+    1600
+   ],
+   "ph": [
+    5.0,
+    7.0
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam"
+   ],
+   "tolerates": [],
+   "row_cm": 600,
+   "plant_cm": 600,
+   "seasons": [
+    "kharif"
+   ],
+   "grown_in": [
+    "Mexico",
+    "Florida",
+    "Peru"
+   ],
+   "climate_analog": true,
+   "tall": true,
+   "intercrops": []
+  },
+  {
+   "id": "quinoa",
+   "name": "Quinoa",
+   "names": {
+    "hi": "क्विनोआ",
+    "te": "క్వినోవా"
+   },
+   "family": "Amaranthaceae",
+   "kind": "cereal",
+   "perennial": false,
+   "days": [
+    90,
+    130
+   ],
+   "temp_opt": [
+    12,
+    22
+   ],
+   "temp_abs": [
+    5,
+    30
+   ],
+   "water_mm": [
+    250,
+    500
+   ],
+   "ph": [
+    6.0,
+    8.5
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "silt_loam"
+   ],
+   "tolerates": [
+    "drought",
+    "salinity",
+    "frost"
+   ],
+   "row_cm": 45,
+   "plant_cm": 10,
+   "seasons": [
+    "rabi"
+   ],
+   "grown_in": [
+    "Andes",
+    "Bolivia",
+    "Peru"
+   ],
+   "climate_analog": true,
+   "tall": false,
+   "intercrops": []
+  },
+  {
+   "id": "chia",
+   "name": "Chia",
+   "names": {
+    "hi": "चिया",
+    "te": "చియా"
+   },
+   "family": "Lamiaceae",
+   "kind": "oilseed",
+   "perennial": false,
+   "days": [
+    100,
+    130
+   ],
+   "temp_opt": [
+    16,
+    26
+   ],
+   "temp_abs": [
+    10,
+    32
+   ],
+   "water_mm": [
+    300,
+    500
+   ],
+   "ph": [
+    6.0,
+    8.5
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam"
+   ],
+   "tolerates": [
+    "drought"
+   ],
+   "row_cm": 45,
+   "plant_cm": 10,
+   "seasons": [
+    "rabi"
+   ],
+   "grown_in": [
+    "Mexico",
+    "Bolivia",
+    "Argentina"
+   ],
+   "climate_analog": true,
+   "tall": false,
+   "intercrops": []
+  }
+ ]
+}

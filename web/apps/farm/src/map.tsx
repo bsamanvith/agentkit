@@ -5,7 +5,10 @@ import type { Corner, Point } from "./types";
 
 const satellite = () =>
   L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
-    maxZoom: 19,
+    // Rural India has imagery to zoom 18; closer, stretch it rather than
+    // show "Map data not yet available".
+    maxNativeZoom: 18,
+    maxZoom: 20,
     attribution: "Imagery © Esri, Maxar, Earthstar Geographics",
   });
 const streets = () =>
@@ -23,6 +26,13 @@ export interface Outline {
   corners: Point[];
 }
 
+/** A zone of a crop plan, drawn filled in its colour with a label. */
+export interface ZoneShape {
+  ring: Point[];
+  label: string;
+  color: string;
+}
+
 /**
  * The map: satellite or streets, the plot being edited as a polygon with
  * numbered corners, and the farmer's other plots in outline. When editable,
@@ -34,6 +44,7 @@ export function FarmMap({
   editable = false,
   flagged = [],
   others = [],
+  zones = [],
   fit = 0,
   you,
   className,
@@ -44,6 +55,7 @@ export function FarmMap({
   /** Corners a check names, by index: drawn red. */
   flagged?: number[];
   others?: Outline[];
+  zones?: ZoneShape[];
   /** Change it to fit the map to the corners again. */
   fit?: number;
   /** The farmer's position, if known. */
@@ -55,6 +67,7 @@ export function FarmMap({
   const layer = useRef<L.LayerGroup | null>(null);
   const otherLayer = useRef<L.LayerGroup | null>(null);
   const youLayer = useRef<L.LayerGroup | null>(null);
+  const zoneLayer = useRef<L.LayerGroup | null>(null);
   // The handlers read the latest props without rebinding.
   const latest = useRef({ corners, onChange, editable });
   useEffect(() => {
@@ -67,6 +80,7 @@ export function FarmMap({
     const sat = satellite().addTo(m);
     L.control.layers({ Satellite: sat, Streets: streets() }, undefined, { position: "topright" }).addTo(m);
     otherLayer.current = L.layerGroup().addTo(m);
+    zoneLayer.current = L.layerGroup().addTo(m);
     layer.current = L.layerGroup().addTo(m);
     youLayer.current = L.layerGroup().addTo(m);
     m.on("click", (e: L.LeafletMouseEvent) => {
@@ -87,7 +101,8 @@ export function FarmMap({
     if (!g) return;
     g.clearLayers();
     const ll = corners.map((c) => L.latLng(c.lat, c.lng));
-    if (ll.length >= 3) L.polygon(ll, { color: "#facc15", weight: 3, fillOpacity: 0.15 }).addTo(g);
+    if (ll.length >= 3)
+      L.polygon(ll, { color: "#facc15", weight: 3, fillOpacity: zones.length > 0 ? 0 : 0.15 }).addTo(g);
     else if (ll.length === 2) L.polyline(ll, { color: "#facc15", weight: 3 }).addTo(g);
     corners.forEach((c, i) => {
       const icon = L.divIcon({
@@ -110,7 +125,7 @@ export function FarmMap({
       if (c.accuracy_m)
         L.circle([c.lat, c.lng], { radius: c.accuracy_m, weight: 1, color: "#facc15", fillOpacity: 0.05 }).addTo(g);
     });
-  }, [corners, flagged, editable]);
+  }, [corners, flagged, editable, zones.length]);
 
   useEffect(() => {
     const g = otherLayer.current;
@@ -126,6 +141,21 @@ export function FarmMap({
         .addTo(g);
     }
   }, [others]);
+
+  useEffect(() => {
+    const g = zoneLayer.current;
+    if (!g) return;
+    g.clearLayers();
+    for (const z of zones) {
+      if (z.ring.length < 3) continue;
+      L.polygon(
+        z.ring.map((c) => L.latLng(c.lat, c.lng)),
+        { color: z.color, weight: 2, fillColor: z.color, fillOpacity: 0.45 },
+      )
+        .bindTooltip(z.label, { permanent: true, direction: "center", className: "zone-label" })
+        .addTo(g);
+    }
+  }, [zones]);
 
   useEffect(() => {
     const g = youLayer.current;

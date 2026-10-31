@@ -9,11 +9,17 @@
 // with an embedder, also by meaning (semantic and hybrid search, as package
 // memory has them).
 //
+// Besides search, a base is a tree: [Outline] gives a document's headings
+// (chapters, sections, concepts) with where each starts and ends, so an
+// agent can walk from "Pulses" to "Pigeon pea" to "Sowing" and read just
+// that section when a search misses.
+//
 // [Factory] is the "knowledge" toolset type: config names a folder, and the
-// toolset gives the model knowledge_search, knowledge_list and
-// knowledge_read. It is an ordinary toolset, so it runs where toolsets run
-// (in process, on the toolsets component, over /mcp), an agent opts in by
-// listing it, and include and exclude pick its tools.
+// toolset gives the model knowledge_search, knowledge_list,
+// knowledge_outline and knowledge_read (a whole document or one section).
+// It is an ordinary toolset, so it runs where toolsets run (in process, on
+// the toolsets component, over /mcp), an agent opts in by listing it, and
+// include and exclude pick its tools.
 //
 // # Scope
 //

@@ -77,6 +77,9 @@ export interface Farm {
   declared?: Area;
   boundary: Boundary;
   report: Report;
+  profile?: Profile;
+  plan?: Plan;
+  plan_report?: PlanReport;
   created_at: string;
   updated_at: string;
 }
@@ -89,6 +92,7 @@ export interface Draft {
 
 export interface Config {
   assistant: boolean;
+  planner?: boolean;
   country: string;
 }
 
@@ -96,4 +100,146 @@ export interface AssistantReply {
   conversation: string;
   text: string;
   tools: string[];
+}
+
+// Crop planning (apps/farm/agro, apps/farm/planner).
+
+export type Range = [number, number];
+
+export interface Soil {
+  id: string;
+  name: string;
+  names?: Record<string, string>;
+  signs: string;
+  texture: string;
+  ph: Range;
+  water_holding: string;
+  drainage: string;
+  fertility: string;
+  found: string;
+  suits: string;
+  salty?: boolean;
+}
+
+export interface Crop {
+  id: string;
+  name: string;
+  names?: Record<string, string>;
+  family: string;
+  kind: string;
+  perennial: boolean;
+  days: Range;
+  row_cm: number;
+  plant_cm: number;
+  seasons: string[];
+  grown_in: string[];
+  climate_analog: boolean;
+  tall: boolean;
+  intercrops?: string[];
+}
+
+export type WaterKind = "canal" | "river" | "tank" | "borewell" | "open_well" | "farm_pond";
+
+export interface Water {
+  kind: WaterKind;
+  reliable: boolean;
+}
+
+export interface Profile {
+  soil?: string;
+  ph?: number;
+  water?: Water[];
+  drip?: boolean;
+  previous_crop?: string;
+}
+
+export interface Note {
+  id: string;
+  message: string;
+}
+
+export interface Window {
+  from: string;
+  to: string;
+  best: string;
+  score: number;
+}
+
+export interface Option {
+  crop: string;
+  name: string;
+  names?: Record<string, string>;
+  kind: string;
+  analog?: boolean;
+  sow: string;
+  harvest: string;
+  season: string;
+  score: number;
+  water: { need_mm: number; rain_mm: number; irrigation_mm: number; gap_mm: number; short_mm: number };
+  reasons: Note[];
+  risks: Note[];
+  in_range?: boolean;
+  window?: Window;
+  next?: Window;
+}
+
+export interface Recommendation {
+  farm: string;
+  soil?: Soil;
+  today: string;
+  from?: string;
+  to?: string;
+  options: Option[];
+  notes?: Note[];
+}
+
+export interface Part {
+  crop: string;
+  with?: string;
+  pattern?: [number, number];
+  share: number;
+  sow: string;
+}
+
+export interface Zone {
+  crop: string;
+  with?: string;
+  pattern?: [number, number];
+  ring: Point[];
+  row_cm?: number;
+  plant_cm?: number;
+  row_bearing: number;
+  sow: string;
+}
+
+export interface Plan {
+  zones: Zone[];
+}
+
+export interface PlanCheck {
+  id: string;
+  severity: Severity;
+  zone: number;
+  other: number;
+  message: string;
+}
+
+export interface ZoneMeasures {
+  area_m2: number;
+  share: number;
+  length_m: number;
+  width_m: number;
+  rows: number;
+  plants: number;
+  with_plants?: number;
+}
+
+export type PlanStatus = "sound" | "needs_review" | "invalid";
+
+export interface PlanReport {
+  status: PlanStatus;
+  checks: PlanCheck[];
+  zones: ZoneMeasures[] | null;
+  used_m2: number;
+  plot_m2: number;
 }

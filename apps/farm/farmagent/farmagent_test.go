@@ -90,6 +90,10 @@ func TestListAndGetFarm(t *testing.T) {
 	if got.Name != f.Name || got.Status != farm.StatusVerified || len(got.Checks) != 1 {
 		t.Errorf("get_farm = %+v", got)
 	}
+	// The farmer's land and water, and the saved plan, come with it.
+	if got.Profile == nil || got.Profile.Soil != f.Profile.Soil || len(got.Plan) != 1 || got.Plan[0].Crop != "groundnut" || got.PlanStatus == "" {
+		t.Errorf("get_farm profile %+v, plan %+v (%s)", got.Profile, got.Plan, got.PlanStatus)
+	}
 	if _, err := reg.Invoke(context.Background(), "get_farm", json.RawMessage(`{"id":"nope"}`)); !errors.Is(err, tool.ErrToolFailed) {
 		t.Errorf("get_farm of a missing farm: %v, want a tool failure", err)
 	}

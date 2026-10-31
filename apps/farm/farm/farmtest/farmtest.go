@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
+	"github.com/bsamanvith/agentkit/apps/farm/agro"
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
 	"github.com/bsamanvith/agentkit/apps/farm/geo"
 )
@@ -148,8 +149,14 @@ func Sample(id string, created time.Time) farm.Farm {
 			Checks:    []farm.Check{{ID: farm.CheckDeclared, Severity: farm.SeverityInfo, Message: "matches"}},
 			CheckedAt: created,
 		},
-		CreatedAt: created,
-		UpdatedAt: created,
+		Profile: &agro.Profile{Soil: "red_loam", Water: []agro.Water{{Kind: agro.Borewell, Reliable: true}}, PreviousCrop: "maize"},
+		Plan: &agro.Plan{Zones: []agro.Zone{{
+			Crop: "groundnut", With: "pigeon_pea", Pattern: [2]int{4, 1}, Sow: "2027-06-20",
+			Ring: geo.Ring{{Lat: 17.385, Lng: 78.4867}, {Lat: 17.385, Lng: 78.48733}, {Lat: 17.38557, Lng: 78.48733}},
+		}}},
+		PlanReport: &agro.PlanReport{Status: agro.PlanSound, Checks: []agro.PlanCheck{}, Zones: []agro.ZoneMeasures{{AreaM2: 2023}}},
+		CreatedAt:  created,
+		UpdatedAt:  created,
 	}
 }
 

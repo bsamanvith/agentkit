@@ -4,12 +4,14 @@ import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { api } from "./api";
 import { place } from "./coords";
 import { ReportView, StatusBadge } from "./report";
+import type { ZoneShape } from "./map";
 import type { Config, Farm } from "./types";
 
 // The map (Leaflet) and the assistant load when first needed: the list of
 // plots comes up first on a slow connection.
 const Editor = lazy(() => import("./editor").then((m) => ({ default: m.Editor })));
 const FarmMap = lazy(() => import("./map").then((m) => ({ default: m.FarmMap })));
+const Planning = lazy(() => import("./planning").then((m) => ({ default: m.Planning })));
 const Assistant = lazy(() => import("./assistant").then((m) => ({ default: m.Assistant })));
 
 const loading = <p className="text-sm text-muted-foreground">Loading…</p>;
@@ -87,8 +89,11 @@ export function App() {
             )}
             {view.kind === "farm" && current && (
               <FarmDetail
+                key={current.id}
                 farm={current}
                 others={farms ?? []}
+                planner={config?.planner ?? false}
+                onChanged={(f) => setFarms((fs) => fs?.map((x) => (x.id === f.id ? f : x)))}
                 onBack={() => setView({ kind: "list" })}
                 onEdit={() => setView({ kind: "edit", farm: current })}
                 onDeleted={() => {
@@ -170,17 +175,22 @@ function FarmList({ farms, onOpen, onAdd }: { farms?: Farm[]; onOpen: (id: strin
 function FarmDetail({
   farm,
   others,
+  planner,
+  onChanged,
   onBack,
   onEdit,
   onDeleted,
 }: {
   farm: Farm;
   others: Farm[];
+  planner: boolean;
+  onChanged: (f: Farm) => void;
   onBack: () => void;
   onEdit: () => void;
   onDeleted: () => void;
 }) {
   const [confirm, setConfirm] = useState(false);
+  const [zones, setZones] = useState<ZoneShape[]>([]);
   const [error, setError] = useState("");
   const outlines = others
     .filter((o) => o.id !== farm.id)
@@ -227,6 +237,7 @@ function FarmDetail({
         <FarmMap
           corners={farm.boundary.corners}
           others={outlines}
+          zones={zones}
           flagged={farm.report.checks.flatMap((c) => (c.severity === "info" ? [] : (c.corners ?? [])))}
           fit={1}
           className="h-[50vh] min-h-72 w-full overflow-hidden rounded-lg border lg:h-[70vh] lg:flex-1"
@@ -243,6 +254,7 @@ function FarmDetail({
           </p>
         </div>
       </div>
+      {planner && <Planning farm={farm} onFarm={onChanged} onZones={setZones} />}
     </>
   );
 }

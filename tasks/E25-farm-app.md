@@ -21,10 +21,12 @@ notes are in [apps/farm/docs/PRODUCT.md](../apps/farm/docs/PRODUCT.md).
 | Geometry | Our own, dependency-free (`apps/farm/geo`): an equal-area projection of the WGS84 ellipsoid, checked against GeographicLib. |
 | Agents | The app's numbers come from Go; agents get them as agentkit tools (`apps/farm/farmagent`). |
 | Accounts | One workspace first; farmers' accounts with `pkg/auth` later. |
+| Crop planning | Rules first (`apps/farm/agro`, deterministic, every score with its reasons); the agent gathers inputs and explains. Crops from abroad are scored on climate, flagged as analogs. Climate from NASA POWER; soil from the farmer until SoilGrids is reliable. |
 
 ## Tasks
 
 - [ ] [T133](T133-farm-boundaries.md) Plots: boundary by map, GPS walk or coordinates; verification; the farm assistant
+- [ ] [T134](T134-crop-planning.md) Crop planning: soil and crop libraries, climate, what to plant and when, plot layouts, plan checks, skills, the handbook ([design](../apps/farm/docs/CROP-PLANNING.md))
 - [ ] Field watch: satellite greenness and weather per plot, a weekly background agent (to plan)
 - [ ] Land-cover cross-check: is the plot cropland (ESA WorldCover / Dynamic World) (to plan)
 - [ ] Farmers' accounts and offline (PWA) capture (to plan)

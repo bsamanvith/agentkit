@@ -34,6 +34,23 @@
 //	POST   /api/farms/{id}/plan/check  check a plan, save nothing
 //	PUT    /api/farms/{id}/plan        check and save a plan
 //	DELETE /api/farms/{id}/plan        remove the plan
+//
+// The map (with [WithSurveyor]):
+//
+//	GET    /api/farms/{id}/survey          the saved survey, or a new one
+//	POST   /api/farms/{id}/survey          survey again
+//	POST   /api/farms/{id}/design/suggest  lay out a design (land.Want)
+//	POST   /api/farms/{id}/design/check    check a design, save nothing
+//	PUT    /api/farms/{id}/design          check and save a design
+//	DELETE /api/farms/{id}/design          remove the design
+//	GET    /api/locate?lat=&lng=           a point among the plots
+//	GET    /api/places?q=&farm=            find a place by name
+//
+// Web research keys (with [WithResearch]):
+//
+//	GET    /api/research                   the providers, which are connected
+//	PUT    /api/research/{provider}        save the farmer's key {"key": "..."}
+//	DELETE /api/research/{provider}        remove it
 package farmapi
 
 import (
@@ -43,11 +60,16 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"github.com/bsamanvith/agentkit/apps/farm/agro"
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
 	"github.com/bsamanvith/agentkit/apps/farm/farmagent"
+	"github.com/bsamanvith/agentkit/apps/farm/geo"
+	"github.com/bsamanvith/agentkit/apps/farm/land"
 	"github.com/bsamanvith/agentkit/apps/farm/planner"
+	"github.com/bsamanvith/agentkit/apps/farm/research"
+	"github.com/bsamanvith/agentkit/apps/farm/surveyor"
 )
 
 // MaxBody bounds a request body: a boundary of farm.MaxCorners corners
@@ -69,6 +91,13 @@ func WithAssistant(a Assistant) Option { return func(x *api) { x.assistant = a }
 // 503.
 func WithPlanner(p *planner.Planner) Option { return func(x *api) { x.planner = p } }
 
+// WithSurveyor serves the map routes with s; without it, they are 503.
+func WithSurveyor(s *surveyor.Surveyor) Option { return func(x *api) { x.surveyor = s } }
+
+// WithResearch serves the research key routes with r; without it, they
+// are 503.
+func WithResearch(r *research.Research) Option { return func(x *api) { x.research = r } }
+
 // WithCountry reports the country plots are expected in, in /api/config.
 func WithCountry(code string) Option { return func(x *api) { x.country = code } }
 
@@ -79,6 +108,8 @@ type api struct {
 	svc       *farm.Service
 	assistant Assistant
 	planner   *planner.Planner
+	surveyor  *surveyor.Surveyor
+	research  *research.Research
 	country   string
 	log       *slog.Logger
 }
@@ -109,6 +140,17 @@ func New(svc *farm.Service, opts ...Option) http.Handler {
 	mux.HandleFunc("POST /api/farms/{id}/plan/check", a.planning(a.checkPlan))
 	mux.HandleFunc("PUT /api/farms/{id}/plan", a.planning(a.savePlan))
 	mux.HandleFunc("DELETE /api/farms/{id}/plan", a.planning(a.clearPlan))
+	mux.HandleFunc("GET /api/farms/{id}/survey", a.mapped(a.survey(false)))
+	mux.HandleFunc("POST /api/farms/{id}/survey", a.mapped(a.survey(true)))
+	mux.HandleFunc("POST /api/farms/{id}/design/suggest", a.mapped(a.suggestDesign))
+	mux.HandleFunc("POST /api/farms/{id}/design/check", a.mapped(a.checkDesign))
+	mux.HandleFunc("PUT /api/farms/{id}/design", a.mapped(a.saveDesign))
+	mux.HandleFunc("DELETE /api/farms/{id}/design", a.mapped(a.clearDesign))
+	mux.HandleFunc("GET /api/locate", a.mapped(a.locate))
+	mux.HandleFunc("GET /api/places", a.mapped(a.places))
+	mux.HandleFunc("GET /api/research", a.researching(a.researchStatus))
+	mux.HandleFunc("PUT /api/research/{provider}", a.researching(a.connect))
+	mux.HandleFunc("DELETE /api/research/{provider}", a.researching(a.disconnect))
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusNotFound, errorBody{Error: "no such route"})
 	})
@@ -116,9 +158,10 @@ func New(svc *farm.Service, opts ...Option) http.Handler {
 }
 
 type errorBody struct {
-	Error      string           `json:"error"`
-	Report     *farm.Report     `json:"report,omitempty"`
-	PlanReport *agro.PlanReport `json:"plan_report,omitempty"`
+	Error        string             `json:"error"`
+	Report       *farm.Report       `json:"report,omitempty"`
+	PlanReport   *agro.PlanReport   `json:"plan_report,omitempty"`
+	DesignReport *land.DesignReport `json:"design_report,omitempty"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -131,7 +174,14 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
 	var inv *farm.InvalidError
 	var bad *planner.PlanError
+	var badDesign *surveyor.DesignError
 	switch {
+	case errors.As(err, &badDesign):
+		writeJSON(w, http.StatusUnprocessableEntity, errorBody{Error: err.Error(), DesignReport: &badDesign.Report})
+	case errors.Is(err, surveyor.ErrNoGeocoder):
+		writeJSON(w, http.StatusServiceUnavailable, errorBody{Error: "place search is not configured"})
+	case errors.Is(err, research.ErrUnknownProvider):
+		writeJSON(w, http.StatusNotFound, errorBody{Error: err.Error()})
 	case errors.As(err, &inv):
 		writeJSON(w, http.StatusUnprocessableEntity, errorBody{Error: err.Error(), Report: &inv.Report})
 	case errors.As(err, &bad):
@@ -165,7 +215,10 @@ func decode(w http.ResponseWriter, r *http.Request, v any) error {
 }
 
 func (a *api) config(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"assistant": a.assistant != nil, "planner": a.planner != nil, "country": a.country})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"assistant": a.assistant != nil, "planner": a.planner != nil, "surveyor": a.surveyor != nil,
+		"research": a.research != nil, "country": a.country,
+	})
 }
 
 func (a *api) units(w http.ResponseWriter, _ *http.Request) {
@@ -424,4 +477,166 @@ func (a *api) clearPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, f)
+}
+
+// mapped answers 503 when the surveyor is not configured.
+func (a *api) mapped(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if a.surveyor == nil {
+			writeJSON(w, http.StatusServiceUnavailable, errorBody{Error: "the map is not configured"})
+			return
+		}
+		h(w, r)
+	}
+}
+
+// researching answers 503 when research is not configured.
+func (a *api) researching(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if a.research == nil {
+			writeJSON(w, http.StatusServiceUnavailable, errorBody{Error: "web research is not configured"})
+			return
+		}
+		h(w, r)
+	}
+}
+
+func (a *api) survey(refresh bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sv, err := a.surveyor.Survey(r.Context(), r.PathValue("id"), refresh)
+		if err != nil {
+			a.fail(w, r, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, sv)
+	}
+}
+
+type designBody struct {
+	Design land.Design       `json:"design"`
+	Report land.DesignReport `json:"report"`
+}
+
+func (a *api) suggestDesign(w http.ResponseWriter, r *http.Request) {
+	var want land.Want
+	if err := decode(w, r, &want); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	d, rep, err := a.surveyor.Suggest(r.Context(), r.PathValue("id"), want)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, designBody{d, rep})
+}
+
+func (a *api) checkDesign(w http.ResponseWriter, r *http.Request) {
+	var d land.Design
+	if err := decode(w, r, &d); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	rep, err := a.surveyor.CheckDesign(r.Context(), r.PathValue("id"), d)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rep)
+}
+
+func (a *api) saveDesign(w http.ResponseWriter, r *http.Request) {
+	var d land.Design
+	if err := decode(w, r, &d); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	f, err := a.surveyor.SaveDesign(r.Context(), r.PathValue("id"), d)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, f)
+}
+
+func (a *api) clearDesign(w http.ResponseWriter, r *http.Request) {
+	f, err := a.surveyor.ClearDesign(r.Context(), r.PathValue("id"))
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, f)
+}
+
+func (a *api) locate(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	lat, err1 := strconv.ParseFloat(q.Get("lat"), 64)
+	lng, err2 := strconv.ParseFloat(q.Get("lng"), 64)
+	if err1 != nil || err2 != nil {
+		a.fail(w, r, fmt.Errorf("%w: lat and lng must be decimal degrees", farm.ErrInvalid))
+		return
+	}
+	l, err := a.surveyor.Locate(r.Context(), geo.Point{Lat: lat, Lng: lng})
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, l)
+}
+
+func (a *api) places(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	if q.Get("q") == "" {
+		a.fail(w, r, fmt.Errorf("%w: give the place's name as q", farm.ErrInvalid))
+		return
+	}
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	found, err := a.surveyor.FindPlace(r.Context(), q.Get("q"), q.Get("farm"), limit)
+	switch {
+	case err == nil:
+		writeJSON(w, http.StatusOK, map[string]any{"places": found})
+	case errors.Is(err, farm.ErrNotFound), errors.Is(err, surveyor.ErrNoGeocoder), errors.Is(err, context.Canceled):
+		a.fail(w, r, err)
+	default: // the geocoder failed
+		a.log.WarnContext(r.Context(), "farm api: place search", "err", err)
+		writeJSON(w, http.StatusBadGateway, errorBody{Error: "the place search failed; try again later"})
+	}
+}
+
+func (a *api) researchStatus(w http.ResponseWriter, r *http.Request) {
+	st, err := a.research.Status(r.Context())
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"providers": st})
+}
+
+type keyBody struct {
+	Key string `json:"key"`
+}
+
+func (a *api) connect(w http.ResponseWriter, r *http.Request) {
+	var body keyBody
+	if err := decode(w, r, &body); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	if err := a.research.Connect(r.Context(), r.PathValue("provider"), body.Key); err != nil {
+		if errors.Is(err, research.ErrUnknownProvider) {
+			a.fail(w, r, err)
+			return
+		}
+		writeJSON(w, http.StatusBadRequest, errorBody{Error: err.Error()})
+		return
+	}
+	a.researchStatus(w, r)
+}
+
+func (a *api) disconnect(w http.ResponseWriter, r *http.Request) {
+	if err := a.research.Disconnect(r.Context(), r.PathValue("provider")); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	a.researchStatus(w, r)
 }

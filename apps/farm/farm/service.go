@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/bsamanvith/agentkit/apps/farm/agro"
+	"github.com/bsamanvith/agentkit/apps/farm/land"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 )
 
@@ -108,6 +109,9 @@ func (s *Service) Update(ctx context.Context, id string, d Draft) (Farm, error) 
 	if rep.Status == StatusInvalid {
 		return Farm{}, &InvalidError{Report: rep}
 	}
+	if !sameBoundary(f.Boundary, d.Boundary) {
+		f.Survey = nil // it was of the old boundary
+	}
 	f.Name, f.Declared, f.Boundary, f.Report = d.Name, d.Declared, d.Boundary, rep
 	f.UpdatedAt = s.clock.Now().UTC()
 	if err := s.store.Update(ctx, f); err != nil {
@@ -126,6 +130,29 @@ func (s *Service) SetProfile(ctx context.Context, id string, p *agro.Profile) (F
 // caller checks the plan.
 func (s *Service) SetPlan(ctx context.Context, id string, p *agro.Plan, rep *agro.PlanReport) (Farm, error) {
 	return s.change(ctx, id, func(f *Farm) { f.Plan, f.PlanReport = p, rep })
+}
+
+// SetSurvey replaces a farm's survey; nil clears it.
+func (s *Service) SetSurvey(ctx context.Context, id string, sv *land.Survey) (Farm, error) {
+	return s.change(ctx, id, func(f *Farm) { f.Survey = sv })
+}
+
+// SetDesign replaces a farm's design and its report; nil clears both. The
+// caller checks the design.
+func (s *Service) SetDesign(ctx context.Context, id string, d *land.Design, rep *land.DesignReport) (Farm, error) {
+	return s.change(ctx, id, func(f *Farm) { f.Design, f.DesignReport = d, rep })
+}
+
+func sameBoundary(a, b Boundary) bool {
+	if len(a.Corners) != len(b.Corners) {
+		return false
+	}
+	for i := range a.Corners {
+		if a.Corners[i].Point != b.Corners[i].Point {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Service) change(ctx context.Context, id string, edit func(*Farm)) (Farm, error) {

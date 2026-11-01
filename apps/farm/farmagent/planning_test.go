@@ -129,7 +129,7 @@ func TestPlanningToolsFlow(t *testing.T) {
 func TestAssistantWithPlanningSkillsAndHandbook(t *testing.T) {
 	t.Parallel()
 	svc, _ := service(t)
-	book, err := handbook.New(context.Background())
+	book, err := handbook.New(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestAssistantWithPlanningSkillsAndHandbook(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(skills.Names(), []string{"check-plan", "plan-season"}) {
+	if !slices.Equal(skills.Names(), []string{"check-plan", "plan-season", "research-products", "shape-farm", "survey-land"}) {
 		t.Fatalf("skills %v", skills.Names())
 	}
 	model := llmtest.NewFake(t,

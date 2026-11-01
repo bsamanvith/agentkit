@@ -2,6 +2,8 @@ import type {
   AssistantReply,
   Config,
   Crop,
+  Design,
+  DesignReport,
   Draft,
   Farm,
   Part,
@@ -10,22 +12,28 @@ import type {
   Profile,
   Recommendation,
   Report,
+  ResearchProvider,
   Soil,
+  Survey,
+  Want,
 } from "./types";
 
 /**
  * An error the API answered with; report is set for a boundary that failed
- * verification, planReport for a plan with errors (both 422).
+ * verification, planReport for a plan with errors and designReport for a
+ * layout with errors (all 422).
  */
 export class ApiError extends Error {
   readonly status: number;
   readonly report?: Report;
   readonly planReport?: PlanReport;
-  constructor(status: number, message: string, report?: Report, planReport?: PlanReport) {
+  readonly designReport?: DesignReport;
+  constructor(status: number, message: string, report?: Report, planReport?: PlanReport, designReport?: DesignReport) {
     super(message);
     this.status = status;
     this.report = report;
     this.planReport = planReport;
+    this.designReport = designReport;
   }
 }
 
@@ -37,8 +45,14 @@ async function call<T>(method: string, path: string, body?: unknown, signal?: Ab
     signal,
   });
   if (resp.status === 204) return undefined as T;
-  const data = (await resp.json().catch(() => ({}))) as { error?: string; report?: Report; plan_report?: PlanReport };
-  if (!resp.ok) throw new ApiError(resp.status, data.error ?? resp.statusText, data.report, data.plan_report);
+  const data = (await resp.json().catch(() => ({}))) as {
+    error?: string;
+    report?: Report;
+    plan_report?: PlanReport;
+    design_report?: DesignReport;
+  };
+  if (!resp.ok)
+    throw new ApiError(resp.status, data.error ?? resp.statusText, data.report, data.plan_report, data.design_report);
   return data as T;
 }
 
@@ -60,6 +74,21 @@ export const api = {
     call<{ plan: Plan; report: PlanReport }>("POST", `/api/farms/${encodeURIComponent(id)}/layout`, { parts }),
   savePlan: (id: string, plan: Plan) => call<Farm>("PUT", `/api/farms/${encodeURIComponent(id)}/plan`, plan),
   clearPlan: (id: string) => call<Farm>("DELETE", `/api/farms/${encodeURIComponent(id)}/plan`),
+  survey: (id: string, refresh = false) =>
+    call<Survey>(refresh ? "POST" : "GET", `/api/farms/${encodeURIComponent(id)}/survey`),
+  suggestDesign: (id: string, want: Want) =>
+    call<{ design: Design; report: DesignReport }>("POST", `/api/farms/${encodeURIComponent(id)}/design/suggest`, want),
+  checkDesign: (id: string, d: Design) =>
+    call<DesignReport>("POST", `/api/farms/${encodeURIComponent(id)}/design/check`, d),
+  saveDesign: (id: string, d: Design) => call<Farm>("PUT", `/api/farms/${encodeURIComponent(id)}/design`, d),
+  clearDesign: (id: string) => call<Farm>("DELETE", `/api/farms/${encodeURIComponent(id)}/design`),
+  research: async () => (await call<{ providers: ResearchProvider[] }>("GET", "/api/research")).providers,
+  connectResearch: async (provider: string, key: string) =>
+    (await call<{ providers: ResearchProvider[] }>("PUT", `/api/research/${encodeURIComponent(provider)}`, { key }))
+      .providers,
+  disconnectResearch: async (provider: string) =>
+    (await call<{ providers: ResearchProvider[] }>("DELETE", `/api/research/${encodeURIComponent(provider)}`))
+      .providers,
   ask: (message: string, conversation?: string) =>
     call<AssistantReply>("POST", "/api/assistant", { message, conversation }),
 };

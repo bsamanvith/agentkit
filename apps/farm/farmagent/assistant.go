@@ -12,6 +12,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
 	"github.com/bsamanvith/agentkit/apps/farm/planner"
+	"github.com/bsamanvith/agentkit/apps/farm/surveyor"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/knowledge"
 	"github.com/bsamanvith/agentkit/pkg/llm"
@@ -68,6 +69,9 @@ type conversation struct {
 type Option func(*setup)
 
 type setup struct {
+	surveyor  *surveyor.Surveyor
+	extra     []tool.Tool
+	extraText string
 	planner   *planner.Planner
 	knowledge *knowledge.Base
 	about     string
@@ -77,6 +81,19 @@ type setup struct {
 
 // WithPlanner gives the assistant the crop planning tools over p.
 func WithPlanner(p *planner.Planner) Option { return func(s *setup) { s.planner = p } }
+
+// WithSurveyor gives the assistant the map tools over s: surveys, map
+// questions and farm designs.
+func WithSurveyor(s *surveyor.Surveyor) Option { return func(x *setup) { x.surveyor = s } }
+
+// WithTools gives the assistant more tools (such as web research), and
+// adds system to its system prompt.
+func WithTools(tools []tool.Tool, system string) Option {
+	return func(x *setup) {
+		x.extra = append(x.extra, tools...)
+		x.extraText += system
+	}
+}
 
 // WithKnowledge gives the assistant the knowledge tools over b (search,
 // list, outline and read); about says what it holds.
@@ -96,8 +113,8 @@ func WithHarness(opts ...harness.Option) Option {
 //go:embed skills
 var skillFiles embed.FS
 
-// Skills returns the assistant's built-in skills: plan-season and
-// check-plan.
+// Skills returns the assistant's built-in skills: plan-season,
+// check-plan, survey-land, shape-farm and research-products.
 func Skills() (*skill.Catalog, error) {
 	skills, err := skill.Load(skillFiles, "skills")
 	if err != nil {
@@ -106,46 +123,128 @@ func Skills() (*skill.Catalog, error) {
 	return skill.NewCatalog(skills...)
 }
 
-// NewAssistant returns an assistant on model over the farm tools of svc,
-// and the planning, knowledge and skill tools its options give it.
-func NewAssistant(model llm.Model, svc *farm.Service, opts ...Option) (*Assistant, error) {
-	var s setup
-	for _, o := range opts {
-		o(&s)
-	}
+// Toolset names, as [Toolsets] groups the tools.
+const (
+	ToolsetFarm     = "farm"          // plots and crop planning
+	ToolsetMap      = "farm-map"      // surveys, map questions, designs
+	ToolsetResearch = "farm-research" // the tools of WithTools (web research)
+	ToolsetHandbook = "farm-handbook" // the knowledge base
+	ToolsetSkills   = "farm-skills"   // skill_load and skill_read
+)
+
+// group is a toolset and what it adds to the system prompt.
+type group struct {
+	name   string
+	tools  []tool.Tool
+	system string
+}
+
+// groups builds the tools of svc and the options, by toolset.
+func groups(svc *farm.Service, s setup) ([]group, error) {
 	tools, err := Tools(svc)
 	if err != nil {
 		return nil, err
 	}
-	system := System
+	farmSet := group{name: ToolsetFarm, tools: tools, system: System}
 	if s.planner != nil {
 		more, err := PlanningTools(s.planner)
 		if err != nil {
 			return nil, err
 		}
-		tools = append(tools, more...)
-		system += "\n" + PlanningSystem
+		farmSet.tools = append(farmSet.tools, more...)
+		farmSet.system += "\n" + PlanningSystem
+	}
+	out := []group{farmSet}
+	if s.surveyor != nil {
+		more, err := MapTools(s.surveyor)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, group{ToolsetMap, more, "\n" + MapSystem})
+	}
+	if len(s.extra) > 0 {
+		out = append(out, group{ToolsetResearch, s.extra, "\n" + s.extraText})
 	}
 	if s.knowledge != nil {
 		more, err := knowledge.Tools(s.knowledge, knowledge.ToolsConfig{Description: s.about})
 		if err != nil {
 			return nil, err
 		}
-		tools = append(tools, more...)
+		out = append(out, group{ToolsetHandbook, more, ""})
 	}
 	if s.skills != nil {
 		more, err := s.skills.Toolset()
 		if err != nil {
 			return nil, err
 		}
-		tools = append(tools, more...)
-		system += "\n\n" + s.skills.SystemText()
+		out = append(out, group{ToolsetSkills, more, "\n\n" + s.skills.SystemText()})
+	}
+	return out, nil
+}
+
+// Toolsets returns the assistant's tools by toolset (ToolsetFarm,
+// ToolsetMap, ...), for serving them to other agents over MCP.
+func Toolsets(svc *farm.Service, opts ...Option) (map[string]tool.Registry, error) {
+	var s setup
+	for _, o := range opts {
+		o(&s)
+	}
+	gs, err := groups(svc, s)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]tool.Registry{}
+	for _, g := range gs {
+		reg, err := tool.NewRegistry(g.tools)
+		if err != nil {
+			return nil, err
+		}
+		out[g.name] = reg
+	}
+	return out, nil
+}
+
+// SystemPrompt returns the system prompt the assistant would have with
+// these options: for an agent elsewhere that uses the tools over MCP.
+func SystemPrompt(svc *farm.Service, opts ...Option) (string, error) {
+	var s setup
+	for _, o := range opts {
+		o(&s)
+	}
+	gs, err := groups(svc, s)
+	if err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	for _, g := range gs {
+		b.WriteString(g.system)
+	}
+	return b.String(), nil
+}
+
+// NewAssistant returns an assistant on model over the farm tools of svc,
+// and the planning, map, research, knowledge and skill tools its options
+// give it.
+func NewAssistant(model llm.Model, svc *farm.Service, opts ...Option) (*Assistant, error) {
+	var s setup
+	for _, o := range opts {
+		o(&s)
+	}
+	gs, err := groups(svc, s)
+	if err != nil {
+		return nil, err
+	}
+	var tools []tool.Tool
+	var system strings.Builder
+	for _, g := range gs {
+		tools = append(tools, g.tools...)
+		system.WriteString(g.system)
 	}
 	reg, err := tool.NewRegistry(tools)
 	if err != nil {
 		return nil, err
 	}
-	h, err := harness.New(model, reg, append([]harness.Option{harness.WithSystem(system), harness.WithMaxTurns(12)}, s.harness...)...)
+	h, err := harness.New(model, reg, append([]harness.Option{harness.WithSystem(system.String()), harness.WithMaxTurns(16)}, s.harness...)...)
 	if err != nil {
 		return nil, err
 	}

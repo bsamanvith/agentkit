@@ -1,8 +1,20 @@
 import { Button } from "@agentkit/ui/components/button";
-import { ArrowLeft, Download, MessageCircle, Pencil, Plus, Sprout, Trash2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Download,
+  Globe,
+  Map as MapIcon,
+  MessageCircle,
+  Mountain,
+  Pencil,
+  Plus,
+  Sprout,
+  Trash2,
+} from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { api } from "./api";
 import { place } from "./coords";
+import { designShapes } from "./landview";
 import { ReportView, StatusBadge } from "./report";
 import type { ZoneShape } from "./map";
 import type { Config, Farm } from "./types";
@@ -12,6 +24,8 @@ import type { Config, Farm } from "./types";
 const Editor = lazy(() => import("./editor").then((m) => ({ default: m.Editor })));
 const FarmMap = lazy(() => import("./map").then((m) => ({ default: m.FarmMap })));
 const Planning = lazy(() => import("./planning").then((m) => ({ default: m.Planning })));
+const Land = lazy(() => import("./land").then((m) => ({ default: m.Land })));
+const ResearchSettings = lazy(() => import("./research").then((m) => ({ default: m.ResearchSettings })));
 const Assistant = lazy(() => import("./assistant").then((m) => ({ default: m.Assistant })));
 
 const loading = <p className="text-sm text-muted-foreground">Loading…</p>;
@@ -23,6 +37,7 @@ export function App() {
   const [config, setConfig] = useState<Config>();
   const [view, setView] = useState<View>({ kind: "list" });
   const [chat, setChat] = useState(false);
+  const [webSettings, setWebSettings] = useState(false);
   const [error, setError] = useState("");
 
   const load = useCallback(() => {
@@ -46,6 +61,11 @@ export function App() {
             <Sprout className="size-5 text-ak-ok" aria-hidden="true" /> My land
           </button>
           <div className="flex gap-2">
+            {config?.research && (
+              <Button variant="ghost" size="sm" onClick={() => setWebSettings(true)}>
+                <Globe /> Web research
+              </Button>
+            )}
             {config?.assistant && (
               <Button variant="outline" size="sm" onClick={() => setChat((c) => !c)} aria-pressed={chat}>
                 <MessageCircle /> Assistant
@@ -93,6 +113,7 @@ export function App() {
                 farm={current}
                 others={farms ?? []}
                 planner={config?.planner ?? false}
+                surveyor={config?.surveyor ?? false}
                 onChanged={(f) => setFarms((fs) => fs?.map((x) => (x.id === f.id ? f : x)))}
                 onBack={() => setView({ kind: "list" })}
                 onEdit={() => setView({ kind: "edit", farm: current })}
@@ -105,6 +126,11 @@ export function App() {
           </Suspense>
         </main>
       </div>
+      {webSettings && (
+        <Suspense fallback={null}>
+          <ResearchSettings onClose={() => setWebSettings(false)} />
+        </Suspense>
+      )}
       {chat && (
         <div className="fixed inset-0 z-[1000] sm:static sm:z-auto sm:w-96">
           <Suspense fallback={loading}>
@@ -176,6 +202,7 @@ function FarmDetail({
   farm,
   others,
   planner,
+  surveyor,
   onChanged,
   onBack,
   onEdit,
@@ -184,6 +211,7 @@ function FarmDetail({
   farm: Farm;
   others: Farm[];
   planner: boolean;
+  surveyor: boolean;
   onChanged: (f: Farm) => void;
   onBack: () => void;
   onEdit: () => void;
@@ -191,6 +219,7 @@ function FarmDetail({
 }) {
   const [confirm, setConfirm] = useState(false);
   const [zones, setZones] = useState<ZoneShape[]>([]);
+  const [tab, setTab] = useState<"map" | "land">("map");
   const [error, setError] = useState("");
   const outlines = others
     .filter((o) => o.id !== farm.id)
@@ -233,11 +262,34 @@ function FarmDetail({
           {error}
         </p>
       )}
-      <div className="flex flex-col gap-4 lg:flex-row">
+      {surveyor && (
+        <div className="flex self-start rounded-md border p-0.5" role="tablist" aria-label="How to show the plot">
+          <Button
+            role="tab"
+            aria-selected={tab === "map"}
+            variant={tab === "map" ? "secondary" : "ghost"}
+            size="sm"
+            onClick={() => setTab("map")}
+          >
+            <MapIcon /> Map
+          </Button>
+          <Button
+            role="tab"
+            aria-selected={tab === "land"}
+            variant={tab === "land" ? "secondary" : "ghost"}
+            size="sm"
+            onClick={() => setTab("land")}
+          >
+            <Mountain /> Land view
+          </Button>
+        </div>
+      )}
+      {tab === "land" && <Land farm={farm} onFarm={onChanged} />}
+      <div className={tab === "map" ? "flex flex-col gap-4 lg:flex-row" : "hidden"}>
         <FarmMap
           corners={farm.boundary.corners}
           others={outlines}
-          zones={zones}
+          zones={[...zones, ...designShapes(farm.design)]}
           flagged={farm.report.checks.flatMap((c) => (c.severity === "info" ? [] : (c.corners ?? [])))}
           fit={1}
           className="h-[50vh] min-h-72 w-full overflow-hidden rounded-lg border lg:h-[70vh] lg:flex-1"

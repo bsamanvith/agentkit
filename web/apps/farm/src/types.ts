@@ -80,6 +80,9 @@ export interface Farm {
   profile?: Profile;
   plan?: Plan;
   plan_report?: PlanReport;
+  survey?: Survey;
+  design?: Design;
+  design_report?: DesignReport;
   created_at: string;
   updated_at: string;
 }
@@ -93,6 +96,8 @@ export interface Draft {
 export interface Config {
   assistant: boolean;
   planner?: boolean;
+  surveyor?: boolean;
+  research?: boolean;
   country: string;
 }
 
@@ -242,4 +247,180 @@ export interface PlanReport {
   zones: ZoneMeasures[] | null;
   used_m2: number;
   plot_m2: number;
+}
+
+// The land and its surroundings (apps/farm/land, apps/farm/osm).
+
+export type FeatureKind =
+  | "road"
+  | "track"
+  | "path"
+  | "rail"
+  | "river"
+  | "stream"
+  | "canal"
+  | "drain"
+  | "water"
+  | "wetland"
+  | "building"
+  | "settlement"
+  | "farmland"
+  | "trees"
+  | "industry"
+  | "power_line"
+  | "well"
+  | "facility";
+
+export interface Feature {
+  id: string;
+  kind: FeatureKind;
+  class?: string;
+  name?: string;
+  ref?: string;
+  closed?: boolean;
+  points: Point[];
+}
+
+export type ShapeKind = "square" | "rectangle" | "long_strip" | "triangle" | "trapezium" | "irregular";
+
+export interface Edge {
+  from: number;
+  length_m: number;
+  bearing: number;
+  faces: string;
+}
+
+export interface Box {
+  center: Point;
+  length_m: number;
+  width_m: number;
+  bearing: number;
+  corners: Point[];
+}
+
+export interface Shape {
+  area_m2: number;
+  perimeter_m: number;
+  corners: number;
+  centroid: Point;
+  box: Box;
+  elongation: number;
+  compactness: number;
+  rectangularity: number;
+  convexity: number;
+  kind: ShapeKind;
+  edges: Edge[];
+  long_side: string;
+  notes?: string[];
+}
+
+export interface Nearby {
+  id: string;
+  kind: FeatureKind;
+  class?: string;
+  name?: string;
+  ref?: string;
+  distance_m: number;
+  direction: string;
+  edge: number;
+  touches?: boolean;
+  crosses?: boolean;
+  inside?: boolean;
+  at: Point;
+  from: Point;
+}
+
+export interface Terrain {
+  source: string;
+  points: Point[];
+  heights: number[];
+  lowest: number;
+  highest: number;
+  fall_m: number;
+  slope_pct: number;
+  downhill?: string;
+  flat: boolean;
+  resolution_m: number;
+}
+
+export interface LandNote {
+  id: string;
+  severity: Severity;
+  message: string;
+  feature?: string;
+  element: number;
+}
+
+export interface Survey {
+  shape: Shape;
+  terrain?: Terrain;
+  radius_m: number;
+  nearest: Nearby[];
+  nearby: Nearby[];
+  counts: Partial<Record<FeatureKind, number>>;
+  features: Feature[];
+  notes: LandNote[];
+  sources: string[];
+  missing?: string[];
+  surveyed_at: string;
+}
+
+export type ElementKind = "gate" | "path" | "shed" | "pond" | "border";
+
+export interface Element {
+  kind: ElementKind;
+  ring?: Point[];
+  hole?: Point[];
+  at?: Point;
+  length_m?: number;
+  width_m?: number;
+  depth_m?: number;
+  trees?: number;
+  tree_spacing_m?: number;
+  why?: string;
+}
+
+export interface Design {
+  elements: Element[];
+}
+
+export interface ElementMeasure {
+  area_m2: number;
+  share: number;
+  volume_m3?: number;
+}
+
+export type DesignStatus = "sound" | "needs_review" | "invalid";
+
+export interface DesignReport {
+  status: DesignStatus;
+  checks: LandNote[];
+  elements: ElementMeasure[];
+  plot_m2: number;
+  fields_m2: number;
+}
+
+export interface Want {
+  gate?: boolean;
+  path?: boolean;
+  shed?: boolean;
+  pond?: boolean;
+  border?: boolean;
+  path_width_m?: number;
+  shed_length_m?: number;
+  shed_width_m?: number;
+  pond_side_m?: number;
+  pond_depth_m?: number;
+  border_width_m?: number;
+  tree_spacing_m?: number;
+}
+
+// Web research (apps/farm/research).
+
+export interface ResearchProvider {
+  id: string;
+  name: string;
+  sign_up: string;
+  connected: boolean;
+  updated_at?: string;
 }

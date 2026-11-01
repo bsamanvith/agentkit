@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/bsamanvith/agentkit/apps/farm/agro"
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
 	"github.com/bsamanvith/agentkit/apps/farm/farm/farmtest"
 	"github.com/bsamanvith/agentkit/apps/farm/geo"
+	"github.com/bsamanvith/agentkit/apps/farm/land"
 	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
 )
 
@@ -147,5 +149,48 @@ func TestServiceKeepsProfileAndPlanAcrossEdits(t *testing.T) {
 	}
 	if _, err := s.SetProfile(ctx, "farm_missing", prof); !errors.Is(err, farm.ErrNotFound) {
 		t.Errorf("missing farm: err %v, want ErrNotFound", err)
+	}
+}
+
+func TestServiceSurveyAndDesign(t *testing.T) {
+	t.Parallel()
+	s, _ := service(t)
+	ctx := context.Background()
+	d := farm.Draft{Name: "North field", Boundary: farm.Boundary{Corners: acre(), Source: farm.SourceMap}}
+	f, err := s.Create(ctx, d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sv := &land.Survey{RadiusM: 450}
+	design := &land.Design{Elements: []land.Element{{Kind: land.Pond}}}
+	if _, err := s.SetSurvey(ctx, f.ID, sv); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetDesign(ctx, f.ID, design, &land.DesignReport{Status: land.DesignSound}); err != nil {
+		t.Fatal(err)
+	}
+	// A rename keeps both.
+	d.Name = "North field (old well)"
+	got, err := s.Update(ctx, f.ID, d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Survey == nil || got.Design == nil || got.DesignReport == nil {
+		t.Fatalf("after a rename: survey %v design %v", got.Survey, got.Design)
+	}
+	// A new boundary drops the survey, which was of the old one; the
+	// design stays for the farmer to check again.
+	moved := slices.Clone(d.Boundary.Corners)
+	moved[0].Lat += 0.00005
+	d.Boundary.Corners = moved
+	got, err = s.Update(ctx, f.ID, d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Survey != nil || got.Design == nil {
+		t.Errorf("after a boundary change: survey %v design %v", got.Survey, got.Design)
+	}
+	if _, err := s.SetSurvey(ctx, "farm_nope", sv); !errors.Is(err, farm.ErrNotFound) {
+		t.Errorf("unknown farm: %v", err)
 	}
 }

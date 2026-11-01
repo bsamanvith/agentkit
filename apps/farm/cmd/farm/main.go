@@ -8,7 +8,20 @@
 // ANTHROPIC_KEY) is set, else on Gemini with GEMINI_API_KEY (or
 // GEMINI_KEY); -model picks one, or "off". Plots are looked up on
 // OpenStreetMap's Nominatim unless -geocoder is "off"; the climate at a plot
-// comes from NASA POWER unless -climate is "off".
+// comes from NASA POWER unless -climate is "off"; what is around a plot
+// from OpenStreetMap (Overpass, then the map API) unless -overpass and
+// -osm-api are "off"; its slope from Open-Meteo's elevation API unless
+// -elevation is "off". The handbook is searched by meaning as well as
+// keywords with Gemini embeddings when a Gemini key is set (-embedder).
+//
+// Web research uses each farmer's own Exa or Parallel key, saved in the
+// app's settings and sealed in -vault (a SQLite file) with the key ring in
+// FARM_CREDENTIALS_KEY, or a key file made beside it.
+//
+// The assistant's tools are also an MCP server at /mcp/ (unless -mcp is
+// false): /mcp/farm (plots and planning), /mcp/farm-map (surveys, map
+// questions, farm designs), /mcp/farm-research and /mcp/farm-handbook, so
+// an agentkit agent (or any MCP client) can use them.
 package main
 
 import (
@@ -22,10 +35,15 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"slices"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/bsamanvith/agentkit/apps/farm/agro"
+	"github.com/bsamanvith/agentkit/apps/farm/elevation"
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
 	"github.com/bsamanvith/agentkit/apps/farm/farm/sqlite"
 	"github.com/bsamanvith/agentkit/apps/farm/farmagent"
@@ -33,11 +51,18 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/handbook"
 	"github.com/bsamanvith/agentkit/apps/farm/nasapower"
 	"github.com/bsamanvith/agentkit/apps/farm/nominatim"
+	"github.com/bsamanvith/agentkit/apps/farm/osm"
 	"github.com/bsamanvith/agentkit/apps/farm/planner"
+	"github.com/bsamanvith/agentkit/apps/farm/research"
+	"github.com/bsamanvith/agentkit/apps/farm/surveyor"
 	"github.com/bsamanvith/agentkit/apps/farm/webdist"
+	credsqlite "github.com/bsamanvith/agentkit/pkg/credentials/sqlite"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	"github.com/bsamanvith/agentkit/pkg/llm/anthropic"
 	"github.com/bsamanvith/agentkit/pkg/llm/gemini"
+	mcpserver "github.com/bsamanvith/agentkit/pkg/mcp/server"
+	"github.com/bsamanvith/agentkit/pkg/memory"
+	"github.com/bsamanvith/agentkit/pkg/memory/embed"
 	"github.com/bsamanvith/agentkit/pkg/web"
 )
 
@@ -50,7 +75,15 @@ const csp = "default-src 'self'; script-src 'self'; style-src 'self'; " +
 
 type config struct {
 	addr, db, country, geocoder, climate, model, modelID string
+	overpass, osmAPI, elevation, embedder, vault         string
+	exaURL, parallelURL                                  string
+	mcp                                                  bool
+	embedRate                                            int
 }
+
+// userAgent identifies the app to OpenStreetMap's servers, as their
+// policies ask.
+const userAgent = "agentkit-farm/0.1 (+https://github.com/bsamanvith/agentkit)"
 
 func main() {
 	var c config
@@ -62,6 +95,15 @@ func main() {
 	fs.StringVar(&c.climate, "climate", env("FARM_CLIMATE", nasapower.DefaultURL), `NASA POWER server, or "off" ($FARM_CLIMATE)`)
 	fs.StringVar(&c.model, "model", env("FARM_MODEL", "auto"), `assistant's provider: auto, anthropic, gemini or off ($FARM_MODEL)`)
 	fs.StringVar(&c.modelID, "model-id", env("FARM_MODEL_ID", ""), "model ID (default: the provider's default) ($FARM_MODEL_ID)")
+	fs.StringVar(&c.overpass, "overpass", env("FARM_OVERPASS", osm.DefaultOverpass), `Overpass servers, comma separated, or "off" ($FARM_OVERPASS)`)
+	fs.StringVar(&c.osmAPI, "osm-api", env("FARM_OSM_API", osm.DefaultAPI), `OpenStreetMap API, the fallback for small boxes, or "off" ($FARM_OSM_API)`)
+	fs.StringVar(&c.elevation, "elevation", env("FARM_ELEVATION", elevation.DefaultURL), `Open-Meteo elevation API, or "off" ($FARM_ELEVATION)`)
+	fs.StringVar(&c.embedder, "embedder", env("FARM_EMBEDDER", "auto"), `handbook search by meaning: auto (Gemini when its key is set), gemini or off ($FARM_EMBEDDER)`)
+	fs.StringVar(&c.vault, "vault", env("FARM_VAULT", ""), "SQLite file of the farmers' sealed API keys (default: the -db file's name with -vault.db) ($FARM_VAULT)")
+	fs.StringVar(&c.exaURL, "exa-url", env("FARM_EXA_URL", ""), "Exa API base URL (default Exa's) ($FARM_EXA_URL)")
+	fs.StringVar(&c.parallelURL, "parallel-url", env("FARM_PARALLEL_URL", ""), "Parallel API base URL (default Parallel's) ($FARM_PARALLEL_URL)")
+	fs.IntVar(&c.embedRate, "embed-rate", envInt("FARM_EMBED_RATE", 90), "texts a minute sent to the embedder, 0 for no cap (Gemini's free tier allows 100) ($FARM_EMBED_RATE)")
+	fs.BoolVar(&c.mcp, "mcp", env("FARM_MCP", "true") == "true", "serve the assistant's tools over MCP at /mcp/ ($FARM_MCP)")
 	_ = fs.Parse(os.Args[1:])
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -111,22 +153,116 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 		}
 	}
 	plan := planner.New(svc, lib, climate)
-	aopts := []farmapi.Option{farmapi.WithCountry(c.country), farmapi.WithLogger(log), farmapi.WithPlanner(plan)}
+	sopts := []surveyor.Option{surveyor.WithLogger(log)}
+	var sources []osm.Source
+	if c.overpass != "off" && c.overpass != "" {
+		src, err := osm.Overpass(userAgent, strings.Split(c.overpass, ","))
+		if err != nil {
+			return err
+		}
+		sources = append(sources, src)
+	}
+	if c.osmAPI != "off" && c.osmAPI != "" {
+		src, err := osm.API(userAgent, c.osmAPI)
+		if err != nil {
+			return err
+		}
+		sources = append(sources, src)
+	}
+	if len(sources) > 0 {
+		sopts = append(sopts, surveyor.WithFeatures(osm.Chain(sources...)))
+	}
+	if c.elevation != "off" {
+		h, err := elevation.OpenMeteo(c.elevation, nil)
+		if err != nil {
+			return err
+		}
+		sopts = append(sopts, surveyor.WithHeights(h))
+	}
+	if c.geocoder != "off" {
+		search, err := nominatim.New(userAgent, nominatim.WithURL(c.geocoder))
+		if err != nil {
+			return err
+		}
+		sopts = append(sopts, surveyor.WithSearch(search, c.country))
+	}
+	survey := surveyor.New(svc, sopts...)
+
+	vaultPath := c.vault
+	if vaultPath == "" {
+		vaultPath = strings.TrimSuffix(c.db, filepath.Ext(c.db)) + "-vault.db"
+	}
+	vstore, err := credsqlite.Open(ctx, vaultPath)
+	if err != nil {
+		return err
+	}
+	defer vstore.Close()
+	vault, err := research.OpenVault(ctx, vstore, os.Getenv("FARM_CREDENTIALS_KEY"), vaultPath+".key")
+	if err != nil {
+		return err
+	}
+	webResearch, err := research.New(ctx, vault, research.WithBaseURLs(c.exaURL, c.parallelURL))
+	if err != nil {
+		return err
+	}
+	webTools, err := webResearch.Tools()
+	if err != nil {
+		return err
+	}
+
+	emb, err := buildEmbedder(c)
+	if err != nil {
+		return err
+	}
+	var hopts []handbook.Option
+	var vectors *handbook.Vectors
+	if emb != nil {
+		// The handbook's vectors are kept beside the database: the first
+		// start asks for them (paced for a free-tier key, a minute or two),
+		// later starts read the file.
+		vectors = handbook.NewVectors(emb, strings.TrimSuffix(c.db, filepath.Ext(c.db))+"-vectors.gob", c.embedRate)
+		log.Info("farm: indexing the handbook", "remembered_vectors", vectors.Len())
+		hopts = append(hopts, handbook.WithEmbedder(vectors))
+	}
+	book, err := handbook.New(ctx, lib, hopts...)
+	if vectors != nil {
+		if serr := vectors.Save(); serr != nil {
+			log.Warn("farm: saving the handbook's vectors", "err", serr)
+		}
+	}
+	if err != nil {
+		if emb == nil {
+			return err
+		}
+		// The embedding API failed: search by keyword rather than not start.
+		log.Warn("farm: handbook embeddings failed; keyword search only", "err", err)
+		if book, err = handbook.New(ctx, lib); err != nil {
+			return err
+		}
+	}
+	skills, err := farmagent.Skills()
+	if err != nil {
+		return err
+	}
+	// The MCP server serves these tools; the assistant also has its skills
+	// (an agent elsewhere brings its own).
+	toolOpts := []farmagent.Option{
+		farmagent.WithPlanner(plan), farmagent.WithSurveyor(survey),
+		farmagent.WithTools(webTools, research.System),
+		farmagent.WithKnowledge(book, handbook.Description),
+	}
+	agentOpts := append(slices.Clone(toolOpts), farmagent.WithSkills(skills))
+
+	aopts := []farmapi.Option{
+		farmapi.WithCountry(c.country), farmapi.WithLogger(log), farmapi.WithPlanner(plan),
+		farmapi.WithSurveyor(survey), farmapi.WithResearch(webResearch),
+	}
 	model, provider, err := buildModel(c)
 	if err != nil {
 		return err
 	}
 	if model != nil {
-		book, err := handbook.New(ctx)
-		if err != nil {
-			return err
-		}
-		skills, err := farmagent.Skills()
-		if err != nil {
-			return err
-		}
-		a, err := farmagent.NewAssistant(model, svc, farmagent.WithPlanner(plan),
-			farmagent.WithKnowledge(book, handbook.Description), farmagent.WithSkills(skills))
+		a, err := farmagent.NewAssistant(model, svc, agentOpts...)
 		if err != nil {
 			return err
 		}
@@ -135,6 +271,18 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 
 	mux := http.NewServeMux()
 	mux.Handle("/api/", farmapi.New(svc, aopts...))
+	if c.mcp {
+		sets, err := farmagent.Toolsets(svc, toolOpts...)
+		if err != nil {
+			return err
+		}
+		srv, err := mcpserver.New(sets, mcpserver.WithBasePath("/mcp"), mcpserver.WithLogger(log))
+		if err != nil {
+			return err
+		}
+		mux.Handle("/mcp/", srv)
+		mux.Handle("/mcp", srv)
+	}
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "ok\n") })
 	mux.Handle("/", web.New(webdist.FS(), web.WithCSP(csp)).Handler())
 
@@ -143,7 +291,8 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 		return err
 	}
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
-	log.Info("farm: serving", "url", "http://"+ln.Addr().String(), "db", c.db, "assistant", provider, "geocoder", c.geocoder, "climate", c.climate)
+	log.Info("farm: serving", "url", "http://"+ln.Addr().String(), "db", c.db, "assistant", provider, "geocoder", c.geocoder,
+		"climate", c.climate, "overpass", c.overpass, "osm_api", c.osmAPI, "elevation", c.elevation, "embedder", emb != nil, "mcp", c.mcp)
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
 	select {
@@ -203,6 +352,39 @@ func buildModel(c config) (llm.Model, string, error) {
 		return m, p, err
 	}
 	return nil, "", fmt.Errorf("-model %q: want auto, anthropic, gemini or off", c.model)
+}
+
+// buildEmbedder returns the handbook's embedder: Gemini's embeddings
+// through its OpenAI-compatible endpoint, or nil.
+func buildEmbedder(c config) (memory.Embedder, error) {
+	key := firstEnv("GEMINI_API_KEY", "GEMINI_KEY")
+	switch c.embedder {
+	case "off":
+		return nil, nil
+	case "auto":
+		if key == "" {
+			return nil, nil
+		}
+	case "gemini":
+		if key == "" {
+			return nil, errors.New("-embedder gemini needs GEMINI_API_KEY or GEMINI_KEY")
+		}
+	default:
+		return nil, fmt.Errorf("-embedder %q: want auto, gemini or off", c.embedder)
+	}
+	return embed.NewOpenAI(embed.Config{
+		Model: "gemini-embedding-001", Dimensions: 3072, Key: key,
+		BaseURL: "https://generativelanguage.googleapis.com/v1beta/openai",
+		// Gemini takes at most 100 texts a request.
+		BatchSize: 100,
+	})
+}
+
+func envInt(key string, def int) int {
+	if v, err := strconv.Atoi(os.Getenv(key)); err == nil {
+		return v
+	}
+	return def
 }
 
 func firstEnv(keys ...string) string {

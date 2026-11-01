@@ -111,50 +111,71 @@ func (c *Client) Locate(ctx context.Context, p geo.Point) (farm.Location, error)
 	return loc, err
 }
 
-func (c *Client) fetch(ctx context.Context, p geo.Point) (farm.Location, error) {
+// wait takes the client's turn, keeping the interval since the last
+// request; the caller calls the returned release.
+func (c *Client) wait(ctx context.Context) (func(), error) {
 	select {
 	case c.turn <- struct{}{}:
 	case <-ctx.Done():
-		return farm.Location{}, ctx.Err()
+		return nil, ctx.Err()
 	}
-	defer func() { <-c.turn }()
+	release := func() { <-c.turn }
 	if wait := c.interval - c.clock.Now().Sub(c.last); !c.last.IsZero() && wait > 0 {
 		t := c.clock.NewTimer(wait)
 		select {
 		case <-t.C():
 		case <-ctx.Done():
 			t.Stop()
-			return farm.Location{}, ctx.Err()
+			release()
+			return nil, ctx.Err()
 		}
 	}
 	c.last = c.clock.Now()
+	return release, nil
+}
 
+// get sends a GET of path with q, in turn, and returns the body of a 200.
+func (c *Client) get(ctx context.Context, path string, q url.Values) (io.ReadCloser, error) {
+	release, err := c.wait(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+path+"?"+q.Encode(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("nominatim: %w", err)
+	}
+	req.Header.Set("User-Agent", c.userAgent)
+	req.Header.Set("Accept-Language", "en")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("nominatim: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, fmt.Errorf("nominatim: HTTP %d", resp.StatusCode)
+	}
+	return resp.Body, nil
+}
+
+func (c *Client) fetch(ctx context.Context, p geo.Point) (farm.Location, error) {
 	q := url.Values{}
 	q.Set("format", "jsonv2")
 	q.Set("lat", strconv.FormatFloat(p.Lat, 'f', 6, 64))
 	q.Set("lon", strconv.FormatFloat(p.Lng, 'f', 6, 64))
 	q.Set("zoom", "14") // village or suburb
 	q.Set("addressdetails", "1")
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/reverse?"+q.Encode(), nil)
+	rc, err := c.get(ctx, "/reverse", q)
 	if err != nil {
-		return farm.Location{}, fmt.Errorf("nominatim: %w", err)
+		return farm.Location{}, err
 	}
-	req.Header.Set("User-Agent", c.userAgent)
-	req.Header.Set("Accept-Language", "en")
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return farm.Location{}, fmt.Errorf("nominatim: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return farm.Location{}, fmt.Errorf("nominatim: HTTP %d", resp.StatusCode)
-	}
+	defer rc.Close()
 	var body struct {
 		Error       string            `json:"error"`
 		DisplayName string            `json:"display_name"`
 		Address     map[string]string `json:"address"`
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&body); err != nil {
+	if err := json.NewDecoder(io.LimitReader(rc, 1<<20)).Decode(&body); err != nil {
 		return farm.Location{}, fmt.Errorf("nominatim: decode: %w", err)
 	}
 	if body.Error != "" || len(body.Address) == 0 {
@@ -179,4 +200,76 @@ func (c *Client) fetch(ctx context.Context, p geo.Point) (farm.Location, error) 
 		CountryCode: strings.ToUpper(a["country_code"]),
 		DisplayName: body.DisplayName,
 	}, nil
+}
+
+// Place is a named place found by [Client.Search].
+type Place struct {
+	Name  string    `json:"name"`
+	Kind  string    `json:"kind"` // village, town, river, ...
+	Point geo.Point `json:"point"`
+	// Address is the full name, from the village up to the country.
+	Address string `json:"address"`
+}
+
+// MaxResults caps [Client.Search].
+const MaxResults = 10
+
+// Search finds places by name ("Kothapeta, Andhra Pradesh", "Rythu Bazar
+// Amalapuram"), best match first; near biases the search to around a
+// point when it is not nil; country limits it to a country (ISO code, or
+// ""). Searches are not cached.
+func (c *Client) Search(ctx context.Context, query string, near *geo.Point, country string, limit int) ([]Place, error) {
+	query = strings.TrimSpace(query)
+	if query == "" || len(query) > 300 {
+		return nil, errors.New("nominatim: a search needs a name of at most 300 bytes")
+	}
+	if limit <= 0 || limit > MaxResults {
+		limit = 5
+	}
+	q := url.Values{}
+	q.Set("format", "jsonv2")
+	q.Set("q", query)
+	q.Set("limit", strconv.Itoa(limit))
+	if country != "" {
+		q.Set("countrycodes", strings.ToLower(country))
+	}
+	if near != nil {
+		// A box of about 50 km around the point, preferred but not binding.
+		f := func(x float64) string { return strconv.FormatFloat(x, 'f', 4, 64) }
+		q.Set("viewbox", f(near.Lng-0.25)+","+f(near.Lat+0.25)+","+f(near.Lng+0.25)+","+f(near.Lat-0.25))
+	}
+	body, err := c.get(ctx, "/search", q)
+	if err != nil {
+		return nil, err
+	}
+	defer body.Close()
+	var rows []struct {
+		Name        string `json:"name"`
+		Type        string `json:"type"`
+		AddressType string `json:"addresstype"`
+		Lat         string `json:"lat"`
+		Lon         string `json:"lon"`
+		DisplayName string `json:"display_name"`
+	}
+	if err := json.NewDecoder(io.LimitReader(body, 1<<20)).Decode(&rows); err != nil {
+		return nil, fmt.Errorf("nominatim: decode: %w", err)
+	}
+	out := []Place{}
+	for _, r := range rows {
+		lat, err1 := strconv.ParseFloat(r.Lat, 64)
+		lng, err2 := strconv.ParseFloat(r.Lon, 64)
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		kind := r.AddressType
+		if kind == "" {
+			kind = r.Type
+		}
+		name := r.Name
+		if name == "" {
+			name, _, _ = strings.Cut(r.DisplayName, ",")
+		}
+		out = append(out, Place{Name: name, Kind: kind, Point: geo.Point{Lat: lat, Lng: lng}, Address: r.DisplayName})
+	}
+	return out, nil
 }

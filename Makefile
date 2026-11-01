@@ -86,6 +86,10 @@ eval: ## Tool-use evals: real Claude with faked connectors (evals/README.md; ANT
 	@[ -n "$${ANTHROPIC_API_KEY:-$$ANTHROPIC_KEY}" ] || { echo "eval: set ANTHROPIC_API_KEY (or ANTHROPIC_KEY)" >&2; exit 1; }
 	cd evals && $(GO) test -tags eval -count=1 -v -timeout 60m -run TestConnectorEvals .
 
+.PHONY: farm-eval
+farm-eval: ## The farm assistant on a real model: map, layout, handbook and web research scenarios (apps/farm; FARM_EVAL_MODEL=anthropic|gemini); never in CI
+	cd apps/farm && $(GO) test -tags eval -count=1 -v -timeout 30m -run TestAssistantEval ./farmagent/
+
 .PHONY: eval-misleading
 eval-misleading: ## The evals with each scenario's misleading tool descriptions swapped in: they should fail
 	EVAL_MISLEADING=1 $(MAKE) eval

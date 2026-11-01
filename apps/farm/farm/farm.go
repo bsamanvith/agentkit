@@ -7,6 +7,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/apps/farm/agro"
 	"github.com/bsamanvith/agentkit/apps/farm/geo"
+	"github.com/bsamanvith/agentkit/apps/farm/land"
 )
 
 // Errors callers branch on.
@@ -83,8 +84,15 @@ type Farm struct {
 	// report; nil until there is one.
 	Plan       *agro.Plan       `json:"plan,omitempty"`
 	PlanReport *agro.PlanReport `json:"plan_report,omitempty"`
-	CreatedAt  time.Time        `json:"created_at"`
-	UpdatedAt  time.Time        `json:"updated_at"`
+	// Survey is the plot's shape and what is around it, as of its date;
+	// nil until surveyed, and cleared when the boundary changes.
+	Survey *land.Survey `json:"survey,omitempty"`
+	// Design is the farm's fixed parts (gate, path, shed, pond, border)
+	// with its check; nil until there is one.
+	Design       *land.Design       `json:"design,omitempty"`
+	DesignReport *land.DesignReport `json:"design_report,omitempty"`
+	CreatedAt    time.Time          `json:"created_at"`
+	UpdatedAt    time.Time          `json:"updated_at"`
 }
 
 // Store keeps farms. Implementations are safe for concurrent use and pass

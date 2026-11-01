@@ -1,0 +1,22 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API (a hand-made answer in its format)",
+  "elements": [
+    {"type": "node", "id": 1, "lat": 16.7050, "lon": 81.9000, "tags": {"man_made": "water_well"}},
+    {"type": "node", "id": 2, "lat": 16.7060, "lon": 81.9010},
+    {"type": "node", "id": 3, "lat": 16.7070, "lon": 81.9020, "tags": {"place": "village", "name": "Mukkamala"}},
+    {"type": "way", "id": 10, "tags": {"highway": "tertiary", "name": "Canal Road", "ref": "MDR1"},
+     "geometry": [{"lat": 16.7030, "lon": 81.8990}, {"lat": 16.7032, "lon": 81.9015}]},
+    {"type": "way", "id": 11, "tags": {"building": "yes"},
+     "geometry": [{"lat": 16.7040, "lon": 81.9000}, {"lat": 16.7040, "lon": 81.9001}, {"lat": 16.7041, "lon": 81.9001}, {"lat": 16.7041, "lon": 81.9000}, {"lat": 16.7040, "lon": 81.9000}]},
+    {"type": "way", "id": 12, "tags": {"highway": "service", "area": "no"},
+     "geometry": [{"lat": 16.7040, "lon": 81.9000}, {"lat": 16.7040, "lon": 81.9002}, {"lat": 16.7042, "lon": 81.9002}, {"lat": 16.7040, "lon": 81.9000}]},
+    {"type": "way", "id": 13, "tags": {"barrier": "fence"},
+     "geometry": [{"lat": 16.7040, "lon": 81.9000}, {"lat": 16.7041, "lon": 81.9000}]},
+    {"type": "relation", "id": 20, "tags": {"type": "multipolygon", "natural": "water", "water": "pond", "name": "Village tank"},
+     "members": [
+       {"type": "way", "ref": 30, "role": "outer", "geometry": [{"lat": 16.7080, "lon": 81.9030}, {"lat": 16.7080, "lon": 81.9035}, {"lat": 16.7085, "lon": 81.9035}, {"lat": 16.7085, "lon": 81.9030}, {"lat": 16.7080, "lon": 81.9030}]},
+       {"type": "way", "ref": 31, "role": "inner", "geometry": [{"lat": 16.7082, "lon": 81.9032}, {"lat": 16.7082, "lon": 81.9033}, {"lat": 16.7083, "lon": 81.9033}, {"lat": 16.7082, "lon": 81.9032}]}
+     ]}
+  ]
+}

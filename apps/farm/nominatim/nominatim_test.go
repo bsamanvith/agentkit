@@ -3,8 +3,12 @@ package nominatim_test
 import (
 	"context"
 	"errors"
+	"math"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -119,5 +123,42 @@ func TestNewNeedsAUserAgent(t *testing.T) {
 	t.Parallel()
 	if _, err := nominatim.New(" "); err == nil {
 		t.Error("New without a User-Agent succeeded")
+	}
+}
+
+func TestSearch(t *testing.T) {
+	t.Parallel()
+	body, err := os.ReadFile("testdata/search-kothapeta.json") // recorded 2026-11-01
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/search" || r.Header.Get("User-Agent") != "farm-test/1" {
+			t.Errorf("request %s", r.URL)
+		}
+		got = r.URL.Query()
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+	c := client(t, srv.URL)
+	near := geo.Point{Lat: 16.706, Lng: 81.9}
+	ps, err := c.Search(context.Background(), "Kothapeta", &near, "IN", 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ps) != 3 || ps[0].Name != "Kothapeta" || ps[0].Kind != "town" || math.Abs(ps[0].Point.Lat-16.71675) > 1e-4 || !strings.Contains(ps[0].Address, "Andhra Pradesh") {
+		t.Errorf("places %+v", ps)
+	}
+	if got.Get("q") != "Kothapeta" || got.Get("countrycodes") != "in" || got.Get("limit") != "3" || got.Get("viewbox") == "" {
+		t.Errorf("query %v", got)
+	}
+	if _, err := c.Search(context.Background(), " ", nil, "", 0); err == nil {
+		t.Error("an empty search was sent")
+	}
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(503) }))
+	defer bad.Close()
+	if _, err := client(t, bad.URL).Search(context.Background(), "x", nil, "", 0); err == nil {
+		t.Error("a 503 was not an error")
 	}
 }

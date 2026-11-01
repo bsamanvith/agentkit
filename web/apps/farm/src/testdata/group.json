@@ -1,0 +1,192 @@
+{
+  "status": "needs_review",
+  "distribution": {
+    "plants": [
+      { "id": "border", "name": "Border trees", "crops": ["mango"], "place": "border", "width_m": 5 },
+      { "id": "veg", "name": "Vegetables", "crops": ["tomato", "onion"], "place": "block", "share": 1 },
+      { "id": "pulses", "name": "Pulses", "crops": ["green_gram"], "place": "block", "share": 1 }
+    ],
+    "arrange": "strips",
+    "strip_m": 12,
+    "rows": "north_south"
+  },
+  "plots": [
+    {
+      "plot": "farm_1",
+      "name": "Kothapeta paddy",
+      "row_bearing": 0,
+      "area_m2": 7596.4,
+      "regions": [
+        {
+          "plant": "border",
+          "ring": [
+            { "lat": 16.70677, "lng": 81.900394 },
+            { "lat": 16.70677, "lng": 81.901177 },
+            { "lat": 16.705948, "lng": 81.901177 },
+            { "lat": 16.705948, "lng": 81.900394 }
+          ],
+          "hole": [
+            { "lat": 16.706724819045256, "lng": 81.90044088229806 },
+            { "lat": 16.706724819045256, "lng": 81.90113011770197 },
+            { "lat": 16.70599318095813, "lng": 81.90113011788053 },
+            { "lat": 16.70599318095813, "lng": 81.90044088211948 }
+          ],
+          "area_m2": 1644.7,
+          "length_m": 348.9,
+          "width_m": 5,
+          "rows": 1,
+          "trees": [
+            { "lat": 16.706747409522652, "lng": 81.90046432338099 },
+            { "lat": 16.706747409522652, "lng": 81.90055808783937 },
+            { "lat": 16.706747409522652, "lng": 81.90065185229774 },
+            { "lat": 16.706747409522652, "lng": 81.90074561675613 },
+            { "lat": 16.706747409522652, "lng": 81.9008393812145 },
+            { "lat": 16.706747409522652, "lng": 81.90093314567288 },
+            { "lat": 16.706747409522652, "lng": 81.90102691013125 },
+            { "lat": 16.706747409522652, "lng": 81.90112067458963 },
+            { "lat": 16.706688738569806, "lng": 81.90115355885538 },
+            { "lat": 16.706598376676528, "lng": 81.90115355886641 },
+            { "lat": 16.70650801478325, "lng": 81.90115355887744 },
+            { "lat": 16.706417652889975, "lng": 81.90115355888847 },
+            { "lat": 16.706327290996697, "lng": 81.9011535588995 },
+            { "lat": 16.70623692910342, "lng": 81.90115355891052 },
+            { "lat": 16.70614656721014, "lng": 81.90115355892156 },
+            { "lat": 16.706056205316866, "lng": 81.90115355893259 },
+            { "lat": 16.70597059047909, "lng": 81.9011486331378 },
+            { "lat": 16.70597059047909, "lng": 81.90105486867941 },
+            { "lat": 16.70597059047909, "lng": 81.90096110422104 },
+            { "lat": 16.70597059047909, "lng": 81.90086733976266 },
+            { "lat": 16.70597059047909, "lng": 81.90077357530429 },
+            { "lat": 16.70597059047909, "lng": 81.9006798108459 },
+            { "lat": 16.70597059047909, "lng": 81.90058604638752 },
+            { "lat": 16.70597059047909, "lng": 81.90049228192915 },
+            { "lat": 16.705988827358052, "lng": 81.90041744105922 },
+            { "lat": 16.70607918925133, "lng": 81.90041744107025 },
+            { "lat": 16.706169551144608, "lng": 81.90041744108127 },
+            { "lat": 16.706259913037883, "lng": 81.9004174410923 },
+            { "lat": 16.70635027493116, "lng": 81.90041744110333 },
+            { "lat": 16.70644063682444, "lng": 81.90041744111436 },
+            { "lat": 16.706530998717717, "lng": 81.90041744112538 },
+            { "lat": 16.706621360610992, "lng": 81.90041744113641 },
+            { "lat": 16.70671172250427, "lng": 81.90041744114744 }
+          ]
+        },
+        {
+          "plant": "veg",
+          "ring": [
+            { "lat": 16.706724819045256, "lng": 81.9007855 },
+            { "lat": 16.706724819045256, "lng": 81.90113011770197 },
+            { "lat": 16.70599318095813, "lng": 81.90113011788053 },
+            { "lat": 16.70599318095813, "lng": 81.9007855 }
+          ],
+          "area_m2": 2975.8,
+          "length_m": 81,
+          "width_m": 36.8,
+          "rows": 61
+        },
+        {
+          "plant": "pulses",
+          "ring": [
+            { "lat": 16.706724819045256, "lng": 81.90044088229806 },
+            { "lat": 16.706724819045256, "lng": 81.9007855 },
+            { "lat": 16.70599318095813, "lng": 81.9007855 },
+            { "lat": 16.70599318095813, "lng": 81.90044088211948 }
+          ],
+          "area_m2": 2975.8,
+          "length_m": 81,
+          "width_m": 36.8,
+          "rows": 122
+        }
+      ]
+    }
+  ],
+  "plants": [
+    {
+      "plant": "border",
+      "area_m2": 1644.7,
+      "share": 0.217,
+      "plots": 1,
+      "pieces": 1,
+      "counts": [{ "crop": "mango", "plants": 33 }],
+      "height_m": 10,
+      "water_mm": 1625,
+      "edge_share": 0,
+      "shaded_m2": 0,
+      "narrowest_m": 0
+    },
+    {
+      "plant": "veg",
+      "area_m2": 2975.8,
+      "share": 0.392,
+      "want": 0.5,
+      "plots": 1,
+      "pieces": 1,
+      "counts": [
+        { "crop": "tomato", "plants": 5510 },
+        { "crop": "onion", "plants": 99194 }
+      ],
+      "height_m": 1,
+      "water_mm": 500,
+      "edge_share": 0,
+      "shaded_m2": 317.3,
+      "narrowest_m": 36.8
+    },
+    {
+      "plant": "pulses",
+      "area_m2": 2975.8,
+      "share": 0.392,
+      "want": 0.5,
+      "plots": 1,
+      "pieces": 1,
+      "counts": [{ "crop": "green_gram", "plants": 99194 }],
+      "height_m": 0.5,
+      "water_mm": 325,
+      "edge_share": 0,
+      "shaded_m2": 321.3,
+      "narrowest_m": 36.8
+    }
+  ],
+  "effects": [
+    {
+      "id": "shade",
+      "kind": "shade",
+      "severity": "warning",
+      "plant": "pulses",
+      "other": "border",
+      "message": "The shade of Border trees (10 m tall) covers about 321 m² of Pulses (11%), mostly on its south side, for more than half the day (9 to 3) in December, when the sun is lowest. That is where the trees' crowns close; young trees cast less. To cut it: move the shorter crop to the sunny side, or keep a gap of a shadow's length.",
+      "area_m2": 321.3
+    },
+    {
+      "id": "shade",
+      "kind": "shade",
+      "severity": "warning",
+      "plant": "veg",
+      "other": "border",
+      "message": "The shade of Border trees (10 m tall) covers about 317 m² of Vegetables (11%), mostly on its south side, for more than half the day (9 to 3) in December, when the sun is lowest. That is where the trees' crowns close; young trees cast less. To cut it: move the shorter crop to the sunny side, or keep a gap of a shadow's length.",
+      "area_m2": 317.3
+    },
+    {
+      "id": "mix.good",
+      "kind": "neighbours",
+      "severity": "info",
+      "plant": "veg",
+      "message": "Vegetables mixes Tomato and Onion, a known good pair."
+    },
+    {
+      "id": "next.good",
+      "kind": "neighbours",
+      "severity": "info",
+      "plant": "border",
+      "other": "pulses",
+      "message": "Border trees and Pulses side by side: Mango with Green gram (moong), a known good pair."
+    },
+    {
+      "id": "wind.shelter",
+      "kind": "wind",
+      "severity": "info",
+      "plant": "border",
+      "message": "Border trees, a border 10 m tall, shelters the crops about 100 m downwind from hot, dry winds: all of every plot."
+    }
+  ],
+  "area_m2": 7596.4
+}

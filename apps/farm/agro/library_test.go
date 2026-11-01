@@ -75,7 +75,7 @@ func TestLoadRefusesInconsistentData(t *testing.T) {
 		c := map[string]any{
 			"id": id, "name": id, "family": "Poaceae", "kind": "cereal", "days": []float64{90, 120},
 			"temp_opt": []float64{20, 30}, "temp_abs": []float64{10, 35}, "water_mm": []float64{400, 600},
-			"ph": []float64{5.5, 7.5}, "textures": []string{"loam"}, "row_cm": 60, "plant_cm": 20,
+			"ph": []float64{5.5, 7.5}, "textures": []string{"loam"}, "row_cm": 60, "plant_cm": 20, "height_m": 1.0,
 			"seasons": []string{"kharif"},
 		}
 		if edit != nil {
@@ -100,6 +100,7 @@ func TestLoadRefusesInconsistentData(t *testing.T) {
 		"unknown season":    {crop("a", func(c map[string]any) { c["seasons"] = []string{"winter"} })},
 		"unknown tolerance": {crop("a", func(c map[string]any) { c["tolerates"] = []string{"hail"} })},
 		"no spacing":        {crop("a", func(c map[string]any) { c["row_cm"] = 0 })},
+		"no height":         {crop("a", func(c map[string]any) { delete(c, "height_m") })},
 		"missing intercrop": {crop("a", func(c map[string]any) { c["intercrops"] = []string{"zz"} })},
 		"one-way intercrop": {crop("a", func(c map[string]any) { c["intercrops"] = []string{"b"} }), crop("b", nil)},
 	} {

@@ -4,6 +4,7 @@ package farmtest
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -16,15 +17,20 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/agro"
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
 	"github.com/bsamanvith/agentkit/apps/farm/geo"
+	"github.com/bsamanvith/agentkit/apps/farm/planting"
 )
 
 // Memory is a farm.Store in memory. The zero value is ready to use.
 type Memory struct {
-	mu    sync.Mutex
-	farms []farm.Farm
+	mu     sync.Mutex
+	farms  []farm.Farm
+	groups []farm.Group
 }
 
-var _ farm.Store = (*Memory)(nil)
+var (
+	_ farm.Store      = (*Memory)(nil)
+	_ farm.GroupStore = (*Memory)(nil)
+)
 
 // Create implements farm.Store.
 func (m *Memory) Create(_ context.Context, f farm.Farm) error {
@@ -82,6 +88,83 @@ func (m *Memory) Delete(_ context.Context, id string) error {
 	}
 	m.farms = slices.Delete(m.farms, i, i+1)
 	return nil
+}
+
+// CreateGroup implements farm.GroupStore.
+func (m *Memory) CreateGroup(_ context.Context, g farm.Group) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.findGroup(g.ID) >= 0 {
+		return fmt.Errorf("%w: group %s exists", farm.ErrInvalid, g.ID)
+	}
+	m.groups = append(m.groups, cloneGroup(g))
+	slices.SortStableFunc(m.groups, func(a, b farm.Group) int { return a.CreatedAt.Compare(b.CreatedAt) })
+	return nil
+}
+
+// GetGroup implements farm.GroupStore.
+func (m *Memory) GetGroup(_ context.Context, id string) (farm.Group, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	i := m.findGroup(id)
+	if i < 0 {
+		return farm.Group{}, fmt.Errorf("%w: %s", farm.ErrNotFound, id)
+	}
+	return cloneGroup(m.groups[i]), nil
+}
+
+// ListGroups implements farm.GroupStore.
+func (m *Memory) ListGroups(context.Context) ([]farm.Group, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]farm.Group, len(m.groups))
+	for i, g := range m.groups {
+		out[i] = cloneGroup(g)
+	}
+	return out, nil
+}
+
+// UpdateGroup implements farm.GroupStore.
+func (m *Memory) UpdateGroup(_ context.Context, g farm.Group) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	i := m.findGroup(g.ID)
+	if i < 0 {
+		return fmt.Errorf("%w: %s", farm.ErrNotFound, g.ID)
+	}
+	m.groups[i] = cloneGroup(g)
+	return nil
+}
+
+// DeleteGroup implements farm.GroupStore.
+func (m *Memory) DeleteGroup(_ context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	i := m.findGroup(id)
+	if i < 0 {
+		return fmt.Errorf("%w: %s", farm.ErrNotFound, id)
+	}
+	m.groups = slices.Delete(m.groups, i, i+1)
+	return nil
+}
+
+func (m *Memory) findGroup(id string) int {
+	return slices.IndexFunc(m.groups, func(g farm.Group) bool { return g.ID == id })
+}
+
+// cloneGroup copies the slices a caller could change, through JSON as the
+// stores keep it.
+func cloneGroup(g farm.Group) farm.Group {
+	b, err := json.Marshal(g)
+	if err != nil {
+		panic(err)
+	}
+	var out farm.Group
+	if err := json.Unmarshal(b, &out); err != nil {
+		panic(err)
+	}
+	out.CreatedAt, out.UpdatedAt = out.CreatedAt.In(time.UTC), out.UpdatedAt.In(time.UTC)
+	return out
 }
 
 func (m *Memory) find(id string) int {
@@ -291,6 +374,114 @@ func RunStore(t *testing.T, newStore func(t *testing.T) farm.Store) {
 		got, err := s.List(ctx)
 		if err != nil || len(got) != 20 {
 			t.Errorf("List after 20 concurrent creates: %d farms, %v", len(got), err)
+		}
+	})
+}
+
+// SampleGroup is a group of plots with a distribution, created at t.
+func SampleGroup(id string, t time.Time, plots ...string) farm.Group {
+	return farm.Group{
+		ID: id, Name: "Home farm", Plots: append([]string{}, plots...),
+		Distribution: &planting.Distribution{
+			Arrange: planting.Strips, Rows: planting.NorthSouth,
+			Plants: []planting.PlantGroup{
+				{ID: "trees", Name: "Border trees", Crops: []string{"mango"}, Place: planting.Border, WidthM: 4},
+				{ID: "veg", Name: "Vegetables", Crops: []string{"tomato", "onion"}, Place: planting.Block, Share: 2},
+				{ID: "pulse", Name: "Pulses", Crops: []string{"green_gram"}, Place: planting.Block, Share: 1},
+			},
+		},
+		CreatedAt: t, UpdatedAt: t,
+	}
+}
+
+// RunGroupStore is the conformance suite of farm.GroupStore. newStore
+// returns an empty store.
+func RunGroupStore(t *testing.T, newStore func(t *testing.T) farm.GroupStore) {
+	t.Helper()
+	ctx := context.Background()
+	t0 := time.Date(2026, 11, 1, 6, 0, 0, 0, time.UTC)
+
+	t.Run("CreateGetRoundTrips", func(t *testing.T) {
+		t.Parallel()
+		s := newStore(t)
+		want := SampleGroup("g1", t0, "a", "b")
+		if err := s.CreateGroup(ctx, want); err != nil {
+			t.Fatal(err)
+		}
+		got, err := s.GetGroup(ctx, "g1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if diff := cmp.Diff(want, got); diff != "" {
+			t.Errorf("GetGroup (-want +got):\n%s", diff)
+		}
+		if err := s.CreateGroup(ctx, want); !errors.Is(err, farm.ErrInvalid) {
+			t.Errorf("second CreateGroup: %v, want ErrInvalid", err)
+		}
+	})
+	t.Run("MissingIsNotFound", func(t *testing.T) {
+		t.Parallel()
+		s := newStore(t)
+		if _, err := s.GetGroup(ctx, "nope"); !errors.Is(err, farm.ErrNotFound) {
+			t.Errorf("GetGroup: %v, want ErrNotFound", err)
+		}
+		if err := s.UpdateGroup(ctx, SampleGroup("nope", t0)); !errors.Is(err, farm.ErrNotFound) {
+			t.Errorf("UpdateGroup: %v, want ErrNotFound", err)
+		}
+		if err := s.DeleteGroup(ctx, "nope"); !errors.Is(err, farm.ErrNotFound) {
+			t.Errorf("DeleteGroup: %v, want ErrNotFound", err)
+		}
+	})
+	t.Run("ListUpdateDelete", func(t *testing.T) {
+		t.Parallel()
+		s := newStore(t)
+		if got, err := s.ListGroups(ctx); err != nil || len(got) != 0 {
+			t.Fatalf("empty ListGroups = %v, %v", got, err)
+		}
+		for _, g := range []farm.Group{SampleGroup("b", t0.Add(time.Hour)), SampleGroup("a", t0)} {
+			if err := s.CreateGroup(ctx, g); err != nil {
+				t.Fatal(err)
+			}
+		}
+		g := SampleGroup("a", t0, "x")
+		g.Name, g.Distribution, g.UpdatedAt = "River fields", nil, t0.Add(time.Minute)
+		if err := s.UpdateGroup(ctx, g); err != nil {
+			t.Fatal(err)
+		}
+		got, err := s.ListGroups(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if diff := cmp.Diff([]farm.Group{g, SampleGroup("b", t0.Add(time.Hour))}, got); diff != "" {
+			t.Errorf("ListGroups, oldest first (-want +got):\n%s", diff)
+		}
+		if err := s.DeleteGroup(ctx, "a"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.GetGroup(ctx, "a"); !errors.Is(err, farm.ErrNotFound) {
+			t.Errorf("GetGroup after DeleteGroup: %v", err)
+		}
+	})
+	t.Run("CallerCannotChangeStoredGroup", func(t *testing.T) {
+		t.Parallel()
+		s := newStore(t)
+		g := SampleGroup("g", t0, "a")
+		if err := s.CreateGroup(ctx, g); err != nil {
+			t.Fatal(err)
+		}
+		g.Plots[0] = "changed"
+		g.Distribution.Plants[0].Crops[0] = "changed"
+		got, err := s.GetGroup(ctx, "g")
+		if err != nil {
+			t.Fatal(err)
+		}
+		got.Plots[0] = "changed again"
+		again, err := s.GetGroup(ctx, "g")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if diff := cmp.Diff(SampleGroup("g", t0, "a"), again); diff != "" {
+			t.Errorf("stored group changed through a caller's copy (-want +got):\n%s", diff)
 		}
 	})
 }

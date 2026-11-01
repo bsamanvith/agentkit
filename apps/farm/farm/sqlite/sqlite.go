@@ -1,5 +1,5 @@
-// Package sqlite keeps farms in a SQLite file, one row per farm with the
-// farm as JSON: the app reads and writes whole farms, and their boundaries
+// Package sqlite keeps farms and plot groups in a SQLite file, one row per
+// farm (and per group) with it as JSON: the app reads and writes whole farms, and their boundaries
 // are only ever searched in Go.
 package sqlite
 
@@ -18,12 +18,20 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
 )
 
-var _ farm.Store = (*Store)(nil)
+var (
+	_ farm.Store      = (*Store)(nil)
+	_ farm.GroupStore = (*Store)(nil)
+)
 
 // Store is a farm.Store on a SQLite file.
 type Store struct{ db *sql.DB }
 
 const schema = `CREATE TABLE IF NOT EXISTS farms (
+	id         TEXT PRIMARY KEY,
+	created_at INTEGER NOT NULL,
+	data       TEXT NOT NULL
+) STRICT;
+CREATE TABLE IF NOT EXISTS groups (
 	id         TEXT PRIMARY KEY,
 	created_at INTEGER NOT NULL,
 	data       TEXT NOT NULL
@@ -141,6 +149,92 @@ func affected(res sql.Result, id string) error {
 		return fmt.Errorf("%w: %s", farm.ErrNotFound, id)
 	}
 	return nil
+}
+
+// CreateGroup implements farm.GroupStore.
+func (s *Store) CreateGroup(ctx context.Context, g farm.Group) error {
+	data, err := json.Marshal(g)
+	if err != nil {
+		return fmt.Errorf("farm sqlite: %w", err)
+	}
+	res, err := s.db.ExecContext(ctx, `INSERT INTO groups (id, created_at, data) VALUES (?, ?, ?) ON CONFLICT (id) DO NOTHING`,
+		g.ID, g.CreatedAt.UnixNano(), string(data))
+	if err != nil {
+		return fmt.Errorf("farm sqlite: create group: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("%w: group %s exists", farm.ErrInvalid, g.ID)
+	}
+	return nil
+}
+
+// GetGroup implements farm.GroupStore.
+func (s *Store) GetGroup(ctx context.Context, id string) (farm.Group, error) {
+	var data string
+	err := s.db.QueryRowContext(ctx, `SELECT data FROM groups WHERE id = ?`, id).Scan(&data)
+	if errors.Is(err, sql.ErrNoRows) {
+		return farm.Group{}, fmt.Errorf("%w: %s", farm.ErrNotFound, id)
+	}
+	if err != nil {
+		return farm.Group{}, fmt.Errorf("farm sqlite: get group: %w", err)
+	}
+	return decodeGroup(data)
+}
+
+// ListGroups implements farm.GroupStore.
+func (s *Store) ListGroups(ctx context.Context) ([]farm.Group, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT data FROM groups ORDER BY created_at, id`)
+	if err != nil {
+		return nil, fmt.Errorf("farm sqlite: list groups: %w", err)
+	}
+	defer rows.Close()
+	out := []farm.Group{}
+	for rows.Next() {
+		var data string
+		if err := rows.Scan(&data); err != nil {
+			return nil, fmt.Errorf("farm sqlite: list groups: %w", err)
+		}
+		g, err := decodeGroup(data)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("farm sqlite: list groups: %w", err)
+	}
+	return out, nil
+}
+
+// UpdateGroup implements farm.GroupStore.
+func (s *Store) UpdateGroup(ctx context.Context, g farm.Group) error {
+	data, err := json.Marshal(g)
+	if err != nil {
+		return fmt.Errorf("farm sqlite: %w", err)
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE groups SET data = ? WHERE id = ?`, string(data), g.ID)
+	if err != nil {
+		return fmt.Errorf("farm sqlite: update group: %w", err)
+	}
+	return affected(res, g.ID)
+}
+
+// DeleteGroup implements farm.GroupStore.
+func (s *Store) DeleteGroup(ctx context.Context, id string) error {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM groups WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("farm sqlite: delete group: %w", err)
+	}
+	return affected(res, id)
+}
+
+func decodeGroup(data string) (farm.Group, error) {
+	var g farm.Group
+	if err := json.Unmarshal([]byte(data), &g); err != nil {
+		return farm.Group{}, fmt.Errorf("farm sqlite: decode group: %w", err)
+	}
+	g.CreatedAt, g.UpdatedAt = g.CreatedAt.In(time.UTC), g.UpdatedAt.In(time.UTC)
+	return g, nil
 }
 
 func decode(data string) (farm.Farm, error) {

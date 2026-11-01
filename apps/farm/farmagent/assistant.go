@@ -79,7 +79,8 @@ type setup struct {
 	harness   []harness.Option
 }
 
-// WithPlanner gives the assistant the crop planning tools over p.
+// WithPlanner gives the assistant the crop planning and plot group tools
+// over p.
 func WithPlanner(p *planner.Planner) Option { return func(s *setup) { s.planner = p } }
 
 // WithSurveyor gives the assistant the map tools over s: surveys, map
@@ -114,7 +115,8 @@ func WithHarness(opts ...harness.Option) Option {
 var skillFiles embed.FS
 
 // Skills returns the assistant's built-in skills: plan-season,
-// check-plan, survey-land, shape-farm and research-products.
+// check-plan, survey-land, shape-farm, distribute-plants and
+// research-products.
 func Skills() (*skill.Catalog, error) {
 	skills, err := skill.Load(skillFiles, "skills")
 	if err != nil {
@@ -153,6 +155,12 @@ func groups(svc *farm.Service, s setup) ([]group, error) {
 		}
 		farmSet.tools = append(farmSet.tools, more...)
 		farmSet.system += "\n" + PlanningSystem
+		more, err = GroupTools(s.planner)
+		if err != nil {
+			return nil, err
+		}
+		farmSet.tools = append(farmSet.tools, more...)
+		farmSet.system += "\n" + GroupSystem
 	}
 	out := []group{farmSet}
 	if s.surveyor != nil {

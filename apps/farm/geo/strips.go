@@ -23,6 +23,21 @@ var ErrShape = errors.New("geo: the ring has no area to cut")
 // Strips are easy to walk, plough and sow in rows. A strip of a concave
 // plot can come out in two parts joined along a cut line.
 func Strips(r Ring, shares []float64) ([]Ring, float64, error) {
+	return strips(r, -1, shares)
+}
+
+// StripsAlong is [Strips] with the strips running along bearing (degrees
+// from north, such as 0 for north-south strips) instead of the long axis.
+func StripsAlong(r Ring, bearing float64, shares []float64) ([]Ring, error) {
+	if math.IsNaN(bearing) {
+		return nil, ErrShape
+	}
+	out, _, err := strips(r, math.Mod(math.Mod(bearing, 180)+180, 180), shares)
+	return out, err
+}
+
+// strips cuts along bearing, or the long axis when bearing is negative.
+func strips(r Ring, bearing float64, shares []float64) ([]Ring, float64, error) {
 	r = r.Open()
 	if len(r) < 3 {
 		return nil, 0, ErrShape
@@ -37,35 +52,23 @@ func Strips(r Ring, shares []float64) ([]Ring, float64, error) {
 	if len(shares) == 0 || total > 1+1e-9 {
 		return nil, 0, ErrShares
 	}
-	pl := planeAt(Centroid(r))
-	ps := project(pl, r)
-	whole := math.Abs(signedArea(ps))
-	if whole < 1e-6 {
-		return nil, 0, ErrShape
+	f, err := newFrame(r, bearing)
+	if err != nil {
+		return nil, 0, err
 	}
-	u := longAxis(ps)
-	v := xy{-u.y, u.x}
-	// The ring in the axis frame: a along u, b along v.
-	ab := make([]xy, len(ps))
-	lo, hi := math.Inf(1), math.Inf(-1)
-	for i, p := range ps {
-		ab[i] = xy{dot(p, u), dot(p, v)}
-		lo, hi = math.Min(lo, ab[i].y), math.Max(hi, ab[i].y)
-	}
-	below := func(t float64) float64 { return math.Abs(signedArea(clipBelow(ab, t))) }
-	cuts := []float64{lo}
+	cuts := []float64{f.lo}
 	acc := 0.0
 	for i, s := range shares {
 		acc += s
 		if i == len(shares)-1 && acc > 1-1e-9 {
-			cuts = append(cuts, hi)
+			cuts = append(cuts, f.hi)
 			break
 		}
-		target := acc * whole
-		a, b := cuts[len(cuts)-1], hi
+		target := acc * f.whole
+		a, b := cuts[len(cuts)-1], f.hi
 		for range 64 {
 			m := (a + b) / 2
-			if below(m) < target {
+			if f.below(m) < target {
 				a = m
 			} else {
 				b = m
@@ -75,24 +78,116 @@ func Strips(r Ring, shares []float64) ([]Ring, float64, error) {
 	}
 	out := make([]Ring, len(shares))
 	for i := range shares {
-		band := clipAbove(clipBelow(ab, cuts[i+1]), cuts[i])
-		ring := make(Ring, 0, len(band))
-		for _, q := range band {
-			// Back from the axis frame to east and north.
-			x, y := q.x*u.x+q.y*v.x, q.x*u.y+q.y*v.y
-			p := pl.point(x, y)
-			if n := len(ring); n > 0 && Distance(ring[n-1], p) < 0.01 {
-				continue
-			}
-			ring = append(ring, p)
-		}
-		if n := len(ring); n > 1 && Distance(ring[0], ring[n-1]) < 0.01 {
-			ring = ring[:n-1]
-		}
-		out[i] = ring
+		out[i] = f.band(cuts[i], cuts[i+1])
 	}
-	bearing := math.Mod(math.Atan2(u.x, u.y)*180/math.Pi+360, 180)
-	return out, bearing, nil
+	return out, f.bearing(), nil
+}
+
+// Bands cuts r like [Strips], along its long axis, but by width: band i is
+// widths[i] metres wide, measured square to the long axis, the first
+// along one long side. Bands are straight-sided whatever the plot's
+// shape, so a row of trees 2 m wide stays 2 m wide. A band that reaches
+// past the far side is cut short, and one that starts past it is nil;
+// when the widths add up to less than r is across, the rest is left
+// over. It also returns the bands' bearing, as Strips does, and how wide
+// r is across its long axis.
+func Bands(r Ring, widths []float64) ([]Ring, float64, float64, error) {
+	return bands(r, -1, widths)
+}
+
+// BandsAlong is [Bands] with the bands running along bearing (degrees from
+// north) instead of the long axis; it returns the bands and how wide r is
+// across that bearing.
+func BandsAlong(r Ring, bearing float64, widths []float64) ([]Ring, float64, error) {
+	if math.IsNaN(bearing) {
+		return nil, 0, ErrShape
+	}
+	out, _, across, err := bands(r, math.Mod(math.Mod(bearing, 180)+180, 180), widths)
+	return out, across, err
+}
+
+func bands(r Ring, bearing float64, widths []float64) ([]Ring, float64, float64, error) {
+	r = r.Open()
+	if len(r) < 3 {
+		return nil, 0, 0, ErrShape
+	}
+	for _, w := range widths {
+		if !(w > 0) {
+			return nil, 0, 0, ErrShares
+		}
+	}
+	f, err := newFrame(r, bearing)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	out := make([]Ring, len(widths))
+	at := f.lo
+	for i, w := range widths {
+		if at >= f.hi-1e-6 {
+			break
+		}
+		next := math.Min(at+w, f.hi)
+		if band := f.band(at, next); len(band) >= 3 {
+			out[i] = band
+		}
+		at = next
+	}
+	return out, f.bearing(), f.hi - f.lo, nil
+}
+
+// frame is a ring in its long axis's frame: a along the axis, b across.
+type frame struct {
+	pl     plane
+	u, v   xy
+	ab     []xy
+	lo, hi float64 // the ring's reach across the axis
+	whole  float64 // its area
+}
+
+// newFrame puts r in the frame of bearing, or of its long axis when
+// bearing is negative.
+func newFrame(r Ring, bearing float64) (frame, error) {
+	pl := planeAt(Centroid(r))
+	ps := project(pl, r)
+	whole := math.Abs(signedArea(ps))
+	if whole < 1e-6 {
+		return frame{}, ErrShape
+	}
+	u := longAxis(ps)
+	if bearing >= 0 {
+		u = xy{math.Sin(rad(bearing)), math.Cos(rad(bearing))}
+	}
+	f := frame{pl: pl, u: u, v: xy{-u.y, u.x}, ab: make([]xy, len(ps)), lo: math.Inf(1), hi: math.Inf(-1), whole: whole}
+	for i, p := range ps {
+		f.ab[i] = xy{dot(p, f.u), dot(p, f.v)}
+		f.lo, f.hi = math.Min(f.lo, f.ab[i].y), math.Max(f.hi, f.ab[i].y)
+	}
+	return f, nil
+}
+
+// below is the ring's area across the axis up to t.
+func (f frame) below(t float64) float64 { return math.Abs(signedArea(clipBelow(f.ab, t))) }
+
+// bearing is the axis's direction, from 0 up to 180 degrees.
+func (f frame) bearing() float64 { return math.Mod(math.Atan2(f.u.x, f.u.y)*180/math.Pi+360, 180) }
+
+// band is the part of the ring between from and to across the axis.
+func (f frame) band(from, to float64) Ring {
+	band := clipAbove(clipBelow(f.ab, to), from)
+	ring := make(Ring, 0, len(band))
+	for _, q := range band {
+		// Back from the axis frame to east and north.
+		x, y := q.x*f.u.x+q.y*f.v.x, q.x*f.u.y+q.y*f.v.y
+		p := f.pl.point(x, y)
+		if n := len(ring); n > 0 && Distance(ring[n-1], p) < 0.01 {
+			continue
+		}
+		ring = append(ring, p)
+	}
+	if n := len(ring); n > 1 && Distance(ring[0], ring[n-1]) < 0.01 {
+		ring = ring[:n-1]
+	}
+	return ring
 }
 
 // longAxis returns the unit vector along the long side of the smallest

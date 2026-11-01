@@ -104,9 +104,16 @@ type Crop struct {
 	ClimateAnalog bool `json:"climate_analog"`
 	// Tall crops shade the ones beside them.
 	Tall bool `json:"tall"`
+	// HeightM is a grown crop's usual height (a tree's at maturity), in
+	// metres: how far its shadow reaches.
+	HeightM float64 `json:"height_m"`
 	// Intercrops are crops it is known to grow well with.
 	Intercrops []string `json:"intercrops,omitempty"`
 }
+
+// Tree reports whether the crop is a tree or tree-like perennial grown at
+// wide spacing (2 m or more between rows): planted as trees, not sown.
+func (c Crop) Tree() bool { return c.Perennial && c.RowCM >= 200 }
 
 // Tolerant reports whether the crop tolerates t (TolerateFrost, ...).
 func (c Crop) Tolerant(t string) bool { return slices.Contains(c.Tolerates, t) }
@@ -209,6 +216,9 @@ func (l *Library) check() error {
 		}
 		if c.Days[0] <= 0 || c.RowCM <= 0 || c.PlantCM <= 0 {
 			bad("crop %s: days and spacing must be positive", c.ID)
+		}
+		if !(c.HeightM > 0 && c.HeightM <= 40) {
+			bad("crop %s: height_m %v must be above 0 and at most 40", c.ID, c.HeightM)
 		}
 		if len(c.Textures) == 0 {
 			bad("crop %s: no textures", c.ID)

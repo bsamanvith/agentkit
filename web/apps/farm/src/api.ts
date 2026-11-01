@@ -4,8 +4,12 @@ import type {
   Crop,
   Design,
   DesignReport,
+  Distribution,
+  DistributionResult,
   Draft,
   Farm,
+  Group,
+  GroupDraft,
   Part,
   Plan,
   PlanReport,
@@ -82,6 +86,16 @@ export const api = {
     call<DesignReport>("POST", `/api/farms/${encodeURIComponent(id)}/design/check`, d),
   saveDesign: (id: string, d: Design) => call<Farm>("PUT", `/api/farms/${encodeURIComponent(id)}/design`, d),
   clearDesign: (id: string) => call<Farm>("DELETE", `/api/farms/${encodeURIComponent(id)}/design`),
+  groups: async () => (await call<{ groups: Group[] }>("GET", "/api/groups")).groups,
+  createGroup: (d: GroupDraft) => call<Group>("POST", "/api/groups", d),
+  updateGroup: (id: string, d: GroupDraft) => call<Group>("PUT", `/api/groups/${encodeURIComponent(id)}`, d),
+  removeGroup: (id: string) => call<undefined>("DELETE", `/api/groups/${encodeURIComponent(id)}`),
+  distribution: (id: string) => call<DistributionResult>("GET", `/api/groups/${encodeURIComponent(id)}/distribution`),
+  previewDistribution: (id: string, d: Distribution, signal?: AbortSignal) =>
+    call<DistributionResult>("POST", `/api/groups/${encodeURIComponent(id)}/distribution/preview`, d, signal),
+  saveDistribution: (id: string, d: Distribution) =>
+    call<{ group: Group; result: DistributionResult }>("PUT", `/api/groups/${encodeURIComponent(id)}/distribution`, d),
+  clearDistribution: (id: string) => call<Group>("DELETE", `/api/groups/${encodeURIComponent(id)}/distribution`),
   research: async () => (await call<{ providers: ResearchProvider[] }>("GET", "/api/research")).providers,
   connectResearch: async (provider: string, key: string) =>
     (await call<{ providers: ResearchProvider[] }>("PUT", `/api/research/${encodeURIComponent(provider)}`, { key }))

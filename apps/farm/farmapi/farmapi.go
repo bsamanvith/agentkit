@@ -35,6 +35,21 @@
 //	PUT    /api/farms/{id}/plan        check and save a plan
 //	DELETE /api/farms/{id}/plan        remove the plan
 //
+// Plot groups:
+//
+//	GET    /api/groups                 list groups
+//	POST   /api/groups                 create a group {"name", "plots"}
+//	GET    /api/groups/{id}            one group
+//	PUT    /api/groups/{id}            rename it, replace its plots
+//	DELETE /api/groups/{id}            delete it (its plots stay)
+//
+// Their plant groups and distribution (with [WithPlanner]):
+//
+//	GET    /api/groups/{id}/distribution          the saved one, laid out
+//	POST   /api/groups/{id}/distribution/preview  lay one out, save nothing
+//	PUT    /api/groups/{id}/distribution          lay out and save one
+//	DELETE /api/groups/{id}/distribution          remove it
+//
 // The map (with [WithSurveyor]):
 //
 //	GET    /api/farms/{id}/survey          the saved survey, or a new one
@@ -68,6 +83,7 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/geo"
 	"github.com/bsamanvith/agentkit/apps/farm/land"
 	"github.com/bsamanvith/agentkit/apps/farm/planner"
+	"github.com/bsamanvith/agentkit/apps/farm/planting"
 	"github.com/bsamanvith/agentkit/apps/farm/research"
 	"github.com/bsamanvith/agentkit/apps/farm/surveyor"
 )
@@ -131,6 +147,15 @@ func New(svc *farm.Service, opts ...Option) http.Handler {
 	mux.HandleFunc("DELETE /api/farms/{id}", a.remove)
 	mux.HandleFunc("GET /api/farms/{id}/geojson", a.geojson)
 	mux.HandleFunc("POST /api/assistant", a.ask)
+	mux.HandleFunc("GET /api/groups", a.groups)
+	mux.HandleFunc("POST /api/groups", a.createGroup)
+	mux.HandleFunc("GET /api/groups/{id}", a.getGroup)
+	mux.HandleFunc("PUT /api/groups/{id}", a.updateGroup)
+	mux.HandleFunc("DELETE /api/groups/{id}", a.deleteGroup)
+	mux.HandleFunc("GET /api/groups/{id}/distribution", a.planning(a.distribution))
+	mux.HandleFunc("POST /api/groups/{id}/distribution/preview", a.planning(a.previewDistribution))
+	mux.HandleFunc("PUT /api/groups/{id}/distribution", a.planning(a.saveDistribution))
+	mux.HandleFunc("DELETE /api/groups/{id}/distribution", a.planning(a.clearDistribution))
 	mux.HandleFunc("GET /api/soils", a.planning(a.soils))
 	mux.HandleFunc("GET /api/crops", a.planning(a.crops))
 	mux.HandleFunc("GET /api/farms/{id}/climate", a.planning(a.climate))
@@ -189,7 +214,9 @@ func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, agro.ErrNoClimate):
 		a.log.WarnContext(r.Context(), "farm api: no climate", "path", r.URL.Path, "err", err)
 		writeJSON(w, http.StatusServiceUnavailable, errorBody{Error: "the climate at the plot could not be looked up; try again later"})
-	case errors.Is(err, farm.ErrInvalid), errors.Is(err, agro.ErrInvalid), errors.Is(err, agro.ErrUnknown):
+	case errors.Is(err, farm.ErrNoGroups):
+		writeJSON(w, http.StatusServiceUnavailable, errorBody{Error: err.Error()})
+	case errors.Is(err, farm.ErrInvalid), errors.Is(err, agro.ErrInvalid), errors.Is(err, agro.ErrUnknown), errors.Is(err, planting.ErrInvalid):
 		writeJSON(w, http.StatusBadRequest, errorBody{Error: err.Error()})
 	case errors.Is(err, farm.ErrNotFound), errors.Is(err, farmagent.ErrUnknownConversation):
 		writeJSON(w, http.StatusNotFound, errorBody{Error: err.Error()})
@@ -359,6 +386,112 @@ func (a *api) ask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, reply)
+}
+
+func (a *api) groups(w http.ResponseWriter, r *http.Request) {
+	gs, err := a.svc.Groups(r.Context())
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"groups": gs})
+}
+
+func (a *api) createGroup(w http.ResponseWriter, r *http.Request) {
+	var d farm.GroupDraft
+	if err := decode(w, r, &d); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	g, err := a.svc.CreateGroup(r.Context(), d)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	w.Header().Set("Location", "/api/groups/"+g.ID)
+	writeJSON(w, http.StatusCreated, g)
+}
+
+func (a *api) getGroup(w http.ResponseWriter, r *http.Request) {
+	g, err := a.svc.Group(r.Context(), r.PathValue("id"))
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, g)
+}
+
+func (a *api) updateGroup(w http.ResponseWriter, r *http.Request) {
+	var d farm.GroupDraft
+	if err := decode(w, r, &d); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	g, err := a.svc.UpdateGroup(r.Context(), r.PathValue("id"), d)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, g)
+}
+
+func (a *api) deleteGroup(w http.ResponseWriter, r *http.Request) {
+	if err := a.svc.DeleteGroup(r.Context(), r.PathValue("id")); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *api) distribution(w http.ResponseWriter, r *http.Request) {
+	res, err := a.planner.Distribute(r.Context(), r.PathValue("id"), nil)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+func (a *api) previewDistribution(w http.ResponseWriter, r *http.Request) {
+	var d planting.Distribution
+	if err := decode(w, r, &d); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	res, err := a.planner.Distribute(r.Context(), r.PathValue("id"), &d)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+type distributionBody struct {
+	Group  farm.Group      `json:"group"`
+	Result planting.Result `json:"result"`
+}
+
+func (a *api) saveDistribution(w http.ResponseWriter, r *http.Request) {
+	var d planting.Distribution
+	if err := decode(w, r, &d); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	g, res, err := a.planner.SaveDistribution(r.Context(), r.PathValue("id"), d)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, distributionBody{g, res})
+}
+
+func (a *api) clearDistribution(w http.ResponseWriter, r *http.Request) {
+	g, err := a.planner.ClearDistribution(r.Context(), r.PathValue("id"))
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, g)
 }
 
 // planning answers 503 when the planner is not configured.

@@ -18,10 +18,12 @@ import (
 	"time"
 
 	"github.com/bsamanvith/agentkit/apps/farm/elevation"
+	"github.com/bsamanvith/agentkit/apps/farm/farm"
 	"github.com/bsamanvith/agentkit/apps/farm/farmagent"
 	"github.com/bsamanvith/agentkit/apps/farm/geo"
 	"github.com/bsamanvith/agentkit/apps/farm/handbook"
 	"github.com/bsamanvith/agentkit/apps/farm/osm/osmtest"
+	"github.com/bsamanvith/agentkit/apps/farm/planting"
 	"github.com/bsamanvith/agentkit/apps/farm/research"
 	"github.com/bsamanvith/agentkit/apps/farm/research/researchtest"
 	"github.com/bsamanvith/agentkit/apps/farm/surveyor"
@@ -88,6 +90,8 @@ type scenario struct {
 	never []*regexp.Regexp
 	// connect connects Exa (to the fake) first.
 	connect bool
+	// group puts the plot in a group "Home farm" first.
+	group bool
 	// then checks the world afterwards.
 	then func(t *testing.T, s *surveyor.Surveyor)
 }
@@ -137,6 +141,38 @@ func scenarios() []scenario {
 			tools: [][]string{{research.SearchTool}},
 			says:  []*regexp.Regexp{re(`(?i)(connect|settings|key)`)},
 			never: []*regexp.Regexp{re(`(?i)(rs\.?|₹)\s?\d{2,}`)},
+		},
+		{
+			name:  "distribution and its shade",
+			group: true,
+			ask:   "In my group 'Home farm' I want a 5 m border of mango trees round the plot, and inside it vegetables (tomato with onion) and green gram, half and half. Lay it out: how many mango trees fit, and how much shade do they cast on the crops? Don't save anything yet.",
+			tools: [][]string{{farmagent.DistributePlantsTool}},
+			says:  []*regexp.Regexp{re(`(?i)shad`), re(`(?i)\b\d+\s+(mango|trees)`), re(`(?i)m²|m2|sq`)},
+			then: func(t *testing.T, s *surveyor.Surveyor) {
+				gs, err := s.Farms().Groups(context.Background())
+				if err != nil || len(gs) != 1 || gs[0].Distribution != nil {
+					t.Errorf("a distribution was saved without the farmer's yes: %+v %v", gs, err)
+				}
+			},
+		},
+		{
+			name:  "rows north-south or east-west",
+			group: true,
+			ask:   "In 'Home farm' I'll grow sugarcane and groundnut in two equal strips. Should the strips run east to west or north to south? Compare both with the tool and tell me the difference in shade on the groundnut.",
+			tools: [][]string{{farmagent.DistributePlantsTool}},
+			says:  []*regexp.Regexp{re(`(?i)north.{0,4}south`), re(`(?i)shad`), re(`\d+\s?m²|\d+\s?m2|\d+\s?square`)},
+		},
+		{
+			name:  "group the plots and save a layout",
+			ask:   "Make a group called 'River fields' with my plot 'Paddy by the drain', then give it alternating 10 m strips of rice and green gram and save that.",
+			tools: [][]string{{farmagent.SaveGroupTool}, {farmagent.SaveDistributionTool}},
+			says:  []*regexp.Regexp{re(`(?i)river fields`)},
+			then: func(t *testing.T, s *surveyor.Surveyor) {
+				gs, err := s.Farms().Groups(context.Background())
+				if err != nil || len(gs) != 1 || gs[0].Distribution == nil || gs[0].Distribution.Arrange != planting.Alternate || len(gs[0].Plots) != 1 {
+					t.Errorf("the group and its distribution: %+v %v", gs, err)
+				}
+			},
 		},
 		{
 			name:  "border trees from the handbook",
@@ -199,7 +235,12 @@ func TestAssistantEval(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			a, err := farmagent.NewAssistant(model, svc, farmagent.WithSurveyor(s), farmagent.WithTools(webTools, research.System),
+			if sc.group {
+				if _, err := svc.CreateGroup(context.Background(), farm.GroupDraft{Name: "Home farm", Plots: []string{"farm_k"}}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			a, err := farmagent.NewAssistant(model, svc, farmagent.WithSurveyor(s), farmagent.WithPlanner(plannerFor(t, svc)), farmagent.WithTools(webTools, research.System),
 				farmagent.WithKnowledge(book, handbook.Description), farmagent.WithSkills(skills))
 			if err != nil {
 				t.Fatal(err)

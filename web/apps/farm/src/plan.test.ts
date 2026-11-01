@@ -15,6 +15,8 @@ const crop = (id: string, name: string): Crop => ({
   grown_in: [],
   climate_analog: false,
   tall: false,
+  height_m: 0.5,
+  water_mm: [300, 500],
 });
 const crops = [crop("cotton", "Cotton"), crop("green_gram", "Green gram"), crop("soybean", "Soybean")];
 const ring = [

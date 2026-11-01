@@ -140,6 +140,8 @@ export interface Crop {
   grown_in: string[];
   climate_analog: boolean;
   tall: boolean;
+  height_m: number;
+  water_mm: Range;
   intercrops?: string[];
 }
 
@@ -423,4 +425,99 @@ export interface ResearchProvider {
   sign_up: string;
   connected: boolean;
   updated_at?: string;
+}
+
+// Plot groups and their plant distribution (apps/farm/farm, apps/farm/planting).
+
+export type Place = "block" | "border" | "alley";
+export type Arrange = "strips" | "alternate" | "by_plot";
+export type Rows = "long_side" | "north_south" | "east_west";
+
+export interface PlantGroup {
+  id: string;
+  name: string;
+  crops: string[];
+  place?: Place;
+  share?: number;
+  width_m?: number;
+  every_m?: number;
+}
+
+export interface Distribution {
+  plants: PlantGroup[];
+  arrange?: Arrange;
+  strip_m?: number;
+  rows?: Rows;
+}
+
+export interface Group {
+  id: string;
+  name: string;
+  plots: string[];
+  distribution?: Distribution;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GroupDraft {
+  name: string;
+  plots: string[];
+}
+
+export type EffectKind = "shade" | "edge" | "spacing" | "water" | "neighbours" | "wind" | "layout";
+
+export interface Effect {
+  id: string;
+  kind: EffectKind;
+  severity: Severity;
+  plant?: string;
+  other?: string;
+  plot?: string;
+  message: string;
+  area_m2?: number;
+}
+
+export interface Region {
+  plant: string;
+  ring: Point[];
+  hole?: Point[];
+  area_m2: number;
+  length_m: number;
+  width_m: number;
+  rows: number;
+  trees?: Point[];
+}
+
+export interface PlotLayout {
+  plot: string;
+  name: string;
+  row_bearing: number;
+  area_m2: number;
+  regions: Region[];
+}
+
+export interface PlantMeasure {
+  plant: string;
+  area_m2: number;
+  share: number;
+  want?: number;
+  plots: number;
+  pieces: number;
+  counts: { crop: string; plants: number }[];
+  height_m: number;
+  water_mm: number;
+  edge_share: number;
+  shaded_m2: number;
+  narrowest_m: number;
+}
+
+export type DistributionStatus = "sound" | "needs_review" | "invalid";
+
+export interface DistributionResult {
+  status: DistributionStatus;
+  distribution: Distribution;
+  plots: PlotLayout[];
+  plants: PlantMeasure[];
+  effects: Effect[];
+  area_m2: number;
 }

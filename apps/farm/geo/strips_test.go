@@ -78,3 +78,67 @@ func TestExtent(t *testing.T) {
 		t.Errorf("east-west rows: %.1f m along, %.1f across", along, across)
 	}
 }
+
+func TestBands(t *testing.T) {
+	t.Parallel()
+	plot := rect(17.07, 78.20, 0.0009, 0.00188) // ~100 m north-south, ~200 m east-west
+	bands, bearing, across, err := geo.Bands(plot, []float64{10, 2, 30, 80, 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(bearing-90) > 1 || math.Abs(across-99.6) > 1 {
+		t.Fatalf("bearing %v, across %v; want 90 and about 99.6", bearing, across)
+	}
+	// Each band is its width across the 200 m length; the 80 m band is cut
+	// short at the far side and the last starts past it.
+	for i, want := range []float64{10, 2, 30, 99.6 - 42} {
+		if got := geo.Area(bands[i]); math.Abs(got-want*200) > 0.01*want*200+5 {
+			t.Errorf("band %d: %.0f m², want about %.0f", i, got, want*200)
+		}
+		if _, w := geo.Extent(bands[i], bearing); math.Abs(w-want) > 0.2 {
+			t.Errorf("band %d is %.2f m wide, want %.1f", i, w, want)
+		}
+	}
+	if bands[4] != nil {
+		t.Errorf("a band past the far side: %v, want nil", bands[4])
+	}
+	if _, _, _, err := geo.Bands(plot, []float64{5, 0}); !errors.Is(err, geo.ErrShares) {
+		t.Errorf("a zero width: err %v, want ErrShares", err)
+	}
+	// On a triangle a band keeps its width; only its length changes.
+	tri := geo.Ring{{17.07, 78.20}, {17.07, 78.203}, {17.0715, 78.2005}}
+	tb, b, _, err := geo.Bands(tri, []float64{3, 3, 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, band := range tb {
+		if _, w := geo.Extent(band, b); math.Abs(w-3) > 0.05 {
+			t.Errorf("triangle band %d is %.2f m wide, want 3", i, w)
+		}
+	}
+}
+
+func TestAlong(t *testing.T) {
+	t.Parallel()
+	plot := rect(17.07, 78.20, 0.0009, 0.00188) // ~100 m north-south, ~200 m east-west
+	strips, err := geo.StripsAlong(plot, 0, []float64{0.5, 0.5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, s := range strips {
+		along, across := geo.Extent(s, 0)
+		if math.Abs(along-99.6) > 1 || math.Abs(across-100) > 2 {
+			t.Errorf("north-south strip %d: %.1f m along, %.1f across; want about 100 by 100", i, along, across)
+		}
+	}
+	bands, across, err := geo.BandsAlong(plot, 180, []float64{20, 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(across-200) > 2 {
+		t.Errorf("across north-south: %.1f m, want about 200", across)
+	}
+	if _, w := geo.Extent(bands[1], 0); math.Abs(w-20) > 0.1 {
+		t.Errorf("north-south band: %.2f m wide, want 20", w)
+	}
+}

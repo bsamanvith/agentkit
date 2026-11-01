@@ -30,6 +30,11 @@ func TestConformance(t *testing.T) {
 	farmtest.RunStore(t, func(t *testing.T) farm.Store { return open(t, filepath.Join(t.TempDir(), "farm.db")) })
 }
 
+func TestGroupConformance(t *testing.T) {
+	t.Parallel()
+	farmtest.RunGroupStore(t, func(t *testing.T) farm.GroupStore { return open(t, filepath.Join(t.TempDir(), "farm.db")) })
+}
+
 func TestFarmsSurviveReopening(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "farm.db")

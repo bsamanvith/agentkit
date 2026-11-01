@@ -29,6 +29,8 @@ export interface Outline {
 /** A zone of a crop plan, drawn filled in its colour with a label (none when empty). */
 export interface ZoneShape {
   ring: Point[];
+  /** A hole in it: a border band is the ring less its hole. */
+  hole?: Point[];
   label: string;
   color: string;
 }
@@ -148,10 +150,9 @@ export function FarmMap({
     g.clearLayers();
     for (const z of zones) {
       if (z.ring.length < 3) continue;
-      const shape = L.polygon(
-        z.ring.map((c) => L.latLng(c.lat, c.lng)),
-        { color: z.color, weight: 2, fillColor: z.color, fillOpacity: 0.45 },
-      );
+      const outer = z.ring.map((c) => L.latLng(c.lat, c.lng));
+      const rings = z.hole && z.hole.length >= 3 ? [outer, z.hole.map((c) => L.latLng(c.lat, c.lng))] : outer;
+      const shape = L.polygon(rings, { color: z.color, weight: 2, fillColor: z.color, fillOpacity: 0.45 });
       if (z.label) shape.bindTooltip(z.label, { permanent: true, direction: "center", className: "zone-label" });
       shape.addTo(g);
     }

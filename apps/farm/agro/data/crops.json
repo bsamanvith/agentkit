@@ -1,5 +1,5 @@
 {
- "source": "Starter values: temperature and water ranges follow FAO ECOCROP where it has the crop, seasons and spacing follow ICAR and state university packages of practice for India. Temperatures are monthly means in °C; water is the crop's whole-season need in mm (perennials: per year); days run from sowing or planting to (first) harvest. Review before relying on them.",
+ "source": "Starter values: temperature and water ranges follow FAO ECOCROP where it has the crop, seasons and spacing follow ICAR and state university packages of practice for India. Temperatures are monthly means in °C; water is the crop's whole-season need in mm (perennials: per year); days run from sowing or planting to (first) harvest. Review before relying on them. Heights are a grown crop's usual height in metres (a tree's at maturity), for shade.",
  "crops": [
   {
    "id": "rice",
@@ -53,6 +53,7 @@
    ],
    "climate_analog": false,
    "tall": false,
+   "height_m": 1.0,
    "intercrops": []
   },
   {
@@ -107,6 +108,7 @@
    ],
    "climate_analog": false,
    "tall": false,
+   "height_m": 0.9,
    "intercrops": [
     "mustard"
    ]
@@ -162,6 +164,7 @@
    ],
    "climate_analog": false,
    "tall": true,
+   "height_m": 2.2,
    "intercrops": [
     "soybean",
     "green_gram",
@@ -222,6 +225,7 @@
    ],
    "climate_analog": false,
    "tall": true,
+   "height_m": 2.5,
    "intercrops": [
     "pigeon_pea",
     "green_gram"
@@ -278,6 +282,7 @@
    ],
    "climate_analog": false,
    "tall": true,
+   "height_m": 2.0,
    "intercrops": [
     "green_gram",
     "pigeon_pea"
@@ -333,6 +338,7 @@
    ],
    "climate_analog": false,
    "tall": false,
+   "height_m": 0.9,
    "intercrops": [
     "pigeon_pea"
    ]
@@ -386,6 +392,7 @@
    ],
    "climate_analog": false,
    "tall": false,
+   "height_m": 1.0,
    "intercrops": [
     "pigeon_pea"
    ]
@@ -442,6 +449,7 @@
    ],
    "climate_analog": false,
    "tall": false,
+   "height_m": 0.5,
    "intercrops": [
     "mustard"
    ]
@@ -497,6 +505,7 @@
    ],
    "climate_analog": false,
    "tall": true,
+   "height_m": 2.0,
    "intercrops": [
     "sorghum",
     "groundnut",
@@ -561,6 +570,7 @@
    ],
    "climate_analog": false,
    "tall": false,
+   "height_m": 0.5,
    "intercrops": [
     "pigeon_pea",
     "maize",
@@ -622,6 +632,7 @@
    ],
    "climate_analog": false,
    "tall": false,
+   "height_m": 0.5,
    "intercrops": [
     "pigeon_pea",
     "maize",
@@ -682,6 +693,7 @@
    ],
    "climate_analog": false,
    "tall": false,
+   "height_m": 0.4,
    "intercrops": [
     "pigeon_pea",
     "sunflower",
@@ -738,6 +750,7 @@
    ],
    "climate_analog": false,
    "tall": false,
+   "height_m": 0.8,
    "intercrops": [
     "pigeon_pea",
     "maize"
@@ -795,6 +808,7 @@
    ],
    "climate_analog": false,
    "tall": false,
+   "height_m": 1.4,
    "intercrops": [
     "chickpea",
     "wheat"
@@ -853,6 +867,7 @@
    ],
    "climate_analog": false,
    "tall": true,
+   "height_m": 1.8,
    "intercrops": [
     "groundnut",
     "pigeon_pea"
@@ -909,6 +924,7 @@
    ],
    "climate_analog": false,
    "tall": false,
+   "height_m": 1.2,
    "intercrops": [
     "green_gram"
    ]
@@ -964,6 +980,7 @@
    ],
    "climate_analog": false,
    "tall": true,
+   "height_m": 1.5,
    "intercrops": [
     "green_gram",
     "black_gram",
@@ -1019,6 +1036,7 @@
    ],
    "climate_analog": false,
    "tall": true,
+   "height_m": 3.5,
    "intercrops": [
     "green_gram",
     "black_gram",
@@ -1071,6 +1089,7 @@
    ],
    "climate_analog": false,
    "tall": false,
+   "height_m": 0.9,
    "intercrops": [
     "maize",
     "chilli",
@@ -1127,6 +1146,7 @@
    ],
    "climate_analog": false,
    "tall": false,
+   "height_m": 0.8,
    "intercrops": [
     "onion",
     "turmeric",
@@ -1183,6 +1203,7 @@
    ],
    "climate_analog": false,
    "tall": false,
+   "height_m": 1.0,
    "intercrops": [
     "onion"
    ]
@@ -1236,6 +1257,7 @@
    ],
    "climate_analog": false,
    "tall": false,
+   "height_m": 0.5,
    "intercrops": [
     "chilli",
     "tomato",
@@ -1291,6 +1313,7 @@
    ],
    "climate_analog": false,
    "tall": false,
+   "height_m": 1.0,
    "intercrops": []
   },
   {
@@ -1341,6 +1364,7 @@
    ],
    "climate_analog": false,
    "tall": false,
+   "height_m": 1.5,
    "intercrops": []
   },
   {
@@ -1392,6 +1416,7 @@
    ],
    "climate_analog": false,
    "tall": false,
+   "height_m": 0.6,
    "intercrops": []
   },
   {
@@ -1445,6 +1470,7 @@
    ],
    "climate_analog": false,
    "tall": false,
+   "height_m": 0.4,
    "intercrops": []
   },
   {
@@ -1496,6 +1522,7 @@
    ],
    "climate_analog": false,
    "tall": false,
+   "height_m": 0.4,
    "intercrops": []
   },
   {
@@ -1547,6 +1574,7 @@
    ],
    "climate_analog": false,
    "tall": true,
+   "height_m": 4.0,
    "intercrops": [
     "coconut"
    ]
@@ -1601,6 +1629,7 @@
    ],
    "climate_analog": false,
    "tall": true,
+   "height_m": 10.0,
    "intercrops": [
     "green_gram",
     "black_gram",
@@ -1656,6 +1685,7 @@
    ],
    "climate_analog": false,
    "tall": true,
+   "height_m": 5.0,
    "intercrops": []
   },
   {
@@ -1711,6 +1741,7 @@
    ],
    "climate_analog": false,
    "tall": true,
+   "height_m": 6.0,
    "intercrops": [
     "green_gram",
     "black_gram"
@@ -1767,6 +1798,7 @@
    ],
    "climate_analog": false,
    "tall": true,
+   "height_m": 15.0,
    "intercrops": [
     "banana",
     "turmeric"
@@ -1823,6 +1855,7 @@
    ],
    "climate_analog": false,
    "tall": true,
+   "height_m": 7.0,
    "intercrops": [
     "green_gram",
     "black_gram"
@@ -1878,6 +1911,7 @@
    ],
    "climate_analog": true,
    "tall": false,
+   "height_m": 2.0,
    "intercrops": []
   },
   {
@@ -1927,6 +1961,7 @@
    ],
    "climate_analog": true,
    "tall": true,
+   "height_m": 10.0,
    "intercrops": []
   },
   {
@@ -1981,6 +2016,7 @@
    ],
    "climate_analog": true,
    "tall": false,
+   "height_m": 1.5,
    "intercrops": []
   },
   {
@@ -2032,6 +2068,7 @@
    ],
    "climate_analog": true,
    "tall": false,
+   "height_m": 1.2,
    "intercrops": []
   }
  ]

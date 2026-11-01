@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 
 	"github.com/bsamanvith/agentkit/apps/farm/agro"
 	"github.com/bsamanvith/agentkit/apps/farm/land"
@@ -27,9 +28,13 @@ const MaxNameLen = 200
 // Service saves farms, verified. It is safe for concurrent use.
 type Service struct {
 	store    Store
+	groups   GroupStore // nil: no groups
 	verifier *Verifier
 	clock    clock.Clock
 	rand     io.Reader
+	// groupMu serialises group writes, so a plot is not put in two groups
+	// at once.
+	groupMu sync.Mutex
 }
 
 // ServiceOption configures [NewService].
@@ -41,12 +46,16 @@ func WithServiceClock(c clock.Clock) ServiceOption { return func(s *Service) { s
 // WithRandom sets where IDs come from (default crypto/rand).
 func WithRandom(r io.Reader) ServiceOption { return func(s *Service) { s.rand = r } }
 
-// NewService returns a Service over a store and a verifier.
+// NewService returns a Service over a store and a verifier. A store that is
+// also a [GroupStore] keeps plot groups too.
 func NewService(store Store, verifier *Verifier, opts ...ServiceOption) (*Service, error) {
 	if store == nil || verifier == nil {
 		return nil, fmt.Errorf("%w: NewService needs a store and a verifier", ErrInvalid)
 	}
 	s := &Service{store: store, verifier: verifier, clock: clock.Real(), rand: rand.Reader}
+	if gs, ok := store.(GroupStore); ok {
+		s.groups = gs
+	}
 	for _, o := range opts {
 		o(s)
 	}
@@ -174,8 +183,13 @@ func (s *Service) Get(ctx context.Context, id string) (Farm, error) { return s.s
 // List returns every farm, oldest first.
 func (s *Service) List(ctx context.Context) ([]Farm, error) { return s.store.List(ctx) }
 
-// Delete removes a farm.
-func (s *Service) Delete(ctx context.Context, id string) error { return s.store.Delete(ctx, id) }
+// Delete removes a farm, and takes it out of its group.
+func (s *Service) Delete(ctx context.Context, id string) error {
+	if err := s.store.Delete(ctx, id); err != nil {
+		return err
+	}
+	return s.leaveGroups(ctx, id)
+}
 
 func (s *Service) others(ctx context.Context, except string) ([]Farm, error) {
 	all, err := s.store.List(ctx)

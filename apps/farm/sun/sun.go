@@ -196,10 +196,10 @@ func OnSlope(lat float64, m int, flat float64, s Slope) float64 {
 	return (flat-d)*BeamRatio(lat, doy, s) + d*(1+cosβ)/2 + flat*Albedo*(1-cosβ)/2
 }
 
-// SunHours is the bright-sunshine hours of a day at latitude lat on day
+// BrightHours is the bright-sunshine hours of a day at latitude lat on day
 // doy that brings flat MJ/m² to flat ground: Ångström's relation solved
 // for the hours, within 0 and the day's length.
-func SunHours(lat float64, doy int, flat float64) float64 {
+func BrightHours(lat float64, doy int, flat float64) float64 {
 	n := DayLength(lat, doy)
 	ra := Extraterrestrial(lat, doy)
 	if ra <= 0 || n == 0 {

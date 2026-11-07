@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/bsamanvith/agentkit/apps/farm/agro"
 	"github.com/bsamanvith/agentkit/apps/farm/planner"
@@ -267,15 +268,14 @@ func PlanningTools(p *planner.Planner) ([]tool.Tool, error) {
 // sowing in each of the twelve months from today's.
 func compare(r planner.Recommendation, lib *agro.Library) compareOut {
 	out := compareOut{Farm: r.Farm, Today: r.Today, Notes: r.Notes, Crops: []cropMonths{}}
-	start := r.Today[:7]
 	idx := map[string]int{}
-	y, m := 0, 0
-	fmt.Sscanf(start, "%d-%d", &y, &m)
-	for i := range 12 {
-		mm := (m-1+i)%12 + 1
-		label := fmt.Sprintf("%04d-%02d", y+(m-1+i)/12, mm)
-		idx[label] = i
-		out.Months = append(out.Months, label)
+	if today, err := time.Parse(agro.DateLayout, r.Today); err == nil {
+		first := time.Date(today.Year(), today.Month(), 1, 0, 0, 0, 0, time.UTC)
+		for i := range 12 {
+			label := first.AddDate(0, i, 0).Format("2006-01")
+			idx[label] = i
+			out.Months = append(out.Months, label)
+		}
 	}
 	for _, o := range r.Options {
 		cm := cropMonths{Crop: o.Crop, Name: o.Name, ByMonth: make([]int, 12), Best: o.Season}

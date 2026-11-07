@@ -27,7 +27,7 @@ Pure functions, no network:
 | `Incidence` | The angle between the rays and the ground's perpendicular, on flat ground or a slope | Same |
 | `BeamRatio` | Direct light on a slope over flat ground, integrated over the day | Tested on Duffie and Beckman's closed form for an equator-facing slope |
 | `OnSlope` | A month's light on a slope: direct × `BeamRatio`, sky light × the sky the slope sees, plus ground reflection (albedo 0.2) | Liu and Jordan's isotropic sky; diffuse share from Erbs, Klein and Duffie (1982) |
-| `SunHours` | Bright sun hours from the light | Ångström with FAO-56's default a = 0.25, b = 0.50 |
+| `BrightHours` | Bright sun hours from the light | Ångström with FAO-56's default a = 0.25, b = 0.50 |
 | `ShadowNorth` | Which way shadows lean (north or south) over a season | Light-weighted, 7 to 17 h |
 | `Year` | Twelve `Month`s: day length, sun hours, noon sun, noon incidence, light flat and on the slope, cloud's share | Klein's representative day per month |
 

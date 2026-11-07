@@ -23,7 +23,7 @@ func TestFAO56Examples(t *testing.T) {
 	// sun a day give Rs 14.5 MJ/m²: the hours back from the light.
 	near(t, "N(Rio, May)", DayLength(-22.9, 135), 10.9, 0.05)
 	near(t, "Ra(Rio, May)", Extraterrestrial(-22.9, 135), 25.1, 0.1)
-	near(t, "n(Rio, May, 14.5 MJ)", SunHours(-22.9, 135, 14.5), 7.1, 0.1)
+	near(t, "n(Rio, May, 14.5 MJ)", BrightHours(-22.9, 135, 14.5), 7.1, 0.1)
 }
 
 func TestDayLength(t *testing.T) {

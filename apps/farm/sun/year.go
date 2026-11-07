@@ -48,7 +48,7 @@ func Year(lat float64, flat, clear [12]float64, s Slope) [12]Month {
 		m.NoonIncidence = r1(Incidence(lat, doy, 12, s))
 		if flat[i] > 0 {
 			m.FlatMJ = r1(flat[i])
-			m.SunHours = r1(SunHours(lat, doy, flat[i]))
+			m.SunHours = r1(BrightHours(lat, doy, flat[i]))
 			on := OnSlope(lat, i+1, flat[i], s)
 			m.SlopeMJ = r1(on)
 			m.SlopeFactor = math.Round(on/flat[i]*100) / 100

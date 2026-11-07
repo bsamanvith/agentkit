@@ -373,21 +373,11 @@ func simulate(c Crop, r Request, sow time.Time) Season {
 	coldest, hottest := sow, sow
 	wettest, firstRain := 0.0, 0.0
 	irrigationPerMonth := r.Profile.IrrigationMM()
-	var sunMJ, sunHours, slopeF float64
-	dayLo, dayHi := math.Inf(1), math.Inf(-1)
-	dimmest := -1
+	sums := lightSums{dayLo: math.Inf(1), dayHi: math.Inf(-1), dimmest: -1}
 	for d := range length {
 		t := sow.AddDate(0, 0, d)
 		if r.sun != nil {
-			sm := r.sun[t.Month()-1]
-			sunMJ += sm.SlopeMJ
-			sunHours += sm.SunHours
-			slopeF += sm.SlopeFactor
-			if dimmest < 0 || sm.SlopeMJ < r.sun[dimmest].SlopeMJ {
-				dimmest = int(t.Month()) - 1
-			}
-			dl := sun.DayLength(r.Climate.Point.Lat, t.YearDay())
-			dayLo, dayHi = min(dayLo, dl), max(dayHi, dl)
+			sums.add(r, t)
 		}
 		temp := r.Climate.tempOn(t)
 		tempSum += tempScore(c, temp)
@@ -512,7 +502,8 @@ func simulate(c Crop, r Request, sow time.Time) Season {
 		}
 	}
 
-	lightF := light(c, r, &s, n, sunMJ, sunHours, slopeF, dayLo, dayHi, dimmest, sow, note)
+	sums.n = n
+	lightF := light(c, r, &s, sums, sow, note)
 
 	seasonF := 1.0
 	if slices.Contains(c.Seasons, s.Season) {
@@ -528,23 +519,43 @@ func simulate(c Crop, r Request, sow time.Time) Season {
 	return s
 }
 
+// lightSums adds up a season's sun, day by day.
+type lightSums struct {
+	n                       float64 // days
+	sunMJ, sunHours, slopeF float64
+	dayLo, dayHi            float64
+	dimmest                 int // month index, -1 for none yet
+}
+
+func (l *lightSums) add(r Request, t time.Time) {
+	sm := r.sun[t.Month()-1]
+	l.sunMJ += sm.SlopeMJ
+	l.sunHours += sm.SunHours
+	l.slopeF += sm.SlopeFactor
+	if l.dimmest < 0 || sm.SlopeMJ < r.sun[l.dimmest].SlopeMJ {
+		l.dimmest = int(t.Month()) - 1
+	}
+	dl := sun.DayLength(r.Climate.Point.Lat, t.YearDay())
+	l.dayLo, l.dayHi = min(l.dayLo, dl), max(l.dayHi, dl)
+}
+
 // light scores a season's sun for c and notes what matters: a dull season
 // for a sun crop, strong sun for a shade crop, a slope that gains or loses
 // light, and the day length a crop's flowering follows. It fills s.Light
-// from the season's sums over n days.
-func light(c Crop, r Request, s *Season, n, sunMJ, sunHours, slopeF, dayLo, dayHi float64, dimmest int, sow time.Time,
-	note func(risk bool, id, format string, a ...any)) float64 {
+// from the season's sums.
+func light(c Crop, r Request, s *Season, l lightSums, sow time.Time, note func(risk bool, id, format string, a ...any)) float64 {
+	n, dayLo, dayHi, dimmest := l.n, l.dayLo, l.dayHi, l.dimmest
 	s.Light = LightBalance{Want: c.LightNeed(), SlopeFactor: 1}
 	if r.sun == nil {
 		return 1
 	}
 	s.Light.DayLengthH = Range{math.Round(dayLo*10) / 10, math.Round(dayHi*10) / 10}
-	s.Light.SlopeFactor = math.Round(slopeF/n*100) / 100
+	s.Light.SlopeFactor = math.Round(l.slopeF/n*100) / 100
 	f := 1.0
 	if r.Climate.HasSun() {
-		mean := sunMJ / n
+		mean := l.sunMJ / n
 		s.Light.SunMJ = math.Round(mean*10) / 10
-		s.Light.SunHours = math.Round(sunHours/n*10) / 10
+		s.Light.SunHours = math.Round(l.sunHours/n*10) / 10
 		s.Light.DimmestMonth = time.Month(dimmest + 1).String()
 		s.Light.DimmestMJ = r.sun[dimmest].SlopeMJ
 		switch c.LightNeed() {

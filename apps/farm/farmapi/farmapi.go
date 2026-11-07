@@ -28,6 +28,7 @@
 //	GET    /api/soils                  the soil library
 //	GET    /api/crops                  the crop library
 //	GET    /api/farms/{id}/climate     the climate normals at the farm
+//	GET    /api/farms/{id}/sun         the sun at the farm month by month (day length, sun hours, noon sun, slope)
 //	PUT    /api/farms/{id}/profile     set the farm's land and water profile
 //	POST   /api/farms/{id}/recommend   what to plant and when (planner.Ask)
 //	POST   /api/farms/{id}/layout      cut the farm into strips {"parts": [...]}
@@ -159,6 +160,7 @@ func New(svc *farm.Service, opts ...Option) http.Handler {
 	mux.HandleFunc("GET /api/soils", a.planning(a.soils))
 	mux.HandleFunc("GET /api/crops", a.planning(a.crops))
 	mux.HandleFunc("GET /api/farms/{id}/climate", a.planning(a.climate))
+	mux.HandleFunc("GET /api/farms/{id}/sun", a.planning(a.sun))
 	mux.HandleFunc("PUT /api/farms/{id}/profile", a.planning(a.profile))
 	mux.HandleFunc("POST /api/farms/{id}/recommend", a.planning(a.recommend))
 	mux.HandleFunc("POST /api/farms/{id}/layout", a.planning(a.layout))
@@ -522,6 +524,15 @@ func (a *api) climate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, c)
+}
+
+func (a *api) sun(w http.ResponseWriter, r *http.Request) {
+	rep, err := a.planner.Sun(r.Context(), r.PathValue("id"))
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rep)
 }
 
 func (a *api) profile(w http.ResponseWriter, r *http.Request) {

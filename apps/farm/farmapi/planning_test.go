@@ -48,6 +48,14 @@ func TestPlanningRoutes(t *testing.T) {
 	if code := call(t, srv, "GET", "/api/farms/"+id+"/climate", "", &cl); code != 200 || cl.RainMM() == 0 {
 		t.Errorf("climate: %d, %v mm", code, cl.RainMM())
 	}
+	var sun planner.SunReport
+	if code := call(t, srv, "GET", "/api/farms/"+id+"/sun", "", &sun); code != 200 || sun.Months[6].FlatMJ == 0 || len(sun.Notes) == 0 {
+		t.Errorf("sun: %d, %+v", code, sun)
+	}
+	var cal planner.Recommendation
+	if code := call(t, srv, "POST", "/api/farms/"+id+"/recommend", `{"crops":["maize"],"calendar":true}`, &cal); code != 200 || len(cal.Options) != 1 || len(cal.Options[0].Calendar) < 52 {
+		t.Errorf("calendar: %d, %+v", code, cal.Options)
+	}
 	var f farm.Farm
 	if code := call(t, srv, "PUT", "/api/farms/"+id+"/profile", `{"soil":"black","water":[{"kind":"borewell","reliable":true}]}`, &f); code != 200 || f.Profile == nil {
 		t.Fatalf("profile: %d %+v", code, f.Profile)
@@ -93,6 +101,8 @@ func TestPlanningErrors(t *testing.T) {
 	}{
 		{"POST", "/api/farms/" + id + "/recommend", `{}`, http.StatusServiceUnavailable},
 		{"GET", "/api/farms/" + id + "/climate", ``, http.StatusServiceUnavailable},
+		{"GET", "/api/farms/" + id + "/sun", ``, http.StatusServiceUnavailable},
+		{"GET", "/api/farms/farm_missing/sun", ``, http.StatusNotFound},
 		{"POST", "/api/farms/" + id + "/recommend", `{"around":"soon"}`, http.StatusBadRequest},
 		{"PUT", "/api/farms/" + id + "/profile", `{"soil":"moon_dust"}`, http.StatusBadRequest},
 		{"PUT", "/api/farms/" + id + "/profile", `{"colour":"red"}`, http.StatusBadRequest},

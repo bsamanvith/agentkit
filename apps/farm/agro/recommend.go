@@ -572,7 +572,7 @@ func light(c Crop, r Request, s *Season, n, sunMJ, sunHours, slopeF, dayLo, dayH
 		}
 	}
 	if sf := s.Light.SlopeFactor; r.Slope.TiltDeg > 0 && math.Abs(sf-1) >= slopeNote {
-		facing := geo.Compass(r.Slope.AspectDeg)
+		facing := geo.CompassWords(r.Slope.AspectDeg)
 		if sf < 1 {
 			note(true, "sun.slope", "The plot's slope faces %s: it gets about %.0f%% less sun than flat ground over this season.", facing, (1-sf)*100)
 		} else {

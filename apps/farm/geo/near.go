@@ -26,6 +26,14 @@ func Compass(bearing float64) string {
 	return compassPoints[int(math.Floor((b+22.5)/45))%8]
 }
 
+// CompassWords names a bearing as the nearest of the eight points of the
+// compass in words: "north", "north-east", and so on.
+func CompassWords(bearing float64) string {
+	return compassWords[int(math.Floor((math.Mod(math.Mod(bearing, 360)+360, 360)+22.5)/45))%8]
+}
+
+var compassWords = [8]string{"north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"}
+
 // Offset returns the point d metres from p along a bearing (degrees from
 // north).
 func Offset(p Point, bearing, d float64) Point {

@@ -41,6 +41,11 @@ func TestBearingAndCompass(t *testing.T) {
 			t.Errorf("Compass(%v) = %s, want %s", b, got, want)
 		}
 	}
+	for b, want := range map[float64]string{0: "north", 46: "north-east", 180: "south", -90: "west", 337.6: "north"} {
+		if got := geo.CompassWords(b); got != want {
+			t.Errorf("CompassWords(%v) = %s, want %s", b, got, want)
+		}
+	}
 	if geo.Bearing(p, p) != 0 {
 		t.Error("Bearing of a point to itself is not 0")
 	}

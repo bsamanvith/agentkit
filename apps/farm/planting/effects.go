@@ -302,14 +302,17 @@ func monthRuns(ms []int) string {
 		for j+1 < len(ms) && ms[j+1] == ms[j]+1 {
 			j++
 		}
-		if j == i {
+		switch j - i {
+		case 0:
 			parts = append(parts, time.Month(ms[i]).String())
-		} else {
+		case 1:
+			parts = append(parts, time.Month(ms[i]).String(), time.Month(ms[j]).String())
+		default:
 			parts = append(parts, time.Month(ms[i]).String()+" to "+time.Month(ms[j]).String())
 		}
 		i = j + 1
 	}
-	return "shaded " + strings.Join(parts, ", ")
+	return "shaded " + andList(parts)
 }
 
 func inCasters(cs [][2][]xy, q xy) bool {
@@ -657,4 +660,12 @@ func (l *layout) layoutTakes() {
 			}
 		}
 	}
+}
+
+// andList joins words as "a, b and c".
+func andList(ws []string) string {
+	if len(ws) < 2 {
+		return strings.Join(ws, "")
+	}
+	return strings.Join(ws[:len(ws)-1], ", ") + " and " + ws[len(ws)-1]
 }

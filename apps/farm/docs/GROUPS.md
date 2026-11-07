@@ -38,7 +38,7 @@ in the farmer's words with its number.
 
 | Kind | How | Ids |
 |---|---|---|
-| Shade | The sun hour by hour from 9 to 3 on the shortest day (December in the north, June in the south). A point is shaded when, for 4 of the 7 hours, a taller plant group's piece lies between it and the sun within its shadow's reach (height ÷ tan(sun's altitude)). Heights are of grown plants (`height_m` in the crop library). | `shade` |
+| Shade | The sun hour by hour from 9 to 3 on a representative day of each month the shorter crop stands in the field (its seasons' months; all twelve for a perennial); the worst month counts and is named ([SUN.md](SUN.md)). A point is shaded when, for 4 of the 7 hours, a taller plant group's piece lies between it and the sun within its shadow's reach (height ÷ tan(sun's altitude)). Heights are of grown plants (`height_m` in the crop library). A crop that bears part shade (turmeric, ginger, cocoa) gets a note, not a warning. | `shade` |
 | Edges | Share of a piece within 5 m of the plot's edge; pieces too narrow for three rows or under 20 m². | `edge.most`, `edge.some`, `piece.narrow`, `piece.small` |
 | Spacing | A tree group's placed trees against the open ground's ideal count. | `trees.fit`, `trees.none` |
 | Water | Crops with very different water needs in one group; the thirstiest group's distance to the pond or water on the map. | `water.mixed`, `water.far`, `water.near` |

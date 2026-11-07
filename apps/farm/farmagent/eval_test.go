@@ -175,6 +175,24 @@ func scenarios() []scenario {
 			},
 		},
 		{
+			name:  "the noon sun and day length",
+			ask:   "Where is the noon sun over my plot 'Paddy by the drain' in June and in December, and how long are the days then? Which side should tall crops go on?",
+			tools: [][]string{{farmagent.GetSunTool}},
+			says:  []*regexp.Regexp{re(`(?i)north`), re(`(?i)south`), re(`\b1[123]([.,]\d)?\s?(h|hours|hrs)`)},
+		},
+		{
+			name:  "compare crops by month",
+			ask:   "Compare rice, maize and chickpea on my plot 'Paddy by the drain': in which months is each best sown?",
+			tools: [][]string{{farmagent.CompareCropsTool, farmagent.RecommendCropsTool}},
+			says:  []*regexp.Regexp{re(`(?i)rice`), re(`(?i)chickpea`), re(`(?i)(june|july|october|november|december)`)},
+		},
+		{
+			name:  "cocoa in the open sun",
+			ask:   "Can I grow cocoa out in the open on 'Paddy by the drain'? What would it need?",
+			tools: [][]string{{farmagent.RecommendCropsTool, farmagent.CompareCropsTool, farmagent.GetCropTool}},
+			says:  []*regexp.Regexp{re(`(?i)shade`), re(`(?i)(coconut|arecanut|areca|shade net|trees)`)},
+		},
+		{
 			name:  "border trees from the handbook",
 			ask:   "Which trees make a good border on a paddy farm in coastal Andhra, and how far apart should I plant them? Use the handbook.",
 			tools: [][]string{bookTools},

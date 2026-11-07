@@ -1,6 +1,7 @@
 package agro
 
 import (
+	"cmp"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -109,7 +110,35 @@ type Crop struct {
 	HeightM float64 `json:"height_m"`
 	// Intercrops are crops it is known to grow well with.
 	Intercrops []string `json:"intercrops,omitempty"`
+	// Light is how much sun it wants: LightFull (the default), LightPart
+	// (does well in part shade, as under trees) or LightShade (needs shade
+	// in the Indian sun).
+	Light string `json:"light,omitempty"`
+	// DayLength is how day length sets its flowering: DayShort (flowers
+	// as days shorten), DayLong (as they lengthen; onion bulbs) or
+	// DayNeutral (the default).
+	DayLength string `json:"day_length,omitempty"`
 }
+
+// How much sun a crop wants.
+const (
+	LightFull  = "full"
+	LightPart  = "part"
+	LightShade = "shade"
+)
+
+// How day length sets a crop's flowering.
+const (
+	DayNeutral = "neutral"
+	DayShort   = "short"
+	DayLong    = "long"
+)
+
+// LightNeed returns c.Light, LightFull when not given.
+func (c Crop) LightNeed() string { return cmp.Or(c.Light, LightFull) }
+
+// DayHabit returns c.DayLength, DayNeutral when not given.
+func (c Crop) DayHabit() string { return cmp.Or(c.DayLength, DayNeutral) }
 
 // Tree reports whether the crop is a tree or tree-like perennial grown at
 // wide spacing (2 m or more between rows): planted as trees, not sown.
@@ -232,6 +261,12 @@ func (l *Library) check() error {
 			if !slices.Contains([]string{TolerateWaterlogging, TolerateFrost, TolerateDrought, TolerateSalinity}, t) {
 				bad("crop %s: tolerance %q", c.ID, t)
 			}
+		}
+		if c.Light != "" && !slices.Contains([]string{LightFull, LightPart, LightShade}, c.Light) {
+			bad("crop %s: light %q", c.ID, c.Light)
+		}
+		if c.DayLength != "" && !slices.Contains([]string{DayNeutral, DayShort, DayLong}, c.DayLength) {
+			bad("crop %s: day_length %q", c.ID, c.DayLength)
 		}
 		for _, s := range c.Seasons {
 			if !slices.Contains([]string{Kharif, Rabi, Zaid}, s) {

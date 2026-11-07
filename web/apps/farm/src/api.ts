@@ -1,5 +1,6 @@
 import type {
   AssistantReply,
+  Climate,
   Config,
   Crop,
   Design,
@@ -19,6 +20,7 @@ import type {
   ResearchProvider,
   Soil,
   Survey,
+  SunReport,
   Want,
 } from "./types";
 
@@ -72,8 +74,12 @@ export const api = {
   soils: async () => (await call<{ soils: Soil[] }>("GET", "/api/soils")).soils,
   crops: async () => (await call<{ crops: Crop[] }>("GET", "/api/crops")).crops,
   setProfile: (id: string, p: Profile) => call<Farm>("PUT", `/api/farms/${encodeURIComponent(id)}/profile`, p),
-  recommend: (id: string, ask: { around?: string; crops?: string[]; limit?: number }) =>
-    call<Recommendation>("POST", `/api/farms/${encodeURIComponent(id)}/recommend`, ask),
+  climate: (id: string) => call<Climate>("GET", `/api/farms/${encodeURIComponent(id)}/climate`),
+  sun: (id: string) => call<SunReport>("GET", `/api/farms/${encodeURIComponent(id)}/sun`),
+  recommend: (
+    id: string,
+    ask: { around?: string; spread?: number; crops?: string[]; limit?: number; calendar?: boolean },
+  ) => call<Recommendation>("POST", `/api/farms/${encodeURIComponent(id)}/recommend`, ask),
   layout: (id: string, parts: Part[]) =>
     call<{ plan: Plan; report: PlanReport }>("POST", `/api/farms/${encodeURIComponent(id)}/layout`, { parts }),
   savePlan: (id: string, plan: Plan) => call<Farm>("PUT", `/api/farms/${encodeURIComponent(id)}/plan`, plan),

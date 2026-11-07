@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"time"
 
 	"github.com/bsamanvith/agentkit/apps/farm/agro"
 	"github.com/bsamanvith/agentkit/apps/farm/planner"
@@ -21,6 +23,8 @@ const (
 	SuggestLayoutTool  = "suggest_layout"
 	CheckPlanTool      = "check_plan"
 	SavePlanTool       = "save_plan"
+	GetSunTool         = "get_sun"
+	CompareCropsTool   = "compare_crops"
 )
 
 type soilCard struct {
@@ -42,6 +46,37 @@ type cropCard struct {
 	Days    agro.Range        `json:"days"`
 	Seasons []string          `json:"seasons"`
 	Analog  bool              `json:"climate_analog,omitempty"`
+	// Light and DayLength: how much sun it wants, and how day length
+	// sets its flowering.
+	Light     string `json:"light"`
+	DayLength string `json:"day_length"`
+}
+
+type compareIn struct {
+	Farm  string   `json:"farm" jsonschema:"the farm's id, from list_farms"`
+	Crops []string `json:"crops" jsonschema:"one to eight crop ids, from list_crops"`
+}
+
+// cropMonths is one crop's year at a farm, sowing month by sowing month.
+type cropMonths struct {
+	Crop      string   `json:"crop"`
+	Name      string   `json:"name"`
+	Seasons   []string `json:"seasons"`
+	Light     string   `json:"light"`
+	DayLength string   `json:"day_length"`
+	// ByMonth is the best score of a sowing in each of Months, 0 to 100.
+	ByMonth []int `json:"by_month"`
+	// Best is its best sowing over the year, with why.
+	Best agro.Season `json:"best"`
+}
+
+type compareOut struct {
+	Farm  string `json:"farm"`
+	Today string `json:"today"`
+	// Months are the next twelve sowing months, as YYYY-MM.
+	Months []string     `json:"months"`
+	Crops  []cropMonths `json:"crops"`
+	Notes  []agro.Note  `json:"notes,omitempty"`
 }
 
 type kindIn struct {
@@ -104,8 +139,8 @@ type planOut struct {
 var write = tool.WithMetadata(tool.Metadata{Kind: tool.KindWrite, Risk: tool.RiskLow})
 
 // PlanningTools returns the crop planning tools over p: list_soils,
-// list_crops, get_crop, get_climate, recommend_crops, suggest_layout and
-// check_plan, which read, and set_profile and save_plan, which save what
+// list_crops, get_crop, get_climate, get_sun, compare_crops,
+// recommend_crops, suggest_layout and check_plan, which read, and set_profile and save_plan, which save what
 // the farmer decided.
 func PlanningTools(p *planner.Planner) ([]tool.Tool, error) {
 	lib := p.Library()
@@ -130,7 +165,7 @@ func PlanningTools(p *planner.Planner) ([]tool.Tool, error) {
 				out := []cropCard{}
 				for _, c := range lib.Crops() {
 					if in.Kind == "" || c.Kind == in.Kind {
-						out = append(out, cropCard{c.ID, c.Name, c.Names, c.Kind, c.Days, c.Seasons, c.ClimateAnalog})
+						out = append(out, cropCard{c.ID, c.Name, c.Names, c.Kind, c.Days, c.Seasons, c.ClimateAnalog, c.LightNeed(), c.DayHabit()})
 					}
 				}
 				return map[string][]cropCard{"crops": out}, nil
@@ -144,6 +179,23 @@ func PlanningTools(p *planner.Planner) ([]tool.Tool, error) {
 					return climateOut{}, err
 				}
 				return climateOut{Today: p.Today().Format(agro.DateLayout), Climate: c, RainMM: c.RainMM()}, nil
+			}, read)),
+		add(tool.Func(GetSunTool, "Get the sun at a farm month by month: day length, hours of bright sun, the noon sun's height and side (north or south of the plot), the angle its rays strike the ground at, the sunlight on the plot's slope (from its survey) against flat ground, the share cloud takes, and notes on what that means for crops. Use it for questions about sunlight, shade, slope, row direction or the seasons.",
+			func(ctx context.Context, in farmIn) (planner.SunReport, error) { return p.Sun(ctx, in.Farm) }, read)),
+		add(tool.Func(CompareCropsTool, "Compare crops at a farm through the year: for each crop the score (0 to 100) of sowing it in each of the next twelve months, its usual seasons, how much sun it wants and its day-length habit, and its best sowing with reasons and risks. Use it when the farmer researches what to grow when, or wants crops side by side.",
+			func(ctx context.Context, in compareIn) (compareOut, error) {
+				if len(in.Crops) == 0 || len(in.Crops) > 8 {
+					return compareOut{}, &tool.Error{Tool: CompareCropsTool, Kind: tool.ErrInvalidInput, Err: fmt.Errorf("give one to eight crops, not %d", len(in.Crops))}
+				}
+				r, err := p.Recommend(ctx, in.Farm, planner.Ask{Crops: in.Crops, Calendar: true})
+				if err != nil {
+					return compareOut{}, err
+				}
+				// In the order asked, for a side-by-side.
+				slices.SortStableFunc(r.Options, func(a, b agro.Option) int {
+					return slices.Index(in.Crops, a.Crop) - slices.Index(in.Crops, b.Crop)
+				})
+				return compare(r, lib), nil
 			}, read)),
 		add(tool.Func(SetProfileTool, "Save what the farmer told you about a farm's land and water: soil id (from list_soils), measured pH, water sources (canal, river, tank, borewell, open_well, farm_pond, each reliable or not; none for rainfed), drip, and the previous crop. Replaces the whole profile: include what was there before.",
 			func(ctx context.Context, in profileIn) (agro.Profile, error) {
@@ -210,4 +262,32 @@ func PlanningTools(p *planner.Planner) ([]tool.Tool, error) {
 		return nil, err
 	}
 	return tools, nil
+}
+
+// compare folds each option's weekly calendar into the best score of a
+// sowing in each of the twelve months from today's.
+func compare(r planner.Recommendation, lib *agro.Library) compareOut {
+	out := compareOut{Farm: r.Farm, Today: r.Today, Notes: r.Notes, Crops: []cropMonths{}}
+	idx := map[string]int{}
+	if today, err := time.Parse(agro.DateLayout, r.Today); err == nil {
+		first := time.Date(today.Year(), today.Month(), 1, 0, 0, 0, 0, time.UTC)
+		for i := range 12 {
+			label := first.AddDate(0, i, 0).Format("2006-01")
+			idx[label] = i
+			out.Months = append(out.Months, label)
+		}
+	}
+	for _, o := range r.Options {
+		cm := cropMonths{Crop: o.Crop, Name: o.Name, ByMonth: make([]int, 12), Best: o.Season}
+		if c, err := lib.Crop(o.Crop); err == nil {
+			cm.Seasons, cm.Light, cm.DayLength = c.Seasons, c.LightNeed(), c.DayHabit()
+		}
+		for _, s := range o.Calendar {
+			if i, ok := idx[s.Sow[:7]]; ok {
+				cm.ByMonth[i] = max(cm.ByMonth[i], s.Score)
+			}
+		}
+		out.Crops = append(out.Crops, cm)
+	}
+	return out
 }

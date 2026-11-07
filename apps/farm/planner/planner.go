@@ -11,6 +11,7 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/agro"
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
 	"github.com/bsamanvith/agentkit/apps/farm/geo"
+	"github.com/bsamanvith/agentkit/apps/farm/sun"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 )
 
@@ -111,6 +112,8 @@ type Ask struct {
 	Crops []string `json:"crops,omitempty"`
 	// Limit caps the options (0: all).
 	Limit int `json:"limit,omitempty"`
+	// Calendar asks for every sowing date's score in each option.
+	Calendar bool `json:"calendar,omitempty"`
 }
 
 // Recommendation is the recommender's answer for a farm.
@@ -119,6 +122,9 @@ type Recommendation struct {
 	Soil    *agro.Soil    `json:"soil,omitempty"`
 	Profile *agro.Profile `json:"profile,omitempty"`
 	Climate agro.Climate  `json:"climate"`
+	// Slope is how the plot's ground lies, from its survey; nil when flat
+	// or not surveyed.
+	Slope *sun.Slope `json:"slope,omitempty"`
 	agro.Result
 }
 
@@ -129,7 +135,10 @@ func (p *Planner) Recommend(ctx context.Context, id string, ask Ask) (Recommenda
 	if err != nil {
 		return Recommendation{}, err
 	}
-	r := agro.Request{Today: p.Today(), Spread: ask.Spread, Crops: ask.Crops}
+	r := agro.Request{Today: p.Today(), Spread: ask.Spread, Crops: ask.Crops, Calendar: ask.Calendar}
+	if sl := SlopeOf(f); sl != nil {
+		r.Slope = *sl
+	}
 	if ask.Around != "" {
 		if r.Around, err = time.Parse(agro.DateLayout, ask.Around); err != nil {
 			return Recommendation{}, fmt.Errorf("%w: around %q: want YYYY-MM-DD", agro.ErrInvalid, ask.Around)
@@ -141,7 +150,7 @@ func (p *Planner) Recommend(ctx context.Context, id string, ask Ask) (Recommenda
 	if r.Climate, err = p.climateAt(ctx, f); err != nil {
 		return Recommendation{}, err
 	}
-	out := Recommendation{Farm: f.ID, Profile: f.Profile, Climate: r.Climate}
+	out := Recommendation{Farm: f.ID, Profile: f.Profile, Climate: r.Climate, Slope: SlopeOf(f)}
 	if f.Profile != nil {
 		r.Profile = *f.Profile
 		if s, err := p.lib.Soil(f.Profile.Soil); err == nil {

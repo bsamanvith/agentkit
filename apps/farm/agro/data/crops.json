@@ -1,5 +1,5 @@
 {
- "source": "Starter values: temperature and water ranges follow FAO ECOCROP where it has the crop, seasons and spacing follow ICAR and state university packages of practice for India. Temperatures are monthly means in °C; water is the crop's whole-season need in mm (perennials: per year); days run from sowing or planting to (first) harvest. Review before relying on them. Heights are a grown crop's usual height in metres (a tree's at maturity), for shade.",
+ "source": "Starter values: temperature and water ranges follow FAO ECOCROP where it has the crop, seasons and spacing follow ICAR and state university packages of practice for India. Temperatures are monthly means in °C; water is the crop's whole-season need in mm (perennials: per year); days run from sowing or planting to (first) harvest. Review before relying on them. Heights are a grown crop's usual height in metres (a tree's at maturity), for shade. Light (full sun, part shade or shade) and day length (short-day, long-day or neutral flowering) follow the same packages of practice and standard crop physiology texts; most Indian varieties of short- and long-day crops are bred to be less sensitive.",
  "crops": [
   {
    "id": "rice",
@@ -54,7 +54,9 @@
    "climate_analog": false,
    "tall": false,
    "height_m": 1.0,
-   "intercrops": []
+   "intercrops": [],
+   "light": "full",
+   "day_length": "short"
   },
   {
    "id": "wheat",
@@ -111,7 +113,9 @@
    "height_m": 0.9,
    "intercrops": [
     "mustard"
-   ]
+   ],
+   "light": "full",
+   "day_length": "long"
   },
   {
    "id": "maize",
@@ -171,7 +175,9 @@
     "black_gram",
     "pigeon_pea",
     "turmeric"
-   ]
+   ],
+   "light": "full",
+   "day_length": "neutral"
   },
   {
    "id": "sorghum",
@@ -229,7 +235,9 @@
    "intercrops": [
     "pigeon_pea",
     "green_gram"
-   ]
+   ],
+   "light": "full",
+   "day_length": "short"
   },
   {
    "id": "pearl_millet",
@@ -286,7 +294,9 @@
    "intercrops": [
     "green_gram",
     "pigeon_pea"
-   ]
+   ],
+   "light": "full",
+   "day_length": "neutral"
   },
   {
    "id": "finger_millet",
@@ -341,7 +351,9 @@
    "height_m": 0.9,
    "intercrops": [
     "pigeon_pea"
-   ]
+   ],
+   "light": "full",
+   "day_length": "neutral"
   },
   {
    "id": "foxtail_millet",
@@ -395,7 +407,9 @@
    "height_m": 1.0,
    "intercrops": [
     "pigeon_pea"
-   ]
+   ],
+   "light": "full",
+   "day_length": "neutral"
   },
   {
    "id": "chickpea",
@@ -452,7 +466,9 @@
    "height_m": 0.5,
    "intercrops": [
     "mustard"
-   ]
+   ],
+   "light": "full",
+   "day_length": "long"
   },
   {
    "id": "pigeon_pea",
@@ -518,7 +534,9 @@
     "soybean",
     "pearl_millet",
     "sunflower"
-   ]
+   ],
+   "light": "full",
+   "day_length": "short"
   },
   {
    "id": "green_gram",
@@ -582,7 +600,9 @@
     "mango",
     "guava",
     "moringa"
-   ]
+   ],
+   "light": "full",
+   "day_length": "neutral"
   },
   {
    "id": "black_gram",
@@ -641,7 +661,9 @@
     "mango",
     "guava",
     "moringa"
-   ]
+   ],
+   "light": "full",
+   "day_length": "neutral"
   },
   {
    "id": "groundnut",
@@ -698,7 +720,9 @@
     "pigeon_pea",
     "sunflower",
     "mango"
-   ]
+   ],
+   "light": "full",
+   "day_length": "neutral"
   },
   {
    "id": "soybean",
@@ -754,7 +778,9 @@
    "intercrops": [
     "pigeon_pea",
     "maize"
-   ]
+   ],
+   "light": "full",
+   "day_length": "short"
   },
   {
    "id": "mustard",
@@ -812,7 +838,9 @@
    "intercrops": [
     "chickpea",
     "wheat"
-   ]
+   ],
+   "light": "full",
+   "day_length": "long"
   },
   {
    "id": "sunflower",
@@ -871,7 +899,9 @@
    "intercrops": [
     "groundnut",
     "pigeon_pea"
-   ]
+   ],
+   "light": "full",
+   "day_length": "neutral"
   },
   {
    "id": "sesame",
@@ -927,7 +957,9 @@
    "height_m": 1.2,
    "intercrops": [
     "green_gram"
-   ]
+   ],
+   "light": "full",
+   "day_length": "short"
   },
   {
    "id": "cotton",
@@ -985,7 +1017,9 @@
     "green_gram",
     "black_gram",
     "pigeon_pea"
-   ]
+   ],
+   "light": "full",
+   "day_length": "neutral"
   },
   {
    "id": "sugarcane",
@@ -1041,7 +1075,9 @@
     "green_gram",
     "black_gram",
     "onion"
-   ]
+   ],
+   "light": "full",
+   "day_length": "neutral"
   },
   {
    "id": "turmeric",
@@ -1094,7 +1130,9 @@
     "maize",
     "chilli",
     "coconut"
-   ]
+   ],
+   "light": "part",
+   "day_length": "neutral"
   },
   {
    "id": "chilli",
@@ -1151,7 +1189,9 @@
     "onion",
     "turmeric",
     "mango"
-   ]
+   ],
+   "light": "full",
+   "day_length": "neutral"
   },
   {
    "id": "tomato",
@@ -1206,7 +1246,9 @@
    "height_m": 1.0,
    "intercrops": [
     "onion"
-   ]
+   ],
+   "light": "full",
+   "day_length": "neutral"
   },
   {
    "id": "onion",
@@ -1262,7 +1304,9 @@
     "chilli",
     "tomato",
     "sugarcane"
-   ]
+   ],
+   "light": "full",
+   "day_length": "long"
   },
   {
    "id": "brinjal",
@@ -1314,7 +1358,9 @@
    "climate_analog": false,
    "tall": false,
    "height_m": 1.0,
-   "intercrops": []
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
   },
   {
    "id": "okra",
@@ -1365,7 +1411,9 @@
    "climate_analog": false,
    "tall": false,
    "height_m": 1.5,
-   "intercrops": []
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
   },
   {
    "id": "potato",
@@ -1417,7 +1465,9 @@
    "climate_analog": false,
    "tall": false,
    "height_m": 0.6,
-   "intercrops": []
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
   },
   {
    "id": "sweet_potato",
@@ -1471,7 +1521,9 @@
    "climate_analog": false,
    "tall": false,
    "height_m": 0.4,
-   "intercrops": []
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
   },
   {
    "id": "watermelon",
@@ -1523,7 +1575,9 @@
    "climate_analog": false,
    "tall": false,
    "height_m": 0.4,
-   "intercrops": []
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
   },
   {
    "id": "banana",
@@ -1577,7 +1631,9 @@
    "height_m": 4.0,
    "intercrops": [
     "coconut"
-   ]
+   ],
+   "light": "full",
+   "day_length": "neutral"
   },
   {
    "id": "mango",
@@ -1635,7 +1691,9 @@
     "black_gram",
     "groundnut",
     "chilli"
-   ]
+   ],
+   "light": "full",
+   "day_length": "neutral"
   },
   {
    "id": "papaya",
@@ -1686,7 +1744,9 @@
    "climate_analog": false,
    "tall": true,
    "height_m": 5.0,
-   "intercrops": []
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
   },
   {
    "id": "guava",
@@ -1745,7 +1805,9 @@
    "intercrops": [
     "green_gram",
     "black_gram"
-   ]
+   ],
+   "light": "full",
+   "day_length": "neutral"
   },
   {
    "id": "coconut",
@@ -1801,8 +1863,12 @@
    "height_m": 15.0,
    "intercrops": [
     "banana",
-    "turmeric"
-   ]
+    "turmeric",
+    "ginger",
+    "cocoa"
+   ],
+   "light": "full",
+   "day_length": "neutral"
   },
   {
    "id": "moringa",
@@ -1859,7 +1925,9 @@
    "intercrops": [
     "green_gram",
     "black_gram"
-   ]
+   ],
+   "light": "full",
+   "day_length": "neutral"
   },
   {
    "id": "dragon_fruit",
@@ -1912,7 +1980,9 @@
    "climate_analog": true,
    "tall": false,
    "height_m": 2.0,
-   "intercrops": []
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
   },
   {
    "id": "avocado",
@@ -1962,7 +2032,9 @@
    "climate_analog": true,
    "tall": true,
    "height_m": 10.0,
-   "intercrops": []
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
   },
   {
    "id": "quinoa",
@@ -2017,7 +2089,9 @@
    "climate_analog": true,
    "tall": false,
    "height_m": 1.5,
-   "intercrops": []
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
   },
   {
    "id": "chia",
@@ -2069,7 +2143,119 @@
    "climate_analog": true,
    "tall": false,
    "height_m": 1.2,
-   "intercrops": []
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
+  },
+  {
+   "id": "ginger",
+   "name": "Ginger",
+   "names": {
+    "hi": "अदरक",
+    "te": "అల్లం"
+   },
+   "family": "Zingiberaceae",
+   "kind": "spice",
+   "perennial": false,
+   "days": [
+    210,
+    270
+   ],
+   "temp_opt": [
+    19,
+    28
+   ],
+   "temp_abs": [
+    13,
+    35
+   ],
+   "water_mm": [
+    1300,
+    2500
+   ],
+   "ph": [
+    5.0,
+    7.0
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [],
+   "row_cm": 30,
+   "plant_cm": 25,
+   "seasons": [
+    "kharif"
+   ],
+   "grown_in": [
+    "India",
+    "Nigeria",
+    "China"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "height_m": 0.9,
+   "intercrops": [
+    "coconut"
+   ],
+   "light": "part",
+   "day_length": "neutral"
+  },
+  {
+   "id": "cocoa",
+   "name": "Cocoa",
+   "names": {
+    "hi": "कोको",
+    "te": "కోకో"
+   },
+   "family": "Malvaceae",
+   "kind": "cash",
+   "perennial": true,
+   "days": [
+    1095,
+    1460
+   ],
+   "temp_opt": [
+    22,
+    30
+   ],
+   "temp_abs": [
+    15,
+    35
+   ],
+   "water_mm": [
+    1500,
+    2500
+   ],
+   "ph": [
+    5.0,
+    7.5
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [],
+   "row_cm": 300,
+   "plant_cm": 300,
+   "seasons": [
+    "kharif"
+   ],
+   "grown_in": [
+    "Côte d'Ivoire",
+    "Ghana",
+    "India"
+   ],
+   "climate_analog": false,
+   "tall": true,
+   "height_m": 6.0,
+   "intercrops": [
+    "coconut"
+   ],
+   "light": "shade",
+   "day_length": "neutral"
   }
  ]
 }

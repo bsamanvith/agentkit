@@ -6,11 +6,13 @@ import (
 	"math"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/bsamanvith/agentkit/apps/farm/agro"
 	"github.com/bsamanvith/agentkit/apps/farm/geo"
 	"github.com/bsamanvith/agentkit/apps/farm/land"
 	"github.com/bsamanvith/agentkit/apps/farm/osm"
+	"github.com/bsamanvith/agentkit/apps/farm/sun"
 )
 
 // The effects' thresholds: starter values.
@@ -42,10 +44,6 @@ const (
 	// downwind.
 	WindbreakH = 10
 )
-
-// shadeTolerant crops bear part shade, or are better for it in the Indian
-// summer.
-var shadeTolerant = []string{"turmeric", "ginger", "black_pepper", "coffee", "cocoa", "pineapple", "colocasia"}
 
 // waterKinds are the map features a farm draws water from.
 var waterKinds = []osm.Kind{osm.Canal, osm.River, osm.Stream, osm.Drain, osm.Water, osm.Well}
@@ -126,31 +124,44 @@ func (l *layout) effects(res *Result) {
 	res.Effects = append(res.Effects, l.effs...)
 }
 
-// sun is the sun's direction at an hour of the shortest day at latitude
-// lat: east, north and up, as a unit vector. The shortest day is the
-// December solstice north of the equator, the June one south of it.
-func sun(lat float64, hour float64) (e, n, u float64) {
-	φ := rad(lat)
-	δ := rad(-23.44)
-	if lat < 0 {
-		δ = -δ
+// seasonMonths are the months (1 to 12) a crop sown in an Indian season
+// stands in the field: kharif June to October, rabi November to March,
+// zaid March to May.
+var seasonMonths = map[string][]int{
+	agro.Kharif: {6, 7, 8, 9, 10},
+	agro.Rabi:   {11, 12, 1, 2, 3},
+	agro.Zaid:   {3, 4, 5},
+}
+
+// monthsOf returns the months a crop stands in the field, in calendar
+// order: all of them for a perennial or a crop of no season.
+func monthsOf(c agro.Crop) []int {
+	var ms []int
+	for _, s := range c.Seasons {
+		ms = append(ms, seasonMonths[s]...)
 	}
-	h := rad(15 * (hour - 12))
-	e = -math.Cos(δ) * math.Sin(h)
-	n = math.Sin(δ)*math.Cos(φ) - math.Cos(δ)*math.Cos(h)*math.Sin(φ)
-	u = math.Sin(δ)*math.Sin(φ) + math.Cos(δ)*math.Cos(h)*math.Cos(φ)
-	return e, n, u
+	if c.Perennial || len(ms) == 0 {
+		return []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}
+	}
+	slices.Sort(ms)
+	return slices.Compact(ms)
 }
 
 // shade finds, for each pair of a taller and a shorter group in a plot,
 // the shorter one's ground in the taller one's shadow for ShadeHours or
-// more of the shortest day: a spot is shaded at an hour when the line
-// from it towards the sun passes over the taller plants within the length
-// of their shadow over the shorter crop.
+// more of a day, month by month through the months the shorter crop
+// stands in the field: a spot is shaded at an hour when the line from it
+// towards the sun passes over the taller plants within the length of their
+// shadow over the shorter crop. The worst month counts; inside the
+// tropics the noon sun is north of the plot for part of the year, so
+// shade can fall either way.
 func (l *layout) shade(res *Result) {
 	type pair struct{ tall, short int }
-	shaded := map[pair]float64{}
-	sides := map[pair]xy{} // where in the shorter group's pieces the shade falls
+	type month struct {
+		area float64
+		side xy // where in the shorter group's pieces the shade falls
+	}
+	byMonth := map[pair]*[13]month{}
 	for pi := range l.plots {
 		lat := l.plots[pi].Ring[0].Lat
 		for t, tg := range l.groups {
@@ -168,72 +179,85 @@ func (l *layout) shade(res *Result) {
 					continue
 				}
 				rise := tg.height - sg.height
-				for _, pc := range l.pieces {
-					if pc.plot != pi || pc.group != s {
-						continue
-					}
-					for _, p := range pc.samples {
-						hours := 0
-						for hour := 9.0; hour <= 15; hour++ {
-							e, n, u := sun(lat, hour)
-							if u < 0.05 {
-								continue
-							}
-							reach := math.Min(rise*math.Hypot(e, n)/u, 100)
-							dir := xy{e, n}.scale(1 / math.Hypot(e, n))
-							for _, f := range []float64{0.15, 0.35, 0.55, 0.75, 1} {
-								q := p.add(dir.scale(reach * f))
-								if inCasters(casters, q) {
-									hours++
-									break
-								}
-							}
+				k := pair{t, s}
+				if byMonth[k] == nil {
+					byMonth[k] = &[13]month{}
+				}
+				for _, m := range monthsOf(sg.main()) {
+					doy := sun.MonthDays[m-1]
+					for _, pc := range l.pieces {
+						if pc.plot != pi || pc.group != s {
+							continue
 						}
-						if hours >= ShadeHours {
-							k := pair{t, s}
-							shaded[k] += pc.cell
-							c := centroid(l.planes[pi].ring(pc.Ring))
-							sides[k] = sides[k].add(p.sub(c).scale(pc.cell))
+						c := centroid(l.planes[pi].ring(pc.Ring))
+						for _, p := range pc.samples {
+							if shadedHours(casters, p, lat, doy, rise) >= ShadeHours {
+								byMonth[k][m].area += pc.cell
+								byMonth[k][m].side = byMonth[k][m].side.add(p.sub(c).scale(pc.cell))
+							}
 						}
 					}
 				}
 			}
 		}
 	}
-	keys := make([]pair, 0, len(shaded))
-	for k := range shaded {
-		keys = append(keys, k)
+	type found struct {
+		pair
+		worst  int // month
+		area   float64
+		months []int // months past ShadeWarnShare
 	}
-	slices.SortFunc(keys, func(a, b pair) int { return cmp.Compare(shaded[b], shaded[a]) })
-	for _, k := range keys {
-		a := shaded[k]
-		res.Plants[k.short].ShadedM2 = round1(res.Plants[k.short].ShadedM2 + a)
-		tg, sg := l.groups[k.tall], l.groups[k.short]
+	var all []found
+	for k, ms := range byMonth {
+		f := found{pair: k}
 		whole := res.Plants[k.short].AreaM2
+		for m := 1; m <= 12; m++ {
+			if ms[m].area > f.area {
+				f.worst, f.area = m, ms[m].area
+			}
+			if whole > 0 && ms[m].area/whole > ShadeWarnShare {
+				f.months = append(f.months, m)
+			}
+		}
+		if f.worst > 0 {
+			all = append(all, f)
+		}
+	}
+	slices.SortFunc(all, func(a, b found) int {
+		return cmp.Or(cmp.Compare(b.area, a.area), cmp.Compare(a.tall, b.tall), cmp.Compare(a.short, b.short))
+	})
+	for _, f := range all {
+		a := f.area
+		res.Plants[f.short].ShadedM2 = round1(res.Plants[f.short].ShadedM2 + a)
+		if res.Plants[f.short].ShadeMonth == "" {
+			res.Plants[f.short].ShadeMonth = time.Month(f.worst).String()
+		}
+		tg, sg := l.groups[f.tall], l.groups[f.short]
+		whole := res.Plants[f.short].AreaM2
 		if whole <= 0 || a < 1 {
 			continue
 		}
 		share := a / whole
 		side := ""
-		if v := sides[k]; v.len() > 0 {
+		if v := byMonth[f.pair][f.worst].side; v.len() > 0 {
 			side = " mostly on its " + land.Words(geo.Compass(math.Mod(math.Atan2(v.x, v.y)*180/math.Pi+360, 360))) + " side,"
 		}
 		sev := Info
 		if share > ShadeWarnShare {
 			sev = Warning
 		}
-		hemi := "December"
-		if l.plots[0].Ring[0].Lat < 0 {
-			hemi = "June"
+		when := "in " + time.Month(f.worst).String() + ", the worst month while it is in the field"
+		if len(f.months) > 1 {
+			when += " (" + monthRuns(f.months) + ")"
 		}
-		msg := fmt.Sprintf("The shade of %s (%.0f m tall) covers about %.0f m² of %s (%.0f%%),%s for more than half the day (9 to 3) in %s, when the sun is lowest.",
-			tg.Name, tg.height, a, sg.Name, share*100, side, hemi)
+		msg := fmt.Sprintf("The shade of %s (%.0f m tall) covers about %.0f m² of %s (%.0f%%),%s for more than half the day (9 to 3) %s.",
+			tg.Name, tg.height, a, sg.Name, share*100, side, when)
 		if tg.trees {
 			msg += " That is where the trees' crowns close; young trees cast less."
 		}
-		if slices.Contains(shadeTolerant, sg.main().ID) {
+		if sg.main().LightNeed() != agro.LightFull {
 			sev = Info
-			msg += fmt.Sprintf(" %s bears part shade.", sg.main().Name)
+			msg += fmt.Sprintf(" %s bears part shade, and is better for it in the hot months.", sg.main().Name)
 		} else if sev == Warning {
 			fix := "move the shorter crop to the sunny side, or keep a gap of a shadow's length"
 			if l.d.Rows != NorthSouth {
@@ -243,6 +267,52 @@ func (l *layout) shade(res *Result) {
 		}
 		l.add(Effect{ID: "shade", Kind: KindShade, Severity: sev, Plant: sg.ID, Other: tg.ID, Message: msg, AreaM2: round1(a)})
 	}
+}
+
+// shadedHours counts the hours from 9 to 3 (solar time) on day doy that
+// point p is in the shadow of casters standing rise metres above it.
+func shadedHours(casters [][2][]xy, p xy, lat float64, doy int, rise float64) int {
+	hours := 0
+	for hour := 9.0; hour <= 15; hour++ {
+		e, n, u := sun.Vector(lat, doy, hour)
+		if u < 0.05 {
+			continue
+		}
+		flat := math.Hypot(e, n)
+		if flat < 1e-9 {
+			continue // the sun overhead casts no shadow aside
+		}
+		reach := math.Min(rise*flat/u, 100)
+		dir := xy{e, n}.scale(1 / flat)
+		for _, f := range []float64{0.15, 0.35, 0.55, 0.75, 1} {
+			if inCasters(casters, p.add(dir.scale(reach*f))) {
+				hours++
+				break
+			}
+		}
+	}
+	return hours
+}
+
+// monthRuns names months as runs: "June to August, November".
+func monthRuns(ms []int) string {
+	var parts []string
+	for i := 0; i < len(ms); {
+		j := i
+		for j+1 < len(ms) && ms[j+1] == ms[j]+1 {
+			j++
+		}
+		switch j - i {
+		case 0:
+			parts = append(parts, time.Month(ms[i]).String())
+		case 1:
+			parts = append(parts, time.Month(ms[i]).String(), time.Month(ms[j]).String())
+		default:
+			parts = append(parts, time.Month(ms[i]).String()+" to "+time.Month(ms[j]).String())
+		}
+		i = j + 1
+	}
+	return "shaded " + andList(parts)
 }
 
 func inCasters(cs [][2][]xy, q xy) bool {
@@ -590,4 +660,12 @@ func (l *layout) layoutTakes() {
 			}
 		}
 	}
+}
+
+// andList joins words as "a, b and c".
+func andList(ws []string) string {
+	if len(ws) < 2 {
+		return strings.Join(ws, "")
+	}
+	return strings.Join(ws[:len(ws)-1], ", ") + " and " + ws[len(ws)-1]
 }

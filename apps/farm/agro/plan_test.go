@@ -93,6 +93,7 @@ func TestCheckPlanFindsMistakes(t *testing.T) {
 		}
 		return z
 	}
+	rabi := func(z *agro.Zone) { z.Sow = "2026-11-01" }
 	tests := map[string]struct {
 		plan    agro.Plan
 		profile *agro.Profile
@@ -125,9 +126,12 @@ func TestCheckPlanFindsMistakes(t *testing.T) {
 			plan: agro.Plan{Zones: []agro.Zone{zone("pigeon_pea", south)}}, profile: &agro.Profile{Soil: "black", PreviousCrop: "sorghum"},
 			want: "rotation.pulse",
 		},
-		// In the northern hemisphere tall maize to the south of short
-		// groundnut shades it.
-		"shade": {plan: agro.Plan{Zones: []agro.Zone{zone("maize", south), zone("groundnut", north)}}, want: "shade.tall"},
+		// In a Deccan rabi tall maize to the south of short groundnut
+		// shades it: the winter's shadows fall north.
+		"shade": {
+			plan: agro.Plan{Zones: []agro.Zone{zone("maize", south, rabi), zone("groundnut", north, rabi)}},
+			want: "shade.tall",
+		},
 		"two seasons": {
 			plan: agro.Plan{Zones: []agro.Zone{zone("chickpea", south, func(z *agro.Zone) { z.Sow = "2026-11-01" }), zone("groundnut", north)}},
 			zone: -1, want: "plan.seasons",
@@ -176,6 +180,40 @@ func TestShadeOnlyFromTheSunnySide(t *testing.T) {
 	}}
 	if slices.Contains(checkIDs(agro.CheckPlan(l, p, plan, today), 0), "shade.tall") {
 		t.Error("tall maize north of groundnut flagged for shade")
+	}
+}
+
+// Inside the tropics the noon sun is north of the plot for part of the
+// year: at Hyderabad a short kharif crop is shaded from the north, a rabi
+// one from the south.
+func TestShadeFollowsTheSeason(t *testing.T) {
+	t.Parallel()
+	l := library(t)
+	p := plot(t, l)
+	south := box(17.07, 78.20, 200, 50)
+	north := box(17.07+50/110_600.0, 78.20, 200, 50)
+	for _, tc := range []struct {
+		sow, tallAt string
+		shaded      bool
+	}{
+		{"2027-06-01", "north", true},
+		{"2027-06-01", "south", false},
+		{"2026-11-01", "north", false},
+		{"2026-11-01", "south", true},
+	} {
+		tall, short := south, north
+		if tc.tallAt == "north" {
+			tall, short = north, south
+		}
+		plan := agro.Plan{Zones: []agro.Zone{
+			{Crop: "maize", Ring: tall, Sow: tc.sow},
+			{Crop: "green_gram", Ring: short, Sow: tc.sow},
+		}}
+		rep := agro.CheckPlan(l, p, plan, today)
+		got := slices.Contains(checkIDs(rep, 0), "shade.tall")
+		if got != tc.shaded {
+			t.Errorf("sown %s, maize to the %s of green gram: shaded %v, want %v", tc.sow, tc.tallAt, got, tc.shaded)
+		}
 	}
 }
 

@@ -207,3 +207,29 @@ func SunHours(lat float64, doy int, flat float64) float64 {
 	}
 	return n * max(0, min(1, (flat/ra-angA)/angB))
 }
+
+// ShadowNorth is where the shadows of things on flat ground fall, north
+// or south, over the days days from day of the year from at latitude lat:
+// the shadow's reach to the north per metre of height, weighted by how
+// strong the sun is at each hour (negative: to the south). Hours are
+// sampled from 7:00 to 17:00, a day a week.
+func ShadowNorth(lat float64, from, days int) float64 {
+	var north, weight float64
+	for d := 0; d < max(days, 1); d += 7 {
+		doy := (from+d-1)%365 + 1
+		for hour := 7.0; hour <= 17; hour++ {
+			_, n, u := Vector(lat, doy, hour)
+			if u <= 0.05 {
+				continue
+			}
+			// The shadow points away from the sun: its north reach is
+			// -n/u per metre, weighted by the light u.
+			north += -n
+			weight += u
+		}
+	}
+	if weight == 0 {
+		return 0
+	}
+	return north / weight
+}

@@ -254,8 +254,9 @@ func TestByPlot(t *testing.T) {
 	}
 }
 
-// Tall sugarcane on the south of short groundnut shades it at midday in
-// December; north-south strips side by side shade far less.
+// Tall sugarcane on the south of short groundnut shades it in the winter
+// months, when the sun is low in the south; north-south strips side by
+// side shade far less.
 func TestShade(t *testing.T) {
 	t.Parallel()
 	ew := distribute(t, plot(field), planting.Distribution{Plants: []planting.PlantGroup{block("cane", 1, "sugarcane"), block("nut", 1, "groundnut")}})
@@ -290,6 +291,32 @@ func TestShade(t *testing.T) {
 	// A crop no shorter is never shaded.
 	if got := measure(t, ew, "cane").ShadedM2; got != 0 {
 		t.Errorf("cane shaded %.0f m²", got)
+	}
+}
+
+// At Hyderabad, inside the tropics, the June sun is north of overhead: a
+// kharif crop south of a block of mango is shaded in the monsoon months,
+// a rabi crop there never is. A part-shade crop's shade is only a note.
+func TestShadeFollowsTheSeason(t *testing.T) {
+	t.Parallel()
+	southOfPalms := func(crop string) planting.Result {
+		return distribute(t, plot(field), planting.Distribution{Plants: []planting.PlantGroup{block("low", 1, crop), block("palms", 1, "coconut")}})
+	}
+	soy := southOfPalms("soybean")
+	m := measure(t, soy, "low")
+	if m.ShadedM2 < 200 || (m.ShadeMonth != "June" && m.ShadeMonth != "July") {
+		t.Errorf("kharif soybean south of coconut: shaded %.0f m² in %q, want some in June or July", m.ShadedM2, m.ShadeMonth)
+	}
+	if s := effects(soy, "shade"); len(s) != 1 || !strings.Contains(s[0].Message, m.ShadeMonth) {
+		t.Errorf("shade effects %+v", s)
+	}
+	if got := measure(t, southOfPalms("chickpea"), "low"); got.ShadedM2 != 0 || got.ShadeMonth != "" {
+		t.Errorf("rabi chickpea south of coconut shaded %.0f m² in %q, want none", got.ShadedM2, got.ShadeMonth)
+	}
+	tur := distribute(t, plot(field), planting.Distribution{Plants: []planting.PlantGroup{block("cane", 1, "sugarcane"), block("low", 1, "turmeric")}})
+	s := effects(tur, "shade")
+	if len(s) != 1 || s[0].Severity != planting.Info || !strings.Contains(s[0].Message, "part shade") {
+		t.Errorf("turmeric in cane's shade: %+v", s)
 	}
 }
 

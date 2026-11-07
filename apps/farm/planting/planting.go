@@ -13,7 +13,9 @@
 // arrangement on the plot's shape, as [Effect]s:
 //
 //   - shade: where taller plants keep shorter ones in shade for half the
-//     day or more, sampled hour by hour on the shortest day of the year;
+//     day or more, sampled hour by hour on a day of each month the shorter
+//     crop stands in the field (inside the tropics the noon sun is in the
+//     north for part of the year);
 //   - edges: how much of a group lies near the boundary, where neighbours'
 //     pests, stray cattle and tree roots reach, and pieces too narrow for
 //     rows or too small to be worth it;
@@ -346,8 +348,9 @@ type Measure struct {
 	// EdgeShare is the share of it within EdgeM of a plot's boundary.
 	EdgeShare float64 `json:"edge_share"`
 	// ShadedM2 is how much of it is in taller plants' shade for half the
-	// day or more on the shortest day.
-	ShadedM2 float64 `json:"shaded_m2"`
+	// day or more in the worst month it stands in the field, ShadeMonth.
+	ShadedM2   float64 `json:"shaded_m2"`
+	ShadeMonth string  `json:"shade_month,omitempty"`
 	// NarrowestM is its narrowest piece, across the rows.
 	NarrowestM float64 `json:"narrowest_m"`
 }

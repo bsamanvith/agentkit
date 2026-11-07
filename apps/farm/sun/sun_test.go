@@ -160,3 +160,25 @@ func TestYear(t *testing.T) {
 		t.Errorf("no light: %+v", none[0])
 	}
 }
+
+// North of the Tropic of Cancer shadows fall north all year; at 10° N the
+// monsoon's shadows fall south, the winter's north; south of the equator
+// the other way round.
+func TestShadowNorth(t *testing.T) {
+	if s := ShadowNorth(28.6, 152, 120); s < 0.1 {
+		t.Errorf("Delhi, June to September: %.2f, want north", s)
+	}
+	if s := ShadowNorth(10, 152, 60); s > -0.1 {
+		t.Errorf("Kochi, June and July: %.2f, want south", s)
+	}
+	if s := ShadowNorth(10, 305, 120); s < 0.3 {
+		t.Errorf("Kochi, November to February: %.2f, want well north", s)
+	}
+	if s := ShadowNorth(-20, 152, 90); s > -0.3 {
+		t.Errorf("20° S in June: %.2f, want well south", s)
+	}
+	// A whole year at the equator: about even.
+	if s := ShadowNorth(0, 1, 365); s < -0.05 || s > 0.05 {
+		t.Errorf("equator, a year: %.2f, want about 0", s)
+	}
+}

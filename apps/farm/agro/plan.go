@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/bsamanvith/agentkit/apps/farm/geo"
+	"github.com/bsamanvith/agentkit/apps/farm/sun"
 )
 
 // Plan is a season's plan for one plot: which crop goes where, and when.
@@ -318,11 +319,22 @@ func CheckPlan(l *Library, plot Plot, plan Plan, today time.Time) PlanReport {
 			if cj.Tall {
 				tall, short, ti, si = cj, ci, j, i
 			}
-			// The midday sun is to the south in the northern hemisphere,
-			// and to the north in the southern.
+			// Where the shadows fall over the shorter crop's season: north
+			// of the tropics always away from the equator, inside them
+			// towards it for part of the year.
 			tc, sc := geo.Centroid(plan.Zones[ti].Ring), geo.Centroid(plan.Zones[si].Ring)
-			if sunward(tc, sc) {
-				add("shade.tall", Warning, ti, si, "Zone %d's %s is tall and on the sunny side of zone %d's %s: it will shade it; swap them.", ti+1, tall.Name, si+1, short.Name)
+			sow, err := time.Parse(DateLayout, plan.Zones[si].Sow)
+			from, days := 1, 365
+			if err == nil && !short.Perennial {
+				from, days = sow.YearDay(), int(short.Days.Mid())
+			}
+			north := sun.ShadowNorth((tc.Lat+sc.Lat)/2, from, days)
+			if shadowFallsOn(tc, sc, north) {
+				way := "north"
+				if north < 0 {
+					way = "south"
+				}
+				add("shade.tall", Warning, ti, si, "Zone %d's %s is tall, and through zone %d's season its shadow falls to the %s, onto that zone's %s: swap them.", ti+1, tall.Name, si+1, way, short.Name)
 			}
 		}
 	}
@@ -347,17 +359,23 @@ func status(checks []PlanCheck) PlanStatus {
 	return s
 }
 
-// sunward reports whether a is on the midday sun's side of b, by more than
-// a few metres.
-func sunward(a, b geo.Point) bool {
+// shadowSide is how far, per metre of height, shadows must lean north or
+// south over a season to count: below it they mostly fall east and west,
+// and on both sides alike.
+const shadowSide = 0.15
+
+// shadowFallsOn reports whether the shadow of tall things at a falls on b,
+// more than a few metres away, when shadows reach north per metre of
+// height (south when negative).
+func shadowFallsOn(a, b geo.Point, north float64) bool {
 	dist := geo.Distance(geo.Point{Lat: a.Lat, Lng: b.Lng}, b)
-	if dist < 5 {
+	if dist < 5 || math.Abs(north) < shadowSide {
 		return false
 	}
-	if (a.Lat+b.Lat)/2 >= 0 {
-		return a.Lat < b.Lat
+	if north > 0 {
+		return b.Lat > a.Lat
 	}
-	return a.Lat > b.Lat
+	return b.Lat < a.Lat
 }
 
 // touch reports whether two zones come within a few metres of each other:

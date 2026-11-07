@@ -48,8 +48,8 @@ Pure functions, no network:
 
   | Crop wants | Rule (season's mean light on the ground, MJ/m² a day) | Note |
   |---|---|---|
-  | Full sun | 1 from 15; falls to 0.8 at 9 and below | `sun.ok`, `sun.low` |
-  | Part shade | 1 from 10; 0.8 at 6 | `sun.part` |
+  | Full sun | 1 from 13.5 (15 less a 1.5 slack); below that from 0.97 down to 0.8 at 9 and below | `sun.ok`, `sun.low` |
+  | Part shade | 1 from 8.5; 0.8 at 6 | `sun.part` |
   | Shade | 0.7 above 17 in the open | `sun.strong`, `sun.shade` |
 
   A slope that changes the season's light by 7 % or more is noted

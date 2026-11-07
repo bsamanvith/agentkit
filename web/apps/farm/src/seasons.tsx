@@ -143,15 +143,21 @@ export function YearChart({ sun, climate }: { sun: SunReport; climate: Climate }
           </div>
         ))}
         <div className="flex items-center pr-2 text-xs font-medium">Sowing season</div>
-        {spans.map((s) => (
-          <div
-            key={`${s.season}${s.a}`}
-            className="mx-0.5 truncate rounded px-1.5 py-0.5 text-center text-xs font-medium text-white"
-            style={{ gridColumn: `${s.a + 1} / ${s.b + 2}`, background: seasonLooks[s.season]?.color ?? "#57534e" }}
-          >
-            {seasonLooks[s.season]?.label ?? s.season}
-          </div>
-        ))}
+        <div className="grid" style={{ gridColumn: "2 / 14", gridTemplateColumns: "repeat(12, minmax(0, 1fr))" }}>
+          {spans.map((s) => (
+            <div
+              key={`${s.season}${s.a}`}
+              className="mx-0.5 truncate rounded px-1.5 py-0.5 text-center text-xs font-medium text-white"
+              style={{
+                gridColumn: `${s.a} / ${s.b + 1}`,
+                gridRow: 1,
+                background: seasonLooks[s.season]?.color ?? "#57534e",
+              }}
+            >
+              {seasonLooks[s.season]?.label ?? s.season}
+            </div>
+          ))}
+        </div>
         {light &&
           row("Sunlight", sloped ? "MJ/m² a day, on the slope" : "MJ/m² a day", (m) => (
             <div
@@ -261,9 +267,9 @@ export function NoonSun({ sun }: { sun: SunReport }) {
         <line x1={10} y1={cy} x2={W - 10} y2={cy} stroke="currentColor" strokeOpacity="0.25" />
         <line
           x1={cx - dx}
-          y1={cy + dy}
+          y1={cy - dy}
           x2={cx + dx}
-          y2={cy - dy}
+          y2={cy + dy}
           stroke="#78350f"
           strokeWidth="5"
           strokeLinecap="round"

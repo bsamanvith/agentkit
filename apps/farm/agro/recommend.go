@@ -114,6 +114,9 @@ const (
 	// slopeNote is how far the slope's light must differ from flat
 	// ground's, as a share, to be worth a note.
 	slopeNote = 0.07
+	// lightSlack is how far below good, in MJ/m² a day, the light can be
+	// before it is a risk.
+	lightSlack = 1.5
 )
 
 // Season is one crop sown on one date at the plot, as the rules see it.
@@ -564,7 +567,8 @@ func light(c Crop, r Request, s *Season, l lightSums, sow time.Time, note func(r
 			if c.LightNeed() == LightPart {
 				good, poor = partSunGood, partSunPoor
 			}
-			if mean >= good {
+			// Within lightSlack of good the crop barely notices: no risk.
+			if mean >= good-lightSlack {
 				note(false, "sun.ok", "Sunny enough: about %.0f MJ/m² a day on the ground (%.1f hours of bright sun) through the season.", mean, s.Light.SunHours)
 			} else {
 				f = 0.8 + 0.2*clamp((mean-poor)/(good-poor))

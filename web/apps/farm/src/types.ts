@@ -143,6 +143,62 @@ export interface Crop {
   height_m: number;
   water_mm: Range;
   intercrops?: string[];
+  light?: Light;
+  day_length?: DayHabit;
+}
+
+/** How much sun a crop wants, and how day length sets its flowering. */
+export type Light = "full" | "part" | "shade";
+export type DayHabit = "neutral" | "short" | "long";
+
+/** A month's climate normals at a plot. */
+export interface ClimateMonth {
+  temp: number;
+  temp_max: number;
+  temp_min: number;
+  rain_mm: number;
+  humidity: number;
+  sun_mj?: number;
+  clear_sun_mj?: number;
+}
+
+export interface Climate {
+  point: Point;
+  months: ClimateMonth[];
+  source: string;
+}
+
+/** The sun at a plot over a typical day of one month. */
+export interface SunMonth {
+  month: number;
+  day_length_h: number;
+  sun_hours: number;
+  noon: { elevation: number; azimuth: number };
+  noon_incidence: number;
+  flat_mj: number;
+  clear_mj?: number;
+  slope_mj: number;
+  slope_factor: number;
+  cloud_loss: number;
+}
+
+export interface SunReport {
+  farm: string;
+  point: Point;
+  slope?: { tilt_deg: number; aspect_deg: number };
+  slope_note: string;
+  months: SunMonth[];
+  seasons: { season: string; from: number; to: number }[];
+  notes: string[];
+  source: string;
+  today: string;
+}
+
+/** One sowing date's score, for a calendar. */
+export interface Sowing {
+  sow: string;
+  score: number;
+  season: string;
 }
 
 export type WaterKind = "canal" | "river" | "tank" | "borewell" | "open_well" | "farm_pond";
@@ -183,6 +239,16 @@ export interface Option {
   season: string;
   score: number;
   water: { need_mm: number; rain_mm: number; irrigation_mm: number; gap_mm: number; short_mm: number };
+  light?: {
+    want: Light;
+    sun_mj: number;
+    sun_hours: number;
+    dimmest_month?: string;
+    dimmest_mj?: number;
+    slope_factor: number;
+    day_length_h: Range;
+  };
+  calendar?: Sowing[];
   reasons: Note[];
   risks: Note[];
   in_range?: boolean;

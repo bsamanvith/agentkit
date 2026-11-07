@@ -13,6 +13,7 @@ import {
   Pencil,
   Plus,
   Sprout,
+  Sun as SunIcon,
   Trash2,
   Wheat,
   X,
@@ -33,6 +34,7 @@ const Editor = lazy(() => import("./editor").then((m) => ({ default: m.Editor })
 const FarmMap = lazy(() => import("./map").then((m) => ({ default: m.FarmMap })));
 const Planning = lazy(() => import("./planning").then((m) => ({ default: m.Planning })));
 const Land = lazy(() => import("./land").then((m) => ({ default: m.Land })));
+const Seasons = lazy(() => import("./seasons").then((m) => ({ default: m.Seasons })));
 const GroupPage = lazy(() => import("./groups").then((m) => ({ default: m.GroupPage })));
 const GroupForm = lazy(() => import("./groups").then((m) => ({ default: m.GroupForm })));
 const ResearchSettings = lazy(() => import("./research").then((m) => ({ default: m.ResearchSettings })));
@@ -579,7 +581,7 @@ function FarmCard({ farm: f, onOpen }: { farm: Farm; onOpen: () => void }) {
   );
 }
 
-type Tab = "map" | "land" | "plan";
+type Tab = "map" | "land" | "sun" | "plan";
 
 function FarmDetail({
   farm,
@@ -612,6 +614,7 @@ function FarmDetail({
   const tabs: { id: Tab; label: string; icon: ReactNode; on: boolean }[] = [
     { id: "map", label: "Map", icon: <MapIcon />, on: true },
     { id: "land", label: "Land and layout", icon: <Mountain />, on: surveyor },
+    { id: "sun", label: "Sun and seasons", icon: <SunIcon />, on: planner },
     { id: "plan", label: "Season plan", icon: <Sprout />, on: planner },
   ];
   return (
@@ -688,6 +691,7 @@ function FarmDetail({
         </div>
       )}
       {tab === "land" && <Land farm={farm} onFarm={onChanged} />}
+      {tab === "sun" && <Seasons farm={farm} />}
       <div className={tab === "map" ? "grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]" : "hidden"}>
         <FarmMap
           corners={farm.boundary.corners}

@@ -47,13 +47,17 @@ Start from the rules of thumb, then let the tool test them.
 Call `distribute_plants` with the distribution. Go through `effects`,
 warnings first, and explain each in the farmer's words with its number:
 
-- **Shade** (`shade`): sampled hour by hour, 9 to 3, on the shortest day
-  (December in India), when the sun is lowest. Taller plants on the sunny
-  side (south in India) shade the next strip north. North-south rows shade
-  their neighbours only in the early morning and late afternoon. A border
-  of tall trees shades its own width again or more on the north side.
-  Fixes: move the short crop to the sunny side, north-south rows, a gap of
-  a shadow's length, or a shade-bearing crop (turmeric) under the trees.
+- **Shade** (`shade`): sampled hour by hour, 9 to 3, on a day of each
+  month the shorter crop stands in the field (kharif June to October,
+  rabi November to March, zaid March to May, perennials all year); the
+  worst month counts and is named. In winter the sun is low in the south,
+  so taller plants shade the next strip north. Inside the tropics (most of
+  India) the summer and monsoon noon sun is north of overhead, so tall
+  trees shade the strip to their south a little in kharif. North-south
+  rows shade their neighbours only in the early morning and late
+  afternoon. Fixes: move the short crop to the sunny side for its season,
+  north-south rows, a gap of a shadow's length, or a crop that bears part
+  shade (turmeric, ginger) under the trees; the effect says so for them.
 - **Edges** (`edge.*`, `piece.*`): the land within 5 m of a boundary gets
   the neighbours' pests, stray cattle and tree roots. Narrow strips and
   thin plots are mostly edge. Pieces too narrow for three rows, or under

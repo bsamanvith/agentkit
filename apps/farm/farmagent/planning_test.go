@@ -61,8 +61,51 @@ func TestPlanningToolKinds(t *testing.T) {
 			t.Errorf("%s: kind %s risk %s, want %s low", d.Name, d.Kind, d.Risk, want)
 		}
 	}
-	if len(defs) != 9 {
-		t.Errorf("%d planning tools, want 9", len(defs))
+	if len(defs) != 11 {
+		t.Errorf("%d planning tools, want 11", len(defs))
+	}
+}
+
+// The sun and the year's sowing months, as the assistant sees them.
+func TestSunAndCompareTools(t *testing.T) {
+	t.Parallel()
+	reg := planningRegistry(t)
+	sun := invoke[struct {
+		Months [12]struct {
+			DayLengthH float64 `json:"day_length_h"`
+			Noon       struct{ Azimuth float64 }
+		}
+		Notes []string
+	}](t, reg, farmagent.GetSunTool, `{"farm":"farm_1"}`)
+	if sun.Months[5].Noon.Azimuth != 0 || sun.Months[11].DayLengthH > 11.2 || len(sun.Notes) < 3 {
+		t.Errorf("get_sun: %+v", sun)
+	}
+	cmp := invoke[struct {
+		Months []string
+		Crops  []struct {
+			Crop, Light string
+			ByMonth     []int `json:"by_month"`
+			Best        agro.Season
+		}
+	}](t, reg, farmagent.CompareCropsTool, `{"farm":"farm_1","crops":["wheat","cotton"]}`)
+	if len(cmp.Months) != 12 || cmp.Months[0] != "2026-10" || cmp.Months[11] != "2027-09" || len(cmp.Crops) != 2 {
+		t.Fatalf("compare_crops: months %v, %d crops", cmp.Months, len(cmp.Crops))
+	}
+	for _, c := range cmp.Crops {
+		best := slices.Max(c.ByMonth)
+		if best != c.Best.Score || c.Light != agro.LightFull {
+			t.Errorf("%s: months %v, best %d, light %s", c.Crop, c.ByMonth, c.Best.Score, c.Light)
+		}
+	}
+	// Wheat is a rabi crop: November beats June; cotton the other way.
+	wheat, cotton := cmp.Crops[0], cmp.Crops[1]
+	if wheat.Crop != "wheat" || wheat.ByMonth[1] <= wheat.ByMonth[8] || cotton.ByMonth[8] <= cotton.ByMonth[1] {
+		t.Errorf("wheat %v, cotton %v", wheat.ByMonth, cotton.ByMonth)
+	}
+	for _, bad := range []string{`{"farm":"farm_1","crops":[]}`, `{"farm":"farm_1","crops":["a","b","c","d","e","f","g","h","i"]}`} {
+		if _, err := reg.Invoke(context.Background(), farmagent.CompareCropsTool, json.RawMessage(bad)); !errors.Is(err, tool.ErrToolFailed) && !errors.Is(err, tool.ErrInvalidInput) {
+			t.Errorf("compare_crops %s: %v", bad, err)
+		}
 	}
 }
 
@@ -137,7 +180,7 @@ func TestAssistantWithPlanningSkillsAndHandbook(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(skills.Names(), []string{"check-plan", "distribute-plants", "plan-season", "research-products", "shape-farm", "survey-land"}) {
+	if !slices.Equal(skills.Names(), []string{"check-plan", "distribute-plants", "plan-season", "research-crops", "research-products", "shape-farm", "survey-land"}) {
 		t.Fatalf("skills %v", skills.Names())
 	}
 	model := llmtest.NewFake(t,

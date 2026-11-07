@@ -101,7 +101,7 @@ func (c *Client) Climate(ctx context.Context, p geo.Point) (agro.Climate, error)
 
 func (c *Client) fetch(ctx context.Context, p geo.Point) (agro.Climate, error) {
 	q := url.Values{}
-	q.Set("parameters", "T2M,T2M_MAX,T2M_MIN,PRECTOTCORR,RH2M")
+	q.Set("parameters", "T2M,T2M_MAX,T2M_MIN,PRECTOTCORR,RH2M,ALLSKY_SFC_SW_DWN,CLRSKY_SFC_SW_DWN")
 	q.Set("community", "AG")
 	q.Set("latitude", strconv.FormatFloat(p.Lat, 'f', 4, 64))
 	q.Set("longitude", strconv.FormatFloat(p.Lng, 'f', 4, 64))
@@ -157,6 +157,19 @@ func (c *Client) fetch(ctx context.Context, p geo.Point) (agro.Climate, error) {
 	}
 	if err := errors.Join(errs...); err != nil {
 		return agro.Climate{}, err
+	}
+	// Sunlight is a bonus: with a gap in it the climate goes without.
+	var sunErrs []error
+	for m := range 12 {
+		var err [2]error
+		cl.Months[m].SunMJ, err[0] = value("ALLSKY_SFC_SW_DWN", m)
+		cl.Months[m].ClearSunMJ, err[1] = value("CLRSKY_SFC_SW_DWN", m)
+		sunErrs = append(sunErrs, err[:]...)
+	}
+	if errors.Join(sunErrs...) != nil {
+		for m := range 12 {
+			cl.Months[m].SunMJ, cl.Months[m].ClearSunMJ = 0, 0
+		}
 	}
 	if err := cl.Check(); err != nil {
 		return agro.Climate{}, err

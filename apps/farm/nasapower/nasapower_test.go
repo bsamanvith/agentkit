@@ -70,6 +70,13 @@ func TestClimate(t *testing.T) {
 			t.Errorf("month %d: low %v, mean %v, high %v out of order", i+1, m.TempMin, m.Temp, m.TempMax)
 		}
 	}
+	// Sunlight: May is the brightest month, the monsoon's July is dull.
+	if got := cl.Months[4].SunMJ; got != 24.05 {
+		t.Errorf("May sunlight %v MJ/m², want 24.05", got)
+	}
+	if !cl.HasSun() || cl.Months[6].ClearSunMJ <= cl.Months[6].SunMJ {
+		t.Errorf("July sunlight %v of a clear sky's %v MJ/m²", cl.Months[6].SunMJ, cl.Months[6].ClearSunMJ)
+	}
 	if cl.Point != farooqnagar || cl.Source == "" {
 		t.Errorf("point %v, source %q", cl.Point, cl.Source)
 	}
@@ -118,6 +125,19 @@ func TestFailures(t *testing.T) {
 				t.Errorf("a failure was cached: %d requests", n.Load())
 			}
 		})
+	}
+}
+
+// A gap in the sunlight leaves it out; the rest of the climate stays.
+func TestSunlightIsOptional(t *testing.T) {
+	t.Parallel()
+	c, _ := server(t, http.StatusOK, strings.Replace(recorded(t), `"ALLSKY_SFC_SW_DWN":{"JAN":17.62`, `"ALLSKY_SFC_SW_DWN":{"JAN":-999.0`, 1))
+	cl, err := c.Climate(context.Background(), farooqnagar)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cl.HasSun() || cl.Months[3].ClearSunMJ != 0 || cl.Months[4].Temp != 32.63 {
+		t.Errorf("sunlight with a gap: %+v", cl.Months[3])
 	}
 }
 

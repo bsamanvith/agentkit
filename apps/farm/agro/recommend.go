@@ -7,6 +7,9 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/bsamanvith/agentkit/apps/farm/geo"
+	"github.com/bsamanvith/agentkit/apps/farm/sun"
 )
 
 // DateLayout is how dates are written: 2006-01-02.
@@ -78,6 +81,41 @@ type WaterBalance struct {
 	ShortMM float64 `json:"short_mm"`
 }
 
+// LightBalance is a season's sun on the plot.
+type LightBalance struct {
+	// Want is how much sun the crop wants: full, part or shade.
+	Want string `json:"want"`
+	// SunMJ is the mean sunlight a day brings to the plot's ground over
+	// the season (on its slope), in MJ/m², and SunHours its bright hours;
+	// both 0 when the climate has no sunlight.
+	SunMJ    float64 `json:"sun_mj"`
+	SunHours float64 `json:"sun_hours"`
+	// DimmestMonth is the season's month with the least sun, and
+	// DimmestMJ its light.
+	DimmestMonth string  `json:"dimmest_month,omitempty"`
+	DimmestMJ    float64 `json:"dimmest_mj,omitempty"`
+	// SlopeFactor is the slope's light over flat ground's, through the
+	// season (1 on flat ground).
+	SlopeFactor float64 `json:"slope_factor"`
+	// DayLengthH is the season's shortest and longest day, in hours.
+	DayLengthH Range `json:"day_length_h"`
+}
+
+// The light rules' starter values: a season's mean daily sunlight on the
+// ground, in MJ/m², from which a crop grows as well as the light lets it
+// (good) and below which it is clearly held back (poor); and the light
+// past which a shade crop scorches without cover.
+const (
+	fullSunGood  = 15.0
+	fullSunPoor  = 9.0
+	partSunGood  = 10.0
+	partSunPoor  = 6.0
+	shadeSunMost = 17.0
+	// slopeNote is how far the slope's light must differ from flat
+	// ground's, as a share, to be worth a note.
+	slopeNote = 0.07
+)
+
 // Season is one crop sown on one date at the plot, as the rules see it.
 type Season struct {
 	Sow     string       `json:"sow"`
@@ -85,8 +123,16 @@ type Season struct {
 	Season  string       `json:"season"` // kharif, rabi or zaid
 	Score   int          `json:"score"`  // 0 to 100
 	Water   WaterBalance `json:"water"`
+	Light   LightBalance `json:"light"`
 	Reasons []Note       `json:"reasons"`
 	Risks   []Note       `json:"risks"`
+}
+
+// Sowing is one sowing date's score, for a calendar.
+type Sowing struct {
+	Sow    string `json:"sow"`
+	Score  int    `json:"score"`
+	Season string `json:"season"`
 }
 
 // Option is one crop the recommender suggests, with when to sow it.
@@ -101,6 +147,9 @@ type Option struct {
 	Season
 	// InRange is true when the sowing is in the farmer's range.
 	InRange bool `json:"in_range,omitempty"`
+	// Calendar is every sowing date tried with its score, when the
+	// request asked for it.
+	Calendar []Sowing `json:"calendar,omitempty"`
 	// Window is the good window the sowing is in, if any; Next the first
 	// good window from today.
 	Window *Window `json:"window,omitempty"`
@@ -122,6 +171,12 @@ type Request struct {
 	Spread int
 	// Crops limits the options to these crop ids; empty for all.
 	Crops []string
+	// Slope is how the plot's ground lies; zero for flat.
+	Slope sun.Slope
+	// Calendar asks for every sowing date's score in each option.
+	Calendar bool
+
+	sun *[12]sun.Month // the slope's sun, month by month
 }
 
 // Result is the recommender's answer, best option first.
@@ -195,6 +250,14 @@ func Recommend(l *Library, r Request) (Result, error) {
 	if r.Profile.Rainfed() {
 		res.Notes = append(res.Notes, Note{"water.rainfed", "The plot is rainfed: crops are scored on rain alone."})
 	}
+	if err := r.Slope.Check(); err != nil {
+		return Result{}, fmt.Errorf("%w: %w", ErrInvalid, err)
+	}
+	year := r.Climate.Sun(r.Slope)
+	r.sun = &year
+	if !r.Climate.HasSun() {
+		res.Notes = append(res.Notes, Note{"sun.unknown", "The climate has no sunlight figures, so sunlight is not scored."})
+	}
 	for _, c := range crops {
 		seasons := make([]Season, len(dates))
 		for i, d := range dates {
@@ -202,6 +265,12 @@ func Recommend(l *Library, r Request) (Result, error) {
 		}
 		windows := windowsOf(dates, seasons)
 		o := Option{Crop: c.ID, Name: c.Name, Names: c.Names, Kind: c.Kind, Analog: c.ClimateAnalog}
+		if r.Calendar {
+			o.Calendar = make([]Sowing, len(dates))
+			for i := range dates {
+				o.Calendar[i] = Sowing{Sow: seasons[i].Sow, Score: seasons[i].Score, Season: seasons[i].Season}
+			}
+		}
 		if len(windows) > 0 {
 			o.Next = &windows[0]
 		}
@@ -304,8 +373,22 @@ func simulate(c Crop, r Request, sow time.Time) Season {
 	coldest, hottest := sow, sow
 	wettest, firstRain := 0.0, 0.0
 	irrigationPerMonth := r.Profile.IrrigationMM()
+	var sunMJ, sunHours, slopeF float64
+	dayLo, dayHi := math.Inf(1), math.Inf(-1)
+	dimmest := -1
 	for d := range length {
 		t := sow.AddDate(0, 0, d)
+		if r.sun != nil {
+			sm := r.sun[t.Month()-1]
+			sunMJ += sm.SlopeMJ
+			sunHours += sm.SunHours
+			slopeF += sm.SlopeFactor
+			if dimmest < 0 || sm.SlopeMJ < r.sun[dimmest].SlopeMJ {
+				dimmest = int(t.Month()) - 1
+			}
+			dl := sun.DayLength(r.Climate.Point.Lat, t.YearDay())
+			dayLo, dayHi = min(dayLo, dl), max(dayHi, dl)
+		}
 		temp := r.Climate.tempOn(t)
 		tempSum += tempScore(c, temp)
 		if temp < lo {
@@ -429,6 +512,8 @@ func simulate(c Crop, r Request, sow time.Time) Season {
 		}
 	}
 
+	lightF := light(c, r, &s, n, sunMJ, sunHours, slopeF, dayLo, dayHi, dimmest, sow, note)
+
 	seasonF := 1.0
 	if slices.Contains(c.Seasons, s.Season) {
 		note(false, "season.usual", "%s is a usual season for it in India.", titleCase(s.Season))
@@ -439,8 +524,74 @@ func simulate(c Crop, r Request, sow time.Time) Season {
 	if c.ClimateAnalog {
 		note(true, "analog", "New to India (grown in %s): the climate here matches, but there is little local experience, so try a small area first.", strings.Join(c.GrownIn, ", "))
 	}
-	s.Score = int(math.Round(100 * tempF * frostF * waterF * soilF * seasonF))
+	s.Score = int(math.Round(100 * tempF * frostF * waterF * soilF * lightF * seasonF))
 	return s
+}
+
+// light scores a season's sun for c and notes what matters: a dull season
+// for a sun crop, strong sun for a shade crop, a slope that gains or loses
+// light, and the day length a crop's flowering follows. It fills s.Light
+// from the season's sums over n days.
+func light(c Crop, r Request, s *Season, n, sunMJ, sunHours, slopeF, dayLo, dayHi float64, dimmest int, sow time.Time,
+	note func(risk bool, id, format string, a ...any)) float64 {
+	s.Light = LightBalance{Want: c.LightNeed(), SlopeFactor: 1}
+	if r.sun == nil {
+		return 1
+	}
+	s.Light.DayLengthH = Range{math.Round(dayLo*10) / 10, math.Round(dayHi*10) / 10}
+	s.Light.SlopeFactor = math.Round(slopeF/n*100) / 100
+	f := 1.0
+	if r.Climate.HasSun() {
+		mean := sunMJ / n
+		s.Light.SunMJ = math.Round(mean*10) / 10
+		s.Light.SunHours = math.Round(sunHours/n*10) / 10
+		s.Light.DimmestMonth = time.Month(dimmest + 1).String()
+		s.Light.DimmestMJ = r.sun[dimmest].SlopeMJ
+		switch c.LightNeed() {
+		case LightFull, LightPart:
+			good, poor := fullSunGood, fullSunPoor
+			if c.LightNeed() == LightPart {
+				good, poor = partSunGood, partSunPoor
+			}
+			if mean >= good {
+				note(false, "sun.ok", "Sunny enough: about %.0f MJ/m² a day on the ground (%.1f hours of bright sun) through the season.", mean, s.Light.SunHours)
+			} else {
+				f = 0.8 + 0.2*clamp((mean-poor)/(good-poor))
+				note(true, "sun.low", "A dull season for it: about %.0f MJ/m² a day (%.1f hours of bright sun), least in %s; it wants %.0f or more, so expect a smaller crop and more fungus.", mean, s.Light.SunHours, s.Light.DimmestMonth, good)
+			}
+			if c.LightNeed() == LightPart {
+				note(false, "sun.part", "It does well in part shade: it fits under or between trees.")
+			}
+		case LightShade:
+			if mean > shadeSunMost {
+				f = 0.7
+				note(true, "sun.strong", "Too much sun for it in the open (about %.0f MJ/m² a day): grow it under trees such as coconut or arecanut, or under a shade net.", mean)
+			} else {
+				note(false, "sun.shade", "A soft enough sun for it (about %.0f MJ/m² a day); it still grows best under some shade.", mean)
+			}
+		}
+	}
+	if sf := s.Light.SlopeFactor; r.Slope.TiltDeg > 0 && math.Abs(sf-1) >= slopeNote {
+		facing := geo.Compass(r.Slope.AspectDeg)
+		if sf < 1 {
+			note(true, "sun.slope", "The plot's slope faces %s: it gets about %.0f%% less sun than flat ground over this season.", facing, (1-sf)*100)
+		} else {
+			note(false, "sun.slope", "The plot's slope faces %s: it gets about %.0f%% more sun than flat ground over this season.", facing, (sf-1)*100)
+		}
+	}
+	lat := r.Climate.Point.Lat
+	shortening := sun.DayLength(lat, sow.YearDay()+7) < sun.DayLength(lat, sow.YearDay())
+	switch c.DayHabit() {
+	case DayShort:
+		if shortening && dayHi < 12 {
+			note(true, "day.short", "Days are already short and shortening at this sowing (%.1f to %.1f h): it is a short-day crop, so it flowers early and small; sow a variety bred for the late season.", dayLo, dayHi)
+		} else {
+			note(false, "day.short", "Days run %.1f to %.1f h; it is a short-day crop and flowers as they shorten, so sowing on time matters.", dayLo, dayHi)
+		}
+	case DayLong:
+		note(false, "day.long", "Days run %.1f to %.1f h; it responds to long days, so choose a variety bred for Indian day lengths.", dayLo, dayHi)
+	}
+	return f
 }
 
 // tempScore is how well a day's mean temperature suits c: 1 in its best

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/bsamanvith/agentkit/apps/farm/geo"
+	"github.com/bsamanvith/agentkit/apps/farm/sun"
 )
 
 // ErrNoClimate is a climate source that has nothing for a point, or is
@@ -25,6 +26,10 @@ type Month struct {
 	RainMM float64 `json:"rain_mm"`
 	// Humidity is the mean relative humidity, in percent.
 	Humidity float64 `json:"humidity"`
+	// SunMJ is the sunlight a day brings to flat ground, in MJ/m², and
+	// ClearSunMJ what it would under a clear sky: 0 when not known.
+	SunMJ      float64 `json:"sun_mj,omitempty"`
+	ClearSunMJ float64 `json:"clear_sun_mj,omitempty"`
 }
 
 // Climate is a place's climate normals: twelve months, January first.
@@ -33,6 +38,29 @@ type Climate struct {
 	Months [12]Month `json:"months"`
 	// Source names where the normals come from, and their years.
 	Source string `json:"source"`
+}
+
+// HasSun reports whether the normals include sunlight for every month.
+func (c Climate) HasSun() bool {
+	for _, m := range c.Months {
+		if m.SunMJ <= 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// Sun returns the sun at the climate's point on ground lying as s, month
+// by month: day length, sun hours, the noon sun and the light on the
+// slope (light left out when the normals have none).
+func (c Climate) Sun(s sun.Slope) [12]sun.Month {
+	var flat, clear [12]float64
+	if c.HasSun() {
+		for i, m := range c.Months {
+			flat[i], clear[i] = m.SunMJ, m.ClearSunMJ
+		}
+	}
+	return sun.Year(c.Point.Lat, flat, clear, s)
 }
 
 // RainMM returns the year's total rain.
@@ -55,6 +83,11 @@ func (c Climate) Check() error {
 		}
 		if math.IsNaN(m.RainMM) || m.RainMM < 0 || m.RainMM > 5000 {
 			return fmt.Errorf("%w: climate: %s rain %v mm", ErrInvalid, time.Month(i+1), m.RainMM)
+		}
+		for _, v := range []float64{m.SunMJ, m.ClearSunMJ} {
+			if math.IsNaN(v) || v < 0 || v > 45 {
+				return fmt.Errorf("%w: climate: %s sunlight %v MJ/m²", ErrInvalid, time.Month(i+1), v)
+			}
 		}
 	}
 	return nil

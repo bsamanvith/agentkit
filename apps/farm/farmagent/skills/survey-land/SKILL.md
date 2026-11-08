@@ -37,7 +37,7 @@ In the farmer's language, short, most useful first:
    possible water source, where excess water can go, or a water course
    running through the plot.
 4. **Slope**: which way the land falls and how much. When `flat` is true,
-   the elevation data cannot tell (90 m grid): ask the farmer where rain
+   the elevation data cannot tell (its grid is `resolution_m`, 30 or 90 m): ask the farmer where rain
    water stands.
 5. **Neighbours and hazards**: houses close by (spray drift, animals), a
    busy road (dust), an overhead power line (no tall trees under it), the

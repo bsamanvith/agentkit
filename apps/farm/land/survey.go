@@ -24,8 +24,8 @@ const (
 	MaxNearby = 60
 	// MaxDrawn is how many features a survey keeps to draw.
 	MaxDrawn = 500
-	// FlatM: a fall smaller than this is below what a 90 m elevation model
-	// can tell.
+	// FlatM: a fall smaller than this is below what a 30 or 90 m elevation
+	// model can tell.
 	FlatM = 2
 )
 

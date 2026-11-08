@@ -10,9 +10,11 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/bsamanvith/agentkit/apps/farm/automation"
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
 	"github.com/bsamanvith/agentkit/apps/farm/planner"
 	"github.com/bsamanvith/agentkit/apps/farm/surveyor"
+	"github.com/bsamanvith/agentkit/apps/farm/watch"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/knowledge"
 	"github.com/bsamanvith/agentkit/pkg/llm"
@@ -78,6 +80,8 @@ type setup struct {
 	about     string
 	skills    *skill.Catalog
 	harness   []harness.Option
+	watch     *watch.Watch
+	alerts    automation.Store
 }
 
 // WithPlanner gives the assistant the crop planning and plot group tools
@@ -117,7 +121,8 @@ var skillFiles embed.FS
 
 // Skills returns the assistant's built-in skills: plan-season,
 // check-plan, survey-land, shape-farm, distribute-plants,
-// research-products and research-crops.
+// research-products, research-crops, draw-crop-plan, manage-crop and
+// weather-check.
 func Skills() (*skill.Catalog, error) {
 	skills, err := skill.Load(skillFiles, "skills")
 	if err != nil {
@@ -162,6 +167,12 @@ func groups(svc *farm.Service, s setup) ([]group, error) {
 		}
 		farmSet.tools = append(farmSet.tools, more...)
 		farmSet.system += "\n" + GroupSystem
+		more, err = WatchTools(s.watch, s.planner, s.alerts)
+		if err != nil {
+			return nil, err
+		}
+		farmSet.tools = append(farmSet.tools, more...)
+		farmSet.system += "\n" + WatchSystem
 	}
 	out := []group{farmSet}
 	if s.surveyor != nil {

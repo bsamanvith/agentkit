@@ -20,6 +20,14 @@
 // app's settings and sealed in -vault (a SQLite file) with the key ring in
 // FARM_CREDENTIALS_KEY, or a key file made beside it.
 //
+// Each plot's weather comes from Open-Meteo's forecast, or MET Norway's
+// when Open-Meteo cannot answer (-weather lists the providers in order, or
+// is "off"). Automations (-automations, on by default) run in the process:
+// the weekly weather check, the heavy rain watch, the check of a new plan
+// and the week's crop work, with notices in the app's inbox; with a model,
+// also the assistant's skills (the weekly field brief, off until turned
+// on). They keep their state in the -db file.
+//
 // The assistant's tools are also an MCP server at /mcp/ (unless -mcp is
 // false): /mcp/farm (plots and planning), /mcp/farm-map (surveys, map
 // questions, farm designs), /mcp/farm-research and /mcp/farm-handbook, so
@@ -45,6 +53,8 @@ import (
 	"time"
 
 	"github.com/bsamanvith/agentkit/apps/farm/agro"
+	"github.com/bsamanvith/agentkit/apps/farm/automation"
+	autosqlite "github.com/bsamanvith/agentkit/apps/farm/automation/sqlite"
 	"github.com/bsamanvith/agentkit/apps/farm/elevation"
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
 	"github.com/bsamanvith/agentkit/apps/farm/farm/sqlite"
@@ -57,6 +67,8 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/planner"
 	"github.com/bsamanvith/agentkit/apps/farm/research"
 	"github.com/bsamanvith/agentkit/apps/farm/surveyor"
+	"github.com/bsamanvith/agentkit/apps/farm/watch"
+	"github.com/bsamanvith/agentkit/apps/farm/weather"
 	"github.com/bsamanvith/agentkit/apps/farm/webdist"
 	credsqlite "github.com/bsamanvith/agentkit/pkg/credentials/sqlite"
 	"github.com/bsamanvith/agentkit/pkg/llm"
@@ -78,9 +90,9 @@ const csp = "default-src 'self'; script-src 'self'; style-src 'self'; " +
 type config struct {
 	addr, db, country, geocoder, climate, model, modelID          string
 	overpass, osmAPI, elevation, elevationBackup, embedder, vault string
-	exaURL, parallelURL                                           string
-	mcp                                                           bool
-	embedRate                                                     int
+	exaURL, parallelURL, weather                                  string
+	mcp, automations                                              bool
+	embedRate, workers                                            int
 }
 
 // userAgent identifies the app to OpenStreetMap's servers, as their
@@ -106,6 +118,9 @@ func main() {
 	fs.StringVar(&c.exaURL, "exa-url", env("FARM_EXA_URL", ""), "Exa API base URL (default Exa's) ($FARM_EXA_URL)")
 	fs.StringVar(&c.parallelURL, "parallel-url", env("FARM_PARALLEL_URL", ""), "Parallel API base URL (default Parallel's) ($FARM_PARALLEL_URL)")
 	fs.IntVar(&c.embedRate, "embed-rate", envInt("FARM_EMBED_RATE", 90), "texts a minute sent to the embedder, 0 for no cap (Gemini's free tier allows 100) ($FARM_EMBED_RATE)")
+	fs.StringVar(&c.weather, "weather", env("FARM_WEATHER", "open-meteo,met-norway"), `forecast providers, first that answers: open-meteo and met-norway, each optionally =URL; or "off" ($FARM_WEATHER)`)
+	fs.BoolVar(&c.automations, "automations", env("FARM_AUTOMATIONS", "true") == "true", "run the automations: weather checks, crop work, skills ($FARM_AUTOMATIONS)")
+	fs.IntVar(&c.workers, "automation-workers", envInt("FARM_AUTOMATION_WORKERS", 4), "automation jobs run at once ($FARM_AUTOMATION_WORKERS)")
 	fs.BoolVar(&c.mcp, "mcp", env("FARM_MCP", "true") == "true", "serve the assistant's tools over MCP at /mcp/ ($FARM_MCP)")
 	_ = fs.Parse(os.Args[1:])
 
@@ -133,6 +148,14 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 	}
 	defer store.Close()
 
+	// The engine hears of each saved change to a farm (a new plan fires
+	// its weather check); it is set below, before the server starts.
+	var engine *automation.Engine
+	observe := farm.WithObserver(func(_ context.Context, e farm.Event) {
+		if engine != nil {
+			engine.Emit(e.Name, e.Farm)
+		}
+	})
 	vopts := []farm.VerifierOption{farm.WithCountry(c.country)}
 	if c.geocoder != "off" {
 		loc, err := nominatim.New("agentkit-farm/0.1 (+https://github.com/bsamanvith/agentkit)", nominatim.WithURL(c.geocoder))
@@ -141,7 +164,7 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 		}
 		vopts = append(vopts, farm.WithLocator(loc))
 	}
-	svc, err := farm.NewService(store, farm.NewVerifier(vopts...))
+	svc, err := farm.NewService(store, farm.NewVerifier(vopts...), observe)
 	if err != nil {
 		return err
 	}
@@ -245,6 +268,18 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 	if err != nil {
 		return err
 	}
+	forecast, err := buildWeather(c.weather, log)
+	if err != nil {
+		return err
+	}
+	watcher := watch.New(plan, forecast)
+	var astore *autosqlite.Store
+	if c.automations {
+		if astore, err = autosqlite.Open(ctx, c.db); err != nil {
+			return err
+		}
+		defer astore.Close()
+	}
 	// The MCP server serves these tools; the assistant also has its skills
 	// (an agent elsewhere brings its own).
 	toolOpts := []farmagent.Option{
@@ -252,11 +287,16 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 		farmagent.WithTools(webTools, research.System),
 		farmagent.WithKnowledge(book, handbook.Description),
 	}
+	var alerts automation.Store // a nil *autosqlite.Store is not a nil Store
+	if astore != nil {
+		alerts = astore
+	}
+	toolOpts = append(toolOpts, farmagent.WithWatch(watcher, alerts))
 	agentOpts := append(slices.Clone(toolOpts), farmagent.WithSkills(skills))
 
 	aopts := []farmapi.Option{
 		farmapi.WithCountry(c.country), farmapi.WithLogger(log), farmapi.WithPlanner(plan),
-		farmapi.WithSurveyor(survey), farmapi.WithResearch(webResearch),
+		farmapi.WithSurveyor(survey), farmapi.WithResearch(webResearch), farmapi.WithWatch(watcher),
 	}
 	model, provider, err := buildModel(c)
 	if err != nil {
@@ -268,6 +308,33 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 			return err
 		}
 		aopts = append(aopts, farmapi.WithAssistant(a))
+	}
+	if astore != nil {
+		eopts := append(watcher.Rules(), automation.WithLogger(log), automation.WithWorkers(c.workers))
+		if forecast != nil {
+			eopts = append(eopts, automation.WithWeather(forecast))
+		}
+		if model != nil {
+			runner, err := farmagent.NewSkillRunner(model, svc, agentOpts...)
+			if err != nil {
+				return err
+			}
+			eopts = append(eopts, automation.WithSkills(runner))
+		}
+		e, err := automation.New(astore, watcher, eopts...)
+		if err != nil {
+			return err
+		}
+		if err := e.Seed(ctx, watch.Builtins(forecast != nil, model != nil)); err != nil {
+			return err
+		}
+		engine = e
+		aopts = append(aopts, farmapi.WithAutomations(e))
+		go func() {
+			if err := e.Run(ctx); err != nil {
+				log.Error("farm: automations", "err", err)
+			}
+		}()
 	}
 
 	mux := http.NewServeMux()
@@ -293,7 +360,7 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 	}
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	log.Info("farm: serving", "url", "http://"+ln.Addr().String(), "db", c.db, "assistant", provider, "geocoder", c.geocoder,
-		"climate", c.climate, "overpass", c.overpass, "osm_api", c.osmAPI, "elevation", c.elevation, "elevation_backup", c.elevationBackup, "embedder", emb != nil, "mcp", c.mcp)
+		"climate", c.climate, "weather", c.weather, "automations", c.automations, "overpass", c.overpass, "osm_api", c.osmAPI, "elevation", c.elevation, "elevation_backup", c.elevationBackup, "embedder", emb != nil, "mcp", c.mcp)
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
 	select {
@@ -423,4 +490,34 @@ func buildHeights(c config, log *slog.Logger) (elevation.Source, error) {
 		return nil, nil
 	}
 	return elevation.Fallback(log, srcs...), nil
+}
+
+// buildWeather is the one place the forecast providers are picked: a
+// comma-separated list of names, each optionally =URL, asked in order.
+// A new provider is a weather.Source and a case here.
+func buildWeather(list string, log *slog.Logger) (weather.Source, error) {
+	if list == "off" || list == "" {
+		return nil, nil
+	}
+	var srcs []weather.Source
+	for _, item := range strings.Split(list, ",") {
+		name, u, _ := strings.Cut(strings.TrimSpace(item), "=")
+		switch name {
+		case "open-meteo":
+			s, err := weather.OpenMeteo(u)
+			if err != nil {
+				return nil, err
+			}
+			srcs = append(srcs, s)
+		case "met-norway":
+			s, err := weather.NewMETNorway(u, userAgent)
+			if err != nil {
+				return nil, err
+			}
+			srcs = append(srcs, s)
+		default:
+			return nil, fmt.Errorf("-weather: unknown provider %q: want open-meteo or met-norway", name)
+		}
+	}
+	return weather.Fallback(log, srcs...), nil
 }

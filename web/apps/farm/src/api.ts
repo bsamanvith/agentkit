@@ -43,7 +43,7 @@ export class ApiError extends Error {
   }
 }
 
-async function call<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+export async function call<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const resp = await fetch(path, {
     method,
     headers: body === undefined ? {} : { "Content-Type": "application/json" },
@@ -109,6 +109,7 @@ export const api = {
   disconnectResearch: async (provider: string) =>
     (await call<{ providers: ResearchProvider[] }>("DELETE", `/api/research/${encodeURIComponent(provider)}`))
       .providers,
+  unread: () => call<{ unread: number }>("GET", "/api/notices?unread=1&limit=1"),
   ask: (message: string, conversation?: string) =>
     call<AssistantReply>("POST", "/api/assistant", { message, conversation }),
 };

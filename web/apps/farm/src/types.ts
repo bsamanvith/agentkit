@@ -98,7 +98,129 @@ export interface Config {
   planner?: boolean;
   surveyor?: boolean;
   research?: boolean;
+  weather?: boolean;
+  automations?: boolean;
   country: string;
+}
+
+/** One day of a plot's forecast (package weather). */
+export interface WeatherDay {
+  date: string;
+  tmax_c: number;
+  tmin_c: number;
+  rain_mm: number;
+  rain_chance: number;
+  wind_kmh: number;
+  gust_kmh: number;
+  humidity_pct: number;
+  et0_mm: number;
+}
+
+export type AdviceSeverity = "urgent" | "warning" | "advice";
+
+export interface AdviceItem {
+  rule: string;
+  key: string;
+  severity: AdviceSeverity;
+  day: string;
+  crops?: string[];
+  title: string;
+  action: string;
+  why: string;
+}
+
+export interface CropStage {
+  name: string;
+  das: number;
+  in_field: boolean;
+}
+
+export interface CareTask {
+  date: string;
+  das: number;
+  stage: string;
+  kind: string;
+  crop: string;
+  zone: number;
+  title: string;
+  detail?: string;
+}
+
+/** A plot's week: GET /api/farms/{id}/week. */
+export interface Week {
+  farm: string;
+  today: string;
+  days: WeatherDay[];
+  totals: { rain_mm: number; et0_mm: number; max_c: number; min_c: number; gust_kmh: number; rain_days: number };
+  crops: { zone: number; crop: string; name: string; sow: string; stage: CropStage }[];
+  advice: AdviceItem[];
+  tasks?: CareTask[];
+  source: string;
+  notes?: string[];
+}
+
+export interface CropCalendar {
+  zones: {
+    zone: number;
+    crop: string;
+    crop_name: string;
+    with?: string;
+    sow: string;
+    harvest_from: string;
+    harvest_by: string;
+    tasks: CareTask[];
+  }[];
+  notes?: string[];
+}
+
+export interface Notice {
+  id: string;
+  farm: string;
+  automation: string;
+  run: string;
+  key: string;
+  severity: AdviceSeverity;
+  title: string;
+  body: string;
+  day?: string;
+  created_at: string;
+  read_at?: string;
+}
+
+export interface Condition {
+  metric: string;
+  op: ">=" | "<=";
+  value: number;
+  days?: number;
+}
+
+export interface Automation {
+  id: string;
+  name: string;
+  description?: string;
+  trigger: { kind: "schedule" | "event" | "weather"; schedule?: string; event?: string; weather?: Condition };
+  scope: { farms?: string[]; with_plan?: boolean };
+  action: { kind: "rule" | "skill"; rule?: string; skill?: string; prompt?: string };
+  enabled: boolean;
+  builtin?: boolean;
+  last_due?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AutomationRun {
+  id: string;
+  automation: string;
+  farm: string;
+  due: string;
+  reason: string;
+  status: "notified" | "no_action" | "failed";
+  notices: number;
+  note?: string;
+  error?: string;
+  attempts: number;
+  started: string;
+  finished: string;
 }
 
 export interface AssistantReply {

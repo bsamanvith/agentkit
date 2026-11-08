@@ -33,6 +33,7 @@ notes are in [apps/farm/docs/PRODUCT.md](../apps/farm/docs/PRODUCT.md).
 - [ ] [T136](T136-plot-groups.md) Plot groups, plant groups spread over them with their effects (shade, edges, spacing, water, neighbours, wind), the distribute-plants skill, a responsive layout UX ([design](../apps/farm/docs/GROUPS.md))
 - [ ] [T137](T137-sun-and-seasons.md) The sun, the slope and the seasons: sunlight, day length and the noon sun in the recommender and in shade, the slope's light, crop research month by month, the Sun and seasons tab ([design](../apps/farm/docs/SUN.md))
 - [ ] [T138](T138-backup-elevation.md) A backup elevation source (Open Topo Data, SRTM 30 m) when Open-Meteo cannot answer, and heights cached in a file
+- [ ] [T139](T139-weather-and-automations.md) Weather per plot from several providers, care advice only when there is something to do, crop calendars, an automation engine (schedule, event and weather triggers; fixed rules and agent skills) and the alerts inbox ([design](../apps/farm/docs/AUTOMATIONS.md))
 - [ ] Field watch: satellite greenness and weather per plot, a weekly background agent (to plan)
 - [ ] Land-cover cross-check: is the plot cropland (ESA WorldCover / Dynamic World) (to plan)
 - [ ] Farmers' accounts and offline (PWA) capture (to plan)

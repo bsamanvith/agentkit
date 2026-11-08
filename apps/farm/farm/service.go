@@ -32,6 +32,7 @@ type Service struct {
 	verifier *Verifier
 	clock    clock.Clock
 	rand     io.Reader
+	observe  func(context.Context, Event)
 	// groupMu serialises group writes, so a plot is not put in two groups
 	// at once.
 	groupMu sync.Mutex
@@ -45,6 +46,34 @@ func WithServiceClock(c clock.Clock) ServiceOption { return func(s *Service) { s
 
 // WithRandom sets where IDs come from (default crypto/rand).
 func WithRandom(r io.Reader) ServiceOption { return func(s *Service) { s.rand = r } }
+
+// Event names, as a [Service] reports its changes to an observer.
+const (
+	EventCreated        = "farm.created"
+	EventUpdated        = "farm.updated" // its name, size or boundary
+	EventProfileChanged = "farm.profile_changed"
+	EventPlanChanged    = "farm.plan_changed"
+	EventDeleted        = "farm.deleted"
+)
+
+// Event is a change to a farm, after it was saved.
+type Event struct {
+	Name string `json:"name"`
+	Farm string `json:"farm"`
+}
+
+// WithObserver calls fn after each change the service saves (create,
+// update, profile, plan, delete), with the request's context. fn must
+// return quickly: hand the event to a queue.
+func WithObserver(fn func(context.Context, Event)) ServiceOption {
+	return func(s *Service) { s.observe = fn }
+}
+
+func (s *Service) emit(ctx context.Context, name, id string) {
+	if s.observe != nil {
+		s.observe(ctx, Event{Name: name, Farm: id})
+	}
+}
 
 // NewService returns a Service over a store and a verifier. A store that is
 // also a [GroupStore] keeps plot groups too.
@@ -98,6 +127,7 @@ func (s *Service) Create(ctx context.Context, d Draft) (Farm, error) {
 	if err := s.store.Create(ctx, f); err != nil {
 		return Farm{}, err
 	}
+	s.emit(ctx, EventCreated, f.ID)
 	return f, nil
 }
 
@@ -126,19 +156,28 @@ func (s *Service) Update(ctx context.Context, id string, d Draft) (Farm, error) 
 	if err := s.store.Update(ctx, f); err != nil {
 		return Farm{}, err
 	}
+	s.emit(ctx, EventUpdated, id)
 	return f, nil
 }
 
 // SetProfile replaces a farm's land and water profile; nil clears it. The
 // caller checks the profile against its library.
 func (s *Service) SetProfile(ctx context.Context, id string, p *agro.Profile) (Farm, error) {
-	return s.change(ctx, id, func(f *Farm) { f.Profile = p })
+	f, err := s.change(ctx, id, func(f *Farm) { f.Profile = p })
+	if err == nil {
+		s.emit(ctx, EventProfileChanged, id)
+	}
+	return f, err
 }
 
 // SetPlan replaces a farm's plan and its report; nil clears both. The
 // caller checks the plan.
 func (s *Service) SetPlan(ctx context.Context, id string, p *agro.Plan, rep *agro.PlanReport) (Farm, error) {
-	return s.change(ctx, id, func(f *Farm) { f.Plan, f.PlanReport = p, rep })
+	f, err := s.change(ctx, id, func(f *Farm) { f.Plan, f.PlanReport = p, rep })
+	if err == nil {
+		s.emit(ctx, EventPlanChanged, id)
+	}
+	return f, err
 }
 
 // SetSurvey replaces a farm's survey; nil clears it.
@@ -188,6 +227,7 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 	if err := s.store.Delete(ctx, id); err != nil {
 		return err
 	}
+	s.emit(ctx, EventDeleted, id)
 	return s.leaveGroups(ctx, id)
 }
 

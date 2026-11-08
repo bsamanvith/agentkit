@@ -62,6 +62,22 @@
 //	GET    /api/locate?lat=&lng=           a point among the plots
 //	GET    /api/places?q=&farm=            find a place by name
 //
+// Crop care (with [WithWatch]):
+//
+//	GET    /api/farms/{id}/week            the week's forecast, crops' stages, work due, and advice (only what needs doing)
+//	GET    /api/farms/{id}/calendar        the crop calendar of the saved plan
+//
+// Automations and the farmer's inbox (with [WithAutomations]):
+//
+//	GET    /api/notices?farm=&unread=1     notices, newest first, and the unread count
+//	POST   /api/notices/read               mark read {"farm", "ids"}: no ids marks all of farm (or all)
+//	GET    /api/automations                the automations and the registered rules
+//	POST   /api/automations                create one (automation.Automation)
+//	PUT    /api/automations/{id}           replace one; a built-in one only takes "enabled"
+//	DELETE /api/automations/{id}           delete one (409 for a built-in one)
+//	POST   /api/automations/{id}/run       run it now {"farm"}: for one plot, or its whole scope
+//	GET    /api/automations/{id}/runs      its runs, newest first (?farm=)
+//
 // Web research keys (with [WithResearch]):
 //
 //	GET    /api/research                   the providers, which are connected
@@ -77,8 +93,10 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/bsamanvith/agentkit/apps/farm/agro"
+	"github.com/bsamanvith/agentkit/apps/farm/automation"
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
 	"github.com/bsamanvith/agentkit/apps/farm/farmagent"
 	"github.com/bsamanvith/agentkit/apps/farm/geo"
@@ -87,6 +105,8 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/planting"
 	"github.com/bsamanvith/agentkit/apps/farm/research"
 	"github.com/bsamanvith/agentkit/apps/farm/surveyor"
+	"github.com/bsamanvith/agentkit/apps/farm/watch"
+	"github.com/bsamanvith/agentkit/apps/farm/weather"
 )
 
 // MaxBody bounds a request body: a boundary of farm.MaxCorners corners
@@ -127,13 +147,16 @@ type api struct {
 	planner   *planner.Planner
 	surveyor  *surveyor.Surveyor
 	research  *research.Research
+	watch     *watch.Watch
+	engine    *automation.Engine
 	country   string
 	log       *slog.Logger
+	now       func() time.Time
 }
 
 // New returns the API's handler; mount it at "/api/".
 func New(svc *farm.Service, opts ...Option) http.Handler {
-	a := &api{svc: svc, log: slog.Default()}
+	a := &api{svc: svc, log: slog.Default(), now: time.Now}
 	for _, o := range opts {
 		o(a)
 	}
@@ -178,6 +201,16 @@ func New(svc *farm.Service, opts ...Option) http.Handler {
 	mux.HandleFunc("GET /api/research", a.researching(a.researchStatus))
 	mux.HandleFunc("PUT /api/research/{provider}", a.researching(a.connect))
 	mux.HandleFunc("DELETE /api/research/{provider}", a.researching(a.disconnect))
+	mux.HandleFunc("GET /api/farms/{id}/week", a.watching(a.week))
+	mux.HandleFunc("GET /api/farms/{id}/calendar", a.watching(a.calendar))
+	mux.HandleFunc("GET /api/notices", a.automating(a.notices))
+	mux.HandleFunc("POST /api/notices/read", a.automating(a.readNotices))
+	mux.HandleFunc("GET /api/automations", a.automating(a.automations))
+	mux.HandleFunc("POST /api/automations", a.automating(a.createAutomation))
+	mux.HandleFunc("PUT /api/automations/{id}", a.automating(a.updateAutomation))
+	mux.HandleFunc("DELETE /api/automations/{id}", a.automating(a.deleteAutomation))
+	mux.HandleFunc("POST /api/automations/{id}/run", a.automating(a.runAutomation))
+	mux.HandleFunc("GET /api/automations/{id}/runs", a.automating(a.runs))
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusNotFound, errorBody{Error: "no such route"})
 	})
@@ -216,6 +249,15 @@ func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, agro.ErrNoClimate):
 		a.log.WarnContext(r.Context(), "farm api: no climate", "path", r.URL.Path, "err", err)
 		writeJSON(w, http.StatusServiceUnavailable, errorBody{Error: "the climate at the plot could not be looked up; try again later"})
+	case errors.Is(err, watch.ErrNoForecast), errors.Is(err, weather.ErrUnavailable):
+		a.log.WarnContext(r.Context(), "farm api: no forecast", "path", r.URL.Path, "err", err)
+		writeJSON(w, http.StatusServiceUnavailable, errorBody{Error: "the weather forecast could not be had; try again later"})
+	case errors.Is(err, automation.ErrBuiltin):
+		writeJSON(w, http.StatusConflict, errorBody{Error: err.Error()})
+	case errors.Is(err, automation.ErrInvalid):
+		writeJSON(w, http.StatusBadRequest, errorBody{Error: err.Error()})
+	case errors.Is(err, automation.ErrNotFound):
+		writeJSON(w, http.StatusNotFound, errorBody{Error: err.Error()})
 	case errors.Is(err, farm.ErrNoGroups):
 		writeJSON(w, http.StatusServiceUnavailable, errorBody{Error: err.Error()})
 	case errors.Is(err, farm.ErrInvalid), errors.Is(err, agro.ErrInvalid), errors.Is(err, agro.ErrUnknown), errors.Is(err, planting.ErrInvalid):
@@ -247,6 +289,7 @@ func (a *api) config(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"assistant": a.assistant != nil, "planner": a.planner != nil, "surveyor": a.surveyor != nil,
 		"research": a.research != nil, "country": a.country,
+		"weather": a.watch != nil && a.watch.HasWeather(), "automations": a.engine != nil,
 	})
 }
 

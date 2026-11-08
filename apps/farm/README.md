@@ -6,6 +6,7 @@ first, then crops, money and agents that watch the fields. What and why:
 (survey, layout, map tools, web research): [docs/LAND.md](docs/LAND.md);
 plot groups and how plants are spread over them: [docs/GROUPS.md](docs/GROUPS.md);
 the sun, the slope and the seasons: [docs/SUN.md](docs/SUN.md);
+weather, care advice and automations: [docs/AUTOMATIONS.md](docs/AUTOMATIONS.md);
 the plan: [E25](../../tasks/E25-farm-app.md).
 
 ```sh

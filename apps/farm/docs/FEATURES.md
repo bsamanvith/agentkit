@@ -198,7 +198,8 @@ cost to each mandi.
 
 ### 13. Farmer accounts and phone sign-in
 
-Each farmer signs in with a phone number (an OTP) and sees only their
+Each farmer signs in (Google or a password first, both free; a phone
+one-time code by SMS later, as it is paid per message) and sees only their
 plots, groups, plans and alerts; a family or an FPO field worker can be
 added to a farm. **Why first among the planned:** alerts, WhatsApp, the
 ledger and the FPO view all need to know whose farm this is and how to
@@ -208,7 +209,8 @@ reach them. Builds on `pkg/auth` and the console's login (T061).
 
 The weather and price alerts sent where farmers already are: WhatsApp
 (Business API, template messages) with SMS as the fallback, in the
-farmer's language, with a link back to the plot. Another channel on the
+farmer's language; both are paid per message, so free web push from the
+installed app and a Telegram bot come first, with a link back to the plot. Another channel on the
 alert inbox from [11](#11-weather-alerts-and-weekly-crop-work); several
 senders behind one interface, as with data providers. Needs
 [13](#13-farmer-accounts-and-phone-sign-in).
@@ -294,18 +296,32 @@ file, or by reading a page; a fallback provider answers when the first
 cannot; every number keeps the source it came from; one answer never
 mixes two providers' numbers of the same kind.
 
-| Data | Interface | Providers today | Fallback |
-|---|---|---|---|
-| Place of a point | `farm.Locator` | Nominatim (OpenStreetMap) | none (off) |
-| Climate normals and sunlight | `agro.ClimateSource` | NASA POWER | none (off: no recommendations) |
-| Map features | `osm.Source` | Overpass | OSM API (small boxes) |
-| Ground heights | `elevation.Source` | Open-Meteo (Copernicus GLO-90) | Open Topo Data (SRTM 30 m) |
-| Web research | `research.Providers` | Exa, Parallel (the farmer's key) | the other one, if the farmer connected it |
-| Model | `pkg/llm` | Claude, else Gemini (whichever key is set) | none |
-| Handbook search | `pkg/knowledge` | Gemini embeddings plus keywords | keywords only |
-| Weather forecast | building (11) | | |
-| Mandi prices | building (12) | | |
-| News and knowledge | to plan, on the same provider layer as prices | | |
+**Free first** (owner, 2026-11-08). Pick free sources and free tiers; a
+paid provider needs a free one beside it, or a line here on why there is
+none. Anything not free, or free only for non-commercial use, is marked
+in the *Cost* column and named in the PR that adds it.
+
+| Data | Interface | Providers today | Fallback | Cost |
+|---|---|---|---|---|
+| Place of a point | `farm.Locator` | Nominatim (OpenStreetMap) | none (off) | Free; 1 request a second, attribution |
+| Climate normals and sunlight | `agro.ClimateSource` | NASA POWER | none (off: no recommendations) | Free, no key |
+| Map features | `osm.Source` | Overpass | OSM API (small boxes) | Free, fair use, attribution (ODbL) |
+| Ground heights | `elevation.Source` | Open-Meteo (Copernicus GLO-90) | Open Topo Data (SRTM 30 m) | Open-Meteo: **free for non-commercial use only**, paid plan for commercial; Open Topo Data public API: free, 1,000 a day |
+| Web research | `research.Providers` | Exa, Parallel (the farmer's key) | the other one, if the farmer connected it | **Paid per call** after their free credits; the farmer's own key, so it costs us nothing |
+| Model | `pkg/llm` | Claude, else Gemini (whichever key is set) | none | Claude: **paid**; Gemini: free tier (daily limits, prompts may be used to improve Google's models) |
+| Handbook search | `pkg/knowledge` | Gemini embeddings plus keywords | keywords only | Gemini free tier, 100 texts a minute; keywords free |
+| Weather forecast | building (11) | | | |
+| Mandi prices | building (12) | | | |
+| News and knowledge | to plan, on the same provider layer as prices | | | |
+
+Paid things in the plans above, and the free way to start:
+
+| Planned | Paid option | Free way first |
+|---|---|---|
+| Sign-in (13) | SMS one-time codes (per message) | Sign in with Google, or a password, as the console does |
+| Alerts on the phone (14) | WhatsApp Business API (per conversation), SMS (per message) | Web push from the installed app, a Telegram bot |
+| Crop doctor (15) | Claude with images | Gemini's free tier reads images |
+| Field watch (18) | Commercial imagery | Sentinel-2 (Copernicus, free) |
 
 When a provider is added, changed or dropped, update this table in the
 same PR.

@@ -19,7 +19,7 @@ Worked example: the first list (2026-11-08), written from T133 to T138 and the w
 ## Updating the list (in the same PR as the change)
 
 1. **Change the row and the section.** A new farmer-visible feature gets a row (next number, never reused) and a section under *Live*, *Building now*, *Planned* or *Ideas* with three parts: **The farmer** (what they do), **The app** (what it does, the checks), **Behind it** (packages, tools, skills, web files, design doc). A changed feature updates its text; a feature that moved status moves section and updates *Since* with the task ID.
-2. **Data providers.** A new, changed or dropped source of data (weather, prices, map, heights, climate, news, knowledge, model) updates the *Data providers* table. Every kind of data is an interface with more than one provider, picked in one place (the `farm` binary's flags), never a switch inside a feature: [AGENTS.md, Seams](../../../AGENTS.md#seams).
+2. **Data providers.** A new, changed or dropped source of data (weather, prices, map, heights, climate, news, knowledge, model) updates the *Data providers* table. Every kind of data is an interface with more than one provider, picked in one place (the `farm` binary's flags), never a switch inside a feature: [AGENTS.md, Seams](../../../AGENTS.md#seams). Free sources and free tiers first; fill the *Cost* column, and name anything paid or non-commercial-only in the PR and in your reply.
 3. **Write for the farmer.** Units they use (acres, guntas, cents), their seasons (kharif, rabi), their words; short sentences, no arrows.
 4. **Bump the date** on the *Last updated* line.
 5. **Check.** `scripts/lint-skills.sh` (links and anchors), then `make lint`.

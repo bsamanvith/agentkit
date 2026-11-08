@@ -10,8 +10,10 @@
 // OpenStreetMap's Nominatim unless -geocoder is "off"; the climate at a plot
 // comes from NASA POWER unless -climate is "off"; what is around a plot
 // from OpenStreetMap (Overpass, then the map API) unless -overpass and
-// -osm-api are "off"; its slope from Open-Meteo's elevation API unless
-// -elevation is "off". The handbook is searched by meaning as well as
+// -osm-api are "off"; its slope from Open-Meteo's elevation API, or Open
+// Topo Data when Open-Meteo cannot answer, unless -elevation and
+// -elevation-backup are "off" (heights are kept in <db>-heights.json). The
+// handbook is searched by meaning as well as
 // keywords with Gemini embeddings when a Gemini key is set (-embedder).
 //
 // Web research uses each farmer's own Exa or Parallel key, saved in the
@@ -74,11 +76,11 @@ const csp = "default-src 'self'; script-src 'self'; style-src 'self'; " +
 	"form-action 'self'; frame-ancestors 'none'"
 
 type config struct {
-	addr, db, country, geocoder, climate, model, modelID string
-	overpass, osmAPI, elevation, embedder, vault         string
-	exaURL, parallelURL                                  string
-	mcp                                                  bool
-	embedRate                                            int
+	addr, db, country, geocoder, climate, model, modelID          string
+	overpass, osmAPI, elevation, elevationBackup, embedder, vault string
+	exaURL, parallelURL                                           string
+	mcp                                                           bool
+	embedRate                                                     int
 }
 
 // userAgent identifies the app to OpenStreetMap's servers, as their
@@ -98,6 +100,7 @@ func main() {
 	fs.StringVar(&c.overpass, "overpass", env("FARM_OVERPASS", osm.DefaultOverpass), `Overpass servers, comma separated, or "off" ($FARM_OVERPASS)`)
 	fs.StringVar(&c.osmAPI, "osm-api", env("FARM_OSM_API", osm.DefaultAPI), `OpenStreetMap API, the fallback for small boxes, or "off" ($FARM_OSM_API)`)
 	fs.StringVar(&c.elevation, "elevation", env("FARM_ELEVATION", elevation.DefaultURL), `Open-Meteo elevation API, or "off" ($FARM_ELEVATION)`)
+	fs.StringVar(&c.elevationBackup, "elevation-backup", env("FARM_ELEVATION_BACKUP", elevation.OpenTopoDataURL), `Open Topo Data API and dataset, asked when Open-Meteo cannot answer, or "off" ($FARM_ELEVATION_BACKUP)`)
 	fs.StringVar(&c.embedder, "embedder", env("FARM_EMBEDDER", "auto"), `handbook search by meaning: auto (Gemini when its key is set), gemini or off ($FARM_EMBEDDER)`)
 	fs.StringVar(&c.vault, "vault", env("FARM_VAULT", ""), "SQLite file of the farmers' sealed API keys (default: the -db file's name with -vault.db) ($FARM_VAULT)")
 	fs.StringVar(&c.exaURL, "exa-url", env("FARM_EXA_URL", ""), "Exa API base URL (default Exa's) ($FARM_EXA_URL)")
@@ -172,12 +175,10 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 	if len(sources) > 0 {
 		sopts = append(sopts, surveyor.WithFeatures(osm.Chain(sources...)))
 	}
-	if c.elevation != "off" {
-		h, err := elevation.OpenMeteo(c.elevation, nil)
-		if err != nil {
-			return err
-		}
-		sopts = append(sopts, surveyor.WithHeights(h))
+	if hs, err := buildHeights(c, log); err != nil {
+		return err
+	} else if hs != nil {
+		sopts = append(sopts, surveyor.WithHeights(hs))
 	}
 	if c.geocoder != "off" {
 		search, err := nominatim.New(userAgent, nominatim.WithURL(c.geocoder))
@@ -292,7 +293,7 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 	}
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	log.Info("farm: serving", "url", "http://"+ln.Addr().String(), "db", c.db, "assistant", provider, "geocoder", c.geocoder,
-		"climate", c.climate, "overpass", c.overpass, "osm_api", c.osmAPI, "elevation", c.elevation, "embedder", emb != nil, "mcp", c.mcp)
+		"climate", c.climate, "overpass", c.overpass, "osm_api", c.osmAPI, "elevation", c.elevation, "elevation_backup", c.elevationBackup, "embedder", emb != nil, "mcp", c.mcp)
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
 	select {
@@ -394,4 +395,32 @@ func firstEnv(keys ...string) string {
 		}
 	}
 	return ""
+}
+
+// buildHeights is Open-Meteo, then Open Topo Data, sharing one cache kept
+// beside the database (nil when both are off).
+func buildHeights(c config, log *slog.Logger) (elevation.Source, error) {
+	cache, err := elevation.OpenCache(strings.TrimSuffix(c.db, filepath.Ext(c.db)) + "-heights.json")
+	if err != nil {
+		return nil, err
+	}
+	var srcs []elevation.Source
+	if c.elevation != "off" && c.elevation != "" {
+		h, err := elevation.OpenMeteo(c.elevation, elevation.WithCache(cache))
+		if err != nil {
+			return nil, err
+		}
+		srcs = append(srcs, h)
+	}
+	if c.elevationBackup != "off" && c.elevationBackup != "" {
+		h, err := elevation.OpenTopoData(c.elevationBackup, elevation.WithCache(cache))
+		if err != nil {
+			return nil, err
+		}
+		srcs = append(srcs, h)
+	}
+	if len(srcs) == 0 {
+		return nil, nil
+	}
+	return elevation.Fallback(log, srcs...), nil
 }

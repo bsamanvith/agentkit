@@ -20,7 +20,7 @@ tools and explains.
 |---|---|
 | [geo](../geo) | `near.go`: bearings, compass words, offsets, rectangles, distance from a plot to a line or area (`ClosestTo`). `shape.go`: convex hull, the minimum-area bounding box, inset (a band inside the boundary), ring-in-ring, how far a ray reaches inside a plot |
 | [osm](../osm) | Map features near a point from OpenStreetMap: Overpass, then the OSM API for small boxes (Overpass mirrors are often busy), at most one request a second, cached a day. Tags are sorted into 18 kinds (road, canal, drain, building, settlement, power line, well, ...). `osmtest` holds a recording around a paddy plot by Kothapeta, Andhra Pradesh |
-| [elevation](../elevation) | Ground heights from Open-Meteo (Copernicus GLO-90), cached per point, one retry on a network error, 429 or 5xx |
+| [elevation](../elevation) | Ground heights from Open-Meteo (Copernicus GLO-90), or Open Topo Data (SRTM 30 m) when Open-Meteo cannot answer; one survey's heights all come from one model. Cached per service and point in `<db>-heights.json`; one retry on a network error or 5xx; a 429 pauses that service (Retry-After, else an hour) |
 | [land](../land) | `Describe` (shape: square, rectangle, long strip, triangle, trapezium or irregular; edges and which way each faces); `Analyse` (the survey: nearest of each kind, what is within 400 m, slope, notes); `Suggest` and `CheckDesign` (the layout and its checks) |
 | [surveyor](../surveyor) | Joins farms to the map, heights and place search; saves surveys (not one with missing map data, so the next call tries again) and layouts (not one with errors); places a point among the plots; finds a place by name |
 | [research](../research) | `web_search` and `web_extract` on Exa or Parallel (`connectors/exa`, `connectors/parallel`) with the farmer's key sealed in a `pkg/credentials` vault |
@@ -38,8 +38,8 @@ read for at least 400 m around, more for a big plot), everything within
 400 m, counts by kind, and the features to draw (at most 500, nearest
 first, plus the nearest of each kind). Heights at the corners and the
 centre give the fall, the slope and the downhill direction; Copernicus
-GLO-90 is a 90 m model, so a small plot's slope is a hint, and the note
-says so.
+GLO-90 is a 90 m model (the SRTM backup 30 m), so a small plot's slope is
+a hint, and the note says so with the model's grid.
 
 Notes come from rules: road frontage or the nearest road and its class, a
 busy road, canals, drains, ponds and water crossing the plot, power lines

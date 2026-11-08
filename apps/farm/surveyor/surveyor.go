@@ -126,7 +126,7 @@ func (s *Surveyor) SurveyRing(ctx context.Context, r geo.Ring) (land.Survey, err
 			s.log.WarnContext(ctx, "surveyor: heights", "err", err)
 			in.HeightsErr = errors.New("the elevation service could not answer")
 		} else {
-			in.Heights, in.HeightsFrom, in.ResolutionM = hs, s.heights.Name(), elevation.ResolutionM
+			in.Heights, in.HeightsFrom, in.ResolutionM = hs.Metres, hs.From, hs.ResolutionM
 		}
 	}
 	if s.features != nil {

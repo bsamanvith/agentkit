@@ -21,7 +21,9 @@ turns it off. Plots are located with OpenStreetMap's Nominatim
 The climate at a plot comes from NASA POWER (`-climate off` to skip it:
 then there are no recommendations, and plan checks skip sowing and water).
 The land around a plot comes from OpenStreetMap (`-overpass`, `-osm-api`)
-and its slope from Open-Meteo (`-elevation`); each can be `off`. The
+and its slope from Open-Meteo (`-elevation`), or Open Topo Data when
+Open-Meteo cannot answer (`-elevation-backup`), heights kept in
+`<db>-heights.json`; each can be `off`. The
 handbook searches by meaning with Gemini embeddings when `GEMINI_API_KEY`
 (or `GEMINI_KEY`) is set (`-embedder off` for keywords only; `-embed-rate`
 paces a free-tier key; vectors are kept in `<db>-vectors.gob`). Farmers'
@@ -39,7 +41,7 @@ off). `make farm-eval` runs the assistant's scenarios on a real model.
 | [agro](agro) | Crop planning rules: soil and crop libraries, the recommender, layouts, plan checks; `agrotest` |
 | [nasapower](nasapower) | Climate normals at a point (NASA POWER), an `agro.ClimateSource` |
 | [osm](osm) | Map features near a plot from OpenStreetMap (Overpass, then the OSM API), classified; `osmtest` |
-| [elevation](elevation) | Ground heights (Open-Meteo, Copernicus GLO-90) |
+| [elevation](elevation) | Ground heights (Open-Meteo's Copernicus GLO-90, then Open Topo Data's SRTM 30 m), cached in a file |
 | [land](land) | The land's shape, its survey (nearest roads, water, buildings, slope) and the farm layout with its checks |
 | [surveyor](surveyor) | Surveys and layouts of the farms, point location, place search |
 | [research](research) | Web search and extract on Exa or Parallel with the farmer's key in a vault; `researchtest` |

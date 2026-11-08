@@ -1,7 +1,9 @@
 import { Button } from "@agentkit/ui/components/button";
 import {
   ArrowLeft,
+  Bell,
   ChevronRight,
+  CloudSun,
   IndianRupee,
   Download,
   FolderPlus,
@@ -41,6 +43,8 @@ const GroupPage = lazy(() => import("./groups").then((m) => ({ default: m.GroupP
 const GroupForm = lazy(() => import("./groups").then((m) => ({ default: m.GroupForm })));
 const ResearchSettings = lazy(() => import("./research").then((m) => ({ default: m.ResearchSettings })));
 const Assistant = lazy(() => import("./assistant").then((m) => ({ default: m.Assistant })));
+const Care = lazy(() => import("./alerts").then((m) => ({ default: m.Care })));
+const AlertsPage = lazy(() => import("./alerts").then((m) => ({ default: m.AlertsPage })));
 
 const loading = <p className="text-sm text-muted-foreground">Loading…</p>;
 
@@ -49,7 +53,8 @@ type View =
   | { kind: "edit"; farm?: Farm }
   | { kind: "farm"; id: string }
   | { kind: "group"; id: string }
-  | { kind: "group-form"; group?: Group };
+  | { kind: "group-form"; group?: Group }
+  | { kind: "alerts" };
 
 function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -76,11 +81,21 @@ export function App() {
   const [drawer, setDrawer] = useState(false);
   const [webSettings, setWebSettings] = useState(false);
   const [error, setError] = useState("");
+  const [unread, setUnread] = useState(0);
 
   const load = useCallback(() => {
     api.farms().then(setFarms, (e: unknown) => setError(message(e)));
     api.groups().then(setGroups, () => setGroups([]));
   }, []);
+  const count = useCallback(() => {
+    api.unread().then(
+      (r) => setUnread(r.unread),
+      () => setUnread(0),
+    );
+  }, []);
+  useEffect(() => {
+    if (config?.automations) count();
+  }, [config?.automations, count, view]);
   useEffect(() => {
     load();
     api.config().then(setConfig, () => setConfig({ assistant: false, country: "" }));
@@ -125,6 +140,19 @@ export function App() {
           </button>
           <Crumbs view={view} farms={farms ?? []} groups={groups} onGo={go} />
           <div className="ml-auto flex gap-1.5">
+            {config?.automations && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => go({ kind: "alerts" })}
+                aria-label={`Alerts, ${unread} unread`}
+              >
+                <Bell />
+                {unread > 0 && (
+                  <span className="rounded-full bg-ak-bad px-1.5 text-xs text-white tabular-nums">{unread}</span>
+                )}
+              </Button>
+            )}
             {config?.research && (
               <Button variant="ghost" size="sm" onClick={() => setWebSettings(true)} aria-label="Web research">
                 <Globe /> <span className="hidden sm:inline">Web research</span>
@@ -192,6 +220,7 @@ export function App() {
                   />
                 </>
               )}
+              {view.kind === "alerts" && <AlertsPage farms={farms ?? []} onRead={count} />}
               {view.kind === "group" && group && (
                 <GroupPage
                   key={group.id}
@@ -215,6 +244,8 @@ export function App() {
                   group={groups.find((g) => g.plots.includes(current.id))}
                   planner={config?.planner ?? false}
                   surveyor={config?.surveyor ?? false}
+                  weather={config?.weather ?? false}
+                  automations={config?.automations ?? false}
                   prices={config?.prices ?? false}
                   onChanged={(f) => setFarms((fs) => fs?.map((x) => (x.id === f.id ? f : x)))}
                   onEdit={() => go({ kind: "edit", farm: current })}
@@ -272,6 +303,7 @@ function Crumbs({
   if (view.kind === "group") items.push({ label: groups.find((x) => x.id === view.id)?.name ?? "Group" });
   if (view.kind === "group-form") items.push({ label: view.group ? view.group.name : "New group" });
   if (view.kind === "edit") items.push({ label: view.farm ? view.farm.name : "New plot" });
+  if (view.kind === "alerts") items.push({ label: "Alerts" });
   if (items.length === 1) return null;
   return (
     <nav aria-label="Where you are" className="hidden min-w-0 items-center gap-1 text-sm sm:flex">
@@ -584,7 +616,7 @@ function FarmCard({ farm: f, onOpen }: { farm: Farm; onOpen: () => void }) {
   );
 }
 
-type Tab = "map" | "land" | "sun" | "plan" | "prices";
+type Tab = "map" | "care" | "land" | "sun" | "plan" | "prices";
 
 function FarmDetail({
   farm,
@@ -592,6 +624,8 @@ function FarmDetail({
   group,
   planner,
   surveyor,
+  weather,
+  automations,
   prices,
   onChanged,
   onEdit,
@@ -603,6 +637,8 @@ function FarmDetail({
   group?: Group;
   planner: boolean;
   surveyor: boolean;
+  weather: boolean;
+  automations: boolean;
   prices: boolean;
   onChanged: (f: Farm) => void;
   onEdit: () => void;
@@ -618,6 +654,7 @@ function FarmDetail({
     .map((o) => ({ id: o.id, name: o.name, corners: o.boundary.corners }));
   const tabs: { id: Tab; label: string; icon: ReactNode; on: boolean }[] = [
     { id: "map", label: "Map", icon: <MapIcon />, on: true },
+    { id: "care", label: "Weather and care", icon: <CloudSun />, on: weather || (planner && automations) },
     { id: "land", label: "Land and layout", icon: <Mountain />, on: surveyor },
     { id: "sun", label: "Sun and seasons", icon: <SunIcon />, on: planner },
     { id: "plan", label: "Season plan", icon: <Sprout />, on: planner },
@@ -696,6 +733,7 @@ function FarmDetail({
             ))}
         </div>
       )}
+      {tab === "care" && <Care farm={farm} weather={weather} automations={automations} />}
       {tab === "land" && <Land farm={farm} onFarm={onChanged} />}
       {tab === "sun" && <Seasons farm={farm} />}
       {tab === "prices" && <Prices farm={farm} />}

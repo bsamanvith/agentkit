@@ -24,7 +24,7 @@ Status words: **live** (merged on main, a farmer can use it), **building**
 | 8 | [The farm assistant](#8-the-farm-assistant) | live | all | T133 onward |
 | 9 | [Web research with the farmer's own key](#9-web-research-with-the-farmers-own-key) | live | plan, sell | T135 |
 | 10 | [Farm tools for other agents (MCP)](#10-farm-tools-for-other-agents-mcp) | live | all | T135 |
-| 11 | [Weather alerts and weekly crop work](#11-weather-alerts-and-weekly-crop-work) | building | grow | thread "Add weather alerts and farm automations" |
+| 11 | [Weather alerts and weekly crop work](#11-weather-alerts-and-weekly-crop-work) | live | grow | T139 |
 | 12 | [Crop prices: estimates and mandi prices](#12-crop-prices-estimates-and-mandi-prices) | live | sell | T140 |
 | 13 | [Farmer accounts and phone sign-in](#13-farmer-accounts-and-phone-sign-in) | planned | all | |
 | 14 | [Alerts on WhatsApp or SMS](#14-alerts-on-whatsapp-or-sms) | planned | grow | |
@@ -169,6 +169,35 @@ The farm, planning and map tools are served over MCP at `/mcp/<toolset>`,
 so another agent (an FPO's, an agronomist's) can use the same numbers.
 Not farmer-facing; it is how partners plug in.
 
+### 11. Weather alerts and weekly crop work
+
+**The farmer** opens *Weather and care* on a plot and sees the week's
+forecast, the advice for their crops (or "Nothing to do because of the
+weather this week."), the week's work with each crop's stage, and the
+season's calendar. The bell in the header is the inbox across plots; an
+alert comes **only when there is something to do**: heavy rain (clear
+drains, hold irrigation), rain at harvest, a wet spell before sowing,
+strong wind, heat or cold for the crop, a dry week on rainfed land,
+fertiliser due on a wet day, weather that brings blight and mildew. Each
+says what to do, by when and why.
+
+**The app** checks every plot each Monday morning, watches for heavy rain
+every six hours, and checks a plot when its plan is saved; the same alert
+is not sent twice in a week. The farmer (or an adviser) can turn
+automations on and off, run one now, see recent runs, and add their own:
+a schedule, an event or a weather threshold, running a fixed rule or an
+assistant skill.
+
+**Behind it:** `apps/farm/weather` (Open-Meteo, then MET Norway),
+`calendar` (crop stages and care tasks), `advise` (the rules, IMD
+thresholds, starter values for an agronomist to review), `automation`
+(the engine, runs, the inbox), `watch` (the built-in automations); tools
+`get_week`, `crop_calendar`, `list_alerts`, `notify_farmer`; skills
+`weather-check`, `draw-crop-plan`, `manage-crop`. The inbox is in the app
+only until [13](#13-farmer-accounts-and-phone-sign-in) and
+[14](#14-alerts-on-whatsapp-or-sms). Details:
+[AUTOMATIONS.md](AUTOMATIONS.md).
+
 ### 12. Crop prices: estimates and mandi prices
 
 **The farmer** opens a plot's *Prices* tab and picks a crop (the plan's
@@ -196,17 +225,7 @@ rate limit, cache, pick by name), `apps/farm/prices` (providers
 
 ## Building now
 
-### 11. Weather alerts and weekly crop work
-
-The forecast for each plot with a crop on it, checked weekly (and a rain
-watch); an alert in the app **only when there is something to do** ("hold
-the spray, 40 mm of rain on Wednesday"). A weekly list of crop work after
-sowing (fertiliser splits, irrigation, weeding, sprays) from the crop
-calendar. Built on a general automation engine: triggers (schedule,
-event, weather threshold) and actions (a fixed rule or an agent skill).
-Alerts land in an in-app inbox per plot until farmers have accounts and
-phone numbers ([13](#13-farmer-accounts-and-phone-sign-in),
-[14](#14-alerts-on-whatsapp-or-sms)).
+Nothing at the moment: the next is chosen from the list below.
 
 ## Planned
 
@@ -281,7 +300,7 @@ verified boundary. Needs accounts and consent.
 
 ## What is most needed next
 
-Ranked 2026-11-08, after weather alerts (11), being built, and prices (12):
+Ranked 2026-11-08, after weather alerts (11) and prices (12), both live:
 
 1. **Farmer accounts and phone sign-in (13).** The biggest unlock: today
    every plot sits in one workspace, so an alert has no one to go to.
@@ -323,9 +342,9 @@ in the *Cost* column and named in the PR that adds it.
 | Web research | `research.Providers` | Exa, Parallel (the farmer's key) | the other one, if the farmer connected it | **Paid per call** after their free credits; the farmer's own key, so it costs us nothing |
 | Model | `pkg/llm` | Claude, else Gemini (whichever key is set) | none | Claude: **paid**; Gemini: free tier (daily limits, prompts may be used to improve Google's models) |
 | Handbook search | `pkg/knowledge` | Gemini embeddings plus keywords | keywords only | Gemini free tier, 100 texts a minute; keywords free |
-| Weather forecast | building (11) | | | |
+| Weather forecast | `weather.Source` | Open-Meteo, then MET Norway (`-weather`, tried in order) | the next in the list | Open-Meteo: **free for non-commercial use only** (under 10,000 a day), paid plan or self-hosting for commercial; MET Norway: free, CC BY 4.0, commercial use allowed with credit |
 | Mandi prices | `prices.Source` (on `feeds.Provider`) | Agmarknet on data.gov.in (`datagov`, all India, daily; needs `FARM_DATAGOV_KEY`), price files (`files`: Agmarknet, data.gov.in or CEDA CSVs in `FARM_PRICE_FILES`) | the next provider, then every price saved before | data.gov.in: **free**, key on registration; files: free; CEDA: free with registration, check its terms before commercial use |
-| News and knowledge | to plan, on `feeds.Provider` as prices are | | | |
+| News and knowledge | to plan, on `feeds.Provider` as prices are (weather can move onto it) | | | |
 
 Paid things in the plans above, and the free way to start:
 

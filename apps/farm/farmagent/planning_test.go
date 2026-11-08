@@ -180,7 +180,7 @@ func TestAssistantWithPlanningSkillsAndHandbook(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(skills.Names(), []string{"check-plan", "distribute-plants", "plan-season", "research-crops", "research-products", "sell-or-hold", "shape-farm", "survey-land"}) {
+	if !slices.Equal(skills.Names(), []string{"check-plan", "distribute-plants", "draw-crop-plan", "manage-crop", "plan-season", "research-crops", "research-products", "sell-or-hold", "shape-farm", "survey-land", "weather-check"}) {
 		t.Fatalf("skills %v", skills.Names())
 	}
 	model := llmtest.NewFake(t,

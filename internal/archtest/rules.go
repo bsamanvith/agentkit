@@ -81,8 +81,11 @@ func ModuleRules() Rules {
 			"pkg/store/sqlite": {"modernc.org/sqlite"},
 			// The farm app's store (T133): the same driver.
 			"apps/farm/farm/sqlite": {"modernc.org/sqlite"},
-			// The farm app's price history (T139): the same driver.
+			// The farm app's price history (T140): the same driver.
 			"apps/farm/prices/pricesqlite": {"modernc.org/sqlite"},
+			// The farm app's automations, runs and notices (T139): the same
+			// driver, the same database file.
+			"apps/farm/automation/sqlite": {"modernc.org/sqlite"},
 			// The memory context store on SQLite (T058): the same driver.
 			"pkg/memory/sqlite": {"modernc.org/sqlite"},
 			// The memory context store on Postgres (T122), on the store's pool.

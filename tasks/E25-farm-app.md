@@ -11,6 +11,8 @@ agentkit, for farmers: a Go backend and a web frontend. Start from the
 farmer's lifecycle and product ideas, then let farmers define their plots
 (boundary and location, by GPS or coordinates) and verify them. The product
 notes are in [apps/farm/docs/PRODUCT.md](../apps/farm/docs/PRODUCT.md).
+What farmers can do today, what is being built and what is most needed
+next: [apps/farm/docs/FEATURES.md](../apps/farm/docs/FEATURES.md).
 
 ## Decisions
 

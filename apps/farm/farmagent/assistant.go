@@ -12,6 +12,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
 	"github.com/bsamanvith/agentkit/apps/farm/planner"
+	"github.com/bsamanvith/agentkit/apps/farm/prices"
 	"github.com/bsamanvith/agentkit/apps/farm/surveyor"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/knowledge"
@@ -77,6 +78,7 @@ type setup struct {
 	knowledge *knowledge.Base
 	about     string
 	skills    *skill.Catalog
+	prices    *prices.Service
 	harness   []harness.Option
 }
 
@@ -103,6 +105,10 @@ func WithKnowledge(b *knowledge.Base, about string) Option {
 	return func(s *setup) { s.knowledge, s.about = b, about }
 }
 
+// WithPrices gives the assistant the price tools over p: mandi prices
+// and price estimates.
+func WithPrices(p *prices.Service) Option { return func(s *setup) { s.prices = p } }
+
 // WithSkills lists the catalog's skills in the system prompt and gives the
 // assistant skill_load and skill_read.
 func WithSkills(c *skill.Catalog) Option { return func(s *setup) { s.skills = c } }
@@ -117,7 +123,7 @@ var skillFiles embed.FS
 
 // Skills returns the assistant's built-in skills: plan-season,
 // check-plan, survey-land, shape-farm, distribute-plants,
-// research-products and research-crops.
+// research-products, research-crops and sell-or-hold.
 func Skills() (*skill.Catalog, error) {
 	skills, err := skill.Load(skillFiles, "skills")
 	if err != nil {
@@ -133,6 +139,7 @@ const (
 	ToolsetResearch = "farm-research" // the tools of WithTools (web research)
 	ToolsetHandbook = "farm-handbook" // the knowledge base
 	ToolsetSkills   = "farm-skills"   // skill_load and skill_read
+	ToolsetMarket   = "farm-market"   // mandi prices and estimates
 )
 
 // group is a toolset and what it adds to the system prompt.
@@ -170,6 +177,13 @@ func groups(svc *farm.Service, s setup) ([]group, error) {
 			return nil, err
 		}
 		out = append(out, group{ToolsetMap, more, "\n" + MapSystem})
+	}
+	if s.prices != nil {
+		more, err := PriceTools(s.prices, svc)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, group{ToolsetMarket, more, "\n" + PriceSystem})
 	}
 	if len(s.extra) > 0 {
 		out = append(out, group{ToolsetResearch, s.extra, "\n" + s.extraText})

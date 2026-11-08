@@ -98,6 +98,7 @@ export interface Config {
   planner?: boolean;
   surveyor?: boolean;
   research?: boolean;
+  prices?: boolean;
   country: string;
 }
 

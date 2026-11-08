@@ -25,7 +25,7 @@ Status words: **live** (merged on main, a farmer can use it), **building**
 | 9 | [Web research with the farmer's own key](#9-web-research-with-the-farmers-own-key) | live | plan, sell | T135 |
 | 10 | [Farm tools for other agents (MCP)](#10-farm-tools-for-other-agents-mcp) | live | all | T135 |
 | 11 | [Weather alerts and weekly crop work](#11-weather-alerts-and-weekly-crop-work) | building | grow | thread "Add weather alerts and farm automations" |
-| 12 | [Crop prices: estimates and mandi prices](#12-crop-prices-estimates-and-mandi-prices) | building | sell | thread "Add crop price estimates and mandi prices" |
+| 12 | [Crop prices: estimates and mandi prices](#12-crop-prices-estimates-and-mandi-prices) | live | sell | T140 |
 | 13 | [Farmer accounts and phone sign-in](#13-farmer-accounts-and-phone-sign-in) | planned | all | |
 | 14 | [Alerts on WhatsApp or SMS](#14-alerts-on-whatsapp-or-sms) | planned | grow | |
 | 15 | [Crop doctor](#15-crop-doctor) | planned | grow | |
@@ -169,6 +169,31 @@ The farm, planning and map tools are served over MCP at `/mcp/<toolset>`,
 so another agent (an FPO's, an agronomist's) can use the same numbers.
 Not farmer-facing; it is how partners plug in.
 
+### 12. Crop prices: estimates and mandi prices
+
+**The farmer** opens a plot's *Prices* tab and picks a crop (the plan's
+crops come first): today's mandi prices in the plot's district and the
+rest of the state, the last year month by month, and what the crop may
+fetch in the month they plan to sell, with the minimum support price.
+With their expected yield in quintals an acre it says what the plot's
+harvest may bring. Or they ask the assistant "what is kandulu selling
+for, should I hold till March?".
+
+**The app** asks the price providers in order (Agmarknet's all-India
+daily prices on data.gov.in, then downloaded price files), saves every
+price it gets so the history grows day by day, and answers from the
+saved prices when every provider is down, saying how old they are. A
+district with no prices widens to the state and says so. The estimate is
+arithmetic on that history (recent level, the crop's usual swing by
+month, the spread, how far ahead), a low to high range with a confidence
+and its reasons, never a model's guess. Prices are rupees a quintal.
+
+**Behind it:** `apps/farm/feeds` (the provider layer: chain, pause on a
+rate limit, cache, pick by name), `apps/farm/prices` (providers
+`DataGov` and `Files`, history, `pricesqlite`, MSP, estimate); tools
+`mandi_prices`, `price_estimate`; skill `sell-or-hold`; routes
+`/api/prices*`. Web: `prices.tsx`. Design: [PRICES.md](PRICES.md).
+
 ## Building now
 
 ### 11. Weather alerts and weekly crop work
@@ -182,17 +207,6 @@ event, weather threshold) and actions (a fixed rule or an agent skill).
 Alerts land in an in-app inbox per plot until farmers have accounts and
 phone numbers ([13](#13-farmer-accounts-and-phone-sign-in),
 [14](#14-alerts-on-whatsapp-or-sms)).
-
-### 12. Crop prices: estimates and mandi prices
-
-Today's prices at mandis near the plot and their trend, first for
-Karnataka, Andhra Pradesh, Telangana and Tamil Nadu; a price estimate
-for the crops in a plan, so the recommender and the plan can show
-expected income. Several sources behind one interface (see
-[Data providers](#data-providers)): an all-India source first where one
-covers the four states, state sources where they add mandis or freshness.
-Next on top of it: a sell or hold call with the reasons, and transport
-cost to each mandi.
 
 ## Planned
 
@@ -267,8 +281,7 @@ verified boundary. Needs accounts and consent.
 
 ## What is most needed next
 
-Ranked 2026-11-08, after weather alerts (11) and prices (12), which are
-being built:
+Ranked 2026-11-08, after weather alerts (11), being built, and prices (12):
 
 1. **Farmer accounts and phone sign-in (13).** The biggest unlock: today
    every plot sits in one workspace, so an alert has no one to go to.
@@ -311,8 +324,8 @@ in the *Cost* column and named in the PR that adds it.
 | Model | `pkg/llm` | Claude, else Gemini (whichever key is set) | none | Claude: **paid**; Gemini: free tier (daily limits, prompts may be used to improve Google's models) |
 | Handbook search | `pkg/knowledge` | Gemini embeddings plus keywords | keywords only | Gemini free tier, 100 texts a minute; keywords free |
 | Weather forecast | building (11) | | | |
-| Mandi prices | building (12) | | | |
-| News and knowledge | to plan, on the same provider layer as prices | | | |
+| Mandi prices | `prices.Source` (on `feeds.Provider`) | Agmarknet on data.gov.in (`datagov`, all India, daily; needs `FARM_DATAGOV_KEY`), price files (`files`: Agmarknet, data.gov.in or CEDA CSVs in `FARM_PRICE_FILES`) | the next provider, then every price saved before | data.gov.in: **free**, key on registration; files: free; CEDA: free with registration, check its terms before commercial use |
+| News and knowledge | to plan, on `feeds.Provider` as prices are | | | |
 
 Paid things in the plans above, and the free way to start:
 

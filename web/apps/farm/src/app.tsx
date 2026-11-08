@@ -2,6 +2,7 @@ import { Button } from "@agentkit/ui/components/button";
 import {
   ArrowLeft,
   ChevronRight,
+  IndianRupee,
   Download,
   FolderPlus,
   Globe,
@@ -35,6 +36,7 @@ const FarmMap = lazy(() => import("./map").then((m) => ({ default: m.FarmMap }))
 const Planning = lazy(() => import("./planning").then((m) => ({ default: m.Planning })));
 const Land = lazy(() => import("./land").then((m) => ({ default: m.Land })));
 const Seasons = lazy(() => import("./seasons").then((m) => ({ default: m.Seasons })));
+const Prices = lazy(() => import("./prices").then((m) => ({ default: m.Prices })));
 const GroupPage = lazy(() => import("./groups").then((m) => ({ default: m.GroupPage })));
 const GroupForm = lazy(() => import("./groups").then((m) => ({ default: m.GroupForm })));
 const ResearchSettings = lazy(() => import("./research").then((m) => ({ default: m.ResearchSettings })));
@@ -213,6 +215,7 @@ export function App() {
                   group={groups.find((g) => g.plots.includes(current.id))}
                   planner={config?.planner ?? false}
                   surveyor={config?.surveyor ?? false}
+                  prices={config?.prices ?? false}
                   onChanged={(f) => setFarms((fs) => fs?.map((x) => (x.id === f.id ? f : x)))}
                   onEdit={() => go({ kind: "edit", farm: current })}
                   onOpenGroup={(id) => go({ kind: "group", id })}
@@ -581,7 +584,7 @@ function FarmCard({ farm: f, onOpen }: { farm: Farm; onOpen: () => void }) {
   );
 }
 
-type Tab = "map" | "land" | "sun" | "plan";
+type Tab = "map" | "land" | "sun" | "plan" | "prices";
 
 function FarmDetail({
   farm,
@@ -589,6 +592,7 @@ function FarmDetail({
   group,
   planner,
   surveyor,
+  prices,
   onChanged,
   onEdit,
   onOpenGroup,
@@ -599,6 +603,7 @@ function FarmDetail({
   group?: Group;
   planner: boolean;
   surveyor: boolean;
+  prices: boolean;
   onChanged: (f: Farm) => void;
   onEdit: () => void;
   onOpenGroup: (id: string) => void;
@@ -616,6 +621,7 @@ function FarmDetail({
     { id: "land", label: "Land and layout", icon: <Mountain />, on: surveyor },
     { id: "sun", label: "Sun and seasons", icon: <SunIcon />, on: planner },
     { id: "plan", label: "Season plan", icon: <Sprout />, on: planner },
+    { id: "prices", label: "Prices", icon: <IndianRupee />, on: prices },
   ];
   return (
     <>
@@ -692,6 +698,7 @@ function FarmDetail({
       )}
       {tab === "land" && <Land farm={farm} onFarm={onChanged} />}
       {tab === "sun" && <Seasons farm={farm} />}
+      {tab === "prices" && <Prices farm={farm} />}
       <div className={tab === "map" ? "grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]" : "hidden"}>
         <FarmMap
           corners={farm.boundary.corners}

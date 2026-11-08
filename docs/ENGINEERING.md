@@ -373,6 +373,7 @@ We keep coding-agent skills in the repo and improve them like code. They turn th
 | `implement-task` | Take a task from `todo` to `review`: branch, code, tests, `make check`, update the task file | §1, §2, §5 |
 | `review` | Review a diff against our rules: boundaries, brittle tests, test budget, errors, ctx, goroutines | §1, §2 |
 | `local-env` | Bring up a topology, run smoke tests, read logs | §3 |
+| `farm-features` | Keep the farm app's product list current: features, how they work, data providers, what is most needed next | [apps/farm/docs/FEATURES.md](../apps/farm/docs/FEATURES.md) |
 
 ### 4.3 Rules for skills
 

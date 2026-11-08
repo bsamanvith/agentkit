@@ -3,7 +3,8 @@
 > First pass, 2026-10-31. The farmer's year, where software helps, where
 > agentkit agents help, and what we build first. The app lives in
 > [apps/farm](..) (Go backend) and [web/apps/farm](../../../web/apps/farm)
-> (the web app). Epic: [E25](../../../tasks/E25-farm-app.md).
+> (the web app). Epic: [E25](../../../tasks/E25-farm-app.md). What is built
+> so far and what comes next: [FEATURES.md](FEATURES.md).
 
 ## Who it is for
 

@@ -1,0 +1,311 @@
+# Farm: what farmers can do, and what comes next
+
+> The product list, kept up to date. Last updated 2026-11-08.
+> Every PR that adds, changes or removes something a farmer can see
+> updates this file (the `farm-features` skill says how). Why the app
+> exists and the farmer's year: [PRODUCT.md](PRODUCT.md). Epic:
+> [E25](../../../tasks/E25-farm-app.md).
+
+Status words: **live** (merged on main, a farmer can use it), **building**
+(a branch or a thread is on it now), **planned** (decided, not started),
+**idea** (not decided).
+
+## The list
+
+| # | Feature | Status | Farmer's year | Since |
+|---|---|---|---|---|
+| 1 | [My plots](#1-my-plots) | live | land | T133 |
+| 2 | [The land and its surroundings](#2-the-land-and-its-surroundings) | live | land | T135, T138 |
+| 3 | [Farm layout](#3-farm-layout) | live | land | T135 |
+| 4 | [What to plant and when](#4-what-to-plant-and-when) | live | plan | T134, T137 |
+| 5 | [Sun and seasons](#5-sun-and-seasons) | live | plan | T137 |
+| 6 | [Season plan for a plot](#6-season-plan-for-a-plot) | live | plan | T134 |
+| 7 | [Plot groups and how plants are spread](#7-plot-groups-and-how-plants-are-spread) | live | plan | T136 |
+| 8 | [The farm assistant](#8-the-farm-assistant) | live | all | T133 onward |
+| 9 | [Web research with the farmer's own key](#9-web-research-with-the-farmers-own-key) | live | plan, sell | T135 |
+| 10 | [Farm tools for other agents (MCP)](#10-farm-tools-for-other-agents-mcp) | live | all | T135 |
+| 11 | [Weather alerts and weekly crop work](#11-weather-alerts-and-weekly-crop-work) | building | grow | thread "Add weather alerts and farm automations" |
+| 12 | [Crop prices: estimates and mandi prices](#12-crop-prices-estimates-and-mandi-prices) | building | sell | thread "Add crop price estimates and mandi prices" |
+| 13 | [Farmer accounts and phone sign-in](#13-farmer-accounts-and-phone-sign-in) | planned | all | |
+| 14 | [Alerts on WhatsApp or SMS](#14-alerts-on-whatsapp-or-sms) | planned | grow | |
+| 15 | [Crop doctor](#15-crop-doctor) | planned | grow | |
+| 16 | [Ledger by voice](#16-ledger-by-voice) | planned | money | |
+| 17 | [Offline and voice in the field](#17-offline-and-voice-in-the-field) | planned | all | |
+| 18 | [Field watch from satellites](#18-field-watch-from-satellites) | idea | grow | |
+| 19 | [Soil Health Card and land papers from a photo](#19-soil-health-card-and-land-papers-from-a-photo) | idea | land | |
+| 20 | [Schemes, insurance and paperwork](#20-schemes-insurance-and-paperwork) | idea | plan, money | |
+| 21 | [For FPOs, dealers and lenders](#21-for-fpos-dealers-and-lenders) | idea | all | |
+
+## Live
+
+### 1. My plots
+
+**The farmer** adds a plot: a name, how big they think it is (acres,
+guntas, cents, hectares or m²), and its boundary, by tapping the corners
+on a satellite map, by walking to each corner and tapping "add my
+position", or by pasting coordinates.
+
+**The app** checks it before saving: a valid shape, the true area on the
+ground in every unit, whether it matches the size the farmer said (a big
+miss usually means a wrong corner or the wrong unit), slivers and GPS
+jumps, poor GPS accuracy while walking, where it is (village, district,
+state) and overlaps with the farmer's other plots. The result is
+*verified*, *needs review* (warnings the farmer can accept) or *invalid*.
+
+**Behind it:** `apps/farm/geo` (geodesic area, shape checks),
+`apps/farm/farm` (verifier, store), `apps/farm/nominatim` (place). Web:
+`editor.tsx`, `map.tsx`, `report.tsx`. Details:
+[PRODUCT.md, first feature](PRODUCT.md#first-feature-my-land).
+
+### 2. The land and its surroundings
+
+**The farmer** opens *Land and layout* on a plot and sees its shape, which
+way each side faces, how it slopes and which way water runs off, and
+what is near: roads, canals, rivers, wells, buildings, the village, power
+lines, with distances and directions. An animated picture (the *land
+view*) draws the plot and its surroundings, and the crop zones growing
+through the season.
+
+**Behind it:** map features from OpenStreetMap, ground heights from
+Copernicus (Open-Meteo) or SRTM (Open Topo Data) when the first cannot
+answer; `apps/farm/land`, `osm`, `elevation`, `surveyor`. Web:
+`land.tsx`, `landpicture.tsx`. Details: [LAND.md](LAND.md).
+
+### 3. Farm layout
+
+**The farmer** asks for a layout and gets a gate on the side nearest the
+road, a path, a shed, a farm pond at the low corner and border trees, each
+with its reason. They can move things and the app checks the result
+(the pond in the low corner, the path reaching the gate, nothing outside
+the plot).
+
+**Behind it:** `land.Suggest`, `land.CheckDesign`; tools `suggest_design`,
+`check_design`, `save_design`; skill `shape-farm`. Details:
+[LAND.md](LAND.md).
+
+### 4. What to plant and when
+
+**The farmer** tells the app the soil (picked from a list of eleven soils
+with the signs they can see: colour, cracks, stickiness), the water
+sources (rain, canal, borewell, drip, ...) and last season's crop. The app
+scores 39 crops for the plot, each with its next good sowing window, a
+score from 0 to 100, the reasons and the risks, and how much water rain
+will not cover. Crops from similar climates abroad (dragon fruit,
+avocado, quinoa) are scored too and marked as *climate analogs*.
+
+**Behind it:** rules, not the model: `apps/farm/agro` (soil and crop
+libraries in `agro/data`, the recommender), climate normals from NASA
+POWER (`apps/farm/nasapower`). Tools `recommend_crops`, `compare_crops`;
+skills `plan-season`, `research-crops`. The rule values are starter values
+that need an agronomist's review. Details:
+[CROP-PLANNING.md](CROP-PLANNING.md).
+
+### 5. Sun and seasons
+
+**The farmer** sees, month by month for their plot, how much sunlight it
+gets, the day length, where the noon sun is, what the slope does to the
+light, and a crop calendar: when each crop would be sown and harvested
+through the year, kharif, rabi and summer.
+
+**Behind it:** `apps/farm/sun` (FAO-56 astronomy, light on a slope), NASA
+POWER sunlight; tool `get_sun`. Web: *Sun and seasons* tab
+(`seasons.tsx`). Details: [SUN.md](SUN.md).
+
+### 6. Season plan for a plot
+
+**The farmer** picks one crop or a mix ("60% cotton, 40% green gram",
+"4 rows soybean : 1 row maize"), and the app cuts the plot into strips to
+scale, with row and plant spacing, plant counts and seed needed. The plan
+check warns before it costs a season: sowing outside the window, a
+thirsty crop on rain alone, a crop that rots in waterlogged clay, spacing
+out of range.
+
+**Behind it:** `agro` (strips, plan checker), `apps/farm/planner`; tools
+`suggest_layout`, `check_plan`, `save_plan`; skill `check-plan`. Web:
+*Season plan* tab (`planning.tsx`, `plan.ts`).
+
+### 7. Plot groups and how plants are spread
+
+**The farmer** keeps plots in groups (the home farm, the fields by the
+river) and, per group, chooses plant groups and where they go: blocks, a
+border band, or tree rows with crops between (alley cropping). The app
+draws it to scale and says what it does: shade on the shorter crops
+through the year, edges, whether trees fit, water, neighbours, wind.
+
+**Behind it:** `apps/farm/planting`; tools `list_groups`, `save_group`,
+`distribute_plants`, `save_distribution`; skill `distribute-plants`. Web:
+groups sidebar and group page (`groups.tsx`, `grouppicture.tsx`).
+Details: [GROUPS.md](GROUPS.md).
+
+### 8. The farm assistant
+
+**The farmer** asks in their own language and script (Telugu, Hindi,
+Kannada, Marathi, English) on a phone: "what should I sow on the east
+plot after Dasara", "how far is the canal", "convert 2 acres 10 guntas to
+cents". The assistant answers short and plain, and every number in the
+answer comes from a tool, so it is the same however the question is
+asked.
+
+**Behind it:** the agentkit harness (`apps/farm/farmagent`) on Claude, or
+Gemini when no Claude key is set, with the farm, planning and map tools,
+seven skills, and a handbook on farming in India it can search
+(`apps/farm/handbook`, keyword or meaning search). `make farm-eval` runs
+its scenarios on a real model. Web: `assistant.tsx`.
+
+### 9. Web research with the farmer's own key
+
+**The farmer** connects their own Exa or Parallel key once in settings;
+the assistant can then search the web and read pages (a product, a seed
+variety, a scheme) and cite them. Keys are sealed in a vault, never
+shared between farmers.
+
+**Behind it:** `apps/farm/research`, `connectors/exa`,
+`connectors/parallel`, `pkg/credentials`; skill `research-products`. Web:
+`research.tsx`.
+
+### 10. Farm tools for other agents (MCP)
+
+The farm, planning and map tools are served over MCP at `/mcp/<toolset>`,
+so another agent (an FPO's, an agronomist's) can use the same numbers.
+Not farmer-facing; it is how partners plug in.
+
+## Building now
+
+### 11. Weather alerts and weekly crop work
+
+The forecast for each plot with a crop on it, checked weekly (and a rain
+watch); an alert in the app **only when there is something to do** ("hold
+the spray, 40 mm of rain on Wednesday"). A weekly list of crop work after
+sowing (fertiliser splits, irrigation, weeding, sprays) from the crop
+calendar. Built on a general automation engine: triggers (schedule,
+event, weather threshold) and actions (a fixed rule or an agent skill).
+Alerts land in an in-app inbox per plot until farmers have accounts and
+phone numbers ([13](#13-farmer-accounts-and-phone-sign-in),
+[14](#14-alerts-on-whatsapp-or-sms)).
+
+### 12. Crop prices: estimates and mandi prices
+
+Today's prices at mandis near the plot and their trend, first for
+Karnataka, Andhra Pradesh, Telangana and Tamil Nadu; a price estimate
+for the crops in a plan, so the recommender and the plan can show
+expected income. Several sources behind one interface (see
+[Data providers](#data-providers)): an all-India source first where one
+covers the four states, state sources where they add mandis or freshness.
+Next on top of it: a sell or hold call with the reasons, and transport
+cost to each mandi.
+
+## Planned
+
+### 13. Farmer accounts and phone sign-in
+
+Each farmer signs in with a phone number (an OTP) and sees only their
+plots, groups, plans and alerts; a family or an FPO field worker can be
+added to a farm. **Why first among the planned:** alerts, WhatsApp, the
+ledger and the FPO view all need to know whose farm this is and how to
+reach them. Builds on `pkg/auth` and the console's login (T061).
+
+### 14. Alerts on WhatsApp or SMS
+
+The weather and price alerts sent where farmers already are: WhatsApp
+(Business API, template messages) with SMS as the fallback, in the
+farmer's language, with a link back to the plot. Another channel on the
+alert inbox from [11](#11-weather-alerts-and-weekly-crop-work); several
+senders behind one interface, as with data providers. Needs
+[13](#13-farmer-accounts-and-phone-sign-in).
+
+### 15. Crop doctor
+
+A photo of a sick leaf or plant, the likely problem (pest, disease,
+deficiency), what to do now in the farmer's language, and when to ask a
+person. Uses the model's image input with the plot's crop and stage and
+the weather; answers from the handbook's package of practices, and says
+"not sure, show an agronomist" rather than guess.
+
+### 16. Ledger by voice
+
+"Spent 2,000 on urea for the east plot" becomes an entry; yield and sale
+price at harvest; profit per plot and per season, with the price
+estimates from [12](#12-crop-prices-estimates-and-mandi-prices) before
+harvest. The numbers are Go, the model only turns speech into entries
+the farmer confirms.
+
+### 17. Offline and voice in the field
+
+The app installs on the phone (PWA), opens without data, lets the farmer
+walk a boundary or add a ledger entry offline and syncs later; voice in
+and out in the local language for farmers who prefer not to type.
+
+## Ideas
+
+### 18. Field watch from satellites
+
+Weekly greenness (Sentinel-2 NDVI, 10 m, free) per plot; an alert when a
+plot browns faster than its neighbours. Also a cross-check that the plot
+is cropland (ESA WorldCover).
+
+### 19. Soil Health Card and land papers from a photo
+
+The farmer photographs the Soil Health Card and the app fills the plot's
+soil (pH, N, P, K, organic carbon) instead of guessing from colour; the
+pattadar passbook or RoR gives the survey number and recorded area to
+check against the drawn boundary.
+
+### 20. Schemes, insurance and paperwork
+
+Which schemes a farmer qualifies for (PM-KISAN, PMFBY, Rythu Bharosa,
+Raitha Siri and other state schemes), the documents and deadlines; an
+insurance claim drafted with geo-tagged photos, submitted only with the
+farmer's approval.
+
+### 21. For FPOs, dealers and lenders
+
+Many farmers' verified plots in one view: crop area and expected harvest
+across members, input demand for a dealer, a lender's check against a
+verified boundary. Needs accounts and consent.
+
+## What is most needed next
+
+Ranked 2026-11-08, after weather alerts (11) and prices (12), which are
+being built:
+
+1. **Farmer accounts and phone sign-in (13).** The biggest unlock: today
+   every plot sits in one workspace, so an alert has no one to go to.
+   Everything below except the crop doctor waits on it.
+2. **Alerts on WhatsApp or SMS (14).** Farmers will not open an app every
+   day to look for an alert; the weather and price work only reaches
+   them through the phone channels they use.
+3. **Crop doctor (15).** The question farmers ask most in season, and
+   independent of accounts, so it can start **in parallel with 13 now**.
+4. **Ledger by voice (16)**, with prices (12) giving profit per plot.
+5. **Offline and voice (17)** before field use at scale.
+6. **Soil Health Card from a photo (19)**: better soil means better
+   recommendations; small once the model reads images for 15.
+
+Also needed, not a feature: an agronomist's review of the crop rule
+values, and real farmers trying the app in one district.
+
+## Data providers
+
+Farm data comes from a fragmented, changing set of sources, so every kind
+of data is behind an interface with more than one provider, and the
+provider is picked in one place (the `farm` binary's flags), never by a
+switch inside a feature. A provider can fetch by API, by downloading a
+file, or by reading a page; a fallback provider answers when the first
+cannot; every number keeps the source it came from; one answer never
+mixes two providers' numbers of the same kind.
+
+| Data | Interface | Providers today | Fallback |
+|---|---|---|---|
+| Place of a point | `farm.Locator` | Nominatim (OpenStreetMap) | none (off) |
+| Climate normals and sunlight | `agro.ClimateSource` | NASA POWER | none (off: no recommendations) |
+| Map features | `osm.Source` | Overpass | OSM API (small boxes) |
+| Ground heights | `elevation.Source` | Open-Meteo (Copernicus GLO-90) | Open Topo Data (SRTM 30 m) |
+| Web research | `research.Providers` | Exa, Parallel (the farmer's key) | the other one, if the farmer connected it |
+| Model | `pkg/llm` | Claude, else Gemini (whichever key is set) | none |
+| Handbook search | `pkg/knowledge` | Gemini embeddings plus keywords | keywords only |
+| Weather forecast | building (11) | | |
+| Mandi prices | building (12) | | |
+| News and knowledge | to plan, on the same provider layer as prices | | |
+
+When a provider is added, changed or dropped, update this table in the
+same PR.

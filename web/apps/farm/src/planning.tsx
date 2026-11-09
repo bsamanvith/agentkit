@@ -5,7 +5,7 @@ import { AlertTriangle, CheckCircle2, Info, Plus, Sprout, Trash2, XCircle } from
 import { useEffect, useState } from "react";
 import { ApiError, api } from "./api";
 import type { ZoneShape } from "./map";
-import { colors, cropLabel, formatDate, localName, partsOf, scoreTone, shapes } from "./plan";
+import { addPart, colors, cropLabel, formatDate, localName, partsOf, scoreTone, shapes } from "./plan";
 import type {
   Crop,
   Farm,
@@ -41,15 +41,19 @@ export function Planning({
   farm,
   onFarm,
   onZones,
+  onShowMap,
 }: {
   farm: Farm;
   onFarm: (f: Farm) => void;
   onZones: (z: ZoneShape[]) => void;
+  /** Opens the Map tab, where the laid-out strips are drawn. */
+  onShowMap?: () => void;
 }) {
   const [soils, setSoils] = useState<Soil[]>([]);
   const [crops, setCrops] = useState<Crop[]>([]);
   const [error, setError] = useState("");
   const [parts, setParts] = useState<Part[]>(() => partsOf(farm.plan, farm.plan_report));
+  const [unsaved, setUnsaved] = useState(false);
 
   useEffect(() => {
     api.soils().then(setSoils, (e: unknown) => setError(message(e)));
@@ -72,14 +76,18 @@ export function Planning({
         </p>
       )}
       <div className="grid gap-4 lg:grid-cols-2">
-        <ProfileForm farm={farm} soils={soils} crops={crops} onFarm={onFarm} />
-        <WhatToPlant
-          farm={farm}
-          crops={crops}
-          onAdd={(p) => setParts((ps) => [...ps.filter((x) => x.crop !== p.crop || x.with), p])}
-        />
+        <ProfileForm farm={farm} soils={soils} crops={crops} onFarm={onFarm} onUnsaved={setUnsaved} />
+        <WhatToPlant farm={farm} crops={crops} unsaved={unsaved} onAdd={(p) => setParts((ps) => addPart(ps, p))} />
       </div>
-      <PlanEditor farm={farm} crops={crops} parts={parts} setParts={setParts} onFarm={onFarm} onZones={onZones} />
+      <PlanEditor
+        farm={farm}
+        crops={crops}
+        parts={parts}
+        setParts={setParts}
+        onFarm={onFarm}
+        onZones={onZones}
+        onShowMap={onShowMap}
+      />
     </div>
   );
 }
@@ -98,11 +106,14 @@ function ProfileForm({
   soils,
   crops,
   onFarm,
+  onUnsaved,
 }: {
   farm: Farm;
   soils: Soil[];
   crops: Crop[];
   onFarm: (f: Farm) => void;
+  /** Told whether the form has changes not yet saved. */
+  onUnsaved: (b: boolean) => void;
 }) {
   const [p, setP] = useState<Profile>(() => farm.profile ?? {});
   const [state, setState] = useState<"" | "saving" | "saved">("");
@@ -112,6 +123,7 @@ function ProfileForm({
   const change = (q: Partial<Profile>) => {
     setP((x) => ({ ...x, ...q }));
     setState("");
+    onUnsaved(true);
   };
   const toggle = (kind: WaterKind, on: boolean) =>
     change({ water: on ? [...water, { kind, reliable: true }] : water.filter((w) => w.kind !== kind) });
@@ -122,6 +134,7 @@ function ProfileForm({
       (f) => {
         onFarm(f);
         setState("saved");
+        onUnsaved(false);
       },
       (e: unknown) => {
         setError(message(e));
@@ -236,7 +249,18 @@ function ProfileForm({
   );
 }
 
-function WhatToPlant({ farm, crops, onAdd }: { farm: Farm; crops: Crop[]; onAdd: (p: Part) => void }) {
+function WhatToPlant({
+  farm,
+  crops,
+  unsaved,
+  onAdd,
+}: {
+  farm: Farm;
+  crops: Crop[];
+  /** Land and water has changes not saved: the suggestions don't use them yet. */
+  unsaved: boolean;
+  onAdd: (p: Part) => void;
+}) {
   const [when, setWhen] = useState<"next" | "around">("next");
   const [around, setAround] = useState("");
   const [crop, setCrop] = useState("");
@@ -290,6 +314,11 @@ function WhatToPlant({ farm, crops, onAdd }: { farm: Farm; crops: Crop[]; onAdd:
           ))}
         </select>
       </label>
+      {unsaved && (
+        <p className="text-sm text-ak-warn" role="status">
+          Tap “Save land and water” first: the suggestions use the saved soil and water.
+        </p>
+      )}
       <Button size="sm" className="self-start" onClick={ask} disabled={busy}>
         <Sprout /> {busy ? "Working it out…" : "Suggest crops"}
       </Button>
@@ -307,7 +336,7 @@ function WhatToPlant({ farm, crops, onAdd }: { farm: Farm; crops: Crop[]; onAdd:
           ))}
           <ol className="flex flex-col gap-2">
             {rec.options.map((o) => (
-              <OptionCard key={o.crop} o={o} onAdd={() => onAdd({ crop: o.crop, share: 0.5, sow: o.sow })} />
+              <OptionCard key={o.crop} o={o} onAdd={() => onAdd({ crop: o.crop, share: 1, sow: o.sow })} />
             ))}
           </ol>
         </div>
@@ -379,6 +408,7 @@ function PlanEditor({
   setParts,
   onFarm,
   onZones,
+  onShowMap,
 }: {
   farm: Farm;
   crops: Crop[];
@@ -386,7 +416,9 @@ function PlanEditor({
   setParts: React.Dispatch<React.SetStateAction<Part[]>>;
   onFarm: (f: Farm) => void;
   onZones: (z: ZoneShape[]) => void;
+  onShowMap?: () => void;
 }) {
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const [plan, setPlan] = useState<Plan | undefined>(farm.plan);
   const [report, setReport] = useState<PlanReport | undefined>(farm.plan_report);
   const [dirty, setDirty] = useState(false);
@@ -426,6 +458,7 @@ function PlanEditor({
       .finally(() => setBusy(false));
   };
   const clear = () => {
+    setConfirmRemove(false);
     api.clearPlan(farm.id).then(
       (f) => {
         onFarm(f);
@@ -568,11 +601,26 @@ function PlanEditor({
             Save plan
           </Button>
         )}
-        {farm.plan && (
-          <Button variant="ghost" size="sm" onClick={clear}>
-            Remove plan
+        {plan && onShowMap && (
+          <Button variant="outline" size="sm" onClick={onShowMap}>
+            See it on the map
           </Button>
         )}
+        {farm.plan &&
+          (confirmRemove ? (
+            <>
+              <Button variant="destructive" size="sm" onClick={clear}>
+                Yes, remove the plan
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setConfirmRemove(false)}>
+                Keep it
+              </Button>
+            </>
+          ) : (
+            <Button variant="ghost" size="sm" onClick={() => setConfirmRemove(true)}>
+              Remove plan
+            </Button>
+          ))}
       </div>
       {saved && <p className="text-sm text-ak-ok">This plan is saved.</p>}
       {error && (

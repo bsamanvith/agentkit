@@ -4,6 +4,8 @@
 *
 !go.mod
 !go.sum
+# apps/: the farm app (make image-farm, deploy/k8s/local/farm.yaml), its web client prebuilt in webdist.
+!apps/
 !cmd/
 !connectors/
 !internal/

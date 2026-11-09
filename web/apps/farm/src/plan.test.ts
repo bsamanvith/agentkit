@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { colors, formatDate, partsOf, scoreTone, shapes } from "./plan";
+import { addPart, colors, formatDate, partsOf, scoreTone, shapes } from "./plan";
 import type { Crop, Plan, PlanReport } from "./types";
 
 const crop = (id: string, name: string): Crop => ({
@@ -63,5 +63,22 @@ describe("plan helpers", () => {
     expect(formatDate("2027-06-01")).toContain("2027");
     expect(formatDate("2027-06-01")).toMatch(/1/);
     expect(formatDate("soon")).toBe("soon");
+  });
+});
+
+describe("addPart", () => {
+  const sow = "2027-06-01";
+  it("shares the plot equally, so the shares never add up past the whole plot", () => {
+    let ps = addPart([], { crop: "bajra", share: 1, sow });
+    expect(ps.map((p) => p.share)).toEqual([1]);
+    ps = addPart(ps, { crop: "moong", share: 1, sow });
+    expect(ps.map((p) => p.share)).toEqual([0.5, 0.5]);
+    ps = addPart(ps, { crop: "urad", share: 1, sow });
+    expect(ps.map((p) => p.share)).toEqual([0.33, 0.33, 0.34]);
+    expect(ps.reduce((s, p) => s + p.share, 0)).toBeCloseTo(1);
+  });
+  it("replaces a crop already in the plan rather than adding it twice", () => {
+    const ps = addPart([{ crop: "bajra", share: 1, sow }], { crop: "bajra", share: 1, sow: "2027-07-01" });
+    expect(ps).toEqual([{ crop: "bajra", share: 1, sow: "2027-07-01" }]);
   });
 });

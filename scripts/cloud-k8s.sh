@@ -101,9 +101,9 @@ up() {
 	start_docker
 	install_tools
 	start_k3s
-	make images-split BUILD_CA="$ca"
-	for c in api runner toolsets; do
-		docker save "agentkit-$c:latest" | k3s ctr -n k8s.io images import - >/dev/null
+	make images-split image-farm BUILD_CA="$ca"
+	for i in agentkit-api agentkit-runner agentkit-toolsets farm; do
+		docker save "$i:latest" | k3s ctr -n k8s.io images import - >/dev/null
 	done
 	EXTRA_CA_FILE="$ca" FORCE_RESTART=1 SKIP_BUILD=1 scripts/k8s-local.sh up
 }

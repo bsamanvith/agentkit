@@ -8,6 +8,7 @@ namespace: agentkit
 resources:
   - ../base
   - postgres.yaml
+  - farm.yaml
 patches:
   # Small requests and limits: the whole stack asks for about 0.2 CPU and
   # 300 MiB, and is held to 1.5 CPU and 768 MiB.

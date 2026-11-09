@@ -108,6 +108,8 @@ export function FarmMap({
       m.remove();
       map.current = null;
     };
+    // Once: whether the map adds corners does not change for its life.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // The plot being edited.

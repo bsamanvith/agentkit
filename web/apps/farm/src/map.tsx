@@ -84,8 +84,8 @@ export function FarmMap({
 
   useEffect(() => {
     if (!el.current) return;
-    // No double-tap zoom: on the editor each tap of it would add a corner.
-    const m = L.map(el.current, { center: start, zoom: 5, zoomControl: true, doubleClickZoom: false });
+    // No double-tap zoom where a tap adds a corner: each tap of it would add one.
+    const m = L.map(el.current, { center: start, zoom: 5, zoomControl: true, doubleClickZoom: !onChange });
     const sat = satellite().addTo(m);
     L.control.layers({ Satellite: sat, Streets: streets() }, undefined, { position: "topright" }).addTo(m);
     otherLayer.current = L.layerGroup().addTo(m);

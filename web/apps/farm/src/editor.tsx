@@ -2,13 +2,23 @@ import { Button } from "@agentkit/ui/components/button";
 import { Input } from "@agentkit/ui/components/input";
 import { Textarea } from "@agentkit/ui/components/textarea";
 import { cn } from "@agentkit/ui";
-import { Crosshair, Footprints, Keyboard, MapPin, Trash2, Undo2 } from "lucide-react";
+import { Crosshair, Footprints, Keyboard, MapPin, Search, Trash2, Undo2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ApiError, api } from "./api";
 import { formatCorners, parseCorners } from "./coords";
 import { FarmMap, type Outline } from "./map";
 import { ReportView } from "./report";
-import { units, type Corner, type Draft, type Farm, type Report, type Source, type Unit } from "./types";
+import {
+  units,
+  type Corner,
+  type Draft,
+  type Farm,
+  type PlaceMatch,
+  type Point,
+  type Report,
+  type Source,
+  type Unit,
+} from "./types";
 
 type Mode = Source;
 
@@ -17,7 +27,7 @@ const modes: { id: Mode; label: string; icon: typeof MapPin; help: string }[] = 
     id: "map",
     label: "Draw",
     icon: MapPin,
-    help: "Tap each corner of the plot on the map, in order around it. Drag a corner to move it.",
+    help: "Find your village, zoom in until you see your field, then tap each corner in order around it. Drag a corner to move it.",
   },
   {
     id: "gps",
@@ -72,6 +82,9 @@ export function Editor({
     const v = Number(declared);
     return declared.trim() !== "" && Number.isFinite(v) && v > 0 ? { value: v, unit } : undefined;
   }, [declared, unit]);
+  // A size typed but not a plain number ("2 acre 10 gunta", "2,5") is not checked: say so.
+  const badSize = declared.trim() !== "" && declaredArea === undefined;
+  const [goto, setGoto] = useState<Point>();
 
   // Verify as the boundary changes, a moment after the last change.
   useEffect(() => {
@@ -182,6 +195,7 @@ export function Editor({
           ))}
         </div>
         <p className="text-sm text-muted-foreground">{help}</p>
+        {mode === "map" && <PlaceSearch onPick={(p) => setGoto({ ...p })} />}
         <FarmMap
           corners={corners}
           onChange={change}
@@ -190,6 +204,7 @@ export function Editor({
           others={outlines}
           fit={fit}
           you={mode === "gps" ? fix : undefined}
+          goto={goto}
           className="h-[55vh] min-h-72 w-full overflow-hidden rounded-lg border lg:h-[70vh]"
         />
         <div className="flex flex-wrap gap-2">
@@ -271,6 +286,11 @@ export function Editor({
               ))}
             </select>
           </div>
+          {badSize && (
+            <p className="text-xs font-normal text-ak-warn" role="status">
+              Type just the number, like 2.5, and pick the unit. This size is not checked.
+            </p>
+          )}
         </div>
 
         <div className="rounded-lg border p-4">
@@ -291,6 +311,9 @@ export function Editor({
             {error}
           </p>
         )}
+        {name.trim() === "" && shown !== undefined && shown.status !== "invalid" && (
+          <p className="text-sm text-muted-foreground">Give the plot a name to save it.</p>
+        )}
         <div className="flex gap-2">
           <Button disabled={!canSave} onClick={save}>
             {saving ? "Saving…" : farm ? "Save changes" : "Save plot"}
@@ -300,6 +323,79 @@ export function Editor({
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Finds a village or town by name and moves the map there, so the farmer need not pan across India. */
+function PlaceSearch({ onPick }: { onPick: (p: Point) => void }) {
+  const [q, setQ] = useState("");
+  const [found, setFound] = useState<PlaceMatch[]>();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const find = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (q.trim() === "") return;
+    setBusy(true);
+    setError("");
+    api
+      .places(q.trim())
+      .then(
+        (ps) => {
+          setFound(ps);
+          const [only] = ps;
+          if (ps.length === 1 && only) onPick(only.point);
+        },
+        (err: unknown) => {
+          setFound(undefined);
+          setError(err instanceof Error ? err.message : String(err));
+        },
+      )
+      .finally(() => setBusy(false));
+  };
+  return (
+    <div className="flex flex-col gap-1">
+      <form role="search" onSubmit={find} className="flex gap-2">
+        <Input
+          aria-label="Village or town"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Your village or town"
+          className="flex-1"
+        />
+        <Button type="submit" variant="secondary" disabled={busy || q.trim() === ""}>
+          <Search /> {busy ? "Finding…" : "Find"}
+        </Button>
+      </form>
+      {error && (
+        <p role="alert" className="text-sm text-ak-bad">
+          {error}
+        </p>
+      )}
+      {found?.length === 0 && (
+        <p className="text-sm text-muted-foreground">No place by that name. Try the mandal or district.</p>
+      )}
+      {found && found.length > 1 && (
+        <ul aria-label="Places found" className="flex flex-col gap-1">
+          {found.map((p) => (
+            <li key={`${p.point.lat},${p.point.lng}`}>
+              <button
+                type="button"
+                className="w-full rounded-md border px-2 py-1.5 text-left text-sm hover:bg-accent"
+                onClick={() => {
+                  onPick(p.point);
+                  setFound(undefined);
+                }}
+              >
+                {p.address || p.name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="text-xs text-muted-foreground">
+        A tap zooms in until the fields are close enough; from there each tap adds a corner.
+      </p>
     </div>
   );
 }

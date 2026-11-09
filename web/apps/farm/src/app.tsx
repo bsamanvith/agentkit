@@ -29,7 +29,7 @@ import { designShapes } from "./landview";
 import { ReportView, StatusBadge } from "./report";
 import { PlotShape } from "./shape";
 import type { ZoneShape } from "./map";
-import type { Config, Farm, Group } from "./types";
+import { units, type Config, type Farm, type Group } from "./types";
 
 // The map (Leaflet), the group pages and the assistant load when first
 // needed: the overview comes up first on a slow connection.
@@ -692,13 +692,18 @@ function FarmDetail({
             </a>
           </Button>
           {confirm ? (
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => api.remove(farm.id).then(onDeleted, (e: unknown) => setError(message(e)))}
-            >
-              Delete for good
-            </Button>
+            <>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => api.remove(farm.id).then(onDeleted, (e: unknown) => setError(message(e)))}
+              >
+                Delete “{farm.name}” for good
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setConfirm(false)}>
+                Keep it
+              </Button>
+            </>
           ) : (
             <Button variant="ghost" size="sm" onClick={() => setConfirm(true)} aria-label="Delete plot">
               <Trash2 />
@@ -750,7 +755,8 @@ function FarmDetail({
           <ReportView report={farm.report} />
           {farm.declared && (
             <p className="mt-3 text-sm text-muted-foreground">
-              On papers: {farm.declared.value} {farm.declared.unit}
+              On papers: {farm.declared.value}{" "}
+              {units.find((u) => u.id === farm.declared?.unit)?.label ?? farm.declared.unit}
             </p>
           )}
           <p className="mt-1 text-xs text-muted-foreground">
@@ -760,7 +766,7 @@ function FarmDetail({
       </div>
       {planner && (
         <div className={tab === "plan" ? "" : "hidden"}>
-          <Planning farm={farm} onFarm={onChanged} onZones={setZones} />
+          <Planning farm={farm} onFarm={onChanged} onZones={setZones} onShowMap={() => setTab("map")} />
         </div>
       )}
     </>

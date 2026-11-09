@@ -7,6 +7,7 @@
 #   make image-local                agentkit-local: SQLite, no Postgres or Redis
 #   make image-dev                  agentkit-dev: Postgres and Redis, no SQLite
 #   make image TAGS=...             other build tags (cmd/agentkit/backends.go)
+#   make image-farm                 farm: the farm app (apps/farm/cmd/farm)
 #
 # The binary is the entrypoint and "serve" the default command, so
 # `docker run <image> healthcheck` runs the self-check (there is no shell).
@@ -26,6 +27,8 @@ RUN --mount=type=secret,id=ca,target=/etc/ssl/extra/ca.crt,required=false \
     SSL_CERT_DIR=/etc/ssl/certs:/etc/ssl/extra go mod download
 COPY . .
 ARG BIN=agentkit
+# PKG is the binary's package when it is not ./cmd/$BIN.
+ARG PKG=""
 ARG TAGS=""
 ARG VERSION=dev
 ARG COMMIT=""
@@ -35,7 +38,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath -tags "$TAGS" \
       -ldflags "-s -w -X main.version=$VERSION -X main.commit=$COMMIT -X main.date=$DATE" \
-      -o /out/app ./cmd/$BIN
+      -o /out/app "${PKG:-./cmd/$BIN}"
 
 FROM gcr.io/distroless/static:nonroot
 ARG BIN=agentkit

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/bsamanvith/agentkit/apps/farm/feeds"
@@ -197,6 +198,10 @@ func place(q Query) string {
 	case q.Market != "":
 		return q.Market
 	case q.District != "":
+		// The geocoder's names often carry the word already: "Guntur District".
+		if strings.HasSuffix(strings.ToLower(q.District), "district") {
+			return q.District
+		}
 		return q.District + " district"
 	}
 	return stateName(q.State)

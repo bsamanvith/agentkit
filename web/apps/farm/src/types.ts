@@ -12,6 +12,14 @@ export const units: { id: Unit; label: string }[] = [
 
 export type Source = "map" | "gps" | "typed";
 
+/** A place the search found (GET /api/places): a village, town or landmark. */
+export interface PlaceMatch {
+  name: string;
+  kind: string;
+  point: Point;
+  address: string;
+}
+
 export interface Point {
   lat: number;
   lng: number;

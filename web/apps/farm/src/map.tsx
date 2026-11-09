@@ -20,6 +20,9 @@ const streets = () =>
 // India, until the farmer has a plot or a GPS fix.
 const start: L.LatLngExpression = [20.6, 78.9];
 
+/** The zoom from which a tap adds a corner; below it a tap zooms in. */
+export const cornerZoom = 15;
+
 export interface Outline {
   id: string;
   name: string;
@@ -49,6 +52,7 @@ export function FarmMap({
   zones = [],
   fit = 0,
   you,
+  goto,
   className,
 }: {
   corners: Corner[];
@@ -62,6 +66,8 @@ export function FarmMap({
   fit?: number;
   /** The farmer's position, if known. */
   you?: Point & { accuracy?: number };
+  /** A place to fly to, such as the village the farmer searched for: a new object each time. */
+  goto?: Point;
   className?: string;
 }) {
   const el = useRef<HTMLDivElement>(null);
@@ -78,7 +84,8 @@ export function FarmMap({
 
   useEffect(() => {
     if (!el.current) return;
-    const m = L.map(el.current, { center: start, zoom: 5, zoomControl: true });
+    // No double-tap zoom: on the editor each tap of it would add a corner.
+    const m = L.map(el.current, { center: start, zoom: 5, zoomControl: true, doubleClickZoom: false });
     const sat = satellite().addTo(m);
     L.control.layers({ Satellite: sat, Streets: streets() }, undefined, { position: "topright" }).addTo(m);
     otherLayer.current = L.layerGroup().addTo(m);
@@ -88,6 +95,12 @@ export function FarmMap({
     m.on("click", (e: L.LeafletMouseEvent) => {
       const { corners, onChange, editable } = latest.current;
       if (!editable || !onChange) return;
+      // Zoomed out, a tap lands far from where the farmer meant: it zooms
+      // in there instead of adding a corner.
+      if (m.getZoom() < cornerZoom) {
+        m.setView(e.latlng, Math.min(m.getZoom() + 4, cornerZoom));
+        return;
+      }
       onChange([...corners, { lat: round(e.latlng.lat), lng: round(e.latlng.lng) }]);
     });
     map.current = m;
@@ -186,6 +199,10 @@ export function FarmMap({
     // Only on request: not while the farmer is tapping corners.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fit]);
+
+  useEffect(() => {
+    if (goto && map.current) map.current.setView([goto.lat, goto.lng], 16);
+  }, [goto]);
 
   useEffect(() => {
     if (you && map.current && corners.length === 0) map.current.setView([you.lat, you.lng], 18);

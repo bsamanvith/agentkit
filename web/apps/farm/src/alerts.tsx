@@ -297,7 +297,7 @@ export function Care({ farm, weather, automations }: { farm: Farm; weather: bool
               <ul className="flex flex-wrap gap-2 text-xs">
                 {week.crops.map((c) => (
                   <li key={c.zone} className="rounded-full bg-ak-bg px-2.5 py-1">
-                    {c.name}: {c.stage.name.replace("_", " ")}
+                    {c.name}: {c.stage.name.replaceAll("_", " ")}
                     {c.stage.das >= 0 ? `, day ${c.stage.das}` : ` in ${-c.stage.das} days`}
                   </li>
                 ))}
@@ -369,7 +369,7 @@ function describeSchedule(s: string): string {
 
 function triggerWords(a: Automation): string {
   const t = a.trigger;
-  if (t.kind === "event") return `when ${t.event?.replace("farm.", "a plot's ").replace("_", " ")}`;
+  if (t.kind === "event") return `when ${t.event?.replace("farm.", "a plot's ").replaceAll("_", " ")}`;
   const when = describeSchedule(t.schedule ?? "");
   if (t.kind === "weather" && t.weather)
     return `${when}, if ${metricWords[t.weather.metric] ?? t.weather.metric} ${t.weather.op} ${t.weather.value} in the next ${t.weather.days || 3} days`;

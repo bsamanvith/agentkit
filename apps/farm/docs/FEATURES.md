@@ -43,7 +43,9 @@ Status words: **live** (merged on main, a farmer can use it), **building**
 **The farmer** adds a plot: a name, how big they think it is (acres,
 guntas, cents, hectares or m²), and its boundary, by tapping the corners
 on a satellite map, by walking to each corner and tapping "add my
-position", or by pasting coordinates.
+position", or by pasting coordinates. To draw, they type their village
+or town and the map flies there; zoomed out, a tap zooms in rather than
+dropping a corner far from where they meant.
 
 **The app** checks it before saving: a valid shape, the true area on the
 ground in every unit, whether it matches the size the farmer said (a big

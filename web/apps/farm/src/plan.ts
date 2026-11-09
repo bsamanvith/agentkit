@@ -49,3 +49,14 @@ export function partsOf(plan: Plan | undefined, report: PlanReport | undefined):
     sow: z.sow,
   }));
 }
+
+/**
+ * addPart adds a suggested crop to the plan, replacing the same crop, and
+ * shares the plot equally between the plan's crops, so the shares add up to
+ * the whole plot however many are added.
+ */
+export function addPart(ps: Part[], p: Part): Part[] {
+  const next = [...ps.filter((x) => x.crop !== p.crop || x.with), p];
+  const each = Math.floor(100 / next.length);
+  return next.map((x, i) => ({ ...x, share: (i === next.length - 1 ? 100 - each * (next.length - 1) : each) / 100 }));
+}

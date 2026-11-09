@@ -7,7 +7,8 @@
 #   scripts/k8s-local.sh up        build the images, deploy, wait until ready
 #   scripts/k8s-local.sh status    pods, services and the console's URL
 #   scripts/k8s-local.sh token     print the API token the console asks for
-#   scripts/k8s-local.sh logs [c]  follow a component's logs (api, runner, toolsets, postgres)
+#   scripts/k8s-local.sh logs [c]  follow a component's logs (api, runner, toolsets, postgres, farm)
+#   scripts/k8s-local.sh farm      forward http://127.0.0.1:30090 to the farm app (until Ctrl-C)
 #   scripts/k8s-local.sh smoke     run the smoke suite (test/e2e) against it
 #   scripts/k8s-local.sh down      delete the namespace: pods, secret and data
 #
@@ -25,6 +26,9 @@ ctx="${KUBE_CONTEXT:-docker-desktop}"
 ns=agentkit
 overlay=deploy/k8s/local
 url=http://localhost:30080
+# The farm app has no sign-in: it is reached through a port forward on
+# loopback, never a node port (deploy/k8s/local/farm.yaml).
+farm_url=http://127.0.0.1:30090
 deployments=(toolsets runner api)
 
 k() { kubectl --context "$ctx" "$@"; }
@@ -102,7 +106,7 @@ ensure_secret() {
 up() {
 	check_context
 	if [ "${SKIP_BUILD:-}" != 1 ]; then
-		make images-split
+		make images-split image-farm
 	fi
 	k create namespace "$ns" --dry-run=client -o yaml | k apply -f - >/dev/null
 	local keychanged
@@ -149,9 +153,14 @@ up() {
 		fi
 		kn rollout status "deployment/$d" --timeout=180s
 	done
+	if [ -n "$restart" ]; then
+		kn rollout restart statefulset/farm >/dev/null
+	fi
+	kn rollout status statefulset/farm --timeout=180s
 	echo
 	echo "Console: $url"
 	echo "API token (the console asks for it): $(secret_value api-token)"
+	echo "Farm app: scripts/k8s-local.sh farm, then $farm_url"
 }
 
 status() {
@@ -159,6 +168,7 @@ status() {
 	kn get pods,services
 	echo
 	echo "Console: $url (token: scripts/k8s-local.sh token)"
+	echo "Farm app: scripts/k8s-local.sh farm, then $farm_url"
 }
 
 case "${1:-help}" in
@@ -168,7 +178,12 @@ token) check_context && secret_value api-token && echo ;;
 logs)
 	check_context
 	c="${2:-api}"
-	if [ "$c" = postgres ]; then kn logs -f statefulset/postgres; else kn logs -f "deployment/$c" --all-containers; fi
+	if [ "$c" = postgres ] || [ "$c" = farm ]; then kn logs -f "statefulset/$c"; else kn logs -f "deployment/$c" --all-containers; fi
+	;;
+farm)
+	check_context
+	echo "Farm app: $farm_url (Ctrl-C stops the forward)"
+	kn port-forward --address 127.0.0.1 service/farm "${farm_url##*:}:8080"
 	;;
 smoke)
 	check_context
@@ -178,5 +193,5 @@ down)
 	check_context
 	k delete namespace "$ns" --ignore-not-found --wait
 	;;
-*) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; [ "${1:-help}" = help ] ;;
+*) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; [ "${1:-help}" = help ] ;;
 esac

@@ -13,6 +13,7 @@ import type {
   GroupDraft,
   Part,
   Plan,
+  PlaceMatch,
   PlanReport,
   Profile,
   Recommendation,
@@ -110,6 +111,8 @@ export const api = {
     (await call<{ providers: ResearchProvider[] }>("DELETE", `/api/research/${encodeURIComponent(provider)}`))
       .providers,
   unread: () => call<{ unread: number }>("GET", "/api/notices?unread=1&limit=1"),
+  places: async (q: string) =>
+    (await call<{ places: PlaceMatch[] }>("GET", `/api/places?q=${encodeURIComponent(q)}&limit=5`)).places,
   ask: (message: string, conversation?: string) =>
     call<AssistantReply>("POST", "/api/assistant", { message, conversation }),
 };

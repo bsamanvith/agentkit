@@ -289,6 +289,8 @@ IMAGE_BUDGET_MB_dev ?= 34
 IMAGE_BUDGET_MB_api ?= 24
 IMAGE_BUDGET_MB_runner ?= 20
 IMAGE_BUDGET_MB_toolsets ?= 18
+# The farm app (make image-farm): its binary and embedded web client.
+IMAGE_BUDGET_MB_farm ?= 26
 # Binaries that get an image; fakellm joins when cmd/fakellm exists (T004).
 IMAGE_BINS := $(notdir $(wildcard $(addprefix cmd/,agentkit fakellm)))
 # An extra CA for the module download, behind a TLS-intercepting proxy.
@@ -300,6 +302,7 @@ image: ## Build an image: BIN=agentkit|fakellm TAGS=... VERSION=... (tags :VERSI
 		$(if $(BUILD_CA),--secret id=ca$(comma)src=$(BUILD_CA)) \
 		--build-arg GO_VERSION=$(GO_VERSION) \
 		--build-arg BIN=$(BIN) \
+		$(if $(PKG),--build-arg PKG=$(PKG)) \
 		--build-arg TAGS="$(TAGS)" \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg COMMIT=$(COMMIT) \
@@ -316,6 +319,12 @@ SPLIT := api runner toolsets
 .PHONY: images-split
 images-split: ## Build agentkit-api, agentkit-runner and agentkit-toolsets
 	@set -e; for v in $(SPLIT); do $(MAKE) --no-print-directory image-$$v; done
+
+# The farm app (apps/farm) for deploy/k8s/local/farm.yaml: its own binary, its web
+# client embedded.
+.PHONY: image-farm
+image-farm: ## Build the farm app's image, farm (deploy/k8s/local/farm.yaml)
+	@$(MAKE) --no-print-directory image BIN=farm PKG=./apps/farm/cmd/farm IMAGE=farm
 
 .PHONY: deps-check
 deps-check: ## Fail if a variant's binary links a dependency its build tags leave out

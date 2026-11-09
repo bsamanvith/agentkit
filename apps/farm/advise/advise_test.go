@@ -213,3 +213,27 @@ func TestTodayAndTomorrow(t *testing.T) {
 		t.Errorf("advice %+v", r.Advice[0])
 	}
 }
+
+// TestSeveralCropsReadAsPlural: advice naming two crops says "are", not "is".
+func TestSeveralCropsReadAsPlural(t *testing.T) {
+	t.Parallel()
+	days := weathertest.Week("2026-11-09")
+	for i := range days {
+		days[i].ET0MM = 5
+	}
+	for want, crops := range map[string]map[string]int{
+		"Maize is at a stage":                         {"maize": 2},
+		"Green gram (moong) and Maize are at a stage": {"maize": 2, "green_gram": 2},
+	} {
+		r := run(t, plot(crops), days)
+		var why string
+		for _, a := range r.Advice {
+			if a.Rule == "dry_week" {
+				why = a.Why
+			}
+		}
+		if !strings.Contains(why, want) {
+			t.Errorf("%v: dry week says %q, want %q", crops, why, want)
+		}
+	}
+}

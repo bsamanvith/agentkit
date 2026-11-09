@@ -287,7 +287,7 @@ func heavyRain(w week) []Item {
 			}
 		}
 		if len(ready) > 0 {
-			acts = append(acts, "Harvest "+list(names(ready))+" before the rain if it is ready, and keep the harvest under cover.")
+			acts = append(acts, "Harvest "+list(names(ready))+" before the rain if "+plural(len(names(ready)), "it is", "they are")+" ready, and keep the harvest under cover.")
 		}
 		if len(wet) > 0 {
 			acts = append(acts, list(names(wet))+" cannot stand in water: drain standing water within a day.")
@@ -320,7 +320,7 @@ func harvestRain(w week) []Item {
 		}
 		return []Item{{
 			Severity: Warning, Day: d.Date, Crops: names(ready), Title: "Rain at harvest time",
-			Action: "Harvest " + list(names(ready)) + " " + w.by(d.Date) + " if it is ready; cover anything drying in the field.",
+			Action: "Harvest " + list(names(ready)) + " " + w.by(d.Date) + " if " + plural(len(names(ready)), "it is", "they are") + " ready; cover anything drying in the field.",
 			Why:    fmt.Sprintf("%s of rain is forecast for %s, while the crop is in its harvest window.", mm(d.RainMM), w.day(d.Date)),
 		}}
 	}
@@ -399,7 +399,7 @@ func heat(w week) []Item {
 		}
 		return []Item{{
 			Severity: Warning, Day: d.Date, Crops: names(hit), Title: "Heat stress " + w.day(d.Date),
-			Action: act, Why: fmt.Sprintf("A high of %.0f °C (a day's mean of %.0f °C) is forecast for %s, beyond what %s stands at its stage.", d.TMaxC, mean, w.day(d.Date), list(names(hit))),
+			Action: act, Why: fmt.Sprintf("A high of %.0f °C (a day's mean of %.0f °C) is forecast for %s, beyond what %s %s at %s stage.", d.TMaxC, mean, w.day(d.Date), list(names(hit)), plural(len(names(hit)), "stands", "stand"), plural(len(names(hit)), "its", "their")),
 		}}
 	}
 	return nil
@@ -420,7 +420,7 @@ func cold(w week) []Item {
 		return []Item{{
 			Severity: Warning, Day: d.Date, Crops: names(hit), Title: "Cold night " + w.day(d.Date),
 			Action: "Irrigate lightly the evening before (moist soil holds warmth); cover nurseries and young plants; smoke on the windward side on the coldest nights.",
-			Why:    fmt.Sprintf("A low of %.0f °C is forecast for %s, colder than %s stands.", d.TMinC, w.day(d.Date), list(names(hit))),
+			Why:    fmt.Sprintf("A low of %.0f °C is forecast for %s, colder than %s %s.", d.TMinC, w.day(d.Date), list(names(hit)), plural(len(names(hit)), "stands", "stand")),
 		}}
 	}
 	return nil
@@ -438,7 +438,7 @@ func dryWeek(w week) []Item {
 	if len(crit) == 0 {
 		return nil
 	}
-	why := fmt.Sprintf("Only %s of rain is forecast over the week while the crop will use about %s of water; %s is at a stage that cannot go short.", mm(t.RainMM), mm(t.ET0MM), list(names(crit)))
+	why := fmt.Sprintf("Only %s of rain is forecast over the week while the crops will use about %s of water; %s %s at a stage that cannot go short.", mm(t.RainMM), mm(t.ET0MM), list(names(crit)), plural(len(names(crit)), "is", "are"))
 	if w.irrigated {
 		return []Item{{
 			Severity: Suggest, Day: w.days[0].Date, Crops: names(crit), Title: "Irrigate this week",
@@ -525,4 +525,12 @@ func disease(w week) []Item {
 		}
 	}
 	return nil
+}
+
+// plural picks the word for one crop or for several: "Tomato is", "Tomato and Okra are".
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }

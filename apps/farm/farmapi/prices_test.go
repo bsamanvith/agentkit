@@ -68,6 +68,11 @@ func TestPriceRoutes(t *testing.T) {
 	if code := call(t, srv, "GET", "/api/prices?state=Karnataka&commodity=tomato", "", &e); code != http.StatusNotFound || e.Error != "no mandi prices found for Tomato in Karnataka" {
 		t.Fatalf("Karnataka: %d %+v", code, e)
 	}
+	// The geocoder names the district "Guntur District": not "Guntur District district".
+	if code := call(t, srv, "GET", "/api/prices?state=Karnataka&district=Kolar%20District&commodity=tomato", "", &e); code != http.StatusNotFound ||
+		e.Error != "no mandi prices found for Tomato in Kolar District, Karnataka" {
+		t.Fatalf("Kolar District: %d %+v", code, e)
+	}
 	if code := call(t, srv, "GET", "/api/prices", "", nil); code != http.StatusBadRequest {
 		t.Fatalf("empty: %d", code)
 	}

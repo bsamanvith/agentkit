@@ -100,6 +100,7 @@ export interface Config {
   research?: boolean;
   weather?: boolean;
   automations?: boolean;
+  prices?: boolean;
   country: string;
 }
 

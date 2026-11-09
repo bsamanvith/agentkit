@@ -9,6 +9,7 @@ skill). What and why: [docs/PRODUCT.md](docs/PRODUCT.md); crop planning: [docs/C
 plot groups and how plants are spread over them: [docs/GROUPS.md](docs/GROUPS.md);
 the sun, the slope and the seasons: [docs/SUN.md](docs/SUN.md);
 weather, care advice and automations: [docs/AUTOMATIONS.md](docs/AUTOMATIONS.md);
+crop prices (mandi prices, estimates, the provider layer): [docs/PRICES.md](docs/PRICES.md);
 the plan: [E25](../../tasks/E25-farm-app.md).
 
 ```sh

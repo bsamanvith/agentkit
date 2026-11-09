@@ -60,11 +60,14 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/farm/sqlite"
 	"github.com/bsamanvith/agentkit/apps/farm/farmagent"
 	"github.com/bsamanvith/agentkit/apps/farm/farmapi"
+	"github.com/bsamanvith/agentkit/apps/farm/feeds"
 	"github.com/bsamanvith/agentkit/apps/farm/handbook"
 	"github.com/bsamanvith/agentkit/apps/farm/nasapower"
 	"github.com/bsamanvith/agentkit/apps/farm/nominatim"
 	"github.com/bsamanvith/agentkit/apps/farm/osm"
 	"github.com/bsamanvith/agentkit/apps/farm/planner"
+	"github.com/bsamanvith/agentkit/apps/farm/prices"
+	"github.com/bsamanvith/agentkit/apps/farm/prices/pricesqlite"
 	"github.com/bsamanvith/agentkit/apps/farm/research"
 	"github.com/bsamanvith/agentkit/apps/farm/surveyor"
 	"github.com/bsamanvith/agentkit/apps/farm/watch"
@@ -91,6 +94,7 @@ type config struct {
 	addr, db, country, geocoder, climate, model, modelID          string
 	overpass, osmAPI, elevation, elevationBackup, embedder, vault string
 	exaURL, parallelURL, weather                                  string
+	priceProviders, priceFiles, dataGovURL                        string
 	mcp, automations                                              bool
 	embedRate, workers                                            int
 }
@@ -117,6 +121,9 @@ func main() {
 	fs.StringVar(&c.vault, "vault", env("FARM_VAULT", ""), "SQLite file of the farmers' sealed API keys (default: the -db file's name with -vault.db) ($FARM_VAULT)")
 	fs.StringVar(&c.exaURL, "exa-url", env("FARM_EXA_URL", ""), "Exa API base URL (default Exa's) ($FARM_EXA_URL)")
 	fs.StringVar(&c.parallelURL, "parallel-url", env("FARM_PARALLEL_URL", ""), "Parallel API base URL (default Parallel's) ($FARM_PARALLEL_URL)")
+	fs.StringVar(&c.priceProviders, "prices", env("FARM_PRICE_PROVIDERS", "datagov,files"), `mandi price providers in the order they are asked, comma separated: datagov (Agmarknet on data.gov.in, key in $FARM_DATAGOV_KEY), files (the -price-files folder); "off" for saved prices only ($FARM_PRICE_PROVIDERS)`)
+	fs.StringVar(&c.priceFiles, "price-files", env("FARM_PRICE_FILES", ""), "folder of downloaded price files (.csv from Agmarknet, data.gov.in or CEDA), read into the price history at start ($FARM_PRICE_FILES)")
+	fs.StringVar(&c.dataGovURL, "datagov-url", env("FARM_DATAGOV_URL", prices.DataGovURL), "data.gov.in API base URL ($FARM_DATAGOV_URL)")
 	fs.IntVar(&c.embedRate, "embed-rate", envInt("FARM_EMBED_RATE", 90), "texts a minute sent to the embedder, 0 for no cap (Gemini's free tier allows 100) ($FARM_EMBED_RATE)")
 	fs.StringVar(&c.weather, "weather", env("FARM_WEATHER", "open-meteo,met-norway"), `forecast providers, first that answers: open-meteo and met-norway, each optionally =URL; or "off" ($FARM_WEATHER)`)
 	fs.BoolVar(&c.automations, "automations", env("FARM_AUTOMATIONS", "true") == "true", "run the automations: weather checks, crop work, skills ($FARM_AUTOMATIONS)")
@@ -234,6 +241,16 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 		return err
 	}
 
+	priceDB, err := pricesqlite.Open(ctx, strings.TrimSuffix(c.db, filepath.Ext(c.db))+"-prices.db")
+	if err != nil {
+		return err
+	}
+	defer priceDB.Close()
+	market, err := buildPrices(ctx, c, priceDB, log)
+	if err != nil {
+		return err
+	}
+
 	emb, err := buildEmbedder(c)
 	if err != nil {
 		return err
@@ -285,7 +302,7 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 	toolOpts := []farmagent.Option{
 		farmagent.WithPlanner(plan), farmagent.WithSurveyor(survey),
 		farmagent.WithTools(webTools, research.System),
-		farmagent.WithKnowledge(book, handbook.Description),
+		farmagent.WithKnowledge(book, handbook.Description), farmagent.WithPrices(market),
 	}
 	var alerts automation.Store // a nil *autosqlite.Store is not a nil Store
 	if astore != nil {
@@ -296,7 +313,7 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 
 	aopts := []farmapi.Option{
 		farmapi.WithCountry(c.country), farmapi.WithLogger(log), farmapi.WithPlanner(plan),
-		farmapi.WithSurveyor(survey), farmapi.WithResearch(webResearch), farmapi.WithWatch(watcher),
+		farmapi.WithSurveyor(survey), farmapi.WithResearch(webResearch), farmapi.WithWatch(watcher), farmapi.WithPrices(market),
 	}
 	model, provider, err := buildModel(c)
 	if err != nil {
@@ -360,7 +377,7 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 	}
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	log.Info("farm: serving", "url", "http://"+ln.Addr().String(), "db", c.db, "assistant", provider, "geocoder", c.geocoder,
-		"climate", c.climate, "weather", c.weather, "automations", c.automations, "overpass", c.overpass, "osm_api", c.osmAPI, "elevation", c.elevation, "elevation_backup", c.elevationBackup, "embedder", emb != nil, "mcp", c.mcp)
+		"climate", c.climate, "weather", c.weather, "automations", c.automations, "overpass", c.overpass, "osm_api", c.osmAPI, "elevation", c.elevation, "elevation_backup", c.elevationBackup, "embedder", emb != nil, "prices", strings.Join(market.Providers(), ", then "), "mcp", c.mcp)
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
 	select {
@@ -377,6 +394,51 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 		return err
 	}
 	return nil
+}
+
+// buildPrices returns the price service: the live providers c names,
+// in order, then the saved history in h. Price files are read into the
+// history in the background, so a large folder does not hold up the start.
+func buildPrices(ctx context.Context, c config, h prices.History, log *slog.Logger) (*prices.Service, error) {
+	var files *prices.FileSource
+	makers := map[string]func() (prices.Source, error){
+		"datagov": func() (prices.Source, error) {
+			return prices.DataGov(os.Getenv("FARM_DATAGOV_KEY"), prices.WithDataGovURL(c.dataGovURL))
+		},
+		"files": func() (prices.Source, error) {
+			f, err := prices.Files(c.priceFiles)
+			if err == nil {
+				files = f
+			}
+			return f, err
+		},
+	}
+	live, err := feeds.Pick(log, c.priceProviders, makers)
+	if err != nil {
+		return nil, err
+	}
+	if files == nil && c.priceFiles != "" {
+		// Files to import, though not asked as a live provider.
+		if files, err = prices.Files(c.priceFiles); err != nil {
+			return nil, err
+		}
+	}
+	opts := []prices.Option{prices.WithLogger(log)}
+	if files != nil {
+		opts = append(opts, prices.WithFiles(files))
+	}
+	svc := prices.New(h, live, opts...)
+	if files != nil {
+		go func() {
+			stats, n, err := svc.Import(ctx)
+			if err != nil {
+				log.Warn("farm: reading price files", "err", err)
+				return
+			}
+			log.Info("farm: price files read", "files", stats.Files, "quotes", stats.Quotes, "new", n, "skipped", stats.Skipped, "unreadable", stats.Errors)
+		}()
+	}
+	return svc, nil
 }
 
 // buildModel returns the assistant's model and its provider's name, or nil

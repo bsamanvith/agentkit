@@ -4,11 +4,12 @@
 //
 //	400  the request is malformed (farm.ErrInvalid, agro.ErrInvalid), or
 //	     names a soil or crop the library does not have
-//	404  no such farm or conversation
+//	404  no such farm or conversation, or no prices for the query
 //	422  the boundary failed verification, the body also has its "report";
 //	     or the plan has errors, the body has its "plan_report"
-//	503  the assistant is not configured (no model key), planning is not
-//	     configured, or the climate could not be looked up
+//	503  the assistant is not configured (no model key), planning or
+//	     prices are not configured, the climate could not be looked up, or
+//	     no price provider could answer
 //
 // Routes:
 //
@@ -78,6 +79,14 @@
 //	POST   /api/automations/{id}/run       run it now {"farm"}: for one plot, or its whole scope
 //	GET    /api/automations/{id}/runs      its runs, newest first (?farm=)
 //
+// Crop prices (with [WithPrices]); a farm's plot gives the district and
+// state:
+//
+//	GET    /api/prices?commodity=&farm=&state=&district=&market=  today's mandi prices
+//	GET    /api/prices/history?commodity=&farm=&days=               monthly median prices
+//	POST   /api/prices/estimate            what a crop may fetch (prices.EstimateQuery + "farm")
+//	GET    /api/prices/sources             the price providers in order, the MSPs
+//
 // Web research keys (with [WithResearch]):
 //
 //	GET    /api/research                   the providers, which are connected
@@ -99,10 +108,12 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/automation"
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
 	"github.com/bsamanvith/agentkit/apps/farm/farmagent"
+	"github.com/bsamanvith/agentkit/apps/farm/feeds"
 	"github.com/bsamanvith/agentkit/apps/farm/geo"
 	"github.com/bsamanvith/agentkit/apps/farm/land"
 	"github.com/bsamanvith/agentkit/apps/farm/planner"
 	"github.com/bsamanvith/agentkit/apps/farm/planting"
+	"github.com/bsamanvith/agentkit/apps/farm/prices"
 	"github.com/bsamanvith/agentkit/apps/farm/research"
 	"github.com/bsamanvith/agentkit/apps/farm/surveyor"
 	"github.com/bsamanvith/agentkit/apps/farm/watch"
@@ -147,6 +158,7 @@ type api struct {
 	planner   *planner.Planner
 	surveyor  *surveyor.Surveyor
 	research  *research.Research
+	prices    *prices.Service
 	watch     *watch.Watch
 	engine    *automation.Engine
 	country   string
@@ -198,6 +210,10 @@ func New(svc *farm.Service, opts ...Option) http.Handler {
 	mux.HandleFunc("DELETE /api/farms/{id}/design", a.mapped(a.clearDesign))
 	mux.HandleFunc("GET /api/locate", a.mapped(a.locate))
 	mux.HandleFunc("GET /api/places", a.mapped(a.places))
+	mux.HandleFunc("GET /api/prices", a.pricing(a.pricesToday))
+	mux.HandleFunc("GET /api/prices/history", a.pricing(a.priceHistory))
+	mux.HandleFunc("POST /api/prices/estimate", a.pricing(a.priceEstimate))
+	mux.HandleFunc("GET /api/prices/sources", a.pricing(a.priceSources))
 	mux.HandleFunc("GET /api/research", a.researching(a.researchStatus))
 	mux.HandleFunc("PUT /api/research/{provider}", a.researching(a.connect))
 	mux.HandleFunc("DELETE /api/research/{provider}", a.researching(a.disconnect))
@@ -249,6 +265,13 @@ func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, agro.ErrNoClimate):
 		a.log.WarnContext(r.Context(), "farm api: no climate", "path", r.URL.Path, "err", err)
 		writeJSON(w, http.StatusServiceUnavailable, errorBody{Error: "the climate at the plot could not be looked up; try again later"})
+	case errors.Is(err, feeds.ErrNoData):
+		writeJSON(w, http.StatusNotFound, errorBody{Error: err.Error()})
+	case errors.Is(err, feeds.ErrUnavailable), errors.Is(err, feeds.ErrNotConfigured):
+		a.log.WarnContext(r.Context(), "farm api: a provider could not answer", "path", r.URL.Path, "err", err)
+		writeJSON(w, http.StatusServiceUnavailable, errorBody{Error: "the price providers could not answer; try again later"})
+	case errors.Is(err, prices.ErrInvalid):
+		writeJSON(w, http.StatusBadRequest, errorBody{Error: err.Error()})
 	case errors.Is(err, watch.ErrNoForecast), errors.Is(err, weather.ErrUnavailable):
 		a.log.WarnContext(r.Context(), "farm api: no forecast", "path", r.URL.Path, "err", err)
 		writeJSON(w, http.StatusServiceUnavailable, errorBody{Error: "the weather forecast could not be had; try again later"})
@@ -288,7 +311,7 @@ func decode(w http.ResponseWriter, r *http.Request, v any) error {
 func (a *api) config(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"assistant": a.assistant != nil, "planner": a.planner != nil, "surveyor": a.surveyor != nil,
-		"research": a.research != nil, "country": a.country,
+		"research": a.research != nil, "prices": a.prices != nil, "country": a.country,
 		"weather": a.watch != nil && a.watch.HasWeather(), "automations": a.engine != nil,
 	})
 }

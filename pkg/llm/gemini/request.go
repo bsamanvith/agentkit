@@ -241,7 +241,35 @@ func modelContent(msg llm.Message, names map[string]string) (content, error) {
 			return content{}, fmt.Errorf("block %d: %T is not allowed in an assistant message", j, b)
 		}
 	}
+	signForeignCalls(c.Parts)
 	return c, nil
+}
+
+// SkipSignature is the thought signature put on a function call that Gemini
+// did not make (a conversation another provider's model started): the
+// placeholder Gemini's documentation gives for history it did not sign,
+// without which it refuses the call.
+const SkipSignature = "skip_thought_signature_validator"
+
+// signForeignCalls gives the first function call of a step the placeholder
+// signature when no call of the step has one. Gemini signs the first call
+// of each step, so an unsigned step came from another model.
+func signForeignCalls(parts []part) {
+	first := -1
+	for i, p := range parts {
+		if p.FunctionCall == nil {
+			continue
+		}
+		if p.ThoughtSignature != "" {
+			return
+		}
+		if first < 0 {
+			first = i
+		}
+	}
+	if first >= 0 {
+		parts[first].ThoughtSignature = SkipSignature
+	}
 }
 
 // opaquePart reads the data of an opaque block: the signature of the part

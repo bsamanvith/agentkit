@@ -1,0 +1,7 @@
+[
+  {
+    "model": "anthropic/claude-haiku-5-5",
+    "scenarios": 12,
+    "date": "2026-11-10"
+  }
+]

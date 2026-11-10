@@ -251,3 +251,44 @@ func TestNewRejectsInvalidSettings(t *testing.T) {
 		}
 	}
 }
+
+// TestForeignCallsSigned checks that a step of tool calls another model made
+// (no Gemini signature) goes out with the placeholder signature on its first
+// call only, which Gemini needs to take the history, and that a step Gemini
+// signed keeps its own.
+func TestForeignCallsSigned(t *testing.T) {
+	t.Parallel()
+	user := llm.User(llm.Text{Text: "Go."})
+	results := llm.User(llm.ToolResult{ToolUseID: "a", Content: "1"}, llm.ToolResult{ToolUseID: "b", Content: "2"})
+	req := llm.Request{Messages: []llm.Message{
+		user,
+		llm.Assistant(
+			llm.Opaque{Provider: "anthropic", Data: json.RawMessage(`{"type":"thinking","thinking":"","signature":"x"}`)},
+			llm.Text{Text: "Two calls."},
+			llm.ToolUse{ID: "a", Name: "now", Input: json.RawMessage(`{}`)},
+			llm.ToolUse{ID: "b", Name: "now", Input: json.RawMessage(`{}`)},
+		),
+		results,
+		llm.Assistant(
+			llm.ToolUse{ID: "c", Name: "now", Input: json.RawMessage(`{}`)},
+			opaque(`{"thoughtSignature":"b3du"}`),
+			llm.ToolUse{ID: "d", Name: "now", Input: json.RawMessage(`{}`)},
+		),
+		llm.User(llm.ToolResult{ToolUseID: "c", Content: "3"}, llm.ToolResult{ToolUseID: "d", Content: "4"}),
+	}}
+	got := body(t, req)
+	contents := got["contents"].([]any)
+	sigs := func(i int) []any {
+		var out []any
+		for _, p := range contents[i].(map[string]any)["parts"].([]any) {
+			out = append(out, p.(map[string]any)["thoughtSignature"])
+		}
+		return out
+	}
+	if s := sigs(1); len(s) != 3 || s[0] != nil || s[1] != gemini.SkipSignature || s[2] != nil {
+		t.Errorf("another model's step: signatures %v, want the placeholder on the first call only", s)
+	}
+	if s := sigs(3); len(s) != 2 || s[0] != "b3du" || s[1] != nil {
+		t.Errorf("Gemini's step: signatures %v, want its own on the first call", s)
+	}
+}

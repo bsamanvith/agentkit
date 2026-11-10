@@ -3,6 +3,7 @@ package farmapi_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/farm/farmtest"
 	"github.com/bsamanvith/agentkit/apps/farm/farmagent"
 	"github.com/bsamanvith/agentkit/apps/farm/farmapi"
+	"github.com/bsamanvith/agentkit/pkg/llm"
 )
 
 // boundary is about one acre near Hyderabad.
@@ -152,6 +154,9 @@ func (fakeAssistant) Ask(_ context.Context, conv, msg string) (farmagent.Reply, 
 	if conv == "conv_gone" {
 		return farmagent.Reply{}, farmagent.ErrUnknownConversation
 	}
+	if msg == "everyone busy" {
+		return farmagent.Reply{}, fmt.Errorf("turn: %w", llm.ErrRateLimited)
+	}
 	return farmagent.Reply{Conversation: "conv_1", Text: "you said " + msg, Tools: []string{}}, nil
 }
 
@@ -171,5 +176,9 @@ func TestAssistant(t *testing.T) {
 	}
 	if code := call(t, srv, "POST", "/api/assistant", `{"conversation":"conv_gone","message":"hello"}`, nil); code != http.StatusNotFound {
 		t.Errorf("ask in a dropped conversation: %d, want 404", code)
+	}
+	var e struct{ Error string }
+	if code := call(t, srv, "POST", "/api/assistant", `{"message":"everyone busy"}`, &e); code != http.StatusServiceUnavailable || !strings.Contains(e.Error, "busy") {
+		t.Errorf("ask when no model can answer: %d %q, want 503 and a farmer's message", code, e.Error)
 	}
 }

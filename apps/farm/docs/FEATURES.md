@@ -21,7 +21,7 @@ Status words: **live** (merged on main, a farmer can use it), **building**
 | 5 | [Sun and seasons](#5-sun-and-seasons) | live | plan | T137 |
 | 6 | [Season plan for a plot](#6-season-plan-for-a-plot) | live | plan | T134 |
 | 7 | [Plot groups and how plants are spread](#7-plot-groups-and-how-plants-are-spread) | live | plan | T136 |
-| 8 | [The farm assistant](#8-the-farm-assistant) | live | all | T133 onward |
+| 8 | [The farm assistant](#8-the-farm-assistant) | live | all | T133 onward, T142 |
 | 9 | [Web research with the farmer's own key](#9-web-research-with-the-farmers-own-key) | live | plan, sell | T135 |
 | 10 | [Farm tools for other agents (MCP)](#10-farm-tools-for-other-agents-mcp) | live | all | T135 |
 | 11 | [Weather alerts and weekly crop work](#11-weather-alerts-and-weekly-crop-work) | live | grow | T139 |
@@ -148,8 +148,12 @@ cents". The assistant answers short and plain, and every number in the
 answer comes from a tool, so it is the same however the question is
 asked.
 
-**Behind it:** the agentkit harness (`apps/farm/farmagent`) on Claude, or
-Gemini when no Claude key is set, with the farm, planning and map tools,
+**Behind it:** the agentkit harness (`apps/farm/farmagent`) on the model
+lane (`apps/farm/models`, T142): a list of models tried in order, by
+default Claude then Gemini, where OpenAI and OpenRouter models can be
+listed too. A model joins the lane only after it passes `make farm-eval`;
+when one is down, rate limited or its key is refused, the next answers the
+same question, so the farmer sees no gap. With the farm, planning and map tools,
 seven skills, and a handbook on farming in India it can search
 (`apps/farm/handbook`, keyword or meaning search). `make farm-eval` runs
 its scenarios on a real model. Web: `assistant.tsx`.
@@ -342,7 +346,7 @@ in the *Cost* column and named in the PR that adds it.
 | Map features | `osm.Source` | Overpass | OSM API (small boxes) | Free, fair use, attribution (ODbL) |
 | Ground heights | `elevation.Source` | Open-Meteo (Copernicus GLO-90) | Open Topo Data (SRTM 30 m) | Open-Meteo: **free for non-commercial use only**, paid plan for commercial; Open Topo Data public API: free, 1,000 a day |
 | Web research | `research.Providers` | Exa, Parallel (the farmer's key) | the other one, if the farmer connected it | **Paid per call** after their free credits; the farmer's own key, so it costs us nothing |
-| Model | `pkg/llm` | Claude, else Gemini (whichever key is set) | none | Claude: **paid**; Gemini: free tier (daily limits, prompts may be used to improve Google's models) |
+| Model | `models.Lane` | the first model of `-models` that answers: Claude (default) | the rest of the list, in order: Gemini (default), OpenAI, OpenRouter; only models that passed `make farm-eval` | Claude and OpenAI: **paid** per token; Gemini: free tier (daily limits, prompts may be used to improve Google's models); OpenRouter: **paid** per token, except `:free` models (daily limits, often slow, providers may log prompts) |
 | Handbook search | `pkg/knowledge` | Gemini embeddings plus keywords | keywords only | Gemini free tier, 100 texts a minute; keywords free |
 | Weather forecast | `weather.Source` | Open-Meteo, then MET Norway (`-weather`, tried in order) | the next in the list | Open-Meteo: **free for non-commercial use only** (under 10,000 a day), paid plan or self-hosting for commercial; MET Norway: free, CC BY 4.0, commercial use allowed with credit |
 | Mandi prices | `prices.Source` (on `feeds.Provider`) | Agmarknet on data.gov.in (`datagov`, all India, daily; needs `FARM_DATAGOV_KEY`), price files (`files`: Agmarknet, data.gov.in or CEDA CSVs in `FARM_PRICE_FILES`) | the next provider, then every price saved before | data.gov.in: **free**, key on registration; files: free; CEDA: free with registration, check its terms before commercial use |

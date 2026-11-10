@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/netip"
 	"os"
 	"strings"
 
@@ -72,7 +73,23 @@ func signIn(ctx context.Context, c config, svc *farm.Service, log *slog.Logger) 
 		}
 		lanes = append(lanes, l)
 	}
-	acc, err := accounts.New(store,
+	// Behind a TLS-terminating proxy (an ingress, a tunnel), the proxies'
+	// addresses: their X-Forwarded-For and X-Forwarded-Proto are trusted, so
+	// cookies are secure, the same-origin check sees https, and attempts
+	// are counted per farmer, not per proxy.
+	var proxies []netip.Prefix
+	for _, p := range list(os.Getenv("FARM_TRUSTED_PROXIES")) {
+		pre, err := netip.ParsePrefix(p)
+		if err != nil {
+			addr, aerr := netip.ParseAddr(p)
+			if aerr != nil {
+				return nil, fmt.Errorf("farm: FARM_TRUSTED_PROXIES: %q is not an address or a prefix", p)
+			}
+			pre = netip.PrefixFrom(addr, addr.BitLen())
+		}
+		proxies = append(proxies, pre)
+	}
+	acc, err := accounts.New(store, accounts.WithTrustedProxies(proxies...),
 		accounts.WithLanes(lanes...), accounts.WithSignUp(list(c.signup)...),
 		accounts.WithAdminEmails(list(os.Getenv("FARM_ADMIN_EMAILS"))...),
 		accounts.WithRoleEmails(members.AccountRolePartner, list(os.Getenv("FARM_PARTNER_EMAILS"))...),

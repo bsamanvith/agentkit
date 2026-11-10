@@ -77,7 +77,8 @@ var public = []string{"/api/config", "/api/units"}
 // public routes pass as they are.
 func (a *Auth) Protect(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if (r.Method == http.MethodGet && slices.Contains(public, r.URL.Path)) || r.URL.Path == unsubscribe {
+		if (r.Method == http.MethodGet && slices.Contains(public, r.URL.Path)) ||
+			(r.URL.Path == unsubscribe && (r.Method == http.MethodGet || r.Method == http.MethodPost)) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -87,6 +88,11 @@ func (a *Auth) Protect(next http.Handler) http.Handler {
 			return
 		}
 		if (isAutomationChange(r) || isMessageSettings(r)) && !slices.Contains(ac.Account.Roles, accounts.RoleAdmin) {
+			a.fail(w, r, members.ErrForbidden)
+			return
+		}
+		if isAutomationRun(r) && !members.Can(ac.Role, members.Write) {
+			// A run can call the model and send paid messages.
 			a.fail(w, r, members.ErrForbidden)
 			return
 		}
@@ -109,6 +115,11 @@ const unsubscribe = "/api/notify/unsubscribe"
 // farm's, until they become accounts, so only an admin sees them.
 func isMessageSettings(r *http.Request) bool {
 	return r.URL.Path == "/api/notify" || strings.HasPrefix(r.URL.Path, "/api/notify/")
+}
+
+// isAutomationRun is a run of an automation by hand.
+func isAutomationRun(r *http.Request) bool {
+	return r.Method != http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/automations/") && strings.HasSuffix(r.URL.Path, "/run")
 }
 
 // isAutomationChange is a change to the app's automations (not a run of

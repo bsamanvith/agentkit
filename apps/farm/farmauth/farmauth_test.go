@@ -315,6 +315,7 @@ func TestAWorkerReadsButDoesNotChange(t *testing.T) {
 		{"DELETE", "/api/farms/" + plot, ""},
 		{"POST", "/api/farms", `{"name":"x","boundary":` + boundary + `}`},
 		{"POST", "/api/groups", `{"name":"g","plots":[]}`},
+		{"POST", "/api/automations/weekly-weather/run", `{"farm":"` + plot + `"}`},
 	} {
 		if code := worker.do(c.method, c.path, c.body, nil); code != http.StatusForbidden {
 			t.Errorf("worker %s %s: %d, want 403", c.method, c.path, code)
@@ -366,12 +367,16 @@ func TestTheFirstFarmTakesThePlotsMadeBeforeSignIn(t *testing.T) {
 			panic(err)
 		}
 	})
-	first := a.user("Owner")
-	if got := first.plots(); len(got) != 1 || got[0] != old.ID {
-		t.Errorf("the first account sees %v, want the plot from before", got)
+	// A stranger who signs up first does not get them.
+	if got := a.user("Stranger").plots(); len(got) != 0 {
+		t.Errorf("a non-admin's first farm took %v", got)
 	}
-	if got := a.user("Second").plots(); len(got) != 0 {
-		t.Errorf("the second account sees %v", got)
+	owner := a.user("Owner", accounts.RoleAdmin)
+	if got := owner.plots(); len(got) != 1 || got[0] != old.ID {
+		t.Errorf("the admin sees %v, want the plot from before", got)
+	}
+	if got := a.user("Second", accounts.RoleAdmin).plots(); len(got) != 0 {
+		t.Errorf("a second admin sees %v: the plots go once", got)
 	}
 }
 

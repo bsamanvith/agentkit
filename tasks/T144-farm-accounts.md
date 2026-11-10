@@ -35,7 +35,7 @@ Design: [ACCOUNTS.md](../apps/farm/docs/ACCOUNTS.md).
   assisted sign-up and recovery codes; store suite `memberstest`, `sqlite`.
 - `apps/farm/farm`: plots and groups carry a holding; `WithHolding` and
   `WithReadOnly` scope the service; `Adopt` gives plots made before
-  sign-in to the first farm.
+  sign-in to the admin's first farm.
 - `apps/farm/farmauth`: the guard on `/api` and `/mcp`, `/api/me`, the
   members routes. The assistant's conversations, alerts and runs are
   scoped to the farm.
@@ -66,7 +66,11 @@ Design: [ACCOUNTS.md](../apps/farm/docs/ACCOUNTS.md).
 - [x] Stores pass one suite (memory, SQLite) — test: `accountstest.RunStore` in `TestMemoryStore`, `sqlite_test.TestStore`; `memberstest.RunStore` in `TestMemory`, members `sqlite_test.TestStore`
 - [x] Each farm sees only its own plots and groups; a worker reads but cannot change, also through the assistant's tools — test: `scope_test.TestAHoldingSeesOnlyItsOwnPlotsAndGroups`, `TestAReadOnlyContextChangesNothing`, `farmauth_test.TestEachFarmSeesOnlyItsOwnPlots`, `TestAWorkerReadsButDoesNotChange`
 - [x] The API and MCP are behind sign-in when it is on; automations are an admin's to change — test: `TestTheAPIIsBehindSignIn`, `TestAutomationsAreAnAdminsToChange`
-- [x] The first farm takes the plots made before sign-in — test: `TestAdoptGivesPlotsWithoutAHolding`, `farmauth_test.TestTheFirstFarmTakesThePlotsMadeBeforeSignIn`
+- [x] The admin's first farm takes the plots made before sign-in; a stranger's first farm does not — test: `TestAdoptGivesPlotsWithoutAHolding`, `farmauth_test.TestTheFirstFarmTakesThePlotsMadeBeforeSignIn`
+- [x] The assistant's and MCP's tools stay on the request's farm (`list_alerts`); a worker cannot record season work or run an automation; message settings are an admin's — test: `farmagent_test.TestListAlertsStaysOnItsFarm`, `work_test.TestAReadOnlyMemberRecordsNothing`, `TestAWorkerReadsButDoesNotChange`, `TestMessageSettingsAreAnAdminsAndUnsubscribeIsOpen`
+- [x] Linking Google goes through the redirect though the session cookie is SameSite=Strict; a burst of guesses stays within the limit — test: `TestAGoogleAccountIsLinkedThroughTheRedirect`, `TestABurstOfGuessesStaysWithinTheLimit`
+- [x] A partner makes recovery codes only for farmers they signed up; a new account gets one farm under a race — test: `members_test.TestOnlyAPartnerSignsAFarmerUpAndRecoversThem`, `TestANewAccountGetsOneFarmUnderARace`
+- [x] Changes queued offline wait while signed out, and carry the session — test: `roadmap.test.tsx`
 - [x] Join codes add with their role once and never as partner; a farm keeps an owner — test: `members_test.TestAJoinCodeAddsWithItsRoleOnce`, `TestAFarmKeepsAnOwner`
 - [x] Only a partner signs a farmer up, and only the farm's partner makes a recovery code — test: `TestOnlyAPartnerSignsAFarmerUpAndRecoversThem`, `farmauth_test.TestAPartnerSignsAFarmerUpAndTheFarmerSignsIn`
 - [x] Lanes come from settings; a bad list is refused — test: `main.TestSignInLanesComeFromSettings`, `TestNewRefusesBadLanes`

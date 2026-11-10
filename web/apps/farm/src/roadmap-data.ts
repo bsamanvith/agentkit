@@ -1,3 +1,5 @@
+import { sessionHeaders, signedOut } from "./session";
+
 // The roadmap tab is a lazy chunk: its types, calls and the phone's queue
 // of unsent changes live here, not in api.ts and types.ts, so the first
 // load does not grow.
@@ -83,8 +85,16 @@ export class Refused extends Error {
 const retryable = new Set([408, 425, 429]);
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
-  const resp = await fetch(path, init);
-  const data = (await resp.json().catch(() => ({}))) as { error?: string; event_id?: string };
+  const method = init?.method ?? "GET";
+  const resp = await fetch(path, {
+    ...init,
+    headers: { ...sessionHeaders(method), ...(init?.headers as Record<string, string>) },
+  });
+  signedOut(resp.status);
+  const data = (await resp.json().catch(() => ({}))) as { error?: string; event_id?: string; code?: string };
+  // Signed out, or a stale session's token: the changes wait on the phone
+  // until the farmer signs in again, never dropped.
+  if (resp.status === 401 || data.code === "csrf") throw new Error(data.error ?? `HTTP ${resp.status}`);
   if (resp.status >= 400 && resp.status < 500 && !retryable.has(resp.status))
     throw new Refused(data.error ?? `HTTP ${resp.status}`, resp.status, data.event_id);
   if (!resp.ok) throw new Error(data.error ?? `HTTP ${resp.status}`);

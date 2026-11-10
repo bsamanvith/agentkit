@@ -130,11 +130,46 @@ func WatchTools(w *watch.Watch, p plannerish, store automation.Store) ([]tool.To
 	if store != nil {
 		errs = append(errs, add(tool.Func(ListAlertsTool, "List the alerts the app has sent the farmer about a farm (newest first): weather warnings, the week's work, the assistant's notes, with whether they were read.",
 			func(ctx context.Context, in alertsIn) (map[string][]automation.Notice, error) {
-				ns, err := store.ListNotices(ctx, automation.NoticeFilter{Farm: in.Farm, Unread: in.Unread, Limit: 20})
+				ns, err := listAlerts(ctx, p, store, in)
 				return map[string][]automation.Notice{"alerts": ns}, err
 			}, read)))
 	}
 	return tools, errors.Join(errs...)
+}
+
+// listAlerts lists a farm's notices, or every farm's; with sign-in (a
+// holding in ctx), only the plots ctx may see, so a farmer never reads
+// another farm's alerts through the assistant or MCP.
+func listAlerts(ctx context.Context, p plannerish, store automation.Store, in alertsIn) ([]automation.Notice, error) {
+	const limit = 20
+	if _, scoped := farm.HoldingFrom(ctx); !scoped {
+		return store.ListNotices(ctx, automation.NoticeFilter{Farm: in.Farm, Unread: in.Unread, Limit: limit})
+	}
+	var plots []string
+	if in.Farm != "" {
+		if _, err := p.Farms().Get(ctx, in.Farm); err != nil {
+			return nil, err
+		}
+		plots = []string{in.Farm}
+	} else {
+		fs, err := p.Farms().List(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, f := range fs {
+			plots = append(plots, f.ID)
+		}
+	}
+	out := []automation.Notice{}
+	for _, id := range plots {
+		ns, err := store.ListNotices(ctx, automation.NoticeFilter{Farm: id, Unread: in.Unread, Limit: limit})
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, ns...)
+	}
+	slices.SortStableFunc(out, func(x, y automation.Notice) int { return y.CreatedAt.Compare(x.CreatedAt) })
+	return out[:min(len(out), limit)], nil
 }
 
 // plannerish is what the calendar tool needs of the planner.

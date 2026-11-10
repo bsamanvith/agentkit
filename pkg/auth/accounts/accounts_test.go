@@ -3,6 +3,7 @@ package accounts_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
@@ -161,6 +162,53 @@ func TestTheLastIdentityStays(t *testing.T) {
 	o.google(gid("g-2"), nil)
 	if res := b.do(http.MethodPost, "/auth/unlink", map[string]any{"lane": "google", "subject": "g-2"}); res.code != http.StatusNotFound {
 		t.Errorf("unlink another account's identity: %d", res.code)
+	}
+}
+
+func TestAGoogleAccountIsLinkedThroughTheRedirect(t *testing.T) {
+	r := newRig(t)
+	b := r.browser("10.0.0.1")
+	b.google(gid("g-1"), nil)
+	acc := b.me()
+	b.csrf = ""
+	if res := b.do(http.MethodPost, "/auth/google/start", map[string]any{"link": true}); res.code != http.StatusForbidden {
+		t.Errorf("starting a link without the CSRF token: %d, want 403", res.code)
+	}
+	b.me()
+	if u := b.google(gid("g-2"), map[string]any{"link": true}); u.Query().Get("signin") != "" {
+		t.Fatalf("linking a second Google account came back %v", u)
+	}
+	other := r.browser("10.0.0.2")
+	other.google(gid("g-2"), nil)
+	if got := other.me(); got != acc {
+		t.Errorf("the linked Google account signs in as %q, want %q", got, acc)
+	}
+}
+
+func TestABurstOfGuessesStaysWithinTheLimit(t *testing.T) {
+	r := newRig(t)
+	b := r.browser("10.0.0.1")
+	b.google(gid("g-1"), nil)
+	b.me()
+	b.do(http.MethodPost, "/auth/password", map[string]any{"username": "ravi", "password": "a long enough password"})
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	wrong := 0
+	for i := range 40 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			res := r.browser(fmt.Sprintf("10.1.%d.1", i)).do(http.MethodPost, "/auth/password/check", map[string]any{"id": "ravi", "secret": "guess guess"})
+			if res.code == http.StatusUnauthorized {
+				mu.Lock()
+				wrong++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	if wrong != 10 {
+		t.Errorf("%d of 40 parallel guesses were checked, want exactly 10 (the rest throttled)", wrong)
 	}
 }
 

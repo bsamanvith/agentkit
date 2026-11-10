@@ -162,12 +162,14 @@ func (b *browser) google(id accounts.Identity, start map[string]any) *url.URL {
 	return b.callback("/auth/google/callback?state=" + url.QueryEscape(u.Query().Get("state")) + "&code=" + code)
 }
 
+// callback follows the provider's redirect back, a cross-site navigation:
+// as a browser does, it leaves out SameSite=Strict cookies.
 func (b *browser) callback(path string) *url.URL {
 	b.r.t.Helper()
 	req := httptest.NewRequest(http.MethodGet, "http://"+host+path, nil)
 	req.RemoteAddr = b.addr + ":5555"
 	for _, c := range b.cookies {
-		if strings.HasPrefix(req.URL.Path, c.Path) {
+		if c.SameSite != http.SameSiteStrictMode && strings.HasPrefix(req.URL.Path, c.Path) {
 			req.AddCookie(c)
 		}
 	}

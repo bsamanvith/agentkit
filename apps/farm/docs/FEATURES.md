@@ -305,8 +305,7 @@ session is a long random key kept only as a hash, in a cookie the page's
 scripts cannot read, with a separate token on every change so another
 site cannot act for the farmer. Wrong passwords and codes are slowed per
 phone and per network; one-time codes last 10 minutes and five tries. The
-first farm made after sign-in is turned on takes the plots made before
-it. Without sign-in turned on (`-signin`), the app works as before, for
+admin's first farm takes the plots made before sign-in was turned on. Without sign-in turned on (`-signin`), the app works as before, for
 one farmer on their own machine.
 
 **Behind it:** `pkg/auth/accounts` (lanes, accounts, sessions, codes;

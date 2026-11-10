@@ -55,7 +55,9 @@ Cloud console (`FARM_GOOGLE_CLIENT_ID`, `FARM_GOOGLE_CLIENT_SECRET`) whose
 redirect URI is `<-public-url>/auth/google/callback`. Then each farmer sees
 only their own farm, can add family and workers, and a partner
 (`FARM_PARTNER_EMAILS`) can sign a farmer up; `FARM_ADMIN_EMAILS` may
-change the automations. Design: [docs/ACCOUNTS.md](docs/ACCOUNTS.md).
+change the automations and the message settings, and the first admin's
+farm takes the plots made before sign-in. Behind a TLS-terminating proxy,
+set `FARM_TRUSTED_PROXIES`. Design: [docs/ACCOUNTS.md](docs/ACCOUNTS.md).
 
 | Package | What |
 |---|---|

@@ -279,27 +279,36 @@ func (h *handler) link(w http.ResponseWriter, r *http.Request, id Identity) {
 	writeJSON(w, http.StatusOK, map[string]any{"identity": got})
 }
 
-// throttled returns a *ThrottledError if the address or the id has failed
-// too often.
+// throttled reserves an attempt for the address and the id, counted as a
+// failure until [handler.counted] says otherwise, so a burst of parallel
+// guesses cannot all pass before the first is counted; a *ThrottledError
+// if either has failed too often.
 func (h *handler) throttled(r *http.Request, id string) error {
-	now := h.s.clock.Now()
-	d := max(h.s.failures.wait(h.s.clientAddr(r), now), h.s.failuresByID.wait(id, now))
-	if d > 0 {
+	now, addr := h.s.clock.Now(), h.s.clientAddr(r)
+	if d := h.s.failures.take(addr, now); d > 0 {
+		return &ThrottledError{RetryAfter: d}
+	}
+	if d := h.s.failuresByID.take(id, now); d > 0 {
+		h.s.failures.undo(addr)
 		return &ThrottledError{RetryAfter: d}
 	}
 	return nil
 }
 
-// counted records the outcome of an attempt for id: a wrong secret counts
-// against the address and the id, a success forgets the id's.
+// counted settles the attempt reserved for id: a wrong secret stays
+// counted against the address and the id; a success forgets the id's and
+// gives the address its attempt back; any other error gives both back.
 func (h *handler) counted(r *http.Request, id string, err error) {
+	addr := h.s.clientAddr(r)
 	switch {
 	case err == nil:
 		h.s.failuresByID.forget(id)
+		h.s.failures.undo(addr)
 	case errors.Is(err, ErrBadSecret):
-		h.s.failures.add(h.s.clock.Now(), h.s.clientAddr(r))
-		h.s.failuresByID.add(h.s.clock.Now(), id)
-		h.s.log.LogAttrs(r.Context(), slog.LevelInfo, "accounts: wrong secret", slog.String("lane", r.PathValue("lane")), slog.String("addr", h.s.clientAddr(r)))
+		h.s.log.LogAttrs(r.Context(), slog.LevelInfo, "accounts: wrong secret", slog.String("lane", r.PathValue("lane")), slog.String("addr", addr))
+	default:
+		h.s.failuresByID.undo(id)
+		h.s.failures.undo(addr)
 	}
 }
 
@@ -527,11 +536,10 @@ func (h *handler) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if link := ch.Data["link"]; link != "" {
-		me, err := h.s.Me(r)
-		if err != nil || me.Account.ID != link {
-			back(ret, "session")
-			return
-		}
+		// The session cookie is SameSite=Strict, so it does not come back
+		// from the provider's redirect: the account to link is the one that
+		// started the flow (signed in, with the CSRF token), and the flow is
+		// bound to this browser by its own cookie, checked above.
 		if _, err := h.s.Link(ctx, link, id); err != nil {
 			reason := "internal"
 			if errors.Is(err, ErrLinkedElsewhere) {

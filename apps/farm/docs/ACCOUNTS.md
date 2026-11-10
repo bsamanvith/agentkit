@@ -53,12 +53,15 @@ OpenID Connect flow agentkit can do itself with its OAuth core.
   by name and phone, joins it as partner, and gets a 12-letter sign-in
   code to hand over (7 days, one use). When the farmer is locked out, the
   farm's partner makes a new code, which also signs the farmer out
-  everywhere.
+  everywhere: only for a farmer they signed up, whose account has no
+  other farm and no app-wide role, since a code signs in as the whole
+  account.
 - **Codes and throttling**: invite and sign-in codes are 12 characters
   from an alphabet without look-alikes (no 0, O, 1, I, L). One-time codes
   are 6 digits, 10 minutes, 5 tries. Failures are limited per network
   (an IPv6 /64 counts as one) and per id; sends per destination and per
-  network.
+  network. An attempt is counted before it is checked, so a burst of
+  parallel guesses cannot pass the limit.
 - **Change token (CSRF)**: every change sends `X-CSRF-Token` from
   `/api/me` and must come from the same origin.
 - **Automations stay app-wide**: an admin changes them; members run them
@@ -69,9 +72,15 @@ OpenID Connect flow agentkit can do itself with its OAuth core.
   opened from a mail app.
 - **Work records follow the role**: a worker sees a plot's season roadmap
   (T141) but cannot tick tasks off.
-- **Plots before sign-in**: the first farm made once sign-in is on takes
-  every plot and group that has no farm yet, so a farmer who used the app
-  alone keeps their land.
+- **Plots before sign-in**: the first farm of an admin (`FARM_ADMIN_EMAILS`)
+  takes every plot and group that has no farm yet, so the farmer who used
+  the app alone, and turns sign-in on naming themself admin, keeps their
+  land; a stranger who signs up first does not get it.
+- **Running an automation by hand** needs a role that can change things
+  (a run can call the model and send paid messages).
+- **Behind a proxy**: list the proxies in `FARM_TRUSTED_PROXIES` (addresses
+  or prefixes), so cookies are secure, the same-origin check sees https,
+  and attempts are counted per farmer, not per proxy.
 
 ## Configuration
 
@@ -83,6 +92,7 @@ OpenID Connect flow agentkit can do itself with its OAuth core.
 | `-code-sender` | `FARM_CODE_SENDER` | `log` only for now: codes go to the server log, for trying it out |
 | | `FARM_GOOGLE_CLIENT_ID`, `FARM_GOOGLE_CLIENT_SECRET` | A web client from the Google Cloud console (free) |
 | | `FARM_ADMIN_EMAILS`, `FARM_PARTNER_EMAILS` | Verified emails that get the `admin` or `partner` role at sign-in |
+| | `FARM_TRUSTED_PROXIES` | The TLS-terminating proxies in front of the app (addresses or prefixes, comma separated) |
 
 ## What comes next
 

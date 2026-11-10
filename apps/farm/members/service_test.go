@@ -3,6 +3,7 @@ package members_test
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/bsamanvith/agentkit/apps/farm/members"
@@ -80,6 +81,21 @@ func TestAJoinCodeAddsWithItsRoleOnce(t *testing.T) {
 	}
 }
 
+func TestANewAccountGetsOneFarmUnderARace(t *testing.T) {
+	ctx := context.Background()
+	r := newRig(t)
+	a := r.account(t, "Lakshmi")
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(1)
+		go func() { defer wg.Done(); _, _ = r.mem.Mine(ctx, a) }()
+	}
+	wg.Wait()
+	if ms, err := r.mem.Mine(ctx, a); err != nil || len(ms) != 1 {
+		t.Fatalf("after parallel first requests: %d farms, %v; want 1", len(ms), err)
+	}
+}
+
 func TestAFarmKeepsAnOwner(t *testing.T) {
 	ctx := context.Background()
 	r := newRig(t)
@@ -142,6 +158,18 @@ func TestOnlyAPartnerSignsAFarmerUpAndRecoversThem(t *testing.T) {
 	stranger := r.account(t, "Other FPO", members.AccountRolePartner)
 	if _, err := r.mem.SignInCode(ctx, stranger, got.Holding.ID, got.Account.ID); !errors.Is(err, members.ErrNotFound) {
 		t.Fatalf("another farm's partner makes a code: %v, want ErrNotFound", err)
+	}
+	// Not for anyone else on the farm: a code signs in as the whole account.
+	son := r.account(t, "Son")
+	join, err := r.mem.Invite(ctx, got.Account.ID, got.Holding.ID, members.Family)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.mem.Join(ctx, son.ID, join); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.mem.SignInCode(ctx, partner, got.Holding.ID, son.ID); !errors.Is(err, members.ErrForbidden) {
+		t.Fatalf("a partner makes a code for a member they did not sign up: %v, want ErrForbidden", err)
 	}
 	code, err := r.mem.SignInCode(ctx, partner, got.Holding.ID, got.Account.ID)
 	if err != nil {

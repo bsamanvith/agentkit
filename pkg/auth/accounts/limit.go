@@ -37,19 +37,52 @@ func (l *limiter) wait(key string, now time.Time) time.Duration {
 	return ev[len(ev)-l.max].Add(l.window).Sub(now)
 }
 
+// take counts an event of key at now if key may have one, and returns 0;
+// otherwise how long key must wait, counting nothing. Checking and
+// counting under one lock is what keeps a burst within the limit.
+func (l *limiter) take(key string, now time.Time) time.Duration {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	ev := l.recent(key, now)
+	if len(ev) >= l.max {
+		return ev[len(ev)-l.max].Add(l.window).Sub(now)
+	}
+	l.sweep(now)
+	l.events[key] = append(ev, now)
+	return 0
+}
+
+// undo takes back key's latest event (an attempt that did not fail).
+func (l *limiter) undo(key string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if ev := l.events[key]; len(ev) > 1 {
+		l.events[key] = ev[:len(ev)-1]
+	} else {
+		delete(l.events, key)
+	}
+}
+
 // add counts an event of each key at now.
 func (l *limiter) add(now time.Time, keys ...string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if len(l.events) >= maxLimited {
-		for k := range l.events {
-			if len(l.recent(k, now)) == 0 {
-				delete(l.events, k)
-			}
-		}
-	}
+	l.sweep(now)
 	for _, k := range keys {
 		l.events[k] = append(l.recent(k, now), now)
+	}
+}
+
+// sweep drops keys whose window passed once there are too many; l.mu is
+// held.
+func (l *limiter) sweep(now time.Time) {
+	if len(l.events) < maxLimited {
+		return
+	}
+	for k := range l.events {
+		if len(l.recent(k, now)) == 0 {
+			delete(l.events, k)
+		}
 	}
 }
 

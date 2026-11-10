@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -34,6 +35,12 @@ const MaxNameLen = 100
 // Service decides and records who may do what with which farm. It is safe
 // for concurrent use.
 type Service struct {
+	// mu serialises the changes that check, then write: a new account's
+	// first farm (two first requests must not make two), and the last
+	// owner (two owners must not demote each other at once). One process
+	// serves a farm app; a store transaction would be needed beyond it.
+	mu sync.Mutex
+
 	store    Store
 	accounts *accounts.Service
 	farms    *farm.Service
@@ -73,6 +80,8 @@ type Membership struct {
 // Mine returns the account's farms, first joined first. An account with
 // none gets one of its own first, as owner, named after it.
 func (s *Service) Mine(ctx context.Context, acc accounts.Account) ([]Membership, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	ms, err := s.memberships(ctx, acc.ID)
 	if err != nil || len(ms) > 0 {
 		return ms, err
@@ -107,12 +116,18 @@ func (s *Service) memberships(ctx context.Context, account string) ([]Membership
 	return out, nil
 }
 
-// create makes a holding with owner as its owner; the app's first holding
-// adopts the plots made before sign-in.
+// create makes a holding with owner as its owner. The first holding an
+// admin owns adopts the plots made before sign-in: the person who ran the
+// app alone is the one who turns sign-in on and names themself admin, and
+// a stranger signing up first must not get them. s.mu is held.
 func (s *Service) create(ctx context.Context, name, owner, by string) (Holding, error) {
-	n, err := s.store.CountHoldings(ctx)
-	if err != nil {
-		return Holding{}, err
+	adopt := false
+	if a, err := s.accounts.Store().Account(ctx, owner); err == nil && slices.Contains(a.Roles, accounts.RoleAdmin) {
+		ms, err := s.store.Memberships(ctx, owner)
+		if err != nil {
+			return Holding{}, err
+		}
+		adopt = len(ms) == 0
 	}
 	now := s.clock.Now().UTC()
 	h := Holding{ID: newID("hold_"), Name: name, CreatedAt: now}
@@ -122,13 +137,13 @@ func (s *Service) create(ctx context.Context, name, owner, by string) (Holding, 
 	if err := s.store.PutMember(ctx, Member{Holding: h.ID, Account: owner, Role: Owner, AddedBy: by, AddedAt: now}); err != nil {
 		return Holding{}, err
 	}
-	if n == 0 && s.farms != nil {
+	if adopt && s.farms != nil {
 		adopted, err := s.farms.Adopt(ctx, h.ID)
 		if err != nil {
-			return Holding{}, fmt.Errorf("members: giving the plots made before sign-in to the first farm: %w", err)
+			return Holding{}, fmt.Errorf("members: giving the plots made before sign-in to the admin's first farm: %w", err)
 		}
 		if adopted > 0 {
-			s.log.LogAttrs(ctx, slog.LevelInfo, "members: the first farm took the plots made before sign-in", slog.String("holding", h.ID), slog.Int("plots", adopted))
+			s.log.LogAttrs(ctx, slog.LevelInfo, "members: the admin's first farm took the plots made before sign-in", slog.String("holding", h.ID), slog.Int("plots", adopted))
 		}
 	}
 	return h, nil
@@ -242,6 +257,8 @@ func (s *Service) SetRole(ctx context.Context, actor, holding, account string, r
 	if !role.Valid() {
 		return Member{}, fmt.Errorf("%w: role %q", ErrInvalid, role)
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	m, err := s.store.Member(ctx, holding, account)
 	if err != nil {
 		return Member{}, err
@@ -264,6 +281,8 @@ func (s *Service) Remove(ctx context.Context, actor, holding, account string) er
 			return err
 		}
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	m, err := s.store.Member(ctx, holding, account)
 	if err != nil {
 		return err
@@ -331,7 +350,9 @@ func (s *Service) Assist(ctx context.Context, partner accounts.Account, name, ph
 	if err != nil {
 		return Assisted{}, err
 	}
+	s.mu.Lock()
 	h, err := s.create(ctx, farmName, acc.ID, partner.ID)
+	s.mu.Unlock()
 	if err != nil {
 		return Assisted{}, err
 	}
@@ -358,11 +379,27 @@ func (s *Service) SignInCode(ctx context.Context, partner accounts.Account, hold
 	if r != Partner || !isPartner(partner) {
 		return "", ErrForbidden
 	}
-	if _, err := s.store.Member(ctx, holding, account); err != nil {
+	m, err := s.store.Member(ctx, holding, account)
+	if err != nil {
 		return "", err
 	}
 	if account == partner.ID {
 		return "", fmt.Errorf("%w: a partner cannot make a code for themself", ErrInvalid)
+	}
+	// Only for the farmer the partner signed up, and only while that is
+	// all the account is: a code signs in as the whole account, so a
+	// partner must not get into a family member's, another farm owner's or
+	// an admin's.
+	target, err := s.accounts.Store().Account(ctx, account)
+	if err != nil {
+		return "", err
+	}
+	ms, err := s.store.Memberships(ctx, account)
+	if err != nil {
+		return "", err
+	}
+	if m.AddedBy != partner.ID || len(target.Roles) > 0 || len(ms) != 1 {
+		return "", fmt.Errorf("%w: a partner makes sign-in codes only for the farmers they signed up", ErrForbidden)
 	}
 	code, err := s.accounts.IssueSignInCode(ctx, account, SignInCodeTTL)
 	if err != nil {

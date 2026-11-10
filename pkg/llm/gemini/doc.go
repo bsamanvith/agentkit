@@ -33,7 +33,10 @@
 //     or any other part the adapter does not map (an empty text part
 //     with a signature, code execution, ...) is sent back as it is.
 //
-// Opaque blocks of other providers are left out of requests.
+// Opaque blocks of other providers are left out of requests. A step of
+// tool calls with no signature at all was made by another model (a
+// conversation handed over to Gemini): its first call is sent with
+// [SkipSignature], the placeholder Gemini documents for such history.
 //
 // # Streaming
 //

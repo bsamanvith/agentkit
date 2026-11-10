@@ -4,9 +4,12 @@
 //	go run ./apps/farm/cmd/farm                       # http://127.0.0.1:8090
 //	go run ./apps/farm/cmd/farm -addr :8090 -db farm.db -country IN
 //
-// The farm assistant runs on Claude when ANTHROPIC_API_KEY (or
-// ANTHROPIC_KEY) is set, else on Gemini with GEMINI_API_KEY (or
-// GEMINI_KEY); -model picks one, or "off". Plots are looked up on
+// The farm assistant runs on the first model of -models that answers
+// (apps/farm/models): by default Claude, then Gemini, each when its key is
+// set (ANTHROPIC_API_KEY or ANTHROPIC_KEY, GEMINI_API_KEY or GEMINI_KEY);
+// OpenAI (OPENAI_API_KEY) and OpenRouter (OPENROUTER_API_KEY) can be listed
+// too, and "off" turns the assistant off. A model is used only once it has
+// passed make farm-eval, unless -models-unevaluated. Plots are looked up on
 // OpenStreetMap's Nominatim unless -geocoder is "off"; the climate at a plot
 // comes from NASA POWER unless -climate is "off"; what is around a plot
 // from OpenStreetMap (Overpass, then the map API) unless -overpass and
@@ -62,6 +65,7 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/farmapi"
 	"github.com/bsamanvith/agentkit/apps/farm/feeds"
 	"github.com/bsamanvith/agentkit/apps/farm/handbook"
+	"github.com/bsamanvith/agentkit/apps/farm/models"
 	"github.com/bsamanvith/agentkit/apps/farm/nasapower"
 	"github.com/bsamanvith/agentkit/apps/farm/nominatim"
 	"github.com/bsamanvith/agentkit/apps/farm/osm"
@@ -75,8 +79,6 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/webdist"
 	credsqlite "github.com/bsamanvith/agentkit/pkg/credentials/sqlite"
 	"github.com/bsamanvith/agentkit/pkg/llm"
-	"github.com/bsamanvith/agentkit/pkg/llm/anthropic"
-	"github.com/bsamanvith/agentkit/pkg/llm/gemini"
 	mcpserver "github.com/bsamanvith/agentkit/pkg/mcp/server"
 	"github.com/bsamanvith/agentkit/pkg/memory"
 	"github.com/bsamanvith/agentkit/pkg/memory/embed"
@@ -91,11 +93,11 @@ const csp = "default-src 'self'; script-src 'self'; style-src 'self'; " +
 	"form-action 'self'; frame-ancestors 'none'"
 
 type config struct {
-	addr, db, country, geocoder, climate, model, modelID          string
+	addr, db, country, geocoder, climate, models                  string
 	overpass, osmAPI, elevation, elevationBackup, embedder, vault string
 	exaURL, parallelURL, weather                                  string
 	priceProviders, priceFiles, dataGovURL                        string
-	mcp, automations                                              bool
+	mcp, automations, unevaluated                                 bool
 	embedRate, workers                                            int
 }
 
@@ -111,8 +113,8 @@ func main() {
 	fs.StringVar(&c.country, "country", env("FARM_COUNTRY", "IN"), "ISO code of the country plots should be in; empty for any ($FARM_COUNTRY)")
 	fs.StringVar(&c.geocoder, "geocoder", env("FARM_GEOCODER", nominatim.DefaultURL), `Nominatim server, or "off" ($FARM_GEOCODER)`)
 	fs.StringVar(&c.climate, "climate", env("FARM_CLIMATE", nasapower.DefaultURL), `NASA POWER server, or "off" ($FARM_CLIMATE)`)
-	fs.StringVar(&c.model, "model", env("FARM_MODEL", "auto"), `assistant's provider: auto, anthropic, gemini or off ($FARM_MODEL)`)
-	fs.StringVar(&c.modelID, "model-id", env("FARM_MODEL_ID", ""), "model ID (default: the provider's default) ($FARM_MODEL_ID)")
+	fs.StringVar(&c.models, "models", env("FARM_MODELS", defaultModels), `the assistant's models, tried in order, comma separated: provider/model-id, or a bare provider (anthropic, openai, gemini) for its default; openrouter/<vendor>/<model>; or "off" ($FARM_MODELS)`)
+	fs.BoolVar(&c.unevaluated, "models-unevaluated", env("FARM_MODELS_UNEVALUATED", "false") == "true", "also use models that have not passed make farm-eval ($FARM_MODELS_UNEVALUATED)")
 	fs.StringVar(&c.overpass, "overpass", env("FARM_OVERPASS", osm.DefaultOverpass), `Overpass servers, comma separated, or "off" ($FARM_OVERPASS)`)
 	fs.StringVar(&c.osmAPI, "osm-api", env("FARM_OSM_API", osm.DefaultAPI), `OpenStreetMap API, the fallback for small boxes, or "off" ($FARM_OSM_API)`)
 	fs.StringVar(&c.elevation, "elevation", env("FARM_ELEVATION", elevation.DefaultURL), `Open-Meteo elevation API, or "off" ($FARM_ELEVATION)`)
@@ -315,7 +317,7 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 		farmapi.WithCountry(c.country), farmapi.WithLogger(log), farmapi.WithPlanner(plan),
 		farmapi.WithSurveyor(survey), farmapi.WithResearch(webResearch), farmapi.WithWatch(watcher), farmapi.WithPrices(market),
 	}
-	model, provider, err := buildModel(c)
+	model, provider, err := buildModel(c, log)
 	if err != nil {
 		return err
 	}
@@ -441,47 +443,31 @@ func buildPrices(ctx context.Context, c config, h prices.History, log *slog.Logg
 	return svc, nil
 }
 
-// buildModel returns the assistant's model and its provider's name, or nil
-// and "off" when there is no key or c.model is "off".
-func buildModel(c config) (llm.Model, string, error) {
-	claudeKey := firstEnv("ANTHROPIC_API_KEY", "ANTHROPIC_KEY")
-	geminiKey := firstEnv("GEMINI_API_KEY", "GEMINI_KEY")
-	p := c.model
-	if p == "auto" {
-		switch {
-		case claudeKey != "":
-			p = "anthropic"
-		case geminiKey != "":
-			p = "gemini"
-		default:
-			p = "off"
-		}
-	}
-	switch p {
-	case "off":
+// defaultModels is the lane without -models: Claude, then Gemini.
+const defaultModels = "anthropic,gemini"
+
+// buildModel returns the assistant's model lane, or nil when -models is
+// "off" or no listed model is usable, and logs where each model stands.
+func buildModel(c config, log *slog.Logger) (llm.Model, string, error) {
+	if c.models == "off" {
 		return nil, "off", nil
-	case "anthropic":
-		opts := []anthropic.Option{}
-		if c.modelID != "" {
-			opts = append(opts, anthropic.WithModel(c.modelID))
-		}
-		if os.Getenv("ANTHROPIC_API_KEY") == "" && claudeKey != "" {
-			// The SDK reads ANTHROPIC_API_KEY; Claude sessions set ANTHROPIC_KEY.
-			if err := os.Setenv("ANTHROPIC_API_KEY", claudeKey); err != nil {
-				return nil, "", err
-			}
-		}
-		m, err := anthropic.New(opts...)
-		return m, p, err
-	case "gemini":
-		opts := []gemini.Option{gemini.WithAPIKey(geminiKey)}
-		if c.modelID != "" {
-			opts = append(opts, gemini.WithModel(c.modelID))
-		}
-		m, err := gemini.New(opts...)
-		return m, p, err
 	}
-	return nil, "", fmt.Errorf("-model %q: want auto, anthropic, gemini or off", c.model)
+	names, err := models.Parse(c.models)
+	if err != nil {
+		return nil, "", fmt.Errorf("-models: %w", err)
+	}
+	opts := []models.Option{models.WithLogger(log)}
+	if c.unevaluated {
+		opts = append(opts, models.AllowUnevaluated())
+	}
+	lane := models.New(names, opts...)
+	for _, s := range lane.Statuses() {
+		log.Info("farm: model", "model", s.Model, "state", s.State, "cost", s.Cost, "why", s.Reason)
+	}
+	if lane.Len() == 0 {
+		return nil, "off", nil
+	}
+	return lane, lane.Active(), nil
 }
 
 // buildEmbedder returns the handbook's embedder: Gemini's embeddings

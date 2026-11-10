@@ -118,6 +118,7 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/surveyor"
 	"github.com/bsamanvith/agentkit/apps/farm/watch"
 	"github.com/bsamanvith/agentkit/apps/farm/weather"
+	"github.com/bsamanvith/agentkit/pkg/llm"
 )
 
 // MaxBody bounds a request body: a boundary of farm.MaxCorners corners
@@ -287,6 +288,10 @@ func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
 		writeJSON(w, http.StatusBadRequest, errorBody{Error: err.Error()})
 	case errors.Is(err, farm.ErrNotFound), errors.Is(err, farmagent.ErrUnknownConversation):
 		writeJSON(w, http.StatusNotFound, errorBody{Error: err.Error()})
+	case llm.IsRetryable(err), errors.Is(err, llm.ErrAuth):
+		// Every model of the lane is down, busy or refused its key.
+		a.log.WarnContext(r.Context(), "farm api: no model could answer", "path", r.URL.Path, "err", err)
+		writeJSON(w, http.StatusServiceUnavailable, errorBody{Error: "the assistant is busy; try again in a minute"})
 	case errors.Is(err, context.Canceled):
 		// The client went away; nobody reads the answer.
 	default:

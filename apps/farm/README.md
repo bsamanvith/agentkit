@@ -18,9 +18,15 @@ make farm-web                 # rebuild the web client after changing web/apps/f
 pnpm --dir web --filter @agentkit/farm dev   # the client with hot reload, against make farm
 ```
 
-The assistant runs on Claude when `ANTHROPIC_API_KEY` (or `ANTHROPIC_KEY`)
-is set, else on Gemini with `GEMINI_API_KEY` (or `GEMINI_KEY`); `-model off`
-turns it off. Plots are located with OpenStreetMap's Nominatim
+The assistant runs on the first model of `-models` (`$FARM_MODELS`) that
+answers, by default `anthropic,gemini`: Claude with `ANTHROPIC_API_KEY` (or
+`ANTHROPIC_KEY`), then Gemini with `GEMINI_API_KEY` (or `GEMINI_KEY`). OpenAI
+(`openai/<id>`, `OPENAI_API_KEY`) and OpenRouter
+(`openrouter/<vendor>/<model>`, `OPENROUTER_API_KEY`) can be listed too. A
+model is used only after it passes `make farm-eval` (recorded in
+[models/evaluated.json](models/evaluated.json)); when one fails (overloaded,
+rate limited, a bad key) the next takes the request. `-models off` turns
+the assistant off. Plots are located with OpenStreetMap's Nominatim
 (`-geocoder off` to skip it); `-country IN` is where plots are expected.
 The climate at a plot comes from NASA POWER (`-climate off` to skip it:
 then there are no recommendations, and plan checks skip sowing and water).

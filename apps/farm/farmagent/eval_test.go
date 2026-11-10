@@ -5,15 +5,20 @@ package farmagent_test
 // The farm assistant on a real model (make farm-eval): the map, layout,
 // handbook and web research tools against recorded map data and a fake
 // search API, so each run asks the same questions of the same world.
-// Needs ANTHROPIC_API_KEY or ANTHROPIC_KEY (FARM_EVAL_MODEL=anthropic,
-// the default) or GEMINI_API_KEY or GEMINI_KEY (FARM_EVAL_MODEL=gemini).
+// FARM_EVAL_MODEL names the model (evalModel), which needs its provider's
+// key. A model that passes every scenario is recorded in
+// apps/farm/models/evaluated.json with FARM_EVAL_RECORD=1, which lets the
+// farm app use it.
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,6 +27,7 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/farmagent"
 	"github.com/bsamanvith/agentkit/apps/farm/geo"
 	"github.com/bsamanvith/agentkit/apps/farm/handbook"
+	"github.com/bsamanvith/agentkit/apps/farm/models"
 	"github.com/bsamanvith/agentkit/apps/farm/osm/osmtest"
 	"github.com/bsamanvith/agentkit/apps/farm/planting"
 	"github.com/bsamanvith/agentkit/apps/farm/research"
@@ -29,54 +35,62 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/surveyor"
 	credsqlite "github.com/bsamanvith/agentkit/pkg/credentials/sqlite"
 	"github.com/bsamanvith/agentkit/pkg/llm"
-	"github.com/bsamanvith/agentkit/pkg/llm/anthropic"
-	"github.com/bsamanvith/agentkit/pkg/llm/gemini"
 )
 
-func evalModel(t *testing.T) llm.Model {
+// evalModel builds the model FARM_EVAL_MODEL names, any model a lane can
+// list (apps/farm/models): "anthropic" (the default), "gemini",
+// "openai/gpt-5-mini", "openrouter/<vendor>/<model>". FARM_EVAL_MODEL_ID
+// sets the id of a bare provider. It skips the test when the provider's key
+// is not set.
+func evalModel(t *testing.T) (llm.Model, models.Name) {
 	t.Helper()
-	env := func(keys ...string) string {
-		for _, k := range keys {
-			if v := os.Getenv(k); v != "" {
-				return v
-			}
-		}
-		return ""
+	name := os.Getenv("FARM_EVAL_MODEL")
+	if name == "" {
+		name = "anthropic"
 	}
-	switch p := env("FARM_EVAL_MODEL"); p {
-	case "", "anthropic":
-		key := env("ANTHROPIC_API_KEY", "ANTHROPIC_KEY")
-		if key == "" {
-			t.Skip("set ANTHROPIC_API_KEY or ANTHROPIC_KEY")
-		}
-		t.Setenv("ANTHROPIC_API_KEY", key)
-		var opts []anthropic.Option
-		if id := env("FARM_EVAL_MODEL_ID"); id != "" {
-			opts = append(opts, anthropic.WithModel(id))
-		}
-		m, err := anthropic.New(opts...)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return m
-	case "gemini":
-		key := env("GEMINI_API_KEY", "GEMINI_KEY")
-		if key == "" {
-			t.Skip("set GEMINI_API_KEY or GEMINI_KEY")
-		}
-		opts := []gemini.Option{gemini.WithAPIKey(key)}
-		if id := env("FARM_EVAL_MODEL_ID"); id != "" {
-			opts = append(opts, gemini.WithModel(id))
-		}
-		m, err := gemini.New(opts...)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return m
-	default:
-		t.Fatalf("FARM_EVAL_MODEL %q: want anthropic or gemini", p)
-		return nil
+	if id := os.Getenv("FARM_EVAL_MODEL_ID"); id != "" && !strings.Contains(name, "/") {
+		name += "/" + id
 	}
+	names, err := models.Parse(name)
+	if err != nil || len(names) != 1 {
+		t.Fatalf("FARM_EVAL_MODEL %q: want one model (%v)", name, err)
+	}
+	m, err := models.Build(names[0], os.Getenv)
+	if errors.Is(err, models.ErrNoKey) {
+		t.Skip(err)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m, names[0]
+}
+
+// record adds a model that passed every scenario to the lane's
+// evaluated.json, when FARM_EVAL_RECORD is set.
+func record(t *testing.T, n models.Name, scenarios int) {
+	t.Helper()
+	if os.Getenv("FARM_EVAL_RECORD") == "" {
+		t.Logf("%s passed: run with FARM_EVAL_RECORD=1 to let the farm app use it", n)
+		return
+	}
+	const file = "../models/evaluated.json"
+	raw, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var evals []models.Eval
+	if err := json.Unmarshal(raw, &evals); err != nil {
+		t.Fatal(err)
+	}
+	evals = models.Record(evals, models.Eval{Model: n.String(), Scenarios: scenarios, Date: time.Now().UTC().Format(time.DateOnly), Note: os.Getenv("FARM_EVAL_NOTE")})
+	out, err := json.MarshalIndent(evals, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, append(out, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("recorded %s in %s", n, file)
 }
 
 type scenario struct {
@@ -202,7 +216,7 @@ func scenarios() []scenario {
 }
 
 func TestAssistantEval(t *testing.T) {
-	model := evalModel(t)
+	model, name := evalModel(t)
 	book, err := handbook.New(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
@@ -214,7 +228,7 @@ func TestAssistantEval(t *testing.T) {
 	// Gemini's free tier allows a few model calls a minute: pause between
 	// scenarios (FARM_EVAL_PAUSE, a duration).
 	pause := time.Duration(0)
-	if os.Getenv("FARM_EVAL_MODEL") == "gemini" {
+	if name.Provider == "gemini" {
 		pause = time.Minute
 	}
 	if d, err := time.ParseDuration(os.Getenv("FARM_EVAL_PAUSE")); err == nil {
@@ -297,5 +311,8 @@ func TestAssistantEval(t *testing.T) {
 			}
 		})
 	}
-	t.Logf("%d of %d scenarios passed", passed, len(scenarios()))
+	t.Logf("%s: %d of %d scenarios passed", name, passed, len(scenarios()))
+	if passed == len(scenarios()) {
+		record(t, name, passed)
+	}
 }

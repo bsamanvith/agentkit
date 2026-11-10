@@ -87,7 +87,7 @@ eval: ## Tool-use evals: real Claude with faked connectors (evals/README.md; ANT
 	cd evals && $(GO) test -tags eval -count=1 -v -timeout 60m -run TestConnectorEvals .
 
 .PHONY: farm-eval
-farm-eval: ## The farm assistant on a real model: map, layout, handbook and web research scenarios (apps/farm; FARM_EVAL_MODEL=anthropic|gemini); never in CI
+farm-eval: ## The farm assistant on a real model: map, layout, handbook and web research scenarios (apps/farm; FARM_EVAL_MODEL=anthropic|gemini|openai/<id>|openrouter/<vendor>/<id>; FARM_EVAL_RECORD=1 lets the farm app use a model that passes); never in CI
 	cd apps/farm && $(GO) test -tags eval -count=1 -v -timeout 30m -run TestAssistantEval ./farmagent/
 
 .PHONY: eval-misleading

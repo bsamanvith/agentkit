@@ -10,6 +10,7 @@ import {
   FolderPlus,
   Globe,
   LayoutGrid,
+  ListChecks,
   Map as MapIcon,
   Menu,
   MessageCircle,
@@ -42,12 +43,14 @@ const Planning = lazy(() => import("./planning").then((m) => ({ default: m.Plann
 const Land = lazy(() => import("./land").then((m) => ({ default: m.Land })));
 const Seasons = lazy(() => import("./seasons").then((m) => ({ default: m.Seasons })));
 const Prices = lazy(() => import("./prices").then((m) => ({ default: m.Prices })));
+const Roadmap = lazy(() => import("./roadmap").then((m) => ({ default: m.Roadmap })));
 const GroupPage = lazy(() => import("./groups").then((m) => ({ default: m.GroupPage })));
 const GroupForm = lazy(() => import("./groups").then((m) => ({ default: m.GroupForm })));
 const ResearchSettings = lazy(() => import("./research").then((m) => ({ default: m.ResearchSettings })));
 const Assistant = lazy(() => import("./assistant").then((m) => ({ default: m.Assistant })));
 const Care = lazy(() => import("./alerts").then((m) => ({ default: m.Care })));
 const AlertsPage = lazy(() => import("./alerts").then((m) => ({ default: m.AlertsPage })));
+const MessagesPage = lazy(() => import("./messages").then((m) => ({ default: m.MessagesPage })));
 const AccountPage = lazy(() => import("./account").then((m) => ({ default: m.AccountPage })));
 
 const loading = <p className="text-sm text-muted-foreground">Loading…</p>;
@@ -59,6 +62,7 @@ type View =
   | { kind: "group"; id: string }
   | { kind: "group-form"; group?: Group }
   | { kind: "alerts" }
+  | { kind: "messages" }
   | { kind: "account" };
 
 /** The signed-in account, when the server has sign-in. */
@@ -89,7 +93,12 @@ export function App({ account }: { account?: SignedIn } = {}) {
   const [farms, setFarms] = useState<Farm[]>();
   const [groups, setGroups] = useState<Group[]>([]);
   const [config, setConfig] = useState<Config>();
-  const [view, setView] = useState<View>({ kind: "home" });
+  // A push or a message links to a plot as /?farm=<id> (the service
+  // worker opens it).
+  const [view, setView] = useState<View>(() => {
+    const id = new URLSearchParams(window.location.search).get("farm");
+    return id ? { kind: "farm", id } : { kind: "home" };
+  });
   const [chat, setChat] = useState(false);
   const [drawer, setDrawer] = useState(false);
   const [webSettings, setWebSettings] = useState(false);
@@ -115,11 +124,14 @@ export function App({ account }: { account?: SignedIn } = {}) {
   }, [load]);
 
   const go = (v: View) => {
+    if (window.location.search) window.history.replaceState(null, "", "/");
     setView(v);
     setDrawer(false);
     document.getElementById("main")?.scrollTo({ top: 0 });
   };
   const current = view.kind === "farm" ? farms?.find((f) => f.id === view.id) : undefined;
+  // A link to a plot that is gone (or not this person's) shows the overview.
+  const missing = view.kind === "farm" && farms !== undefined && !current;
   const group = view.kind === "group" ? groups.find((g) => g.id === view.id) : undefined;
   const setGroup = (g: Group) =>
     setGroups((gs) => (gs.some((x) => x.id === g.id) ? gs.map((x) => (x.id === g.id ? g : x)) : [...gs, g]));
@@ -151,7 +163,7 @@ export function App({ account }: { account?: SignedIn } = {}) {
           <button className="flex items-center gap-2 font-semibold lg:hidden" onClick={() => go({ kind: "home" })}>
             <Sprout className="size-5 text-ak-ok" aria-hidden="true" /> My land
           </button>
-          <Crumbs view={view} farms={farms ?? []} groups={groups} onGo={go} />
+          <Crumbs view={missing ? { kind: "home" } : view} farms={farms ?? []} groups={groups} onGo={go} />
           <div className="ml-auto flex gap-1.5">
             {config?.automations && (
               <Button
@@ -191,7 +203,7 @@ export function App({ account }: { account?: SignedIn } = {}) {
                   {error}
                 </p>
               )}
-              {view.kind === "home" && (
+              {(view.kind === "home" || missing) && (
                 <Overview
                   farms={farms}
                   groups={groups}
@@ -238,7 +250,19 @@ export function App({ account }: { account?: SignedIn } = {}) {
                   />
                 </>
               )}
-              {view.kind === "alerts" && <AlertsPage farms={farms ?? []} onRead={count} />}
+              {view.kind === "alerts" && (
+                <AlertsPage
+                  farms={farms ?? []}
+                  onRead={count}
+                  onMessages={
+                    // With sign-in, who gets messages is an admin's to set.
+                    config?.messages && (!account || account.me.account.roles?.includes("admin"))
+                      ? () => go({ kind: "messages" })
+                      : undefined
+                  }
+                />
+              )}
+              {view.kind === "messages" && <MessagesPage farms={farms ?? []} />}
               {view.kind === "account" && account && (
                 <AccountPage me={account.me} lanes={account.lanes} onChanged={account.reload} onSwitch={openFarm} />
               )}
@@ -268,6 +292,7 @@ export function App({ account }: { account?: SignedIn } = {}) {
                   weather={config?.weather ?? false}
                   automations={config?.automations ?? false}
                   prices={config?.prices ?? false}
+                  roadmap={config?.roadmap ?? false}
                   onChanged={(f) => setFarms((fs) => fs?.map((x) => (x.id === f.id ? f : x)))}
                   onEdit={() => go({ kind: "edit", farm: current })}
                   onOpenGroup={(id) => go({ kind: "group", id })}
@@ -325,6 +350,7 @@ function Crumbs({
   if (view.kind === "group-form") items.push({ label: view.group ? view.group.name : "New group" });
   if (view.kind === "edit") items.push({ label: view.farm ? view.farm.name : "New plot" });
   if (view.kind === "alerts") items.push({ label: "Alerts" });
+  if (view.kind === "messages") items.push({ label: "Messages" });
   if (view.kind === "account") items.push({ label: "Account" });
   if (items.length === 1) return null;
   return (
@@ -638,7 +664,7 @@ function FarmCard({ farm: f, onOpen }: { farm: Farm; onOpen: () => void }) {
   );
 }
 
-type Tab = "map" | "care" | "land" | "sun" | "plan" | "prices";
+type Tab = "map" | "roadmap" | "care" | "land" | "sun" | "plan" | "prices";
 
 function FarmDetail({
   farm,
@@ -649,6 +675,7 @@ function FarmDetail({
   weather,
   automations,
   prices,
+  roadmap,
   onChanged,
   onEdit,
   onOpenGroup,
@@ -662,6 +689,7 @@ function FarmDetail({
   weather: boolean;
   automations: boolean;
   prices: boolean;
+  roadmap: boolean;
   onChanged: (f: Farm) => void;
   onEdit: () => void;
   onOpenGroup: (id: string) => void;
@@ -676,6 +704,7 @@ function FarmDetail({
     .map((o) => ({ id: o.id, name: o.name, corners: o.boundary.corners }));
   const tabs: { id: Tab; label: string; icon: ReactNode; on: boolean }[] = [
     { id: "map", label: "Map", icon: <MapIcon />, on: true },
+    { id: "roadmap", label: "Season work", icon: <ListChecks />, on: roadmap && (farm.plan?.zones.length ?? 0) > 0 },
     { id: "care", label: "Weather and care", icon: <CloudSun />, on: weather || (planner && automations) },
     { id: "land", label: "Land and layout", icon: <Mountain />, on: surveyor },
     { id: "sun", label: "Sun and seasons", icon: <SunIcon />, on: planner },
@@ -764,6 +793,7 @@ function FarmDetail({
       {tab === "land" && <Land farm={farm} onFarm={onChanged} />}
       {tab === "sun" && <Seasons farm={farm} />}
       {tab === "prices" && <Prices farm={farm} />}
+      {tab === "roadmap" && <Roadmap farm={farm} />}
       <div className={tab === "map" ? "grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]" : "hidden"}>
         <FarmMap
           corners={farm.boundary.corners}

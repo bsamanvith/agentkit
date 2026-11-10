@@ -77,7 +77,7 @@ var public = []string{"/api/config", "/api/units"}
 // public routes pass as they are.
 func (a *Auth) Protect(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet && slices.Contains(public, r.URL.Path) {
+		if (r.Method == http.MethodGet && slices.Contains(public, r.URL.Path)) || r.URL.Path == unsubscribe {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -86,7 +86,7 @@ func (a *Auth) Protect(next http.Handler) http.Handler {
 			a.fail(w, r, err)
 			return
 		}
-		if isAutomationChange(r) && !slices.Contains(ac.Account.Roles, accounts.RoleAdmin) {
+		if (isAutomationChange(r) || isMessageSettings(r)) && !slices.Contains(ac.Account.Roles, accounts.RoleAdmin) {
 			a.fail(w, r, members.ErrForbidden)
 			return
 		}
@@ -98,6 +98,17 @@ func (a *Auth) Protect(next http.Handler) http.Handler {
 		ctx = tenancy.WithUser(ctx, ac.Account.ID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// unsubscribe is the email unsubscribe link: signed by the message lanes
+// (an HMAC in the link), opened from a mail app without a session.
+const unsubscribe = "/api/notify/unsubscribe"
+
+// isMessageSettings is the message lanes' settings: the people who get
+// messages, with their phone numbers and emails, are the app's, not one
+// farm's, until they become accounts, so only an admin sees them.
+func isMessageSettings(r *http.Request) bool {
+	return r.URL.Path == "/api/notify" || strings.HasPrefix(r.URL.Path, "/api/notify/")
 }
 
 // isAutomationChange is a change to the app's automations (not a run of

@@ -16,6 +16,7 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/prices"
 	"github.com/bsamanvith/agentkit/apps/farm/surveyor"
 	"github.com/bsamanvith/agentkit/apps/farm/watch"
+	"github.com/bsamanvith/agentkit/apps/farm/work"
 	"github.com/bsamanvith/agentkit/pkg/harness"
 	"github.com/bsamanvith/agentkit/pkg/knowledge"
 	"github.com/bsamanvith/agentkit/pkg/llm"
@@ -85,6 +86,7 @@ type setup struct {
 	harness   []harness.Option
 	watch     *watch.Watch
 	alerts    automation.Store
+	work      *work.Service
 }
 
 // WithPlanner gives the assistant the crop planning and plot group tools
@@ -181,6 +183,14 @@ func groups(svc *farm.Service, s setup) ([]group, error) {
 		}
 		farmSet.tools = append(farmSet.tools, more...)
 		farmSet.system += "\n" + WatchSystem
+		if s.work != nil {
+			more, err = RoadmapTools(s.work)
+			if err != nil {
+				return nil, err
+			}
+			farmSet.tools = append(farmSet.tools, more...)
+			farmSet.system += "\n" + RoadmapSystem
+		}
 	}
 	out := []group{farmSet}
 	if s.surveyor != nil {

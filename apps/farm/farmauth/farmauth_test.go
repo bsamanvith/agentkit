@@ -382,3 +382,22 @@ func (noTargets) Targets(context.Context, automation.Scope) ([]automation.Target
 }
 
 func pt(lat, lng float64) geo.Point { return geo.Point{Lat: lat, Lng: lng} }
+
+func TestMessageSettingsAreAnAdminsAndUnsubscribeIsOpen(t *testing.T) {
+	a := newApp(t, nil)
+	ravi := a.user("Ravi")
+	for _, path := range []string{"/api/notify", "/api/notify/recipients", "/api/notify/outbox"} {
+		if c := ravi.do("GET", path, "", nil); c != http.StatusForbidden {
+			t.Errorf("a farmer reads %s (other farms' phone numbers): %d, want 403", path, c)
+		}
+	}
+	admin := a.user("Admin", accounts.RoleAdmin)
+	if c := admin.do("GET", "/api/notify/recipients", "", nil); c == http.StatusForbidden || c == http.StatusUnauthorized {
+		t.Errorf("an admin reads the recipients: %d", c)
+	}
+	// The email unsubscribe link is opened from a mail app, with no session:
+	// it reaches the API (no lanes here: 503), not the sign-in guard.
+	if c := a.browser().do("GET", "/api/notify/unsubscribe?r=x&l=email&s=y", "", nil); c == http.StatusUnauthorized {
+		t.Errorf("unsubscribe without a session: %d, want it let through", c)
+	}
+}

@@ -290,7 +290,7 @@ IMAGE_BUDGET_MB_api ?= 24
 IMAGE_BUDGET_MB_runner ?= 20
 IMAGE_BUDGET_MB_toolsets ?= 18
 # The farm app (make image-farm): its binary and embedded web client.
-IMAGE_BUDGET_MB_farm ?= 26
+IMAGE_BUDGET_MB_farm ?= 28
 # Binaries that get an image; fakellm joins when cmd/fakellm exists (T004).
 IMAGE_BINS := $(notdir $(wildcard $(addprefix cmd/,agentkit fakellm)))
 # An extra CA for the module download, behind a TLS-intercepting proxy.

@@ -63,6 +63,12 @@ OpenID Connect flow agentkit can do itself with its OAuth core.
   `/api/me` and must come from the same origin.
 - **Automations stay app-wide**: an admin changes them; members run them
   only on their own plots, and see only their own alerts.
+- **Message settings are an admin's** (`/api/notify/*`, T143): the people
+  who get messages, with their phone numbers, belong to the app until they
+  become accounts. The email unsubscribe link stays open: it is signed and
+  opened from a mail app.
+- **Work records follow the role**: a worker sees a plot's season roadmap
+  (T141) but cannot tick tasks off.
 - **Plots before sign-in**: the first farm made once sign-in is on takes
   every plot and group that has no farm yet, so a farmer who used the app
   alone keeps their land.

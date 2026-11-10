@@ -16,6 +16,8 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/planner"
 	"github.com/bsamanvith/agentkit/apps/farm/watch"
 	"github.com/bsamanvith/agentkit/apps/farm/weather/weathertest"
+	"github.com/bsamanvith/agentkit/apps/farm/work"
+	"github.com/bsamanvith/agentkit/apps/farm/work/worktest"
 	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
 )
 
@@ -207,6 +209,30 @@ func TestWeeklyTasks(t *testing.T) {
 	ns := notices(t, w, w.planted)
 	if len(ns) != 1 || !strings.Contains(ns[0].Body, "Tue 10 Nov: First top-dressing of nitrogen (Maize)") {
 		t.Errorf("notices %+v", ns)
+	}
+}
+
+// TestWeeklyTasksFollowTheRoadmap: with the roadmap, the week's work
+// leaves out what the farmer has done and includes their own tasks.
+func TestWeeklyTasksFollowTheRoadmap(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	w := setup(t)
+	w.savePlan(t, w.planted, agro.Zone{Crop: "maize", Sow: "2026-10-15"})
+	roads := work.New(w.plan, worktest.NewMemory())
+	w.watch.UseRoadmap(roads)
+	if _, _, err := roads.Record(ctx, w.planted, []work.Event{
+		{ID: "n1", Task: work.TaskID(0, "maize", "2026-10-15", "nitrogen-1"), Kind: work.Done, Day: "2026-11-09"},
+		{ID: "own", Kind: work.Added, Title: "Repair the borewell motor", Day: "2026-11-11"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.engine.RunNow(ctx, watch.WeeklyTasks, ""); err != nil {
+		t.Fatal(err)
+	}
+	ns := notices(t, w, w.planted)
+	if len(ns) != 1 || strings.Contains(ns[0].Body, "top-dressing") || !strings.Contains(ns[0].Body, "Wed 11 Nov: Repair the borewell motor") {
+		t.Errorf("notices %+v; want the motor and not the done top-dressing", ns)
 	}
 }
 

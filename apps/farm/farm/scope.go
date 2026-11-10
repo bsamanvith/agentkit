@@ -23,6 +23,11 @@ func WithReadOnly(ctx context.Context) context.Context {
 
 func readOnly(ctx context.Context) bool { v, _ := ctx.Value(readOnlyKey{}).(bool); return v }
 
+// IsReadOnly reports whether ctx may only read ([WithReadOnly]): for
+// stores beside the farm service (work events, say) that must refuse the
+// same changes with [ErrReadOnly].
+func IsReadOnly(ctx context.Context) bool { return readOnly(ctx) }
+
 // WithHolding scopes ctx to the farm (holding) id: a [Service] called with
 // it sees, changes and makes only that holding's plots and groups; another
 // holding's are [ErrNotFound], as if they did not exist. Without it the

@@ -87,6 +87,24 @@
 //	POST   /api/prices/estimate            what a crop may fetch (prices.EstimateQuery + "farm")
 //	GET    /api/prices/sources             the price providers in order, the MSPs
 //
+// Messages (with [WithNotify]): the lanes, the people who get messages
+// and their consent per lane:
+//
+//	GET    /api/notify                          the lanes (on, cost, cap, spend today and this month), the route tree, the push key, the Telegram bot
+//	GET    /api/notify/recipients               the people
+//	POST   /api/notify/recipients               add one {"name", "phone", "email", "lang", "quiet", "farms", "consent": [lanes]}
+//	GET    /api/notify/recipients/{id}          one
+//	PUT    /api/notify/recipients/{id}          change one (a new phone or email drops that lane's consent)
+//	DELETE /api/notify/recipients/{id}          remove one
+//	PUT    /api/notify/recipients/{id}/consent/{lane}  {"opted_in": bool}
+//	POST   /api/notify/recipients/{id}/push     add a browser's push subscription (opts in to push)
+//	DELETE /api/notify/recipients/{id}/push     remove one {"endpoint"}
+//	POST   /api/notify/recipients/{id}/link     a one-time code (and t.me link) to link a Telegram chat
+//	POST   /api/notify/recipients/{id}/test     send a test now {"lane"}: one lane, or the tree
+//	GET    /api/notify/outbox?recipient=&notice=&status=  queued and sent messages
+//	GET    /api/notify/deliveries?message=&recipient=&lane=  each message on each lane, with its status
+//	GET    /api/notify/unsubscribe?r=&l=&t=     an email's unsubscribe page (POST unsubscribes)
+//
 // Web research keys (with [WithResearch]):
 //
 //	GET    /api/research                   the providers, which are connected
@@ -111,6 +129,7 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/feeds"
 	"github.com/bsamanvith/agentkit/apps/farm/geo"
 	"github.com/bsamanvith/agentkit/apps/farm/land"
+	"github.com/bsamanvith/agentkit/apps/farm/notify"
 	"github.com/bsamanvith/agentkit/apps/farm/planner"
 	"github.com/bsamanvith/agentkit/apps/farm/planting"
 	"github.com/bsamanvith/agentkit/apps/farm/prices"
@@ -118,6 +137,7 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/surveyor"
 	"github.com/bsamanvith/agentkit/apps/farm/watch"
 	"github.com/bsamanvith/agentkit/apps/farm/weather"
+	"github.com/bsamanvith/agentkit/apps/farm/work"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 )
 
@@ -162,6 +182,8 @@ type api struct {
 	prices    *prices.Service
 	watch     *watch.Watch
 	engine    *automation.Engine
+	work      *work.Service
+	hub       *notify.Hub
 	country   string
 	log       *slog.Logger
 	now       func() time.Time
@@ -220,6 +242,8 @@ func New(svc *farm.Service, opts ...Option) http.Handler {
 	mux.HandleFunc("DELETE /api/research/{provider}", a.researching(a.disconnect))
 	mux.HandleFunc("GET /api/farms/{id}/week", a.watching(a.week))
 	mux.HandleFunc("GET /api/farms/{id}/calendar", a.watching(a.calendar))
+	mux.HandleFunc("GET /api/farms/{id}/roadmap", a.roadmapping(a.roadmap))
+	mux.HandleFunc("POST /api/farms/{id}/roadmap/events", a.roadmapping(a.recordWork))
 	mux.HandleFunc("GET /api/notices", a.automating(a.notices))
 	mux.HandleFunc("POST /api/notices/read", a.automating(a.readNotices))
 	mux.HandleFunc("GET /api/automations", a.automating(a.automations))
@@ -228,6 +252,7 @@ func New(svc *farm.Service, opts ...Option) http.Handler {
 	mux.HandleFunc("DELETE /api/automations/{id}", a.automating(a.deleteAutomation))
 	mux.HandleFunc("POST /api/automations/{id}/run", a.automating(a.runAutomation))
 	mux.HandleFunc("GET /api/automations/{id}/runs", a.automating(a.runs))
+	a.notifyRoutes(mux)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusNotFound, errorBody{Error: "no such route"})
 	})
@@ -278,9 +303,15 @@ func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
 		writeJSON(w, http.StatusServiceUnavailable, errorBody{Error: "the weather forecast could not be had; try again later"})
 	case errors.Is(err, automation.ErrBuiltin):
 		writeJSON(w, http.StatusConflict, errorBody{Error: err.Error()})
+	case errors.Is(err, work.ErrInvalid):
+		writeJSON(w, http.StatusBadRequest, errorBody{Error: err.Error()})
 	case errors.Is(err, automation.ErrInvalid):
 		writeJSON(w, http.StatusBadRequest, errorBody{Error: err.Error()})
 	case errors.Is(err, automation.ErrNotFound):
+		writeJSON(w, http.StatusNotFound, errorBody{Error: err.Error()})
+	case errors.Is(err, notify.ErrInvalid):
+		writeJSON(w, http.StatusBadRequest, errorBody{Error: err.Error()})
+	case errors.Is(err, notify.ErrNotFound):
 		writeJSON(w, http.StatusNotFound, errorBody{Error: err.Error()})
 	case errors.Is(err, farm.ErrReadOnly):
 		writeJSON(w, http.StatusForbidden, errorBody{Error: err.Error()})
@@ -320,6 +351,8 @@ func (a *api) config(w http.ResponseWriter, _ *http.Request) {
 		"assistant": a.assistant != nil, "planner": a.planner != nil, "surveyor": a.surveyor != nil,
 		"research": a.research != nil, "prices": a.prices != nil, "country": a.country,
 		"weather": a.watch != nil && a.watch.HasWeather(), "automations": a.engine != nil,
+		"roadmap":  a.work != nil,
+		"messages": a.hub != nil,
 	})
 }
 

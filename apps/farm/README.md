@@ -41,6 +41,11 @@ Exa and Parallel keys are sealed in `<db>-vault.db` with the key ring in
 `FARM_CREDENTIALS_KEY` or a key file made on first start. The assistant's
 tools are served over MCP at `/mcp/<toolset>` (`-mcp=false` to turn it
 off). `make farm-eval` runs the assistant's scenarios on a real model.
+Notices also go out by the message lanes ([docs/MESSAGES.md](docs/MESSAGES.md)):
+web push from the start, and Telegram, email, WhatsApp and SMS once their
+keys are set (`FARM_TELEGRAM_TOKEN`, `FARM_SMTP_URL`, `FARM_WHATSAPP_TOKEN`,
+`FARM_MSG91_KEY` or `FARM_TWILIO_SID`); `-notify-routes` composes them and
+`-notify-caps` bounds the paid ones.
 
 Sign-in is off by default: the app is one farmer's, as on a laptop.
 `-signin google,password,invite` (`$FARM_SIGNIN`) turns it on with those
@@ -67,6 +72,7 @@ change the automations. Design: [docs/ACCOUNTS.md](docs/ACCOUNTS.md).
 | [research](research) | Web search and extract on Exa or Parallel with the farmer's key in a vault; `researchtest` |
 | [planner](planner) | Plans seasons for the farms: profile, recommend, lay out, check, save; distributions for plot groups |
 | [handbook](handbook) | The assistant's knowledge base on farming and plants in India: chapters, a crop library chapter, keyword or hybrid search |
+| [notify](notify) | Message lanes (web push, Telegram, email, WhatsApp, SMS) behind one interface, fan-out, chain and router, the outbox with quiet hours, retries, consent and cost caps; `sqlite`, `notifytest` |
 | [farmagent](farmagent) | The farm, planning and map tools for agents (also over MCP), the skills (`plan-season`, `check-plan`, `survey-land`, `shape-farm`, `distribute-plants`, `research-products`), and the assistant (agentkit harness) |
 | [farmapi](farmapi) | The HTTP API under `/api/` |
 | [members](members) | Farms in the farmer's sense (holdings), their members and roles, invites, assisted sign-up; `memberstest`, `sqlite` |

@@ -73,8 +73,13 @@ type MSG91Config struct {
 	// 30, DLT's limit).
 	Vars   [2]string
 	VarLen int
-	URL    string
-	Client *http.Client
+	// CodeTemplateID is the MSG91 template linked to a DLT OTP template
+	// for one-time sign-in codes, the code in its variable CodeVar
+	// (default "var1"). Empty: the lane sends no codes.
+	CodeTemplateID string
+	CodeVar        string
+	URL            string
+	Client         *http.Client
 }
 
 type msg91 struct{ cfg MSG91Config }
@@ -86,6 +91,9 @@ func MSG91(c MSG91Config) (notify.Lane, error) {
 	}
 	if c.Vars[0] == "" {
 		c.Vars = [2]string{"var1", "var2"}
+	}
+	if c.CodeVar == "" {
+		c.CodeVar = "var1"
 	}
 	if c.VarLen == 0 {
 		c.VarLen = 30
@@ -109,8 +117,14 @@ func (s *msg91) Deliver(ctx context.Context, m notify.Message) (notify.Receipt, 
 	if to == "" {
 		return notify.Receipt{}, notify.Rejected(errors.New("sms: no phone"))
 	}
-	rcpt := map[string]string{"mobiles": to, s.cfg.Vars[0]: cut(m.Title, s.cfg.VarLen), s.cfg.Vars[1]: cut(m.Body, s.cfg.VarLen)}
-	body, _ := json.Marshal(map[string]any{"template_id": s.cfg.TemplateID, "short_url": "0", "recipients": []any{rcpt}})
+	tmpl, rcpt := s.cfg.TemplateID, map[string]string{"mobiles": to, s.cfg.Vars[0]: cut(m.Title, s.cfg.VarLen), s.cfg.Vars[1]: cut(m.Body, s.cfg.VarLen)}
+	if m.Kind == notify.KindCode {
+		if s.cfg.CodeTemplateID == "" || m.Code == "" {
+			return notify.Receipt{}, notify.Rejected(errors.New("sms msg91: no DLT OTP template for sign-in codes"))
+		}
+		tmpl, rcpt = s.cfg.CodeTemplateID, map[string]string{"mobiles": to, s.cfg.CodeVar: m.Code}
+	}
+	body, _ := json.Marshal(map[string]any{"template_id": tmpl, "short_url": "0", "recipients": []any{rcpt}})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.cfg.URL, strings.NewReader(string(body)))
 	if err != nil {
 		return notify.Receipt{}, notify.Rejected(err)

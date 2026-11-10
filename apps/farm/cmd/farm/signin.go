@@ -7,12 +7,16 @@ import (
 	"log/slog"
 	"net/netip"
 	"os"
+	"slices"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
 	"github.com/bsamanvith/agentkit/apps/farm/farmauth"
 	"github.com/bsamanvith/agentkit/apps/farm/members"
 	memsqlite "github.com/bsamanvith/agentkit/apps/farm/members/sqlite"
+	"github.com/bsamanvith/agentkit/apps/farm/notify"
 	"github.com/bsamanvith/agentkit/pkg/auth/accounts"
 	"github.com/bsamanvith/agentkit/pkg/auth/accounts/oidc"
 	accsqlite "github.com/bsamanvith/agentkit/pkg/auth/accounts/sqlite"
@@ -22,7 +26,7 @@ import (
 // over the -db file; nil when sign-in is off. Which lanes there are is
 // configuration: each is one implementation of accounts.Lane, picked here
 // by name.
-func signIn(ctx context.Context, c config, svc *farm.Service, log *slog.Logger) (*farmauth.Auth, error) {
+func signIn(ctx context.Context, c config, svc *farm.Service, msgs *messaging, log *slog.Logger) (*farmauth.Auth, error) {
 	names := list(c.signin)
 	if len(names) == 0 {
 		return nil, nil
@@ -35,12 +39,31 @@ func signIn(ctx context.Context, c config, svc *farm.Service, log *slog.Logger) 
 	if public == "" {
 		public = "http://" + c.addr
 	}
-	var sender accounts.Sender
-	if c.codeSender == "log" {
-		sender = accounts.SenderFunc(func(ctx context.Context, to, text string) error {
-			log.WarnContext(ctx, "farm: one-time code (code sender is the log: only for trying it out)", "to", to, "text", text)
-			return nil
-		})
+	// codes is how the phone and email lanes send their one-time codes:
+	// the message lanes -code-sender lists, or the log for trying it out.
+	codes := func(lane string, k notify.AddressKind) (accounts.Sender, error) {
+		if c.codeSender == "log" {
+			return accounts.SenderFunc(func(ctx context.Context, to, text string) error {
+				log.WarnContext(ctx, "farm: one-time code (code sender is the log: only for trying it out)", "to", to, "text", text)
+				return nil
+			}), nil
+		}
+		if msgs != nil {
+			if s := msgs.codeSender(list(c.codeSender), k); s != nil {
+				lc := &laneCodes{s: s, clock: time.Now}
+				if k == notify.AddrPhone {
+					// Phone codes are paid: a day's budget of their own, so
+					// a flood of sign-ups cannot spend the caps alerts need.
+					lc.perDay = envInt("FARM_CODE_DAY_LIMIT", DefaultCodeDayLimit)
+				}
+				return lc, nil
+			}
+		}
+		need := "email (FARM_SMTP_URL)"
+		if k == notify.AddrPhone {
+			need = "SMS (Twilio, or MSG91 with FARM_MSG91_CODE_TEMPLATE, a DLT OTP template) or WhatsApp (FARM_WHATSAPP_CODE_TEMPLATE, an authentication template)"
+		}
+		return nil, fmt.Errorf("farm: the %s sign-in lane sends codes by the message lanes -code-sender lists (%q), and none that can is on: it needs %s, with -notify on; or -code-sender log to try it out", lane, c.codeSender, need)
 	}
 	var lanes []accounts.Lane
 	for _, name := range names {
@@ -56,14 +79,15 @@ func signIn(ctx context.Context, c config, svc *farm.Service, log *slog.Logger) 
 			l, err = accounts.NewPasswordLane(store)
 		case accounts.InviteLaneName:
 			l = accounts.NewInviteLane(store, nil)
-		case "phone", "email":
-			if sender == nil {
-				return nil, fmt.Errorf("farm: the %s sign-in lane needs a way to send codes: -code-sender log (for trying it out) until message lanes come", name)
+		case "phone":
+			var s accounts.Sender
+			if s, err = codes(name, notify.AddrPhone); err == nil {
+				l = accounts.NewPhoneLane(name, "91", s, store)
 			}
-			if name == "phone" {
-				l = accounts.NewPhoneLane(name, "91", sender, store)
-			} else {
-				l = accounts.NewEmailLane(name, sender, store)
+		case "email":
+			var s accounts.Sender
+			if s, err = codes(name, notify.AddrEmail); err == nil {
+				l = accounts.NewEmailLane(name, s, store)
 			}
 		default:
 			return nil, fmt.Errorf("farm: unknown sign-in lane %q (google, password, invite, phone, email)", name)
@@ -102,6 +126,64 @@ func signIn(ctx context.Context, c config, svc *farm.Service, log *slog.Logger) 
 		return nil, err
 	}
 	return farmauth.New(acc, members.New(mstore, acc, svc, members.WithLogger(log)), log), nil
+}
+
+// codesByLanes reports whether c's sign-in sends codes by the message
+// lanes, so they are needed even with the automations off.
+func codesByLanes(c config) bool {
+	if c.codeSender == "log" {
+		return false
+	}
+	ls := list(c.signin)
+	return slices.Contains(ls, "phone") || slices.Contains(ls, "email")
+}
+
+// DefaultCodeDayLimit is how many phone codes go out in 24 hours, all
+// numbers together, unless FARM_CODE_DAY_LIMIT says otherwise: half of
+// the default SMS cap, so alerts keep the rest.
+const DefaultCodeDayLimit = 100
+
+// laneCodes sends one-time codes by message lanes: at once, with the code
+// alone beside the message for lanes whose templates carry only it, and
+// at most perDay in 24 hours (0 for no limit).
+type laneCodes struct {
+	s      notify.Sender
+	perDay int
+	clock  func() time.Time
+
+	mu   sync.Mutex
+	sent []time.Time
+}
+
+func (l *laneCodes) Send(ctx context.Context, to, text string) error {
+	return l.SendCode(ctx, to, "", text)
+}
+
+func (l *laneCodes) SendCode(ctx context.Context, to, code, text string) error {
+	now := l.clock()
+	if l.perDay > 0 {
+		l.mu.Lock()
+		l.sent = slices.DeleteFunc(l.sent, func(t time.Time) bool { return now.Sub(t) >= 24*time.Hour })
+		if len(l.sent) >= l.perDay {
+			l.mu.Unlock()
+			return fmt.Errorf("%w: %d codes in 24 hours, the limit (FARM_CODE_DAY_LIMIT)", accounts.ErrCannotSend, l.perDay)
+		}
+		l.sent = append(l.sent, now)
+		l.mu.Unlock()
+	}
+	rcs, err := notify.SendCode(ctx, l.s, to, code, text, now)
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, notify.ErrInvalid):
+		return fmt.Errorf("%w: not an address the message lanes take", accounts.ErrInvalid)
+	}
+	// The lanes' own words, with the address taken out, for the log.
+	var why []string
+	for _, rc := range rcs {
+		why = append(why, rc.Lane+" "+rc.Status+": "+rc.Error)
+	}
+	return fmt.Errorf("%w: %s", accounts.ErrCannotSend, strings.Join(why, "; "))
 }
 
 // list splits a comma-separated setting, dropping blanks.

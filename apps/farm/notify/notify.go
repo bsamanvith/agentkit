@@ -64,6 +64,10 @@ const (
 	KindDigest = "digest" // a summary (the week, the morning brief)
 	KindReply  = "reply"  // an answer to something the person sent
 	KindTest   = "test"   // a test from the settings page
+	// KindCode is a one-time sign-in code the person asked for, in Code.
+	// It never goes through the outbox or the routes: [SendCode] sends it
+	// at once.
+	KindCode = "code"
 )
 
 // Message is one message to one person. Its ID is its idempotency key: the
@@ -79,6 +83,10 @@ type Message struct {
 	Severity string `json:"severity"`
 	Title    string `json:"title"`
 	Body     string `json:"body"`
+	// Code is a [KindCode] message's code alone, for lanes whose templates
+	// carry it as a parameter (WhatsApp's authentication templates, a DLT
+	// OTP template). It is never stored.
+	Code string `json:"-"`
 	// Link opens the app at the message's subject, when there is one.
 	Link      string    `json:"link,omitempty"`
 	CreatedAt time.Time `json:"created_at"`

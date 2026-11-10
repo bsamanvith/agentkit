@@ -6,6 +6,7 @@ import (
 	"crypto/sha1" //nolint:gosec // Twilio's signature
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -231,4 +232,42 @@ func sortStrings(s []string) []string {
 		}
 	}
 	return s
+}
+
+// TestMSG91SendsCodesOnTheOTPTemplate: a sign-in code goes on the DLT OTP
+// template, the code whole in its variable; without one, none is sent.
+func TestMSG91SendsCodesOnTheOTPTemplate(t *testing.T) {
+	f := &fake{ok: answer(200, `{"message":"req-1","type":"success"}`)}
+	srv := httptest.NewServer(f)
+	defer srv.Close()
+	m := notify.Message{
+		ID: "c1", Kind: notify.KindCode, Severity: notify.Urgent, Body: "482913 is your sign-in code. It works for 10 minutes.", Code: "482913",
+		Recipient: notify.Recipient{Phone: "+919876543210"},
+	}
+	plain, _ := sms.MSG91(sms.MSG91Config{AuthKey: "KEY", TemplateID: "TPL", URL: srv.URL})
+	if _, err := plain.Deliver(context.Background(), m); !errors.Is(err, notify.ErrRejected) || len(f.got) != 0 {
+		t.Fatalf("no OTP template: %v after %d sends, want ErrRejected and none", err, len(f.got))
+	}
+	l, _ := sms.MSG91(sms.MSG91Config{AuthKey: "KEY", TemplateID: "TPL", CodeTemplateID: "OTP", URL: srv.URL})
+	if _, err := l.Deliver(context.Background(), m); err != nil {
+		t.Fatal(err)
+	}
+	var sent struct {
+		TemplateID string              `json:"template_id"`
+		Recipients []map[string]string `json:"recipients"`
+	}
+	_ = json.Unmarshal([]byte(strings.TrimPrefix(f.got[0], "/ ")), &sent)
+	if r := sent.Recipients[0]; sent.TemplateID != "OTP" || r["mobiles"] != "919876543210" || r["var1"] != "482913" || r["var2"] != "" {
+		t.Errorf("sent %s: want the OTP template with the code alone", f.got[0])
+	}
+	// The OTP template's own variable name.
+	named, _ := sms.MSG91(sms.MSG91Config{AuthKey: "KEY", TemplateID: "TPL", CodeTemplateID: "OTP", CodeVar: "otp", URL: srv.URL})
+	if _, err := named.Deliver(context.Background(), m); err != nil {
+		t.Fatal(err)
+	}
+	sent.Recipients = nil
+	_ = json.Unmarshal([]byte(strings.TrimPrefix(f.got[1], "/ ")), &sent)
+	if r := sent.Recipients[0]; r["otp"] != "482913" || r["var1"] != "" {
+		t.Errorf("sent %s: want the code in otp", f.got[1])
+	}
 }

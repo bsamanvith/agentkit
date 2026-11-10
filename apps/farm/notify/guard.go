@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -138,11 +139,14 @@ func (g *guard) Send(ctx context.Context, m Message) ([]Receipt, error) {
 	default:
 		d.Status, d.Error, d.Cost = StatusFailed, err.Error(), 0
 	}
+	if m.Kind == KindCode && d.Error != "" {
+		d.Error = redact(d.Error, r.Address(g.info.Address))
+	}
 	rc.Status, rc.Cost, rc.Error = d.Status, d.Cost, d.Error
 	if ferr := g.store.FinishDelivery(context.WithoutCancel(ctx), d); ferr != nil {
 		g.log.Error("notify: save delivery", "lane", name, "message", m.ID, "err", ferr)
 	}
-	if errors.Is(err, ErrGone) {
+	if errors.Is(err, ErrGone) && m.Kind != KindCode { // a code's recipient is made up for it: nobody to record
 		g.left(ctx, r.ID)
 	}
 	if err != nil && !errors.Is(err, ErrTemporary) && !errors.Is(err, ErrGone) && !errors.Is(err, ErrRejected) {
@@ -226,4 +230,14 @@ func (o off) Name() string    { return string(o) }
 func (o off) Lanes() []string { return []string{string(o)} }
 func (o off) Send(context.Context, Message) ([]Receipt, error) {
 	return []Receipt{{Lane: string(o), Status: StatusSkipped, Error: ErrLaneOff.Error()}}, ErrLaneOff
+}
+
+// redact takes addr (and its digits without the +) out of a provider's
+// error text, for a code's records.
+func redact(text, addr string) string {
+	if addr == "" {
+		return text
+	}
+	text = strings.ReplaceAll(text, addr, "[address]")
+	return strings.ReplaceAll(text, strings.TrimPrefix(addr, "+"), "[address]")
 }

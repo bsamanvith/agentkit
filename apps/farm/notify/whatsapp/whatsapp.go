@@ -45,6 +45,13 @@ type Config struct {
 	// Template is the approved template's name (default "farm_alert"),
 	// with two body parameters: the title and the text.
 	Template string
+	// CodeTemplate is an approved authentication template (a copy-code
+	// button) for one-time sign-in codes; WhatsApp allows codes in no
+	// other kind. Empty: the lane sends no codes.
+	CodeTemplate string
+	// CodeLanguages are the languages the code template is approved in
+	// (default ["en"]), apart from the alert template's.
+	CodeLanguages []string
 	// Languages are the languages the template is approved in (default
 	// ["en"]); a person's language not among them gets the first.
 	Languages []string
@@ -69,6 +76,9 @@ func New(c Config) (*Lane, error) {
 	}
 	if c.Template == "" {
 		c.Template = "farm_alert"
+	}
+	if len(c.CodeLanguages) == 0 {
+		c.CodeLanguages = []string{"en"}
 	}
 	if len(c.Languages) == 0 {
 		c.Languages = []string{"en"}
@@ -127,21 +137,25 @@ type template struct {
 }
 
 type component struct {
-	Type       string `json:"type"`
-	Parameters []struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
-	} `json:"parameters"`
+	Type       string   `json:"type"`
+	SubType    string   `json:"sub_type,omitempty"`
+	Index      string   `json:"index,omitempty"`
+	Parameters []tparam `json:"parameters"`
 }
 
-func (l *Lane) lang(want string) string {
-	if want == "" {
-		return l.cfg.Languages[0]
-	}
-	if slices.Contains(l.cfg.Languages, want) {
+type tparam struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
+func (l *Lane) lang(want string) string { return pick(l.cfg.Languages, want) }
+
+// pick is want if langs has it, else the first.
+func pick(langs []string, want string) string {
+	if want != "" && slices.Contains(langs, want) {
 		return want
 	}
-	return l.cfg.Languages[0]
+	return langs[0]
 }
 
 // Deliver implements notify.Lane: a reply as text (free inside the 24
@@ -152,20 +166,29 @@ func (l *Lane) Deliver(ctx context.Context, m notify.Message) (notify.Receipt, e
 		return notify.Receipt{}, notify.Rejected(errors.New("whatsapp: no phone"))
 	}
 	b := sendBody{Product: "whatsapp", To: to}
-	if m.Kind == notify.KindReply {
+	switch m.Kind {
+	case notify.KindCode:
+		// An authentication template: the code in the body and in the
+		// copy-code button.
+		if l.cfg.CodeTemplate == "" || m.Code == "" {
+			return notify.Receipt{}, notify.Rejected(errors.New("whatsapp: no authentication template for sign-in codes"))
+		}
+		t := &template{Name: l.cfg.CodeTemplate}
+		t.Language.Code = pick(l.cfg.CodeLanguages, m.Recipient.Lang)
+		code := []tparam{{"text", m.Code}}
+		t.Components = []component{{Type: "body", Parameters: code}, {Type: "button", SubType: "url", Index: "0", Parameters: code}}
+		b.Type, b.Template = "template", t
+	case notify.KindReply:
 		b.Type = "text"
 		b.Text = &struct {
 			Body string `json:"body"`
 		}{Body: m.Text()}
-	} else {
+	default:
 		t := &template{Name: l.cfg.Template}
 		t.Language.Code = l.lang(m.Recipient.Lang)
 		c := component{Type: "body"}
 		for _, p := range []string{param(m.Title, 200), param(m.Body, 700)} {
-			c.Parameters = append(c.Parameters, struct {
-				Type string `json:"type"`
-				Text string `json:"text"`
-			}{"text", p})
+			c.Parameters = append(c.Parameters, tparam{"text", p})
 		}
 		t.Components = []component{c}
 		b.Type, b.Template = "template", t

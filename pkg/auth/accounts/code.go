@@ -102,7 +102,11 @@ func (l *OneTimeCodeLane) Send(ctx context.Context, to string) error {
 	if err := l.store.PutChallenge(ctx, l.key(to), c); err != nil {
 		return err
 	}
-	if err := l.sender.Send(ctx, to, l.text(code)); err != nil {
+	send := func() error { return l.sender.Send(ctx, to, l.text(code)) }
+	if cs, ok := l.sender.(CodeSender); ok {
+		send = func() error { return cs.SendCode(ctx, to, code, l.text(code)) }
+	}
+	if err := send(); err != nil {
 		_ = l.store.DeleteChallenge(ctx, l.key(to))
 		return fmt.Errorf("accounts: sending the code: %w", err)
 	}

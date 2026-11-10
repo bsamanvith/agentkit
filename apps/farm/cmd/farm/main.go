@@ -49,8 +49,9 @@
 // them: google (FARM_GOOGLE_CLIENT_ID and FARM_GOOGLE_CLIENT_SECRET, a web
 // client whose redirect URI is <-public-url>/auth/google/callback),
 // password, invite (sign-in codes partners make), and phone and email
-// (one-time codes; until message lanes come, only with -code-sender log,
-// which writes the codes to the log, for trying it out). -signup names the
+// (one-time codes, sent at once by the message lanes -code-sender lists:
+// SMS, WhatsApp and email, each with its keys, under the paid lanes' caps;
+// or -code-sender log, which writes them to the log, for trying it out). -signup names the
 // lanes through which a new person gets an account. With sign-in on, every
 // farmer has their own farms, with members; FARM_ADMIN_EMAILS and
 // FARM_PARTNER_EMAILS give those roles to whoever signs in with a verified
@@ -162,7 +163,7 @@ func main() {
 	fs.StringVar(&c.publicURL, "public-url", env("FARM_PUBLIC_URL", ""), "the app's public URL as farmers' browsers reach it: links in messages, email unsubscribe links, the lanes' webhooks at /hooks/ and sign-in redirects (default http://<addr> for sign-in) ($FARM_PUBLIC_URL)")
 	fs.StringVar(&c.signin, "signin", env("FARM_SIGNIN", ""), `sign-in lanes, comma separated, in the order shown: google, password, invite, phone, email; empty for no sign-in ($FARM_SIGNIN)`)
 	fs.StringVar(&c.signup, "signup", env("FARM_SIGNUP", "google"), `lanes through which a new person gets an account, comma separated ($FARM_SIGNUP)`)
-	fs.StringVar(&c.codeSender, "code-sender", env("FARM_CODE_SENDER", ""), `how the phone and email lanes send one-time codes: "log" (to the server log, only for trying it out) ($FARM_CODE_SENDER)`)
+	fs.StringVar(&c.codeSender, "code-sender", env("FARM_CODE_SENDER", "sms,whatsapp,email"), `the message lanes the phone and email sign-in lanes send one-time codes by, tried in order (each on when its keys are set; WhatsApp and MSG91 need a template for codes); "log" writes the codes to the server log, only for trying it out ($FARM_CODE_SENDER)`)
 	fs.BoolVar(&c.mcp, "mcp", env("FARM_MCP", "true") == "true", "serve the assistant's tools over MCP at /mcp/ ($FARM_MCP)")
 	_ = fs.Parse(os.Args[1:])
 
@@ -369,7 +370,19 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 		}
 		aopts = append(aopts, farmapi.WithAssistant(a))
 	}
+	// The message lanes: the automations' notices, and the sign-in codes.
+	var msgs *messaging
 	var hooks map[string]http.Handler // the message lanes' webhooks
+	if c.notify && (astore != nil || codesByLanes(c)) {
+		if msgs, err = buildNotify(ctx, c, log); err != nil {
+			return err
+		}
+		defer msgs.store.Close()
+		hooks = msgs.hooks
+		for _, f := range msgs.run {
+			go f(ctx)
+		}
+	}
 	if astore != nil {
 		eopts := append(watcher.Rules(), automation.WithLogger(log), automation.WithWorkers(c.workers))
 		if forecast != nil {
@@ -382,12 +395,7 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 			}
 			eopts = append(eopts, automation.WithSkills(runner))
 		}
-		if c.notify {
-			msgs, err := buildNotify(ctx, c, log)
-			if err != nil {
-				return err
-			}
-			defer msgs.store.Close()
+		if msgs != nil {
 			link := func(farm string) string {
 				if c.publicURL == "" {
 					return ""
@@ -396,10 +404,6 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 			}
 			eopts = append(eopts, automation.WithChannels(watch.Messages(msgs.hub.Dispatcher, link)))
 			aopts = append(aopts, farmapi.WithNotify(msgs.hub))
-			hooks = msgs.hooks
-			for _, f := range msgs.run {
-				go f(ctx)
-			}
 		}
 		e, err := automation.New(astore, watcher, eopts...)
 		if err != nil {
@@ -422,7 +426,7 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 	// scoped to its farm; without, they are open, as on a farmer's laptop.
 	// The lanes' webhooks stay outside: the providers call them.
 	protect := func(h http.Handler) http.Handler { return h }
-	gate, err := signIn(ctx, c, svc, log)
+	gate, err := signIn(ctx, c, svc, msgs, log)
 	if err != nil {
 		return err
 	}
@@ -455,7 +459,7 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 	}
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	log.Info("farm: serving", "url", "http://"+ln.Addr().String(), "db", c.db, "assistant", provider, "geocoder", c.geocoder,
-		"climate", c.climate, "weather", c.weather, "automations", c.automations, "overpass", c.overpass, "osm_api", c.osmAPI, "elevation", c.elevation, "elevation_backup", c.elevationBackup, "embedder", emb != nil, "prices", strings.Join(market.Providers(), ", then "), "notify", c.notify && astore != nil, "mcp", c.mcp, "signin", orOff(c.signin))
+		"climate", c.climate, "weather", c.weather, "automations", c.automations, "overpass", c.overpass, "osm_api", c.osmAPI, "elevation", c.elevation, "elevation_backup", c.elevationBackup, "embedder", emb != nil, "prices", strings.Join(market.Providers(), ", then "), "notify", msgs != nil, "mcp", c.mcp, "signin", orOff(c.signin))
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
 	select {

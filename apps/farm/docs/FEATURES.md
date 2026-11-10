@@ -314,10 +314,12 @@ roles, invites, assisted sign-up), `apps/farm/farmauth` (the routes and
 the guard on `/api` and `/mcp`), `farm.WithHolding` (each farm sees only
 its plots); flags `-signin`, `-signup`, `-public-url`, `-code-sender`.
 Web: `signin.tsx`, `account.tsx`, `session.ts`. Design:
-[ACCOUNTS.md](ACCOUNTS.md). The phone and email codes need a sender:
-the message lanes of [14](#14-alerts-on-the-phone-push-telegram-email-whatsapp-sms)
-are not wired to sign-in yet, so the codes only go to the server's log,
-for trying it out.
+[ACCOUNTS.md](ACCOUNTS.md). The phone and email codes go by the message
+lanes of [14](#14-alerts-on-the-phone-push-telegram-email-whatsapp-sms)
+that `-code-sender` lists (default SMS, then WhatsApp, then email), at
+once and under the paid lanes' caps; WhatsApp needs an authentication
+template for codes and MSG91 a DLT OTP template. With no lane keys yet,
+`-code-sender log` writes the codes to the server's log, for trying it out.
 
 ## Building now
 
@@ -382,8 +384,8 @@ Ranked 2026-11-10, after weather alerts (11), prices (12), accounts (13) and the
 1. **Alerts on the phone (14), live; keys next.** Farmers will not open
    an app every day to look for an alert; the lanes and the Messages page
    are in. Next: a Telegram bot and an SMTP account (free), then WhatsApp
-   and SMS once registered. The same lanes then carry the phone sign-in
-   codes of 13.
+   and SMS once registered. The same lanes carry the phone and email
+   sign-in codes of 13 (wired; an SMTP account gives free email codes).
 2. **Crop doctor (15).** The question farmers ask most in season.
 3. **Ledger by voice (16)**, with prices (12) giving profit per plot.
 4. **Offline and voice (17)** before field use at scale.
@@ -420,7 +422,7 @@ in the *Cost* column and named in the PR that adds it.
 | Weather forecast | `weather.Source` | Open-Meteo, then MET Norway (`-weather`, tried in order) | the next in the list | Open-Meteo: **free for non-commercial use only** (under 10,000 a day), paid plan or self-hosting for commercial; MET Norway: free, CC BY 4.0, commercial use allowed with credit |
 | Mandi prices | `prices.Source` (on `feeds.Provider`) | Agmarknet on data.gov.in (`datagov`, all India, daily; needs `FARM_DATAGOV_KEY`), price files (`files`: Agmarknet, data.gov.in or CEDA CSVs in `FARM_PRICE_FILES`) | the next provider, then every price saved before | data.gov.in: **free**, key on registration; files: free; CEDA: free with registration, check its terms before commercial use |
 | Message lanes | `notify.Lane` | web push, Telegram, email (SMTP), WhatsApp (Meta Cloud API), SMS (MSG91 or Twilio), each on when its keys are set; `-notify-routes` composes them | the next lane in a chain; at a lane's cost cap, the next | Web push, Telegram: free; email: free tiers of most SMTP providers (flag the one chosen); WhatsApp: **paid** per template message, needs Meta business verification; SMS: **paid** per message, needs DLT registration |
-| Sign-in | `accounts.Lane` (redirect, secret or code lanes, `-signin`) | Google (`google`, OpenID Connect; needs `FARM_GOOGLE_CLIENT_ID` and `_SECRET`), password, invite codes, phone and email one-time codes | the other lanes turned on: a farmer can link several | Google, password, invite: **free**; phone and email codes: the sender's cost (14), only a log sender for now |
+| Sign-in | `accounts.Lane` (redirect, secret or code lanes, `-signin`) | Google (`google`, OpenID Connect; needs `FARM_GOOGLE_CLIENT_ID` and `_SECRET`), password, invite codes, phone and email one-time codes | the other lanes turned on: a farmer can link several | Google, password, invite: **free**; phone and email codes: by the message lanes (14), at their cost: email free tiers, SMS and WhatsApp **paid** per code |
 | News and knowledge | to plan, on `feeds.Provider` as prices are (weather can move onto it) | | | |
 
 Paid things in the plans above, and the free way to start:

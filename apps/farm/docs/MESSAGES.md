@@ -31,9 +31,12 @@ The lanes take it from there to the farmer's phone.
 | Web push | `notify/webpush` | Free | None (keys made at first start in `<db>-push-keys.json`) | always on |
 | Telegram | `notify/telegram` | Free | A bot from @BotFather | `FARM_TELEGRAM_TOKEN`, `FARM_TELEGRAM_BOT`; `FARM_TELEGRAM_SECRET` for the webhook, else it polls |
 | Email | `notify/email` | Free tiers (a few hundred a day) on most providers; flag the one chosen | A sending domain | `FARM_SMTP_URL` (`smtp://user:pass@host:587`), `FARM_EMAIL_FROM` |
-| WhatsApp | `notify/whatsapp` (Meta Cloud API, direct) | **Paid** per template message (about ₹0.12 to ₹0.15 in India); replies within 24 hours of the farmer's message are free | Meta business verification; the `farm_alert` template (two body parameters: title, text) approved per language | `FARM_WHATSAPP_TOKEN`, `FARM_WHATSAPP_PHONE_ID`, `FARM_WHATSAPP_LANGS`, `FARM_WHATSAPP_APP_SECRET`, `FARM_WHATSAPP_VERIFY_TOKEN` |
-| SMS | `notify/sms` (MSG91 or Twilio) | **Paid** per SMS (about ₹0.15 to ₹0.30) | DLT registration with TRAI: the business, the sender ID, each template (variables of 30 characters) | `FARM_MSG91_KEY`, `FARM_MSG91_TEMPLATE`; or `FARM_TWILIO_SID`, `FARM_TWILIO_TOKEN`, `FARM_TWILIO_FROM` |
+| WhatsApp | `notify/whatsapp` (Meta Cloud API, direct) | **Paid** per template message (about ₹0.12 to ₹0.15 in India); replies within 24 hours of the farmer's message are free | Meta business verification; the `farm_alert` template (two body parameters: title, text) approved per language | `FARM_WHATSAPP_TOKEN`, `FARM_WHATSAPP_PHONE_ID`, `FARM_WHATSAPP_LANGS`, `FARM_WHATSAPP_APP_SECRET`, `FARM_WHATSAPP_VERIFY_TOKEN`; `FARM_WHATSAPP_CODE_TEMPLATE` (an authentication template) for sign-in codes |
+| SMS | `notify/sms` (MSG91 or Twilio) | **Paid** per SMS (about ₹0.15 to ₹0.30) | DLT registration with TRAI: the business, the sender ID, each template (variables of 30 characters) | `FARM_MSG91_KEY`, `FARM_MSG91_TEMPLATE` (`FARM_MSG91_CODE_TEMPLATE`, a DLT OTP template, for sign-in codes); or `FARM_TWILIO_SID`, `FARM_TWILIO_TOKEN`, `FARM_TWILIO_FROM` |
 | Log | `notify` | Free | None | always (for trying a tree) |
+
+The same lanes send the phone and email sign-in codes, at once and not
+through the tree: see [ACCOUNTS.md](ACCOUNTS.md#codes-by-the-message-lanes).
 
 A lane without its keys is in the tree as `Off`: its messages skip it and
 a chain moves on, so adding keys later switches it on with no other change.

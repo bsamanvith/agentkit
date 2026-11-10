@@ -352,7 +352,9 @@ func TestRouterAndParse(t *testing.T) {
 	}
 	pick := func(kind, sev string) string {
 		m := notify.Message{Kind: kind, Severity: sev}
-		s := root.(interface{ Pick(notify.Message) notify.Sender }).Pick(m)
+		s := root.(interface {
+			Pick(notify.Message) notify.Sender
+		}).Pick(m)
 		if s == nil {
 			return ""
 		}
@@ -496,7 +498,7 @@ func TestDispatcherNothingToSend(t *testing.T) {
 	if it := w.item("m1"); it.Status != notify.ItemNothing {
 		t.Errorf("no lane open: %+v, want nothing (the notice is in the inbox)", it)
 	}
-	rcs, err := d.SendNow(w.ctx, notify.Message{ID: "test1", To: "ravi", Severity: notify.Advice, Title: "Test"})
+	rcs, err := d.SendNow(w.ctx, notify.Message{ID: "test1", To: "ravi", Severity: notify.Advice, Title: "Test"}, nil)
 	if !errors.Is(err, notify.ErrSkipped) || len(rcs) == 0 {
 		t.Errorf("SendNow with no lane open = %+v, %v", rcs, err)
 	}

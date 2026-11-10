@@ -31,6 +31,15 @@
 // also the assistant's skills (the weekly field brief, off until turned
 // on). They keep their state in the -db file.
 //
+// Notices also go out by the message lanes (-notify, on with the
+// automations): web push to the installed app is on from the start (its
+// keys are made in <db>-push-keys.json); Telegram, email, WhatsApp and
+// SMS each switch on when their keys are in the environment
+// (FARM_TELEGRAM_TOKEN, FARM_SMTP_URL, FARM_WHATSAPP_TOKEN, FARM_MSG91_KEY
+// or FARM_TWILIO_SID). -notify-routes says which lanes each kind of
+// message goes by, -notify-caps bounds the paid ones. See
+// apps/farm/docs/MESSAGES.md.
+//
 // The assistant's tools are also an MCP server at /mcp/ (unless -mcp is
 // false): /mcp/farm (plots and planning), /mcp/farm-map (surveys, map
 // questions, farm designs), /mcp/farm-research and /mcp/farm-handbook, so
@@ -46,6 +55,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -68,6 +78,7 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/models"
 	"github.com/bsamanvith/agentkit/apps/farm/nasapower"
 	"github.com/bsamanvith/agentkit/apps/farm/nominatim"
+	"github.com/bsamanvith/agentkit/apps/farm/notify"
 	"github.com/bsamanvith/agentkit/apps/farm/osm"
 	"github.com/bsamanvith/agentkit/apps/farm/planner"
 	"github.com/bsamanvith/agentkit/apps/farm/prices"
@@ -97,7 +108,8 @@ type config struct {
 	overpass, osmAPI, elevation, elevationBackup, embedder, vault string
 	exaURL, parallelURL, weather                                  string
 	priceProviders, priceFiles, dataGovURL                        string
-	mcp, automations, unevaluated                                 bool
+	notifyRoutes, notifyCaps, publicURL                           string
+	mcp, automations, unevaluated, notify                         bool
 	embedRate, workers                                            int
 }
 
@@ -130,6 +142,10 @@ func main() {
 	fs.StringVar(&c.weather, "weather", env("FARM_WEATHER", "open-meteo,met-norway"), `forecast providers, first that answers: open-meteo and met-norway, each optionally =URL; or "off" ($FARM_WEATHER)`)
 	fs.BoolVar(&c.automations, "automations", env("FARM_AUTOMATIONS", "true") == "true", "run the automations: weather checks, crop work, skills ($FARM_AUTOMATIONS)")
 	fs.IntVar(&c.workers, "automation-workers", envInt("FARM_AUTOMATION_WORKERS", 4), "automation jobs run at once ($FARM_AUTOMATION_WORKERS)")
+	fs.BoolVar(&c.notify, "notify", env("FARM_NOTIFY", "true") == "true", "send automations' notices beyond the inbox, by the message lanes: web push, Telegram, email, WhatsApp, SMS, each on when its keys are set ($FARM_NOTIFY)")
+	fs.StringVar(&c.notifyRoutes, "notify-routes", env("FARM_NOTIFY_ROUTES", notify.DefaultRoutes), "which lanes each kind and severity of message goes by: key=tree; ... with fanout(...) and chain(...) ($FARM_NOTIFY_ROUTES)")
+	fs.StringVar(&c.notifyCaps, "notify-caps", env("FARM_NOTIFY_CAPS", DefaultCaps), "paid lanes' cost per message (paise) and caps a day and a month: lane:cost=14,day=300,month=5000;... ($FARM_NOTIFY_CAPS)")
+	fs.StringVar(&c.publicURL, "public-url", env("FARM_PUBLIC_URL", ""), "the app's public URL, for links in messages, email unsubscribe links and the lanes' webhooks at /hooks/ ($FARM_PUBLIC_URL)")
 	fs.BoolVar(&c.mcp, "mcp", env("FARM_MCP", "true") == "true", "serve the assistant's tools over MCP at /mcp/ ($FARM_MCP)")
 	_ = fs.Parse(os.Args[1:])
 
@@ -328,6 +344,7 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 		}
 		aopts = append(aopts, farmapi.WithAssistant(a))
 	}
+	var hooks map[string]http.Handler // the message lanes' webhooks
 	if astore != nil {
 		eopts := append(watcher.Rules(), automation.WithLogger(log), automation.WithWorkers(c.workers))
 		if forecast != nil {
@@ -339,6 +356,25 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 				return err
 			}
 			eopts = append(eopts, automation.WithSkills(runner))
+		}
+		if c.notify {
+			msgs, err := buildNotify(ctx, c, log)
+			if err != nil {
+				return err
+			}
+			defer msgs.store.Close()
+			link := func(farm string) string {
+				if c.publicURL == "" {
+					return ""
+				}
+				return strings.TrimRight(c.publicURL, "/") + "/#/farms/" + url.PathEscape(farm)
+			}
+			eopts = append(eopts, automation.WithChannels(watch.Messages(msgs.hub.Dispatcher, link)))
+			aopts = append(aopts, farmapi.WithNotify(msgs.hub))
+			hooks = msgs.hooks
+			for _, f := range msgs.run {
+				go f(ctx)
+			}
 		}
 		e, err := automation.New(astore, watcher, eopts...)
 		if err != nil {
@@ -358,6 +394,9 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 
 	mux := http.NewServeMux()
 	mux.Handle("/api/", farmapi.New(svc, aopts...))
+	for path, h := range hooks {
+		mux.Handle(path, h)
+	}
 	if c.mcp {
 		sets, err := farmagent.Toolsets(svc, toolOpts...)
 		if err != nil {
@@ -379,7 +418,7 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 	}
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	log.Info("farm: serving", "url", "http://"+ln.Addr().String(), "db", c.db, "assistant", provider, "geocoder", c.geocoder,
-		"climate", c.climate, "weather", c.weather, "automations", c.automations, "overpass", c.overpass, "osm_api", c.osmAPI, "elevation", c.elevation, "elevation_backup", c.elevationBackup, "embedder", emb != nil, "prices", strings.Join(market.Providers(), ", then "), "mcp", c.mcp)
+		"climate", c.climate, "weather", c.weather, "automations", c.automations, "overpass", c.overpass, "osm_api", c.osmAPI, "elevation", c.elevation, "elevation_backup", c.elevationBackup, "embedder", emb != nil, "prices", strings.Join(market.Providers(), ", then "), "notify", c.notify && astore != nil, "mcp", c.mcp)
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
 	select {

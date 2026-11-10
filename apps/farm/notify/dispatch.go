@@ -247,10 +247,13 @@ func (d *Dispatcher) sentLanes(ctx context.Context, id string) ([]string, error)
 	return out, nil
 }
 
-// SendNow sends m at once through the tree, past quiet hours, and waits:
-// for a test message from the settings page. It is recorded like any
-// other, and its ID still makes it idempotent.
-func (d *Dispatcher) SendNow(ctx context.Context, m Message) ([]Receipt, error) {
+// SendNow sends m at once through via (the tree when nil), past quiet
+// hours, and waits: for a test message from the settings page. It is
+// recorded like any other, and its ID still makes it idempotent.
+func (d *Dispatcher) SendNow(ctx context.Context, m Message, via Sender) ([]Receipt, error) {
+	if via == nil {
+		via = d.root
+	}
 	if m.Kind == "" {
 		m.Kind = KindTest
 	}
@@ -271,7 +274,7 @@ func (d *Dispatcher) SendNow(ctx context.Context, m Message) ([]Receipt, error) 
 	if m.Sent, err = d.sentLanes(ctx, m.ID); err != nil {
 		return nil, err
 	}
-	rcs, err := d.root.Send(ctx, m)
+	rcs, err := via.Send(ctx, m)
 	status, why := ItemDone, ""
 	switch {
 	case err == nil:

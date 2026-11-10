@@ -2,10 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bsamanvith/agentkit/apps/farm/notify"
 	"github.com/bsamanvith/agentkit/apps/farm/notify/notifytest"
@@ -71,7 +75,7 @@ func TestCodesGoByTheMessageLanes(t *testing.T) {
 	if m.codeSender(names, notify.AddrTelegram) == nil || m.codeSender([]string{"email"}, notify.AddrPhone) != nil {
 		t.Error("codeSender picked lanes of the wrong kind")
 	}
-	phone := laneCodes{m.codeSender(names, notify.AddrPhone)}
+	phone := &laneCodes{s: m.codeSender(names, notify.AddrPhone), clock: time.Now}
 	if err := phone.SendCode(ctx, "+919876543210", "482913", "482913 is your sign-in code."); err != nil {
 		t.Fatal(err)
 	}
@@ -82,11 +86,38 @@ func TestCodesGoByTheMessageLanes(t *testing.T) {
 		t.Errorf("SMS lane got %+v", got)
 	}
 
-	// Through the sign-in lanes: the email lane's code arrives by email.
+	// Through the sign-in routes: codes arrive by SMS and by email; a
+	// failed send is a 503 the farmer can act on; past the day's budget
+	// of phone codes, no more are sent.
+	t.Setenv("FARM_CODE_DAY_LIMIT", "2")
 	db := filepath.Join(t.TempDir(), "farm.db")
 	gate, err := signIn(ctx, config{db: db, addr: "127.0.0.1:8090", signin: "phone,email", signup: "phone,email", codeSender: "sms,email"}, nil, m, slog.New(slog.DiscardHandler))
 	if err != nil || gate == nil {
 		t.Fatalf("phone and email by the lanes: %v", err)
+	}
+	mux := http.NewServeMux()
+	gate.Register(mux)
+	send := func(lane, to string) (int, string) {
+		req := httptest.NewRequest(http.MethodPost, "/auth/"+lane+"/send", strings.NewReader(`{"to":"`+to+`"}`))
+		req.Header.Set("Origin", "http://127.0.0.1:8090")
+		req.Header.Set("Content-Type", "application/json")
+		req.Host, req.RemoteAddr = "127.0.0.1:8090", "10.0.0.1:1234"
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return rec.Code, rec.Body.String()
+	}
+	if code, body := send("email", "ravi@example.com"); code != http.StatusAccepted || fakes["email"].Count() != 1 || fakes["email"].Sent()[0].Code == "" {
+		t.Errorf("email code: %d %s, %d sent", code, body, fakes["email"].Count())
+	}
+	if code, body := send("phone", "9876500001"); code != http.StatusAccepted || fakes["sms"].Count() != 2 {
+		t.Errorf("phone code: %d %s, %d by SMS", code, body, fakes["sms"].Count())
+	}
+	fakes["sms"].FailNext(notify.Temporary(errors.New("gateway busy for +919876500002")))
+	if code, body := send("phone", "9876500002"); code != http.StatusServiceUnavailable || !strings.Contains(body, "send_failed") || strings.Contains(body, "9876500002") {
+		t.Errorf("a failed send: %d %s, want 503 send_failed without the number", code, body)
+	}
+	if code, _ := send("phone", "9876500003"); code != http.StatusServiceUnavailable || fakes["sms"].Count() != 2 {
+		t.Errorf("past the day's budget: %d, %d by SMS; want 503 and no send", code, fakes["sms"].Count())
 	}
 	if _, err := signIn(ctx, config{db: db, addr: "127.0.0.1:8090", signin: "phone", codeSender: "whatsapp"}, nil, m, slog.New(slog.DiscardHandler)); err == nil || !strings.Contains(err.Error(), "FARM_WHATSAPP_CODE_TEMPLATE") {
 		t.Errorf("phone by WhatsApp with no code template: %v, want an error naming it", err)

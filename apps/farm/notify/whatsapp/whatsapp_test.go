@@ -234,13 +234,20 @@ func TestCodeTemplate(t *testing.T) {
 	if _, err := plain.Deliver(t.Context(), m); !errors.Is(err, notify.ErrRejected) || len(g.got) != 0 {
 		t.Fatalf("no code template: %v after %d sends, want ErrRejected and none", err, len(g.got))
 	}
-	l, _ := whatsapp.New(whatsapp.Config{Token: "TOKEN", PhoneNumberID: "PHONE_ID", URL: srv.URL + "/v23.0", CodeTemplate: "farm_code"})
+	// The alert template is in Telugu too; the code template only in English.
+	m.Recipient.Lang = "te"
+	l, _ := whatsapp.New(whatsapp.Config{Token: "TOKEN", PhoneNumberID: "PHONE_ID", URL: srv.URL + "/v23.0", Languages: []string{"te", "en"}, CodeTemplate: "farm_code"})
 	if _, err := l.Deliver(t.Context(), m); err != nil {
 		t.Fatal(err)
 	}
 	var sent struct {
+		To       string `json:"to"`
+		Type     string `json:"type"`
 		Template struct {
-			Name       string `json:"name"`
+			Name     string `json:"name"`
+			Language struct {
+				Code string `json:"code"`
+			} `json:"language"`
 			Components []struct {
 				Type       string `json:"type"`
 				SubType    string `json:"sub_type"`
@@ -255,6 +262,9 @@ func TestCodeTemplate(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := sent.Template.Components
+	if sent.To != "919876543210" || sent.Type != "template" || sent.Template.Language.Code != "en" {
+		t.Errorf("sent %s: want the template to the number, in the code template's language", g.got[0])
+	}
 	if sent.Template.Name != "farm_code" || len(c) != 2 || c[0].Type != "body" || c[0].Parameters[0].Text != "482913" ||
 		c[1].Type != "button" || c[1].SubType != "url" || c[1].Index != "0" || c[1].Parameters[0].Text != "482913" {
 		t.Errorf("sent %s: want the authentication template with the code in the body and the button", g.got[0])

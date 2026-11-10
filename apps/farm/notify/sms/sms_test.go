@@ -257,7 +257,17 @@ func TestMSG91SendsCodesOnTheOTPTemplate(t *testing.T) {
 		Recipients []map[string]string `json:"recipients"`
 	}
 	_ = json.Unmarshal([]byte(strings.TrimPrefix(f.got[0], "/ ")), &sent)
-	if r := sent.Recipients[0]; sent.TemplateID != "OTP" || r["var1"] != "482913" || r["var2"] != "" {
+	if r := sent.Recipients[0]; sent.TemplateID != "OTP" || r["mobiles"] != "919876543210" || r["var1"] != "482913" || r["var2"] != "" {
 		t.Errorf("sent %s: want the OTP template with the code alone", f.got[0])
+	}
+	// The OTP template's own variable name.
+	named, _ := sms.MSG91(sms.MSG91Config{AuthKey: "KEY", TemplateID: "TPL", CodeTemplateID: "OTP", CodeVar: "otp", URL: srv.URL})
+	if _, err := named.Deliver(context.Background(), m); err != nil {
+		t.Fatal(err)
+	}
+	sent.Recipients = nil
+	_ = json.Unmarshal([]byte(strings.TrimPrefix(f.got[1], "/ ")), &sent)
+	if r := sent.Recipients[0]; r["otp"] != "482913" || r["var1"] != "" {
+		t.Errorf("sent %s: want the code in otp", f.got[1])
 	}
 }

@@ -2,8 +2,6 @@ package notify
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -21,11 +19,10 @@ const CodeTTL = 10 * time.Minute
 // took it.
 func SendCode(ctx context.Context, s Sender, to, code, text string, now time.Time) ([]Receipt, error) {
 	to = strings.TrimSpace(to)
-	sum := sha256.Sum256([]byte(to))
 	// The person may have no account yet: the recipient is made up for
-	// this message, named by a hash so the delivery records do not keep
-	// the address.
-	r := Recipient{ID: "signin:" + hex.EncodeToString(sum[:8]), Consent: map[string]Consent{}}
+	// this message, with a random name, so the delivery records do not
+	// keep the address (the guard also takes it out of their errors).
+	r := Recipient{ID: NewID("signin-"), Consent: map[string]Consent{}}
 	m := Message{
 		ID: NewID("code-"), To: r.ID, Kind: KindCode, Severity: Urgent, Body: text, Code: code,
 		CreatedAt: now.UTC(), ExpiresAt: now.UTC().Add(CodeTTL),

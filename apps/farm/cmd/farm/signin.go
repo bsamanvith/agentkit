@@ -7,7 +7,9 @@ import (
 	"log/slog"
 	"net/netip"
 	"os"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
@@ -48,7 +50,13 @@ func signIn(ctx context.Context, c config, svc *farm.Service, msgs *messaging, l
 		}
 		if msgs != nil {
 			if s := msgs.codeSender(list(c.codeSender), k); s != nil {
-				return laneCodes{s}, nil
+				lc := &laneCodes{s: s, clock: time.Now}
+				if k == notify.AddrPhone {
+					// Phone codes are paid: a day's budget of their own, so
+					// a flood of sign-ups cannot spend the caps alerts need.
+					lc.perDay = envInt("FARM_CODE_DAY_LIMIT", DefaultCodeDayLimit)
+				}
+				return lc, nil
 			}
 		}
 		need := "email (FARM_SMTP_URL)"
@@ -120,17 +128,62 @@ func signIn(ctx context.Context, c config, svc *farm.Service, msgs *messaging, l
 	return farmauth.New(acc, members.New(mstore, acc, svc, members.WithLogger(log)), log), nil
 }
 
-// laneCodes sends one-time codes by message lanes: at once, with the code
-// alone beside the message for lanes whose templates carry only it.
-type laneCodes struct{ s notify.Sender }
+// codesByLanes reports whether c's sign-in sends codes by the message
+// lanes, so they are needed even with the automations off.
+func codesByLanes(c config) bool {
+	if c.codeSender == "log" {
+		return false
+	}
+	ls := list(c.signin)
+	return slices.Contains(ls, "phone") || slices.Contains(ls, "email")
+}
 
-func (l laneCodes) Send(ctx context.Context, to, text string) error {
+// DefaultCodeDayLimit is how many phone codes go out in 24 hours, all
+// numbers together, unless FARM_CODE_DAY_LIMIT says otherwise: half of
+// the default SMS cap, so alerts keep the rest.
+const DefaultCodeDayLimit = 100
+
+// laneCodes sends one-time codes by message lanes: at once, with the code
+// alone beside the message for lanes whose templates carry only it, and
+// at most perDay in 24 hours (0 for no limit).
+type laneCodes struct {
+	s      notify.Sender
+	perDay int
+	clock  func() time.Time
+
+	mu   sync.Mutex
+	sent []time.Time
+}
+
+func (l *laneCodes) Send(ctx context.Context, to, text string) error {
 	return l.SendCode(ctx, to, "", text)
 }
 
-func (l laneCodes) SendCode(ctx context.Context, to, code, text string) error {
-	_, err := notify.SendCode(ctx, l.s, to, code, text, time.Now())
-	return err
+func (l *laneCodes) SendCode(ctx context.Context, to, code, text string) error {
+	now := l.clock()
+	if l.perDay > 0 {
+		l.mu.Lock()
+		l.sent = slices.DeleteFunc(l.sent, func(t time.Time) bool { return now.Sub(t) >= 24*time.Hour })
+		if len(l.sent) >= l.perDay {
+			l.mu.Unlock()
+			return fmt.Errorf("%w: %d codes in 24 hours, the limit (FARM_CODE_DAY_LIMIT)", accounts.ErrCannotSend, l.perDay)
+		}
+		l.sent = append(l.sent, now)
+		l.mu.Unlock()
+	}
+	rcs, err := notify.SendCode(ctx, l.s, to, code, text, now)
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, notify.ErrInvalid):
+		return fmt.Errorf("%w: not an address the message lanes take", accounts.ErrInvalid)
+	}
+	// The lanes' own words, with the address taken out, for the log.
+	var why []string
+	for _, rc := range rcs {
+		why = append(why, rc.Lane+" "+rc.Status+": "+rc.Error)
+	}
+	return fmt.Errorf("%w: %s", accounts.ErrCannotSend, strings.Join(why, "; "))
 }
 
 // list splits a comma-separated setting, dropping blanks.

@@ -177,8 +177,8 @@ func buildNotify(ctx context.Context, c config, log *slog.Logger) (*messaging, e
 		}
 		l, err := whatsapp.New(whatsapp.Config{
 			Token: tok, PhoneNumberID: os.Getenv("FARM_WHATSAPP_PHONE_ID"), Template: os.Getenv("FARM_WHATSAPP_TEMPLATE"), Languages: langs,
-			CodeTemplate: os.Getenv("FARM_WHATSAPP_CODE_TEMPLATE"),
-			AppSecret:    os.Getenv("FARM_WHATSAPP_APP_SECRET"), VerifyToken: os.Getenv("FARM_WHATSAPP_VERIFY_TOKEN"), Log: log,
+			CodeTemplate: os.Getenv("FARM_WHATSAPP_CODE_TEMPLATE"), CodeLanguages: list(os.Getenv("FARM_WHATSAPP_CODE_LANGS")),
+			AppSecret: os.Getenv("FARM_WHATSAPP_APP_SECRET"), VerifyToken: os.Getenv("FARM_WHATSAPP_VERIFY_TOKEN"), Log: log,
 		})
 		if err := add(l, "", err); err != nil {
 			return nil, err
@@ -195,6 +195,7 @@ func buildNotify(ctx context.Context, c config, log *slog.Logger) (*messaging, e
 	case provider == "msg91" || (provider == "" && os.Getenv("FARM_MSG91_KEY") != ""):
 		l, err := sms.MSG91(sms.MSG91Config{
 			AuthKey: os.Getenv("FARM_MSG91_KEY"), TemplateID: os.Getenv("FARM_MSG91_TEMPLATE"), CodeTemplateID: os.Getenv("FARM_MSG91_CODE_TEMPLATE"),
+			CodeVar: os.Getenv("FARM_MSG91_CODE_VAR"),
 		})
 		if err := add(l, "", err); err != nil {
 			return nil, err

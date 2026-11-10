@@ -102,6 +102,9 @@ func (h *handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		writeJSON(w, http.StatusNotFound, errorBody{Error: "no such sign-in lane", Code: "unknown_lane"})
 	case errors.Is(err, ErrInvalid):
 		writeJSON(w, http.StatusBadRequest, errorBody{Error: err.Error(), Code: "invalid"})
+	case errors.Is(err, ErrCannotSend):
+		h.s.log.LogAttrs(r.Context(), slog.LevelWarn, "accounts: a code was not sent", slog.String("path", r.URL.Path), slog.String("error", err.Error()))
+		writeJSON(w, http.StatusServiceUnavailable, errorBody{Error: "the code could not be sent just now: try again in a while, or another way in", Code: "send_failed"})
 	case errors.Is(err, ErrNotFound):
 		writeJSON(w, http.StatusNotFound, errorBody{Error: "not found", Code: "not_found"})
 	default:

@@ -373,7 +373,7 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 	// The message lanes: the automations' notices, and the sign-in codes.
 	var msgs *messaging
 	var hooks map[string]http.Handler // the message lanes' webhooks
-	if c.notify {
+	if c.notify && (astore != nil || codesByLanes(c)) {
 		if msgs, err = buildNotify(ctx, c, log); err != nil {
 			return err
 		}
@@ -459,7 +459,7 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 	}
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	log.Info("farm: serving", "url", "http://"+ln.Addr().String(), "db", c.db, "assistant", provider, "geocoder", c.geocoder,
-		"climate", c.climate, "weather", c.weather, "automations", c.automations, "overpass", c.overpass, "osm_api", c.osmAPI, "elevation", c.elevation, "elevation_backup", c.elevationBackup, "embedder", emb != nil, "prices", strings.Join(market.Providers(), ", then "), "notify", c.notify, "mcp", c.mcp, "signin", orOff(c.signin))
+		"climate", c.climate, "weather", c.weather, "automations", c.automations, "overpass", c.overpass, "osm_api", c.osmAPI, "elevation", c.elevation, "elevation_backup", c.elevationBackup, "embedder", emb != nil, "prices", strings.Join(market.Providers(), ", then "), "notify", msgs != nil, "mcp", c.mcp, "signin", orOff(c.signin))
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
 	select {

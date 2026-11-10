@@ -74,9 +74,10 @@ type MSG91Config struct {
 	Vars   [2]string
 	VarLen int
 	// CodeTemplateID is the MSG91 template linked to a DLT OTP template
-	// for one-time sign-in codes, the code in its first variable. Empty:
-	// the lane sends no codes.
+	// for one-time sign-in codes, the code in its variable CodeVar
+	// (default "var1"). Empty: the lane sends no codes.
 	CodeTemplateID string
+	CodeVar        string
 	URL            string
 	Client         *http.Client
 }
@@ -90,6 +91,9 @@ func MSG91(c MSG91Config) (notify.Lane, error) {
 	}
 	if c.Vars[0] == "" {
 		c.Vars = [2]string{"var1", "var2"}
+	}
+	if c.CodeVar == "" {
+		c.CodeVar = "var1"
 	}
 	if c.VarLen == 0 {
 		c.VarLen = 30
@@ -118,7 +122,7 @@ func (s *msg91) Deliver(ctx context.Context, m notify.Message) (notify.Receipt, 
 		if s.cfg.CodeTemplateID == "" || m.Code == "" {
 			return notify.Receipt{}, notify.Rejected(errors.New("sms msg91: no DLT OTP template for sign-in codes"))
 		}
-		tmpl, rcpt = s.cfg.CodeTemplateID, map[string]string{"mobiles": to, s.cfg.Vars[0]: m.Code}
+		tmpl, rcpt = s.cfg.CodeTemplateID, map[string]string{"mobiles": to, s.cfg.CodeVar: m.Code}
 	}
 	body, _ := json.Marshal(map[string]any{"template_id": tmpl, "short_url": "0", "recipients": []any{rcpt}})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.cfg.URL, strings.NewReader(string(body)))

@@ -30,6 +30,9 @@ var (
 	// ErrInvalid is a malformed request: a bad phone number, username or
 	// name.
 	ErrInvalid = errors.New("accounts: invalid")
+	// ErrCannotSend is a one-time code no sender could send now (the
+	// provider is down, or the lanes are over their caps): try later.
+	ErrCannotSend = errors.New("accounts: the code could not be sent")
 	// ErrCSRF is an unsafe request that does not show it came from the
 	// app: no same-origin Origin header, or no matching CSRF token.
 	ErrCSRF = errors.New("accounts: cross-site request refused")

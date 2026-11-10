@@ -82,6 +82,29 @@ OpenID Connect flow agentkit can do itself with its OAuth core.
   or prefixes), so cookies are secure, the same-origin check sees https,
   and attempts are counted per farmer, not per proxy.
 
+## Codes by the message lanes
+
+The phone and email lanes send their one-time codes by the message lanes
+of [MESSAGES.md](MESSAGES.md) (`apps/farm/cmd/farm/signin.go`, `laneCodes`):
+
+- `-code-sender` lists the lanes, tried in order as a chain: the first
+  that takes the code ends it. Only lanes that are on, reach the address
+  (a phone or an email) and can carry a code are used; a phone or email
+  sign-in lane with none fails at start with what to set.
+- A code goes at once (`notify.SendCode`): not through the outbox, the
+  routes or quiet hours, as a `code` message, urgent, worth sending for 10
+  minutes. Asking for it is the consent, so the person needs no record in
+  the message settings; the paid lanes' caps and delivery records still
+  apply, under a recipient named by a hash of the address.
+- The code also travels alone (`accounts.CodeSender`), for the templates
+  that carry only it: WhatsApp's authentication template (the code in the
+  body and the copy-code button) and a DLT OTP template on MSG91. Without
+  those templates the lane is skipped for codes. Twilio and email send the
+  message as it is; email adds no unsubscribe link to a code.
+- Sending a code is throttled as before (three to one phone or email,
+  and ten from one network address, in 15 minutes), so one abuser cannot
+  spend the paid lanes' caps.
+
 ## Configuration
 
 | Flag | Variable | Meaning |
@@ -89,15 +112,16 @@ OpenID Connect flow agentkit can do itself with its OAuth core.
 | `-signin` | `FARM_SIGNIN` | Lanes in the order shown: `google`, `password`, `invite`, `phone`, `email`; empty is no sign-in (the app as before) |
 | `-signup` | `FARM_SIGNUP` | Lanes that make new accounts (default `google`) |
 | `-public-url` | `FARM_PUBLIC_URL` | The address browsers use, for Google's redirect `<url>/auth/google/callback` |
-| `-code-sender` | `FARM_CODE_SENDER` | `log` only for now: codes go to the server log, for trying it out |
+| `-code-sender` | `FARM_CODE_SENDER` | The message lanes codes go by, tried in order (default `sms,whatsapp,email`); `log` writes them to the server log, for trying it out |
+| | `FARM_MSG91_CODE_TEMPLATE` | MSG91's template for a DLT OTP template (the code in `var1`); without it MSG91 sends no codes (Twilio needs none) |
+| | `FARM_WHATSAPP_CODE_TEMPLATE` | An approved WhatsApp **authentication** template (copy-code button); WhatsApp allows codes in no other kind, so without it WhatsApp sends no codes |
 | | `FARM_GOOGLE_CLIENT_ID`, `FARM_GOOGLE_CLIENT_SECRET` | A web client from the Google Cloud console (free) |
 | | `FARM_ADMIN_EMAILS`, `FARM_PARTNER_EMAILS` | Verified emails that get the `admin` or `partner` role at sign-in |
 | | `FARM_TRUSTED_PROXIES` | The TLS-terminating proxies in front of the app (addresses or prefixes, comma separated) |
 
 ## What comes next
 
-- **Message lanes (T143)** give the phone and email lanes real senders
-  (SMS, WhatsApp, email), chained or one, through `accounts.Sender`.
+- MCP clients signing in (today the API behind sign-in is for browsers).
 - Account deletion and export (DPDP Act), and a list of the account's
   sessions.
 - More OpenID providers are configuration on `oidc.Config`.

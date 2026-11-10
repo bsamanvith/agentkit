@@ -558,3 +558,32 @@ func TestNormalizePhone(t *testing.T) {
 		t.Error("a number without a country code, with no default: no error")
 	}
 }
+
+type codeOutbox struct{ to, code, text string }
+
+func (o *codeOutbox) Send(context.Context, string, string) error {
+	return errors.New("Send called on a CodeSender")
+}
+
+func (o *codeOutbox) SendCode(_ context.Context, to, code, text string) error {
+	o.to, o.code, o.text = to, code, text
+	return nil
+}
+
+// TestACodeSenderGetsTheCodeAlone: a sender whose channel's templates carry
+// only the code is given it beside the message, and it is the code that
+// signs in.
+func TestACodeSenderGetsTheCodeAlone(t *testing.T) {
+	store := accounts.NewMemoryStore()
+	out := &codeOutbox{}
+	l := accounts.NewPhoneLane("phone", "91", out, store)
+	if err := l.Send(t.Context(), "+919876543210"); err != nil {
+		t.Fatal(err)
+	}
+	if out.to != "+919876543210" || len(out.code) != 6 || !strings.HasPrefix(out.text, out.code) {
+		t.Fatalf("sent %+v: want the number, a six-digit code and the message that starts with it", out)
+	}
+	if _, err := l.Verify(t.Context(), "+919876543210", out.code); err != nil {
+		t.Errorf("the code sent alone does not sign in: %v", err)
+	}
+}

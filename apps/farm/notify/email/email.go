@@ -134,7 +134,7 @@ func (l *Lane) compose(m notify.Message, to, id string) []byte {
 	if m.Link != "" {
 		text += "\n\n" + m.Link
 	}
-	if l.cfg.Unsubscribe != nil {
+	if l.cfg.Unsubscribe != nil && m.Kind != notify.KindCode { // a code the person asked for is not a list
 		if u := l.cfg.Unsubscribe(m); u != "" {
 			h("List-Unsubscribe", "<"+u+">")
 			h("List-Unsubscribe-Post", "List-Unsubscribe=One-Click")

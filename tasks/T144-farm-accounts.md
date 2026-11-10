@@ -47,8 +47,6 @@ Design: [ACCOUNTS.md](../apps/farm/docs/ACCOUNTS.md).
 
 ## Out of scope
 
-- SMS, WhatsApp and email senders for the code lanes (T143); a log sender
-  only, for trying it out.
 - Account deletion and export (DPDP), a list of sessions, other OpenID
   providers (configuration), moving the console onto these accounts.
 - A live Google sign-in: needs a Google Cloud web client; the flow is
@@ -75,4 +73,5 @@ Design: [ACCOUNTS.md](../apps/farm/docs/ACCOUNTS.md).
 - [x] Only a partner signs a farmer up, and only the farm's partner makes a recovery code — test: `TestOnlyAPartnerSignsAFarmerUpAndRecoversThem`, `farmauth_test.TestAPartnerSignsAFarmerUpAndTheFarmerSignsIn`
 - [x] Lanes come from settings; a bad list is refused — test: `main.TestSignInLanesComeFromSettings`, `TestNewRefusesBadLanes`
 - [x] The web app shows the lanes, signs in, sends session headers, and lists ways in and people — test: `signin.test.tsx`
+- [x] Phone and email codes go by the message lanes -code-sender lists, in order, only on lanes that can carry codes (WhatsApp's authentication template, MSG91's DLT OTP template), at once and under the caps, with the code alone for templates — test: `notify_test.TestSendCode`, `main.TestCodesGoByTheMessageLanes`, `accounts_test.TestACodeSenderGetsTheCodeAlone`, `whatsapp_test.TestCodeTemplate`, `sms_test.TestMSG91SendsCodesOnTheOTPTemplate`, `email_test.TestTeluguAndUnsubscribe`
 - [ ] A live Google sign-in — needs a Google Cloud web client (free) and its redirect URI

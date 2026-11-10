@@ -32,6 +32,25 @@ type messaging struct {
 	store *notifysqlite.Store
 	hooks map[string]http.Handler
 	run   []func(ctx context.Context)
+	// codes are the lanes that are on and can carry one-time sign-in
+	// codes (WhatsApp and MSG91 only with a template for them).
+	codes map[string]bool
+}
+
+// codeSender sends one-time sign-in codes to addresses of kind k: the
+// lanes names lists that reach k and can carry codes, tried in that order;
+// nil when there is none.
+func (m *messaging) codeSender(names []string, k notify.AddressKind) notify.Sender {
+	var ss []notify.Sender
+	for _, n := range names {
+		if l, ok := m.hub.Lanes[n]; ok && l.On && m.codes[n] && l.Info.Address == k {
+			ss = append(ss, l.Sender)
+		}
+	}
+	if len(ss) == 0 {
+		return nil
+	}
+	return notify.Chain(ss...)
 }
 
 // buildNotify is the one place the message lanes are picked: each lane is
@@ -54,7 +73,7 @@ func buildNotify(ctx context.Context, c config, log *slog.Logger) (*messaging, e
 		return nil, err
 	}
 	public := strings.TrimRight(c.publicURL, "/")
-	m := &messaging{store: store, hooks: map[string]http.Handler{}}
+	m := &messaging{store: store, hooks: map[string]http.Handler{}, codes: map[string]bool{}}
 	hub := &notify.Hub{Lanes: map[string]notify.LaneSetup{}, Routes: c.notifyRoutes}
 	inbound := notify.NewInbound(store, nil, log)
 	secret, err := notify.LoadOrCreateSecret(sideFile(c.db, "-notify-secret"))
@@ -127,6 +146,7 @@ func buildNotify(ctx context.Context, c config, log *slog.Logger) (*messaging, e
 		if err := add(l, "", err); err != nil {
 			return nil, err
 		}
+		m.codes["email"] = true
 	} else {
 		off(notify.LaneInfo{Name: "email", Address: notify.AddrEmail, Note: "Email over SMTP."}, "set FARM_SMTP_URL and FARM_EMAIL_FROM")
 	}
@@ -157,12 +177,14 @@ func buildNotify(ctx context.Context, c config, log *slog.Logger) (*messaging, e
 		}
 		l, err := whatsapp.New(whatsapp.Config{
 			Token: tok, PhoneNumberID: os.Getenv("FARM_WHATSAPP_PHONE_ID"), Template: os.Getenv("FARM_WHATSAPP_TEMPLATE"), Languages: langs,
-			AppSecret: os.Getenv("FARM_WHATSAPP_APP_SECRET"), VerifyToken: os.Getenv("FARM_WHATSAPP_VERIFY_TOKEN"), Log: log,
+			CodeTemplate: os.Getenv("FARM_WHATSAPP_CODE_TEMPLATE"),
+			AppSecret:    os.Getenv("FARM_WHATSAPP_APP_SECRET"), VerifyToken: os.Getenv("FARM_WHATSAPP_VERIFY_TOKEN"), Log: log,
 		})
 		if err := add(l, "", err); err != nil {
 			return nil, err
 		}
 		m.hooks["/hooks/whatsapp"] = l.Webhook(inbound)
+		m.codes["whatsapp"] = os.Getenv("FARM_WHATSAPP_CODE_TEMPLATE") != ""
 	} else {
 		off(notify.LaneInfo{Name: "whatsapp", Address: notify.AddrPhone, Paid: true, Note: "WhatsApp Cloud API. Paid per template message."},
 			"needs Meta business verification, then set FARM_WHATSAPP_TOKEN and FARM_WHATSAPP_PHONE_ID")
@@ -171,10 +193,13 @@ func buildNotify(ctx context.Context, c config, log *slog.Logger) (*messaging, e
 	// SMS: paid, needs DLT registration in India.
 	switch provider := env("FARM_SMS_PROVIDER", ""); {
 	case provider == "msg91" || (provider == "" && os.Getenv("FARM_MSG91_KEY") != ""):
-		l, err := sms.MSG91(sms.MSG91Config{AuthKey: os.Getenv("FARM_MSG91_KEY"), TemplateID: os.Getenv("FARM_MSG91_TEMPLATE")})
+		l, err := sms.MSG91(sms.MSG91Config{
+			AuthKey: os.Getenv("FARM_MSG91_KEY"), TemplateID: os.Getenv("FARM_MSG91_TEMPLATE"), CodeTemplateID: os.Getenv("FARM_MSG91_CODE_TEMPLATE"),
+		})
 		if err := add(l, "", err); err != nil {
 			return nil, err
 		}
+		m.codes["sms"] = os.Getenv("FARM_MSG91_CODE_TEMPLATE") != ""
 	case provider == "twilio" || (provider == "" && os.Getenv("FARM_TWILIO_SID") != ""):
 		cb := ""
 		if public != "" {
@@ -190,6 +215,7 @@ func buildNotify(ctx context.Context, c config, log *slog.Logger) (*messaging, e
 		if cb != "" {
 			m.hooks["/hooks/twilio"] = l.Webhook(inbound)
 		}
+		m.codes["sms"] = true
 	case provider == "":
 		off(notify.LaneInfo{Name: "sms", Address: notify.AddrPhone, Paid: true, Note: "SMS through MSG91 or Twilio. Paid per SMS."},
 			"needs DLT registration with TRAI, then set FARM_MSG91_KEY and FARM_MSG91_TEMPLATE (or FARM_TWILIO_*)")

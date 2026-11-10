@@ -186,6 +186,17 @@ func TestTeluguAndUnsubscribe(t *testing.T) {
 	if string(auth) != "\x00farm\x00secret" {
 		t.Errorf("AUTH PLAIN %q", auth)
 	}
+	// A sign-in code the person asked for is not a list: no unsubscribe.
+	code := notify.Message{
+		ID: "c1", Kind: notify.KindCode, Severity: notify.Urgent, Title: "Your sign-in code", Body: "482913 is your sign-in code.", Code: "482913",
+		Recipient: notify.Recipient{ID: "signin:x", Email: "ravi@example.com"},
+	}
+	if _, err := l.Deliver(t.Context(), code); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.messages()[1]; !strings.Contains(got, "482913 is your sign-in code.") || strings.Contains(got, "unsubscribe?m=") || strings.Contains(got, "To stop") {
+		t.Errorf("a code mail:\n%s\nwant the code and no unsubscribe", got)
+	}
 }
 
 func TestConfig(t *testing.T) {

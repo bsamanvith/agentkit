@@ -84,6 +84,15 @@ type Sender interface {
 	Send(ctx context.Context, to, text string) error
 }
 
+// CodeSender is a [Sender] that also takes the code alone, for channels
+// whose templates carry only it (WhatsApp's authentication templates, an
+// SMS OTP template). A [OneTimeCodeLane] uses SendCode when its sender has
+// it.
+type CodeSender interface {
+	Sender
+	SendCode(ctx context.Context, to, code, text string) error
+}
+
 // SenderFunc is a function as a [Sender].
 type SenderFunc func(ctx context.Context, to, text string) error
 

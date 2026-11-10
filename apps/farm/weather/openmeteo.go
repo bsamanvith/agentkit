@@ -132,7 +132,10 @@ func (c *Client) Forecast(ctx context.Context, p geo.Point, days int) (Forecast,
 	c.mu.Lock()
 	delete(c.flights, k)
 	if fl.err == nil {
-		c.cache[k] = entry{f: fl.f, at: c.clock.Now(), days: len(fl.f.Days)}
+		// The entry answers every ask up to the one made: when the
+		// provider has fewer days (its models' horizon), asking again
+		// would not get more, only spend a call.
+		c.cache[k] = entry{f: fl.f, at: c.clock.Now(), days: ask}
 		if len(c.cache) > 50_000 {
 			c.cache = map[[2]int64]entry{} // bounded; a full restart of the cache is cheap
 		}

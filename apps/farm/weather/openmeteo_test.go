@@ -150,3 +150,23 @@ func TestSum(t *testing.T) {
 		t.Errorf("Sum = %+v, want %+v", got, want)
 	}
 }
+
+// TestShortAnswerIsCached: when the provider has fewer days than asked
+// (its models' horizon), asking again is served from the cache, not a new
+// call: a village's plots asking in turn cost one call.
+func TestShortAnswerIsCached(t *testing.T) {
+	s, calls := server(t, func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(answer)) })
+	t.Parallel()
+	c, err := weather.OpenMeteo(s.URL, weather.WithClock(clocktest.NewFake(time.Date(2026, 11, 9, 1, 0, 0, 0, time.UTC))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		if f, err := c.Forecast(context.Background(), geo.Point{Lat: 17.4, Lng: 78.5}, 7); err != nil || len(f.Days) != 2 {
+			t.Fatalf("forecast: %+v, %v", f, err)
+		}
+	}
+	if calls.Load() != 1 {
+		t.Errorf("%d calls for three asks of one cell, want 1", calls.Load())
+	}
+}

@@ -165,7 +165,9 @@ func (m *METNorway) Forecast(ctx context.Context, p geo.Point, days int) (Foreca
 		return Forecast{}, fmt.Errorf("%w: MET Norway's answer has no whole days", ErrUnavailable)
 	}
 	m.mu.Lock()
-	m.cache[k] = entry{f: f, at: m.clock.Now(), days: len(f.Days)}
+	// MET Norway always answers its whole horizon (about nine days): no
+	// ask, however long, gets more until the entry is old.
+	m.cache[k] = entry{f: f, at: m.clock.Now(), days: 16}
 	if len(m.cache) > 50_000 {
 		m.cache = map[[2]int64]entry{}
 	}

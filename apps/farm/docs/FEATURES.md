@@ -27,7 +27,7 @@ Status words: **live** (merged on main, a farmer can use it), **building**
 | 11 | [Weather alerts and weekly crop work](#11-weather-alerts-and-weekly-crop-work) | live | grow | T139 |
 | 12 | [Crop prices: estimates and mandi prices](#12-crop-prices-estimates-and-mandi-prices) | live | sell | T140 |
 | 13 | [Farmer accounts and phone sign-in](#13-farmer-accounts-and-phone-sign-in) | planned | all | |
-| 14 | [Alerts on WhatsApp or SMS](#14-alerts-on-whatsapp-or-sms) | planned | grow | |
+| 14 | [Alerts on the phone: push, Telegram, email, WhatsApp, SMS](#14-alerts-on-the-phone-push-telegram-email-whatsapp-sms) | building | grow | T143 |
 | 15 | [Crop doctor](#15-crop-doctor) | planned | grow | |
 | 16 | [Ledger by voice](#16-ledger-by-voice) | planned | money | |
 | 17 | [Offline and voice in the field](#17-offline-and-voice-in-the-field) | planned | all | |
@@ -200,9 +200,9 @@ assistant skill.
 thresholds, starter values for an agronomist to review), `automation`
 (the engine, runs, the inbox), `watch` (the built-in automations); tools
 `get_week`, `crop_calendar`, `list_alerts`, `notify_farmer`; skills
-`weather-check`, `draw-crop-plan`, `manage-crop`. The inbox is in the app
-only until [13](#13-farmer-accounts-and-phone-sign-in) and
-[14](#14-alerts-on-whatsapp-or-sms). Details:
+`weather-check`, `draw-crop-plan`, `manage-crop`. From the inbox, alerts go
+out by the message lanes of
+[14](#14-alerts-on-the-phone-push-telegram-email-whatsapp-sms). Details:
 [AUTOMATIONS.md](AUTOMATIONS.md).
 
 ### 12. Crop prices: estimates and mandi prices
@@ -257,7 +257,32 @@ offline queue). Design: [ROADMAP.md](ROADMAP.md).
 
 ## Building now
 
-Nothing at the moment: the next is chosen from the list below.
+### 14. Alerts on the phone: push, Telegram, email, WhatsApp, SMS
+
+**The farmer** gets the plot's alerts where they already look: a
+notification from the installed app, a Telegram message, an email, and,
+once the business is registered, WhatsApp with SMS as the fallback. In
+settings they add the people who should hear (themselves, a son, the FPO
+field worker), each with the plots they care about, tick the ways they
+agree to be reached, link Telegram with one tap, and send a test. STOP on
+WhatsApp, SMS or Telegram (or ఆపు) stops that way at once; nothing comes
+between 9 pm and 6 am unless it is urgent.
+
+**The app** sends each notice through a tree of lanes the owner sets,
+for example urgent alerts to push and Telegram and to WhatsApp, falling
+back to SMS; warnings to push and Telegram; the rest by push. Each lane
+sends a message at most once, tries again when a provider is down for a
+while, records delivered and read, and stops at its daily and monthly
+cost cap so a paid lane falls back to a free one. A lane without its keys
+is skipped, so adding keys later switches it on.
+
+**Behind it:** `apps/farm/notify` (lanes, guard, fan-out, chain, router,
+the outbox), lanes `webpush`, `telegram`, `email`, `whatsapp`, `sms`
+(MSG91, Twilio), `notify/sqlite`; `watch.Messages`; routes
+`/api/notify/*`, webhooks `/hooks/*`. **Still to come:** the settings page
+and the service worker in the web app; WhatsApp and SMS need Meta's
+business verification and DLT registration first. Design:
+[MESSAGES.md](MESSAGES.md).
 
 ## Planned
 
@@ -269,16 +294,6 @@ plots, groups, plans and alerts; a family or an FPO field worker can be
 added to a farm. **Why first among the planned:** alerts, WhatsApp, the
 ledger and the FPO view all need to know whose farm this is and how to
 reach them. Builds on `pkg/auth` and the console's login (T061).
-
-### 14. Alerts on WhatsApp or SMS
-
-The weather and price alerts sent where farmers already are: WhatsApp
-(Business API, template messages) with SMS as the fallback, in the
-farmer's language; both are paid per message, so free web push from the
-installed app and a Telegram bot come first, with a link back to the plot. Another channel on the
-alert inbox from [11](#11-weather-alerts-and-weekly-crop-work); several
-senders behind one interface, as with data providers. Needs
-[13](#13-farmer-accounts-and-phone-sign-in).
 
 ### 15. Crop doctor
 
@@ -337,9 +352,9 @@ Ranked 2026-11-08, after weather alerts (11) and prices (12), both live:
 1. **Farmer accounts and phone sign-in (13).** The biggest unlock: today
    every plot sits in one workspace, so an alert has no one to go to.
    Everything below except the crop doctor waits on it.
-2. **Alerts on WhatsApp or SMS (14).** Farmers will not open an app every
-   day to look for an alert; the weather and price work only reaches
-   them through the phone channels they use.
+2. **Alerts on the phone (14), building.** Farmers will not open an app
+   every day to look for an alert; the lanes are in, the settings page is
+   next, then WhatsApp and SMS once registered.
 3. **Crop doctor (15).** The question farmers ask most in season, and
    independent of accounts, so it can start **in parallel with 13 now**.
 4. **Ledger by voice (16)**, with prices (12) giving profit per plot.
@@ -376,6 +391,7 @@ in the *Cost* column and named in the PR that adds it.
 | Handbook search | `pkg/knowledge` | Gemini embeddings plus keywords | keywords only | Gemini free tier, 100 texts a minute; keywords free |
 | Weather forecast | `weather.Source` | Open-Meteo, then MET Norway (`-weather`, tried in order) | the next in the list | Open-Meteo: **free for non-commercial use only** (under 10,000 a day), paid plan or self-hosting for commercial; MET Norway: free, CC BY 4.0, commercial use allowed with credit |
 | Mandi prices | `prices.Source` (on `feeds.Provider`) | Agmarknet on data.gov.in (`datagov`, all India, daily; needs `FARM_DATAGOV_KEY`), price files (`files`: Agmarknet, data.gov.in or CEDA CSVs in `FARM_PRICE_FILES`) | the next provider, then every price saved before | data.gov.in: **free**, key on registration; files: free; CEDA: free with registration, check its terms before commercial use |
+| Message lanes | `notify.Lane` | web push, Telegram, email (SMTP), WhatsApp (Meta Cloud API), SMS (MSG91 or Twilio), each on when its keys are set; `-notify-routes` composes them | the next lane in a chain; at a lane's cost cap, the next | Web push, Telegram: free; email: free tiers of most SMTP providers (flag the one chosen); WhatsApp: **paid** per template message, needs Meta business verification; SMS: **paid** per message, needs DLT registration |
 | News and knowledge | to plan, on `feeds.Provider` as prices are (weather can move onto it) | | | |
 
 Paid things in the plans above, and the free way to start:
@@ -383,7 +399,7 @@ Paid things in the plans above, and the free way to start:
 | Planned | Paid option | Free way first |
 |---|---|---|
 | Sign-in (13) | SMS one-time codes (per message) | Sign in with Google, or a password, as the console does |
-| Alerts on the phone (14) | WhatsApp Business API (per conversation), SMS (per message) | Web push from the installed app, a Telegram bot |
+| Alerts on the phone (14) | WhatsApp Cloud API (per template message), SMS (per message), both capped by `-notify-caps` | Web push from the installed app, a Telegram bot, email on a free tier |
 | Crop doctor (15) | Claude with images | Gemini's free tier reads images |
 | Field watch (18) | Commercial imagery | Sentinel-2 (Copernicus, free) |
 

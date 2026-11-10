@@ -5,8 +5,9 @@ sent only when there is something to do; skills that plan when to plant and
 how to manage a crop; and a way to run fixed automations and agent skills
 on many triggers that scales. Task: [T139](../../../tasks/T139-weather-and-automations.md).
 
-Notices go to an **in-app inbox** first (the bell in the header). SMS or
-WhatsApp is another `automation.Channel` later; nothing else changes.
+Notices go to an **in-app inbox** first (the bell in the header), and
+from there by the message lanes (web push, Telegram, email, WhatsApp,
+SMS) through one `automation.Channel`: [MESSAGES.md](MESSAGES.md).
 
 ## The pieces
 
@@ -110,6 +111,6 @@ API: `GET /api/farms/{id}/week`, `GET /api/farms/{id}/calendar`,
 
 ## Later
 
-- SMS and WhatsApp channels, the farmer's language, quiet hours.
+- The farmer's language. (SMS, WhatsApp and quiet hours: [MESSAGES.md](MESSAGES.md).)
 - IMD district forecasts and nowcasts as a provider.
 - Price alerts as a rule over the prices feed.

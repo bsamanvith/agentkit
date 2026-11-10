@@ -89,6 +89,9 @@ func ModuleRules() Rules {
 			// The farm app's season roadmap events (T141): the same driver,
 			// the same database file.
 			"apps/farm/work/sqlite": {"modernc.org/sqlite"},
+			// The farm app's message recipients, outbox and deliveries
+			// (T143): the same driver, the same database file.
+			"apps/farm/notify/sqlite": {"modernc.org/sqlite"},
 			// The memory context store on SQLite (T058): the same driver.
 			"pkg/memory/sqlite": {"modernc.org/sqlite"},
 			// The memory context store on Postgres (T122), on the store's pool.

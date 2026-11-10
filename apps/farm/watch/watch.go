@@ -20,6 +20,7 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/geo"
 	"github.com/bsamanvith/agentkit/apps/farm/planner"
 	"github.com/bsamanvith/agentkit/apps/farm/weather"
+	"github.com/bsamanvith/agentkit/apps/farm/work"
 )
 
 // ErrNoForecast is returned when the app has no forecast source.
@@ -38,7 +39,14 @@ const ForecastDays = 7
 type Watch struct {
 	plan     *planner.Planner
 	forecast weather.Source // nil: no weather
+	work     *work.Service  // nil: the week's tasks straight from the calendar
 }
+
+// UseRoadmap makes the week's crop work come from the plots' roadmaps, so
+// that tasks the farmer has done, skipped or marked not needed are left
+// out and the tasks follow the real sowing date. Call it before the
+// engine starts.
+func (w *Watch) UseRoadmap(s *work.Service) { w.work = s }
 
 // New returns a Watch over the planner's farms and library, with forecasts
 // from src (nil for none).
@@ -157,13 +165,30 @@ func (w *Watch) TasksRule() automation.Handler {
 		}
 		today := w.plan.Today()
 		due := calendar.Due(cal, today, today.AddDate(0, 0, 6))
+		if w.work != nil {
+			open, err := w.work.Due(ctx, f.ID, today, today.AddDate(0, 0, 6))
+			if err != nil {
+				return automation.Outcome{}, err
+			}
+			due = due[:0]
+			for _, t := range open {
+				due = append(due, calendar.Task{Date: t.Date, Kind: t.Kind, Crop: t.Crop, Zone: t.Zone, Title: t.Title, Detail: t.Detail})
+			}
+		}
 		var lines []string
 		for _, t := range due {
 			if t.Kind == calendar.Scout && len(due) > 1 {
 				continue // a routine walk is not worth a notice of its own
 			}
 			d, _ := time.Parse(agro.DateLayout, t.Date)
-			lines = append(lines, fmt.Sprintf("• %s: %s (%s). %s", d.Format("Mon 2 Jan"), t.Title, cropName(cal, t), t.Detail))
+			line := fmt.Sprintf("• %s: %s", d.Format("Mon 2 Jan"), t.Title)
+			if name := cropName(cal, t); name != "" {
+				line += " (" + name + ")"
+			}
+			if t.Detail != "" {
+				line += ". " + t.Detail
+			}
+			lines = append(lines, line)
 		}
 		if len(lines) == 0 {
 			return automation.Outcome{Note: "no work due this week"}, nil

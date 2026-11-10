@@ -104,6 +104,11 @@ const (
 
 // Task is one piece of work on a day.
 type Task struct {
+	// Key names the rule that made the task, unique within a zone's
+	// calendar and the same whatever the sowing date ("weed-1",
+	// "harvest-by", "y2-fertilise-jun"), so that work done on a task can
+	// be kept against it when the dates move.
+	Key   string `json:"key"`
 	Date  string `json:"date"` // YYYY-MM-DD
 	DAS   int    `json:"das"`
 	Stage string `json:"stage"`
@@ -177,6 +182,7 @@ func ForZone(lib *agro.Library, i int, z agro.Zone, irrigated bool) (Zone, error
 		for _, t := range tasks(w, sow, i, irrigated) {
 			// The intercrop shares the ground work; add what is its own.
 			if t.Kind == Reap || t.Kind == Fertilise {
+				t.Key = "with-" + t.Key
 				t.Title = w.Name + ": " + t.Title
 				out.Tasks = append(out.Tasks, t)
 			}
@@ -211,8 +217,9 @@ func Due(cal Calendar, from, to time.Time) []Task {
 }
 
 type rule struct {
-	at     float64 // fraction of the season; negative: days before sowing, as -days
-	days   int     // when at is 0: days after sowing
+	key    string
+	at     float64 // fraction of the season; when 0, days is used
+	days   int     // when at is 0: days after sowing (negative: before)
 	kind   string
 	title  string
 	detail string
@@ -227,47 +234,47 @@ func tasks(c agro.Crop, sow time.Time, zone int, irrigated bool) []Task {
 	}
 	n := season(c)
 	var rs []rule
-	add := func(at float64, kind, title, detail string) {
-		rs = append(rs, rule{at: at, kind: kind, title: title, detail: detail})
+	add := func(key string, at float64, kind, title, detail string) {
+		rs = append(rs, rule{key: key, at: at, kind: kind, title: title, detail: detail})
 	}
-	addDay := func(d int, kind, title, detail string) {
-		rs = append(rs, rule{days: d, kind: kind, title: title, detail: detail})
+	addDay := func(key string, d int, kind, title, detail string) {
+		rs = append(rs, rule{key: key, days: d, kind: kind, title: title, detail: detail})
 	}
-	addDay(-21, Prepare, "Plough and spread well-rotted manure", "Two ploughings; farmyard manure or compost worked in, with the basal fertiliser your soil test asks for.")
+	addDay("plough", -21, Prepare, "Plough and spread well-rotted manure", "Two ploughings; farmyard manure or compost worked in, with the basal fertiliser your soil test asks for.")
 	seed := "Treat seed with a fungicide (or Trichoderma) a day before sowing."
 	if c.Kind == "pulse" {
 		seed = "Treat seed with a fungicide, then with Rhizobium culture (in that order) on the day before sowing."
 	}
-	addDay(-1, Prepare, "Treat the seed", seed)
-	addDay(0, Sow, "Sow "+c.Name, fmt.Sprintf("Rows %.0f cm apart, plants %.0f cm apart, into moist soil.", c.RowCM, c.PlantCM))
-	addDay(max(7, int(0.1*n)), Scout, "Fill the gaps", "Where seeds did not come up, sow again or move seedlings in.")
-	add(0.2, Weed, "First weeding", "Hoe or hand-weed while weeds are small; the crop's first weeks decide the yield.")
+	addDay("treat-seed", -1, Prepare, "Treat the seed", seed)
+	addDay("sow", 0, Sow, "Sow "+c.Name, fmt.Sprintf("Rows %.0f cm apart, plants %.0f cm apart, into moist soil.", c.RowCM, c.PlantCM))
+	addDay("fill-gaps", max(7, int(0.1*n)), Scout, "Fill the gaps", "Where seeds did not come up, sow again or move seedlings in.")
+	add("weed-1", 0.2, Weed, "First weeding", "Hoe or hand-weed while weeds are small; the crop's first weeks decide the yield.")
 	if n >= 75 {
-		add(0.4, Weed, "Second weeding", "Before the crop closes over the rows.")
+		add("weed-2", 0.4, Weed, "Second weeding", "Before the crop closes over the rows.")
 	}
 	switch {
 	case nitrogenKinds[c.Kind]:
-		add(0.25, Fertilise, "First top-dressing of nitrogen", "Put urea (or the nitrogen your soil test asks for) beside the rows into moist soil, not before heavy rain.")
-		add(0.5, Fertilise, "Second top-dressing of nitrogen", "At the start of flowering or panicle initiation, into moist soil.")
+		add("nitrogen-1", 0.25, Fertilise, "First top-dressing of nitrogen", "Put urea (or the nitrogen your soil test asks for) beside the rows into moist soil, not before heavy rain.")
+		add("nitrogen-2", 0.5, Fertilise, "Second top-dressing of nitrogen", "At the start of flowering or panicle initiation, into moist soil.")
 	case c.Kind == "oilseed":
-		add(0.3, Fertilise, "Top-dress nitrogen (and sulphur)", "Oilseeds need sulphur for oil: gypsum or a sulphur-bearing fertiliser.")
+		add("nitrogen-sulphur", 0.3, Fertilise, "Top-dress nitrogen (and sulphur)", "Oilseeds need sulphur for oil: gypsum or a sulphur-bearing fertiliser.")
 	case c.Kind == "pulse":
-		add(0.3, Fertilise, "No urea needed", "Pulses fix their own nitrogen; a 2 % DAP spray at flowering helps pod set.")
+		add("pulse-nutrition", 0.3, Fertilise, "No urea needed", "Pulses fix their own nitrogen; a 2 % DAP spray at flowering helps pod set.")
 	}
-	for f := 0.15; f < 0.86; f += 0.14 {
-		add(f, Scout, "Walk the field for pests and disease", "Look under leaves and at the growing tips; act early on what you find.")
+	for i, f := 1, 0.15; f < 0.86; i, f = i+1, f+0.14 {
+		add(fmt.Sprintf("scout-%d", i), f, Scout, "Walk the field for pests and disease", "Look under leaves and at the growing tips; act early on what you find.")
 	}
 	if irrigated {
-		add(0.5, Irrigate, "Keep water up at flowering", "The most critical irrigation: do not let the soil dry out now.")
-		add(0.7, Irrigate, "Keep water up while the grain, pods or fruit fill", "A dry spell now lowers the yield.")
+		add("water-flowering", 0.5, Irrigate, "Keep water up at flowering", "The most critical irrigation: do not let the soil dry out now.")
+		add("water-filling", 0.7, Irrigate, "Keep water up while the grain, pods or fruit fill", "A dry spell now lowers the yield.")
 		if c.Kind != "vegetable" {
-			add(0.9, Irrigate, "Stop irrigating about ten days before harvest", "The crop dries down and harvests clean.")
+			add("water-stop", 0.9, Irrigate, "Stop irrigating about ten days before harvest", "The crop dries down and harvests clean.")
 		}
 	} else {
-		add(0.5, Irrigate, "Flowering: save the soil's moisture", "Rainfed: mulch between rows and hoe lightly to keep moisture in; a protective irrigation now pays most if you can arrange one.")
+		add("moisture-flowering", 0.5, Irrigate, "Flowering: save the soil's moisture", "Rainfed: mulch between rows and hoe lightly to keep moisture in; a protective irrigation now pays most if you can arrange one.")
 	}
-	rs = append(rs, rule{days: int(c.Days[0]), kind: Reap, title: "Harvest window opens", detail: "Harvest when the crop is mature; check the grain, pods or fruit."})
-	rs = append(rs, rule{days: int(c.Days[1]), kind: Reap, title: "Harvest by now", detail: "Later and the crop loses yield in the field."})
+	rs = append(rs, rule{key: "harvest-from", days: int(c.Days[0]), kind: Reap, title: "Harvest window opens", detail: "Harvest when the crop is mature; check the grain, pods or fruit."})
+	rs = append(rs, rule{key: "harvest-by", days: int(c.Days[1]), kind: Reap, title: "Harvest by now", detail: "Later and the crop loses yield in the field."})
 	out := make([]Task, 0, len(rs))
 	for _, r := range rs {
 		d := r.days
@@ -275,7 +282,7 @@ func tasks(c agro.Crop, sow time.Time, zone int, irrigated bool) []Task {
 			d = int(math.Round(r.at * n))
 		}
 		day := sow.AddDate(0, 0, d)
-		out = append(out, Task{Date: day.Format(agro.DateLayout), DAS: d, Stage: StageAt(c, sow, day).Name, Kind: r.kind, Crop: c.ID, Zone: zone, Title: r.title, Detail: r.detail})
+		out = append(out, Task{Key: r.key, Date: day.Format(agro.DateLayout), DAS: d, Stage: StageAt(c, sow, day).Name, Kind: r.kind, Crop: c.ID, Zone: zone, Title: r.title, Detail: r.detail})
 	}
 	return out
 }
@@ -284,23 +291,24 @@ func tasks(c agro.Crop, sow time.Time, zone int, irrigated bool) []Task {
 // planting: weekly watering while it takes, then the year's round.
 func perennial(c agro.Crop, sow time.Time, zone int, irrigated bool) []Task {
 	var out []Task
-	at := func(day time.Time, kind, title, detail string) {
-		out = append(out, Task{Date: day.Format(agro.DateLayout), DAS: days(sow, day), Stage: StageAt(c, sow, day).Name, Kind: kind, Crop: c.ID, Zone: zone, Title: title, Detail: detail})
+	at := func(key string, day time.Time, kind, title, detail string) {
+		out = append(out, Task{Key: key, Date: day.Format(agro.DateLayout), DAS: days(sow, day), Stage: StageAt(c, sow, day).Name, Kind: kind, Crop: c.ID, Zone: zone, Title: title, Detail: detail})
 	}
-	at(sow.AddDate(0, 0, -30), Prepare, "Dig the pits", "Pits a month ahead, filled with topsoil, manure and neem cake.")
-	at(sow, Sow, "Plant "+c.Name, fmt.Sprintf("%.0f m between rows, %.0f m between plants; stake and water at once.", c.RowCM/100, c.PlantCM/100))
-	at(sow.AddDate(0, 0, 3), Irrigate, "Water every two or three days for the first month", "Until new leaves show the plant has taken.")
-	at(sow.AddDate(0, 0, 30), Scout, "Replace plants that died", "Gap-fill in the first month or two.")
+	at("dig-pits", sow.AddDate(0, 0, -30), Prepare, "Dig the pits", "Pits a month ahead, filled with topsoil, manure and neem cake.")
+	at("sow", sow, Sow, "Plant "+c.Name, fmt.Sprintf("%.0f m between rows, %.0f m between plants; stake and water at once.", c.RowCM/100, c.PlantCM/100))
+	at("water-establish", sow.AddDate(0, 0, 3), Irrigate, "Water every two or three days for the first month", "Until new leaves show the plant has taken.")
+	at("fill-gaps", sow.AddDate(0, 0, 30), Scout, "Replace plants that died", "Gap-fill in the first month or two.")
 	end := sow.AddDate(2, 0, 0)
 	for y := sow.Year(); y <= end.Year(); y++ {
 		for _, m := range []struct {
+			key                 string
 			month               time.Month
 			kind, title, detail string
 		}{
-			{time.June, Fertilise, "Manure and the first fertiliser split", "At the start of the rains, in a ring around the trunk under the canopy's edge."},
-			{time.September, Fertilise, "Second fertiliser split", "While the soil is still moist."},
-			{time.December, Prune, "Prune dead, diseased and crossing branches", "After the rains; paint large cuts."},
-			{time.March, Irrigate, "Summer watering and mulch", "Mulch the basins; water weekly (more on sandy soil) until the rains."},
+			{"fertilise-1", time.June, Fertilise, "Manure and the first fertiliser split", "At the start of the rains, in a ring around the trunk under the canopy's edge."},
+			{"fertilise-2", time.September, Fertilise, "Second fertiliser split", "While the soil is still moist."},
+			{"prune", time.December, Prune, "Prune dead, diseased and crossing branches", "After the rains; paint large cuts."},
+			{"summer-water", time.March, Irrigate, "Summer watering and mulch", "Mulch the basins; water weekly (more on sandy soil) until the rains."},
 		} {
 			d := time.Date(y, m.month, 1, 0, 0, 0, 0, time.UTC)
 			if d.Before(sow.AddDate(0, 0, 45)) || d.After(end) {
@@ -309,11 +317,13 @@ func perennial(c agro.Crop, sow time.Time, zone int, irrigated bool) []Task {
 			if m.kind == Irrigate && !irrigated {
 				m.detail = "Mulch the basins thickly; water young trees by hand or pot irrigation through the summer."
 			}
-			at(d, m.kind, m.title, m.detail)
+			// The year counts from planting, so the key stays when the
+			// planting date moves within its year.
+			at(fmt.Sprintf("y%d-%s", d.Year()-sow.Year()+1, m.key), d, m.kind, m.title, m.detail)
 		}
 	}
 	if first := sow.AddDate(0, 0, int(c.Days[0])); first.Before(end) {
-		at(first, Reap, "First harvest may begin", "Young trees: thin the fruit so the tree keeps growing.")
+		at("harvest-from", first, Reap, "First harvest may begin", "Young trees: thin the fruit so the tree keeps growing.")
 	}
 	slices.SortStableFunc(out, func(a, b Task) int { return a.DAS - b.DAS })
 	return out

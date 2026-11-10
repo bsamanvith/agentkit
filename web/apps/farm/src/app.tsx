@@ -9,6 +9,7 @@ import {
   FolderPlus,
   Globe,
   LayoutGrid,
+  ListChecks,
   Map as MapIcon,
   Menu,
   MessageCircle,
@@ -39,6 +40,7 @@ const Planning = lazy(() => import("./planning").then((m) => ({ default: m.Plann
 const Land = lazy(() => import("./land").then((m) => ({ default: m.Land })));
 const Seasons = lazy(() => import("./seasons").then((m) => ({ default: m.Seasons })));
 const Prices = lazy(() => import("./prices").then((m) => ({ default: m.Prices })));
+const Roadmap = lazy(() => import("./roadmap").then((m) => ({ default: m.Roadmap })));
 const GroupPage = lazy(() => import("./groups").then((m) => ({ default: m.GroupPage })));
 const GroupForm = lazy(() => import("./groups").then((m) => ({ default: m.GroupForm })));
 const ResearchSettings = lazy(() => import("./research").then((m) => ({ default: m.ResearchSettings })));
@@ -247,6 +249,7 @@ export function App() {
                   weather={config?.weather ?? false}
                   automations={config?.automations ?? false}
                   prices={config?.prices ?? false}
+                  roadmap={config?.roadmap ?? false}
                   onChanged={(f) => setFarms((fs) => fs?.map((x) => (x.id === f.id ? f : x)))}
                   onEdit={() => go({ kind: "edit", farm: current })}
                   onOpenGroup={(id) => go({ kind: "group", id })}
@@ -616,7 +619,7 @@ function FarmCard({ farm: f, onOpen }: { farm: Farm; onOpen: () => void }) {
   );
 }
 
-type Tab = "map" | "care" | "land" | "sun" | "plan" | "prices";
+type Tab = "map" | "roadmap" | "care" | "land" | "sun" | "plan" | "prices";
 
 function FarmDetail({
   farm,
@@ -627,6 +630,7 @@ function FarmDetail({
   weather,
   automations,
   prices,
+  roadmap,
   onChanged,
   onEdit,
   onOpenGroup,
@@ -640,6 +644,7 @@ function FarmDetail({
   weather: boolean;
   automations: boolean;
   prices: boolean;
+  roadmap: boolean;
   onChanged: (f: Farm) => void;
   onEdit: () => void;
   onOpenGroup: (id: string) => void;
@@ -654,6 +659,7 @@ function FarmDetail({
     .map((o) => ({ id: o.id, name: o.name, corners: o.boundary.corners }));
   const tabs: { id: Tab; label: string; icon: ReactNode; on: boolean }[] = [
     { id: "map", label: "Map", icon: <MapIcon />, on: true },
+    { id: "roadmap", label: "Season work", icon: <ListChecks />, on: roadmap && (farm.plan?.zones.length ?? 0) > 0 },
     { id: "care", label: "Weather and care", icon: <CloudSun />, on: weather || (planner && automations) },
     { id: "land", label: "Land and layout", icon: <Mountain />, on: surveyor },
     { id: "sun", label: "Sun and seasons", icon: <SunIcon />, on: planner },
@@ -742,6 +748,7 @@ function FarmDetail({
       {tab === "land" && <Land farm={farm} onFarm={onChanged} />}
       {tab === "sun" && <Seasons farm={farm} />}
       {tab === "prices" && <Prices farm={farm} />}
+      {tab === "roadmap" && <Roadmap farm={farm} />}
       <div className={tab === "map" ? "grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]" : "hidden"}>
         <FarmMap
           corners={farm.boundary.corners}

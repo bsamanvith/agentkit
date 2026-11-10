@@ -126,3 +126,32 @@ func TestPerennialCalendar(t *testing.T) {
 		t.Errorf("mango (four years to fruit) has a harvest in its first two years: %v", k[calendar.Reap])
 	}
 }
+
+// Keys are unique within a zone and do not change with the sowing date, so
+// work recorded against a task survives the dates moving.
+func TestKeysUniqueAndStable(t *testing.T) {
+	t.Parallel()
+	l := lib(t)
+	for _, c := range l.Crops() {
+		var keys [2][]string
+		for i, sow := range []string{"2026-06-20", "2026-07-15"} {
+			z, err := calendar.ForZone(l, 0, agro.Zone{Crop: c.ID, Sow: sow}, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			seen := map[string]bool{}
+			for _, k := range z.Tasks {
+				if k.Key == "" || seen[k.Key] {
+					t.Fatalf("%s: key %q empty or repeated", c.ID, k.Key)
+				}
+				seen[k.Key] = true
+				keys[i] = append(keys[i], k.Key)
+			}
+		}
+		slices.Sort(keys[0])
+		slices.Sort(keys[1])
+		if !slices.Equal(keys[0], keys[1]) {
+			t.Errorf("%s: keys change with the sowing date:\n%v\n%v", c.ID, keys[0], keys[1])
+		}
+	}
+}

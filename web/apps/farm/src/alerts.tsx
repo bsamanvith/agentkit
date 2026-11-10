@@ -9,6 +9,7 @@ import {
   Play,
   Plus,
   Power,
+  Send,
   Sprout,
   Thermometer,
   Trash2,
@@ -577,7 +578,16 @@ function NewAutomation({ rules, onSaved }: { rules: Record<string, string>; onSa
 }
 
 /** Every plot's alerts, and the automations that write them. */
-export function AlertsPage({ farms, onRead }: { farms: Farm[]; onRead: () => void }) {
+export function AlertsPage({
+  farms,
+  onRead,
+  onMessages,
+}: {
+  farms: Farm[];
+  onRead: () => void;
+  /** Opens the Messages page, where people choose how alerts reach their phones. */
+  onMessages?: () => void;
+}) {
   const [list, setList] = useState<{ automations: Automation[]; rules: Record<string, string> }>();
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState("");
@@ -588,10 +598,17 @@ export function AlertsPage({ farms, onRead }: { farms: Farm[]; onRead: () => voi
   return (
     <>
       <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold">Alerts and automations</h1>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-2xl font-semibold">Alerts and automations</h1>
+          {onMessages && (
+            <Button variant="outline" size="sm" onClick={onMessages}>
+              <Send /> Alerts on phones
+            </Button>
+          )}
+        </div>
         <p className="max-w-2xl text-sm text-muted-foreground">
           The app checks each plot's weather and crop calendar on a schedule and writes here only when something needs
-          doing. Alerts show in the app for now; SMS or WhatsApp can come later.
+          doing. Alerts show here, and reach phones through Messages: app alerts, Telegram, email, WhatsApp or SMS.
         </p>
       </div>
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">

@@ -38,7 +38,7 @@ export async function subscribePush(serverKey: string): Promise<PushSubscription
     sub ??= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
   } catch (e) {
     const why = e instanceof Error ? e.message : String(e);
-    throw new Error(`This browser would not take app alerts (${why}). On a phone, try Chrome.`);
+    throw new Error(`This browser would not take app alerts (${why}). On a phone, try Chrome.`, { cause: e });
   }
   const j = sub.toJSON();
   if (!j.endpoint || !j.keys?.p256dh || !j.keys.auth) throw new Error("The browser gave an incomplete subscription.");

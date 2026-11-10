@@ -88,6 +88,8 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/watch"
 	"github.com/bsamanvith/agentkit/apps/farm/weather"
 	"github.com/bsamanvith/agentkit/apps/farm/webdist"
+	"github.com/bsamanvith/agentkit/apps/farm/work"
+	worksqlite "github.com/bsamanvith/agentkit/apps/farm/work/sqlite"
 	credsqlite "github.com/bsamanvith/agentkit/pkg/credentials/sqlite"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 	mcpserver "github.com/bsamanvith/agentkit/pkg/mcp/server"
@@ -308,6 +310,13 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 		return err
 	}
 	watcher := watch.New(plan, forecast)
+	wstore, err := worksqlite.Open(ctx, c.db)
+	if err != nil {
+		return err
+	}
+	defer wstore.Close()
+	roadmap := work.New(plan, wstore)
+	watcher.UseRoadmap(roadmap)
 	var astore *autosqlite.Store
 	if c.automations {
 		if astore, err = autosqlite.Open(ctx, c.db); err != nil {
@@ -326,12 +335,13 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 	if astore != nil {
 		alerts = astore
 	}
-	toolOpts = append(toolOpts, farmagent.WithWatch(watcher, alerts))
+	toolOpts = append(toolOpts, farmagent.WithWatch(watcher, alerts), farmagent.WithRoadmap(roadmap))
 	agentOpts := append(slices.Clone(toolOpts), farmagent.WithSkills(skills))
 
 	aopts := []farmapi.Option{
 		farmapi.WithCountry(c.country), farmapi.WithLogger(log), farmapi.WithPlanner(plan),
 		farmapi.WithSurveyor(survey), farmapi.WithResearch(webResearch), farmapi.WithWatch(watcher), farmapi.WithPrices(market),
+		farmapi.WithRoadmap(roadmap),
 	}
 	model, provider, err := buildModel(c, log)
 	if err != nil {

@@ -109,6 +109,7 @@ export interface Config {
   weather?: boolean;
   automations?: boolean;
   prices?: boolean;
+  roadmap?: boolean;
   country: string;
 }
 

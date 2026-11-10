@@ -35,6 +35,7 @@ Status words: **live** (merged on main, a farmer can use it), **building**
 | 19 | [Soil Health Card and land papers from a photo](#19-soil-health-card-and-land-papers-from-a-photo) | idea | land | |
 | 20 | [Schemes, insurance and paperwork](#20-schemes-insurance-and-paperwork) | idea | plan, money | |
 | 21 | [For FPOs, dealers and lenders](#21-for-fpos-dealers-and-lenders) | idea | all | |
+| 22 | [Season roadmap](#22-season-roadmap) | live | grow | T141 |
 
 ## Live
 
@@ -228,6 +229,31 @@ rate limit, cache, pick by name), `apps/farm/prices` (providers
 `DataGov` and `Files`, history, `pricesqlite`, MSP, estimate); tools
 `mandi_prices`, `price_estimate`; skill `sell-or-hold`; routes
 `/api/prices*`. Web: `prices.tsx`. Design: [PRICES.md](PRICES.md).
+
+### 22. Season roadmap
+
+**The farmer** opens *Season work* on a plot with a saved plan and sees what
+is due in the next two weeks and what is past its date, or the whole
+season, by phase (prepare, sowing, growing, harvest). They tap **Done**
+(**Sown** for the sowing) with the day it happened, how many workers and
+what it cost, **Skip** with why, or **Undo**, and add tasks of their own
+("repair the motor on Friday"). It works without a connection: changes
+wait on the phone and are sent when it is back. Or they tell the
+assistant "weeded the east plot yesterday, 4 women, 1,400 rupees" and it
+records that once they agree.
+
+**The app** makes the tasks from the plan's crop calendar every time, and
+keeps only what happened. The real sowing day moves every later task;
+the app never closes a task by itself, it asks ("Past its date: did you
+do it?"); when two people tick the same task the first one counts; a
+change sent twice counts once. The weekly work notice leaves out what is
+done and includes the farmer's own tasks.
+
+**Behind it:** `apps/farm/work` (roadmap, events, `Store` with
+`worktest.RunStore`, `work/sqlite`), calendar rule keys in
+`apps/farm/calendar`; routes `/api/farms/{id}/roadmap*`; tools
+`get_roadmap`, `record_work`. Web: `roadmap.tsx`, `roadmap-data.ts` (the
+offline queue). Design: [ROADMAP.md](ROADMAP.md).
 
 ## Building now
 

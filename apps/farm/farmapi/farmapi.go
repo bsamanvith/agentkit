@@ -137,6 +137,7 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/surveyor"
 	"github.com/bsamanvith/agentkit/apps/farm/watch"
 	"github.com/bsamanvith/agentkit/apps/farm/weather"
+	"github.com/bsamanvith/agentkit/apps/farm/work"
 	"github.com/bsamanvith/agentkit/pkg/llm"
 )
 
@@ -181,6 +182,7 @@ type api struct {
 	prices    *prices.Service
 	watch     *watch.Watch
 	engine    *automation.Engine
+	work      *work.Service
 	hub       *notify.Hub
 	country   string
 	log       *slog.Logger
@@ -240,6 +242,8 @@ func New(svc *farm.Service, opts ...Option) http.Handler {
 	mux.HandleFunc("DELETE /api/research/{provider}", a.researching(a.disconnect))
 	mux.HandleFunc("GET /api/farms/{id}/week", a.watching(a.week))
 	mux.HandleFunc("GET /api/farms/{id}/calendar", a.watching(a.calendar))
+	mux.HandleFunc("GET /api/farms/{id}/roadmap", a.roadmapping(a.roadmap))
+	mux.HandleFunc("POST /api/farms/{id}/roadmap/events", a.roadmapping(a.recordWork))
 	mux.HandleFunc("GET /api/notices", a.automating(a.notices))
 	mux.HandleFunc("POST /api/notices/read", a.automating(a.readNotices))
 	mux.HandleFunc("GET /api/automations", a.automating(a.automations))
@@ -299,6 +303,8 @@ func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
 		writeJSON(w, http.StatusServiceUnavailable, errorBody{Error: "the weather forecast could not be had; try again later"})
 	case errors.Is(err, automation.ErrBuiltin):
 		writeJSON(w, http.StatusConflict, errorBody{Error: err.Error()})
+	case errors.Is(err, work.ErrInvalid):
+		writeJSON(w, http.StatusBadRequest, errorBody{Error: err.Error()})
 	case errors.Is(err, automation.ErrInvalid):
 		writeJSON(w, http.StatusBadRequest, errorBody{Error: err.Error()})
 	case errors.Is(err, automation.ErrNotFound):
@@ -343,6 +349,7 @@ func (a *api) config(w http.ResponseWriter, _ *http.Request) {
 		"assistant": a.assistant != nil, "planner": a.planner != nil, "surveyor": a.surveyor != nil,
 		"research": a.research != nil, "prices": a.prices != nil, "country": a.country,
 		"weather": a.watch != nil && a.watch.HasWeather(), "automations": a.engine != nil,
+		"roadmap":  a.work != nil,
 		"messages": a.hub != nil,
 	})
 }

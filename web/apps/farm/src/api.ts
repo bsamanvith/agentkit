@@ -24,6 +24,7 @@ import type {
   SunReport,
   Want,
 } from "./types";
+import { sessionHeaders, signedOut } from "./session";
 
 /**
  * An error the API answered with; report is set for a boundary that failed
@@ -47,10 +48,11 @@ export class ApiError extends Error {
 export async function call<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const resp = await fetch(path, {
     method,
-    headers: body === undefined ? {} : { "Content-Type": "application/json" },
+    headers: { ...sessionHeaders(method), ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
     body: body === undefined ? undefined : JSON.stringify(body),
     signal,
   });
+  signedOut(resp.status);
   if (resp.status === 204) return undefined as T;
   const data = (await resp.json().catch(() => ({}))) as {
     error?: string;

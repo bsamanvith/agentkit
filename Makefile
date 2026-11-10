@@ -204,7 +204,7 @@ web: ## Build the console into pkg/web/dist, its text files gzipped (commit it w
 # The farm app (apps/farm, web/apps/farm): its own binary, with its web build
 # embedded like the console's. Farmers are on slow mobile data, so its first
 # load has its own budget.
-FARM_WEB_BUDGET_KB ?= 161
+FARM_WEB_BUDGET_KB ?= 162
 
 .PHONY: farm-web
 farm-web: ## Build the farm app's web client into apps/farm/webdist/dist, gzipped (commit it with the sources)

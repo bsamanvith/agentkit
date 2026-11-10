@@ -135,3 +135,18 @@ func parseHash(s string) (hash, error) {
 	}
 	return h, nil
 }
+
+// CheckPassword reports whether password is the one the PHC argon2id hash
+// phc was made from ([HashPassword]), comparing in constant time. A
+// malformed hash is an error that does not contain it. For callers that keep
+// their own users' hashes, such as package accounts' password lane.
+func CheckPassword(phc, password string) (bool, error) {
+	h, err := parseHash(phc)
+	if err != nil {
+		return false, err
+	}
+	if len(password) > MaxPasswordLength {
+		password = password[:MaxPasswordLength]
+	}
+	return h.matches(argon2.IDKey, password), nil
+}

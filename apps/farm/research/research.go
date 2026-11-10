@@ -38,8 +38,9 @@ const (
 	ExtractTool = "web_extract"
 )
 
-// The app has one workspace: one tenant and one farmer. Accounts (E25,
-// later) give each farmer their own user here.
+// The app has one tenant. Without sign-in it has one farmer, User; with
+// it, each account is its own user here (the context's tenancy user), so
+// each farmer's keys are their own.
 const (
 	Tenant = "farm"
 	User   = "farmer"
@@ -144,9 +145,14 @@ func New(ctx context.Context, vault credentials.Vault, opts ...Option) (*Researc
 	return r, nil
 }
 
-// ctx puts the app's tenant and farmer in a context.
+// ctx puts the app's tenant and the farmer in a context: the signed-in
+// account, else the one farmer.
 func (r *Research) ctx(ctx context.Context) context.Context {
-	return tenancy.WithUser(tenancy.With(ctx, r.tenant), r.userName)
+	user, ok := tenancy.User(ctx)
+	if !ok || user == "" {
+		user = r.userName
+	}
+	return tenancy.WithUser(tenancy.With(ctx, r.tenant), user)
 }
 
 // Status is a provider and whether the farmer has connected it.

@@ -71,6 +71,9 @@ func (b Boundary) Ring() geo.Ring {
 type Farm struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+	// Holding is the farm (in the farmer's sense: the land and the people
+	// who work it) this plot belongs to; empty in an app without sign-in.
+	Holding string `json:"holding,omitempty"`
 	// Declared is the size the farmer believes the plot is, from their
 	// papers or memory; nil if they do not know.
 	Declared *Area    `json:"declared,omitempty"`

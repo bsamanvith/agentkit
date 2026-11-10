@@ -21,6 +21,8 @@ var ErrNoGroups = errors.New("farm: plot groups are not configured")
 type Group struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+	// Holding is the farm the group belongs to, as a plot's.
+	Holding string `json:"holding,omitempty"`
 	// Plots are farm IDs, in the farmer's order.
 	Plots []string `json:"plots"`
 	// Distribution is its plant groups and how they are spread; nil until
@@ -74,7 +76,8 @@ func (s *Service) CreateGroup(ctx context.Context, d GroupDraft) (Group, error) 
 	}
 	now := s.clock.Now().UTC()
 	g := Group{ID: "group_" + strings.TrimPrefix(id, "farm_"), Name: d.Name, Plots: d.Plots, CreatedAt: now, UpdatedAt: now}
-	if err := s.groups.CreateGroup(ctx, g); err != nil {
+	g.Holding, _ = HoldingFrom(ctx)
+	if err := s.gs(ctx).CreateGroup(ctx, g); err != nil {
 		return Group{}, err
 	}
 	return g, nil
@@ -87,7 +90,7 @@ func (s *Service) UpdateGroup(ctx context.Context, id string, d GroupDraft) (Gro
 	}
 	s.groupMu.Lock()
 	defer s.groupMu.Unlock()
-	g, err := s.groups.GetGroup(ctx, id)
+	g, err := s.gs(ctx).GetGroup(ctx, id)
 	if err != nil {
 		return Group{}, err
 	}
@@ -95,7 +98,7 @@ func (s *Service) UpdateGroup(ctx context.Context, id string, d GroupDraft) (Gro
 		return Group{}, err
 	}
 	g.Name, g.Plots, g.UpdatedAt = d.Name, d.Plots, s.clock.Now().UTC()
-	if err := s.groups.UpdateGroup(ctx, g); err != nil {
+	if err := s.gs(ctx).UpdateGroup(ctx, g); err != nil {
 		return Group{}, err
 	}
 	return g, nil
@@ -109,12 +112,12 @@ func (s *Service) SetDistribution(ctx context.Context, id string, d *planting.Di
 	}
 	s.groupMu.Lock()
 	defer s.groupMu.Unlock()
-	g, err := s.groups.GetGroup(ctx, id)
+	g, err := s.gs(ctx).GetGroup(ctx, id)
 	if err != nil {
 		return Group{}, err
 	}
 	g.Distribution, g.UpdatedAt = d, s.clock.Now().UTC()
-	if err := s.groups.UpdateGroup(ctx, g); err != nil {
+	if err := s.gs(ctx).UpdateGroup(ctx, g); err != nil {
 		return Group{}, err
 	}
 	return g, nil
@@ -125,7 +128,7 @@ func (s *Service) Group(ctx context.Context, id string) (Group, error) {
 	if s.groups == nil {
 		return Group{}, ErrNoGroups
 	}
-	return s.groups.GetGroup(ctx, id)
+	return s.gs(ctx).GetGroup(ctx, id)
 }
 
 // Groups returns every group, oldest first; none when groups are not
@@ -134,7 +137,7 @@ func (s *Service) Groups(ctx context.Context) ([]Group, error) {
 	if s.groups == nil {
 		return []Group{}, nil
 	}
-	return s.groups.ListGroups(ctx)
+	return s.gs(ctx).ListGroups(ctx)
 }
 
 // DeleteGroup removes a group; its plots stay.
@@ -144,7 +147,7 @@ func (s *Service) DeleteGroup(ctx context.Context, id string) error {
 	}
 	s.groupMu.Lock()
 	defer s.groupMu.Unlock()
-	return s.groups.DeleteGroup(ctx, id)
+	return s.gs(ctx).DeleteGroup(ctx, id)
 }
 
 // GroupOf returns the group a plot is in, if any.
@@ -178,12 +181,12 @@ func (s *Service) checkGroup(ctx context.Context, d GroupDraft, self string) (Gr
 	if len(plots) > MaxGroupPlots {
 		return d, fmt.Errorf("%w: a group holds at most %d plots", ErrInvalid, MaxGroupPlots)
 	}
-	groups, err := s.groups.ListGroups(ctx)
+	groups, err := s.gs(ctx).ListGroups(ctx)
 	if err != nil {
 		return d, err
 	}
 	for _, p := range plots {
-		f, err := s.store.Get(ctx, p)
+		f, err := s.st(ctx).Get(ctx, p)
 		if errors.Is(err, ErrNotFound) {
 			return d, fmt.Errorf("%w: no plot %s", ErrInvalid, p)
 		}
@@ -210,7 +213,7 @@ func (s *Service) leaveGroups(ctx context.Context, farmID string) error {
 	}
 	s.groupMu.Lock()
 	defer s.groupMu.Unlock()
-	gs, err := s.groups.ListGroups(ctx)
+	gs, err := s.gs(ctx).ListGroups(ctx)
 	if err != nil {
 		return err
 	}
@@ -218,7 +221,7 @@ func (s *Service) leaveGroups(ctx context.Context, farmID string) error {
 		if i := slices.Index(g.Plots, farmID); i >= 0 {
 			g.Plots = slices.Delete(g.Plots, i, i+1)
 			g.UpdatedAt = s.clock.Now().UTC()
-			if err := s.groups.UpdateGroup(ctx, g); err != nil {
+			if err := s.gs(ctx).UpdateGroup(ctx, g); err != nil {
 				return err
 			}
 		}

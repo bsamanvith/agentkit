@@ -319,6 +319,39 @@ func (a *Authenticator) verify(ctx context.Context, tok, reqPath string) (auth.P
 	return a.principal(c)
 }
 
+// Verify checks tok as [Authenticator.Authenticate] checks a bearer token
+// (signature, issuer, audience exactly the configured one, and the times)
+// and returns its claims, raw, without mapping them to a principal: for an
+// OpenID Connect ID token, whose audience is a client id and whose other
+// claims (nonce, email) the caller checks. Errors never hold a value from
+// the token.
+func (a *Authenticator) Verify(ctx context.Context, tok string) (map[string]json.RawMessage, error) {
+	if !jwtShaped(tok) {
+		return nil, errors.New("auth/jwt: not a JWT")
+	}
+	jws, err := jose.ParseSignedCompact(tok, a.algs)
+	if err != nil {
+		return nil, errors.New("auth/jwt: malformed, or an algorithm that is not allowed")
+	}
+	if len(jws.Signatures) != 1 {
+		return nil, errors.New("auth/jwt: not one signature")
+	}
+	h := jws.Signatures[0].Header
+	payload, err := a.keys.verify(ctx, jws, h.KeyID, h.Algorithm)
+	if err != nil {
+		return nil, fmt.Errorf("auth/jwt: %w", err)
+	}
+	var c claims
+	if err := json.Unmarshal(payload, &c); err != nil {
+		return nil, errors.New("auth/jwt: the claims are not a JSON object")
+	}
+	// No request path: only the configured audience itself is accepted.
+	if err := a.checkClaims(c, ""); err != nil {
+		return nil, fmt.Errorf("auth/jwt: %w", err)
+	}
+	return c, nil
+}
+
 // claims are a token's claims, each kept raw until read.
 type claims map[string]json.RawMessage
 

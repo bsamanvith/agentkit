@@ -39,6 +39,7 @@ next: [apps/farm/docs/FEATURES.md](../apps/farm/docs/FEATURES.md).
 - [ ] [T139](T139-weather-and-automations.md) Weather per plot from several providers, care advice only when there is something to do, crop calendars, an automation engine (schedule, event and weather triggers; fixed rules and agent skills) and the alerts inbox ([design](../apps/farm/docs/AUTOMATIONS.md))
 - [ ] [T140](T140-crop-prices.md) Crop prices: mandi prices from several providers (Agmarknet on data.gov.in, price files) on a shared provider layer (`apps/farm/feeds`), a price history, estimates with the MSP, the sell-or-hold skill, the Prices tab ([design](../apps/farm/docs/PRICES.md))
 - [ ] [T142](T142-farm-model-lane.md) The model lane: a list of models (Claude, OpenAI, OpenRouter, Gemini) tried in order, each used only after `make farm-eval` passes on it, a request handed on when a model fails
+- [ ] [T144](T144-farm-accounts.md) Farmer accounts: sign-in lanes (Google, password, invite and one-time codes) on agentkit's own OAuth core, farms with members and roles, assisted sign-up by a partner ([design](../apps/farm/docs/ACCOUNTS.md))
 - [ ] Field watch: satellite greenness and weather per plot, a weekly background agent (to plan)
 - [ ] Land-cover cross-check: is the plot cropland (ESA WorldCover / Dynamic World) (to plan)
-- [ ] Farmers' accounts and offline (PWA) capture (to plan)
+- [ ] Offline (PWA) capture (to plan)

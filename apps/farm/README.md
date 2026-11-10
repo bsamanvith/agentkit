@@ -42,6 +42,16 @@ Exa and Parallel keys are sealed in `<db>-vault.db` with the key ring in
 tools are served over MCP at `/mcp/<toolset>` (`-mcp=false` to turn it
 off). `make farm-eval` runs the assistant's scenarios on a real model.
 
+Sign-in is off by default: the app is one farmer's, as on a laptop.
+`-signin google,password,invite` (`$FARM_SIGNIN`) turns it on with those
+lanes, in that order on the sign-in screen; `-signup` says which lanes make
+new accounts (default `google`). Google needs a web client from the Google
+Cloud console (`FARM_GOOGLE_CLIENT_ID`, `FARM_GOOGLE_CLIENT_SECRET`) whose
+redirect URI is `<-public-url>/auth/google/callback`. Then each farmer sees
+only their own farm, can add family and workers, and a partner
+(`FARM_PARTNER_EMAILS`) can sign a farmer up; `FARM_ADMIN_EMAILS` may
+change the automations. Design: [docs/ACCOUNTS.md](docs/ACCOUNTS.md).
+
 | Package | What |
 |---|---|
 | [geo](geo) | Area, perimeter, shape checks of small polygons on WGS84 |
@@ -59,6 +69,8 @@ off). `make farm-eval` runs the assistant's scenarios on a real model.
 | [handbook](handbook) | The assistant's knowledge base on farming and plants in India: chapters, a crop library chapter, keyword or hybrid search |
 | [farmagent](farmagent) | The farm, planning and map tools for agents (also over MCP), the skills (`plan-season`, `check-plan`, `survey-land`, `shape-farm`, `distribute-plants`, `research-products`), and the assistant (agentkit harness) |
 | [farmapi](farmapi) | The HTTP API under `/api/` |
+| [members](members) | Farms in the farmer's sense (holdings), their members and roles, invites, assisted sign-up; `memberstest`, `sqlite` |
+| [farmauth](farmauth) | Sign-in for the farm app: the guard on `/api` and `/mcp`, `/api/me`, the members routes (on `pkg/auth/accounts`) |
 | [webdist](webdist) | The web client's build, embedded |
 | [cmd/farm](cmd/farm) | The binary |
 | [web/apps/farm](../../web/apps/farm) | The web client (React, Vite, Leaflet) |

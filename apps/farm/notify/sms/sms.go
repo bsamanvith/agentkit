@@ -98,8 +98,10 @@ func MSG91(c MSG91Config) (notify.Lane, error) {
 }
 
 func (*msg91) Info() notify.LaneInfo {
-	return notify.LaneInfo{Name: "sms", Address: notify.AddrPhone, Paid: true,
-		Note: "SMS through MSG91 on a DLT template. Paid per SMS (about ₹0.15 to ₹0.30 in India); needs DLT registration with TRAI."}
+	return notify.LaneInfo{
+		Name: "sms", Address: notify.AddrPhone, Paid: true,
+		Note: "SMS through MSG91 on a DLT template. Paid per SMS (about ₹0.15 to ₹0.30 in India); needs DLT registration with TRAI.",
+	}
 }
 
 func (s *msg91) Deliver(ctx context.Context, m notify.Message) (notify.Receipt, error) {
@@ -175,8 +177,10 @@ func NewTwilio(c TwilioConfig) (*Twilio, error) {
 
 // Info implements notify.Lane.
 func (*Twilio) Info() notify.LaneInfo {
-	return notify.LaneInfo{Name: "sms", Address: notify.AddrPhone, Paid: true,
-		Note: "SMS through Twilio. Paid per SMS; Indian numbers still need DLT registration."}
+	return notify.LaneInfo{
+		Name: "sms", Address: notify.AddrPhone, Paid: true,
+		Note: "SMS through Twilio. Paid per SMS; Indian numbers still need DLT registration.",
+	}
 }
 
 // Twilio error codes: the person opted out, or try again later.
@@ -252,8 +256,10 @@ func (s *Twilio) Webhook(rep notify.Reporter) http.Handler {
 		ctx := context.WithoutCancel(r.Context())
 		f := r.PostForm
 		if st := f.Get("MessageStatus"); st != "" {
-			status := map[string]string{"sent": notify.StatusSent, "delivered": notify.StatusDelivered, "read": notify.StatusRead,
-				"undelivered": notify.StatusFailed, "failed": notify.StatusFailed}[st]
+			status := map[string]string{
+				"sent": notify.StatusSent, "delivered": notify.StatusDelivered, "read": notify.StatusRead,
+				"undelivered": notify.StatusFailed, "failed": notify.StatusFailed,
+			}[st]
 			if status != "" {
 				errText := ""
 				if c := f.Get("ErrorCode"); c != "" {

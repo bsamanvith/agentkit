@@ -95,8 +95,10 @@ func TestMSG91SendsDLTVariables(t *testing.T) {
 	srv := httptest.NewServer(f)
 	defer srv.Close()
 	l, _ := sms.MSG91(sms.MSG91Config{AuthKey: "KEY", TemplateID: "TPL", URL: srv.URL})
-	m := notify.Message{ID: "m1", Title: "Heavy rain on Thursday at the east plot", Body: "Clear the drains",
-		Recipient: notify.Recipient{Phone: "+919876543210"}}
+	m := notify.Message{
+		ID: "m1", Title: "Heavy rain on Thursday at the east plot", Body: "Clear the drains",
+		Recipient: notify.Recipient{Phone: "+919876543210"},
+	}
 	rc, err := l.Deliver(context.Background(), m)
 	if err != nil || rc.ProviderID != "req-1" {
 		t.Fatalf("Deliver = %+v, %v", rc, err)

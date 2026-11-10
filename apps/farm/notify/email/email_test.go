@@ -163,8 +163,10 @@ func TestLane(t *testing.T) {
 func TestTeluguAndUnsubscribe(t *testing.T) {
 	s := newServer(t)
 	l := lane(t, s)
-	m := notify.Message{ID: "m1", Severity: notify.Warning, Title: "గురువారం భారీ వర్షం", Body: "కాలువలు శుభ్రం చేయండి.",
-		Recipient: notify.Recipient{ID: "r1", Name: "రవి", Email: "ravi@example.com"}}
+	m := notify.Message{
+		ID: "m1", Severity: notify.Warning, Title: "గురువారం భారీ వర్షం", Body: "కాలువలు శుభ్రం చేయండి.",
+		Recipient: notify.Recipient{ID: "r1", Name: "రవి", Email: "ravi@example.com"},
+	}
 	rc, err := l.Deliver(t.Context(), m)
 	if err != nil {
 		t.Fatal(err)

@@ -108,7 +108,7 @@ func (p *parser) word() string {
 	start := p.pos
 	for p.pos < len(p.src) {
 		c := p.src[p.pos]
-		if !(c == '-' || c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9') {
+		if c != '-' && c != '_' && (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') {
 			break
 		}
 		p.pos++

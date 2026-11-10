@@ -367,7 +367,7 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 				if c.publicURL == "" {
 					return ""
 				}
-				return strings.TrimRight(c.publicURL, "/") + "/#/farms/" + url.PathEscape(farm)
+				return strings.TrimRight(c.publicURL, "/") + "/?farm=" + url.QueryEscape(farm)
 			}
 			eopts = append(eopts, automation.WithChannels(watch.Messages(msgs.hub.Dispatcher, link)))
 			aopts = append(aopts, farmapi.WithNotify(msgs.hub))

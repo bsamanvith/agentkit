@@ -243,7 +243,7 @@ func parseCaps(s string) (map[string]laneCap, error) {
 		}
 		lane, kvs, found := strings.Cut(part, ":")
 		if !found {
-			return nil, fmt.Errorf("-notify-caps %q: want lane:key=value,...", part)
+			return nil, fmt.Errorf("-notify-caps %q: want lane:key=value,... for each lane", part)
 		}
 		var c laneCap
 		for kv := range strings.SplitSeq(kvs, ",") {

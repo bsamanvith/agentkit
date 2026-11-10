@@ -58,7 +58,7 @@ func New(c Config) (*Lane, error) {
 	}
 	from, err := mail.ParseAddress(c.From)
 	if err != nil {
-		return nil, fmt.Errorf("%w: email: from %q: %v", notify.ErrInvalid, c.From, err)
+		return nil, fmt.Errorf("%w: email: from %q: %w", notify.ErrInvalid, c.From, err)
 	}
 	l := &Lane{cfg: c, host: u.Hostname(), implicitTLS: u.Scheme == "smtps", from: from}
 	port := u.Port()

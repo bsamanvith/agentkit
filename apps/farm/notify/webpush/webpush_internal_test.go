@@ -211,8 +211,10 @@ func TestGoneSubscriptions(t *testing.T) {
 	l := newLane(t, s, srv, func(_ context.Context, r, endpoint string) { dropped = append(dropped, r+" "+endpoint) })
 	old := sub
 	old.Endpoint += "-old"
-	m := notify.Message{ID: "m1", Severity: notify.Urgent, Title: "Rain", Body: "Cover the harvest",
-		Recipient: notify.Recipient{ID: "r1", Push: []notify.PushSubscription{old, sub}}}
+	m := notify.Message{
+		ID: "m1", Severity: notify.Urgent, Title: "Rain", Body: "Cover the harvest",
+		Recipient: notify.Recipient{ID: "r1", Push: []notify.PushSubscription{old, sub}},
+	}
 	s.codes = []int{http.StatusGone}
 	if _, err := l.Deliver(t.Context(), m); err != nil {
 		t.Fatalf("one gone, one live: %v", err)

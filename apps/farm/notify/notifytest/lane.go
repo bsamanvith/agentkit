@@ -111,7 +111,7 @@ func RunLane(t *testing.T, open func(t *testing.T) LaneHarness) {
 				t.Errorf("Deliver: %v, want %v", err, c.want)
 			}
 			for _, other := range []error{notify.ErrTemporary, notify.ErrRejected, notify.ErrGone} {
-				if other != c.want && errors.Is(err, other) {
+				if !errors.Is(other, c.want) && errors.Is(err, other) {
 					t.Errorf("Deliver: %v is also %v", err, other)
 				}
 			}

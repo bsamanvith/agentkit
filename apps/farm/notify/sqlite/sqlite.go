@@ -444,7 +444,7 @@ func (s *Store) BeginDelivery(ctx context.Context, d notify.Delivery) (notify.De
 	if err != nil {
 		return notify.Delivery{}, false, err
 	}
-	if len(prev) == 1 && !(prev[0].Status == notify.StatusFailed && prev[0].Retryable) {
+	if len(prev) == 1 && (prev[0].Status != notify.StatusFailed || !prev[0].Retryable) {
 		return prev[0], false, nil
 	}
 	d.Status = notify.StatusSending

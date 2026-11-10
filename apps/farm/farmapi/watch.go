@@ -1,10 +1,14 @@
 package farmapi
 
 import (
+	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/bsamanvith/agentkit/apps/farm/automation"
+	"github.com/bsamanvith/agentkit/apps/farm/farm"
 	"github.com/bsamanvith/agentkit/apps/farm/watch"
 )
 
@@ -59,14 +63,82 @@ func limitOf(r *http.Request) int {
 	return n
 }
 
+// scope returns the plots of the farm (holding) the request is scoped to,
+// and whether it is: with sign-in, notices and runs are only of those.
+func (a *api) scope(r *http.Request) ([]string, bool, error) {
+	if _, ok := farm.HoldingFrom(r.Context()); !ok {
+		return nil, false, nil
+	}
+	fs, err := a.svc.List(r.Context())
+	if err != nil {
+		return nil, true, err
+	}
+	ids := make([]string, len(fs))
+	for i, f := range fs {
+		ids[i] = f.ID
+	}
+	return ids, true, nil
+}
+
+// farmsOf returns the plots a request about plot (or, if "", every plot it
+// may see) covers: nil for every plot in the app, or farm.ErrNotFound for a
+// plot it may not see.
+func (a *api) farmsOf(r *http.Request, plot string) ([]string, error) {
+	ids, scoped, err := a.scope(r)
+	switch {
+	case err != nil:
+		return nil, err
+	case !scoped && plot == "":
+		return nil, nil
+	case !scoped:
+		return []string{plot}, nil
+	case plot == "":
+		return ids, nil
+	case !slices.Contains(ids, plot):
+		return nil, fmt.Errorf("%w: farm %s", farm.ErrNotFound, plot)
+	}
+	return []string{plot}, nil
+}
+
+// listNotices lists the notices of plots (nil: all), newest first, at most
+// limit.
+func (a *api) listNotices(r *http.Request, plots []string, unread bool, limit int) ([]automation.Notice, error) {
+	if plots == nil {
+		return a.engine.Store().ListNotices(r.Context(), automation.NoticeFilter{Unread: unread, Limit: limit})
+	}
+	out := []automation.Notice{}
+	for _, p := range plots {
+		ns, err := a.engine.Store().ListNotices(r.Context(), automation.NoticeFilter{Farm: p, Unread: unread, Limit: limit})
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, ns...)
+	}
+	slices.SortStableFunc(out, func(x, y automation.Notice) int {
+		if c := y.CreatedAt.Compare(x.CreatedAt); c != 0 {
+			return c
+		}
+		return strings.Compare(y.ID, x.ID)
+	})
+	if limit <= 0 {
+		limit = 50
+	}
+	return out[:min(len(out), limit)], nil
+}
+
 func (a *api) notices(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	ns, err := a.engine.Store().ListNotices(r.Context(), automation.NoticeFilter{Farm: q.Get("farm"), Unread: q.Get("unread") == "1" || q.Get("unread") == "true", Limit: limitOf(r)})
+	plots, err := a.farmsOf(r, q.Get("farm"))
 	if err != nil {
 		a.fail(w, r, err)
 		return
 	}
-	unread, err := a.engine.Store().ListNotices(r.Context(), automation.NoticeFilter{Farm: q.Get("farm"), Unread: true, Limit: 1000})
+	ns, err := a.listNotices(r, plots, q.Get("unread") == "1" || q.Get("unread") == "true", limitOf(r))
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	unread, err := a.listNotices(r, plots, true, 1000)
 	if err != nil {
 		a.fail(w, r, err)
 		return
@@ -85,12 +157,24 @@ func (a *api) readNotices(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	n, err := a.engine.Store().MarkRead(r.Context(), body.Farm, body.IDs, a.now())
+	plots, err := a.farmsOf(r, body.Farm)
 	if err != nil {
 		a.fail(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]int{"marked": n})
+	if plots == nil {
+		plots = []string{""}
+	}
+	total := 0
+	for _, p := range plots {
+		n, err := a.engine.Store().MarkRead(r.Context(), p, body.IDs, a.now())
+		if err != nil {
+			a.fail(w, r, err)
+			return
+		}
+		total += n
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"marked": total})
 }
 
 func (a *api) automations(w http.ResponseWriter, r *http.Request) {
@@ -152,6 +236,16 @@ func (a *api) runAutomation(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// A farm's member runs an automation on one of its plots; only
+	// without sign-in (or as an admin, unscoped) on every plot at once.
+	if _, scoped := farm.HoldingFrom(r.Context()); scoped && body.Farm == "" {
+		writeJSON(w, http.StatusBadRequest, errorBody{Error: "say which plot to run it on"})
+		return
+	}
+	if _, err := a.farmsOf(r, body.Farm); err != nil {
+		a.fail(w, r, err)
+		return
+	}
 	runs, err := a.engine.RunNow(r.Context(), r.PathValue("id"), body.Farm)
 	if err != nil {
 		a.fail(w, r, err)
@@ -161,10 +255,30 @@ func (a *api) runAutomation(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) runs(w http.ResponseWriter, r *http.Request) {
-	rs, err := a.engine.Store().ListRuns(r.Context(), automation.RunFilter{Automation: r.PathValue("id"), Farm: r.URL.Query().Get("farm"), Limit: limitOf(r)})
+	plots, err := a.farmsOf(r, r.URL.Query().Get("farm"))
 	if err != nil {
 		a.fail(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"runs": rs})
+	if plots == nil {
+		plots = []string{""}
+	}
+	out := []automation.Run{}
+	for _, p := range plots {
+		rs, err := a.engine.Store().ListRuns(r.Context(), automation.RunFilter{Automation: r.PathValue("id"), Farm: p, Limit: limitOf(r)})
+		if err != nil {
+			a.fail(w, r, err)
+			return
+		}
+		out = append(out, rs...)
+	}
+	if len(plots) > 1 {
+		slices.SortStableFunc(out, func(x, y automation.Run) int { return y.Started.Compare(x.Started) })
+		limit := limitOf(r)
+		if limit <= 0 {
+			limit = 50
+		}
+		out = out[:min(len(out), limit)]
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"runs": out})
 }

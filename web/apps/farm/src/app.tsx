@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   Bell,
   ChevronRight,
+  CircleUser,
   CloudSun,
   IndianRupee,
   Download,
@@ -31,6 +32,8 @@ import { ReportView, StatusBadge } from "./report";
 import { PlotShape } from "./shape";
 import type { ZoneShape } from "./map";
 import { units, type Config, type Farm, type Group } from "./types";
+import { openFarm, withHolding } from "./session";
+import type { Lane, Me } from "./account-api";
 
 // The map (Leaflet), the group pages and the assistant load when first
 // needed: the overview comes up first on a slow connection.
@@ -48,6 +51,7 @@ const Assistant = lazy(() => import("./assistant").then((m) => ({ default: m.Ass
 const Care = lazy(() => import("./alerts").then((m) => ({ default: m.Care })));
 const AlertsPage = lazy(() => import("./alerts").then((m) => ({ default: m.AlertsPage })));
 const MessagesPage = lazy(() => import("./messages").then((m) => ({ default: m.MessagesPage })));
+const AccountPage = lazy(() => import("./account").then((m) => ({ default: m.AccountPage })));
 
 const loading = <p className="text-sm text-muted-foreground">Loading…</p>;
 
@@ -58,7 +62,16 @@ type View =
   | { kind: "group"; id: string }
   | { kind: "group-form"; group?: Group }
   | { kind: "alerts" }
-  | { kind: "messages" };
+  | { kind: "messages" }
+  | { kind: "account" };
+
+/** The signed-in account, when the server has sign-in. */
+export interface SignedIn {
+  me: Me;
+  lanes: Lane[];
+  /** Reads the account again (after a rename or a new farm). */
+  reload: () => void;
+}
 
 function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -76,7 +89,7 @@ function groupColor(groups: Group[], id: string): string {
   );
 }
 
-export function App() {
+export function App({ account }: { account?: SignedIn } = {}) {
   const [farms, setFarms] = useState<Farm[]>();
   const [groups, setGroups] = useState<Group[]>([]);
   const [config, setConfig] = useState<Config>();
@@ -175,6 +188,11 @@ export function App() {
                 <MessageCircle /> <span className="hidden sm:inline">Assistant</span>
               </Button>
             )}
+            {account && (
+              <Button variant="ghost" size="sm" onClick={() => go({ kind: "account" })} aria-label="Account">
+                <CircleUser /> <span className="hidden max-w-32 truncate md:inline">{account.me.holding.name}</span>
+              </Button>
+            )}
           </div>
         </header>
         <main id="main" className="flex-1 overflow-y-auto">
@@ -236,10 +254,18 @@ export function App() {
                 <AlertsPage
                   farms={farms ?? []}
                   onRead={count}
-                  onMessages={config?.messages ? () => go({ kind: "messages" }) : undefined}
+                  onMessages={
+                    // With sign-in, who gets messages is an admin's to set.
+                    config?.messages && (!account || account.me.account.roles?.includes("admin"))
+                      ? () => go({ kind: "messages" })
+                      : undefined
+                  }
                 />
               )}
               {view.kind === "messages" && <MessagesPage farms={farms ?? []} />}
+              {view.kind === "account" && account && (
+                <AccountPage me={account.me} lanes={account.lanes} onChanged={account.reload} onSwitch={openFarm} />
+              )}
               {view.kind === "group" && group && (
                 <GroupPage
                   key={group.id}
@@ -325,6 +351,7 @@ function Crumbs({
   if (view.kind === "edit") items.push({ label: view.farm ? view.farm.name : "New plot" });
   if (view.kind === "alerts") items.push({ label: "Alerts" });
   if (view.kind === "messages") items.push({ label: "Messages" });
+  if (view.kind === "account") items.push({ label: "Account" });
   if (items.length === 1) return null;
   return (
     <nav aria-label="Where you are" className="hidden min-w-0 items-center gap-1 text-sm sm:flex">
@@ -711,7 +738,7 @@ function FarmDetail({
             <Pencil /> Edit
           </Button>
           <Button variant="outline" size="sm" asChild>
-            <a href={`/api/farms/${encodeURIComponent(farm.id)}/geojson`} download>
+            <a href={withHolding(`/api/farms/${encodeURIComponent(farm.id)}/geojson`)} download>
               <Download /> GeoJSON
             </a>
           </Button>

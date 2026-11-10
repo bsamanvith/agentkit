@@ -68,6 +68,7 @@ type Assistant struct {
 type conversation struct {
 	mu         sync.Mutex
 	transcript harness.Transcript
+	holding    string // the farm it is about; "" without sign-in
 }
 
 // Option configures [NewAssistant].
@@ -309,7 +310,8 @@ func (a *Assistant) Ask(ctx context.Context, conversationID, message string) (Re
 	if message == "" {
 		return Reply{}, fmt.Errorf("%w: empty message", farm.ErrInvalid)
 	}
-	id, c, err := a.conversation(conversationID)
+	holding, _ := farm.HoldingFrom(ctx)
+	id, c, err := a.conversation(conversationID, holding)
 	if err != nil {
 		return Reply{}, err
 	}
@@ -332,12 +334,14 @@ func (a *Assistant) Ask(ctx context.Context, conversationID, message string) (Re
 	return r, nil
 }
 
-func (a *Assistant) conversation(id string) (string, *conversation, error) {
+// conversation returns the conversation id, or a new one; a conversation
+// is only continued from the farm (holding) it started in.
+func (a *Assistant) conversation(id, holding string) (string, *conversation, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if id != "" {
 		c, ok := a.convs[id]
-		if !ok {
+		if !ok || c.holding != holding {
 			return "", nil, ErrUnknownConversation
 		}
 		return id, c, nil
@@ -347,7 +351,7 @@ func (a *Assistant) conversation(id string) (string, *conversation, error) {
 		return "", nil, err
 	}
 	id = "conv_" + hex.EncodeToString(b)
-	c := &conversation{}
+	c := &conversation{holding: holding}
 	a.convs[id] = c
 	a.order = append(a.order, id)
 	if len(a.order) > MaxConversations {

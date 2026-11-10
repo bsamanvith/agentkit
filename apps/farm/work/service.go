@@ -87,6 +87,9 @@ func (s *Service) Due(ctx context.Context, farmID string, from, to time.Time) ([
 // skipped without being checked again, so a phone can resend what it
 // queued. If any new event is invalid, none is recorded.
 func (s *Service) Record(ctx context.Context, farmID string, evs []Event) (int, Roadmap, error) {
+	if farm.IsReadOnly(ctx) {
+		return 0, Roadmap{}, farm.ErrReadOnly // a worker sees the work, the family records it
+	}
 	f, err := s.plan.Farms().Get(ctx, farmID)
 	if err != nil {
 		return 0, Roadmap{}, err

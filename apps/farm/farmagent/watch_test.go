@@ -153,3 +153,58 @@ func TestSkillRunner(t *testing.T) {
 		t.Errorf("the notice for another plot: %+v, want an error", res)
 	}
 }
+
+// TestListAlertsStaysOnItsFarm: with sign-in, the assistant's and MCP's
+// list_alerts sees only the plots of the request's farm (holding).
+func TestListAlertsStaysOnItsFarm(t *testing.T) {
+	t.Parallel()
+	svc, w, store, _ := planted(t)
+	ctx := context.Background()
+	for _, n := range []automation.Notice{
+		{ID: "n1", Farm: "farm_1", Automation: "a", Run: "r", Key: "k1", Severity: "warning", Title: "Ours", CreatedAt: time.Now()},
+		{ID: "n2", Farm: "farm_other", Automation: "a", Run: "r", Key: "k2", Severity: "warning", Title: "Someone else's", CreatedAt: time.Now()},
+	} {
+		if _, err := store.AddNotice(ctx, n, time.Time{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tools, err := farmagent.WatchTools(w, plannerFor(t, svc), store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg, err := tool.NewRegistry(tools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Adopt(ctx, "hold_a"); err != nil {
+		t.Fatal(err)
+	}
+	titles := func(ctx context.Context, in string) ([]string, error) {
+		out, err := reg.Invoke(ctx, farmagent.ListAlertsTool, json.RawMessage(in))
+		if err != nil {
+			return nil, err
+		}
+		var m struct{ Alerts []automation.Notice }
+		if err := json.Unmarshal(out, &m); err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for _, n := range m.Alerts {
+			got = append(got, n.Title)
+		}
+		return got, nil
+	}
+	ours := farm.WithHolding(ctx, "hold_a")
+	if got, err := titles(ours, `{"farm":""}`); err != nil || !slices.Equal(got, []string{"Ours"}) {
+		t.Errorf("farm A's alerts: %v, %v; want only its own", got, err)
+	}
+	if got, err := titles(ours, `{"farm":"farm_other"}`); err == nil {
+		t.Errorf("farm A asks for another farm's plot: %v, want an error", got)
+	}
+	if got, err := titles(farm.WithHolding(ctx, "hold_b"), `{"farm":""}`); err != nil || len(got) != 0 {
+		t.Errorf("farm B sees %v, %v; want none", got, err)
+	}
+	if got, err := titles(ctx, `{"farm":""}`); err != nil || len(got) != 2 {
+		t.Errorf("without sign-in: %v, %v; want every alert", got, err)
+	}
+}

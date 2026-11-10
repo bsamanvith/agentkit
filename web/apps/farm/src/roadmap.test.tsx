@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Roadmap } from "./roadmap";
 import { applyQueued, enqueue, flush, queued, type Roadmap as RoadmapData, type WorkEvent } from "./roadmap-data";
 import type { Farm } from "./types";
+import { session } from "./session";
 
 const farm: Farm = {
   id: "farm_1",
@@ -117,6 +118,29 @@ describe("flush", () => {
     expect(JSON.parse(String((fetch.mock.calls[0] as unknown as [string, RequestInit])[1].body))).toEqual({
       events: [{ id: "q1", task: "z0-groundnut-2026-07-01-weed-1", kind: "done", day: "2026-07-20" }],
     });
+  });
+
+  it("signed in, sends the session's farm and token, and keeps the queue when signed out", async () => {
+    session.csrf = "tok";
+    session.holding = "hold_1";
+    try {
+      enqueue("farm_1", { id: "q1", task: "z0-groundnut-2026-07-01-weed-1", kind: "done", day: "2026-07-20" });
+      const out = vi.fn(() => json({ error: "sign in first", code: "no_session" }, 401));
+      vi.stubGlobal("fetch", out);
+      await expect(flush("farm_1")).rejects.toThrow("sign in first");
+      expect(queued("farm_1")).toHaveLength(1);
+      const headers = (out.mock.calls[0] as unknown as [string, RequestInit])[1].headers as Record<string, string>;
+      expect(headers["X-CSRF-Token"]).toBe("tok");
+      expect(headers["X-Farm-Holding"]).toBe("hold_1");
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(() => json({ error: "refused", code: "csrf" }, 403)),
+      );
+      await expect(flush("farm_1")).rejects.toThrow();
+      expect(queued("farm_1")).toHaveLength(1);
+    } finally {
+      session.csrf = session.holding = "";
+    }
   });
 
   it("drops only the change the server refuses and sends the rest", async () => {

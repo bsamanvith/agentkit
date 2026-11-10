@@ -469,3 +469,16 @@ func TestPerennialPlantingAcrossYearEnd(t *testing.T) {
 		t.Errorf("zone %+v, %d tasks (were %d)", r.Zones[0], len(r.Tasks), len(before.Tasks))
 	}
 }
+
+func TestAReadOnlyMemberRecordsNothing(t *testing.T) {
+	w := setup(t)
+	w.savePlan(t, plannedSow)
+	ctx := farm.WithReadOnly(context.Background())
+	_, _, err := w.work.Record(ctx, w.plot, []work.Event{{ID: "w1", Task: id("weed-1"), Kind: work.Done, Day: plannedSow}})
+	if !errors.Is(err, farm.ErrReadOnly) {
+		t.Fatalf("a worker records work: %v, want farm.ErrReadOnly", err)
+	}
+	if r := w.roadmap(t); task(t, r, id("weed-1")).State != work.Open {
+		t.Error("the refused event was recorded")
+	}
+}

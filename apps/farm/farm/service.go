@@ -124,7 +124,8 @@ func (s *Service) Create(ctx context.Context, d Draft) (Farm, error) {
 	}
 	now := s.clock.Now().UTC()
 	f := Farm{ID: id, Name: d.Name, Declared: d.Declared, Boundary: d.Boundary, Report: rep, CreatedAt: now, UpdatedAt: now}
-	if err := s.store.Create(ctx, f); err != nil {
+	f.Holding, _ = HoldingFrom(ctx)
+	if err := s.st(ctx).Create(ctx, f); err != nil {
 		return Farm{}, err
 	}
 	s.emit(ctx, EventCreated, f.ID)
@@ -137,7 +138,7 @@ func (s *Service) Update(ctx context.Context, id string, d Draft) (Farm, error) 
 	if err := checkDraft(d, true); err != nil {
 		return Farm{}, err
 	}
-	f, err := s.store.Get(ctx, id)
+	f, err := s.st(ctx).Get(ctx, id)
 	if err != nil {
 		return Farm{}, err
 	}
@@ -153,7 +154,7 @@ func (s *Service) Update(ctx context.Context, id string, d Draft) (Farm, error) 
 	}
 	f.Name, f.Declared, f.Boundary, f.Report = d.Name, d.Declared, d.Boundary, rep
 	f.UpdatedAt = s.clock.Now().UTC()
-	if err := s.store.Update(ctx, f); err != nil {
+	if err := s.st(ctx).Update(ctx, f); err != nil {
 		return Farm{}, err
 	}
 	s.emit(ctx, EventUpdated, id)
@@ -204,27 +205,27 @@ func sameBoundary(a, b Boundary) bool {
 }
 
 func (s *Service) change(ctx context.Context, id string, edit func(*Farm)) (Farm, error) {
-	f, err := s.store.Get(ctx, id)
+	f, err := s.st(ctx).Get(ctx, id)
 	if err != nil {
 		return Farm{}, err
 	}
 	edit(&f)
 	f.UpdatedAt = s.clock.Now().UTC()
-	if err := s.store.Update(ctx, f); err != nil {
+	if err := s.st(ctx).Update(ctx, f); err != nil {
 		return Farm{}, err
 	}
 	return f, nil
 }
 
 // Get returns a farm.
-func (s *Service) Get(ctx context.Context, id string) (Farm, error) { return s.store.Get(ctx, id) }
+func (s *Service) Get(ctx context.Context, id string) (Farm, error) { return s.st(ctx).Get(ctx, id) }
 
 // List returns every farm, oldest first.
-func (s *Service) List(ctx context.Context) ([]Farm, error) { return s.store.List(ctx) }
+func (s *Service) List(ctx context.Context) ([]Farm, error) { return s.st(ctx).List(ctx) }
 
 // Delete removes a farm, and takes it out of its group.
 func (s *Service) Delete(ctx context.Context, id string) error {
-	if err := s.store.Delete(ctx, id); err != nil {
+	if err := s.st(ctx).Delete(ctx, id); err != nil {
 		return err
 	}
 	s.emit(ctx, EventDeleted, id)
@@ -232,7 +233,7 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 }
 
 func (s *Service) others(ctx context.Context, except string) ([]Farm, error) {
-	all, err := s.store.List(ctx)
+	all, err := s.st(ctx).List(ctx)
 	if err != nil {
 		return nil, err
 	}

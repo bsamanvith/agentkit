@@ -1,4 +1,5 @@
 import type { Farm } from "./types";
+import { sessionHeaders, signedOut } from "./session";
 
 // The price tab is a lazy chunk: its types and calls live here, not in
 // api.ts and types.ts, so the first load does not grow.
@@ -71,7 +72,12 @@ export interface Estimate {
 }
 
 async function get<T>(path: string, init?: RequestInit): Promise<T> {
-  const resp = await fetch(path, init);
+  const method = init?.method ?? "GET";
+  const resp = await fetch(path, {
+    ...init,
+    headers: { ...sessionHeaders(method), ...(init?.headers as Record<string, string>) },
+  });
+  signedOut(resp.status);
   const data = (await resp.json().catch(() => ({}))) as { error?: string };
   if (!resp.ok) throw new Error(data.error ?? `HTTP ${resp.status}`);
   return data as T;

@@ -26,7 +26,7 @@ Status words: **live** (merged on main, a farmer can use it), **building**
 | 10 | [Farm tools for other agents (MCP)](#10-farm-tools-for-other-agents-mcp) | live | all | T135 |
 | 11 | [Weather alerts and weekly crop work](#11-weather-alerts-and-weekly-crop-work) | live | grow | T139 |
 | 12 | [Crop prices: estimates and mandi prices](#12-crop-prices-estimates-and-mandi-prices) | live | sell | T140 |
-| 13 | [Farmer accounts and phone sign-in](#13-farmer-accounts-and-phone-sign-in) | planned | all | |
+| 13 | [Farmer accounts and phone sign-in](#13-farmer-accounts-and-phone-sign-in) | live | all | T144 |
 | 14 | [Alerts on the phone: push, Telegram, email, WhatsApp, SMS](#14-alerts-on-the-phone-push-telegram-email-whatsapp-sms) | live | grow | T143 |
 | 15 | [Crop doctor](#15-crop-doctor) | planned | grow | |
 | 16 | [Ledger by voice](#16-ledger-by-voice) | planned | money | |
@@ -285,20 +285,45 @@ needs the app on https); WhatsApp and SMS need Meta's business
 verification and DLT registration first; escalating along a chain when a
 message is sent but not delivered. Design: [MESSAGES.md](MESSAGES.md).
 
+### 13. Farmer accounts and phone sign-in
+
+**The farmer** signs in with Google (free), or with a username and
+password, or with a code a partner gave them, or with a one-time code sent
+to their phone or email. They can add more ways later (Google and a phone,
+say) on the *Account* page, and stay signed in on their phone for months.
+Each farmer sees only their own farm: its plots, groups, plans, alerts
+and assistant chats. The owner of a farm invites family or a worker with a
+join code and picks their role: family and partners can change things, a
+worker can only look. A partner (an FPO field worker or a dealer) can sign
+up a farmer who has no smartphone or email, by name and phone number, and
+hand them a sign-in code on paper; when the farmer loses their way in, the
+partner makes them a new code.
+
+**The app** keeps one account per person with as many sign-in ways as
+they link, never joining two accounts because their emails match. A
+session is a long random key kept only as a hash, in a cookie the page's
+scripts cannot read, with a separate token on every change so another
+site cannot act for the farmer. Wrong passwords and codes are slowed per
+phone and per network; one-time codes last 10 minutes and five tries. The
+admin's first farm takes the plots made before sign-in was turned on. Without sign-in turned on (`-signin`), the app works as before, for
+one farmer on their own machine.
+
+**Behind it:** `pkg/auth/accounts` (lanes, accounts, sessions, codes;
+`oidc` for Google, `sqlite` store), `apps/farm/members` (farms, members,
+roles, invites, assisted sign-up), `apps/farm/farmauth` (the routes and
+the guard on `/api` and `/mcp`), `farm.WithHolding` (each farm sees only
+its plots); flags `-signin`, `-signup`, `-public-url`, `-code-sender`.
+Web: `signin.tsx`, `account.tsx`, `session.ts`. Design:
+[ACCOUNTS.md](ACCOUNTS.md). The phone and email codes need a sender:
+the message lanes of [14](#14-alerts-on-the-phone-push-telegram-email-whatsapp-sms)
+are not wired to sign-in yet, so the codes only go to the server's log,
+for trying it out.
+
 ## Building now
 
 Nothing right now.
 
 ## Planned
-
-### 13. Farmer accounts and phone sign-in
-
-Each farmer signs in (Google or a password first, both free; a phone
-one-time code by SMS later, as it is paid per message) and sees only their
-plots, groups, plans and alerts; a family or an FPO field worker can be
-added to a farm. **Why first among the planned:** alerts, WhatsApp, the
-ledger and the FPO view all need to know whose farm this is and how to
-reach them. Builds on `pkg/auth` and the console's login (T061).
 
 ### 15. Crop doctor
 
@@ -352,20 +377,17 @@ verified boundary. Needs accounts and consent.
 
 ## What is most needed next
 
-Ranked 2026-11-08, after weather alerts (11) and prices (12), both live:
+Ranked 2026-11-10, after weather alerts (11), prices (12), accounts (13) and the message lanes (14), all live:
 
-1. **Farmer accounts and phone sign-in (13).** The biggest unlock: today
-   every plot sits in one workspace, so an alert has no one to go to.
-   Everything below except the crop doctor waits on it.
-2. **Alerts on the phone (14), live; keys next.** Farmers will not open
+1. **Alerts on the phone (14), live; keys next.** Farmers will not open
    an app every day to look for an alert; the lanes and the Messages page
    are in. Next: a Telegram bot and an SMTP account (free), then WhatsApp
-   and SMS once registered.
-3. **Crop doctor (15).** The question farmers ask most in season, and
-   independent of accounts, so it can start **in parallel with 13 now**.
-4. **Ledger by voice (16)**, with prices (12) giving profit per plot.
-5. **Offline and voice (17)** before field use at scale.
-6. **Soil Health Card from a photo (19)**: better soil means better
+   and SMS once registered. The same lanes then carry the phone sign-in
+   codes of 13.
+2. **Crop doctor (15).** The question farmers ask most in season.
+3. **Ledger by voice (16)**, with prices (12) giving profit per plot.
+4. **Offline and voice (17)** before field use at scale.
+5. **Soil Health Card from a photo (19)**: better soil means better
    recommendations; small once the model reads images for 15.
 
 Also needed, not a feature: an agronomist's review of the crop rule
@@ -398,13 +420,14 @@ in the *Cost* column and named in the PR that adds it.
 | Weather forecast | `weather.Source` | Open-Meteo, then MET Norway (`-weather`, tried in order) | the next in the list | Open-Meteo: **free for non-commercial use only** (under 10,000 a day), paid plan or self-hosting for commercial; MET Norway: free, CC BY 4.0, commercial use allowed with credit |
 | Mandi prices | `prices.Source` (on `feeds.Provider`) | Agmarknet on data.gov.in (`datagov`, all India, daily; needs `FARM_DATAGOV_KEY`), price files (`files`: Agmarknet, data.gov.in or CEDA CSVs in `FARM_PRICE_FILES`) | the next provider, then every price saved before | data.gov.in: **free**, key on registration; files: free; CEDA: free with registration, check its terms before commercial use |
 | Message lanes | `notify.Lane` | web push, Telegram, email (SMTP), WhatsApp (Meta Cloud API), SMS (MSG91 or Twilio), each on when its keys are set; `-notify-routes` composes them | the next lane in a chain; at a lane's cost cap, the next | Web push, Telegram: free; email: free tiers of most SMTP providers (flag the one chosen); WhatsApp: **paid** per template message, needs Meta business verification; SMS: **paid** per message, needs DLT registration |
+| Sign-in | `accounts.Lane` (redirect, secret or code lanes, `-signin`) | Google (`google`, OpenID Connect; needs `FARM_GOOGLE_CLIENT_ID` and `_SECRET`), password, invite codes, phone and email one-time codes | the other lanes turned on: a farmer can link several | Google, password, invite: **free**; phone and email codes: the sender's cost (14), only a log sender for now |
 | News and knowledge | to plan, on `feeds.Provider` as prices are (weather can move onto it) | | | |
 
 Paid things in the plans above, and the free way to start:
 
 | Planned | Paid option | Free way first |
 |---|---|---|
-| Sign-in (13) | SMS one-time codes (per message) | Sign in with Google, or a password, as the console does |
+| Phone sign-in codes (13) | SMS or WhatsApp one-time codes (per message) | Google, a password, or a partner's sign-in code (all live, free) |
 | Alerts on the phone (14) | WhatsApp Cloud API (per template message), SMS (per message), both capped by `-notify-caps` | Web push from the installed app, a Telegram bot, email on a free tier |
 | Crop doctor (15) | Claude with images | Gemini's free tier reads images |
 | Field watch (18) | Commercial imagery | Sentinel-2 (Copernicus, free) |

@@ -313,6 +313,8 @@ func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
 		writeJSON(w, http.StatusBadRequest, errorBody{Error: err.Error()})
 	case errors.Is(err, notify.ErrNotFound):
 		writeJSON(w, http.StatusNotFound, errorBody{Error: err.Error()})
+	case errors.Is(err, farm.ErrReadOnly):
+		writeJSON(w, http.StatusForbidden, errorBody{Error: err.Error()})
 	case errors.Is(err, farm.ErrNoGroups):
 		writeJSON(w, http.StatusServiceUnavailable, errorBody{Error: err.Error()})
 	case errors.Is(err, farm.ErrInvalid), errors.Is(err, agro.ErrInvalid), errors.Is(err, agro.ErrUnknown), errors.Is(err, planting.ErrInvalid):

@@ -44,6 +44,17 @@
 // false): /mcp/farm (plots and planning), /mcp/farm-map (surveys, map
 // questions, farm designs), /mcp/farm-research and /mcp/farm-handbook, so
 // an agentkit agent (or any MCP client) can use them.
+//
+// Sign-in is off unless -signin lists its lanes, in the order the app shows
+// them: google (FARM_GOOGLE_CLIENT_ID and FARM_GOOGLE_CLIENT_SECRET, a web
+// client whose redirect URI is <-public-url>/auth/google/callback),
+// password, invite (sign-in codes partners make), and phone and email
+// (one-time codes; until message lanes come, only with -code-sender log,
+// which writes the codes to the log, for trying it out). -signup names the
+// lanes through which a new person gets an account. With sign-in on, every
+// farmer has their own farms, with members; FARM_ADMIN_EMAILS and
+// FARM_PARTNER_EMAILS give those roles to whoever signs in with a verified
+// email in them. Accounts are kept in the -db file.
 package main
 
 import (
@@ -111,6 +122,7 @@ type config struct {
 	exaURL, parallelURL, weather                                  string
 	priceProviders, priceFiles, dataGovURL                        string
 	notifyRoutes, notifyCaps, publicURL                           string
+	signin, signup, codeSender                                    string
 	mcp, automations, unevaluated, notify                         bool
 	embedRate, workers                                            int
 }
@@ -147,7 +159,10 @@ func main() {
 	fs.BoolVar(&c.notify, "notify", env("FARM_NOTIFY", "true") == "true", "send automations' notices beyond the inbox, by the message lanes: web push, Telegram, email, WhatsApp, SMS, each on when its keys are set ($FARM_NOTIFY)")
 	fs.StringVar(&c.notifyRoutes, "notify-routes", env("FARM_NOTIFY_ROUTES", notify.DefaultRoutes), "which lanes each kind and severity of message goes by: key=tree; ... with fanout(...) and chain(...) ($FARM_NOTIFY_ROUTES)")
 	fs.StringVar(&c.notifyCaps, "notify-caps", env("FARM_NOTIFY_CAPS", DefaultCaps), "paid lanes' cost per message (paise) and caps a day and a month: lane:cost=14,day=300,month=5000;... ($FARM_NOTIFY_CAPS)")
-	fs.StringVar(&c.publicURL, "public-url", env("FARM_PUBLIC_URL", ""), "the app's public URL, for links in messages, email unsubscribe links and the lanes' webhooks at /hooks/ ($FARM_PUBLIC_URL)")
+	fs.StringVar(&c.publicURL, "public-url", env("FARM_PUBLIC_URL", ""), "the app's public URL as farmers' browsers reach it: links in messages, email unsubscribe links, the lanes' webhooks at /hooks/ and sign-in redirects (default http://<addr> for sign-in) ($FARM_PUBLIC_URL)")
+	fs.StringVar(&c.signin, "signin", env("FARM_SIGNIN", ""), `sign-in lanes, comma separated, in the order shown: google, password, invite, phone, email; empty for no sign-in ($FARM_SIGNIN)`)
+	fs.StringVar(&c.signup, "signup", env("FARM_SIGNUP", "google"), `lanes through which a new person gets an account, comma separated ($FARM_SIGNUP)`)
+	fs.StringVar(&c.codeSender, "code-sender", env("FARM_CODE_SENDER", ""), `how the phone and email lanes send one-time codes: "log" (to the server log, only for trying it out) ($FARM_CODE_SENDER)`)
 	fs.BoolVar(&c.mcp, "mcp", env("FARM_MCP", "true") == "true", "serve the assistant's tools over MCP at /mcp/ ($FARM_MCP)")
 	_ = fs.Parse(os.Args[1:])
 
@@ -403,7 +418,19 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/api/", farmapi.New(svc, aopts...))
+	// With sign-in, the API and the MCP server are behind it, each request
+	// scoped to its farm; without, they are open, as on a farmer's laptop.
+	// The lanes' webhooks stay outside: the providers call them.
+	protect := func(h http.Handler) http.Handler { return h }
+	gate, err := signIn(ctx, c, svc, log)
+	if err != nil {
+		return err
+	}
+	if gate != nil {
+		gate.Register(mux)
+		protect = gate.Protect
+	}
+	mux.Handle("/api/", protect(farmapi.New(svc, aopts...)))
 	for path, h := range hooks {
 		mux.Handle(path, h)
 	}
@@ -416,8 +443,8 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 		if err != nil {
 			return err
 		}
-		mux.Handle("/mcp/", srv)
-		mux.Handle("/mcp", srv)
+		mux.Handle("/mcp/", protect(srv))
+		mux.Handle("/mcp", protect(srv))
 	}
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "ok\n") })
 	mux.Handle("/", web.New(webdist.FS(), web.WithCSP(csp)).Handler())
@@ -428,7 +455,7 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 	}
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	log.Info("farm: serving", "url", "http://"+ln.Addr().String(), "db", c.db, "assistant", provider, "geocoder", c.geocoder,
-		"climate", c.climate, "weather", c.weather, "automations", c.automations, "overpass", c.overpass, "osm_api", c.osmAPI, "elevation", c.elevation, "elevation_backup", c.elevationBackup, "embedder", emb != nil, "prices", strings.Join(market.Providers(), ", then "), "notify", c.notify && astore != nil, "mcp", c.mcp)
+		"climate", c.climate, "weather", c.weather, "automations", c.automations, "overpass", c.overpass, "osm_api", c.osmAPI, "elevation", c.elevation, "elevation_backup", c.elevationBackup, "embedder", emb != nil, "prices", strings.Join(market.Providers(), ", then "), "notify", c.notify && astore != nil, "mcp", c.mcp, "signin", orOff(c.signin))
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
 	select {

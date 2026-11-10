@@ -50,6 +50,10 @@ func ModuleRules() Rules {
 			// Local users' password hashes (T061): argon2id, in this
 			// package only.
 			"pkg/auth/login": {"golang.org/x/crypto/argon2"},
+			// Accounts (T144): the OpenID Connect lane's code exchange and
+			// PKCE with x/oauth2; the SQLite store on the pure-Go driver.
+			"pkg/auth/accounts/oidc":   {"golang.org/x/oauth2"},
+			"pkg/auth/accounts/sqlite": {"modernc.org/sqlite"},
 			// Protected resource metadata (RFC 9728) on the SDK's handler
 			// and types; apart from auth/jwt so that only what serves MCP
 			// links the SDK.
@@ -92,6 +96,8 @@ func ModuleRules() Rules {
 			// The farm app's message recipients, outbox and deliveries
 			// (T143): the same driver, the same database file.
 			"apps/farm/notify/sqlite": {"modernc.org/sqlite"},
+			// The farm app's farms and members (T144): the same driver.
+			"apps/farm/members/sqlite": {"modernc.org/sqlite"},
 			// The memory context store on SQLite (T058): the same driver.
 			"pkg/memory/sqlite": {"modernc.org/sqlite"},
 			// The memory context store on Postgres (T122), on the store's pool.
@@ -233,6 +239,15 @@ func ModuleRules() Rules {
 			// Password sign-in and sessions (T061): the clock for session
 			// lifetimes and throttling; its tests the shared suite.
 			"pkg/auth/login": {"pkg/auth", "pkg/tenancy", "pkg/clock", "pkg/clock/clocktest", "pkg/auth/authtest"},
+			// Self-service accounts and sign-in lanes (T144): passwords
+			// hashed as pkg/auth/login hashes them; the OpenID Connect lane
+			// verifies ID tokens with pkg/auth/jwt (its tests with the fake
+			// provider) and takes Google's endpoints from the shared
+			// presets. No server, no store of agentkit's.
+			"pkg/auth/accounts": {
+				"pkg/auth/login", "pkg/clock", "pkg/clock/clocktest",
+				"pkg/auth/jwt", "pkg/auth/jwt/jwttest", "pkg/credentials/providers",
+			},
 			// The wire format, shared by the server and its clients: messages
 			// and usage, nothing else (E11).
 			"pkg/agentapi/wire": {"pkg/llm"},

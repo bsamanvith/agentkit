@@ -41,8 +41,6 @@ pending, so those lanes stay off until their keys exist. Design:
 
 ## Out of scope
 
-- The web settings page and the service worker (a follow-up PR in this
-  task).
 - Recipients as farmer accounts (T144 sign-in); escalation when a lane took
   a message but did not deliver it in time; MSG91 delivery reports.
 
@@ -66,5 +64,6 @@ pending, so those lanes stay off until their keys exist. Design:
 - [x] Notices become one message per person who hears about the plot, once — test: `watch_test.TestNoticesBecomeMessages`
 - [x] The API: lanes and spend, people, consent, push subscriptions, Telegram links, tests by a lane or the tree, the outbox, unsubscribe (a page on GET, only POST unsubscribes, forged tokens refused); 503 when not configured — test: `farmapi_test.TestNotifyRoutes`, `TestNotifyNotConfigured`
 - [x] The farm binary starts with every paid lane off and says why, sends a test through the log lane — manual run in a cloud session (PR description)
-- [ ] The web settings page and the service worker — follow-up PR
+- [x] The Messages page lists the lanes (free or paid, on or off and why, spend against the caps) and the routes in words; adds a person with an Indian number made E.164, their plots and the lanes they agreed to; turns a lane on or off per person only where they have an address; shows a STOP; links Telegram; sends a test and says what each lane did — test: `messages.test.tsx`
+- [x] The service worker shows a push once per message, keeps urgent ones on screen, survives a payload that is not JSON, and opens the plot (never another site) when tapped; a `/?farm=` link opens that plot — test: `sw.test.ts`; manual run in Chromium (the page, `/?farm=`, phone width); a real push subscription cannot be made in headless Chromium (no push service), so push on a phone is still to try
 - [ ] Live sends on Telegram, email, WhatsApp and SMS — needs a bot token, an SMTP account, Meta verification and DLT registration

@@ -110,6 +110,8 @@ export interface Config {
   automations?: boolean;
   prices?: boolean;
   roadmap?: boolean;
+  /** Message lanes (push, Telegram, email, WhatsApp, SMS) are set up. */
+  messages?: boolean;
   country: string;
 }
 
@@ -718,4 +720,96 @@ export interface DistributionResult {
   plants: PlantMeasure[];
   effects: Effect[];
   area_m2: number;
+}
+
+/** A message lane's daily and monthly bounds (package notify); costs in paise. */
+export interface LaneCap {
+  day?: number;
+  month?: number;
+  day_cost?: number;
+  month_cost?: number;
+}
+
+/** A message lane and what it spent (GET /api/notify). */
+export interface Lane {
+  name: string;
+  /** What the lane sends to: none, phone, email, telegram or push. */
+  address: "none" | "phone" | "email" | "telegram" | "push";
+  paid: boolean;
+  note?: string;
+  on: boolean;
+  /** Why the lane is off. */
+  why?: string;
+  /** One message, in paise. */
+  cost: number;
+  cap: LaneCap;
+  today_count: number;
+  today_cost: number;
+  month_count: number;
+  month_cost: number;
+}
+
+export interface NotifyStatus {
+  lanes: Lane[];
+  /** The tree messages go through, such as "urgent=fanout(push,telegram)". */
+  routes: string;
+  /** The server's VAPID public key, for the browser's push subscription. */
+  push_key?: string;
+  telegram_bot?: string;
+}
+
+export interface Consent {
+  opted_in: boolean;
+  at: string;
+  /** settings, push, sms, whatsapp, telegram, email, lane. */
+  source: string;
+}
+
+export interface PushSubscriptionJSON {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+}
+
+/** A person who gets messages (package notify). */
+export interface Recipient {
+  id: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  telegram?: string;
+  push?: PushSubscriptionJSON[];
+  lang?: string;
+  utc_offset?: number;
+  quiet?: { start: number; end: number };
+  /** The plots whose alerts they get; none is every plot. */
+  farms?: string[];
+  consent?: Record<string, Consent>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RecipientDraft {
+  name: string;
+  phone?: string;
+  email?: string;
+  lang?: string;
+  farms?: string[];
+  /** Lanes the person agreed to, on create only. */
+  consent?: string[];
+}
+
+/** What one lane did with a message. */
+export interface Receipt {
+  lane: string;
+  status: string;
+  provider_id?: string;
+  cost?: number;
+  error?: string;
+  repeat?: boolean;
+}
+
+export interface TestResult {
+  sent: boolean;
+  receipts: Receipt[];
+  error?: string;
 }

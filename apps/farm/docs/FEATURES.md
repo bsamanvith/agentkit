@@ -27,7 +27,7 @@ Status words: **live** (merged on main, a farmer can use it), **building**
 | 11 | [Weather alerts and weekly crop work](#11-weather-alerts-and-weekly-crop-work) | live | grow | T139 |
 | 12 | [Crop prices: estimates and mandi prices](#12-crop-prices-estimates-and-mandi-prices) | live | sell | T140 |
 | 13 | [Farmer accounts and phone sign-in](#13-farmer-accounts-and-phone-sign-in) | planned | all | |
-| 14 | [Alerts on the phone: push, Telegram, email, WhatsApp, SMS](#14-alerts-on-the-phone-push-telegram-email-whatsapp-sms) | building | grow | T143 |
+| 14 | [Alerts on the phone: push, Telegram, email, WhatsApp, SMS](#14-alerts-on-the-phone-push-telegram-email-whatsapp-sms) | live | grow | T143 |
 | 15 | [Crop doctor](#15-crop-doctor) | planned | grow | |
 | 16 | [Ledger by voice](#16-ledger-by-voice) | planned | money | |
 | 17 | [Offline and voice in the field](#17-offline-and-voice-in-the-field) | planned | all | |
@@ -255,14 +255,12 @@ done and includes the farmer's own tasks.
 `get_roadmap`, `record_work`. Web: `roadmap.tsx`, `roadmap-data.ts` (the
 offline queue). Design: [ROADMAP.md](ROADMAP.md).
 
-## Building now
-
 ### 14. Alerts on the phone: push, Telegram, email, WhatsApp, SMS
 
 **The farmer** gets the plot's alerts where they already look: a
 notification from the installed app, a Telegram message, an email, and,
-once the business is registered, WhatsApp with SMS as the fallback. In
-settings they add the people who should hear (themselves, a son, the FPO
+once the business is registered, WhatsApp with SMS as the fallback. On
+the Messages page (from Alerts) they add the people who should hear (themselves, a son, the FPO
 field worker), each with the plots they care about, tick the ways they
 agree to be reached, link Telegram with one tap, and send a test. STOP on
 WhatsApp, SMS or Telegram (or ఆపు) stops that way at once; nothing comes
@@ -279,10 +277,17 @@ is skipped, so adding keys later switches it on.
 **Behind it:** `apps/farm/notify` (lanes, guard, fan-out, chain, router,
 the outbox), lanes `webpush`, `telegram`, `email`, `whatsapp`, `sms`
 (MSG91, Twilio), `notify/sqlite`; `watch.Messages`; routes
-`/api/notify/*`, webhooks `/hooks/*`. **Still to come:** the settings page
-and the service worker in the web app; WhatsApp and SMS need Meta's
-business verification and DLT registration first. Design:
-[MESSAGES.md](MESSAGES.md).
+`/api/notify/*`, webhooks `/hooks/*`; in the web app the Messages page
+(`messages.tsx`, from Alerts, "Alerts on phones") and the service worker
+(`public/sw.js`), which shows a push and opens its plot (`/?farm=`).
+**Still to come:** a test on a real phone with each lane's keys (push
+needs the app on https); WhatsApp and SMS need Meta's business
+verification and DLT registration first; escalating along a chain when a
+message is sent but not delivered. Design: [MESSAGES.md](MESSAGES.md).
+
+## Building now
+
+Nothing right now.
 
 ## Planned
 
@@ -352,9 +357,10 @@ Ranked 2026-11-08, after weather alerts (11) and prices (12), both live:
 1. **Farmer accounts and phone sign-in (13).** The biggest unlock: today
    every plot sits in one workspace, so an alert has no one to go to.
    Everything below except the crop doctor waits on it.
-2. **Alerts on the phone (14), building.** Farmers will not open an app
-   every day to look for an alert; the lanes are in, the settings page is
-   next, then WhatsApp and SMS once registered.
+2. **Alerts on the phone (14), live; keys next.** Farmers will not open
+   an app every day to look for an alert; the lanes and the Messages page
+   are in. Next: a Telegram bot and an SMTP account (free), then WhatsApp
+   and SMS once registered.
 3. **Crop doctor (15).** The question farmers ask most in season, and
    independent of accounts, so it can start **in parallel with 13 now**.
 4. **Ledger by voice (16)**, with prices (12) giving profit per plot.

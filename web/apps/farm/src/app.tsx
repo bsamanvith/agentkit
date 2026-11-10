@@ -47,6 +47,7 @@ const ResearchSettings = lazy(() => import("./research").then((m) => ({ default:
 const Assistant = lazy(() => import("./assistant").then((m) => ({ default: m.Assistant })));
 const Care = lazy(() => import("./alerts").then((m) => ({ default: m.Care })));
 const AlertsPage = lazy(() => import("./alerts").then((m) => ({ default: m.AlertsPage })));
+const MessagesPage = lazy(() => import("./messages").then((m) => ({ default: m.MessagesPage })));
 
 const loading = <p className="text-sm text-muted-foreground">Loading…</p>;
 
@@ -56,7 +57,8 @@ type View =
   | { kind: "farm"; id: string }
   | { kind: "group"; id: string }
   | { kind: "group-form"; group?: Group }
-  | { kind: "alerts" };
+  | { kind: "alerts" }
+  | { kind: "messages" };
 
 function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -78,7 +80,12 @@ export function App() {
   const [farms, setFarms] = useState<Farm[]>();
   const [groups, setGroups] = useState<Group[]>([]);
   const [config, setConfig] = useState<Config>();
-  const [view, setView] = useState<View>({ kind: "home" });
+  // A push or a message links to a plot as /?farm=<id> (the service
+  // worker opens it).
+  const [view, setView] = useState<View>(() => {
+    const id = new URLSearchParams(window.location.search).get("farm");
+    return id ? { kind: "farm", id } : { kind: "home" };
+  });
   const [chat, setChat] = useState(false);
   const [drawer, setDrawer] = useState(false);
   const [webSettings, setWebSettings] = useState(false);
@@ -104,11 +111,14 @@ export function App() {
   }, [load]);
 
   const go = (v: View) => {
+    if (window.location.search) window.history.replaceState(null, "", "/");
     setView(v);
     setDrawer(false);
     document.getElementById("main")?.scrollTo({ top: 0 });
   };
   const current = view.kind === "farm" ? farms?.find((f) => f.id === view.id) : undefined;
+  // A link to a plot that is gone (or not this person's) shows the overview.
+  const missing = view.kind === "farm" && farms !== undefined && !current;
   const group = view.kind === "group" ? groups.find((g) => g.id === view.id) : undefined;
   const setGroup = (g: Group) =>
     setGroups((gs) => (gs.some((x) => x.id === g.id) ? gs.map((x) => (x.id === g.id ? g : x)) : [...gs, g]));
@@ -140,7 +150,7 @@ export function App() {
           <button className="flex items-center gap-2 font-semibold lg:hidden" onClick={() => go({ kind: "home" })}>
             <Sprout className="size-5 text-ak-ok" aria-hidden="true" /> My land
           </button>
-          <Crumbs view={view} farms={farms ?? []} groups={groups} onGo={go} />
+          <Crumbs view={missing ? { kind: "home" } : view} farms={farms ?? []} groups={groups} onGo={go} />
           <div className="ml-auto flex gap-1.5">
             {config?.automations && (
               <Button
@@ -175,7 +185,7 @@ export function App() {
                   {error}
                 </p>
               )}
-              {view.kind === "home" && (
+              {(view.kind === "home" || missing) && (
                 <Overview
                   farms={farms}
                   groups={groups}
@@ -222,7 +232,14 @@ export function App() {
                   />
                 </>
               )}
-              {view.kind === "alerts" && <AlertsPage farms={farms ?? []} onRead={count} />}
+              {view.kind === "alerts" && (
+                <AlertsPage
+                  farms={farms ?? []}
+                  onRead={count}
+                  onMessages={config?.messages ? () => go({ kind: "messages" }) : undefined}
+                />
+              )}
+              {view.kind === "messages" && <MessagesPage farms={farms ?? []} />}
               {view.kind === "group" && group && (
                 <GroupPage
                   key={group.id}
@@ -307,6 +324,7 @@ function Crumbs({
   if (view.kind === "group-form") items.push({ label: view.group ? view.group.name : "New group" });
   if (view.kind === "edit") items.push({ label: view.farm ? view.farm.name : "New plot" });
   if (view.kind === "alerts") items.push({ label: "Alerts" });
+  if (view.kind === "messages") items.push({ label: "Messages" });
   if (items.length === 1) return null;
   return (
     <nav aria-label="Where you are" className="hidden min-w-0 items-center gap-1 text-sm sm:flex">

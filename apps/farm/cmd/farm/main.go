@@ -80,6 +80,8 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/agro"
 	"github.com/bsamanvith/agentkit/apps/farm/automation"
 	autosqlite "github.com/bsamanvith/agentkit/apps/farm/automation/sqlite"
+	"github.com/bsamanvith/agentkit/apps/farm/cycle"
+	cyclesqlite "github.com/bsamanvith/agentkit/apps/farm/cycle/sqlite"
 	"github.com/bsamanvith/agentkit/apps/farm/elevation"
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
 	"github.com/bsamanvith/agentkit/apps/farm/farm/sqlite"
@@ -333,6 +335,15 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 	defer wstore.Close()
 	roadmap := work.New(plan, wstore)
 	watcher.UseRoadmap(roadmap)
+	cstore, err := cyclesqlite.Open(ctx, c.db)
+	if err != nil {
+		return err
+	}
+	defer cstore.Close()
+	// The crop cycles read real sowings from the roadmap and record typed
+	// ones on it. Addons (the shopping list and sprays, harvest-month
+	// advice) plug in here with cycle.WithAddons when they land.
+	cycles := cycle.New(plan, cstore, cycle.WithRoadmap(roadmap))
 	var astore *autosqlite.Store
 	if c.automations {
 		if astore, err = autosqlite.Open(ctx, c.db); err != nil {
@@ -351,13 +362,13 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 	if astore != nil {
 		alerts = astore
 	}
-	toolOpts = append(toolOpts, farmagent.WithWatch(watcher, alerts), farmagent.WithRoadmap(roadmap))
+	toolOpts = append(toolOpts, farmagent.WithWatch(watcher, alerts), farmagent.WithRoadmap(roadmap), farmagent.WithCycles(cycles))
 	agentOpts := append(slices.Clone(toolOpts), farmagent.WithSkills(skills))
 
 	aopts := []farmapi.Option{
 		farmapi.WithCountry(c.country), farmapi.WithLogger(log), farmapi.WithPlanner(plan),
 		farmapi.WithSurveyor(survey), farmapi.WithResearch(webResearch), farmapi.WithWatch(watcher), farmapi.WithPrices(market),
-		farmapi.WithRoadmap(roadmap),
+		farmapi.WithRoadmap(roadmap), farmapi.WithCycles(cycles),
 	}
 	model, provider, err := buildModel(c, log)
 	if err != nil {

@@ -36,6 +36,7 @@ Status words: **live** (merged on main, a farmer can use it), **building**
 | 20 | [Schemes, insurance and paperwork](#20-schemes-insurance-and-paperwork) | idea | plan, money | |
 | 21 | [For FPOs, dealers and lenders](#21-for-fpos-dealers-and-lenders) | idea | all | |
 | 22 | [Season roadmap](#22-season-roadmap) | live | grow | T141 |
+| 23 | [Crop cycles](#23-crop-cycles) | building | plan, grow | T145 |
 
 ## Live
 
@@ -347,7 +348,38 @@ template for codes and MSG91 a DLT OTP template. With no lane keys yet,
 
 ## Building now
 
-Nothing right now.
+### 23. Crop cycles
+
+**The farmer** opens a plot's *Cycles* tab and sees this cycle first:
+the crop (ours, or theirs), when to sow, when it comes off and this
+week's work. One tap takes our suggestion; *My own crop* changes the
+crop or the dates; *I already sowed* records the real day. Organic or
+conventional is one tap. One more tap shows the next two cycles, our
+suggestion beside their own, with a strip of the months. None of it is
+asked for: a farmer who only says the crop still gets the dates and the
+week's work.
+
+**The app** works out the suggested line by rules: each cycle starts
+after the one before comes off plus 15 days to prepare the land, and is
+chosen with that crop as the last one (not the same family twice, a
+legume after a cereal), with the crop recommender. The farmer's own
+cycle wins where there is one; the cycles after it are suggested from
+it, so changing a crop or a date moves them. Their own later cycles are
+never changed, only checked: "Cotton now ends 2 January 2027; your
+Groundnut sowing of 1 October 2026 is before that." A real sowing day
+(the *Sown* tick of the season roadmap, or typed here) moves what
+follows. The current cycle is the saved season plan, so the roadmap,
+weather advice and prices work as before. Three cycles at most; the
+later ones can be turned off; *Harvested: start the next cycle* moves
+the line on. With the climate down, nothing is suggested and their own
+cycles still show.
+
+**Behind it:** `apps/farm/cycle` (the rules in `Compute`, `Service`,
+`Store` with `cycletest.RunStore`, `cycle/sqlite`, `Addon` for the
+shopping list, sprays and sell timing to come); routes
+`/api/farms/{id}/cycles*`; tools `get_cycles`, `set_cycle`. Web:
+`cycles.tsx`, `cycles-data.ts` (a lazy chunk). Design:
+[CYCLES.md](CYCLES.md).
 
 ## Planned
 

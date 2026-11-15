@@ -591,8 +591,9 @@ with its source and the layer it came from. Overlays are JSON files, the
 built-in ones plus a folder (`-regions`, `FARM_REGIONS`), checked at
 startup: an unknown key, an unknown crop or a banned product stops the
 start, naming the file and the key. Built in today: Andhra Pradesh (its
-kharif 2026 crop insurance), YSR Kadapa and Anantapur (local sowing
-windows from the ICAR-CRIDA district contingency plans). A place with no
+kharif 2026 crop insurance), YSR Kadapa, Anantapur and Sri Sathya Sai (local
+sowing windows from the ICAR-CRIDA district contingency plans; Sri
+Sathya Sai, split from Anantapur in 2022, uses the undivided plan). A place with no
 overlay gets the base, unchanged.
 
 Paid things in the plans above, and the free way to start:

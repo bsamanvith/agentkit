@@ -33,7 +33,8 @@ constants in code, and the app had no notion of region. Design:
 - Local sowing windows on a crop (`agro.Crop.Windows`) and switching a
   crop off (`agro.Crop.Off`).
 - Embedded overlays for Andhra Pradesh, YSR Kadapa and Anantapur with
-  sourced values only.
+  sourced values only. Sri Sathya Sai added 2026-11-16 (owner's third
+  pilot district), from the undivided Ananthapuramu plan.
 
 ## Out of scope
 

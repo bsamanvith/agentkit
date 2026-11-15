@@ -22,7 +22,8 @@ overrides nothing behaves exactly as the app did before packs.
 
 ```
 base  ─▶  IN (none yet)  ─▶  Andhra Pradesh  ─▶  YSR Kadapa
-                                         └──▶  Anantapur
+                                         ├──▶  Anantapur
+                                         └──▶  Sri Sathya Sai
 ```
 
 ## What an overlay may change
@@ -155,6 +156,12 @@ Only values read on a source, each with its reference:
   16 July to 15 August and 1 to 30 December; bengal gram rainfed rabi
   16 October to 15 November; red gram rainfed kharif 16 June to 15
   August.
+- **Sri Sathya Sai** (`in-andhra-pradesh-sri-sathya-sai.json`), carved
+  out of Anantapur in April 2022 (headquarters Puttaparthi). No plan has
+  been published for the new district, so it carries the same windows
+  from the undivided Ananthapuramu plan, which covered this land. It is
+  a file of its own so the district's values can part from Anantapur's
+  when a local source exists.
 
 The base carries one scheme from the PMFBY operational guidelines
 (2020): kharif enrolment cut-off normally not after 15 July, rabi 15

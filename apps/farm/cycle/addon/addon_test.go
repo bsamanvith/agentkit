@@ -277,6 +277,96 @@ func TestRoadmapCarriesTheSchedule(t *testing.T) {
 	if got, ok := r.Task(task.ID); ok && got.State != work.Done {
 		t.Errorf("organic: %s lost its tick", task.ID)
 	}
+
+	// A tick stays with what was done. Organic maize: the first
+	// jeevamrutham is ticked. Conventional: the urea feeds are open and
+	// nothing done names another's products. Organic again: that
+	// jeevamrutham is still done.
+	w = setup(t, true)
+	if _, err := w.cycles.Set(ctx, w.plot, 0, cycle.Change{Plan: &agro.Plan{Zones: []agro.Zone{{Crop: "maize", Sow: "2026-06-20"}}}, Method: cycle.Organic}); err != nil {
+		t.Fatal(err)
+	}
+	roadmap := func() work.Roadmap {
+		t.Helper()
+		r, err := w.work.Roadmap(ctx, w.plot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	var jee work.Task
+	for _, k := range roadmap().Tasks {
+		if strings.HasPrefix(k.Title, "Jeevamrutham") {
+			jee = k
+			break
+		}
+	}
+	if jee.ID == "" {
+		t.Fatal("organic maize: no jeevamrutham on the roadmap")
+	}
+	if _, _, err := w.work.Record(ctx, w.plot, []work.Event{{ID: "jee", Task: jee.ID, Kind: work.Done, Day: "2026-06-01"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.cycles.Set(ctx, w.plot, 0, cycle.Change{Method: cycle.Conventional}); err != nil {
+		t.Fatal(err)
+	}
+	urea := 0
+	for _, k := range roadmap().Tasks {
+		if k.State == work.Done && (k.Title != jee.Title || k.Detail != jee.Detail) {
+			t.Errorf("conventional: %s (%s) is done; only the jeevamrutham was", k.ID, k.Title)
+		}
+		if strings.Contains(k.Detail, "Urea") && k.Kind == calendar.Fertilise {
+			urea++
+		}
+	}
+	if urea == 0 {
+		t.Error("conventional maize: no urea feed on the roadmap")
+	}
+	if _, err := w.cycles.Set(ctx, w.plot, 0, cycle.Change{Method: cycle.Organic}); err != nil {
+		t.Fatal(err)
+	}
+	if k, ok := roadmap().Task(jee.ID); !ok || k.State != work.Done || k.Title != jee.Title {
+		t.Errorf("organic again: %+v, %v; want the jeevamrutham, done", k, ok)
+	}
+}
+
+// Every entry of the inputs schedule is on the roadmap once, by its
+// source's ID: on its calendar task, taking a calendar feeding's place,
+// or as a task of its own; none is lost or folded into another's.
+func TestEveryScheduleEntryOnTheRoadmapOnce(t *testing.T) {
+	t.Parallel()
+	for _, crop := range []string{"maize", "rice", "groundnut", "cotton", "chilli", "pigeon_pea", "tomato", "mango", "banana", "sugarcane"} {
+		for _, m := range []cycle.Method{cycle.Organic, cycle.Conventional} {
+			t.Run(crop+"/"+string(m), func(t *testing.T) {
+				t.Parallel()
+				w := setup(t, true)
+				if _, err := w.cycles.Set(ctx, w.plot, 0, cycle.Change{Plan: &agro.Plan{Zones: []agro.Zone{{Crop: crop, Sow: "2026-06-20"}}}, Method: m}); err != nil {
+					t.Fatal(err)
+				}
+				r, err := w.work.Roadmap(ctx, w.plot)
+				if err != nil {
+					t.Fatal(err)
+				}
+				f, err := w.svc.Get(ctx, w.plot)
+				if err != nil {
+					t.Fatal(err)
+				}
+				entries, _, err := addon.NewRoadmap(w.book, w.lib, w.store).Tasks(ctx, f, r.Zones)
+				if err != nil || len(entries) == 0 {
+					t.Fatalf("schedule: %d entries, %v", len(entries), err)
+				}
+				on := map[string]int{}
+				for _, k := range r.Tasks {
+					on[k.ID]++
+				}
+				for _, e := range entries {
+					if on[e.ID] != 1 {
+						t.Errorf("%s (%s) is on the roadmap %d times; want once", e.ID, e.Title, on[e.ID])
+					}
+				}
+			})
+		}
+	}
 }
 
 // syntheticNames are the names of the book's synthetic products as they

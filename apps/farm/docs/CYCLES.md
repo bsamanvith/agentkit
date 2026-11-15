@@ -168,9 +168,13 @@ joined (branch `wt-join`, 2026-11-15):
   schedule of the current cycle (its method from the cycle store): an
   entry on a calendar task's key enriches that task (a fertilising one
   takes the plan's products and quantities), a feeding within 21 days of
-  a calendar feeding becomes that task at the sourced day (no twins), the
-  rest (jeevamrutham, preventive sprays) are tasks of their own with
-  calendar-style keys, so a moved sowing keeps their ticks.
+  a calendar feeding takes that task's place at the sourced day (no
+  twins) under its own ID, so a tick stays with what was done: the
+  jeevamrutham ticked on the organic plan is not the urea feed that takes
+  the same place on the conventional one (that one is open), and is
+  still done when the farmer switches back. The rest (jeevamrutham,
+  preventive sprays) are tasks of their own with calendar-style keys, so
+  a moved sowing keeps their ticks.
 - **The assistant** answers "what should I buy" from `get_inputs`
   (numbers from the plan, never the model); `get_cycles` carries the
   timing advice and points to `get_inputs`.

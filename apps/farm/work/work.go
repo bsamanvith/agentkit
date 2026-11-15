@@ -332,8 +332,12 @@ const NearFeed = 21
 // already there enriches it rather than standing beside it: a fertilising
 // task takes its detail (the plan's own products and quantities say more
 // than the calendar's general rule), any other gets it added. A feeding
-// near a calendar feeding of its crop (NearFeed) becomes that one. The
-// rest are added as they are, in the phase of their kind.
+// near a calendar feeding of its crop (NearFeed) takes that one's place,
+// under its own ID: what the farmer ticks there is that feeding (the
+// jeevamrutham of the organic plan), so a tick never passes to another
+// feeding that takes the same place under another method (the urea of
+// the conventional one). The rest are added as they are, in the phase of
+// their kind.
 func merge(tasks, more []Task) []Task {
 	at := map[string]int{}
 	for i, t := range tasks {
@@ -351,8 +355,8 @@ func merge(tasks, more []Task) []Task {
 		}
 	}
 	// First the tasks the calendar keys alike, then a feeding near a
-	// calendar one not yet taken: it becomes that task (its ID, so a tick
-	// stays), at the source's day and with its title, rather than a twin.
+	// calendar one not yet taken: it takes that task's place (no twin),
+	// with the source's ID, day and title.
 	taken := map[int]bool{}
 	var rest []Task
 	for _, m := range more {
@@ -370,7 +374,9 @@ func merge(tasks, more []Task) []Task {
 		if i := nearFeed(tasks, taken, m); i >= 0 {
 			t := &tasks[i]
 			enrich(t, m)
-			t.Title, t.Date, t.DAS, t.Stage = m.Title, m.Date, m.DAS, cmp.Or(m.Stage, t.Stage)
+			delete(at, t.ID)
+			t.ID, t.Title, t.Date, t.DAS, t.Stage = m.ID, m.Title, m.Date, m.DAS, cmp.Or(m.Stage, t.Stage)
+			at[t.ID] = i
 			taken[i] = true
 			continue
 		}

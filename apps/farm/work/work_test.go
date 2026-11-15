@@ -496,7 +496,8 @@ func (s source) Tasks(context.Context, farm.Farm, []work.Zone) ([]work.Task, []s
 
 // Tasks from a source: one with a calendar task's ID enriches it (a
 // fertilising task takes its detail, another gets it added), and a
-// feeding near a calendar feeding becomes it, never a twin; the rest are added in their kind's phase, and are ticked, listed
+// feeding near a calendar feeding takes its place under the source's ID
+// (a tick stays with what was done), never a twin; the rest are added in their kind's phase, and are ticked, listed
 // as due and counted like the calendar's. A failing source is a note.
 func TestTaskSources(t *testing.T) {
 	t.Parallel()
@@ -526,8 +527,11 @@ func TestTaskSources(t *testing.T) {
 	if len(r.Tasks) != len(plain.Tasks)+2 {
 		t.Fatalf("%d tasks, want the calendar's %d and two more", len(r.Tasks), len(plain.Tasks))
 	}
-	if k := task(t, r, n2.ID); k.Date != near.Date || k.Detail != near.Detail || k.Title != near.Title {
-		t.Errorf("near feeding: %+v; want the calendar's task at the source's day, with its detail", k)
+	if k := task(t, r, near.ID); k.Date != near.Date || k.Detail != near.Detail || k.Title != near.Title || k.Phase != n2.Phase {
+		t.Errorf("near feeding: %+v; want it in the calendar task's place, at the source's day, with its detail", k)
+	}
+	if _, ok := r.Task(n2.ID); ok {
+		t.Errorf("near feeding: the calendar's %s is still there beside it", n2.ID)
 	}
 	if k := task(t, r, far.ID); k.Date != far.Date || k.Title != far.Title {
 		t.Errorf("far feeding: %+v; want it added", k)

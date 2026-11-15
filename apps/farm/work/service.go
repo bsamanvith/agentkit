@@ -40,7 +40,8 @@ type Planner interface {
 // ([TaskID] with a key that stays the same when the sowing moves). A task
 // whose ID is a calendar task's enriches that task instead of standing
 // beside it, so events on it keep working and nothing is listed twice;
-// the others are added. Their events are recorded like the calendar's.
+// a feeding near a calendar feeding takes its place under the feeding's
+// own ID (see merge); the others are added. Their events are recorded like the calendar's.
 // Notes go on the roadmap with them (where the values come from).
 type TaskSource interface {
 	Tasks(ctx context.Context, f farm.Farm, zones []Zone) (tasks []Task, notes []string, err error)

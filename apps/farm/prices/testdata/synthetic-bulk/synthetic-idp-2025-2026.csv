@@ -1,0 +1,2 @@
+id,date,state_name,state_code,district_name,district_code,market_center_name,market_center_code,category,year_of_establishment,latitude,longitude,commodity_name,commodity_id,variety,grade,arrival_quantity,arrival_units,min_price,max_price,modal_price,price_unit
+5,2025-10-27,Andhra Pradesh,28,Y.S.R.,999,Synthetic Apmc,2,Primary Market Yard,2020,14.4,78.8,Groundnut,10,Balli/Habbu,Faq,10.0,Metric Tonnes,6500.0,7000.0,6783.0,Rs./Quintal

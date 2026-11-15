@@ -151,15 +151,25 @@ func (f *FileSource) All(ctx context.Context) ([]Quote, FileStats, error) {
 	return out, stats, nil
 }
 
-// columns are the header names each field goes by, folded.
+// columns are the header names each field goes by, folded. Besides
+// Agmarknet's report export ("Market Name", "Reported Date", "Modal Price
+// (Rs./Quintal)") and data.gov.in's CSV (arrival_date, modal_price), they
+// read India Data Portal's Agmarknet files (report_date, state_name,
+// district_name, market_center, commodity_name, variety, min_price,
+// max_price, modal_price; the 2025-26 files say date and
+// market_center_name; ids, codes, coordinates and arrivals are not used)
+// and CEDA's Agri Market downloads (state_name, district_name, market_name,
+// commodity_name, date, min_price, max_price, modal_price, as its README
+// describes them; its Census 2011 names are not used, so the district is
+// Agmarknet's).
 var columns = map[string][]string{
 	"state":     {"state", "statename"},
 	"district":  {"district", "districtname"},
-	"market":    {"market", "marketname", "apmc", "mandi"},
+	"market":    {"market", "marketname", "marketcenter", "marketcentername", "apmc", "mandi"},
 	"commodity": {"commodity", "commodityname", "crop"},
 	"variety":   {"variety"},
 	"grade":     {"grade"},
-	"date":      {"date", "arrivaldate", "pricedate", "reporteddate", "tradedate"},
+	"date":      {"date", "arrivaldate", "pricedate", "reporteddate", "reportdate", "tradedate"},
 	"min":       {"min", "minprice", "minpricersquintal", "minimumprice"},
 	"max":       {"max", "maxprice", "maxpricersquintal", "maximumprice"},
 	"modal":     {"modal", "modalprice", "modalpricersquintal"},
@@ -171,13 +181,27 @@ func readPriceFile(path, root string) ([]Quote, int, error) {
 		return nil, 0, err
 	}
 	defer fh.Close()
-	r := csv.NewReader(io.LimitReader(fh, MaxFileBytes))
-	r.FieldsPerRecord = -1
-	r.LazyQuotes = true
-	r.TrimLeadingSpace = true
-	head, err := r.Read()
+	var out []Quote
+	skipped, err := scanPrices(io.LimitReader(fh, MaxFileBytes), stateFromPath(path, root), func(x Quote) error {
+		out = append(out, x)
+		return nil
+	})
+	return out, skipped, err
+}
+
+// scanPrices reads a price file's rows from r, calling each with every
+// valid quote, in file order. state is the state of a file without a state
+// column. It returns how many rows did not read; an error from each stops
+// it.
+func scanPrices(r io.Reader, state string, each func(Quote) error) (int, error) {
+	cr := csv.NewReader(r)
+	cr.FieldsPerRecord = -1
+	cr.LazyQuotes = true
+	cr.TrimLeadingSpace = true
+	cr.ReuseRecord = true
+	head, err := cr.Read()
 	if err != nil {
-		return nil, 0, fmt.Errorf("no header: %w", err)
+		return 0, fmt.Errorf("no header: %w", err)
 	}
 	col := map[string]int{}
 	for i, h := range head {
@@ -190,12 +214,11 @@ func readPriceFile(path, root string) ([]Quote, int, error) {
 	}
 	for _, need := range []string{"market", "commodity", "date", "modal"} {
 		if _, ok := col[need]; !ok {
-			return nil, 0, fmt.Errorf("no %s column in the header", need)
+			return 0, fmt.Errorf("no %s column in the header", need)
 		}
 	}
-	state := ""
-	if _, ok := col["state"]; !ok {
-		state = stateFromPath(path, root)
+	if _, ok := col["state"]; ok {
+		state = ""
 	}
 	get := func(rec []string, field string) string {
 		i, ok := col[field]
@@ -208,10 +231,9 @@ func readPriceFile(path, root string) ([]Quote, int, error) {
 		v, _ := strconv.ParseFloat(strings.ReplaceAll(get(rec, field), ",", ""), 64)
 		return v
 	}
-	var out []Quote
 	skipped := 0
 	for {
-		rec, err := r.Read()
+		rec, err := cr.Read()
 		if errors.Is(err, io.EOF) {
 			break
 		}
@@ -220,7 +242,7 @@ func readPriceFile(path, root string) ([]Quote, int, error) {
 			if _, ok := errors.AsType[*csv.ParseError](err); ok {
 				continue
 			}
-			return out, skipped, err
+			return skipped, err
 		}
 		day, err := ParseDay(get(rec, "date"))
 		if err != nil {
@@ -239,9 +261,61 @@ func readPriceFile(path, root string) ([]Quote, int, error) {
 			skipped++
 			continue
 		}
-		out = append(out, x)
+		if err := each(x); err != nil {
+			return skipped, err
+		}
 	}
-	return out, skipped, nil
+	return skipped, nil
+}
+
+// ScanFiles reads every price file (.csv) in dir and its folders, of any
+// size, and calls each with every valid quote, file by file. It is for bulk
+// history (years of India Data Portal or CEDA exports, gigabytes) that a
+// caller summarises as it reads instead of keeping, as the backtest does;
+// [Files] keeps what it reads and caps each file at [MaxFileBytes]. An
+// error from each, or ctx ending, stops it.
+func ScanFiles(ctx context.Context, dir string, each func(Quote) error) (FileStats, error) {
+	var stats FileStats
+	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.EqualFold(filepath.Ext(p), ".csv") {
+			return nil
+		}
+		fh, err := os.Open(p)
+		if err != nil {
+			return err
+		}
+		defer fh.Close()
+		stats.Files++
+		n := 0
+		var stop error
+		skipped, err := scanPrices(fh, stateFromPath(p, dir), func(x Quote) error {
+			n++
+			if n%4096 == 0 {
+				stop = ctx.Err()
+			}
+			if stop == nil {
+				stop = each(x)
+			}
+			return stop
+		})
+		stats.Quotes += n
+		stats.Skipped += skipped
+		if stop != nil {
+			return stop
+		}
+		if err != nil {
+			rel, _ := filepath.Rel(dir, p)
+			stats.Errors = append(stats.Errors, rel+": "+err.Error())
+		}
+		return nil
+	})
+	if err != nil {
+		return stats, fmt.Errorf("prices: reading %s: %w", dir, err)
+	}
+	return stats, nil
 }
 
 // stateFromPath finds a state's name in a file's folders or name, below

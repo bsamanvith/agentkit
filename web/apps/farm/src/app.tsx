@@ -44,6 +44,7 @@ const Land = lazy(() => import("./land").then((m) => ({ default: m.Land })));
 const Seasons = lazy(() => import("./seasons").then((m) => ({ default: m.Seasons })));
 const Prices = lazy(() => import("./prices").then((m) => ({ default: m.Prices })));
 const Roadmap = lazy(() => import("./roadmap").then((m) => ({ default: m.Roadmap })));
+const Cycles = lazy(() => import("./cycles"));
 const GroupPage = lazy(() => import("./groups").then((m) => ({ default: m.GroupPage })));
 const GroupForm = lazy(() => import("./groups").then((m) => ({ default: m.GroupForm })));
 const ResearchSettings = lazy(() => import("./research").then((m) => ({ default: m.ResearchSettings })));
@@ -664,7 +665,7 @@ function FarmCard({ farm: f, onOpen }: { farm: Farm; onOpen: () => void }) {
   );
 }
 
-type Tab = "map" | "roadmap" | "care" | "land" | "sun" | "plan" | "prices";
+type Tab = "map" | "cycles" | "roadmap" | "care" | "land" | "sun" | "plan" | "prices";
 
 function FarmDetail({
   farm,
@@ -704,6 +705,8 @@ function FarmDetail({
     .map((o) => ({ id: o.id, name: o.name, corners: o.boundary.corners }));
   const tabs: { id: Tab; label: string; icon: ReactNode; on: boolean }[] = [
     { id: "map", label: "Map", icon: <MapIcon />, on: true },
+    // The farm binary serves crop cycles wherever it plans crops.
+    { id: "cycles", label: "Cycles", icon: <Wheat />, on: planner },
     { id: "roadmap", label: "Season work", icon: <ListChecks />, on: roadmap && (farm.plan?.zones.length ?? 0) > 0 },
     { id: "care", label: "Weather and care", icon: <CloudSun />, on: weather || (planner && automations) },
     { id: "land", label: "Land and layout", icon: <Mountain />, on: surveyor },
@@ -794,6 +797,7 @@ function FarmDetail({
       {tab === "sun" && <Seasons farm={farm} />}
       {tab === "prices" && <Prices farm={farm} />}
       {tab === "roadmap" && <Roadmap farm={farm} />}
+      {tab === "cycles" && <Cycles farm={farm} onFarm={onChanged} />}
       <div className={tab === "map" ? "grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]" : "hidden"}>
         <FarmMap
           corners={farm.boundary.corners}

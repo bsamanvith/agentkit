@@ -108,6 +108,11 @@ same peninsular conditions and are the base until they can be.
   grown one, as the source says.
 - MOP's bag size could not be confirmed on a source and is sold by the kg
   here; jeevamrutham comes from a practitioners' guide, not a university.
+- Banana's biofertilisers at planting (arbuscular mycorrhiza 250 g,
+  phosphate solubilising bacteria, Azospirillum and Trichoderma 50 g a
+  plant, about 770 and 150 kg a hectare at 3086 plants) look high; they
+  are what the TNAU Horticulture guide says (p. 8), re-checked on
+  2026-11-15 and noted on each value. An agronomist should confirm them.
 - The library has no citrus, so citrus has no values.
 - Chilli thrips, mites and die-back have no organic remedy in the sources
   read: the plan says so instead of inventing one.

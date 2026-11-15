@@ -4346,6 +4346,7 @@
     },
     {
      "product": "am_fungi",
+     "note": "Arbuscular mycorrhiza 250 g a plant at planting, as the source gives it (re-checked on 2026-11-15, TNAU Horticulture 2020 p. 8).",
      "qty": 250,
      "ref": {
       "source": "tnau-cpg-hort-2020",
@@ -4356,6 +4357,7 @@
     },
     {
      "product": "phosphobacteria",
+     "note": "Phosphate solubilising bacteria 50 g a plant at planting, as the source gives it (re-checked on 2026-11-15, p. 8); the source adds 20 g again five months after planting.",
      "qty": 50,
      "ref": {
       "source": "tnau-cpg-hort-2020",
@@ -4366,6 +4368,7 @@
     },
     {
      "product": "azospirillum",
+     "note": "50 g a plant at planting, as the source gives it (re-checked on 2026-11-15, p. 8); the source adds 20 g again five months after planting.",
      "qty": 50,
      "ref": {
       "source": "tnau-cpg-hort-2020",
@@ -4376,6 +4379,7 @@
     },
     {
      "product": "trichoderma",
+     "note": "Trichoderma harzianum 50 g a plant at planting, as the source gives it (re-checked on 2026-11-15, p. 8).",
      "qty": 50,
      "ref": {
       "source": "tnau-cpg-hort-2020",

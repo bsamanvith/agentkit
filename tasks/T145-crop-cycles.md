@@ -135,3 +135,20 @@ catches it.
   (`c.Areas[i].Crop`, `c.Harvest`). Preferring a sowing date by its
   harvest month inside the safe window would go in `Input.suggest`
   (pick among the recommender's `Calendar` dates), not built.
+
+## Joined (branch `wt-join`, 2026-11-15)
+
+T145 to T148 were joined into one path in `wt-join`; status stays
+`review` until that branch merges. What the join added for this task:
+
+- The addons are wired in `cmd/farm` (`apps/farm/cycle/addon`: `Inputs`,
+  `Timing`); an addon answering nil is left out, a failing one adds a
+  note naming it (its `Label`), never an error on the line
+  (`TestAddons`).
+- *I already sowed on…* with a day more than `work.MaxSowShift` (120)
+  days from the saved plan saves the plan again with that day instead of
+  failing (`TestActualSowingMovesTheLine`); the roadmap events it records
+  carry the day in their IDs, so two records in one instant are two.
+- Still open: the cycle-0 plan and the cycle record are two writes, not
+  one transaction (a crash between them leaves the record's `SownFor`
+  pointing at an older plan, which is then ignored).

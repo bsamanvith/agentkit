@@ -2,10 +2,11 @@ package watch_test
 
 import (
 	"context"
-	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
 
 	"github.com/bsamanvith/agentkit/apps/farm/automation"
 	"github.com/bsamanvith/agentkit/apps/farm/notify"

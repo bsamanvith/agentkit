@@ -1,6 +1,6 @@
 import { Button } from "@agentkit/ui/components/button";
 import { AlertTriangle, Info, Pencil, Sprout, X } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { api, ApiError, call } from "./api";
 import {
   cropsOf,
@@ -21,6 +21,10 @@ import type { Crop, Farm, Plan } from "./types";
 // The plot's crop cycles: the current one first (crop, dates, this week's
 // work: the basic path), then, one tap away, our suggestion beside the
 // farmer's own for up to three cycles. Nothing here is required.
+
+// What to buy, feeding and sprays, and when to sell: optional, collapsed,
+// in a chunk of their own that loads after the cycle shows.
+const Extras = lazy(() => import("./cycle-extras"));
 
 function message(e: unknown): string {
   if (e instanceof ApiError && e.planReport) {
@@ -184,7 +188,7 @@ function Now({
         <EditButton farm={farm} p={p} busy={busy} run={run} />
         {c && c.sow_kind !== "actual" && (
           <Button variant="outline" size="sm" disabled={busy} onClick={() => setSowing((s) => !s)}>
-            <Sprout /> I already sowed
+            <Sprout /> I already sowed on…
           </Button>
         )}
         {harvested && (
@@ -229,7 +233,10 @@ function Now({
         </p>
       )}
       {farm.plan && farm.plan.zones.length > 0 && <ThisWeek farm={farm} />}
-      <MethodChoice farm={farm} p={p} busy={busy} run={run} />
+      {c && <MethodChoice farm={farm} p={p} busy={busy} run={run} />}
+      <Suspense fallback={null}>
+        <Extras addons={p.addons} />
+      </Suspense>
     </Card>
   );
 }
@@ -304,19 +311,24 @@ function MethodChoice({ farm, p, busy, run }: { farm: Farm; p: Position; busy: b
   const m = p.planned?.method ?? "conventional";
   const pick = (to: Method) => void run(() => cyclesApi.set(farm.id, p.position, { method: to }));
   return (
-    <div className="mt-3 flex items-center gap-1 text-xs" role="radiogroup" aria-label="How it is grown">
-      {(["conventional", "organic"] as const).map((x) => (
-        <button
-          key={x}
-          role="radio"
-          aria-checked={m === x}
-          disabled={busy || !p.planned}
-          onClick={() => m !== x && pick(x)}
-          className="rounded-full border px-2.5 py-1 capitalize aria-checked:border-[#4d7c0f] aria-checked:font-medium aria-checked:text-[#4d7c0f]"
-        >
-          {x}
-        </button>
-      ))}
+    <div className="mt-3 flex flex-wrap items-center gap-1.5 text-sm">
+      <span id={`method-${p.position}`} className="text-xs text-muted-foreground">
+        Grown
+      </span>
+      <div className="flex gap-1.5" role="radiogroup" aria-labelledby={`method-${p.position}`}>
+        {(["conventional", "organic"] as const).map((x) => (
+          <button
+            key={x}
+            role="radio"
+            aria-checked={m === x}
+            disabled={busy || !p.planned}
+            onClick={() => m !== x && pick(x)}
+            className="min-h-9 rounded-full border px-3 py-1 capitalize aria-checked:border-[#4d7c0f] aria-checked:bg-[#4d7c0f]/10 aria-checked:font-medium aria-checked:text-[#3f6212] dark:aria-checked:text-[#bef264]"
+          >
+            {x}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

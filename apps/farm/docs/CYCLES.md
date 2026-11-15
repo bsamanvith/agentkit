@@ -136,7 +136,46 @@ input. Planned, in the order they become possible:
 ## What is built first
 
 T146 (drawing and onboarding), T145 (cycles), T147 (seasonal index and
-backtest) and T148 (inputs and sprays) in parallel; then the cycle page
-shows the shopping list, the spray schedule and the timing advice, and
-the roadmap carries their tasks. Guided photos come with the crop
-doctor.
+backtest) and T148 (inputs and sprays) were built in parallel, then
+joined (branch `wt-join`, 2026-11-15):
+
+- **The basic path stands alone.** Village, pencil, name, then a crop or
+  *Suggest for me*: the first run ends on the plot's *Cycles* tab with
+  the suggestion shown and one *Use this* tap. Cycles is the first tab of
+  a plot with no plan (when the planner and cycles are on); the tab order
+  stays put once the plan is saved.
+- **Addons, picked in `cmd/farm`** (`apps/farm/cycle/addon`): `inputs`
+  plans each cycle from its areas (an intercrop split by its rows),
+  method, the plot's water (irrigated when its profile names a source)
+  and sowing; `timing` asks `prices.AdviseTiming` with the saved price
+  history, the crop's days and, before sowing, the recommender's safe
+  window around the planned day (kept 30 minutes). An addon with nothing
+  to say is left out; one that fails adds a note naming it, never an
+  error on the line.
+- **Under this cycle, three optional sections, closed** (a lazy chunk):
+  *What to buy* (before sowing, later, and "only if you see", in the
+  units sold, for the plot's area), *Feeding and sprays* (dated, with the
+  dose, water per acre, the wait before harvest and cautions) and *When
+  to sell* (only with advice; otherwise one quiet line, "not enough price
+  history here yet"). The starter-values and follow-the-label notes sit
+  wherever doses show. *Grown: Conventional / Organic* recomputes them.
+- **Season work carries the plan.** `work.WithTasks` takes the inputs
+  schedule of the current cycle (its method from the cycle store): an
+  entry on a calendar task's key enriches that task (a fertilising one
+  takes the plan's products and quantities), a feeding within 21 days of
+  a calendar feeding becomes that task at the sourced day (no twins), the
+  rest (jeevamrutham, preventive sprays) are tasks of their own with
+  calendar-style keys, so a moved sowing keeps their ticks.
+- **The assistant** answers "what should I buy" from `get_inputs`
+  (numbers from the plan, never the model); `get_cycles` carries the
+  timing advice and points to `get_inputs`.
+- **A sowing far from the plan** (more than `work.MaxSowShift`, 120
+  days): *I already sowed on…* saves the plan again with that day rather
+  than refusing it.
+
+Still open: the cycle-0 plan (the farm's saved plan) and the cycle record
+are two writes, not one transaction, so a crash between them can leave
+the record's method or sown day pointing at an older plan (it is then
+ignored, as `SownFor` says). Preferring a sowing date by its harvest
+month inside the window (`Input.suggest`) is not built. Guided photos
+come with the crop doctor.

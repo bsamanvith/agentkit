@@ -495,28 +495,42 @@ func (s source) Tasks(context.Context, farm.Farm, []work.Zone) ([]work.Task, []s
 }
 
 // Tasks from a source: one with a calendar task's ID enriches it (a
-// fertilising task takes its detail, another gets it added), never a
-// twin; the rest are added in their kind's phase, and are ticked, listed
+// fertilising task takes its detail, another gets it added), and a
+// feeding near a calendar feeding becomes it, never a twin; the rest are added in their kind's phase, and are ticked, listed
 // as due and counted like the calendar's. A failing source is a note.
 func TestTaskSources(t *testing.T) {
 	t.Parallel()
 	w := setup(t)
 	feed := work.Task{ID: "z0-maize-" + plannedSow + "-feed-das-45", Kind: calendar.Protect, Title: "Spray neem oil", Detail: "Neem oil 1 litre.", Date: addDays(plannedSow, 45)}
+	plain := w.roadmap(t)
+	n2 := task(t, plain, id("nitrogen-2"))
+	// A feeding the source times a few days off the calendar's second
+	// top-dressing: it is that task, not a twin.
+	near := work.Task{ID: "z0-maize-" + plannedSow + "-feed-das-x", Zone: 0, Crop: n2.Crop, Kind: calendar.Fertilise, Title: "Feed the crop", Detail: "Urea 40 kg.", Date: addDays(n2.Date, -9)}
+	far := near
+	far.ID, far.Date = near.ID+"-far", addDays(n2.Date, 60)
 	src := source{tasks: []work.Task{
+		near,
 		{ID: id("nitrogen-1"), Kind: calendar.Fertilise, Title: "Top-dress", Detail: "Urea 45 kg (18 kg an acre)."},
 		{ID: id("sow"), Kind: calendar.Fertilise, Title: "Sow", Detail: "DAP 50 kg."},
 		feed,
+		far,
 		{ID: "", Title: "no id"},
 	}}
 	ws := work.New(w.plan, w.store, work.WithTasks(src))
 	ws.SetNow(w.clock.Now)
-	plain := w.roadmap(t)
 	r, err := ws.Roadmap(context.Background(), w.plot)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(r.Tasks) != len(plain.Tasks)+1 {
-		t.Fatalf("%d tasks, want the calendar's %d and one more", len(r.Tasks), len(plain.Tasks))
+	if len(r.Tasks) != len(plain.Tasks)+2 {
+		t.Fatalf("%d tasks, want the calendar's %d and two more", len(r.Tasks), len(plain.Tasks))
+	}
+	if k := task(t, r, n2.ID); k.Date != near.Date || k.Detail != near.Detail || k.Title != near.Title {
+		t.Errorf("near feeding: %+v; want the calendar's task at the source's day, with its detail", k)
+	}
+	if k := task(t, r, far.ID); k.Date != far.Date || k.Title != far.Title {
+		t.Errorf("far feeding: %+v; want it added", k)
 	}
 	if k := task(t, r, id("nitrogen-1")); k.Detail != "Urea 45 kg (18 kg an acre)." || k.Source != work.FromCalendar {
 		t.Errorf("fertilising task: %+v; want the source's detail in place of the calendar's", k)

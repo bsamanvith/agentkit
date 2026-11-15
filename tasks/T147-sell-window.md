@@ -56,3 +56,15 @@ synthetic, from `prices/synthetic`).
 
 - One call: `prices.AdviseTiming(ctx, history, prices.TimingQuery{Crop, State, District, Market, DaysMin, DaysMax, Window: prices.SowingWindow{From, To, Best}, Sown, Today})` returns `TimingAdvice{Commodity, Area, Index, Sowing *SowingAdvice, Selling *SellAdvice, SowingTest, SellingTest, Reasons}`; `Sowing`/`Selling` nil means no timing advice (show `Reasons`). Days come from `agro.Crop.Days`, the window from the recommender's `Window`.
 - The sell-or-hold skill can be given `Selling` and `Index`; the API needs a route and the web client a card. FEATURES.md is untouched until then.
+
+## Joined (branch `wt-join`, 2026-11-15)
+
+T145 to T148 were joined into one path in `wt-join`; status stays
+`review` until that branch merges. What the join added for this task:
+
+- `cycle/addon.Timing` asks `AdviseTiming` per cycle (the crop's days
+  from the library, the recommender's safe window before sowing, the
+  saved history), kept 30 minutes; `ErrInvalid` and too little history
+  say nothing (`TestTiming`). The cycle page shows *When to sell* only
+  with advice, else one quiet line; `get_cycles` carries it and the
+  `sell-or-hold` skill reads it.

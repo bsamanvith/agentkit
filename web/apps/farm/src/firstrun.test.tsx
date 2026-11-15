@@ -116,11 +116,45 @@ async function drawAndSave(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("FirstRun", () => {
-  it("takes a new farmer from the village to a saved plot and suggested dates in four steps", async () => {
+  it("takes a new farmer from the village to the plot's cycles, where our suggestion is one tap away", async () => {
+    const calls = server();
+    const onDone = vi.fn();
+    const onSaved = vi.fn();
+    const user = userEvent.setup();
+    render(<FirstRun planner cycles onAdd={() => {}} onSaved={onSaved} onDone={onDone} />);
+    expect(screen.getByText("Step 1 of 4")).toBeInTheDocument();
+    await drawAndSave(user);
+    // The plot is saved (and can be listed) before the crop step.
+    expect(await screen.findByText("Step 4 of 4")).toBeInTheDocument();
+    expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ id: "f1" }));
+    await user.click(screen.getByRole("button", { name: /suggest for me/i }));
+    expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ id: "f1" }), "cycles");
+    // Nothing is saved for the farmer: the suggestion waits for their "Use this".
+    expect(calls).not.toContain("PUT /api/farms/f1/plan");
+  });
+
+  it("saves the crop the farmer names and ends on the plot's cycles", async () => {
     const calls = server();
     const onDone = vi.fn();
     const user = userEvent.setup();
-    render(<FirstRun planner roadmap onAdd={() => {}} onDone={onDone} />);
+    render(<FirstRun planner cycles onAdd={() => {}} onDone={onDone} />);
+    await drawAndSave(user);
+    await screen.findByText("Step 4 of 4");
+    await user.selectOptions(await screen.findByRole("combobox", { name: "Crop" }), "maize");
+    await screen.findByRole("region", { name: "Your dates" });
+    await user.click(screen.getByRole("button", { name: "Use this" }));
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    const [farm, tab] = onDone.mock.calls[0] ?? [];
+    expect(tab).toBe("cycles");
+    expect(farm.plan.zones[0].crop).toBe("maize");
+    expect(calls).toContain("PUT /api/farms/f1/plan");
+  });
+
+  it("without crop cycles, lists suggestions and ends on the saved season plan in four steps", async () => {
+    const calls = server();
+    const onDone = vi.fn();
+    const user = userEvent.setup();
+    render(<FirstRun planner cycles={false} onAdd={() => {}} onDone={onDone} />);
     expect(screen.getByText("Step 1 of 4")).toBeInTheDocument();
     await drawAndSave(user);
 
@@ -133,11 +167,11 @@ describe("FirstRun", () => {
     const dates = screen.getByRole("region", { name: "Your dates" });
     expect(dates).toHaveTextContent(/Sow.*(Nov 28, 2026|28 Nov 2026)/);
     expect(dates).toHaveTextContent(/Harvest, about.*(Feb 25, 2027|25 Feb 2027)/);
-    await user.click(screen.getByRole("button", { name: "Save and see the season" }));
+    await user.click(screen.getByRole("button", { name: "Use this" }));
 
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     const [farm, tab] = onDone.mock.calls[0] ?? [];
-    expect(tab).toBe("roadmap");
+    expect(tab).toBe("plan");
     expect(farm.plan.zones[0].crop).toBe("chickpea");
     expect(calls).toContain("POST /api/farms");
     expect(calls).toContain("PUT /api/farms/f1/plan");
@@ -146,7 +180,7 @@ describe("FirstRun", () => {
   it("shows the dates of the crop the farmer names at once", async () => {
     server();
     const user = userEvent.setup();
-    render(<FirstRun planner roadmap={false} onAdd={() => {}} onDone={() => {}} />);
+    render(<FirstRun planner cycles onAdd={() => {}} onDone={() => {}} />);
     await drawAndSave(user);
     await screen.findByText("Step 4 of 4");
     await user.selectOptions(await screen.findByRole("combobox", { name: "Crop" }), "maize");
@@ -157,20 +191,20 @@ describe("FirstRun", () => {
     server({ recommend: false });
     const onDone = vi.fn();
     const user = userEvent.setup();
-    render(<FirstRun planner roadmap onAdd={() => {}} onDone={onDone} />);
+    render(<FirstRun planner cycles onAdd={() => {}} onDone={onDone} />);
     await drawAndSave(user);
     await screen.findByText("Step 4 of 4");
-    await user.click(screen.getByRole("button", { name: /suggest for me/i }));
+    await user.selectOptions(await screen.findByRole("combobox", { name: "Crop" }), "maize");
     expect(await screen.findByRole("alert")).toHaveTextContent("climate unavailable");
     await user.click(screen.getByRole("button", { name: /skip: go to my plot/i }));
-    expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ id: "f1" }), undefined);
+    expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ id: "f1" }), "cycles");
   });
 
   it("ends at the saved plot in three steps when crop planning is off", async () => {
     server();
     const onDone = vi.fn();
     const user = userEvent.setup();
-    render(<FirstRun planner={false} roadmap={false} onAdd={() => {}} onDone={onDone} />);
+    render(<FirstRun planner={false} cycles={false} onAdd={() => {}} onDone={onDone} />);
     expect(screen.getByText("Step 1 of 3")).toBeInTheDocument();
     await drawAndSave(user);
     await waitFor(() => expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ id: "f1" })));
@@ -180,7 +214,7 @@ describe("FirstRun", () => {
     server();
     const onAdd = vi.fn();
     const user = userEvent.setup();
-    render(<FirstRun planner roadmap onAdd={onAdd} onDone={() => {}} />);
+    render(<FirstRun planner cycles onAdd={onAdd} onDone={() => {}} />);
     await user.click(screen.getByRole("button", { name: "Skip the guide" }));
     expect(screen.getByRole("heading", { name: "Add your first plot" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /add plot/i }));

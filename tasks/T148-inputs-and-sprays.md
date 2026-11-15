@@ -57,3 +57,21 @@ app, basics first, everything else optional and additive. Design:
   (`TestGroundnutByHand`), not adding fields up (`TestFieldsAddUp`),
   turning off the banned check (`TestNoBannedActive`), a wrong stage
   (`TestScheduleFollowsSowing`): each caught.
+
+## Joined (branch `wt-join`, 2026-11-15)
+
+T145 to T148 were joined into one path in `wt-join`; status stays
+`review` until that branch merges. What the join added for this task:
+
+- `cycle/addon.Inputs` plans each cycle (areas, intercrops by rows,
+  method, water from the plot's profile, sowing) and the cycle page shows
+  *What to buy* and *Feeding and sprays* with both notes
+  (`TestInputsPlanEachCycle`, `cycles.test.tsx`).
+- `cycle/addon.Roadmap` gives Season work the schedule: calendar keys
+  enrich the calendar's tasks, a feeding within `work.NearFeed` (21) days
+  of a calendar feeding becomes it (no twins), the rest are tasks of
+  their own; ticks survive a moved sowing and a change of method
+  (`TestRoadmapCarriesTheSchedule`, `TestTaskSources`).
+- The assistant's `get_inputs` tool gives the plan for "what should I
+  buy" (`TestCycleTools` in `farmagent`).
+- `Amount` shows 1,000 g or more in kg and 1,000 ml or more in litres.

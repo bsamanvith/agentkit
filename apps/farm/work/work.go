@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"time"
 
@@ -301,29 +302,24 @@ func build(lib *agro.Library, farmID string, plan agro.Plan, irrigated bool, eve
 	return r, nil
 }
 
+// NearFeed is how many days from a calendar feeding another source's
+// feeding of the same crop may fall and still be that feeding: the
+// sources time a split by their own day, the calendar by a share of the
+// season.
+const NearFeed = 21
+
 // merge adds more tasks to the calendar's. A task with the ID of one
 // already there enriches it rather than standing beside it: a fertilising
 // task takes its detail (the plan's own products and quantities say more
-// than the calendar's general rule), any other gets it added. The rest
-// are added as they are, in the phase of their kind.
+// than the calendar's general rule), any other gets it added. A feeding
+// near a calendar feeding of its crop (NearFeed) becomes that one. The
+// rest are added as they are, in the phase of their kind.
 func merge(tasks, more []Task) []Task {
 	at := map[string]int{}
 	for i, t := range tasks {
 		at[t.ID] = i
 	}
-	for _, m := range more {
-		if m.ID == "" || m.Title == "" {
-			continue
-		}
-		i, ok := at[m.ID]
-		if !ok {
-			m.Phase = PhaseOf(m.Kind)
-			m.State, m.Day, m.By, m.Note, m.Actuals, m.Late, m.Overdue = "", "", "", "", nil, false, false
-			at[m.ID] = len(tasks)
-			tasks = append(tasks, m)
-			continue
-		}
-		t := &tasks[i]
+	enrich := func(t *Task, m Task) {
 		switch {
 		case m.Detail == "":
 		case t.Kind == calendar.Fertilise && t.Source == FromCalendar:
@@ -334,7 +330,63 @@ func merge(tasks, more []Task) []Task {
 			t.Detail += " " + m.Detail
 		}
 	}
+	// First the tasks the calendar keys alike, then a feeding near a
+	// calendar one not yet taken: it becomes that task (its ID, so a tick
+	// stays), at the source's day and with its title, rather than a twin.
+	taken := map[int]bool{}
+	var rest []Task
+	for _, m := range more {
+		if m.ID == "" || m.Title == "" {
+			continue
+		}
+		if i, ok := at[m.ID]; ok {
+			enrich(&tasks[i], m)
+			taken[i] = true
+			continue
+		}
+		rest = append(rest, m)
+	}
+	for _, m := range rest {
+		if i := nearFeed(tasks, taken, m); i >= 0 {
+			t := &tasks[i]
+			enrich(t, m)
+			t.Title, t.Date, t.DAS, t.Stage = m.Title, m.Date, m.DAS, cmp.Or(m.Stage, t.Stage)
+			taken[i] = true
+			continue
+		}
+		m.Phase = PhaseOf(m.Kind)
+		m.State, m.Day, m.By, m.Note, m.Actuals, m.Late, m.Overdue = "", "", "", "", nil, false, false
+		at[m.ID] = len(tasks)
+		tasks = append(tasks, m)
+	}
 	return tasks
+}
+
+// nearFeed is the calendar feeding of m's zone and crop nearest m's day,
+// within NearFeed days and not taken, or -1.
+func nearFeed(tasks []Task, taken map[int]bool, m Task) int {
+	if m.Kind != calendar.Fertilise {
+		return -1
+	}
+	md, err := time.Parse(agro.DateLayout, m.Date)
+	if err != nil {
+		return -1
+	}
+	best, gap := -1, NearFeed+1
+	for i, t := range tasks {
+		if taken[i] || t.Source != FromCalendar || t.Kind != calendar.Fertilise || t.Zone != m.Zone || t.Crop != m.Crop {
+			continue
+		}
+		td, err := time.Parse(agro.DateLayout, t.Date)
+		if err != nil {
+			continue
+		}
+		d := int(math.Abs(md.Sub(td).Hours()/24) + 0.5)
+		if d < gap {
+			best, gap = i, d
+		}
+	}
+	return best
 }
 
 // stateMap is the tasks' states by ID.

@@ -263,8 +263,9 @@ func (s *Service) fill(ctx context.Context, f farm.Farm, rec Record, pos int, pl
 
 // SetSown records that the current cycle was sown on day (YYYY-MM-DD),
 // which becomes its date and moves what follows. With no saved plan, the
-// suggested current cycle is saved first, sown that day. With the
-// roadmap, the sowing is recorded there too.
+// suggested current cycle is saved first, sown that day; a saved plan
+// planned more than work.MaxSowShift days from day is saved again with
+// that sowing. With the roadmap, the sowing is recorded there too.
 func (s *Service) SetSown(ctx context.Context, farmID, day string) (Line, error) {
 	if farm.IsReadOnly(ctx) {
 		return Line{}, farm.ErrReadOnly
@@ -298,6 +299,19 @@ func (s *Service) SetSown(ctx context.Context, farmID, day string) (Line, error)
 				return err
 			}
 			*f = saved
+		} else if far(*f.Plan, d) {
+			// Sown long before or after the plan's date (the roadmap takes a
+			// sowing up to work.MaxSowShift days from it): the farmer grew
+			// these crops, so the plan is saved again with that sowing.
+			p := clonePlan(*f.Plan)
+			for i := range p.Zones {
+				p.Zones[i].Sow = day
+			}
+			saved, err := s.plan.SavePlan(ctx, f.ID, p)
+			if err != nil {
+				return err
+			}
+			*f = saved
 		}
 		if s.roadmap != nil {
 			if err := s.recordSown(ctx, *f, day); err != nil {
@@ -309,17 +323,34 @@ func (s *Service) SetSown(ctx context.Context, farmID, day string) (Line, error)
 	})
 }
 
+// far: some zone of the plan is planned more than work.MaxSowShift days
+// from day.
+func far(p agro.Plan, day time.Time) bool {
+	for _, z := range p.Zones {
+		sow, err := time.Parse(agro.DateLayout, z.Sow)
+		if err != nil {
+			continue
+		}
+		if d := day.Sub(sow).Hours() / 24; d > work.MaxSowShift || d < -work.MaxSowShift {
+			return true
+		}
+	}
+	return false
+}
+
 // recordSown marks each zone's sowing done on day on the roadmap,
 // reopening it first so the new day wins over an earlier one.
 func (s *Service) recordSown(ctx context.Context, f farm.Farm, day string) error {
 	at := s.now().UTC()
-	stamp := strconv.FormatInt(at.UnixNano(), 36)
+	// The day and the plan's sowing are in the IDs too: two records in
+	// one instant (a stopped clock) are still two.
+	stamp := strconv.FormatInt(at.UnixNano(), 36) + "-" + day
 	var evs []work.Event
 	for i, z := range f.Plan.Zones {
 		task := work.TaskID(i, z.Crop, z.Sow, "sow")
 		evs = append(evs,
-			work.Event{ID: fmt.Sprintf("cycle-%s-z%d-r", stamp, i), Task: task, Kind: work.Reopened, At: at, By: "cycles"},
-			work.Event{ID: fmt.Sprintf("cycle-%s-z%d-s", stamp, i), Task: task, Kind: work.Done, Day: day, At: at.Add(time.Nanosecond), By: "cycles"},
+			work.Event{ID: fmt.Sprintf("cycle-%s-z%d-%s-r", stamp, i, z.Sow), Task: task, Kind: work.Reopened, At: at, By: "cycles"},
+			work.Event{ID: fmt.Sprintf("cycle-%s-z%d-%s-s", stamp, i, z.Sow), Task: task, Kind: work.Done, Day: day, At: at.Add(time.Nanosecond), By: "cycles"},
 		)
 	}
 	_, _, err := s.roadmap.Record(ctx, f.ID, evs)

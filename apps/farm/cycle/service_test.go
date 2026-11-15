@@ -312,6 +312,16 @@ func TestActualSowingMovesTheLine(t *testing.T) {
 	if r.Zones[0].Sown != "2026-07-05" {
 		t.Errorf("roadmap sown %q; want the typed 5 July", r.Zones[0].Sown)
 	}
+	// A sowing far from the saved plan's: the plan is saved again, sown
+	// that day, rather than refused.
+	w.savePlan(t, "maize", "2026-12-01")
+	if l, err := w.cycles.SetSown(ctx, w.plot, "2026-07-12"); err != nil || l.Cycles[0].Planned.Sow != "2026-07-12" ||
+		l.Cycles[0].Planned.SowKind != cycle.Actual || l.Cycles[0].Planned.MainCrop() != "maize" {
+		t.Fatalf("far SetSown = %+v, %v; want maize sown 12 July", l.Cycles, err)
+	}
+	if r, _ := w.work.Roadmap(ctx, w.plot); r.Zones[0].Sown != "2026-07-12" || r.Zones[0].PlannedSow != "2026-07-12" {
+		t.Errorf("roadmap after a far sowing = sown %q, planned %q; want both 12 July", r.Zones[0].Sown, r.Zones[0].PlannedSow)
+	}
 	for _, bad := range []string{"2026-07-17", "5 July", "2025-07-01"} {
 		if _, err := w.cycles.SetSown(ctx, w.plot, bad); !errors.Is(err, cycle.ErrInvalid) {
 			t.Errorf("SetSown(%s) = %v; want ErrInvalid", bad, err)

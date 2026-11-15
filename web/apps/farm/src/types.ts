@@ -110,6 +110,8 @@ export interface Config {
   automations?: boolean;
   prices?: boolean;
   roadmap?: boolean;
+  /** Crop cycles: the suggested line and the farmer's own (the plot's Cycles tab). */
+  cycles?: boolean;
   /** Message lanes (push, Telegram, email, WhatsApp, SMS) are set up. */
   messages?: boolean;
   country: string;

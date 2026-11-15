@@ -8,7 +8,7 @@ import { formatDate, localName } from "./plan";
 import type { Crop, Farm, Option } from "./types";
 
 /** Where the first-run path ends: the plot, on the tab that shows its season. */
-export type Landing = "plan" | "roadmap" | undefined;
+export type Landing = "cycles" | "plan" | undefined;
 
 const selectClass = "h-9 w-full rounded-md border bg-background px-2 text-sm";
 
@@ -23,16 +23,19 @@ function message(e: unknown): string {
  */
 export function FirstRun({
   planner,
-  roadmap,
+  cycles,
   onAdd,
+  onSaved,
   onDone,
 }: {
   /** Crop planning is on: the crop step is offered. */
   planner: boolean;
-  /** The season roadmap is on: the path ends on it. */
-  roadmap: boolean;
+  /** Crop cycles are on: the path ends on the plot's cycles, where our suggestion is one tap away. */
+  cycles: boolean;
   /** Opens the plain plot editor, for a farmer who skips the guide. */
   onAdd: () => void;
+  /** The plot is saved (before the crop step): it can be listed now. */
+  onSaved?: (f: Farm) => void;
   /** The path is over: open this plot, on this tab. */
   onDone: (f: Farm, tab?: Landing) => void;
 }) {
@@ -81,9 +84,10 @@ export function FirstRun({
       {farm ? (
         <CropStep
           farm={farm}
-          // HANDOVER(T145): once the Cycles view lands, end the path there
-          // (the plot's cycles) instead of the season plan or roadmap tab.
-          onDone={(f, planned) => onDone(f, planned ? (roadmap ? "roadmap" : "plan") : undefined)}
+          cycles={cycles}
+          // The path ends on the plot's cycles: the crop, its dates and this
+          // week's work, with our suggestion one tap away.
+          onDone={(f, planned) => onDone(f, cycles ? "cycles" : planned ? "plan" : undefined)}
         />
       ) : (
         <Editor
@@ -91,7 +95,11 @@ export function FirstRun({
           others={[]}
           onStep={setStep}
           onCancel={() => setSkipped(true)}
-          onSaved={(f) => (planner ? setFarm(f) : onDone(f))}
+          onSaved={(f) => {
+            onSaved?.(f);
+            if (planner) setFarm(f);
+            else onDone(f);
+          }}
         />
       )}
       {!farm && (
@@ -104,7 +112,16 @@ export function FirstRun({
 }
 
 /** The last step: the crop the farmer wants, or the ones we suggest, and their dates. */
-function CropStep({ farm, onDone }: { farm: Farm; onDone: (f: Farm, planned: boolean) => void }) {
+function CropStep({
+  farm,
+  cycles,
+  onDone,
+}: {
+  farm: Farm;
+  /** Our suggestion is shown on the plot's cycles, so "Suggest" goes there. */
+  cycles: boolean;
+  onDone: (f: Farm, planned: boolean) => void;
+}) {
   const [crops, setCrops] = useState<Crop[]>([]);
   const [crop, setCrop] = useState("");
   const [options, setOptions] = useState<Option[]>();
@@ -181,7 +198,10 @@ function CropStep({ farm, onDone }: { farm: Farm; onDone: (f: Farm, planned: boo
           disabled={busy}
           onClick={() => {
             setCrop("");
-            ask();
+            // The plot's cycles show our suggestion, worked out from the
+            // plot and the crop before, with its dates and one "Use this".
+            if (cycles) onDone(farm, false);
+            else ask();
           }}
         >
           <Sprout /> {busy ? "Working it out…" : "Suggest for me"}
@@ -239,7 +259,7 @@ function CropStep({ farm, onDone }: { farm: Farm; onDone: (f: Farm, planned: boo
           )}
           <div className="flex flex-wrap gap-2">
             <Button disabled={busy} onClick={() => accept(pick)}>
-              {busy ? "Saving…" : "Save and see the season"}
+              {busy ? "Saving…" : "Use this"}
             </Button>
             {(options?.length ?? 0) > 1 && (
               <Button variant="outline" onClick={() => setPick(undefined)}>

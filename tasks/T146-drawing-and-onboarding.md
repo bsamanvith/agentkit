@@ -100,15 +100,29 @@ First run (`firstrun.tsx`, the editor's guided mode, `app.tsx`):
 - **Not done / for later:** the area editor has no rotate handles for its
   rectangle (a drag only); no redo; the first run asks nothing about
   soil and water, so the suggestion uses defaults (by design: optional).
-  A farmer who leaves the crop step by the sidebar sees the new plot
-  only after the list reloads.
+  (A farmer who left the crop step by the sidebar saw the new plot only
+  after the list reloaded: fixed in the join below.)
 
 ### For T145 (cycles)
 
-- The first run ends in `firstrun.tsx` (`onDone` with the landing tab)
-  and `app.tsx` (`Overview`'s `onDone`), both marked `HANDOVER(T145)`:
+- (Done in the join below.) The first run ended in `firstrun.tsx` and
+  `app.tsx`, both marked `HANDOVER(T145)`:
   send the farmer to the plot's cycles there instead of the season work
   or plan tab. `FarmDetail` takes an initial `tab`.
 - Areas are `plan.zones` rings; a cycle's areas can use `areaParts`,
   `areaPlan` and `areasOf` in `plan.ts`, and `AreaEditor` from
   `areas.tsx` as it is.
+
+## Joined (branch `wt-join`, 2026-11-15)
+
+T145 to T148 were joined into one path in `wt-join`; status stays
+`review` until that branch merges. What the join added for this task:
+
+- The `HANDOVER(T145)` marks are gone: the first run ends on the plot's
+  Cycles tab with the suggestion shown and one *Use this* tap
+  (`firstrun.test.tsx`); Cycles is the first and default tab of a plot
+  with no plan, only when the server serves cycles (`config.cycles`),
+  and the tab order stays put after the plan is saved (`plot.test.tsx`).
+- The step count waits for the config, so it is "of 4" from the start;
+  a plot saved in the first run is in the sidebar at once, even when the
+  farmer leaves the guide by it.

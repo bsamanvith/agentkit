@@ -62,7 +62,137 @@ function server(answer: (path: string, init: RequestInit) => Promise<Response>) 
 
 afterEach(() => vi.unstubAllGlobals());
 
+const starter = "These are starter values from the sources listed, for an agronomist to review.";
+const label = "Always follow the product label.";
+
+/** The inputs and timing addons as the farm binary puts them on a cycle. */
+function addons(method: "organic" | "conventional", sell: boolean): Record<string, unknown> {
+  return {
+    inputs: {
+      fields: [{ area: 0, crop: "black_gram", crop_name: "Black gram", hectares: 0.4, acres: 1, sow: "2026-06-20" }],
+      acres: 1,
+      method,
+      water: "rainfed",
+      notes: [starter, label],
+      buy_before:
+        method === "organic"
+          ? [{ product: "fym", name: "Farmyard manure", make: true, need: 5, qty: 5, unit: "t", first: "2026-05-30" }]
+          : [
+              {
+                product: "dap",
+                name: "DAP",
+                synthetic: true,
+                need: 87,
+                qty: 100,
+                unit: "kg",
+                packs: 2,
+                pack: "50 kg bag",
+                first: "2026-06-20",
+              },
+            ],
+      buy_later: [{ product: "gypsum", name: "Gypsum", need: 320, qty: 320, unit: "kg", first: "2026-08-04" }],
+      if_seen: [
+        {
+          field: 0,
+          crop: "black_gram",
+          problem: "pod_borer",
+          name: "Pod borer",
+          kind: "pest",
+          signs: "Holes in the pods.",
+          threshold: "1 larva a plant",
+          options: [{ route: "organic", name: "Neem oil", rate: "3 ml a litre", water_per_acre: "200 litres" }],
+        },
+      ],
+      schedule: [
+        {
+          field: 0,
+          crop: "black_gram",
+          key: "treat-seed",
+          date: "2026-06-19",
+          das: -1,
+          stage: "",
+          kind: "seed-treatment",
+          title: "Treat the seed",
+          doses: [{ product: "pf", name: "Pseudomonas", qty: 2500, unit: "g", per_acre: 1011 }],
+          cautions: ["Wear gloves."],
+        },
+        {
+          field: 0,
+          crop: "black_gram",
+          key: "spray-x",
+          date: "2026-07-20",
+          das: 30,
+          stage: "vegetative",
+          kind: "spray",
+          title: "Spray",
+          doses: [{ product: "neem", name: "Neem oil", qty: 1.2, unit: "l", per_acre: 1.2 }],
+          water_per_acre: "200 litres",
+          phi_days: 3,
+          cautions: ["Do not spray in wind."],
+        },
+      ],
+    },
+    timing: {
+      crop: "black_gram",
+      crop_name: "Black gram",
+      commodity: "Black Gram (Urd Beans)(Whole)",
+      area: "Kadapa district, Andhra Pradesh",
+      index: sell ? {} : undefined,
+      selling: sell
+        ? {
+            sell_now: false,
+            month: 1,
+            months_ahead: 3,
+            from: 10,
+            price: 7000,
+            gain_pct: 6.2,
+            reasons: ["Prices rise after the glut."],
+          }
+        : undefined,
+      reasons: sell ? [] : ["Too few years of prices."],
+    },
+  };
+}
+
 describe("Cycles", () => {
+  it("keeps what to buy, feeding and sprays, and when to sell one tap away, with the notes wherever doses show", async () => {
+    const l = line();
+    l.cycles[0] = { ...l.cycles[0]!, addons: addons("conventional", true) };
+    const organic = line();
+    organic.cycles[0] = { ...organic.cycles[0]!, addons: addons("organic", false) };
+    organic.cycles[0]!.planned = { ...organic.cycles[0]!.planned!, method: "organic" };
+    const fetch = server((_path, init) => json(init.method === "PUT" ? organic : l));
+    render(<Cycles farm={farm} />);
+    const buy = await screen.findByRole("button", { name: /What to buy/ });
+    // Collapsed: nothing of it shows until tapped.
+    expect(buy).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("DAP")).not.toBeInTheDocument();
+    await userEvent.click(buy);
+    expect(screen.getByText("DAP")).toBeInTheDocument();
+    expect(screen.getByText("2 × 50 kg bag")).toBeInTheDocument();
+    expect(screen.getByText("Gypsum")).toBeInTheDocument();
+    expect(screen.getByText(/Only if you see/)).toBeInTheDocument();
+    expect(screen.getByText(starter)).toBeInTheDocument();
+    expect(screen.getByText(label)).toBeInTheDocument();
+    // Feeding and sprays: large gram amounts in kilograms, the water and the wait.
+    await userEvent.click(screen.getByRole("button", { name: /Feeding and sprays/ }));
+    expect(screen.getByText(/2\.5 kg/)).toBeInTheDocument();
+    expect(screen.getByText(/In 200 litres of water an acre/)).toBeInTheDocument();
+    expect(screen.getByText(/Wait 3 days after it before harvest/)).toBeInTheDocument();
+    expect(screen.getAllByText(starter).length).toBe(1); // one section open at a time, each with its notes
+    await userEvent.click(screen.getByRole("button", { name: /When to sell/ }));
+    expect(screen.getByText(/Hold until January: about \+6% after storage loss and cost/)).toBeInTheDocument();
+    // Organic recomputes the line; this one has no timing advice: a line, not a section.
+    await userEvent.click(screen.getByRole("radio", { name: "organic" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: /When to sell/ })).not.toBeInTheDocument());
+    const put = fetch.mock.calls.find((c) => (c as unknown as Call)[1].method === "PUT") as unknown as Call;
+    expect(JSON.parse(String(put[1].body))).toEqual({ method: "organic" });
+    expect(screen.getByText(/not enough black gram price history here yet/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /What to buy/ }));
+    expect(screen.getByText("Farmyard manure")).toBeInTheDocument();
+    expect(screen.queryByText("DAP")).not.toBeInTheDocument();
+  });
+
   it("shows the current cycle first and takes the suggestion in one tap", async () => {
     const accepted = line();
     const own = { ...cycle("farmer", "black_gram", "Black gram", "2026-06-20", "2026-09-08") };

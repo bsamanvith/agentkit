@@ -49,6 +49,10 @@ type TaskSource interface {
 // Option configures [New].
 type Option func(*Service)
 
+// MaxSowShift is how many days from its plan a recorded sowing may be;
+// further, the plan is saved again with the sowing.
+const MaxSowShift = 120
+
 // WithTasks adds a source of tasks. When it fails, the roadmap goes
 // without its tasks and says so in a note: it never fails the roadmap.
 func WithTasks(src TaskSource) Option { return func(s *Service) { s.sources = append(s.sources, src) } }
@@ -290,8 +294,8 @@ func (s *Service) check(e Event, f farm.Farm, r Roadmap, added map[string]bool) 
 	}
 	if ok && t.Kind == calendar.Sow && t.Source == FromCalendar && e.Kind == Done {
 		planned, _ := time.Parse(agro.DateLayout, r.Zones[t.Zone].PlannedSow)
-		if d := day.Sub(planned).Hours() / 24; d < -120 || d > 120 {
-			return fmt.Errorf("sowing on %s is more than 120 days from the planned %s: save a new plan instead", e.Day, r.Zones[t.Zone].PlannedSow)
+		if d := day.Sub(planned).Hours() / 24; d < -MaxSowShift || d > MaxSowShift {
+			return fmt.Errorf("sowing on %s is more than %d days from the planned %s: save a new plan instead", e.Day, MaxSowShift, r.Zones[t.Zone].PlannedSow)
 		}
 	}
 	return nil

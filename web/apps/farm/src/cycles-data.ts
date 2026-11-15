@@ -136,7 +136,9 @@ export interface WeekTask {
 export function dayLabel(day: string): string {
   const d = new Date(day + "T00:00:00");
   if (Number.isNaN(d.getTime())) return day;
-  return d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
+  // A day in another year says its year: a suggestion can be months ahead.
+  const year = d.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined;
+  return d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year });
 }
 
 export function addDays(day: string, n: number): string {

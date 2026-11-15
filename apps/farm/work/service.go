@@ -28,20 +28,53 @@ type Store interface {
 // Planner is what the roadmap needs of the planner.
 type Planner interface {
 	Farms() *farm.Service
-	Library() *agro.Library
+	LibraryFor(f farm.Farm) *agro.Library
 	Today() time.Time
 }
+
+// TaskSource adds tasks to a plot's roadmap from data beside the crop
+// calendar: the feeding and spray schedule of its inputs plan.
+//
+// Tasks gets the plot and its zones as the roadmap has them (each with its
+// real sowing date once recorded) and returns tasks with stable IDs
+// ([TaskID] with a key that stays the same when the sowing moves). A task
+// whose ID is a calendar task's enriches that task instead of standing
+// beside it, so events on it keep working and nothing is listed twice;
+// a feeding near a calendar feeding takes its place under the feeding's
+// own ID (see merge); the others are added. Their events are recorded like the calendar's.
+// Notes go on the roadmap with them (where the values come from).
+type TaskSource interface {
+	Tasks(ctx context.Context, f farm.Farm, zones []Zone) (tasks []Task, notes []string, err error)
+}
+
+// Option configures [New].
+type Option func(*Service)
+
+// MaxSowShift is how many days from its plan a recorded sowing may be;
+// further, the plan is saved again with the sowing.
+const MaxSowShift = 120
+
+// WithTasks adds a source of tasks. When it fails, the roadmap goes
+// without its tasks and says so in a note: it never fails the roadmap.
+func WithTasks(src TaskSource) Option { return func(s *Service) { s.sources = append(s.sources, src) } }
 
 // Service builds roadmaps and records what the farmer did. It is safe for
 // concurrent use.
 type Service struct {
-	plan  Planner
-	store Store
-	now   func() time.Time
+	plan    Planner
+	store   Store
+	sources []TaskSource
+	now     func() time.Time
 }
 
 // New returns a Service over the planner's plots and the store's events.
-func New(p Planner, s Store) *Service { return &Service{plan: p, store: s, now: time.Now} }
+func New(p Planner, s Store, opts ...Option) *Service {
+	svc := &Service{plan: p, store: s, now: time.Now}
+	for _, o := range opts {
+		o(svc)
+	}
+	return svc
+}
 
 // SetNow sets the clock events are stamped with (for tests).
 func (s *Service) SetNow(now func() time.Time) { s.now = now }
@@ -56,19 +89,45 @@ func (s *Service) Roadmap(ctx context.Context, farmID string) (Roadmap, error) {
 	if err != nil {
 		return Roadmap{}, err
 	}
-	return s.build(f, evs)
+	return s.build(ctx, f, evs)
 }
 
-func (s *Service) build(f farm.Farm, evs []Event) (Roadmap, error) {
+// NoteMissing is the roadmap's note when a task source could not answer.
+const NoteMissing = "Some feeding and spray tasks could not be added just now; the crop calendar's tasks are all here."
+
+func (s *Service) build(ctx context.Context, f farm.Farm, evs []Event) (Roadmap, error) {
 	if f.Plan == nil || len(f.Plan.Zones) == 0 {
 		return Roadmap{}, fmt.Errorf("%w: plot %s has no saved crop plan", ErrInvalid, f.ID)
 	}
 	irrigated := f.Profile != nil && len(f.Profile.Water) > 0
-	return Build(s.plan.Library(), f.ID, *f.Plan, irrigated, evs, s.plan.Today())
+	var notes []string
+	var extra func([]Zone) []Task
+	if len(s.sources) > 0 {
+		extra = func(zones []Zone) []Task {
+			var out []Task
+			for _, src := range s.sources {
+				ts, ns, err := src.Tasks(ctx, f, zones)
+				if err != nil {
+					ns, ts = []string{NoteMissing}, nil
+				}
+				for _, n := range ns {
+					if !slices.Contains(notes, n) {
+						notes = append(notes, n)
+					}
+				}
+				out = append(out, ts...)
+			}
+			return out
+		}
+	}
+	r, err := build(s.plan.LibraryFor(f), f.ID, *f.Plan, irrigated, evs, s.plan.Today(), extra)
+	r.Notes = append(r.Notes, notes...)
+	return r, err
 }
 
-// Due returns a plot's open tasks dated from from to to, both included;
-// none for a plot with no plan.
+// Due returns a plot's open tasks dated from from to to, both included,
+// leaving out those passed by a recorded sowing; none for a plot with no
+// plan.
 func (s *Service) Due(ctx context.Context, farmID string, from, to time.Time) ([]Task, error) {
 	r, err := s.Roadmap(ctx, farmID)
 	if err != nil {
@@ -79,7 +138,7 @@ func (s *Service) Due(ctx context.Context, farmID string, from, to time.Time) ([
 		return nil, err
 	}
 	f, t := from.Format(agro.DateLayout), to.Format(agro.DateLayout)
-	return slices.DeleteFunc(r.Tasks, func(k Task) bool { return k.State != Open || k.Date < f || k.Date > t }), nil
+	return slices.DeleteFunc(r.Tasks, func(k Task) bool { return k.State != Open || k.Passed || k.Date < f || k.Date > t }), nil
 }
 
 // Record checks and records events on a plot and returns how many were new
@@ -98,7 +157,7 @@ func (s *Service) Record(ctx context.Context, farmID string, evs []Event) (int, 
 	if err != nil {
 		return 0, Roadmap{}, err
 	}
-	r, err := s.build(f, have)
+	r, err := s.build(ctx, f, have)
 	if err != nil {
 		return 0, Roadmap{}, err
 	}
@@ -137,7 +196,7 @@ func (s *Service) Record(ctx context.Context, farmID string, evs []Event) (int, 
 	if err != nil {
 		return n, Roadmap{}, err
 	}
-	r, err = s.build(f, all)
+	r, err = s.build(ctx, f, all)
 	return n, r, err
 }
 
@@ -237,8 +296,8 @@ func (s *Service) check(e Event, f farm.Farm, r Roadmap, added map[string]bool) 
 	}
 	if ok && t.Kind == calendar.Sow && t.Source == FromCalendar && e.Kind == Done {
 		planned, _ := time.Parse(agro.DateLayout, r.Zones[t.Zone].PlannedSow)
-		if d := day.Sub(planned).Hours() / 24; d < -120 || d > 120 {
-			return fmt.Errorf("sowing on %s is more than 120 days from the planned %s: save a new plan instead", e.Day, r.Zones[t.Zone].PlannedSow)
+		if d := day.Sub(planned).Hours() / 24; d < -MaxSowShift || d > MaxSowShift {
+			return fmt.Errorf("sowing on %s is more than %d days from the planned %s: save a new plan instead", e.Day, MaxSowShift, r.Zones[t.Zone].PlannedSow)
 		}
 	}
 	return nil

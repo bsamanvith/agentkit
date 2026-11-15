@@ -10,6 +10,7 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/agro"
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
 	"github.com/bsamanvith/agentkit/apps/farm/geo"
+	"github.com/bsamanvith/agentkit/apps/farm/region"
 	"github.com/bsamanvith/agentkit/apps/farm/sun"
 )
 
@@ -54,14 +55,11 @@ type SunReport struct {
 }
 
 // SeasonSpan is an Indian season's usual sowing months.
-type SeasonSpan struct {
-	Season string `json:"season"`
-	From   int    `json:"from"` // month, 1 to 12
-	To     int    `json:"to"`
-}
+type SeasonSpan = region.SeasonSpan
 
-// Seasons are the usual sowing months of the Indian seasons.
-var Seasons = []SeasonSpan{{agro.Kharif, 6, 9}, {agro.Rabi, 10, 2}, {agro.Zaid, 3, 5}}
+// Seasons are the usual sowing months of the Indian seasons: the base
+// rules'. A plot's are its region pack's ([Planner.RulesFor]).
+var Seasons = region.DefaultRules().Seasons
 
 // Sun returns the sun at a farm month by month: day length, bright sun
 // hours, the noon sun's height and side, the angle its rays strike the
@@ -76,7 +74,7 @@ func (p *Planner) Sun(ctx context.Context, id string) (SunReport, error) {
 	if err != nil {
 		return SunReport{}, err
 	}
-	rep := SunReport{Farm: f.ID, Point: c.Point, Slope: SlopeOf(f), Seasons: Seasons, Source: c.Source, Today: p.Today().Format(agro.DateLayout)}
+	rep := SunReport{Farm: f.ID, Point: c.Point, Slope: SlopeOf(f), Seasons: p.RulesFor(f).Seasons, Source: c.Source, Today: p.Today().Format(agro.DateLayout)}
 	switch {
 	case rep.Slope != nil:
 		rep.SlopeNote = fmt.Sprintf("The survey's heights: the ground falls %.0f%% towards the %s.", f.Survey.Terrain.SlopePct, geo.CompassWords(rep.Slope.AspectDeg))

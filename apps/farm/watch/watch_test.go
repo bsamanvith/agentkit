@@ -207,7 +207,7 @@ func TestWeeklyTasks(t *testing.T) {
 		t.Fatalf("runs %+v: want one, for the planted plot", runs)
 	}
 	ns := notices(t, w, w.planted)
-	if len(ns) != 1 || !strings.Contains(ns[0].Body, "Tue 10 Nov: First top-dressing of nitrogen (Maize)") {
+	if len(ns) != 1 || !strings.Contains(ns[0].Body, "Tue 10 Nov: First nitrogen feed (Maize)") {
 		t.Errorf("notices %+v", ns)
 	}
 }
@@ -231,7 +231,7 @@ func TestWeeklyTasksFollowTheRoadmap(t *testing.T) {
 		t.Fatal(err)
 	}
 	ns := notices(t, w, w.planted)
-	if len(ns) != 1 || strings.Contains(ns[0].Body, "top-dressing") || !strings.Contains(ns[0].Body, "Wed 11 Nov: Repair the borewell motor") {
+	if len(ns) != 1 || strings.Contains(ns[0].Body, "nitrogen feed") || !strings.Contains(ns[0].Body, "Wed 11 Nov: Repair the borewell motor") {
 		t.Errorf("notices %+v; want the motor and not the done top-dressing", ns)
 	}
 }

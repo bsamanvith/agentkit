@@ -1,0 +1,4722 @@
+{
+ "note": "Starter values for an agronomist to review: rates per hectare (per plant for perennials) from the sources named with each value. Follow the product label.",
+ "sources": [
+  {
+   "id": "tnau-cpg-agri-2020",
+   "name": "TNAU Crop Production Guide: Agriculture (2020)",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/pdf/AGRICULTURE.pdf",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "tnau-cpg-hort-2020",
+   "name": "TNAU Crop Production Guide: Horticulture (2020)",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/pdf/HORTICULTURE.pdf",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "cibrc-mup-2019",
+   "name": "Major Uses of Pesticides registered under the Insecticides Act, 1968, up to 31.10.2019 (copy on the Odisha e-Pest portal)",
+   "publisher": "Central Insecticides Board & Registration Committee",
+   "url": "https://www.epestodisha.nic.in/public/documents/Major%20use%20of%20Pesticides%20by%20CIBRC.pdf",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "npop-8",
+   "name": "National Programme for Organic Production, 8th edition, Annex 3",
+   "publisher": "APEDA",
+   "url": "https://agritech.tnau.ac.in/org_farm/pdf/NPOP%208th%20Edition%20.pdf",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "spic-products",
+   "name": "SPIC primary nutrients: product specifications and packing",
+   "publisher": "SPIC",
+   "url": "https://www.spic.in/products/primary-nutrients/",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "governancenow-urea-45kg",
+   "name": "Using 45 kg bags may bring down urea consumption (reply in Parliament)",
+   "publisher": "Governance Now",
+   "url": "https://www.governancenow.com/news/regular-story/using-45-kg-bags-may-bring-down-urea-consumption-",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "organicmandya-jeevamrutha",
+   "name": "Jeevamrutha preparation: recipe and application guide",
+   "publisher": "Organic Mandya (practitioners, not a university)",
+   "url": "https://www.organicmandya.com/farming/methods/jeevamrutha-preparation/",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "wikipedia-ppqs-2024",
+   "name": "List of banned and restricted pesticides in India (copy of the PPQS list as on 31.03.2024; the PPQS page itself could not be reached)",
+   "publisher": "Wikipedia",
+   "url": "https://en.wikipedia.org/wiki/List_of_banned_and_restricted_pesticides_in_India",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "ruralvoice-ban-2023",
+   "name": "Government bans use of four pesticides including monocrotophos",
+   "publisher": "Rural Voice",
+   "url": "https://eng.ruralvoice.in/national/government-bans-use-of-four-pesticides-including-controversial-monocrotophus.html",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "teamlease-carbosulfan-2026",
+   "name": "Draft Banning of Carbosulfan Order, 2026",
+   "publisher": "TeamLease RegTech",
+   "url": "https://teamleaseregtech.com/updates/article/59066/draft-banning-of-carbosulfan-order-2026/",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "drishti-paraquat-2026",
+   "name": "Centre notifies ban on paraquat dichloride",
+   "publisher": "Drishti IAS",
+   "url": "https://www.drishtiias.com/daily-updates/daily-news-analysis/centre-notifies-ban-on-paraquat-dichloride",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "tnau-cp-gn-leafminer",
+   "name": "TNAU Agritech crop protection: Groundnut leaf miner",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/crop_protection/Crop-production-entomology-2.html",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "tnau-cp-gn-spodoptera",
+   "name": "TNAU Agritech crop protection: Groundnut tobacco caterpillar",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/crop_protection/Crop-production-entomology-3.html",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "tnau-cp-gn-rust",
+   "name": "TNAU Agritech crop protection: Groundnut rust",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/crop_protection/groundnut_diseases/groundnut_d3.html",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "tnau-cp-rg-podborer",
+   "name": "TNAU Agritech crop protection: Red gram pod borer",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/crop_protection/redgram/crop_prot_crop_insect_pul_red_gram_1.html",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "tnau-cp-rg-wilt",
+   "name": "TNAU Agritech crop protection: Red gram wilt",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/crop_protection/red_gram_disease/red_gram_d4.html",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "tnau-cp-cot-leafhopper",
+   "name": "TNAU Agritech crop protection: Cotton leafhopper",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/crop_protection/cotton/crop_prot_crop_insectpest%20_cotton_10.html",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "tnau-cp-cot-whitefly",
+   "name": "TNAU Agritech crop protection: Cotton whitefly",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/crop_protection/cotton/crop_prot_crop_insectpest%20_cotton_13.html",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "tnau-cp-cot-pbw",
+   "name": "TNAU Agritech crop protection: Cotton pink bollworm",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/crop_protection/cotton/crop_prot_crop_insectpest%20_cotton_2.html",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "tnau-cp-chi-thrips",
+   "name": "TNAU Agritech crop protection: Chilli thrips",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/crop_protection/chilli/chilli_1.html",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "tnau-cp-chi-mite",
+   "name": "TNAU Agritech crop protection: Chilli yellow mite",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/crop_protection/chilli/chilli_5.html",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "tnau-cp-chi-dieback",
+   "name": "TNAU Agritech crop protection: Chilli fruit rot and die-back",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/crop_protection/chilli_diseases_2.html",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "tnau-cp-chi-pm",
+   "name": "TNAU Agritech crop protection: Chilli powdery mildew",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/crop_protection/chilli_diseases_3.html",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "tnau-cp-tom-borer",
+   "name": "TNAU Agritech crop protection: Tomato fruit borer",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/crop_protection/tomato/tomato_1.html",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "tnau-cp-tom-whitefly",
+   "name": "TNAU Agritech crop protection: Tomato whitefly",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/crop_protection/tomato/tomato_4.html",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "tnau-cp-tom-eb",
+   "name": "TNAU Agritech crop protection: Tomato early blight",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/crop_protection/tomato_diseases_2.html",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "tnau-cp-rice-sb",
+   "name": "TNAU Agritech crop protection: Rice yellow stem borer",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/crop_protection/rice/crop_prot_crop_insectpest%20_cereals_paddy_m1.html",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "tnau-cp-rice-bph",
+   "name": "TNAU Agritech crop protection: Rice brown planthopper",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/crop_protection/rice/crop_prot_crop_insectpest%20_cereals_paddy_12.html",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "tnau-cp-sor-shootfly",
+   "name": "TNAU Agritech crop protection: Sorghum shoot fly",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/crop_protection/crop_prot_crop_insectpests_cereals_sorghum_1.html",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "tnau-cp-pm-dm",
+   "name": "TNAU Agritech crop protection: Pearl millet downy mildew",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/crop_protection/cumbu_disease/cumbu_1.html",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "tnau-cp-fm-blast",
+   "name": "TNAU Agritech crop protection: Finger millet blast",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/crop_protection/ragi_diseases/crop_prot_crop%20diseases_cereals_ragi_1.html",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "tnau-cp-cp-wilt",
+   "name": "TNAU Agritech crop protection: Chickpea wilt",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/crop_protection/chickpea_disease/chickpea_6.html",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "tnau-cp-sun-hopper",
+   "name": "TNAU Agritech crop protection: Sunflower leafhopper",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/crop_protection/sunflower/crop_prot_crop_insect_oil_sunflower_4.html",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "tnau-cp-sun-dm",
+   "name": "TNAU Agritech crop protection: Sunflower downy mildew",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/crop_protection/sunflower_disease/sunflower_d1.html",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "tnau-cp-mango-hopper",
+   "name": "TNAU Agritech crop protection: Mango hoppers",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/crop_protection/mango/mango_4.html",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "tnau-cp-mango-pm",
+   "name": "TNAU Agritech crop protection: Mango powdery mildew",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/crop_protection/mango_2.html",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "tnau-cp-mango-ff",
+   "name": "TNAU Agritech crop protection: Mango fruit fly",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/crop_protection/mango/mango_8.html",
+   "read": "2026-11-15"
+  },
+  {
+   "id": "tnau-cp-maize-faw",
+   "name": "TNAU Agritech crop protection: Maize fall armyworm",
+   "publisher": "Tamil Nadu Agricultural University",
+   "url": "https://agritech.tnau.ac.in/crop_protection/maize/crop_prot_maize_fall_armyworm.html",
+   "read": "2026-11-15"
+  }
+ ],
+ "products": [
+  {
+   "id": "urea",
+   "name": "Urea",
+   "kind": "fertiliser",
+   "synthetic": true,
+   "n": 46,
+   "unit": "kg",
+   "pack": 45,
+   "pack_name": "45 kg bag",
+   "ref": {
+    "source": "spic-products",
+    "where": "Bharat Urea: 46 % N"
+   },
+   "pack_ref": {
+    "source": "governancenow-urea-45kg",
+    "where": "45 kg bag in place of 50 kg"
+   }
+  },
+  {
+   "id": "dap",
+   "name": "DAP (diammonium phosphate)",
+   "kind": "fertiliser",
+   "synthetic": true,
+   "n": 18,
+   "p": 46,
+   "unit": "kg",
+   "pack": 50,
+   "pack_name": "50 kg bag",
+   "ref": {
+    "source": "spic-products",
+    "where": "Bharat DAP: 18 % N, 46 % P2O5"
+   },
+   "pack_ref": {
+    "source": "spic-products",
+    "where": "Bharat DAP: packing 50 kg HDPE bag"
+   }
+  },
+  {
+   "id": "mop",
+   "name": "MOP (muriate of potash)",
+   "kind": "fertiliser",
+   "synthetic": true,
+   "k": 60,
+   "unit": "kg",
+   "ref": {
+    "source": "tnau-cpg-agri-2020",
+    "where": "p. 229: 2.0 kg muriate of potash (1200 g K2O)"
+   }
+  },
+  {
+   "id": "ssp",
+   "name": "SSP (single superphosphate)",
+   "kind": "fertiliser",
+   "synthetic": true,
+   "p": 16,
+   "unit": "kg",
+   "ref": {
+    "source": "tnau-cpg-agri-2020",
+    "where": "p. 229: 2.0 kg superphosphate (320 g P2O5)"
+   }
+  },
+  {
+   "id": "zinc_sulphate",
+   "name": "Zinc sulphate",
+   "kind": "fertiliser",
+   "synthetic": true,
+   "npop": "restricted",
+   "unit": "kg",
+   "ref": {
+    "source": "tnau-cpg-agri-2020",
+    "where": "p. 187"
+   },
+   "npop_ref": {
+    "source": "npop-8",
+    "where": "Annex 3(1), restricted"
+   }
+  },
+  {
+   "id": "gypsum",
+   "name": "Gypsum",
+   "kind": "amendment",
+   "synthetic": false,
+   "npop": "permitted",
+   "s": 18,
+   "unit": "kg",
+   "ref": {
+    "source": "tnau-cpg-agri-2020",
+    "where": "p. 175: 40 kg S as gypsum (220 kg/ha)"
+   },
+   "npop_ref": {
+    "source": "npop-8",
+    "where": "Annex 3(1), permitted"
+   }
+  },
+  {
+   "id": "fym",
+   "name": "Farmyard manure (well rotted)",
+   "kind": "manure",
+   "synthetic": false,
+   "npop": "permitted",
+   "unit": "t",
+   "make": true,
+   "ref": {
+    "source": "npop-8",
+    "where": "Annex 3(1), permitted"
+   },
+   "npop_ref": {
+    "source": "npop-8",
+    "where": "Annex 3(1), permitted"
+   }
+  },
+  {
+   "id": "vermicompost",
+   "name": "Vermicompost",
+   "kind": "manure",
+   "synthetic": false,
+   "npop": "restricted",
+   "unit": "t",
+   "ref": {
+    "source": "npop-8",
+    "where": "Annex 3(1), restricted"
+   },
+   "npop_ref": {
+    "source": "npop-8",
+    "where": "Annex 3(1), restricted"
+   }
+  },
+  {
+   "id": "neem_cake",
+   "name": "Neem cake",
+   "kind": "manure",
+   "synthetic": false,
+   "npop": "permitted",
+   "unit": "kg",
+   "ref": {
+    "source": "npop-8",
+    "where": "Annex 3(1), permitted"
+   },
+   "npop_ref": {
+    "source": "npop-8",
+    "where": "Annex 3(1), permitted"
+   }
+  },
+  {
+   "id": "jaggery",
+   "name": "Jaggery (for jeevamrutham)",
+   "kind": "manure",
+   "synthetic": false,
+   "npop": "permitted",
+   "unit": "kg",
+   "ref": {
+    "source": "organicmandya-jeevamrutha",
+    "where": "Ingredients for 200 litres"
+   },
+   "npop_ref": {
+    "source": "npop-8",
+    "where": "Annex 3(1), permitted"
+   }
+  },
+  {
+   "id": "pulse_flour",
+   "name": "Pulse flour (for jeevamrutham)",
+   "kind": "manure",
+   "synthetic": false,
+   "npop": "permitted",
+   "unit": "kg",
+   "ref": {
+    "source": "organicmandya-jeevamrutha",
+    "where": "Ingredients for 200 litres"
+   },
+   "npop_ref": {
+    "source": "npop-8",
+    "where": "Annex 3(1), permitted"
+   }
+  },
+  {
+   "id": "cow_dung",
+   "name": "Fresh desi cow dung (for jeevamrutham)",
+   "kind": "manure",
+   "synthetic": false,
+   "npop": "permitted",
+   "unit": "kg",
+   "make": true,
+   "ref": {
+    "source": "organicmandya-jeevamrutha",
+    "where": "Ingredients for 200 litres"
+   },
+   "npop_ref": {
+    "source": "npop-8",
+    "where": "Annex 3(1), permitted"
+   }
+  },
+  {
+   "id": "azospirillum",
+   "name": "Azospirillum",
+   "kind": "biofertiliser",
+   "synthetic": false,
+   "npop": "permitted",
+   "unit": "g",
+   "pack": 200,
+   "pack_name": "200 g packet",
+   "ref": {
+    "source": "tnau-cpg-agri-2020",
+    "where": "p. 218: 10 packets (2000 g/ha)"
+   },
+   "pack_ref": {
+    "source": "tnau-cpg-agri-2020",
+    "where": "p. 218: 10 packets (2000 g/ha)"
+   },
+   "npop_ref": {
+    "source": "npop-8",
+    "where": "Annex 3(1), permitted"
+   }
+  },
+  {
+   "id": "phosphobacteria",
+   "name": "Phosphobacteria (PSB)",
+   "kind": "biofertiliser",
+   "synthetic": false,
+   "npop": "permitted",
+   "unit": "g",
+   "pack": 200,
+   "pack_name": "200 g packet",
+   "ref": {
+    "source": "tnau-cpg-agri-2020",
+    "where": "p. 218: 10 packets (2000 g/ha)"
+   },
+   "pack_ref": {
+    "source": "tnau-cpg-agri-2020",
+    "where": "p. 218: 10 packets (2000 g/ha)"
+   },
+   "npop_ref": {
+    "source": "npop-8",
+    "where": "Annex 3(1), permitted"
+   }
+  },
+  {
+   "id": "rhizobium",
+   "name": "Rhizobium culture",
+   "kind": "biofertiliser",
+   "synthetic": false,
+   "npop": "permitted",
+   "unit": "g",
+   "pack": 200,
+   "pack_name": "200 g packet",
+   "ref": {
+    "source": "tnau-cpg-agri-2020",
+    "where": "p. 126"
+   },
+   "pack_ref": {
+    "source": "tnau-cpg-agri-2020",
+    "where": "p. 218: 10 packets (2000 g/ha)"
+   },
+   "npop_ref": {
+    "source": "npop-8",
+    "where": "Annex 3(1), permitted"
+   }
+  },
+  {
+   "id": "pgpr",
+   "name": "PGPR (plant growth promoting rhizobacteria)",
+   "kind": "biofertiliser",
+   "synthetic": false,
+   "npop": "permitted",
+   "unit": "g",
+   "pack": 200,
+   "pack_name": "200 g packet",
+   "ref": {
+    "source": "tnau-cpg-agri-2020",
+    "where": "p. 126"
+   },
+   "pack_ref": {
+    "source": "tnau-cpg-agri-2020",
+    "where": "p. 218: 10 packets (2000 g/ha)"
+   },
+   "npop_ref": {
+    "source": "npop-8",
+    "where": "Annex 3(1), permitted"
+   }
+  },
+  {
+   "id": "am_fungi",
+   "name": "AM fungi (mycorrhiza)",
+   "kind": "biofertiliser",
+   "synthetic": false,
+   "npop": "permitted",
+   "unit": "g",
+   "ref": {
+    "source": "tnau-cpg-hort-2020",
+    "where": "p. 8"
+   },
+   "npop_ref": {
+    "source": "npop-8",
+    "where": "Annex 3(1), permitted"
+   }
+  },
+  {
+   "id": "trichoderma",
+   "name": "Trichoderma (T. asperellum or T. viride)",
+   "kind": "biocontrol",
+   "synthetic": false,
+   "npop": "permitted",
+   "unit": "g",
+   "ref": {
+    "source": "npop-8",
+    "where": "Annex 3(2), plant protection"
+   },
+   "npop_ref": {
+    "source": "npop-8",
+    "where": "Annex 3(2), plant protection"
+   }
+  },
+  {
+   "id": "pseudomonas",
+   "name": "Pseudomonas fluorescens",
+   "kind": "biocontrol",
+   "synthetic": false,
+   "npop": "permitted",
+   "unit": "g",
+   "ref": {
+    "source": "npop-8",
+    "where": "Annex 3(2), plant protection"
+   },
+   "npop_ref": {
+    "source": "npop-8",
+    "where": "Annex 3(2), plant protection"
+   }
+  },
+  {
+   "id": "beauveria",
+   "name": "Beauveria bassiana",
+   "kind": "biocontrol",
+   "synthetic": false,
+   "npop": "permitted",
+   "unit": "g",
+   "ref": {
+    "source": "npop-8",
+    "where": "Annex 3(2), plant protection"
+   },
+   "npop_ref": {
+    "source": "npop-8",
+    "where": "Annex 3(2), plant protection"
+   }
+  },
+  {
+   "id": "btk",
+   "name": "Bacillus thuringiensis var. kurstaki (Bt)",
+   "kind": "biocontrol",
+   "synthetic": false,
+   "npop": "permitted",
+   "unit": "g",
+   "ref": {
+    "source": "npop-8",
+    "where": "Annex 3(2), plant protection"
+   },
+   "npop_ref": {
+    "source": "npop-8",
+    "where": "Annex 3(2), plant protection"
+   }
+  },
+  {
+   "id": "ha_npv",
+   "name": "NPV of Helicoverpa armigera 2 % AS",
+   "kind": "biocontrol",
+   "synthetic": false,
+   "npop": "permitted",
+   "unit": "ml",
+   "active": "NPV of Helicoverpa armigera",
+   "ref": {
+    "source": "cibrc-mup-2019",
+    "where": "Insecticides: NPV of Helicoverpa armigera 2.0 % AS"
+   },
+   "npop_ref": {
+    "source": "npop-8",
+    "where": "Annex 3(2), plant protection"
+   }
+  },
+  {
+   "id": "neem_seed",
+   "name": "Neem seed kernels (for NSKE 5 %)",
+   "kind": "botanical",
+   "synthetic": false,
+   "npop": "permitted",
+   "unit": "kg",
+   "make": true,
+   "ref": {
+    "source": "npop-8",
+    "where": "Annex 3(2), plant protection"
+   },
+   "npop_ref": {
+    "source": "npop-8",
+    "where": "Annex 3(2), plant protection"
+   }
+  },
+  {
+   "id": "azadirachtin_003",
+   "name": "Azadirachtin 0.03 % neem oil based EC",
+   "kind": "botanical",
+   "synthetic": false,
+   "npop": "permitted",
+   "unit": "ml",
+   "active": "azadirachtin",
+   "ref": {
+    "source": "cibrc-mup-2019",
+    "where": "Insecticides: Azadirachtin 0.03 % (300 ppm) neem oil based"
+   },
+   "npop_ref": {
+    "source": "npop-8",
+    "where": "Annex 3(2), plant protection"
+   }
+  },
+  {
+   "id": "azadirachtin_1",
+   "name": "Azadirachtin 1 % EC",
+   "kind": "botanical",
+   "synthetic": false,
+   "npop": "permitted",
+   "unit": "ml",
+   "active": "azadirachtin",
+   "ref": {
+    "source": "tnau-cpg-agri-2020",
+    "where": "p. 113"
+   },
+   "npop_ref": {
+    "source": "npop-8",
+    "where": "Annex 3(2), plant protection"
+   }
+  },
+  {
+   "id": "wettable_sulphur",
+   "name": "Wettable sulphur",
+   "kind": "mineral",
+   "synthetic": false,
+   "npop": "restricted",
+   "unit": "g",
+   "active": "sulphur",
+   "ref": {
+    "source": "npop-8",
+    "where": "Annex 3(1), restricted"
+   },
+   "npop_ref": {
+    "source": "npop-8",
+    "where": "Annex 3(1), restricted"
+   }
+  },
+  {
+   "id": "pheromone_trap",
+   "name": "Pheromone trap with lure",
+   "kind": "trap",
+   "synthetic": false,
+   "npop": "permitted",
+   "unit": "piece",
+   "ref": {
+    "source": "npop-8",
+    "where": "Annex 3(2), plant protection"
+   },
+   "npop_ref": {
+    "source": "npop-8",
+    "where": "Annex 3(2), plant protection"
+   }
+  },
+  {
+   "id": "yellow_sticky_trap",
+   "name": "Yellow sticky trap",
+   "kind": "trap",
+   "synthetic": false,
+   "npop": "permitted",
+   "unit": "piece",
+   "ref": {
+    "source": "npop-8",
+    "where": "Annex 3(2), plant protection"
+   },
+   "npop_ref": {
+    "source": "npop-8",
+    "where": "Annex 3(2), plant protection"
+   }
+  },
+  {
+   "id": "fish_meal_trap",
+   "name": "Fish meal trap (TNAU low-cost)",
+   "kind": "trap",
+   "synthetic": false,
+   "npop": "permitted",
+   "unit": "piece",
+   "ref": {
+    "source": "tnau-cpg-agri-2020",
+    "where": "p. 77"
+   },
+   "npop_ref": {
+    "source": "npop-8",
+    "where": "Annex 3(2), plant protection"
+   }
+  },
+  {
+   "id": "methyl_eugenol_trap",
+   "name": "Methyl eugenol trap",
+   "kind": "trap",
+   "synthetic": false,
+   "npop": "permitted",
+   "unit": "piece",
+   "ref": {
+    "source": "tnau-cpg-hort-2020",
+    "where": "p. 4"
+   },
+   "npop_ref": {
+    "source": "npop-8",
+    "where": "Annex 3(2), plant protection"
+   }
+  },
+  {
+   "id": "bird_perch",
+   "name": "Bird perch (a T-shaped stick)",
+   "kind": "trap",
+   "synthetic": false,
+   "npop": "permitted",
+   "unit": "piece",
+   "make": true,
+   "ref": {
+    "source": "tnau-cpg-agri-2020",
+    "where": "p. 130"
+   },
+   "npop_ref": {
+    "source": "npop-8",
+    "where": "Annex 3(2), plant protection"
+   }
+  },
+  {
+   "id": "lambda_cyhalothrin_5ec",
+   "name": "Lambda-cyhalothrin 5 % EC",
+   "kind": "pesticide",
+   "synthetic": true,
+   "unit": "ml",
+   "active": "lambda-cyhalothrin",
+   "ref": {
+    "source": "cibrc-mup-2019",
+    "where": "Insecticides: Lambda-cyhalothrin 5 % EC"
+   }
+  },
+  {
+   "id": "thiamethoxam_lambda_zc",
+   "name": "Thiamethoxam 12.6 % + Lambda-cyhalothrin 9.5 % ZC",
+   "kind": "pesticide",
+   "synthetic": true,
+   "unit": "ml",
+   "active": "thiamethoxam + lambda-cyhalothrin",
+   "ref": {
+    "source": "cibrc-mup-2019",
+    "where": "Insecticide combinations: Thiamethoxam 12.6 % + Lambda-cyhalothrin 9.5 % ZC"
+   }
+  },
+  {
+   "id": "tebuconazole_259ec",
+   "name": "Tebuconazole 25.9 % EC",
+   "kind": "pesticide",
+   "synthetic": true,
+   "unit": "ml",
+   "active": "tebuconazole",
+   "ref": {
+    "source": "cibrc-mup-2019",
+    "where": "Fungicides: Tebuconazole 25.9 % m/m EC"
+   }
+  },
+  {
+   "id": "chlorantraniliprole_185sc",
+   "name": "Chlorantraniliprole 18.5 % SC",
+   "kind": "pesticide",
+   "synthetic": true,
+   "unit": "ml",
+   "active": "chlorantraniliprole",
+   "ref": {
+    "source": "cibrc-mup-2019",
+    "where": "Insecticides: Chlorantraniliprole 18.5 % SC"
+   }
+  },
+  {
+   "id": "flonicamid_50wg",
+   "name": "Flonicamid 50 % WG",
+   "kind": "pesticide",
+   "synthetic": true,
+   "unit": "g",
+   "active": "flonicamid",
+   "ref": {
+    "source": "cibrc-mup-2019",
+    "where": "Insecticides: Flonicamid 50 % WG"
+   }
+  },
+  {
+   "id": "emamectin_5sg",
+   "name": "Emamectin benzoate 5 % SG",
+   "kind": "pesticide",
+   "synthetic": true,
+   "unit": "g",
+   "active": "emamectin benzoate",
+   "ref": {
+    "source": "cibrc-mup-2019",
+    "where": "Insecticides: Emamectin benzoate 5 % SG"
+   }
+  },
+  {
+   "id": "spinosad_45sc",
+   "name": "Spinosad 45 % SC",
+   "kind": "pesticide",
+   "synthetic": true,
+   "unit": "ml",
+   "active": "spinosad",
+   "ref": {
+    "source": "cibrc-mup-2019",
+    "where": "Insecticides: Spinosad 45.0 % SC"
+   }
+  },
+  {
+   "id": "spiromesifen_229sc",
+   "name": "Spiromesifen 22.9 % SC",
+   "kind": "pesticide",
+   "synthetic": true,
+   "unit": "ml",
+   "active": "spiromesifen",
+   "ref": {
+    "source": "cibrc-mup-2019",
+    "where": "Insecticides: Spiromesifen 22.9 % SC"
+   }
+  },
+  {
+   "id": "azoxystrobin_23sc",
+   "name": "Azoxystrobin 23 % SC",
+   "kind": "pesticide",
+   "synthetic": true,
+   "unit": "ml",
+   "active": "azoxystrobin",
+   "ref": {
+    "source": "cibrc-mup-2019",
+    "where": "Fungicides: Azoxystrobin 23 % SC"
+   }
+  },
+  {
+   "id": "imidacloprid_178sl",
+   "name": "Imidacloprid 17.8 % SL",
+   "kind": "pesticide",
+   "synthetic": true,
+   "unit": "ml",
+   "active": "imidacloprid",
+   "ref": {
+    "source": "cibrc-mup-2019",
+    "where": "Insecticides: Imidacloprid 17.8 % SL"
+   }
+  },
+  {
+   "id": "pymetrozine_50wg",
+   "name": "Pymetrozine 50 % WG",
+   "kind": "pesticide",
+   "synthetic": true,
+   "unit": "g",
+   "active": "pymetrozine",
+   "ref": {
+    "source": "cibrc-mup-2019",
+    "where": "Insecticides: Pymetrozine 50 % WG"
+   }
+  },
+  {
+   "id": "thiamethoxam_30fs",
+   "name": "Thiamethoxam 30 % FS (seed treatment)",
+   "kind": "pesticide",
+   "synthetic": true,
+   "unit": "ml",
+   "active": "thiamethoxam",
+   "ref": {
+    "source": "cibrc-mup-2019",
+    "where": "Insecticides: Thiamethoxam 30 % FS"
+   }
+  },
+  {
+   "id": "metalaxyl_m_318es",
+   "name": "Metalaxyl-M 31.8 % ES (seed treatment)",
+   "kind": "pesticide",
+   "synthetic": true,
+   "unit": "ml",
+   "active": "metalaxyl-M",
+   "ref": {
+    "source": "cibrc-mup-2019",
+    "where": "Fungicides: Metalaxyl-M 31.8 % ES"
+   }
+  },
+  {
+   "id": "hexaconazole_5ec",
+   "name": "Hexaconazole 5 % EC",
+   "kind": "pesticide",
+   "synthetic": true,
+   "unit": "ml",
+   "active": "hexaconazole",
+   "ref": {
+    "source": "cibrc-mup-2019",
+    "where": "Fungicides: Hexaconazole 5 % EC"
+   }
+  }
+ ],
+ "kinds": [
+  {
+   "kind": "cereal",
+   "like": "sorghum"
+  },
+  {
+   "kind": "pulse",
+   "like": "black_gram"
+  },
+  {
+   "kind": "oilseed",
+   "like": "sesame"
+  },
+  {
+   "kind": "fibre",
+   "like": "cotton"
+  },
+  {
+   "kind": "cash",
+   "like": "sugarcane"
+  },
+  {
+   "kind": "spice",
+   "like": "turmeric"
+  },
+  {
+   "kind": "vegetable",
+   "like": "tomato"
+  },
+  {
+   "kind": "fruit",
+   "like": "mango"
+  }
+ ],
+ "jeevamrutham": {
+  "every_days": 15,
+  "until": "stage:maturing",
+  "litres_per_acre": 200,
+  "batch": [
+   {
+    "product": "cow_dung",
+    "qty": 10
+   },
+   {
+    "product": "jaggery",
+    "qty": 2
+   },
+   {
+    "product": "pulse_flour",
+    "qty": 2
+   }
+  ],
+  "note": "Ferment 48 hours; pour 200 litres per acre on the soil or through the drip every 15 days.",
+  "ref": {
+   "source": "organicmandya-jeevamrutha",
+   "where": "Application rate and ingredients for 200 litres"
+  }
+ },
+ "default_organic": [
+  {
+   "product": "vermicompost",
+   "qty": 5,
+   "at": "plough",
+   "ref": {
+    "source": "tnau-cpg-agri-2020",
+    "where": "p. 319"
+   },
+   "note": "Where the crop has no manure value of its own: TNAU vermicompost 5 t/ha (from a fodder maize and cowpea trial)."
+  }
+ ],
+ "crops": [
+  {
+   "seed": {
+    "qty": 120,
+    "unit": "kg",
+    "what": "kernels",
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 185"
+    }
+   },
+   "rainfed": {
+    "n": 10,
+    "p": 10,
+    "k": 45,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 187"
+    }
+   },
+   "irrigated": {
+    "n": 25,
+    "p": 50,
+    "k": 75,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 187"
+    }
+   },
+   "splits": [
+    {
+     "n": 100,
+     "p": 100,
+     "k": 100,
+     "at": "sow"
+    }
+   ],
+   "add": [
+    {
+     "product": "gypsum",
+     "qty": 400,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 188"
+     },
+     "route": "both",
+     "das": 45,
+     "note": "Apply on 40 to 45 days after sowing, then earth up."
+    },
+    {
+     "product": "zinc_sulphate",
+     "qty": 25,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 187"
+     },
+     "route": "conventional",
+     "at": "sow"
+    }
+   ],
+   "organic": [
+    {
+     "product": "fym",
+     "qty": 12.5,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 187"
+     },
+     "route": "both",
+     "at": "plough"
+    }
+   ],
+   "seed_treatment": [
+    {
+     "product": "trichoderma",
+     "per_kg_seed": 4,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 195"
+     },
+     "route": "both"
+    },
+    {
+     "product": "pseudomonas",
+     "per_kg_seed": 10,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 195"
+     },
+     "route": "organic"
+    }
+   ],
+   "protect": [
+    {
+     "id": "leaf_miner",
+     "name": "Leaf miner",
+     "kind": "pest",
+     "stages": [
+      "vegetative",
+      "flowering"
+     ],
+     "signs": "Young larvae mine into the leaves: short brownish blotches; grown larvae web the leaflets together; badly hit leaflets roll, dry up and look burnt.",
+     "signs_ref": {
+      "source": "tnau-cp-gn-leafminer",
+      "where": "Symptoms"
+     },
+     "threshold": "1 larva per metre of row",
+     "threshold_ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 193"
+     },
+     "prevent": [
+      {
+       "text": "Set up a light trap between 8 and 11 pm at ground level.",
+       "ref": {
+        "source": "tnau-cpg-agri-2020",
+        "where": "p. 194"
+       }
+      }
+     ],
+     "organic": [],
+     "conventional": [
+      {
+       "product": "lambda_cyhalothrin_5ec",
+       "dose": [
+        200,
+        300
+       ],
+       "per": "ha",
+       "ref": {
+        "source": "cibrc-mup-2019",
+        "where": "Lambda-cyhalothrin 5 % EC: groundnut, thrips, leafhopper, leaf miner"
+       },
+       "water_l_ha": [
+        400,
+        500
+       ],
+       "phi_days": 10
+      }
+     ]
+    },
+    {
+     "id": "tobacco_caterpillar",
+     "name": "Tobacco caterpillar (Spodoptera)",
+     "kind": "pest",
+     "stages": [
+      "vegetative",
+      "flowering"
+     ],
+     "signs": "Freshly hatched larvae scrape the leaves; grown larvae eat whole leaves, leaving only the stalks, as if cattle had grazed the field.",
+     "signs_ref": {
+      "source": "tnau-cp-gn-spodoptera",
+      "where": "Symptoms"
+     },
+     "threshold": "8 egg masses per 100 m of row",
+     "threshold_ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 193"
+     },
+     "prevent": [
+      {
+       "text": "Grow castor along the border or as an intercrop as a trap crop; collect and destroy egg masses and young larvae.",
+       "ref": {
+        "source": "tnau-cpg-agri-2020",
+        "where": "p. 194"
+       }
+      }
+     ],
+     "organic": [
+      {
+       "text": "Spray neem seed kernel extract (NSKE) 5 %.",
+       "ref": {
+        "source": "tnau-cpg-agri-2020",
+        "where": "p. 194"
+       }
+      },
+      {
+       "text": "Spray nuclear polyhedrosis virus 1.5 x 10^12 POB/ha with 2.5 kg crude sugar and 250 ml Teepol per ha.",
+       "ref": {
+        "source": "tnau-cpg-agri-2020",
+        "where": "p. 194"
+       }
+      }
+     ],
+     "conventional": [
+      {
+       "product": "thiamethoxam_lambda_zc",
+       "dose": [
+        150,
+        150
+       ],
+       "per": "ha",
+       "ref": {
+        "source": "cibrc-mup-2019",
+        "where": "Thiamethoxam 12.6 % + Lambda-cyhalothrin 9.5 % ZC: groundnut, leaf eating caterpillar"
+       },
+       "water_l_ha": [
+        500,
+        500
+       ],
+       "phi_days": 28
+      }
+     ]
+    },
+    {
+     "id": "rust",
+     "name": "Rust",
+     "kind": "disease",
+     "stages": [
+      "flowering",
+      "maturing"
+     ],
+     "signs": "Orange-brown pustules, first on the underside of the leaves, then on the upper side and other parts; badly infected leaves die but stay on the plant.",
+     "signs_ref": {
+      "source": "tnau-cp-gn-rust",
+      "where": "Symptoms"
+     },
+     "prevent": [],
+     "organic": [
+      {
+       "product": "wettable_sulphur",
+       "dose": [
+        2500,
+        2500
+       ],
+       "per": "ha",
+       "ref": {
+        "source": "tnau-cpg-agri-2020",
+        "where": "p. 195"
+       },
+       "text": "Repeat 15 days later if needed."
+      }
+     ],
+     "conventional": [
+      {
+       "product": "tebuconazole_259ec",
+       "dose": [
+        500,
+        750
+       ],
+       "per": "ha",
+       "ref": {
+        "source": "cibrc-mup-2019",
+        "where": "Tebuconazole 25.9 % m/m EC: groundnut, tikka and rust"
+       },
+       "water_l_ha": [
+        500,
+        500
+       ],
+       "phi_days": 49
+      }
+     ]
+    }
+   ],
+   "crop": "groundnut"
+  },
+  {
+   "seed": {
+    "qty": 40,
+    "unit": "kg",
+    "what": "seed for a transplanted medium-duration crop",
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 17"
+    }
+   },
+   "seed_rainfed": {
+    "qty": 75,
+    "unit": "kg",
+    "what": "seed for a rainfed direct-sown crop",
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 34"
+    }
+   },
+   "rainfed": {
+    "n": 50,
+    "p": 25,
+    "k": 25,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 34"
+    }
+   },
+   "irrigated": {
+    "n": 150,
+    "p": 50,
+    "k": 50,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 22"
+    }
+   },
+   "splits": [
+    {
+     "n": 25,
+     "p": 100,
+     "k": 25,
+     "at": "sow"
+    },
+    {
+     "n": 25,
+     "p": 0,
+     "k": 25,
+     "at": "nitrogen-1"
+    },
+    {
+     "n": 25,
+     "p": 0,
+     "k": 25,
+     "at": "nitrogen-2"
+    },
+    {
+     "n": 25,
+     "p": 0,
+     "k": 25,
+     "stage": "flowering"
+    }
+   ],
+   "splits_rainfed": [
+    {
+     "n": 0,
+     "p": 100,
+     "k": 0,
+     "at": "sow"
+    },
+    {
+     "n": 50,
+     "p": 0,
+     "k": 50,
+     "das": 25
+    },
+    {
+     "n": 50,
+     "p": 0,
+     "k": 50,
+     "das": 45
+    }
+   ],
+   "organic": [
+    {
+     "product": "fym",
+     "qty": 12.5,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 21"
+     },
+     "route": "both",
+     "at": "plough",
+     "note": "Or plough in 6.25 t/ha of green manure."
+    },
+    {
+     "product": "azospirillum",
+     "qty": 2000,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 21"
+     },
+     "route": "both",
+     "at": "sow"
+    },
+    {
+     "product": "phosphobacteria",
+     "qty": 2000,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 21"
+     },
+     "route": "both",
+     "at": "sow"
+    },
+    {
+     "product": "pseudomonas",
+     "qty": 2500,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 21"
+     },
+     "route": "both",
+     "at": "sow",
+     "note": "Mixed with 50 kg FYM and 25 kg sand, broadcast before transplanting."
+    }
+   ],
+   "seed_treatment": [
+    {
+     "product": "pseudomonas",
+     "per_kg_seed": 10,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 17"
+     },
+     "route": "both"
+    }
+   ],
+   "protect": [
+    {
+     "id": "stem_borer",
+     "name": "Yellow stem borer",
+     "kind": "pest",
+     "stages": [
+      "vegetative",
+      "flowering"
+     ],
+     "signs": "Larvae bore into the central shoot, which dries (\"dead heart\"); in grown plants the whole panicle dries and stays white (\"white ear\"); hit shoots pull out easily.",
+     "signs_ref": {
+      "source": "tnau-cp-rice-sb",
+      "where": "Symptoms"
+     },
+     "threshold": "2 egg masses per m2, or 10 % dead hearts, or 2 % white ears",
+     "threshold_ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 51"
+     },
+     "prevent": [
+      {
+       "product": "pheromone_trap",
+       "qty": 12,
+       "per": "ha",
+       "at": "sow",
+       "ref": {
+        "source": "tnau-cpg-agri-2020",
+        "where": "p. 51"
+       },
+       "note": "To watch for stem borer and leaf folder moths."
+      }
+     ],
+     "organic": [
+      {
+       "product": "btk",
+       "dose": [
+        1500,
+        1500
+       ],
+       "per": "ha",
+       "ref": {
+        "source": "tnau-cpg-agri-2020",
+        "where": "p. 52"
+       }
+      }
+     ],
+     "conventional": [
+      {
+       "product": "chlorantraniliprole_185sc",
+       "dose": [
+        150,
+        150
+       ],
+       "per": "ha",
+       "ref": {
+        "source": "cibrc-mup-2019",
+        "where": "Chlorantraniliprole 18.5 % SC: rice, stem borer and leaf folder"
+       },
+       "water_l_ha": [
+        500,
+        500
+       ],
+       "phi_days": 47
+      }
+     ]
+    },
+    {
+     "id": "brown_planthopper",
+     "name": "Brown planthopper",
+     "kind": "pest",
+     "stages": [
+      "vegetative",
+      "flowering",
+      "maturing"
+     ],
+     "signs": "Hoppers crowd at the base of the plants above the water; plants dry up in round patches (\"hopper burn\"); sooty mould at the base.",
+     "signs_ref": {
+      "source": "tnau-cp-rice-bph",
+      "where": "Symptoms"
+     },
+     "threshold": "1 hopper per tiller, or 2 per tiller when spiders are about 1 per hill",
+     "threshold_ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 52"
+     },
+     "prevent": [
+      {
+       "text": "Avoid too much nitrogen and close planting; leave a 30 cm lane every 2.5 m.",
+       "ref": {
+        "source": "tnau-cpg-agri-2020",
+        "where": "p. 51"
+       }
+      }
+     ],
+     "organic": [
+      {
+       "product": "azadirachtin_003",
+       "dose": [
+        2000,
+        2000
+       ],
+       "per": "ha",
+       "ref": {
+        "source": "cibrc-mup-2019",
+        "where": "Azadirachtin 0.03 % neem oil based EC: rice, leaf roller, stem borer, BPH"
+       },
+       "water_l_ha": [
+        1000,
+        1000
+       ],
+       "phi_days": 5
+      }
+     ],
+     "conventional": [
+      {
+       "product": "pymetrozine_50wg",
+       "dose": [
+        300,
+        300
+       ],
+       "per": "ha",
+       "ref": {
+        "source": "cibrc-mup-2019",
+        "where": "Pymetrozine 50 % WG: paddy, brown plant hopper"
+       },
+       "water_l_ha": [
+        500,
+        500
+       ],
+       "phi_days": 19
+      }
+     ]
+    }
+   ],
+   "crop": "rice"
+  },
+  {
+   "seed": {
+    "qty": 10,
+    "unit": "kg",
+    "what": "seed, direct sown",
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 68"
+    }
+   },
+   "seed_rainfed": {
+    "qty": 15,
+    "unit": "kg",
+    "what": "seed",
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 74"
+    }
+   },
+   "rainfed": {
+    "n": 40,
+    "p": 20,
+    "k": 0,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 75"
+    }
+   },
+   "irrigated": {
+    "n": 90,
+    "p": 45,
+    "k": 45,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 68"
+    }
+   },
+   "splits": [
+    {
+     "n": 50,
+     "p": 100,
+     "k": 100,
+     "at": "sow"
+    },
+    {
+     "n": 25,
+     "p": 0,
+     "k": 0,
+     "das": 15
+    },
+    {
+     "n": 25,
+     "p": 0,
+     "k": 0,
+     "das": 30
+    }
+   ],
+   "splits_rainfed": [
+    {
+     "n": 100,
+     "p": 100,
+     "k": 100,
+     "at": "sow"
+    }
+   ],
+   "organic": [
+    {
+     "product": "fym",
+     "qty": 12.5,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 68"
+     },
+     "route": "both",
+     "at": "plough"
+    }
+   ],
+   "seed_treatment": [
+    {
+     "product": "thiamethoxam_30fs",
+     "per_kg_seed": 10,
+     "ref": {
+      "source": "cibrc-mup-2019",
+      "where": "Thiamethoxam 30 % FS: sorghum, shoot fly, seed dresser"
+     },
+     "route": "conventional"
+    },
+    {
+     "product": "pseudomonas",
+     "per_kg_seed": 10,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 78"
+     },
+     "route": "organic"
+    }
+   ],
+   "protect": [
+    {
+     "id": "shoot_fly",
+     "name": "Shoot fly",
+     "kind": "pest",
+     "stages": [
+      "establishment"
+     ],
+     "signs": "The maggot bores into the stem and cuts the growing point: the central shoot dries (\"dead heart\") and the plant puts out side tillers.",
+     "signs_ref": {
+      "source": "tnau-cp-sor-shootfly",
+      "where": "Symptoms"
+     },
+     "threshold": "1 egg per plant in 10 % of plants in the first two weeks, or 10 % dead hearts",
+     "threshold_ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 76"
+     },
+     "prevent": [
+      {
+       "product": "fish_meal_trap",
+       "qty": 12,
+       "per": "ha",
+       "at": "sow",
+       "ref": {
+        "source": "tnau-cpg-agri-2020",
+        "where": "p. 77"
+       },
+       "note": "Keep them until the crop is 30 days old."
+      },
+      {
+       "text": "Sow early, soon after the monsoon sets in.",
+       "ref": {
+        "source": "tnau-cpg-agri-2020",
+        "where": "p. 77"
+       }
+      }
+     ],
+     "organic": [
+      {
+       "text": "Spray neem seed kernel extract (NSKE) 5 %.",
+       "ref": {
+        "source": "tnau-cpg-agri-2020",
+        "where": "p. 77"
+       }
+      }
+     ],
+     "conventional": []
+    }
+   ],
+   "crop": "sorghum"
+  },
+  {
+   "seed": {
+    "qty": 5,
+    "unit": "kg",
+    "what": "seed",
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 84"
+    }
+   },
+   "irrigated": {
+    "n": 70,
+    "p": 35,
+    "k": 35,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 85"
+    }
+   },
+   "splits": [
+    {
+     "n": 25,
+     "p": 100,
+     "k": 100,
+     "at": "sow"
+    },
+    {
+     "n": 50,
+     "p": 0,
+     "k": 0,
+     "das": 15
+    },
+    {
+     "n": 25,
+     "p": 0,
+     "k": 0,
+     "das": 30
+    }
+   ],
+   "organic": [
+    {
+     "product": "fym",
+     "qty": 12.5,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 84"
+     },
+     "route": "both",
+     "at": "plough"
+    }
+   ],
+   "seed_treatment": [
+    {
+     "product": "metalaxyl_m_318es",
+     "per_kg_seed": 2,
+     "ref": {
+      "source": "cibrc-mup-2019",
+      "where": "Metalaxyl-M 31.8 % ES: pearl millet, downy mildew, seed dresser"
+     },
+     "route": "conventional"
+    }
+   ],
+   "protect": [
+    {
+     "id": "downy_mildew",
+     "name": "Downy mildew (green ear)",
+     "kind": "disease",
+     "stages": [
+      "establishment",
+      "vegetative",
+      "flowering"
+     ],
+     "signs": "Leaves yellow from the base upward with white growth underneath; plants stunted and without heads, or heads turned into leafy structures (\"green ear\").",
+     "signs_ref": {
+      "source": "tnau-cp-pm-dm",
+      "where": "Symptoms"
+     },
+     "prevent": [
+      {
+       "text": "Pull out and destroy infected plants up to 45 days after sowing.",
+       "ref": {
+        "source": "tnau-cpg-agri-2020",
+        "where": "p. 89"
+       }
+      }
+     ],
+     "organic": [],
+     "conventional": []
+    }
+   ],
+   "crop": "pearl_millet"
+  },
+  {
+   "seed": {
+    "qty": 10,
+    "unit": "kg",
+    "what": "seed",
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 94"
+    }
+   },
+   "rainfed": {
+    "n": 40,
+    "p": 20,
+    "k": 20,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 99"
+    }
+   },
+   "irrigated": {
+    "n": 60,
+    "p": 30,
+    "k": 30,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 94"
+    }
+   },
+   "splits": [
+    {
+     "n": 50,
+     "p": 100,
+     "k": 100,
+     "at": "sow"
+    },
+    {
+     "n": 25,
+     "p": 0,
+     "k": 0,
+     "das": 28
+    },
+    {
+     "n": 25,
+     "p": 0,
+     "k": 0,
+     "das": 43
+    }
+   ],
+   "organic": [
+    {
+     "product": "fym",
+     "qty": 12.5,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 94"
+     },
+     "route": "both",
+     "at": "plough"
+    }
+   ],
+   "protect": [
+    {
+     "id": "blast",
+     "name": "Blast",
+     "kind": "disease",
+     "stages": [
+      "establishment",
+      "vegetative",
+      "flowering"
+     ],
+     "signs": "Spindle-shaped brown spots on the leaves that join up and dry the foliage; the neck of the head turns black and shrinks (neck blast).",
+     "signs_ref": {
+      "source": "tnau-cp-fm-blast",
+      "where": "Symptoms"
+     },
+     "prevent": [],
+     "organic": [
+      {
+       "text": "Spray Pseudomonas fluorescens 0.2 % (2 g per litre).",
+       "ref": {
+        "source": "tnau-cpg-agri-2020",
+        "where": "p. 101"
+       }
+      }
+     ],
+     "conventional": []
+    }
+   ],
+   "crop": "finger_millet"
+  },
+  {
+   "seed": {
+    "qty": 10,
+    "unit": "kg",
+    "what": "seed, line sown",
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 120"
+    }
+   },
+   "rainfed": {
+    "n": 44,
+    "p": 22,
+    "k": 0,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 120"
+    }
+   },
+   "splits": [
+    {
+     "n": 100,
+     "p": 100,
+     "k": 100,
+     "at": "sow"
+    }
+   ],
+   "organic": [
+    {
+     "product": "fym",
+     "qty": 12.5,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 120"
+     },
+     "route": "both",
+     "at": "plough"
+    }
+   ],
+   "crop": "foxtail_millet"
+  },
+  {
+   "seed": {
+    "qty": 20,
+    "unit": "kg",
+    "what": "hybrid seed (varieties 25 kg)",
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 105"
+    }
+   },
+   "rainfed": {
+    "n": 60,
+    "p": 30,
+    "k": 30,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 112"
+    }
+   },
+   "irrigated": {
+    "n": 135,
+    "p": 62.5,
+    "k": 50,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 107"
+    }
+   },
+   "splits": [
+    {
+     "n": 25,
+     "p": 100,
+     "k": 100,
+     "at": "sow"
+    },
+    {
+     "n": 50,
+     "p": 0,
+     "k": 0,
+     "das": 25
+    },
+    {
+     "n": 25,
+     "p": 0,
+     "k": 0,
+     "das": 45
+    }
+   ],
+   "splits_rainfed": [
+    {
+     "n": 50,
+     "p": 100,
+     "k": 100,
+     "at": "sow"
+    },
+    {
+     "n": 50,
+     "p": 0,
+     "k": 0,
+     "stage": "flowering"
+    }
+   ],
+   "organic": [
+    {
+     "product": "neem_cake",
+     "qty": 250,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 113"
+     },
+     "route": "both",
+     "at": "plough",
+     "note": "At the last ploughing, against fall armyworm."
+    }
+   ],
+   "seed_treatment": [
+    {
+     "product": "thiamethoxam_30fs",
+     "per_kg_seed": 8,
+     "ref": {
+      "source": "cibrc-mup-2019",
+      "where": "Thiamethoxam 30 % FS: maize, stem fly, seed dresser"
+     },
+     "route": "conventional"
+    },
+    {
+     "product": "beauveria",
+     "per_kg_seed": 10,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 113"
+     },
+     "route": "organic"
+    }
+   ],
+   "protect": [
+    {
+     "id": "fall_armyworm",
+     "name": "Fall armyworm",
+     "kind": "pest",
+     "stages": [
+      "establishment",
+      "vegetative",
+      "flowering"
+     ],
+     "signs": "Young larvae scrape the leaf surface; older larvae eat into the central whorl, the tassel and the cob.",
+     "signs_ref": {
+      "source": "tnau-cp-maize-faw",
+      "where": "Symptoms"
+     },
+     "prevent": [
+      {
+       "product": "pheromone_trap",
+       "qty": 50,
+       "per": "ha",
+       "das": 10,
+       "ref": {
+        "source": "tnau-cpg-agri-2020",
+        "where": "p. 113"
+       },
+       "note": "Mass trapping from 10 to 15 days after sowing."
+      },
+      {
+       "text": "Border crop of cowpea, sunflower or sesame; intercrop black gram or green gram.",
+       "ref": {
+        "source": "tnau-cpg-agri-2020",
+        "where": "p. 113"
+       }
+      }
+     ],
+     "organic": [
+      {
+       "product": "azadirachtin_1",
+       "dose": [
+        2,
+        2
+       ],
+       "per": "l",
+       "ref": {
+        "source": "tnau-cpg-agri-2020",
+        "where": "p. 113"
+       },
+       "text": "Early whorl stage, 15 to 20 days after sowing.",
+       "das": 15
+      }
+     ],
+     "conventional": [
+      {
+       "product": "emamectin_5sg",
+       "dose": [
+        0.4,
+        0.4
+       ],
+       "per": "l",
+       "ref": {
+        "source": "tnau-cpg-agri-2020",
+        "where": "p. 113"
+       },
+       "text": "Early whorl stage, 15 to 20 days after sowing."
+      }
+     ]
+    }
+   ],
+   "crop": "maize"
+  },
+  {
+   "seed": {
+    "qty": 100,
+    "unit": "kg",
+    "what": "seed",
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 122"
+    }
+   },
+   "irrigated": {
+    "n": 80,
+    "p": 40,
+    "k": 40,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 122"
+    }
+   },
+   "splits": [
+    {
+     "n": 50,
+     "p": 100,
+     "k": 100,
+     "at": "sow"
+    },
+    {
+     "n": 50,
+     "p": 0,
+     "k": 0,
+     "das": 15
+    }
+   ],
+   "crop": "wheat"
+  },
+  {
+   "seed": {
+    "qty": 8,
+    "unit": "kg",
+    "what": "seed, sole crop, long duration",
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 126"
+    }
+   },
+   "rainfed": {
+    "n": 12.5,
+    "p": 25,
+    "k": 12.5,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 127"
+    },
+    "s": 10
+   },
+   "irrigated": {
+    "n": 25,
+    "p": 50,
+    "k": 25,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 127"
+    },
+    "s": 20
+   },
+   "splits": [
+    {
+     "n": 100,
+     "p": 100,
+     "k": 100,
+     "at": "sow"
+    }
+   ],
+   "organic": [
+    {
+     "product": "fym",
+     "qty": 12.5,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 126"
+     },
+     "route": "both",
+     "at": "plough"
+    },
+    {
+     "product": "rhizobium",
+     "qty": 200,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 126"
+     },
+     "route": "both",
+     "at": "treat-seed"
+    },
+    {
+     "product": "phosphobacteria",
+     "qty": 200,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 126"
+     },
+     "route": "both",
+     "at": "treat-seed"
+    },
+    {
+     "product": "pgpr",
+     "qty": 200,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 126"
+     },
+     "route": "both",
+     "at": "treat-seed"
+    },
+    {
+     "product": "pseudomonas",
+     "qty": 2500,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 131"
+     },
+     "route": "both",
+     "das": 30,
+     "note": "With 50 kg of well-rotted FYM or sand, to the soil, against wilt."
+    }
+   ],
+   "seed_treatment": [
+    {
+     "product": "trichoderma",
+     "per_kg_seed": 4,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 131"
+     },
+     "route": "both"
+    }
+   ],
+   "protect": [
+    {
+     "id": "pod_borer",
+     "name": "Pod borer (Helicoverpa)",
+     "kind": "pest",
+     "stages": [
+      "flowering",
+      "maturing"
+     ],
+     "signs": "Larvae thrust their heads into the pods with the rest of the body hanging out; pods with round holes.",
+     "signs_ref": {
+      "source": "tnau-cp-rg-podborer",
+      "where": "Symptoms"
+     },
+     "threshold": "10 % of pods affected",
+     "threshold_ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 130"
+     },
+     "prevent": [
+      {
+       "product": "pheromone_trap",
+       "qty": 12,
+       "per": "ha",
+       "at": "sow",
+       "ref": {
+        "source": "tnau-cpg-agri-2020",
+        "where": "p. 130"
+       },
+       "note": ""
+      },
+      {
+       "product": "bird_perch",
+       "qty": 50,
+       "per": "ha",
+       "at": "sow",
+       "ref": {
+        "source": "tnau-cpg-agri-2020",
+        "where": "p. 130"
+       },
+       "note": ""
+      }
+     ],
+     "organic": [
+      {
+       "product": "ha_npv",
+       "dose": [
+        250,
+        500
+       ],
+       "per": "ha",
+       "ref": {
+        "source": "cibrc-mup-2019",
+        "where": "NPV of Helicoverpa armigera 2.0 % AS: pigeon pea, pod borer"
+       },
+       "water_l_ha": [
+        500,
+        750
+       ]
+      },
+      {
+       "product": "btk",
+       "dose": [
+        1000,
+        1250
+       ],
+       "per": "ha",
+       "ref": {
+        "source": "tnau-cpg-agri-2020",
+        "where": "p. 130"
+       },
+       "text": "While the larvae are young (up to the third instar)."
+      }
+     ],
+     "conventional": [
+      {
+       "product": "chlorantraniliprole_185sc",
+       "dose": [
+        150,
+        150
+       ],
+       "per": "ha",
+       "ref": {
+        "source": "cibrc-mup-2019",
+        "where": "Chlorantraniliprole 18.5 % SC: pigeon pea, pod borer"
+       },
+       "water_l_ha": [
+        500,
+        750
+       ],
+       "phi_days": 29
+      }
+     ]
+    },
+    {
+     "id": "wilt",
+     "name": "Wilt",
+     "kind": "disease",
+     "stages": [
+      "vegetative",
+      "flowering"
+     ],
+     "signs": "Leaves go pale and droop; plants wilt from the bottom up and die in patches; dark streaks under the bark at the stem base.",
+     "signs_ref": {
+      "source": "tnau-cp-rg-wilt",
+      "where": "Symptoms"
+     },
+     "prevent": [
+      {
+       "text": "Seed treatment with Trichoderma and soil application of Pseudomonas at 30 days (in the feeding schedule).",
+       "ref": {
+        "source": "tnau-cpg-agri-2020",
+        "where": "p. 131"
+       }
+      }
+     ],
+     "organic": [],
+     "conventional": []
+    }
+   ],
+   "crop": "pigeon_pea"
+  },
+  {
+   "seed": {
+    "qty": 20,
+    "unit": "kg",
+    "what": "seed",
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 137"
+    }
+   },
+   "rainfed": {
+    "n": 12.5,
+    "p": 25,
+    "k": 12.5,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 138"
+    },
+    "s": 20
+   },
+   "irrigated": {
+    "n": 25,
+    "p": 50,
+    "k": 25,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 138"
+    },
+    "s": 40
+   },
+   "splits": [
+    {
+     "n": 100,
+     "p": 100,
+     "k": 100,
+     "at": "sow"
+    }
+   ],
+   "crop": "black_gram"
+  },
+  {
+   "seed": {
+    "qty": 20,
+    "unit": "kg",
+    "what": "seed",
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 146"
+    }
+   },
+   "rainfed": {
+    "n": 12.5,
+    "p": 25,
+    "k": 12.5,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 147"
+    },
+    "s": 20
+   },
+   "irrigated": {
+    "n": 25,
+    "p": 50,
+    "k": 25,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 147"
+    },
+    "s": 40
+   },
+   "splits": [
+    {
+     "n": 100,
+     "p": 100,
+     "k": 100,
+     "at": "sow"
+    }
+   ],
+   "crop": "green_gram"
+  },
+  {
+   "seed": {
+    "qty": 75,
+    "unit": "kg",
+    "what": "seed (CO 4)",
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 162"
+    }
+   },
+   "rainfed": {
+    "n": 12.5,
+    "p": 25,
+    "k": 12.5,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 163"
+    },
+    "s": 10
+   },
+   "splits": [
+    {
+     "n": 100,
+     "p": 100,
+     "k": 100,
+     "at": "sow"
+    }
+   ],
+   "organic": [
+    {
+     "product": "rhizobium",
+     "qty": 200,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 162"
+     },
+     "route": "both",
+     "at": "treat-seed"
+    },
+    {
+     "product": "phosphobacteria",
+     "qty": 200,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 162"
+     },
+     "route": "both",
+     "at": "treat-seed"
+    },
+    {
+     "product": "pseudomonas",
+     "qty": 2500,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 165"
+     },
+     "route": "both",
+     "at": "sow",
+     "note": "With 50 kg of well-rotted FYM or sand, against wilt."
+    }
+   ],
+   "seed_treatment": [
+    {
+     "product": "trichoderma",
+     "per_kg_seed": 4,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 165"
+     },
+     "route": "both"
+    }
+   ],
+   "protect": [
+    {
+     "id": "pod_borer",
+     "name": "Gram pod borer (Helicoverpa)",
+     "kind": "pest",
+     "stages": [
+      "flowering",
+      "maturing"
+     ],
+     "signs": "Larvae thrust their heads into the pods with the rest of the body hanging out; pods with round holes.",
+     "signs_ref": {
+      "source": "tnau-cp-rg-podborer",
+      "where": "Symptoms"
+     },
+     "threshold": "2 young larvae per plant, or 5 to 8 eggs per plant",
+     "threshold_ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 164"
+     },
+     "prevent": [
+      {
+       "product": "pheromone_trap",
+       "qty": 12,
+       "per": "ha",
+       "at": "sow",
+       "ref": {
+        "source": "tnau-cpg-agri-2020",
+        "where": "p. 164"
+       },
+       "note": ""
+      },
+      {
+       "product": "bird_perch",
+       "qty": 50,
+       "per": "ha",
+       "at": "sow",
+       "ref": {
+        "source": "tnau-cpg-agri-2020",
+        "where": "p. 164"
+       },
+       "note": ""
+      }
+     ],
+     "organic": [
+      {
+       "product": "ha_npv",
+       "dose": [
+        250,
+        500
+       ],
+       "per": "ha",
+       "ref": {
+        "source": "cibrc-mup-2019",
+        "where": "NPV of Helicoverpa armigera 2.0 % AS: gram, pod borer"
+       },
+       "water_l_ha": [
+        500,
+        750
+       ]
+      },
+      {
+       "product": "btk",
+       "dose": [
+        1000,
+        1250
+       ],
+       "per": "ha",
+       "ref": {
+        "source": "tnau-cpg-agri-2020",
+        "where": "p. 164"
+       }
+      }
+     ],
+     "conventional": [
+      {
+       "product": "emamectin_5sg",
+       "dose": [
+        220,
+        220
+       ],
+       "per": "ha",
+       "ref": {
+        "source": "cibrc-mup-2019",
+        "where": "Emamectin benzoate 5 % SG: chickpea, pod borer"
+       },
+       "water_l_ha": [
+        500,
+        500
+       ],
+       "phi_days": 14
+      }
+     ]
+    },
+    {
+     "id": "wilt",
+     "name": "Fusarium wilt",
+     "kind": "disease",
+     "stages": [
+      "establishment",
+      "vegetative",
+      "flowering"
+     ],
+     "signs": "Seedlings collapse 3 to 5 weeks after sowing; older plants droop and die, in patches; the inside of the stem turns dark.",
+     "signs_ref": {
+      "source": "tnau-cp-cp-wilt",
+      "where": "Symptoms"
+     },
+     "prevent": [
+      {
+       "text": "Pseudomonas to the soil before sowing (in the feeding schedule).",
+       "ref": {
+        "source": "tnau-cpg-agri-2020",
+        "where": "p. 165"
+       }
+      }
+     ],
+     "organic": [],
+     "conventional": []
+    }
+   ],
+   "crop": "chickpea"
+  },
+  {
+   "seed": {
+    "qty": 75,
+    "unit": "kg",
+    "what": "seed (rice fallows, dibbled)",
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 175"
+    }
+   },
+   "rainfed": {
+    "n": 20,
+    "p": 40,
+    "k": 20,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 176"
+    },
+    "s": 20
+   },
+   "irrigated": {
+    "n": 20,
+    "p": 80,
+    "k": 40,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 175"
+    },
+    "s": 40
+   },
+   "splits": [
+    {
+     "n": 100,
+     "p": 100,
+     "k": 100,
+     "at": "sow"
+    }
+   ],
+   "crop": "soybean"
+  },
+  {
+   "seed": {
+    "qty": 5,
+    "unit": "kg",
+    "what": "seed",
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 200"
+    }
+   },
+   "rainfed": {
+    "n": 23,
+    "p": 13,
+    "k": 13,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 201"
+    }
+   },
+   "irrigated": {
+    "n": 35,
+    "p": 23,
+    "k": 23,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 201"
+    }
+   },
+   "splits": [
+    {
+     "n": 100,
+     "p": 100,
+     "k": 100,
+     "at": "sow"
+    }
+   ],
+   "organic": [
+    {
+     "product": "fym",
+     "qty": 12.5,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 200"
+     },
+     "route": "both",
+     "at": "plough"
+    },
+    {
+     "product": "azospirillum",
+     "qty": 600,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 202"
+     },
+     "route": "both",
+     "at": "sow"
+    },
+    {
+     "product": "phosphobacteria",
+     "qty": 600,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 202"
+     },
+     "route": "both",
+     "at": "sow"
+    }
+   ],
+   "crop": "sesame"
+  },
+  {
+   "seed": {
+    "qty": 5,
+    "unit": "kg",
+    "what": "hybrid seed",
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 219"
+    }
+   },
+   "rainfed": {
+    "n": 40,
+    "p": 50,
+    "k": 40,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 217"
+    }
+   },
+   "irrigated": {
+    "n": 60,
+    "p": 90,
+    "k": 60,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 217"
+    }
+   },
+   "splits": [
+    {
+     "n": 100,
+     "p": 100,
+     "k": 100,
+     "at": "sow"
+    }
+   ],
+   "organic": [
+    {
+     "product": "fym",
+     "qty": 12.5,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 218"
+     },
+     "route": "both",
+     "at": "plough"
+    },
+    {
+     "product": "azospirillum",
+     "qty": 2000,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 218"
+     },
+     "route": "both",
+     "at": "sow"
+    },
+    {
+     "product": "phosphobacteria",
+     "qty": 2000,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 218"
+     },
+     "route": "both",
+     "at": "sow"
+    }
+   ],
+   "seed_treatment": [
+    {
+     "product": "trichoderma",
+     "per_kg_seed": 4,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 219"
+     },
+     "route": "organic"
+    },
+    {
+     "product": "thiamethoxam_30fs",
+     "per_kg_seed": 10,
+     "ref": {
+      "source": "cibrc-mup-2019",
+      "where": "Thiamethoxam 30 % FS: sunflower, jassids, thrips"
+     },
+     "route": "conventional"
+    },
+    {
+     "product": "metalaxyl_m_318es",
+     "per_kg_seed": 2,
+     "ref": {
+      "source": "cibrc-mup-2019",
+      "where": "Metalaxyl-M 31.8 % ES: sunflower, downy mildew"
+     },
+     "route": "conventional"
+    }
+   ],
+   "protect": [
+    {
+     "id": "leafhopper",
+     "name": "Leafhopper (jassid)",
+     "kind": "pest",
+     "stages": [
+      "establishment",
+      "vegetative"
+     ],
+     "signs": "Leaves turn pale yellow, edges go pinkish brown and curl inward under heavy attack.",
+     "signs_ref": {
+      "source": "tnau-cp-sun-hopper",
+      "where": "Symptoms"
+     },
+     "prevent": [],
+     "organic": [],
+     "conventional": [
+      {
+       "product": "imidacloprid_178sl",
+       "dose": [
+        100,
+        100
+       ],
+       "per": "ha",
+       "ref": {
+        "source": "cibrc-mup-2019",
+        "where": "Imidacloprid 17.8 % SL: sunflower, jassid, thrips, whitefly"
+       },
+       "water_l_ha": [
+        500,
+        500
+       ],
+       "phi_days": 30
+      }
+     ]
+    },
+    {
+     "id": "downy_mildew",
+     "name": "Downy mildew",
+     "kind": "disease",
+     "stages": [
+      "establishment",
+      "vegetative"
+     ],
+     "signs": "The first true leaves turn yellow; seedlings damp off or stay stunted.",
+     "signs_ref": {
+      "source": "tnau-cp-sun-dm",
+      "where": "Symptoms"
+     },
+     "prevent": [
+      {
+       "text": "Seed treatment with metalaxyl-M (conventional route).",
+       "ref": {
+        "source": "cibrc-mup-2019",
+        "where": "Metalaxyl-M 31.8 % ES: sunflower, downy mildew"
+       }
+      }
+     ],
+     "organic": [],
+     "conventional": []
+    }
+   ],
+   "crop": "sunflower"
+  },
+  {
+   "seed": {
+    "qty": 7.5,
+    "unit": "kg",
+    "what": "delinted seed",
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 258"
+    }
+   },
+   "seed_rainfed": {
+    "qty": 15,
+    "unit": "kg",
+    "what": "delinted seed",
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 258"
+    }
+   },
+   "rainfed": {
+    "n": 40,
+    "p": 20,
+    "k": 40,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 269"
+    }
+   },
+   "irrigated": {
+    "n": 80,
+    "p": 40,
+    "k": 40,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 269"
+    }
+   },
+   "splits": [
+    {
+     "n": 50,
+     "p": 100,
+     "k": 50,
+     "at": "sow"
+    },
+    {
+     "n": 50,
+     "p": 0,
+     "k": 50,
+     "das": 40
+    }
+   ],
+   "protect": [
+    {
+     "id": "leafhopper",
+     "name": "Leafhopper (jassid)",
+     "kind": "pest",
+     "stages": [
+      "establishment",
+      "vegetative",
+      "flowering"
+     ],
+     "signs": "Leaves curl down and turn red, brick red under heavy attack; growth stops.",
+     "signs_ref": {
+      "source": "tnau-cp-cot-leafhopper",
+      "where": "Symptoms"
+     },
+     "threshold": "50 nymphs or adults per 50 leaves",
+     "threshold_ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 272"
+     },
+     "prevent": [
+      {
+       "text": "Intercrop pulses (cowpea, green gram, black gram) to keep sucking pests down.",
+       "ref": {
+        "source": "tnau-cpg-agri-2020",
+        "where": "p. 272"
+       }
+      }
+     ],
+     "organic": [
+      {
+       "product": "azadirachtin_003",
+       "dose": [
+        2500,
+        5000
+       ],
+       "per": "ha",
+       "ref": {
+        "source": "cibrc-mup-2019",
+        "where": "Azadirachtin 0.03 % (300 ppm) neem oil based: cotton, aphids, jassids, white flies"
+       },
+       "water_l_ha": [
+        500,
+        1000
+       ],
+       "phi_days": 7
+      }
+     ],
+     "conventional": [
+      {
+       "product": "flonicamid_50wg",
+       "dose": [
+        150,
+        150
+       ],
+       "per": "ha",
+       "ref": {
+        "source": "cibrc-mup-2019",
+        "where": "Flonicamid 50 % WG: cotton, aphids, jassids, thrips and whiteflies"
+       },
+       "water_l_ha": [
+        500,
+        500
+       ],
+       "phi_days": 25
+      }
+     ]
+    },
+    {
+     "id": "whitefly",
+     "name": "Whitefly",
+     "kind": "pest",
+     "stages": [
+      "vegetative",
+      "flowering"
+     ],
+     "signs": "Yellow spots, leaves curl up and turn reddish and brittle; sticky honeydew spoils the lint.",
+     "signs_ref": {
+      "source": "tnau-cp-cot-whitefly",
+      "where": "Symptoms"
+     },
+     "threshold": "5 to 10 per leaf",
+     "threshold_ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 272"
+     },
+     "prevent": [],
+     "organic": [
+      {
+       "product": "azadirachtin_003",
+       "dose": [
+        2500,
+        5000
+       ],
+       "per": "ha",
+       "ref": {
+        "source": "cibrc-mup-2019",
+        "where": "Azadirachtin 0.03 % (300 ppm) neem oil based: cotton, aphids, jassids, white flies"
+       },
+       "water_l_ha": [
+        500,
+        1000
+       ],
+       "phi_days": 7
+      }
+     ],
+     "conventional": [
+      {
+       "product": "flonicamid_50wg",
+       "dose": [
+        150,
+        150
+       ],
+       "per": "ha",
+       "ref": {
+        "source": "cibrc-mup-2019",
+        "where": "Flonicamid 50 % WG: cotton, aphids, jassids, thrips and whiteflies"
+       },
+       "water_l_ha": [
+        500,
+        500
+       ],
+       "phi_days": 25
+      }
+     ]
+    },
+    {
+     "id": "pink_bollworm",
+     "name": "Pink bollworm",
+     "kind": "pest",
+     "stages": [
+      "flowering",
+      "maturing"
+     ],
+     "signs": "Flowers stay closed like a rosette; buds and young bolls drop; bore holes with excreta; stained lint and eaten seeds.",
+     "signs_ref": {
+      "source": "tnau-cp-cot-pbw",
+      "where": "Symptoms"
+     },
+     "threshold": "10 % of fruiting parts infested",
+     "threshold_ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 272"
+     },
+     "prevent": [
+      {
+       "product": "pheromone_trap",
+       "qty": 12,
+       "per": "ha",
+       "at": "sow",
+       "ref": {
+        "source": "tnau-cpg-agri-2020",
+        "where": "p. 274"
+       },
+       "note": ""
+      }
+     ],
+     "organic": [
+      {
+       "text": "Release the egg parasitoid Trichogrammatoidea bactrae, 40,000 per ha, three times at 15-day intervals from 45 days after sowing.",
+       "ref": {
+        "source": "tnau-cpg-agri-2020",
+        "where": "p. 274"
+       }
+      }
+     ],
+     "conventional": [
+      {
+       "product": "emamectin_5sg",
+       "dose": [
+        190,
+        220
+       ],
+       "per": "ha",
+       "ref": {
+        "source": "cibrc-mup-2019",
+        "where": "Emamectin benzoate 5 % SG: cotton, boll worms"
+       },
+       "water_l_ha": [
+        500,
+        500
+       ],
+       "phi_days": 10
+      }
+     ]
+    }
+   ],
+   "crop": "cotton"
+  },
+  {
+   "seed": {
+    "qty": 75000,
+    "unit": "setts",
+    "what": "two-budded setts",
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 290"
+    }
+   },
+   "irrigated": {
+    "n": 275,
+    "p": 100,
+    "k": 112.5,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 292"
+    }
+   },
+   "p_product": "ssp",
+   "splits": [
+    {
+     "n": 0,
+     "p": 100,
+     "k": 0,
+     "at": "sow"
+    },
+    {
+     "n": 33.33,
+     "p": 0,
+     "k": 33.33,
+     "das": 30
+    },
+    {
+     "n": 33.33,
+     "p": 0,
+     "k": 33.33,
+     "das": 60
+    },
+    {
+     "n": 33.34,
+     "p": 0,
+     "k": 33.34,
+     "das": 90
+    }
+   ],
+   "organic": [
+    {
+     "product": "fym",
+     "qty": 12.5,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 290"
+     },
+     "route": "both",
+     "at": "plough"
+    },
+    {
+     "product": "azospirillum",
+     "qty": 2400,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 294"
+     },
+     "route": "both",
+     "at": "sow"
+    }
+   ],
+   "crop": "sugarcane"
+  },
+  {
+   "seed": {
+    "qty": 2000,
+    "unit": "kg",
+    "what": "rhizomes",
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 171"
+    }
+   },
+   "irrigated": {
+    "n": 150,
+    "p": 60,
+    "k": 108,
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 172"
+    }
+   },
+   "splits": [
+    {
+     "n": 16.67,
+     "p": 100,
+     "k": 16.67,
+     "at": "sow"
+    },
+    {
+     "n": 16.67,
+     "p": 0,
+     "k": 16.67,
+     "das": 30
+    },
+    {
+     "n": 16.67,
+     "p": 0,
+     "k": 16.67,
+     "das": 60
+    },
+    {
+     "n": 16.67,
+     "p": 0,
+     "k": 16.67,
+     "das": 90
+    },
+    {
+     "n": 16.67,
+     "p": 0,
+     "k": 16.67,
+     "das": 120
+    },
+    {
+     "n": 16.65,
+     "p": 0,
+     "k": 16.65,
+     "das": 150
+    }
+   ],
+   "add": [
+    {
+     "product": "zinc_sulphate",
+     "qty": 15,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 172"
+     },
+     "route": "conventional",
+     "at": "sow"
+    }
+   ],
+   "organic": [
+    {
+     "product": "fym",
+     "qty": 25,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 172"
+     },
+     "route": "both",
+     "at": "plough"
+    },
+    {
+     "product": "neem_cake",
+     "qty": 200,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 172"
+     },
+     "route": "both",
+     "at": "sow"
+    },
+    {
+     "product": "azospirillum",
+     "qty": 10000,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 172"
+     },
+     "route": "both",
+     "at": "sow"
+    },
+    {
+     "product": "phosphobacteria",
+     "qty": 10000,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 172"
+     },
+     "route": "both",
+     "at": "sow"
+    }
+   ],
+   "crop": "turmeric"
+  },
+  {
+   "seed": {
+    "qty": 1500,
+    "unit": "kg",
+    "what": "rhizomes (1500 to 1800 kg)",
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 174"
+    }
+   },
+   "irrigated": {
+    "n": 75,
+    "p": 50,
+    "k": 50,
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 175"
+    }
+   },
+   "splits": [
+    {
+     "n": 0,
+     "p": 100,
+     "k": 50,
+     "at": "sow"
+    },
+    {
+     "n": 50,
+     "p": 0,
+     "k": 25,
+     "das": 45
+    },
+    {
+     "n": 50,
+     "p": 0,
+     "k": 25,
+     "das": 90
+    }
+   ],
+   "organic": [
+    {
+     "product": "fym",
+     "qty": 25,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 175"
+     },
+     "route": "both",
+     "at": "plough"
+    }
+   ],
+   "crop": "ginger"
+  },
+  {
+   "seed": {
+    "qty": 1000,
+    "unit": "g",
+    "what": "seed of varieties, for the nursery",
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 73"
+    }
+   },
+   "irrigated": {
+    "n": 60,
+    "p": 60,
+    "k": 30,
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 74"
+    }
+   },
+   "splits": [
+    {
+     "n": 50,
+     "p": 100,
+     "k": 100,
+     "at": "sow"
+    },
+    {
+     "n": 16.67,
+     "p": 0,
+     "k": 0,
+     "das": 30
+    },
+    {
+     "n": 16.67,
+     "p": 0,
+     "k": 0,
+     "das": 60
+    },
+    {
+     "n": 16.66,
+     "p": 0,
+     "k": 0,
+     "das": 90
+    }
+   ],
+   "organic": [
+    {
+     "product": "fym",
+     "qty": 25,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 74"
+     },
+     "route": "both",
+     "at": "plough"
+    }
+   ],
+   "protect": [
+    {
+     "id": "thrips",
+     "name": "Thrips",
+     "kind": "pest",
+     "stages": [
+      "establishment",
+      "vegetative",
+      "flowering"
+     ],
+     "signs": "Leaves crinkle and curl upward with long stalks; buds turn brittle and drop; early attack stunts the plants.",
+     "signs_ref": {
+      "source": "tnau-cp-chi-thrips",
+      "where": "Symptoms"
+     },
+     "prevent": [
+      {
+       "text": "Grow agathi as an intercrop.",
+       "ref": {
+        "source": "tnau-cpg-hort-2020",
+        "where": "p. 76"
+       }
+      }
+     ],
+     "organic": [],
+     "conventional": [
+      {
+       "product": "spinosad_45sc",
+       "dose": [
+        160,
+        160
+       ],
+       "per": "ha",
+       "ref": {
+        "source": "cibrc-mup-2019",
+        "where": "Spinosad 45.0 % SC: chillies, fruit borer, thrips"
+       },
+       "water_l_ha": [
+        500,
+        500
+       ],
+       "phi_days": 3
+      }
+     ]
+    },
+    {
+     "id": "yellow_mite",
+     "name": "Yellow (muranai) mite",
+     "kind": "pest",
+     "stages": [
+      "vegetative",
+      "flowering"
+     ],
+     "signs": "Leaves curl down and crinkle, with long stalks; plants stunted.",
+     "signs_ref": {
+      "source": "tnau-cp-chi-mite",
+      "where": "Symptoms"
+     },
+     "prevent": [],
+     "organic": [],
+     "conventional": [
+      {
+       "product": "spiromesifen_229sc",
+       "dose": [
+        400,
+        400
+       ],
+       "per": "ha",
+       "ref": {
+        "source": "cibrc-mup-2019",
+        "where": "Spiromesifen 22.9 % SC: chilli, yellow mite"
+       },
+       "water_l_ha": [
+        500,
+        750
+       ],
+       "phi_days": 7
+      }
+     ]
+    },
+    {
+     "id": "dieback",
+     "name": "Fruit rot and die-back",
+     "kind": "disease",
+     "stages": [
+      "flowering",
+      "maturing"
+     ],
+     "signs": "Flowers drop and dry; twigs die back from the tip; branches wither; fruits rot.",
+     "signs_ref": {
+      "source": "tnau-cp-chi-dieback",
+      "where": "Symptoms"
+     },
+     "prevent": [],
+     "organic": [],
+     "conventional": [
+      {
+       "product": "azoxystrobin_23sc",
+       "dose": [
+        500,
+        500
+       ],
+       "per": "ha",
+       "ref": {
+        "source": "cibrc-mup-2019",
+        "where": "Azoxystrobin 23 % SC: chilli, fruit rot, powdery mildew"
+       },
+       "water_l_ha": [
+        500,
+        750
+       ],
+       "phi_days": 5
+      }
+     ]
+    },
+    {
+     "id": "powdery_mildew",
+     "name": "Powdery mildew",
+     "kind": "disease",
+     "stages": [
+      "flowering",
+      "maturing"
+     ],
+     "signs": "White powdery growth under the leaves; leaves shed.",
+     "signs_ref": {
+      "source": "tnau-cp-chi-pm",
+      "where": "Symptoms"
+     },
+     "prevent": [],
+     "organic": [
+      {
+       "product": "wettable_sulphur",
+       "dose": [
+        3,
+        3
+       ],
+       "per": "l",
+       "ref": {
+        "source": "tnau-cpg-hort-2020",
+        "where": "p. 77"
+       },
+       "text": "Three sprays 15 days apart from the first signs."
+      }
+     ],
+     "conventional": [
+      {
+       "product": "azoxystrobin_23sc",
+       "dose": [
+        500,
+        500
+       ],
+       "per": "ha",
+       "ref": {
+        "source": "cibrc-mup-2019",
+        "where": "Azoxystrobin 23 % SC: chilli, fruit rot, powdery mildew"
+       },
+       "water_l_ha": [
+        500,
+        750
+       ],
+       "phi_days": 5
+      }
+     ]
+    }
+   ],
+   "crop": "chilli"
+  },
+  {
+   "seed": {
+    "qty": 300,
+    "unit": "g",
+    "what": "seed of varieties, for the nursery",
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 57"
+    }
+   },
+   "irrigated": {
+    "n": 150,
+    "p": 100,
+    "k": 50,
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 58"
+    }
+   },
+   "splits": [
+    {
+     "n": 50,
+     "p": 100,
+     "k": 100,
+     "at": "sow"
+    },
+    {
+     "n": 50,
+     "p": 0,
+     "k": 0,
+     "das": 30
+    }
+   ],
+   "add": [
+    {
+     "product": "zinc_sulphate",
+     "qty": 50,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 58"
+     },
+     "route": "conventional",
+     "at": "sow"
+    }
+   ],
+   "organic": [
+    {
+     "product": "fym",
+     "qty": 25,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 58"
+     },
+     "route": "both",
+     "at": "plough"
+    },
+    {
+     "product": "azospirillum",
+     "qty": 2000,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 58"
+     },
+     "route": "both",
+     "at": "sow"
+    },
+    {
+     "product": "phosphobacteria",
+     "qty": 2000,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 58"
+     },
+     "route": "both",
+     "at": "sow"
+    },
+    {
+     "product": "neem_cake",
+     "qty": 250,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 62"
+     },
+     "route": "both",
+     "at": "sow"
+    }
+   ],
+   "seed_treatment": [
+    {
+     "product": "pseudomonas",
+     "per_kg_seed": 10,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 62"
+     },
+     "route": "both"
+    }
+   ],
+   "protect": [
+    {
+     "id": "fruit_borer",
+     "name": "Fruit borer (Helicoverpa)",
+     "kind": "pest",
+     "stages": [
+      "flowering",
+      "maturing"
+     ],
+     "signs": "Young larvae eat tender leaves; grown larvae bore round holes in the fruit, half the body inside.",
+     "signs_ref": {
+      "source": "tnau-cp-tom-borer",
+      "where": "Symptoms"
+     },
+     "prevent": [
+      {
+       "product": "pheromone_trap",
+       "qty": 12,
+       "per": "ha",
+       "at": "sow",
+       "ref": {
+        "source": "tnau-cpg-hort-2020",
+        "where": "p. 62"
+       },
+       "note": ""
+      },
+      {
+       "text": "Grow marigold as a border crop.",
+       "ref": {
+        "source": "tnau-cpg-hort-2020",
+        "where": "p. 62"
+       }
+      }
+     ],
+     "organic": [
+      {
+       "product": "btk",
+       "dose": [
+        2,
+        2
+       ],
+       "per": "l",
+       "ref": {
+        "source": "tnau-cpg-hort-2020",
+        "where": "p. 60"
+       },
+       "text": "In the evening."
+      }
+     ],
+     "conventional": [
+      {
+       "product": "chlorantraniliprole_185sc",
+       "dose": [
+        150,
+        150
+       ],
+       "per": "ha",
+       "ref": {
+        "source": "cibrc-mup-2019",
+        "where": "Chlorantraniliprole 18.5 % SC: tomato, fruit borer"
+       },
+       "water_l_ha": [
+        500,
+        500
+       ],
+       "phi_days": 3
+      }
+     ]
+    },
+    {
+     "id": "whitefly",
+     "name": "Whitefly and leaf curl",
+     "kind": "pest",
+     "stages": [
+      "establishment",
+      "vegetative",
+      "flowering"
+     ],
+     "signs": "Yellow spots, yellowing, leaves curl down and dry; it spreads tomato leaf curl virus.",
+     "signs_ref": {
+      "source": "tnau-cp-tom-whitefly",
+      "where": "Symptoms"
+     },
+     "prevent": [
+      {
+       "product": "yellow_sticky_trap",
+       "qty": 12,
+       "per": "ha",
+       "at": "sow",
+       "ref": {
+        "source": "tnau-cpg-hort-2020",
+        "where": "p. 62"
+       },
+       "note": ""
+      },
+      {
+       "text": "Remove the weed host Abutilon indicum.",
+       "ref": {
+        "source": "tnau-cpg-hort-2020",
+        "where": "p. 62"
+       }
+      }
+     ],
+     "organic": [
+      {
+       "text": "Spray a neem formulation (1 %) or neem seed kernel extract (5 %).",
+       "ref": {
+        "source": "tnau-cpg-hort-2020",
+        "where": "p. 62"
+       }
+      }
+     ],
+     "conventional": [
+      {
+       "product": "imidacloprid_178sl",
+       "dose": [
+        150,
+        175
+       ],
+       "per": "ha",
+       "ref": {
+        "source": "cibrc-mup-2019",
+        "where": "Imidacloprid 17.8 % SL: tomato, whitefly"
+       },
+       "water_l_ha": [
+        500,
+        500
+       ],
+       "phi_days": 3
+      }
+     ]
+    },
+    {
+     "id": "early_blight",
+     "name": "Early blight",
+     "kind": "disease",
+     "stages": [
+      "vegetative",
+      "flowering",
+      "maturing"
+     ],
+     "signs": "Brown spots with rings like a bull's eye and a yellow edge on the leaves; brown rings on the fruit near the stalk.",
+     "signs_ref": {
+      "source": "tnau-cp-tom-eb",
+      "where": "Symptoms"
+     },
+     "prevent": [],
+     "organic": [],
+     "conventional": [
+      {
+       "product": "azoxystrobin_23sc",
+       "dose": [
+        500,
+        500
+       ],
+       "per": "ha",
+       "ref": {
+        "source": "cibrc-mup-2019",
+        "where": "Azoxystrobin 23 % SC: tomato, early and late blight"
+       },
+       "water_l_ha": [
+        500,
+        500
+       ],
+       "phi_days": 3
+      }
+     ]
+    }
+   ],
+   "crop": "tomato"
+  },
+  {
+   "seed": {
+    "qty": 400,
+    "unit": "g",
+    "what": "seed of varieties, for the nursery",
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 63"
+    }
+   },
+   "irrigated": {
+    "n": 100,
+    "p": 50,
+    "k": 30,
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 64"
+    }
+   },
+   "splits": [
+    {
+     "n": 50,
+     "p": 100,
+     "k": 100,
+     "at": "sow"
+    },
+    {
+     "n": 50,
+     "p": 0,
+     "k": 0,
+     "das": 30
+    }
+   ],
+   "organic": [
+    {
+     "product": "fym",
+     "qty": 25,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 64"
+     },
+     "route": "both",
+     "at": "plough"
+    }
+   ],
+   "seed_treatment": [
+    {
+     "product": "trichoderma",
+     "per_kg_seed": 4,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 63"
+     },
+     "route": "both"
+    }
+   ],
+   "crop": "brinjal"
+  },
+  {
+   "seed": {
+    "qty": 8,
+    "unit": "kg",
+    "what": "seed of varieties",
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 69"
+    }
+   },
+   "irrigated": {
+    "n": 40,
+    "p": 50,
+    "k": 30,
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 70"
+    }
+   },
+   "splits": [
+    {
+     "n": 50,
+     "p": 100,
+     "k": 100,
+     "at": "sow"
+    },
+    {
+     "n": 50,
+     "p": 0,
+     "k": 0,
+     "das": 30
+    }
+   ],
+   "organic": [
+    {
+     "product": "fym",
+     "qty": 25,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 70"
+     },
+     "route": "both",
+     "at": "plough"
+    }
+   ],
+   "crop": "okra"
+  },
+  {
+   "seed": {
+    "qty": 3.5,
+    "unit": "kg",
+    "what": "seed",
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 101"
+    }
+   },
+   "irrigated": {
+    "n": 55,
+    "p": 55,
+    "k": 55,
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 101"
+    }
+   },
+   "splits": [
+    {
+     "n": 0,
+     "p": 100,
+     "k": 100,
+     "at": "sow"
+    },
+    {
+     "n": 100,
+     "p": 0,
+     "k": 0,
+     "das": 30
+    }
+   ],
+   "organic": [
+    {
+     "product": "fym",
+     "qty": 20,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 101"
+     },
+     "route": "both",
+     "at": "plough"
+    },
+    {
+     "product": "neem_cake",
+     "qty": 100,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 101"
+     },
+     "route": "both",
+     "at": "sow"
+    }
+   ],
+   "crop": "watermelon"
+  },
+  {
+   "seed": {
+    "qty": 3000,
+    "unit": "kg",
+    "what": "seed tubers (3000 to 3500 kg)",
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 134"
+    }
+   },
+   "irrigated": {
+    "n": 120,
+    "p": 240,
+    "k": 120,
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 134"
+    }
+   },
+   "splits": [
+    {
+     "n": 50,
+     "p": 50,
+     "k": 50,
+     "at": "sow"
+    },
+    {
+     "n": 50,
+     "p": 50,
+     "k": 50,
+     "das": 30
+    }
+   ],
+   "add": [
+    {
+     "product": "zinc_sulphate",
+     "qty": 25,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 134"
+     },
+     "route": "conventional",
+     "at": "sow"
+    }
+   ],
+   "organic": [
+    {
+     "product": "fym",
+     "qty": 15,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 134"
+     },
+     "route": "both",
+     "at": "plough"
+    },
+    {
+     "product": "azospirillum",
+     "qty": 2000,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 134"
+     },
+     "route": "both",
+     "at": "sow"
+    },
+    {
+     "product": "phosphobacteria",
+     "qty": 2000,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 134"
+     },
+     "route": "both",
+     "at": "sow"
+    }
+   ],
+   "crop": "potato"
+  },
+  {
+   "seed": {
+    "qty": 80000,
+    "unit": "cuttings",
+    "what": "vine cuttings",
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 138"
+    }
+   },
+   "irrigated": {
+    "n": 40,
+    "p": 80,
+    "k": 120,
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 138"
+    }
+   },
+   "splits": [
+    {
+     "n": 50,
+     "p": 50,
+     "k": 50,
+     "at": "sow"
+    },
+    {
+     "n": 50,
+     "p": 50,
+     "k": 50,
+     "das": 30
+    }
+   ],
+   "organic": [
+    {
+     "product": "fym",
+     "qty": 25,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 138"
+     },
+     "route": "both",
+     "at": "plough"
+    }
+   ],
+   "crop": "sweet_potato"
+  },
+  {
+   "seed": {
+    "qty": 7.5,
+    "unit": "kg",
+    "what": "seed, for the nursery",
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 151"
+    }
+   },
+   "irrigated": {
+    "n": 100,
+    "p": 150,
+    "k": 75,
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 151"
+    }
+   },
+   "splits": [
+    {
+     "n": 50,
+     "p": 100,
+     "k": 100,
+     "at": "sow"
+    },
+    {
+     "n": 50,
+     "p": 0,
+     "k": 0,
+     "das": 30
+    }
+   ],
+   "add": [
+    {
+     "product": "zinc_sulphate",
+     "qty": 50,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 151"
+     },
+     "route": "conventional",
+     "at": "sow"
+    }
+   ],
+   "organic": [
+    {
+     "product": "fym",
+     "qty": 25,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 151"
+     },
+     "route": "both",
+     "at": "plough"
+    },
+    {
+     "product": "azospirillum",
+     "qty": 2000,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 151"
+     },
+     "route": "both",
+     "at": "sow"
+    },
+    {
+     "product": "phosphobacteria",
+     "qty": 2000,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 151"
+     },
+     "route": "both",
+     "at": "sow"
+    }
+   ],
+   "crop": "onion"
+  },
+  {
+   "per_plant": true,
+   "seed": {
+    "qty": 500,
+    "unit": "g",
+    "what": "seed (annual moringa PKM 1)",
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 115"
+    }
+   },
+   "irrigated": {
+    "n": 90,
+    "p": 15,
+    "k": 30,
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 115"
+    }
+   },
+   "splits": [
+    {
+     "n": 50,
+     "p": 100,
+     "k": 100,
+     "das": 90
+    },
+    {
+     "n": 50,
+     "p": 0,
+     "k": 0,
+     "das": 180
+    }
+   ],
+   "organic": [
+    {
+     "product": "fym",
+     "qty": 15,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 115"
+     },
+     "route": "both",
+     "unit": "kg",
+     "at": "dig-pits"
+    }
+   ],
+   "crop": "moringa"
+  },
+  {
+   "per_plant": true,
+   "irrigated": {
+    "n": 110,
+    "p": 35,
+    "k": 330,
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 9"
+    }
+   },
+   "splits": [
+    {
+     "n": 33.33,
+     "p": 100,
+     "k": 33.33,
+     "das": 90
+    },
+    {
+     "n": 33.33,
+     "p": 0,
+     "k": 33.33,
+     "das": 150
+    },
+    {
+     "n": 33.34,
+     "p": 0,
+     "k": 33.34,
+     "das": 210
+    }
+   ],
+   "organic": [
+    {
+     "product": "fym",
+     "qty": 10,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 8"
+     },
+     "route": "both",
+     "unit": "kg",
+     "at": "dig-pits"
+    },
+    {
+     "product": "neem_cake",
+     "qty": 250,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 8"
+     },
+     "route": "both",
+     "unit": "g",
+     "at": "dig-pits"
+    },
+    {
+     "product": "am_fungi",
+     "note": "Arbuscular mycorrhiza 250 g a plant at planting, as the source gives it (re-checked on 2026-11-15, TNAU Horticulture 2020 p. 8).",
+     "qty": 250,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 8"
+     },
+     "route": "both",
+     "at": "sow"
+    },
+    {
+     "product": "phosphobacteria",
+     "note": "Phosphate solubilising bacteria 50 g a plant at planting, as the source gives it (re-checked on 2026-11-15, p. 8); the source adds 20 g again five months after planting.",
+     "qty": 50,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 8"
+     },
+     "route": "both",
+     "at": "sow"
+    },
+    {
+     "product": "azospirillum",
+     "note": "50 g a plant at planting, as the source gives it (re-checked on 2026-11-15, p. 8); the source adds 20 g again five months after planting.",
+     "qty": 50,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 8"
+     },
+     "route": "both",
+     "at": "sow"
+    },
+    {
+     "product": "trichoderma",
+     "note": "Trichoderma harzianum 50 g a plant at planting, as the source gives it (re-checked on 2026-11-15, p. 8).",
+     "qty": 50,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 8"
+     },
+     "route": "both",
+     "at": "sow"
+    }
+   ],
+   "crop": "banana"
+  },
+  {
+   "per_plant": true,
+   "seed": {
+    "qty": 500,
+    "unit": "g",
+    "what": "seed, for the nursery",
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 33"
+    }
+   },
+   "irrigated": {
+    "n": 250,
+    "p": 250,
+    "k": 250,
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 33"
+    }
+   },
+   "splits": [
+    {
+     "n": 20,
+     "p": 20,
+     "k": 20,
+     "das": 90
+    },
+    {
+     "n": 20,
+     "p": 20,
+     "k": 20,
+     "das": 150
+    },
+    {
+     "n": 20,
+     "p": 20,
+     "k": 20,
+     "das": 210
+    },
+    {
+     "n": 20,
+     "p": 20,
+     "k": 20,
+     "das": 270
+    },
+    {
+     "n": 20,
+     "p": 20,
+     "k": 20,
+     "das": 330
+    }
+   ],
+   "organic": [
+    {
+     "product": "fym",
+     "qty": 10,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 33"
+     },
+     "route": "both",
+     "unit": "kg",
+     "at": "dig-pits"
+    }
+   ],
+   "crop": "papaya"
+  },
+  {
+   "per_plant": true,
+   "irrigated": {
+    "n": 200,
+    "p": 200,
+    "k": 300,
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 2"
+    }
+   },
+   "splits": [
+    {
+     "n": 100,
+     "p": 100,
+     "k": 100,
+     "at": "fertilise-2"
+    }
+   ],
+   "organic": [
+    {
+     "product": "fym",
+     "qty": 10,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 2"
+     },
+     "route": "both",
+     "unit": "kg",
+     "at": "dig-pits"
+    }
+   ],
+   "protect": [
+    {
+     "id": "hoppers",
+     "name": "Mango hoppers",
+     "kind": "pest",
+     "stages": [
+      "growing"
+     ],
+     "signs": "Hoppers suck the sap of the flower stalks: flowers wither and drop; honeydew and sooty mould on the leaves; a clicking sound among the leaves.",
+     "signs_ref": {
+      "source": "tnau-cp-mango-hopper",
+      "where": "Symptoms"
+     },
+     "prevent": [
+      {
+       "text": "Remove criss-cross, infested and dense branches.",
+       "ref": {
+        "source": "tnau-cpg-hort-2020",
+        "where": "p. 4"
+       }
+      }
+     ],
+     "organic": [
+      {
+       "text": "Apply Metarhizium anisopliae or Beauveria bassiana (10^8 cfu/ml) on the trunk.",
+       "ref": {
+        "source": "tnau-cpg-hort-2020",
+        "where": "p. 4"
+       }
+      }
+     ],
+     "conventional": [
+      {
+       "product": "imidacloprid_178sl",
+       "dose": [
+        2,
+        4
+       ],
+       "per": "tree",
+       "ref": {
+        "source": "cibrc-mup-2019",
+        "where": "Imidacloprid 17.8 % SL: mango, hopper, 2-4 ml per tree in 10 litres"
+       },
+       "phi_days": 45,
+       "text": "In 10 litres of water per tree."
+      }
+     ]
+    },
+    {
+     "id": "powdery_mildew",
+     "name": "Powdery mildew",
+     "kind": "disease",
+     "stages": [
+      "growing"
+     ],
+     "signs": "White powder on leaves, flowers, flower stalks and fruits; fruits stop growing and drop before pea size.",
+     "signs_ref": {
+      "source": "tnau-cp-mango-pm",
+      "where": "Symptoms"
+     },
+     "prevent": [],
+     "organic": [
+      {
+       "product": "wettable_sulphur",
+       "dose": [
+        2,
+        2
+       ],
+       "per": "l",
+       "ref": {
+        "source": "tnau-cpg-hort-2020",
+        "where": "p. 5"
+       },
+       "text": "Wettable sulphur 0.2 %."
+      }
+     ],
+     "conventional": [
+      {
+       "product": "hexaconazole_5ec",
+       "dose": [
+        1,
+        1
+       ],
+       "per": "l",
+       "ref": {
+        "source": "cibrc-mup-2019",
+        "where": "Hexaconazole 5 % EC: mango, powdery mildew, 0.1 %"
+       },
+       "phi_days": 30
+      }
+     ]
+    },
+    {
+     "id": "fruit_fly",
+     "name": "Fruit fly",
+     "kind": "pest",
+     "stages": [
+      "growing"
+     ],
+     "signs": "Maggots bore into ripening fruits: decayed spots, oozing, brown rotten patches, fruits drop.",
+     "signs_ref": {
+      "source": "tnau-cp-mango-ff",
+      "where": "Symptoms"
+     },
+     "prevent": [
+      {
+       "product": "methyl_eugenol_trap",
+       "qty": 25,
+       "per": "ha",
+       "at": "harvest-from",
+       "ref": {
+        "source": "tnau-cpg-hort-2020",
+        "where": "p. 4"
+       },
+       "note": "From the first fruiting."
+      },
+      {
+       "text": "Plough between the trees to expose the pupae; collect and destroy fallen fruits.",
+       "ref": {
+        "source": "tnau-cpg-hort-2020",
+        "where": "p. 4"
+       }
+      }
+     ],
+     "organic": [],
+     "conventional": []
+    }
+   ],
+   "crop": "mango"
+  },
+  {
+   "per_plant": true,
+   "organic": [
+    {
+     "product": "fym",
+     "qty": 10,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "p. 28"
+     },
+     "route": "both",
+     "unit": "kg",
+     "at": "dig-pits"
+    }
+   ],
+   "mature": {
+    "n": 1000,
+    "p": 1000,
+    "k": 1000,
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 28"
+    }
+   },
+   "crop": "guava"
+  },
+  {
+   "per_plant": true,
+   "organic": [
+    {
+     "product": "azospirillum",
+     "qty": 50,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 229"
+     },
+     "route": "both",
+     "at": "sow"
+    },
+    {
+     "product": "phosphobacteria",
+     "qty": 50,
+     "ref": {
+      "source": "tnau-cpg-agri-2020",
+      "where": "p. 229"
+     },
+     "route": "both",
+     "at": "sow"
+    }
+   ],
+   "mature": {
+    "n": 560,
+    "p": 320,
+    "k": 1200,
+    "ref": {
+     "source": "tnau-cpg-agri-2020",
+     "where": "p. 229"
+    }
+   },
+   "p_product": "ssp",
+   "crop": "coconut"
+  },
+  {
+   "per_plant": true,
+   "irrigated": {
+    "n": 50,
+    "p": 20,
+    "k": 70,
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 204"
+    }
+   },
+   "splits": [
+    {
+     "n": 50,
+     "p": 50,
+     "k": 50,
+     "month": 4
+    },
+    {
+     "n": 50,
+     "p": 50,
+     "k": 50,
+     "month": 8
+    }
+   ],
+   "mature": {
+    "n": 100,
+    "p": 40,
+    "k": 140,
+    "ref": {
+     "source": "tnau-cpg-hort-2020",
+     "where": "p. 204"
+    }
+   },
+   "crop": "cocoa"
+  }
+ ]
+}

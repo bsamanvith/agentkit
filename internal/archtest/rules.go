@@ -93,6 +93,9 @@ func ModuleRules() Rules {
 			// The farm app's season roadmap events (T141): the same driver,
 			// the same database file.
 			"apps/farm/work/sqlite": {"modernc.org/sqlite"},
+			// The farm app's crop cycles (T145): the same driver, the same
+			// database file.
+			"apps/farm/cycle/sqlite": {"modernc.org/sqlite"},
 			// The farm app's message recipients, outbox and deliveries
 			// (T143): the same driver, the same database file.
 			"apps/farm/notify/sqlite": {"modernc.org/sqlite"},

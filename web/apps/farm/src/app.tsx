@@ -1,25 +1,16 @@
 import { Button } from "@agentkit/ui/components/button";
 import {
-  ArrowLeft,
   Bell,
   ChevronRight,
   CircleUser,
-  CloudSun,
-  IndianRupee,
-  Download,
   FolderPlus,
   Globe,
   LayoutGrid,
-  ListChecks,
   Map as MapIcon,
   Menu,
   MessageCircle,
-  Mountain,
-  Pencil,
   Plus,
   Sprout,
-  Sun as SunIcon,
-  Trash2,
   Wheat,
   X,
 } from "lucide-react";
@@ -27,38 +18,32 @@ import { lazy, Suspense, useCallback, useEffect, useState, type ReactNode } from
 import { api } from "./api";
 import { place } from "./coords";
 import { acresOf, plantColor, plantColors, plotsOf } from "./distribution";
-import { designShapes } from "./landview";
-import { ReportView, StatusBadge } from "./report";
+import { StatusBadge } from "./report";
 import { PlotShape } from "./shape";
-import type { ZoneShape } from "./map";
-import { units, type Config, type Farm, type Group } from "./types";
-import { openFarm, withHolding } from "./session";
+import type { Config, Farm, Group } from "./types";
+import { openFarm } from "./session";
+import type { Tab } from "./plot";
 import type { Lane, Me } from "./account-api";
 
-// The map (Leaflet), the group pages and the assistant load when first
-// needed: the overview comes up first on a slow connection.
+// The map (Leaflet), the plot page, the group pages and the assistant load
+// when first needed: the overview comes up first on a slow connection.
 const Editor = lazy(() => import("./editor").then((m) => ({ default: m.Editor })));
-const FarmMap = lazy(() => import("./map").then((m) => ({ default: m.FarmMap })));
-const Planning = lazy(() => import("./planning").then((m) => ({ default: m.Planning })));
-const Land = lazy(() => import("./land").then((m) => ({ default: m.Land })));
-const Seasons = lazy(() => import("./seasons").then((m) => ({ default: m.Seasons })));
-const Prices = lazy(() => import("./prices").then((m) => ({ default: m.Prices })));
-const Roadmap = lazy(() => import("./roadmap").then((m) => ({ default: m.Roadmap })));
+const FarmDetail = lazy(() => import("./plot"));
 const GroupPage = lazy(() => import("./groups").then((m) => ({ default: m.GroupPage })));
 const GroupForm = lazy(() => import("./groups").then((m) => ({ default: m.GroupForm })));
 const ResearchSettings = lazy(() => import("./research").then((m) => ({ default: m.ResearchSettings })));
 const Assistant = lazy(() => import("./assistant").then((m) => ({ default: m.Assistant })));
-const Care = lazy(() => import("./alerts").then((m) => ({ default: m.Care })));
 const AlertsPage = lazy(() => import("./alerts").then((m) => ({ default: m.AlertsPage })));
 const MessagesPage = lazy(() => import("./messages").then((m) => ({ default: m.MessagesPage })));
 const AccountPage = lazy(() => import("./account").then((m) => ({ default: m.AccountPage })));
+const FirstRun = lazy(() => import("./firstrun").then((m) => ({ default: m.FirstRun })));
 
 const loading = <p className="text-sm text-muted-foreground">Loading…</p>;
 
 type View =
   | { kind: "home" }
   | { kind: "edit"; farm?: Farm }
-  | { kind: "farm"; id: string }
+  | { kind: "farm"; id: string; tab?: Tab }
   | { kind: "group"; id: string }
   | { kind: "group-form"; group?: Group }
   | { kind: "alerts" }
@@ -105,8 +90,17 @@ export function App({ account }: { account?: SignedIn } = {}) {
   const [error, setError] = useState("");
   const [unread, setUnread] = useState(0);
 
+  // The first run stays on screen while it runs, though its plot is saved
+  // (and listed in the sidebar) before its last step.
+  const [guide, setGuide] = useState(false);
   const load = useCallback(() => {
-    api.farms().then(setFarms, (e: unknown) => setError(message(e)));
+    api.farms().then(
+      (fs) => {
+        setFarms(fs);
+        if (fs.length === 0) setGuide(true);
+      },
+      (e: unknown) => setError(message(e)),
+    );
     api.groups().then(setGroups, () => setGroups([]));
   }, []);
   const count = useCallback(() => {
@@ -125,6 +119,7 @@ export function App({ account }: { account?: SignedIn } = {}) {
 
   const go = (v: View) => {
     if (window.location.search) window.history.replaceState(null, "", "/");
+    setGuide(false);
     setView(v);
     setDrawer(false);
     document.getElementById("main")?.scrollTo({ top: 0 });
@@ -207,6 +202,14 @@ export function App({ account }: { account?: SignedIn } = {}) {
                 <Overview
                   farms={farms}
                   groups={groups}
+                  config={config}
+                  guide={guide}
+                  onPlot={(f) => setFarms((fs) => [...(fs ?? []).filter((x) => x.id !== f.id), f])}
+                  onDone={(f, tab) => {
+                    setFarms((fs) => [...(fs ?? []).filter((x) => x.id !== f.id), f]);
+                    // The first run ends on the plot's cycles (firstrun.tsx).
+                    go({ kind: "farm", id: f.id, tab });
+                  }}
                   onOpen={(id) => go({ kind: "farm", id })}
                   onOpenGroup={(id) => go({ kind: "group", id })}
                   onAdd={() => go({ kind: "edit" })}
@@ -285,9 +288,11 @@ export function App({ account }: { account?: SignedIn } = {}) {
                 <FarmDetail
                   key={current.id}
                   farm={current}
+                  tab={view.tab}
                   others={farms ?? []}
                   group={groups.find((g) => g.plots.includes(current.id))}
                   planner={config?.planner ?? false}
+                  cycles={config?.cycles ?? false}
                   surveyor={config?.surveyor ?? false}
                   weather={config?.weather ?? false}
                   automations={config?.automations ?? false}
@@ -496,6 +501,10 @@ function Stat({ label, value, icon }: { label: string; value: string; icon: Reac
 function Overview({
   farms,
   groups,
+  config,
+  guide,
+  onPlot,
+  onDone,
   onOpen,
   onOpenGroup,
   onAdd,
@@ -503,27 +512,22 @@ function Overview({
 }: {
   farms?: Farm[];
   groups: Group[];
+  config?: Config;
+  /** The first run is under way. */
+  guide: boolean;
+  /** The first run saved its plot. */
+  onPlot: (f: Farm) => void;
+  onDone: (f: Farm, tab?: Tab) => void;
   onOpen: (id: string) => void;
   onOpenGroup: (id: string) => void;
   onAdd: () => void;
   onAddGroup: () => void;
 }) {
-  if (!farms) return loading;
-  if (farms.length === 0)
+  // The first run waits for the configuration, so it counts its steps once.
+  if (!farms || (guide && !config)) return loading;
+  if (guide || farms.length === 0)
     return (
-      <div className="flex flex-col items-center gap-4 rounded-2xl border bg-ak-surface px-6 py-16 text-center shadow-sm">
-        <span className="flex size-14 items-center justify-center rounded-2xl bg-[#3f6212]/10">
-          <Sprout className="size-8 text-ak-ok" aria-hidden="true" />
-        </span>
-        <h1 className="text-2xl font-semibold">Add your first plot</h1>
-        <p className="max-w-sm text-sm text-muted-foreground">
-          Draw its corners on the satellite map, walk around it with your phone&apos;s GPS, or type the coordinates. We
-          measure it and check that it looks right.
-        </p>
-        <Button onClick={onAdd}>
-          <Plus /> Add plot
-        </Button>
-      </div>
+      <FirstRun planner={!!config?.planner} cycles={!!config?.cycles} onAdd={onAdd} onSaved={onPlot} onDone={onDone} />
     );
   const grouped = new Set(groups.flatMap((g) => g.plots));
   const loose = farms.filter((f) => !grouped.has(f.id));
@@ -661,166 +665,5 @@ function FarmCard({ farm: f, onOpen }: { farm: Farm; onOpen: () => void }) {
         </span>
       </span>
     </button>
-  );
-}
-
-type Tab = "map" | "roadmap" | "care" | "land" | "sun" | "plan" | "prices";
-
-function FarmDetail({
-  farm,
-  others,
-  group,
-  planner,
-  surveyor,
-  weather,
-  automations,
-  prices,
-  roadmap,
-  onChanged,
-  onEdit,
-  onOpenGroup,
-  onDeleted,
-}: {
-  farm: Farm;
-  others: Farm[];
-  group?: Group;
-  planner: boolean;
-  surveyor: boolean;
-  weather: boolean;
-  automations: boolean;
-  prices: boolean;
-  roadmap: boolean;
-  onChanged: (f: Farm) => void;
-  onEdit: () => void;
-  onOpenGroup: (id: string) => void;
-  onDeleted: () => void;
-}) {
-  const [confirm, setConfirm] = useState(false);
-  const [zones, setZones] = useState<ZoneShape[]>([]);
-  const [tab, setTab] = useState<Tab>("map");
-  const [error, setError] = useState("");
-  const outlines = others
-    .filter((o) => o.id !== farm.id)
-    .map((o) => ({ id: o.id, name: o.name, corners: o.boundary.corners }));
-  const tabs: { id: Tab; label: string; icon: ReactNode; on: boolean }[] = [
-    { id: "map", label: "Map", icon: <MapIcon />, on: true },
-    { id: "roadmap", label: "Season work", icon: <ListChecks />, on: roadmap && (farm.plan?.zones.length ?? 0) > 0 },
-    { id: "care", label: "Weather and care", icon: <CloudSun />, on: weather || (planner && automations) },
-    { id: "land", label: "Land and layout", icon: <Mountain />, on: surveyor },
-    { id: "sun", label: "Sun and seasons", icon: <SunIcon />, on: planner },
-    { id: "plan", label: "Season plan", icon: <Sprout />, on: planner },
-    { id: "prices", label: "Prices", icon: <IndianRupee />, on: prices },
-  ];
-  return (
-    <>
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex min-w-0 flex-col gap-1">
-          {group ? (
-            <button
-              className="flex items-center gap-1 self-start text-xs font-medium tracking-wide text-muted-foreground uppercase hover:text-foreground"
-              onClick={() => onOpenGroup(group.id)}
-            >
-              <ArrowLeft className="size-3" aria-hidden="true" /> {group.name}
-            </button>
-          ) : (
-            <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Plot</p>
-          )}
-          <h1 className="flex items-center gap-3 text-2xl font-semibold">
-            {farm.name} <StatusBadge status={farm.report.status} />
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {farm.report.measures?.acres_text}
-            {place(farm.report.location) ? ` · ${place(farm.report.location)}` : ""}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={onEdit}>
-            <Pencil /> Edit
-          </Button>
-          <Button variant="outline" size="sm" asChild>
-            <a href={withHolding(`/api/farms/${encodeURIComponent(farm.id)}/geojson`)} download>
-              <Download /> GeoJSON
-            </a>
-          </Button>
-          {confirm ? (
-            <>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => api.remove(farm.id).then(onDeleted, (e: unknown) => setError(message(e)))}
-              >
-                Delete “{farm.name}” for good
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setConfirm(false)}>
-                Keep it
-              </Button>
-            </>
-          ) : (
-            <Button variant="ghost" size="sm" onClick={() => setConfirm(true)} aria-label="Delete plot">
-              <Trash2 />
-            </Button>
-          )}
-        </div>
-      </div>
-      {error && (
-        <p role="alert" className="text-sm text-ak-bad">
-          {error}
-        </p>
-      )}
-      {tabs.filter((t) => t.on).length > 1 && (
-        <div
-          className="sticky top-0 z-[600] -mx-4 flex gap-1 overflow-x-auto border-b bg-ak-bg/95 px-4 backdrop-blur lg:mx-0 lg:px-0"
-          role="tablist"
-          aria-label="About the plot"
-        >
-          {tabs
-            .filter((t) => t.on)
-            .map((t) => (
-              <button
-                key={t.id}
-                role="tab"
-                aria-selected={tab === t.id}
-                onClick={() => setTab(t.id)}
-                className="flex shrink-0 items-center gap-1.5 border-b-2 border-transparent px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:text-foreground aria-selected:border-[#4d7c0f] aria-selected:font-medium aria-selected:text-foreground [&_svg]:size-4"
-              >
-                {t.icon}
-                {t.label}
-              </button>
-            ))}
-        </div>
-      )}
-      {tab === "care" && <Care farm={farm} weather={weather} automations={automations} />}
-      {tab === "land" && <Land farm={farm} onFarm={onChanged} />}
-      {tab === "sun" && <Seasons farm={farm} />}
-      {tab === "prices" && <Prices farm={farm} />}
-      {tab === "roadmap" && <Roadmap farm={farm} />}
-      <div className={tab === "map" ? "grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]" : "hidden"}>
-        <FarmMap
-          corners={farm.boundary.corners}
-          others={outlines}
-          zones={[...zones, ...designShapes(farm.design)]}
-          flagged={farm.report.checks.flatMap((c) => (c.severity === "info" ? [] : (c.corners ?? [])))}
-          fit={1}
-          className="h-[55vh] min-h-72 w-full overflow-hidden rounded-xl border shadow-sm lg:h-[70vh]"
-        />
-        <div className="rounded-xl border bg-ak-surface p-4 shadow-sm">
-          <ReportView report={farm.report} />
-          {farm.declared && (
-            <p className="mt-3 text-sm text-muted-foreground">
-              On papers: {farm.declared.value}{" "}
-              {units.find((u) => u.id === farm.declared?.unit)?.label ?? farm.declared.unit}
-            </p>
-          )}
-          <p className="mt-1 text-xs text-muted-foreground">
-            Checked {new Date(farm.report.checked_at).toLocaleString()}
-          </p>
-        </div>
-      </div>
-      {planner && (
-        <div className={tab === "plan" ? "" : "hidden"}>
-          <Planning farm={farm} onFarm={onChanged} onZones={setZones} onShowMap={() => setTab("map")} />
-        </div>
-      )}
-    </>
   );
 }

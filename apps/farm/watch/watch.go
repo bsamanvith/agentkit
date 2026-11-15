@@ -96,7 +96,7 @@ func (w *Watch) week(ctx context.Context, f farm.Farm, fc *weather.Forecast) (ad
 		}
 		fc = &got
 	}
-	return advise.Advise(w.plan.Library(), f, *fc, w.plan.Today()), nil
+	return advise.Advise(w.plan.LibraryFor(f), f, *fc, w.plan.Today()), nil
 }
 
 // Calendar returns the calendar of a plot's saved plan.
@@ -108,7 +108,7 @@ func (w *Watch) Calendar(ctx context.Context, farmID string) (calendar.Calendar,
 	if f.Plan == nil || len(f.Plan.Zones) == 0 {
 		return calendar.Calendar{}, fmt.Errorf("%w: plot %s has no saved crop plan", agro.ErrInvalid, farmID)
 	}
-	return calendar.ForPlan(w.plan.Library(), *f.Plan, irrigated(f))
+	return calendar.ForPlan(w.plan.LibraryFor(f), *f.Plan, irrigated(f))
 }
 
 func irrigated(f farm.Farm) bool { return f.Profile != nil && len(f.Profile.Water) > 0 }
@@ -159,7 +159,7 @@ func (w *Watch) TasksRule() automation.Handler {
 		if f.Plan == nil || len(f.Plan.Zones) == 0 {
 			return automation.Outcome{Note: "no crop plan"}, nil
 		}
-		cal, err := calendar.ForPlan(w.plan.Library(), *f.Plan, irrigated(f))
+		cal, err := calendar.ForPlan(w.plan.LibraryFor(f), *f.Plan, irrigated(f))
 		if err != nil {
 			return automation.Outcome{}, err
 		}
@@ -254,7 +254,7 @@ func Builtins(withWeather, withSkills bool) []automation.Automation {
 	}
 	out = append(out, automation.Automation{
 		ID: WeeklyTasks, Name: "This week's crop work", Enabled: true,
-		Description: "Every Monday at 6:30 am (India), lists the work each plot's crop calendar has for the week (weeding, top-dressing, irrigation, harvest).",
+		Description: "Every Monday at 6:30 am (India), lists the work each plot's crop calendar has for the week (weeding, feeding, irrigation, harvest).",
 		Trigger:     automation.Trigger{Kind: automation.OnSchedule, Schedule: "0 1 * * 1"},
 		Scope:       automation.Scope{WithPlan: true},
 		Action:      automation.Action{Kind: automation.DoRule, Rule: RuleTasks},

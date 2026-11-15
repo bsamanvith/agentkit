@@ -50,7 +50,7 @@ function week(advice: Week["advice"]): Week {
         kind: "fertilise",
         crop: "maize",
         zone: 0,
-        title: "First top-dressing of nitrogen",
+        title: "First nitrogen feed",
       },
     ],
     source: "Open-Meteo",
@@ -98,7 +98,7 @@ describe("Care", () => {
     );
     render(<Care farm={farm} weather automations />);
     expect(await screen.findByText(/Nothing to do because of the weather this week/)).toBeInTheDocument();
-    expect(screen.getByText("First top-dressing of nitrogen")).toBeInTheDocument();
+    expect(screen.getByText("First nitrogen feed")).toBeInTheDocument();
     expect(screen.getByText(/Maize: vegetative, day 25/)).toBeInTheDocument();
     expect(await screen.findByText(/No alerts yet/)).toBeInTheDocument();
   });

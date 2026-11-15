@@ -1,0 +1,39 @@
+{
+ "note": "The base layer's own data: schemes that hold across India. The crop library, the inputs book, the cycle rules, storage and support prices of the base are the app's own (packages agro, inputs, region's DefaultRules, prices). Overlays in data/overlays and the -regions folder change them by place.",
+ "sources": [
+  {
+   "id": "pmfby-og-2020",
+   "name": "Pradhan Mantri Fasal Bima Yojana: Revamped Operational Guidelines (effective from Kharif 2020)",
+   "publisher": "Department of Agriculture, Cooperation and Farmers Welfare, Government of India",
+   "url": "https://pmfby.gov.in/pdf/Revamped%20Operational%20Guidelines_17th%20August%202020.pdf",
+   "read": "2026-11-15"
+  }
+ ],
+ "schemes": [
+  {
+   "id": "pmfby",
+   "name": "Pradhan Mantri Fasal Bima Yojana (PMFBY)",
+   "kind": "insurance",
+   "cutoffs": [
+    {
+     "season": "kharif",
+     "what": "enrolment",
+     "by": "07-15",
+     "note": "The latest normal cut-off: each district's date is in the state's notification, from its crop calendar, and may be earlier."
+    },
+    {
+     "season": "rabi",
+     "what": "enrolment",
+     "by": "12-15",
+     "note": "The latest normal cut-off: each district's date is in the state's notification, from its crop calendar, and may be earlier."
+    }
+   ],
+   "loss_notice_hours": 72,
+   "note": "Crops and areas are notified by each state for each season. A localised loss (hailstorm, landslide, inundation, cloudburst, natural fire) or a post-harvest loss is reported within 72 hours on the Crop Insurance App, the insurer's toll-free number, the bank or the agriculture department.",
+   "ref": {
+    "source": "pmfby-og-2020",
+    "where": "para 16.2 (cut-off dates: normally not beyond 15 July for kharif, 15 December for rabi); para 5.2.4 (localised risks); para 21.5.4.1 and 21.5.4.2 and 21.6.3.1 (intimation within 72 hours, localised and post-harvest losses)"
+   }
+  }
+ ]
+}

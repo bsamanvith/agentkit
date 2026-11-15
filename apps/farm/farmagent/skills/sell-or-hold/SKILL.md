@@ -6,7 +6,7 @@ description: >
   later month, what the harvest may bring, and whether to sell now or hold.
   Use when the farmer asks "what is the price of X", "where should I sell",
   "will the price go up", "should I sell or store", or about MSP.
-tools: [get_farm, list_farms, mandi_prices, price_estimate, get_crop, web_search]
+tools: [get_farm, list_farms, get_cycles, mandi_prices, price_estimate, get_crop, web_search]
 ---
 
 # sell-or-hold
@@ -39,6 +39,14 @@ a trend or an MSP from memory.
   improves as prices are saved, and lean on today's prices instead.
 
 ## 4. Sell or hold
+
+First look at `get_cycles`: a cycle's `timing` has the app's own advice
+from the area's usual months (the seasonal index), and only where it beat
+selling at harvest and "same as last year" on past years. When `selling`
+is there, lead with it: hold until its month or sell now, its expected
+gain net of storage loss and cost, and its reasons. When it is not, its
+reasons say why (too little price history): say so in a line and weigh
+the rest yourself, never with numbers of your own.
 
 Weigh, out loud, with the farmer's own facts (ask what you need):
 

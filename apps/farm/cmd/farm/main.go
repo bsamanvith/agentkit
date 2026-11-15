@@ -19,6 +19,12 @@
 // handbook is searched by meaning as well as
 // keywords with Gemini embeddings when a Gemini key is set (-embedder).
 //
+// Each plot is planned with the region pack of its place
+// (apps/farm/region): the built-in crop library, inputs book and cycle
+// rules, with the overlays of its country, state and district laid on;
+// -regions names a folder of more overlay files. A bad overlay stops the
+// start, naming the file and the key.
+//
 // Web research uses each farmer's own Exa or Parallel key, saved in the
 // app's settings and sealed in -vault (a SQLite file) with the key ring in
 // FARM_CREDENTIALS_KEY, or a key file made beside it.
@@ -80,6 +86,9 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/agro"
 	"github.com/bsamanvith/agentkit/apps/farm/automation"
 	autosqlite "github.com/bsamanvith/agentkit/apps/farm/automation/sqlite"
+	"github.com/bsamanvith/agentkit/apps/farm/cycle"
+	"github.com/bsamanvith/agentkit/apps/farm/cycle/addon"
+	cyclesqlite "github.com/bsamanvith/agentkit/apps/farm/cycle/sqlite"
 	"github.com/bsamanvith/agentkit/apps/farm/elevation"
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
 	"github.com/bsamanvith/agentkit/apps/farm/farm/sqlite"
@@ -95,6 +104,7 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/planner"
 	"github.com/bsamanvith/agentkit/apps/farm/prices"
 	"github.com/bsamanvith/agentkit/apps/farm/prices/pricesqlite"
+	"github.com/bsamanvith/agentkit/apps/farm/region"
 	"github.com/bsamanvith/agentkit/apps/farm/research"
 	"github.com/bsamanvith/agentkit/apps/farm/surveyor"
 	"github.com/bsamanvith/agentkit/apps/farm/watch"
@@ -120,7 +130,7 @@ const csp = "default-src 'self'; script-src 'self'; style-src 'self'; " +
 type config struct {
 	addr, db, country, geocoder, climate, models                  string
 	overpass, osmAPI, elevation, elevationBackup, embedder, vault string
-	exaURL, parallelURL, weather                                  string
+	exaURL, parallelURL, weather, regions                         string
 	priceProviders, priceFiles, dataGovURL                        string
 	notifyRoutes, notifyCaps, publicURL                           string
 	signin, signup, codeSender                                    string
@@ -164,6 +174,7 @@ func main() {
 	fs.StringVar(&c.signin, "signin", env("FARM_SIGNIN", ""), `sign-in lanes, comma separated, in the order shown: google, password, invite, phone, email; empty for no sign-in ($FARM_SIGNIN)`)
 	fs.StringVar(&c.signup, "signup", env("FARM_SIGNUP", "google"), `lanes through which a new person gets an account, comma separated ($FARM_SIGNUP)`)
 	fs.StringVar(&c.codeSender, "code-sender", env("FARM_CODE_SENDER", "sms,whatsapp,email"), `the message lanes the phone and email sign-in lanes send one-time codes by, tried in order (each on when its keys are set; WhatsApp and MSG91 need a template for codes); "log" writes the codes to the server log, only for trying it out ($FARM_CODE_SENDER)`)
+	fs.StringVar(&c.regions, "regions", env("FARM_REGIONS", ""), "folder of region overlay files (*.json, apps/farm/docs/REGIONS.md) laid on the built-in region packs; empty for the built-in ones only ($FARM_REGIONS)")
 	fs.BoolVar(&c.mcp, "mcp", env("FARM_MCP", "true") == "true", "serve the assistant's tools over MCP at /mcp/ ($FARM_MCP)")
 	_ = fs.Parse(os.Args[1:])
 
@@ -211,17 +222,24 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 	if err != nil {
 		return err
 	}
-	lib, err := agro.Default()
+	// The region packs: the crop library, inputs book and cycle rules that
+	// hold where each plot is (the base, with the overlays of its country,
+	// state and district). A bad overlay stops the start here.
+	regions, err := region.Open(c.regions)
 	if err != nil {
 		return err
 	}
+	for _, p := range regions.Packs() {
+		log.Info("farm: region pack", "key", p.Key(), "layers", strings.Join(p.Layers(), " > "))
+	}
+	lib := regions.Base().Library()
 	var climate agro.ClimateSource
 	if c.climate != "off" {
 		if climate, err = nasapower.New(nasapower.WithURL(c.climate)); err != nil {
 			return err
 		}
 	}
-	plan := planner.New(svc, lib, climate)
+	plan := planner.New(svc, lib, climate, planner.WithRegions(regions))
 	sopts := []surveyor.Option{surveyor.WithLogger(log)}
 	var sources []osm.Source
 	if c.overpass != "off" && c.overpass != "" {
@@ -331,8 +349,25 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 		return err
 	}
 	defer wstore.Close()
-	roadmap := work.New(plan, wstore)
+	cstore, err := cyclesqlite.Open(ctx, c.db)
+	if err != nil {
+		return err
+	}
+	defer cstore.Close()
+	// What to buy and when to feed and spray (rules and data, no model):
+	// on each crop cycle, and its schedule's tasks on the season roadmap,
+	// grown the way the current cycle is (organic or conventional).
+	inputBook := regions.Base().Book()
+	roadmap := work.New(plan, wstore, work.WithTasks(addon.NewRoadmap(inputBook, lib, cstore, addon.WithPacks(plan))))
 	watcher.UseRoadmap(roadmap)
+	// The crop cycles read real sowings from the roadmap and record typed
+	// ones on it. Their addons: the shopping list and sprays, and when to
+	// sow and sell for price (from the saved price history, shown only
+	// where its backtest passed).
+	cycles := cycle.New(plan, cstore, cycle.WithRoadmap(roadmap), cycle.WithAddons(
+		addon.NewInputs(inputBook, lib, addon.WithPacks(plan)),
+		addon.NewTiming(lib, priceDB, addon.PlannerWindows{P: plan}, plan.Today, addon.WithPacks(plan)),
+	))
 	var astore *autosqlite.Store
 	if c.automations {
 		if astore, err = autosqlite.Open(ctx, c.db); err != nil {
@@ -351,13 +386,13 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 	if astore != nil {
 		alerts = astore
 	}
-	toolOpts = append(toolOpts, farmagent.WithWatch(watcher, alerts), farmagent.WithRoadmap(roadmap))
+	toolOpts = append(toolOpts, farmagent.WithWatch(watcher, alerts), farmagent.WithRoadmap(roadmap), farmagent.WithCycles(cycles))
 	agentOpts := append(slices.Clone(toolOpts), farmagent.WithSkills(skills))
 
 	aopts := []farmapi.Option{
 		farmapi.WithCountry(c.country), farmapi.WithLogger(log), farmapi.WithPlanner(plan),
 		farmapi.WithSurveyor(survey), farmapi.WithResearch(webResearch), farmapi.WithWatch(watcher), farmapi.WithPrices(market),
-		farmapi.WithRoadmap(roadmap),
+		farmapi.WithRoadmap(roadmap), farmapi.WithCycles(cycles),
 	}
 	model, provider, err := buildModel(c, log)
 	if err != nil {

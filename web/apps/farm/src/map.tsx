@@ -1,5 +1,6 @@
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import "./draw.css";
 import { useEffect, useRef } from "react";
 import type { Corner, Point } from "./types";
 
@@ -39,9 +40,29 @@ export interface ZoneShape {
 }
 
 /**
+ * A stroke drawn on the map with one finger or the mouse: free (a pencil
+ * line), segment (a straight line from where it starts to where it ends) or
+ * box (a rectangle between the two).
+ */
+export type Stroke = "free" | "segment" | "box";
+
+/** A handle on the map the farmer drags, such as a rectangle's turn handle. */
+export interface Handle {
+  id: string;
+  at: Point;
+  /** What it does, for its tooltip and screen readers. */
+  label: string;
+  /** The character shown on it. */
+  glyph: string;
+}
+
+/**
  * The map: satellite or streets, the plot being edited as a polygon with
  * numbered corners, and the farmer's other plots in outline. When editable,
- * a tap adds a corner and a corner can be dragged.
+ * a tap adds a corner and a corner can be dragged. With a stroke, a
+ * one-finger (or mouse) drag draws instead of moving the map, from the
+ * zoom where taps add corners; two fingers, the wheel and the buttons
+ * still move and zoom it, and so does a drag when zoomed out.
  */
 export function FarmMap({
   corners,
@@ -53,6 +74,11 @@ export function FarmMap({
   fit = 0,
   you,
   goto,
+  taps = true,
+  stroke,
+  onStroke,
+  handles = [],
+  onHandle,
   className,
 }: {
   corners: Corner[];
@@ -68,6 +94,15 @@ export function FarmMap({
   you?: Point & { accuracy?: number };
   /** A place to fly to, such as the village the farmer searched for: a new object each time. */
   goto?: Point;
+  /** Whether a tap adds a corner (when editable). */
+  taps?: boolean;
+  /** What a drag draws, if anything; taps then add no corners. */
+  stroke?: Stroke;
+  /** Called with the points of a finished stroke (two, its ends, for a segment or a box). */
+  onStroke?: (pts: Point[]) => void;
+  handles?: Handle[];
+  /** Called as a handle is dragged, with where it is. */
+  onHandle?: (id: string, at: Point) => void;
   className?: string;
 }) {
   const el = useRef<HTMLDivElement>(null);
@@ -76,10 +111,14 @@ export function FarmMap({
   const otherLayer = useRef<L.LayerGroup | null>(null);
   const youLayer = useRef<L.LayerGroup | null>(null);
   const zoneLayer = useRef<L.LayerGroup | null>(null);
+  const handleLayer = useRef<L.LayerGroup | null>(null);
+  const handleMarks = useRef(new Map<string, L.Marker>());
+  // The handles being dragged.
+  const held = useRef(new Set<string>());
   // The handlers read the latest props without rebinding.
-  const latest = useRef({ corners, onChange, editable });
+  const latest = useRef({ corners, onChange, editable, taps, stroke, onStroke, onHandle });
   useEffect(() => {
-    latest.current = { corners, onChange, editable };
+    latest.current = { corners, onChange, editable, taps, stroke, onStroke, onHandle };
   });
 
   useEffect(() => {
@@ -92,17 +131,90 @@ export function FarmMap({
     zoneLayer.current = L.layerGroup().addTo(m);
     layer.current = L.layerGroup().addTo(m);
     youLayer.current = L.layerGroup().addTo(m);
+    handleLayer.current = L.layerGroup().addTo(m);
+    const strokeLayer = L.layerGroup().addTo(m);
     m.on("click", (e: L.LeafletMouseEvent) => {
-      const { corners, onChange, editable } = latest.current;
+      const { corners, onChange, editable, taps, stroke } = latest.current;
       if (!editable || !onChange) return;
       // Zoomed out, a tap lands far from where the farmer meant: it zooms
-      // in there instead of adding a corner.
+      // in there instead of adding a corner (or drawing).
       if (m.getZoom() < cornerZoom) {
         m.setView(e.latlng, Math.min(m.getZoom() + 4, cornerZoom));
         return;
       }
-      onChange([...corners, { lat: round(e.latlng.lat), lng: round(e.latlng.lng) }]);
+      if (taps && !stroke) onChange([...corners, { lat: round(e.latlng.lat), lng: round(e.latlng.lng) }]);
     });
+    // Strokes: the listeners run in the capture phase, before Leaflet's,
+    // and keep a one-pointer drag from panning the map while it draws.
+    const box = m.getContainer();
+    let drawing: { id: number; pts: L.LatLng[]; line: L.Polyline } | undefined;
+    const end = (keep: boolean) => {
+      if (!drawing) return;
+      const { pts } = drawing;
+      drawing = undefined;
+      strokeLayer.clearLayers();
+      const kind = latest.current.stroke;
+      const first = pts[0];
+      const last = pts[pts.length - 1];
+      if (!keep || !kind || !first || !last) return;
+      const out = kind === "free" ? pts : [first, last];
+      latest.current.onStroke?.(out.map((p) => ({ lat: round(p.lat), lng: round(p.lng) })));
+    };
+    const shape = (pts: L.LatLng[]): L.LatLng[] => {
+      const first = pts[0];
+      const last = pts[pts.length - 1];
+      if (!first || !last || latest.current.stroke === "free") return pts;
+      if (latest.current.stroke === "segment") return [first, last];
+      return [first, L.latLng(first.lat, last.lng), last, L.latLng(last.lat, first.lng), first];
+    };
+    const down = (e: PointerEvent) => {
+      if (drawing && !e.isPrimary) {
+        // A second finger: the farmer is moving or zooming the map.
+        end(false);
+        return;
+      }
+      const t = e.target as Element;
+      if (
+        !latest.current.stroke ||
+        !e.isPrimary ||
+        e.button > 0 ||
+        m.getZoom() < cornerZoom ||
+        t.closest(".leaflet-marker-icon, .leaflet-control")
+      )
+        return;
+      // Not a pan, and no text selected as the mouse drags.
+      e.stopPropagation();
+      e.preventDefault();
+      const p = m.mouseEventToLatLng(e);
+      drawing = {
+        id: e.pointerId,
+        pts: [p],
+        line: L.polyline([p], { color: "#facc15", weight: 3, dashArray: "6 6" }).addTo(strokeLayer),
+      };
+      box.setPointerCapture?.(e.pointerId);
+    };
+    const move = (e: PointerEvent) => {
+      if (!drawing || e.pointerId !== drawing.id) return;
+      e.stopPropagation();
+      drawing.pts.push(m.mouseEventToLatLng(e));
+      drawing.line.setLatLngs(shape(drawing.pts));
+    };
+    const up = (e: PointerEvent) => {
+      if (drawing && e.pointerId === drawing.id) end(e.type === "pointerup");
+    };
+    // Leaflet starts a pan on mousedown or touchstart: not while drawing.
+    const hold = (e: Event) => {
+      if (drawing && !((e as TouchEvent).touches?.length > 1)) {
+        e.stopPropagation();
+        if (e.type === "mousedown") e.preventDefault();
+      }
+    };
+    box.addEventListener("pointerdown", down, true);
+    box.addEventListener("pointermove", move, true);
+    box.addEventListener("pointerup", up, true);
+    box.addEventListener("pointercancel", up, true);
+    box.addEventListener("mousedown", hold, true);
+    box.addEventListener("touchstart", hold, true);
     map.current = m;
     return () => {
       m.remove();
@@ -173,6 +285,45 @@ export function FarmMap({
     }
   }, [zones]);
 
+  // Handles move in place, so the one being dragged keeps its drag.
+  useEffect(() => {
+    const g = handleLayer.current;
+    if (!g) return;
+    const marks = handleMarks.current;
+    for (const [id, mk] of marks) {
+      if (!handles.some((h) => h.id === id)) {
+        g.removeLayer(mk);
+        marks.delete(id);
+      }
+    }
+    for (const h of handles) {
+      const mk = marks.get(h.id);
+      if (mk) {
+        if (!held.current.has(h.id)) mk.setLatLng([h.at.lat, h.at.lng]);
+        continue;
+      }
+      const made = L.marker([h.at.lat, h.at.lng], {
+        icon: L.divIcon({
+          className: "",
+          html: `<div class="draw-handle">${h.glyph}</div>`,
+          iconSize: [30, 30],
+          iconAnchor: [15, 15],
+        }),
+        draggable: true,
+        keyboard: false,
+        title: h.label,
+        alt: h.label,
+      }).addTo(g);
+      made.on("dragstart", () => held.current.add(h.id));
+      made.on("dragend", () => held.current.delete(h.id));
+      made.on("drag", () => {
+        const p = made.getLatLng();
+        latest.current.onHandle?.(h.id, { lat: round(p.lat), lng: round(p.lng) });
+      });
+      marks.set(h.id, made);
+    }
+  }, [handles]);
+
   useEffect(() => {
     const g = youLayer.current;
     if (!g) return;
@@ -212,7 +363,15 @@ export function FarmMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [you === undefined]);
 
-  return <div ref={el} className={className} role="application" aria-label="Map of the plot" />;
+  return (
+    <div
+      ref={el}
+      className={className}
+      role="application"
+      aria-label="Map of the plot"
+      data-stroke={stroke ?? undefined}
+    />
+  );
 }
 
 /** Rounds a coordinate to 7 decimals (about 1 cm). */

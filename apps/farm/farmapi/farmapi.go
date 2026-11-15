@@ -68,6 +68,16 @@
 //	GET    /api/farms/{id}/week            the week's forecast, crops' stages, work due, and advice (only what needs doing)
 //	GET    /api/farms/{id}/calendar        the crop calendar of the saved plan
 //
+// Crop cycles (with [WithCycles]): the suggested line and the farmer's
+// own, three at most; pos is 0 (the current cycle, the saved plan), 1 or 2:
+//
+//	GET    /api/farms/{id}/cycles             the line (cycle.Line)
+//	PUT    /api/farms/{id}/cycles/{pos}       change one (cycle.Change: accept, plan, clear, method)
+//	DELETE /api/farms/{id}/cycles/{pos}       drop the farmer's own later cycle
+//	POST   /api/farms/{id}/cycles/sown        the current cycle was sown {"day"}
+//	PUT    /api/farms/{id}/cycles/settings    turn later cycles on or off {"future"}
+//	POST   /api/farms/{id}/cycles/advance     move on: the next cycle becomes the saved plan
+//
 // Automations and the farmer's inbox (with [WithAutomations]):
 //
 //	GET    /api/notices?farm=&unread=1     notices, newest first, and the unread count
@@ -124,6 +134,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/apps/farm/agro"
 	"github.com/bsamanvith/agentkit/apps/farm/automation"
+	"github.com/bsamanvith/agentkit/apps/farm/cycle"
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
 	"github.com/bsamanvith/agentkit/apps/farm/farmagent"
 	"github.com/bsamanvith/agentkit/apps/farm/feeds"
@@ -183,6 +194,7 @@ type api struct {
 	watch     *watch.Watch
 	engine    *automation.Engine
 	work      *work.Service
+	cycles    *cycle.Service
 	hub       *notify.Hub
 	country   string
 	log       *slog.Logger
@@ -244,6 +256,12 @@ func New(svc *farm.Service, opts ...Option) http.Handler {
 	mux.HandleFunc("GET /api/farms/{id}/calendar", a.watching(a.calendar))
 	mux.HandleFunc("GET /api/farms/{id}/roadmap", a.roadmapping(a.roadmap))
 	mux.HandleFunc("POST /api/farms/{id}/roadmap/events", a.roadmapping(a.recordWork))
+	mux.HandleFunc("GET /api/farms/{id}/cycles", a.cycling(a.cycleLine))
+	mux.HandleFunc("PUT /api/farms/{id}/cycles/{pos}", a.cycling(a.setCycle))
+	mux.HandleFunc("DELETE /api/farms/{id}/cycles/{pos}", a.cycling(a.setCycle))
+	mux.HandleFunc("POST /api/farms/{id}/cycles/sown", a.cycling(a.cycleSown))
+	mux.HandleFunc("PUT /api/farms/{id}/cycles/settings", a.cycling(a.cycleSettings))
+	mux.HandleFunc("POST /api/farms/{id}/cycles/advance", a.cycling(a.advanceCycles))
 	mux.HandleFunc("GET /api/notices", a.automating(a.notices))
 	mux.HandleFunc("POST /api/notices/read", a.automating(a.readNotices))
 	mux.HandleFunc("GET /api/automations", a.automating(a.automations))
@@ -301,9 +319,9 @@ func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, watch.ErrNoForecast), errors.Is(err, weather.ErrUnavailable):
 		a.log.WarnContext(r.Context(), "farm api: no forecast", "path", r.URL.Path, "err", err)
 		writeJSON(w, http.StatusServiceUnavailable, errorBody{Error: "the weather forecast could not be had; try again later"})
-	case errors.Is(err, automation.ErrBuiltin):
+	case errors.Is(err, automation.ErrBuiltin), errors.Is(err, cycle.ErrConflict):
 		writeJSON(w, http.StatusConflict, errorBody{Error: err.Error()})
-	case errors.Is(err, work.ErrInvalid):
+	case errors.Is(err, work.ErrInvalid), errors.Is(err, cycle.ErrInvalid):
 		writeJSON(w, http.StatusBadRequest, errorBody{Error: err.Error()})
 	case errors.Is(err, automation.ErrInvalid):
 		writeJSON(w, http.StatusBadRequest, errorBody{Error: err.Error()})
@@ -352,6 +370,7 @@ func (a *api) config(w http.ResponseWriter, _ *http.Request) {
 		"research": a.research != nil, "prices": a.prices != nil, "country": a.country,
 		"weather": a.watch != nil && a.watch.HasWeather(), "automations": a.engine != nil,
 		"roadmap":  a.work != nil,
+		"cycles":   a.cycles != nil,
 		"messages": a.hub != nil,
 	})
 }

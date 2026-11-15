@@ -1,11 +1,24 @@
 import { Button } from "@agentkit/ui/components/button";
 import { Input } from "@agentkit/ui/components/input";
 import { Status, type StatusTone } from "@agentkit/ui";
-import { AlertTriangle, CheckCircle2, Info, Plus, Sprout, Trash2, XCircle } from "lucide-react";
-import { useEffect, useState } from "react";
-import { ApiError, api } from "./api";
+import { AlertTriangle, CheckCircle2, Info, Plus, Scissors, Sprout, Trash2, XCircle } from "lucide-react";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { ApiError, api, call } from "./api";
 import type { ZoneShape } from "./map";
-import { addPart, colors, cropLabel, formatDate, localName, partsOf, scoreTone, shapes } from "./plan";
+import {
+  addPart,
+  areaParts,
+  areaPlan,
+  areasOf,
+  colors,
+  cropLabel,
+  fillArea,
+  formatDate,
+  localName,
+  partsOf,
+  scoreTone,
+  shapes,
+} from "./plan";
 import type {
   Crop,
   Farm,
@@ -13,6 +26,7 @@ import type {
   Part,
   Plan,
   PlanCheck,
+  Point,
   PlanReport,
   PlanStatus,
   Profile,
@@ -29,6 +43,9 @@ const waterKinds: { id: WaterKind; label: string }[] = [
   { id: "tank", label: "Village tank or lake" },
   { id: "farm_pond", label: "Farm pond" },
 ];
+
+// Drawing areas loads the map's drawing code only when asked.
+const AreaEditor = lazy(() => import("./areas").then((m) => ({ default: m.AreaEditor })));
 
 const selectClass = "h-9 w-full rounded-md border bg-background px-2 text-sm";
 
@@ -54,6 +71,8 @@ export function Planning({
   const [error, setError] = useState("");
   const [parts, setParts] = useState<Part[]>(() => partsOf(farm.plan, farm.plan_report));
   const [unsaved, setUnsaved] = useState(false);
+  // The areas the farmer drew, when the plot is divided by hand: each is a zone.
+  const [areas, setAreas] = useState<Point[][] | undefined>(() => areasOf(farm.plan, farm.boundary.corners));
 
   useEffect(() => {
     api.soils().then(setSoils, (e: unknown) => setError(message(e)));
@@ -77,13 +96,20 @@ export function Planning({
       )}
       <div className="grid gap-4 lg:grid-cols-2">
         <ProfileForm farm={farm} soils={soils} crops={crops} onFarm={onFarm} onUnsaved={setUnsaved} />
-        <WhatToPlant farm={farm} crops={crops} unsaved={unsaved} onAdd={(p) => setParts((ps) => addPart(ps, p))} />
+        <WhatToPlant
+          farm={farm}
+          crops={crops}
+          unsaved={unsaved}
+          onAdd={(p) => setParts((ps) => (areas ? fillArea(ps, p) : addPart(ps, p)))}
+        />
       </div>
       <PlanEditor
         farm={farm}
         crops={crops}
         parts={parts}
         setParts={setParts}
+        areas={areas}
+        setAreas={setAreas}
         onFarm={onFarm}
         onZones={onZones}
         onShowMap={onShowMap}
@@ -406,6 +432,8 @@ function PlanEditor({
   crops,
   parts,
   setParts,
+  areas,
+  setAreas,
   onFarm,
   onZones,
   onShowMap,
@@ -414,11 +442,14 @@ function PlanEditor({
   crops: Crop[];
   parts: Part[];
   setParts: React.Dispatch<React.SetStateAction<Part[]>>;
+  areas?: Point[][];
+  setAreas: (a: Point[][] | undefined) => void;
   onFarm: (f: Farm) => void;
   onZones: (z: ZoneShape[]) => void;
   onShowMap?: () => void;
 }) {
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [dividing, setDividing] = useState(false);
   const [plan, setPlan] = useState<Plan | undefined>(farm.plan);
   const [report, setReport] = useState<PlanReport | undefined>(farm.plan_report);
   const [dirty, setDirty] = useState(false);
@@ -432,8 +463,15 @@ function PlanEditor({
   const layout = () => {
     setBusy(true);
     setError("");
-    api
-      .layout(farm.id, parts)
+    // Drawn areas are the zones as they are; otherwise the server cuts strips.
+    const drawn = areas && areaPlan(areas, parts);
+    (drawn
+      ? call<PlanReport>("POST", `/api/farms/${encodeURIComponent(farm.id)}/plan/check`, drawn).then((report) => ({
+          plan: drawn,
+          report,
+        }))
+      : api.layout(farm.id, parts)
+    )
       .then(
         (r) => {
           setPlan(r.plan);
@@ -471,11 +509,30 @@ function PlanEditor({
     );
   };
   const saved = farm.plan !== undefined && JSON.stringify(plan) === JSON.stringify(farm.plan);
+  const divided = (next: Point[][]) => {
+    setDividing(false);
+    const many = next.length > 1 ? next : undefined;
+    setAreas(many);
+    setParts((ps) =>
+      many ? areaParts(many, ps, farm.boundary.corners) : ps.slice(0, 1).map((p) => ({ ...p, share: 1 })),
+    );
+    setDirty(true);
+    onZones(
+      (many ?? []).map((ring, i) => ({ ring, label: `Area ${i + 1}`, color: colors[i % colors.length] ?? "#16a34a" })),
+    );
+  };
+  if (dividing)
+    return (
+      <Suspense fallback={<p className="text-sm text-muted-foreground">Loading…</p>}>
+        <AreaEditor plot={farm.boundary.corners} initial={areas} onDone={divided} onCancel={() => setDividing(false)} />
+      </Suspense>
+    );
   return (
     <Card title="Season plan">
       <p className="text-sm text-muted-foreground">
-        Share the plot between crops. We cut it into strips along its long side, rows running north to south, and check
-        the plan.
+        {areas
+          ? `The plot is in ${areas.length} areas you drew: give each its crop and sowing date, and we check the plan.`
+          : "Share the plot between crops. We cut it into strips along its long side, rows running north to south, and check the plan. Or divide it into areas yourself."}
       </p>
       {parts.length > 0 && (
         <div className="flex flex-col gap-2">
@@ -486,14 +543,25 @@ function PlanEditor({
               data-part={i}
             >
               <label className="flex flex-col gap-1 text-xs">
-                Crop
+                {areas ? (
+                  <span className="flex items-center gap-1.5">
+                    <span
+                      className="size-3 shrink-0 rounded-sm"
+                      aria-hidden="true"
+                      style={{ background: colors[i % colors.length] }}
+                    />
+                    Area {i + 1}
+                  </span>
+                ) : (
+                  "Crop"
+                )}
                 <select
                   aria-label="Zone crop"
                   className={selectClass}
                   value={p.crop}
                   onChange={(e) => edit(i, { crop: e.target.value })}
                 >
-                  {!p.crop && <option value="">Pick a crop</option>}
+                  {(!p.crop || areas) && <option value="">{areas ? "Nothing this season" : "Pick a crop"}</option>}
                   {crops.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
@@ -552,6 +620,7 @@ function PlanEditor({
                   min="1"
                   max="100"
                   className="h-9"
+                  disabled={!!areas}
                   value={Math.round(p.share * 100)}
                   onChange={(e) => edit(i, { share: Number(e.target.value) / 100 })}
                 />
@@ -563,6 +632,7 @@ function PlanEditor({
               <Button
                 variant="ghost"
                 size="sm"
+                className={areas ? "invisible" : undefined}
                 aria-label={`Remove ${cropLabel(crops, p.crop)}`}
                 onClick={() => {
                   setParts((ps) => ps.filter((_, j) => j !== i));
@@ -579,22 +649,36 @@ function PlanEditor({
         </div>
       )}
       <div className="flex flex-wrap gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            setParts((ps) => [...ps, { crop: "", share: Math.max(0.1, 1 - total), sow: "" }]);
-            setDirty(true);
-          }}
-        >
-          <Plus /> Add a crop
+        {!areas && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setParts((ps) => [...ps, { crop: "", share: Math.max(0.1, 1 - total), sow: "" }]);
+              setDirty(true);
+            }}
+          >
+            <Plus /> Add a crop
+          </Button>
+        )}
+        <Button variant="outline" size="sm" onClick={() => setDividing(true)}>
+          <Scissors /> {areas ? "Change the areas" : "Divide into areas"}
         </Button>
+        {areas && (
+          <Button variant="ghost" size="sm" onClick={() => divided([farm.boundary.corners])}>
+            One area
+          </Button>
+        )}
         <Button
           size="sm"
           onClick={layout}
-          disabled={busy || parts.length === 0 || parts.some((p) => !p.crop || !p.sow)}
+          disabled={
+            busy ||
+            parts.length === 0 ||
+            (areas ? !parts.some((p) => p.crop && p.sow) : parts.some((p) => !p.crop || !p.sow))
+          }
         >
-          Lay out on the map
+          {areas ? "Check the plan" : "Lay out on the map"}
         </Button>
         {plan && !dirty && !saved && (
           <Button size="sm" onClick={save} disabled={busy || report?.status === "invalid"}>

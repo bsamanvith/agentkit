@@ -1,6 +1,6 @@
 # Farm: what farmers can do, and what comes next
 
-> The product list, kept up to date. Last updated 2026-11-10.
+> The product list, kept up to date. Last updated 2026-11-15.
 > Every PR that adds, changes or removes something a farmer can see
 > updates this file (the `farm-features` skill says how). Why the app
 > exists and the farmer's year: [PRODUCT.md](PRODUCT.md). Epic:
@@ -14,7 +14,7 @@ Status words: **live** (merged on main, a farmer can use it), **building**
 
 | # | Feature | Status | Farmer's year | Since |
 |---|---|---|---|---|
-| 1 | [My plots](#1-my-plots) | live | land | T133 |
+| 1 | [My plots](#1-my-plots) | live | land | T133, T146 |
 | 2 | [The land and its surroundings](#2-the-land-and-its-surroundings) | live | land | T135, T138 |
 | 3 | [Farm layout](#3-farm-layout) | live | land | T135 |
 | 4 | [What to plant and when](#4-what-to-plant-and-when) | live | plan | T134, T137 |
@@ -36,17 +36,41 @@ Status words: **live** (merged on main, a farmer can use it), **building**
 | 20 | [Schemes, insurance and paperwork](#20-schemes-insurance-and-paperwork) | idea | plan, money | |
 | 21 | [For FPOs, dealers and lenders](#21-for-fpos-dealers-and-lenders) | idea | all | |
 | 22 | [Season roadmap](#22-season-roadmap) | live | grow | T141 |
+| 23 | [Crop cycles](#23-crop-cycles) | building | plan, grow | T145, T146 |
+| 24 | [What to buy, and feeding and sprays](#24-what-to-buy-and-feeding-and-sprays) | building | grow | T148 |
+| 25 | [When to sell](#25-when-to-sell) | building | sell | T147 |
 
 ## Live
 
 ### 1. My plots
 
 **The farmer** adds a plot: a name, how big they think it is (acres,
-guntas, cents, hectares or m²), and its boundary, by tapping the corners
-on a satellite map, by walking to each corner and tapping "add my
-position", or by pasting coordinates. To draw, they type their village
-or town and the map flies there; zoomed out, a tap zooms in rather than
-dropping a corner far from where they meant.
+guntas, cents, hectares or m²), and its boundary. They draw it on a
+satellite map with the **pencil** (round the field with a finger; the
+line becomes a few corners), with **lines** (a tap on each corner) or
+with a **rectangle** (drag corner to corner, then turn it and stretch its
+length or width by its handles); or they walk to each corner and tap
+"add my position", or paste coordinates. Any corner can be dragged, and
+*Undo* steps back one change at a time. To draw, they type their village
+or town and the map flies there; zoomed out, a tap zooms in. While the
+pencil or rectangle is on, one finger draws and two fingers move the map
+(or *Move map* frees one finger to pan).
+
+**First run.** A farmer with no plots is walked through it in four
+short steps on the phone (always four once the app knows the crop step
+is there; it waits for that before showing a count): find the village,
+draw the plot, name it (size optional), then say the crop or tap
+*Suggest for me*. It ends on the plot's *Cycles* tab with the crop, the
+sowing and harvest dates and this week's work, and one *Use this* tap
+keeps the suggestion. The new plot is in the sidebar at once, even if
+the farmer leaves the guide there. Every step after the drawing can be
+skipped, and the guide itself too.
+
+**Areas.** On the *Season plan* tab the farmer can divide a plot into
+areas: cut it with a line drawn across it, or draw a shape (pencil or
+rectangle) over part of it. Each area gets its own crop and sowing date
+and becomes a zone of the plan as drawn; an area left without a crop
+stays unplanned. One area is the default.
 
 **The app** checks it before saving: a valid shape, the true area on the
 ground in every unit, whether it matches the size the farmer said (a big
@@ -54,11 +78,18 @@ miss usually means a wrong corner or the wrong unit), slivers and GPS
 jumps, poor GPS accuracy while walking, where it is (village, district,
 state) and overlaps with the farmer's other plots. The result is
 *verified*, *needs review* (warnings the farmer can accept) or *invalid*.
+A drawn boundary goes through the same check however it was drawn. Areas
+always cover the plot without overlapping or holes (a shape drawn
+inside an area cuts the rest of it in two), and the plan check checks
+them again as zones.
 
 **Behind it:** `apps/farm/geo` (geodesic area, shape checks),
-`apps/farm/farm` (verifier, store), `apps/farm/nominatim` (place). Web:
-`editor.tsx`, `map.tsx`, `report.tsx`. Details:
-[PRODUCT.md, first feature](PRODUCT.md#first-feature-my-land).
+`apps/farm/farm` (verifier, store), `apps/farm/nominatim` (place),
+`agro` (plan check). Web: `editor.tsx`, `sketch.ts` (drawing tools and
+undo), `draw.ts` (simplifying a stroke, the rectangle, cutting and
+clipping areas), `map.tsx`, `report.tsx`, `areas.tsx`, `firstrun.tsx`.
+Details: [PRODUCT.md, first feature](PRODUCT.md#first-feature-my-land),
+[CYCLES.md, onboarding](CYCLES.md#onboarding-t146).
 
 ### 2. The land and its surroundings
 
@@ -118,7 +149,7 @@ POWER sunlight; tool `get_sun`. Web: *Sun and seasons* tab
 
 **The farmer** picks one crop or a mix ("60% cotton, 40% green gram",
 "4 rows soybean : 1 row maize"), and the app cuts the plot into strips to
-scale, with row and plant spacing, plant counts and seed needed. The plan
+scale (or uses the areas the farmer drew, feature 1), with row and plant spacing, plant counts and seed needed. The plan
 check warns before it costs a season: sowing outside the window, a
 thirsty crop on rain alone, a crop that rots in waterlogged clay, spacing
 out of range.
@@ -249,9 +280,16 @@ do it?"); when two people tick the same task the first one counts; a
 change sent twice counts once. The weekly work notice leaves out what is
 done and includes the farmer's own tasks.
 
+**With the inputs plan** ([24](#24-what-to-buy-and-feeding-and-sprays)),
+the feeding tasks name the products and amounts for the plot ("Urea
+22 kg (8.8 kg an acre)"), on the day the sources give; jeevamrutham and
+preventive sprays are tasks of their own. A feeding the calendar already
+has is that task, never a second one, and its tick survives a moved
+sowing or a change of method.
+
 **Behind it:** `apps/farm/work` (roadmap, events, `Store` with
-`worktest.RunStore`, `work/sqlite`), calendar rule keys in
-`apps/farm/calendar`; routes `/api/farms/{id}/roadmap*`; tools
+`worktest.RunStore`, `work/sqlite`, `WithTasks` for other sources of
+tasks), calendar rule keys in `apps/farm/calendar`; routes `/api/farms/{id}/roadmap*`; tools
 `get_roadmap`, `record_work`. Web: `roadmap.tsx`, `roadmap-data.ts` (the
 offline queue). Design: [ROADMAP.md](ROADMAP.md).
 
@@ -323,7 +361,115 @@ template for codes and MSG91 a DLT OTP template. With no lane keys yet,
 
 ## Building now
 
-Nothing right now.
+### 23. Crop cycles
+
+**The farmer** opens a plot's *Cycles* tab and sees this cycle first:
+the crop (ours, or theirs), when to sow, when it comes off and this
+week's work. A plot with no plan opens on this tab. One tap takes our
+suggestion; *My own crop* changes the crop or the dates; *I already
+sowed on…* records the real day (one far from the plan saves the plan
+again with it). *How you grow it: With fertiliser / Organic* is one tap.
+When nothing suits sowing soon, the card says so first ("Nothing suits
+sowing on rainfed land before May"), then what to do meanwhile (a soil
+test, the land preparation with its date) and what comes next. While the
+plot's water and soil were never given, one line says what the
+suggestion assumes ("Assuming rain only, no irrigation") with one tap to
+set them; irrigation changes the answer completely in rabi. Once the
+sowing is recorded, what we would have suggested no longer shows, the
+work from before the sowing stops nagging (not overdue, not in this
+week), and *What to buy* leads with what is still to buy. Under it,
+closed until tapped: *What to buy*, *Feeding and sprays*
+([24](#24-what-to-buy-and-feeding-and-sprays)) and *When to sell*
+([25](#25-when-to-sell)). One more tap (*What comes after*) shows the
+next two cycles, our suggestion beside their own, with a strip of the
+months, and the switch to stop planning them. None of it is
+asked for: a farmer who only says the crop still gets the dates and the
+week's work.
+
+**The app** works out the suggested line by rules: each cycle starts
+after the one before comes off plus 15 days to prepare the land, and is
+chosen with that crop as the last one (not the same family twice, a
+legume after a cereal), with the crop recommender. A crop that suits
+sowing (scores `SoonScore`, the recommender's good) within six weeks
+(`SoonDays`) is preferred to a better one months later, and says why;
+this cycle's sowing leaves a week (`ReadyDays`) to get seed and ready
+the land when it can. The farmer's own
+cycle wins where there is one; the cycles after it are suggested from
+it, so changing a crop or a date moves them. Their own later cycles are
+never changed, only checked: "Cotton now ends 2 January 2027; your
+Groundnut sowing of 1 October 2026 is before that." A real sowing day
+(the *Sown* tick of the season roadmap, or typed here) moves what
+follows. The current cycle is the saved season plan, so the roadmap,
+weather advice and prices work as before. Three cycles at most; the
+later ones can be turned off; *Harvested: start the next cycle* moves
+the line on, from two weeks before the harvest, after the farmer
+confirms in the page what will happen. With the climate down, nothing is suggested and their own
+cycles still show.
+
+**Behind it:** `apps/farm/cycle` (the rules in `Compute`, `Service`,
+`Store` with `cycletest.RunStore`, `cycle/sqlite`, `Addon`; the addons in
+`cycle/addon`, picked in `cmd/farm`); routes `/api/farms/{id}/cycles*`;
+tools `get_cycles`, `set_cycle`. Web: `cycles.tsx`, `cycles-data.ts`
+(a lazy chunk), `plot.tsx` (the plot page and its tabs, a lazy chunk).
+Design: [CYCLES.md](CYCLES.md). The cycle-0 plan and the cycle record
+are two writes: the record wins first and carries the farm writes until
+they are made, so a lost race or a crash never leaves half a change.
+
+### 24. What to buy, and feeding and sprays
+
+**The farmer** opens *What to buy* under this cycle: what to buy before
+sowing and what later, in the units the shop sells (a 45 kg bag of urea,
+13 tonnes of manure, seed in kg), for the plot's own area, and apart from
+it a list of what to buy only if a pest or disease shows up, with when
+to look. *Feeding and sprays* lists each step by date: the products and
+how much for the plot and per acre, the water per acre, the days to wait
+before harvest and the cautions; each feeding says what and why ("First
+nitrogen feed: urea, 21.7 kg", "Sulphur feed: gypsum, 400 kg"). A
+quantity is one number everywhere (one decimal under 100): the
+shopping list shows what to buy, rounded up to what is sold, with the
+need beside it ("11 kg · 10.3 kg needed"). Organic or conventional changes both
+lists at once. Or they ask the assistant "what should I buy for the east
+plot". Both notes show wherever a dose does: these are starter values for
+an agronomist to review, and the product label wins.
+
+**The app** works it out by rules from the crop, the area of each part
+of the plot (an intercrop by its rows), the method, rainfed or irrigated
+(from the plot's water source) and the sowing day: the sources' rates,
+rounded up to whole packs, nothing banned or restricted in India, no
+synthetic product on the organic route, nor anywhere an organic farmer
+reads (the crop calendar names what to feed, not a product). The feeding steps are also
+Season work's tasks ([22](#22-season-roadmap)). The model never makes up
+a number: `get_inputs` gives the plan.
+
+**Behind it:** `apps/farm/inputs` (the book, `data/inputs.json`,
+`data/banned.json`), `cycle/addon` (`Inputs`, `Roadmap`); tool
+`get_inputs`. Web: `cycle-extras.tsx` (a lazy chunk). Design:
+[INPUTS.md](INPUTS.md). **Still to come:** an agronomist's review of the
+values.
+
+### 25. When to sell
+
+**The farmer** sees *When to sell* under this cycle only when there is
+advice: which harvest month has paid best in their district (while the
+sowing is ahead), or whether to sell at harvest or hold and until when,
+with the storage cost counted. Where there is not enough price history,
+one quiet line says so, inside the cycle, never as an error.
+
+**The app** builds a seasonal index of the crop's prices from the saved
+mandi history of the district (or the state) and backtests it walk-forward
+against simply selling at harvest; advice shows only where it beat that
+on past years. Before sowing it weighs the harvest months reachable from
+the recommender's safe sowing window. It is arithmetic, kept for 30
+minutes; the `sell-or-hold` skill reads it from `get_cycles`.
+
+**Behind it:** `apps/farm/prices` (`AdviseTiming`, the index, the
+backtest, `ScanFiles` for India Data Portal and CEDA files,
+`make farm-price-backtest`), `cycle/addon` (`Timing`). Web:
+`cycle-extras.tsx`. Design: [PRICES.md](PRICES.md),
+[CYCLES.md](CYCLES.md#when-to-harvest-and-sell-t147). **Still to come:**
+validation on 10 years or more of real prices (only 5 were reachable);
+most districts have too little saved history today, so it is mostly
+quiet until the history grows or files are loaded.
 
 ## Planned
 
@@ -379,21 +525,29 @@ verified boundary. Needs accounts and consent.
 
 ## What is most needed next
 
-Ranked 2026-11-10, after weather alerts (11), prices (12), accounts (13) and the message lanes (14), all live:
+Ranked 2026-11-15, after crop cycles (23) with what to buy (24) and
+when to sell (25) were joined into one path:
 
-1. **Alerts on the phone (14), live; keys next.** Farmers will not open
+1. **Real farmers on the basic path, and an agronomist's review.** The
+   draw, crop, dates and week's work path is ready to try in one
+   district; the input doses (24) are starter values until an
+   agronomist signs them off. Neither is code, both decide whether the
+   rest is trusted.
+2. **Price history for When to sell (25).** Load India Data Portal's
+   Agmarknet files (ODC-By) for the pilot states so the advice can speak;
+   CEDA's longer history is non-commercial only.
+3. **Alerts on the phone (14), live; keys next.** Farmers will not open
    an app every day to look for an alert; the lanes and the Messages page
    are in. Next: a Telegram bot and an SMTP account (free), then WhatsApp
    and SMS once registered. The same lanes carry the phone and email
    sign-in codes of 13 (wired; an SMTP account gives free email codes).
-2. **Crop doctor (15).** The question farmers ask most in season.
-3. **Ledger by voice (16)**, with prices (12) giving profit per plot.
-4. **Offline and voice (17)** before field use at scale.
-5. **Soil Health Card from a photo (19)**: better soil means better
-   recommendations; small once the model reads images for 15.
-
-Also needed, not a feature: an agronomist's review of the crop rule
-values, and real farmers trying the app in one district.
+4. **Crop doctor (15).** The question farmers ask most in season; it
+   fills the "only if you see" list of 24 with a photo.
+5. **Ledger by voice (16)**, with prices (12) and the inputs plan (24)
+   giving cost and profit per plot.
+6. **Offline and voice (17)** before field use at scale.
+7. **Soil Health Card from a photo (19)**: better soil means better
+   recommendations and doses; small once the model reads images for 15.
 
 ## Data providers
 
@@ -421,9 +575,25 @@ in the *Cost* column and named in the PR that adds it.
 | Handbook search | `pkg/knowledge` | Gemini embeddings plus keywords | keywords only | Gemini free tier, 100 texts a minute; keywords free |
 | Weather forecast | `weather.Source` | Open-Meteo, then MET Norway (`-weather`, tried in order) | the next in the list | Open-Meteo: **free for non-commercial use only** (under 10,000 a day), paid plan or self-hosting for commercial; MET Norway: free, CC BY 4.0, commercial use allowed with credit |
 | Mandi prices | `prices.Source` (on `feeds.Provider`) | Agmarknet on data.gov.in (`datagov`, all India, daily; needs `FARM_DATAGOV_KEY`), price files (`files`: Agmarknet, data.gov.in or CEDA CSVs in `FARM_PRICE_FILES`) | the next provider, then every price saved before | data.gov.in: **free**, key on registration; files: free; CEDA: free with registration, check its terms before commercial use |
+| Price history for sell timing | `prices.History` (filled by the mandi providers, or loaded with `ScanFiles`) | India Data Portal's Agmarknet files (2021 on), CEDA Agri Market's (2000 to 2023), as files | the saved history; with too little, no advice | India Data Portal: **free**, Open Data Commons Attribution (cite it); CEDA: free with registration, **non-commercial use only** |
+| Fertiliser, seed and spray values | `inputs.Book` (embedded data) | TNAU crop production guides (2020) and crop protection pages, the CIB&RC list, India's banned list (PPQS) | kind defaults for crops without values | Free public documents; starter values for an agronomist to review |
+| Region data: what differs by place | `region.Set` (embedded base and overlays, plus the `-regions` folder) | ICAR-CRIDA district contingency plans (sowing windows), the PMFBY operational guidelines (insurance cut-offs and loss notice), state announcements as reported | the base pack | Free public documents |
 | Message lanes | `notify.Lane` | web push, Telegram, email (SMTP), WhatsApp (Meta Cloud API), SMS (MSG91 or Twilio), each on when its keys are set; `-notify-routes` composes them | the next lane in a chain; at a lane's cost cap, the next | Web push, Telegram: free; email: free tiers of most SMTP providers (flag the one chosen); WhatsApp: **paid** per template message, needs Meta business verification; SMS: **paid** per message, needs DLT registration |
 | Sign-in | `accounts.Lane` (redirect, secret or code lanes, `-signin`) | Google (`google`, OpenID Connect; needs `FARM_GOOGLE_CLIENT_ID` and `_SECRET`), password, invite codes, phone and email one-time codes | the other lanes turned on: a farmer can link several | Google, password, invite: **free**; phone and email codes: by the message lanes (14), at their cost: email free tiers, SMS and WhatsApp **paid** per code |
 | News and knowledge | to plan, on `feeds.Provider` as prices are (weather can move onto it) | | | |
+
+**Regions** ([REGIONS.md](REGIONS.md), T149). The crop library, the
+inputs book, the crop cycle rules, storage values, support prices and
+schemes (crop insurance first, as data) come from the region pack of the
+plot's place: the base set with overlays for its country, state and
+district laid on, the most specific winning field by field, every value
+with its source and the layer it came from. Overlays are JSON files, the
+built-in ones plus a folder (`-regions`, `FARM_REGIONS`), checked at
+startup: an unknown key, an unknown crop or a banned product stops the
+start, naming the file and the key. Built in today: Andhra Pradesh (its
+kharif 2026 crop insurance), YSR Kadapa and Anantapur (local sowing
+windows from the ICAR-CRIDA district contingency plans). A place with no
+overlay gets the base, unchanged.
 
 Paid things in the plans above, and the free way to start:
 

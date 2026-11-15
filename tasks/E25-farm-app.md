@@ -42,6 +42,12 @@ next: [apps/farm/docs/FEATURES.md](../apps/farm/docs/FEATURES.md).
 - [ ] [T141](T141-season-roadmap.md) Season roadmap: a plot's tasks from its plan with stable IDs, what the farmer did as append-only events (offline queue, resend-safe, first close wins), the real sowing date moving the season, farmer tasks, the Season work tab, get_roadmap and record_work ([design](../apps/farm/docs/ROADMAP.md))
 - [ ] [T143](T143-farm-message-lanes.md) Message lanes: web push, Telegram, email, WhatsApp and SMS behind one interface, composed as a tree (fan-out, chain, router), with consent and STOP, quiet hours, idempotency, retries, delivery status and cost caps ([design](../apps/farm/docs/MESSAGES.md))
 - [ ] [T144](T144-farm-accounts.md) Farmer accounts: sign-in lanes (Google, password, invite and one-time codes) on agentkit's own OAuth core, farms with members and roles, assisted sign-up by a partner ([design](../apps/farm/docs/ACCOUNTS.md))
+- [ ] [T145](T145-crop-cycles.md) Crop cycles: a suggested line and the farmer's own per plot, linked, three at most ([design](../apps/farm/docs/CYCLES.md))
+- [ ] [T146](T146-drawing-and-onboarding.md) Drawing by pencil, lines or rectangle, areas inside a plot, the first-run path
+- [ ] [T147](T147-sell-window.md) Seasonal price index, harvest-month advice and its backtest
+- [ ] [T148](T148-inputs-and-sprays.md) Inputs and sprays: a shopping list and a spray schedule from crop, area and method
+  - T145 to T148 joined in branch `wt-join` (2026-11-15): the addons on each cycle, the plan's tasks in Season work, `get_inputs`, the first run ending on Cycles; all four in review until it merges
+- [ ] [T149](T149-region-packs.md) Region packs: the crop library, inputs, cycle rules, storage and schemes by country, state and district, as data with sources ([design](../apps/farm/docs/REGIONS.md))
 - [ ] Field watch: satellite greenness and weather per plot, a weekly background agent (to plan)
 - [ ] Land-cover cross-check: is the plot cropland (ESA WorldCover / Dynamic World) (to plan)
 - [ ] Offline (PWA) capture (to plan)

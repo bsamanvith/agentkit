@@ -28,7 +28,7 @@ const (
 	Turnaround = 15
 	// MaxWait is how many days after the land is free a suggested sowing
 	// may be: a rainfed plot waits through the dry months for the rains.
-	MaxWait = 150
+	MaxWait = 240
 )
 
 // Method is how a cycle is grown.

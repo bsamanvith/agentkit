@@ -1,0 +1,1139 @@
+{
+ "note": "Pesticides banned, withdrawn, refused registration, restricted, or proposed for a ban or restriction in India. No active ingredient on this list may appear in the inputs data, for any crop: a restriction on some crops keeps it out entirely, and so does a proposal.",
+ "as_of": "2024-03-31",
+ "checked": "2026-11-15",
+ "actives": [
+  {
+   "name": "2,4,5-T",
+   "aka": [],
+   "status": "refused",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides refused registration"
+   }
+  },
+  {
+   "name": "2,4-D",
+   "aka": [],
+   "status": "proposed",
+   "note": "Proposed in the draft order of 2020 to ban or restrict 27 pesticides.",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Proposed pesticides for restricted use in India"
+   }
+  },
+  {
+   "name": "Acephate",
+   "aka": [],
+   "status": "proposed",
+   "note": "Proposed in the draft order of 2020 to ban or restrict 27 pesticides.",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Proposed pesticides for restricted use in India"
+   }
+  },
+  {
+   "name": "Alachlor",
+   "aka": [],
+   "status": "banned",
+   "note": "S.O. 3951 (E), dated 8 August 2018",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Aldicarb",
+   "aka": [],
+   "status": "banned",
+   "note": "S.O. 682 (E) dated 17 July 2001",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Aldrin",
+   "aka": [],
+   "status": "banned",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Aluminium phosphide",
+   "aka": [],
+   "status": "restricted",
+   "note": "Pest control operations allowed only by Govt./Govt. undertakings/approved experts, except 15% 12 g and 6% tablets. Production, marketing, and use of 10- and 20-tablet tube packs banned. (RC circular, G.S.R. 371(E), S.O. 677(E) dated 17 July 2001)",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides restricted for use in the country"
+   }
+  },
+  {
+   "name": "Ammonium sulphamate",
+   "aka": [],
+   "status": "refused",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides refused registration"
+   }
+  },
+  {
+   "name": "Atrazine",
+   "aka": [],
+   "status": "proposed",
+   "note": "Proposed in the draft order of 2020 to ban or restrict 27 pesticides.",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Proposed pesticides for restricted use in India"
+   }
+  },
+  {
+   "name": "Azinphos-ethyl",
+   "aka": [],
+   "status": "refused",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides refused registration"
+   }
+  },
+  {
+   "name": "Azinphos-methyl",
+   "aka": [],
+   "status": "refused",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides refused registration"
+   }
+  },
+  {
+   "name": "Benfuracarb",
+   "aka": [],
+   "status": "proposed",
+   "note": "Proposed in the draft order of 2020 to ban or restrict 27 pesticides.",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Proposed pesticides for restricted use in India"
+   }
+  },
+  {
+   "name": "Benomyl",
+   "aka": [],
+   "status": "banned",
+   "note": "S.O. 3951(E) dated 8 August 2018",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Benzene hexachloride",
+   "aka": [
+    "BHC"
+   ],
+   "status": "banned",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Binapacryl",
+   "aka": [],
+   "status": "refused",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides refused registration"
+   }
+  },
+  {
+   "name": "Butachlor",
+   "aka": [],
+   "status": "proposed",
+   "note": "Proposed in the draft order of 2020 to ban or restrict 27 pesticides.",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Proposed pesticides for restricted use in India"
+   }
+  },
+  {
+   "name": "Calcium arsenate",
+   "aka": [],
+   "status": "refused",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides refused registration"
+   }
+  },
+  {
+   "name": "Calcium cyanide",
+   "aka": [],
+   "status": "banned",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Captafol",
+   "aka": [],
+   "status": "banned",
+   "note": "S.O. 679 (E) dated 17 July 2001",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned for use but manufacture allowed for export"
+   }
+  },
+  {
+   "name": "Captan",
+   "aka": [],
+   "status": "proposed",
+   "note": "Proposed in the draft order of 2020 to ban or restrict 27 pesticides.",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Proposed pesticides for restricted use in India"
+   }
+  },
+  {
+   "name": "Carbaryl",
+   "aka": [],
+   "status": "banned",
+   "note": "S.O. 3951(E) dated 8 August 2018",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Carbendazim",
+   "aka": [],
+   "status": "proposed",
+   "note": "Proposed in the draft order of 2020 to ban or restrict 27 pesticides.",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Proposed pesticides for restricted use in India"
+   }
+  },
+  {
+   "name": "Carbofuran",
+   "aka": [],
+   "status": "restricted",
+   "note": "All formulations banned except 3% encapsulated granule (CG) with crop labels. (S.O. 4294(E) dated 3 October 2023)",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides restricted for use in the country"
+   }
+  },
+  {
+   "name": "Carbophenothion",
+   "aka": [],
+   "status": "refused",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides refused registration"
+   }
+  },
+  {
+   "name": "Carbosulfan",
+   "aka": [],
+   "status": "proposed",
+   "note": "Draft Banning of Carbosulfan Order, 2026.",
+   "ref": {
+    "source": "teamlease-carbosulfan-2026",
+    "where": "article"
+   }
+  },
+  {
+   "name": "Chinomethionate",
+   "aka": [
+    "Morestan"
+   ],
+   "status": "refused",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides refused registration"
+   }
+  },
+  {
+   "name": "Chlordane",
+   "aka": [],
+   "status": "banned",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Chlorfenvinphos",
+   "aka": [],
+   "status": "banned",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Chlorobenzilate",
+   "aka": [],
+   "status": "banned",
+   "note": "S.O. 682 (E) dated 17 July 2001",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Chlorpyrifos",
+   "aka": [
+    "Chlorpyriphos"
+   ],
+   "status": "restricted",
+   "note": "Banned for use in Ber, Citrus, and Tobacco. (S.O. 4294(E) dated 3 October 2023)",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides restricted for use in the country"
+   }
+  },
+  {
+   "name": "Copper acetoarsenite",
+   "aka": [],
+   "status": "banned",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Cypermethrin",
+   "aka": [],
+   "status": "restricted",
+   "note": "3% smoke generator restricted to use by Pest Control Operators only, not for general public. (Delhi High Court Order, WP(C) 10052 of 2009)",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides restricted for use in the country"
+   }
+  },
+  {
+   "name": "Dalapon",
+   "aka": [],
+   "status": "withdrawn",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides withdrawn"
+   }
+  },
+  {
+   "name": "Dazomet",
+   "aka": [],
+   "status": "restricted",
+   "note": "Not permitted for use on Tea. (S.O. 3006(E) dated 31 December 2008)",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides restricted for use in the country"
+   }
+  },
+  {
+   "name": "Deltamethrin",
+   "aka": [],
+   "status": "proposed",
+   "note": "Proposed in the draft order of 2020 to ban or restrict 27 pesticides.",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Proposed pesticides for restricted use in India"
+   }
+  },
+  {
+   "name": "Diazinon",
+   "aka": [],
+   "status": "banned",
+   "note": "S.O. 3951(E) dated 8 August 2018",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Dibromochloropropane",
+   "aka": [
+    "DBCP"
+   ],
+   "status": "banned",
+   "note": "S.O. 569 (E) dated 25 July 1989",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Dichloro-diphenyl-trichloroethane",
+   "aka": [
+    "DDT"
+   ],
+   "status": "restricted",
+   "note": "Restricted to 10,000 MT per year for public health; export allowed under Stockholm Convention. Banned in agriculture; special permissions for plant protection may be granted by Govt. (S.O. 295(E) dated 8 March 2006; S.O. 378(E) dated 26 May 1989)",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides restricted for use in the country"
+   }
+  },
+  {
+   "name": "Dichlorvos",
+   "aka": [],
+   "status": "banned",
+   "note": "S.O. 3951 (E), dated 8 August 2018",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Dicofol",
+   "aka": [],
+   "status": "banned",
+   "note": "S.O. 4294(E) dated 3 October 2023",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Dicrotophos",
+   "aka": [],
+   "status": "refused",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides refused registration"
+   }
+  },
+  {
+   "name": "Dieldrin",
+   "aka": [],
+   "status": "banned",
+   "note": "S.O. 682 (E) dated 17 July 2001",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Dimethoate",
+   "aka": [],
+   "status": "restricted",
+   "note": "Banned for use in fruits and vegetables consumed raw. (S.O. 4294(E) dated 3 October 2023)",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides restricted for use in the country"
+   }
+  },
+  {
+   "name": "Dinocap",
+   "aka": [],
+   "status": "banned",
+   "note": "S.O. 4294(E) dated 3 October 2023",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Disulfoton",
+   "aka": [
+    "Thiodemeton"
+   ],
+   "status": "refused",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides refused registration"
+   }
+  },
+  {
+   "name": "Diuron",
+   "aka": [],
+   "status": "proposed",
+   "note": "Proposed in the draft order of 2020 to ban or restrict 27 pesticides.",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Proposed pesticides for restricted use in India"
+   }
+  },
+  {
+   "name": "Endosulfan",
+   "aka": [],
+   "status": "banned",
+   "note": "ad-Interim order of the Supreme Court of India in the Writ",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Endrin",
+   "aka": [],
+   "status": "banned",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "EPN",
+   "aka": [],
+   "status": "refused",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides refused registration"
+   }
+  },
+  {
+   "name": "Ethyl parathion",
+   "aka": [],
+   "status": "banned",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Ethylene dibromide",
+   "aka": [
+    "EDB"
+   ],
+   "status": "banned",
+   "note": "S.O. 682 (E) dated 17 July 2001",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Ethylmercury chloride",
+   "aka": [],
+   "status": "banned",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Fenarimol",
+   "aka": [],
+   "status": "banned",
+   "note": "S.O 3951(E) dated 8 August 2018",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Fenitrothion",
+   "aka": [],
+   "status": "restricted",
+   "note": "Banned in agriculture except for locust control and public health. (S.O. 706(E) dated 3 May 2007)",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides restricted for use in the country"
+   }
+  },
+  {
+   "name": "Fenthion",
+   "aka": [],
+   "status": "banned",
+   "note": "S.O 3951(E) dated 8 August 2018",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Fentin acetate",
+   "aka": [],
+   "status": "refused",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides refused registration"
+   }
+  },
+  {
+   "name": "Fentin hydroxide",
+   "aka": [],
+   "status": "refused",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides refused registration"
+   }
+  },
+  {
+   "name": "Ferbam",
+   "aka": [],
+   "status": "withdrawn",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides withdrawn"
+   }
+  },
+  {
+   "name": "Formothion",
+   "aka": [],
+   "status": "withdrawn",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides withdrawn"
+   }
+  },
+  {
+   "name": "Heptachlor",
+   "aka": [],
+   "status": "banned",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Lead arsenate",
+   "aka": [],
+   "status": "refused",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides refused registration"
+   }
+  },
+  {
+   "name": "Leptophos",
+   "aka": [
+    "Phosvel"
+   ],
+   "status": "refused",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides refused registration"
+   }
+  },
+  {
+   "name": "Lindane",
+   "aka": [
+    "Gamma-HCH"
+   ],
+   "status": "banned",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Linuron",
+   "aka": [],
+   "status": "banned",
+   "note": "S.O 3951(E) dated 8 August 2018",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Malathion",
+   "aka": [],
+   "status": "restricted",
+   "note": "Banned for use on Sorghum, Pea, Soybean, Castor, Sunflower, and specific fruits/vegetables including Apple, Mango, and Grape. (S.O. 4294(E) dated 3 October 2023)",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides restricted for use in the country"
+   }
+  },
+  {
+   "name": "Maleic hydrazide",
+   "aka": [],
+   "status": "banned",
+   "note": "S.O. 682 (E) dated 17 July 2001",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Mancozeb",
+   "aka": [],
+   "status": "restricted",
+   "note": "Banned for use on Guava, Jowar, and Tapioca. (S.O. 4294(E) dated 3 October 2023)",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides restricted for use in the country"
+   }
+  },
+  {
+   "name": "Menazon",
+   "aka": [],
+   "status": "banned",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Mephosfolan",
+   "aka": [],
+   "status": "refused",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides refused registration"
+   }
+  },
+  {
+   "name": "Methomyl",
+   "aka": [],
+   "status": "banned",
+   "note": "S.O. 4294(E) dated 3 October 2023",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Methoxyethylmercury chloride",
+   "aka": [],
+   "status": "banned",
+   "note": "S.O 3951(E) dated 8 August 2018",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Methyl bromide",
+   "aka": [],
+   "status": "restricted",
+   "note": "Restricted for use only by Govt./Govt. undertakings or approved experts. (G.S.R. 371(E) dated 20 May 1999)",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides restricted for use in the country"
+   }
+  },
+  {
+   "name": "Methyl parathion",
+   "aka": [],
+   "status": "banned",
+   "note": "S.O 3951(E) dated 8 August 2018",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Metoxuron",
+   "aka": [],
+   "status": "banned",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Mevinphos",
+   "aka": [
+    "Phosdrin"
+   ],
+   "status": "refused",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides refused registration"
+   }
+  },
+  {
+   "name": "Monocrotophos",
+   "aka": [],
+   "status": "banned",
+   "note": "Banned with dicofol, dinocap and methomyl: Insecticides (Prohibition) Order 2023, published in the Gazette.",
+   "ref": {
+    "source": "ruralvoice-ban-2023",
+    "where": "article"
+   }
+  },
+  {
+   "name": "Nickel chloride",
+   "aka": [],
+   "status": "withdrawn",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides withdrawn"
+   }
+  },
+  {
+   "name": "Nicotine sulfate",
+   "aka": [],
+   "status": "banned",
+   "note": "S.O. 325 (E) dated 11 May 1992",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned for use but manufacture allowed for export"
+   }
+  },
+  {
+   "name": "Nitrofen",
+   "aka": [],
+   "status": "banned",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Oxyfluorfen",
+   "aka": [],
+   "status": "restricted",
+   "note": "Banned for use on Potato and Groundnut. (S.O. 4294(E) dated 3 October 2023)",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides restricted for use in the country"
+   }
+  },
+  {
+   "name": "Paradichlorobenzene",
+   "aka": [
+    "PDCB"
+   ],
+   "status": "withdrawn",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides withdrawn"
+   }
+  },
+  {
+   "name": "Paraquat dichloride",
+   "aka": [
+    "Paraquat"
+   ],
+   "status": "proposed",
+   "note": "Reported in 2026 as notified for prohibition; not checked against the Gazette. Kept out of the data.",
+   "ref": {
+    "source": "drishti-paraquat-2026",
+    "where": "article"
+   }
+  },
+  {
+   "name": "Paraquat dimethyl sulfate",
+   "aka": [
+    "Gramoxone"
+   ],
+   "status": "banned",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Pendimethalin",
+   "aka": [],
+   "status": "proposed",
+   "note": "Proposed in the draft order of 2020 to ban or restrict 27 pesticides.",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Proposed pesticides for restricted use in India"
+   }
+  },
+  {
+   "name": "Pentachloronitrobenzene",
+   "aka": [
+    "PCNB"
+   ],
+   "status": "banned",
+   "note": "S.O. 569 (E) dated 25 July 1989",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Pentachlorophenol",
+   "aka": [],
+   "status": "banned",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Phenylmercury acetate",
+   "aka": [],
+   "status": "banned",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Phorate",
+   "aka": [],
+   "status": "banned",
+   "note": "S.O. 3951 (E), dated 8 August 2018",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Phosphamidon",
+   "aka": [],
+   "status": "banned",
+   "note": "S.O. 3951 (E), dated 8 August 2018",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Quinalphos",
+   "aka": [],
+   "status": "restricted",
+   "note": "Banned for use on Jute, Cardamom, and Sorghum. (S.O. 4294(E) dated 3 October 2023)",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides restricted for use in the country"
+   }
+  },
+  {
+   "name": "Simazine",
+   "aka": [],
+   "status": "withdrawn",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides withdrawn"
+   }
+  },
+  {
+   "name": "Sirmate",
+   "aka": [],
+   "status": "withdrawn",
+   "note": "S.O. 2485 (E) dated 24 September 2014",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides withdrawn"
+   }
+  },
+  {
+   "name": "Sodium cyanide",
+   "aka": [],
+   "status": "banned",
+   "note": "banned for Insecticidal purpose only S.O 3951(E) dated 8 August 2018); Regulation to be continued in the extant manner for non-insecticidal uses.",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Sodium methanearsonate",
+   "aka": [],
+   "status": "banned",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Sulfosulfuron",
+   "aka": [],
+   "status": "proposed",
+   "note": "Proposed in the draft order of 2020 to ban or restrict 27 pesticides.",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Proposed pesticides for restricted use in India"
+   }
+  },
+  {
+   "name": "Tetradifon",
+   "aka": [],
+   "status": "banned",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Thiodicarb",
+   "aka": [],
+   "status": "proposed",
+   "note": "Proposed in the draft order of 2020 to ban or restrict 27 pesticides.",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Proposed pesticides for restricted use in India"
+   }
+  },
+  {
+   "name": "Thiometon",
+   "aka": [],
+   "status": "banned",
+   "note": "S.O 3951(E) dated 8 August 2018",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Thiophanate-methyl",
+   "aka": [],
+   "status": "proposed",
+   "note": "Proposed in the draft order of 2020 to ban or restrict 27 pesticides.",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Proposed pesticides for restricted use in India"
+   }
+  },
+  {
+   "name": "Thiram",
+   "aka": [],
+   "status": "proposed",
+   "note": "Proposed in the draft order of 2020 to ban or restrict 27 pesticides.",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Proposed pesticides for restricted use in India"
+   }
+  },
+  {
+   "name": "Toxaphene",
+   "aka": [
+    "Camphechlor"
+   ],
+   "status": "banned",
+   "note": "S.O. 569 (E) dated 25 July 1989",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Triazophos",
+   "aka": [],
+   "status": "banned",
+   "note": "S.O. 3951 (E), dated 8 August 2018",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Trichlorfon",
+   "aka": [],
+   "status": "banned",
+   "note": "S.O. 3951 (E), dated 8 August 2018",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Trichloroacetic acid",
+   "aka": [
+    "TCA"
+   ],
+   "status": "banned",
+   "note": "S.O. 682 (E) dated 17 July 2001",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Tridemorph",
+   "aka": [],
+   "status": "banned",
+   "note": "S.O 3951(E) dated 8 August 2018",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides banned from manufacture, import, and use"
+   }
+  },
+  {
+   "name": "Trifluralin",
+   "aka": [],
+   "status": "restricted",
+   "note": "All uses banned except in wheat from Aug 2018; cautionary statement must be incorporated in the label and leaflet",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides restricted for use in the country"
+   }
+  },
+  {
+   "name": "Vamidothion",
+   "aka": [],
+   "status": "refused",
+   "note": "",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides refused registration"
+   }
+  },
+  {
+   "name": "Warfarin",
+   "aka": [],
+   "status": "withdrawn",
+   "note": "S.O. 915 (E) dated 15 June 2006",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Pesticides withdrawn"
+   }
+  },
+  {
+   "name": "Zineb",
+   "aka": [],
+   "status": "proposed",
+   "note": "Proposed in the draft order of 2020 to ban or restrict 27 pesticides.",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Proposed pesticides for restricted use in India"
+   }
+  },
+  {
+   "name": "Ziram",
+   "aka": [],
+   "status": "proposed",
+   "note": "Proposed in the draft order of 2020 to ban or restrict 27 pesticides.",
+   "ref": {
+    "source": "wikipedia-ppqs-2024",
+    "where": "Proposed pesticides for restricted use in India"
+   }
+  }
+ ]
+}

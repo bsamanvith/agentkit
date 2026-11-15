@@ -90,7 +90,8 @@ Trichoderma) and never lists a synthetic product. Preventive items are
 scheduled; curative ones are listed as "only if you see …". Every value
 is a starter value with its source, to be reviewed by an agronomist
 (ANGRAU, a KVK) before farmers rely on it; the app says so, and tells
-the farmer to follow the product label.
+the farmer to follow the product label. Design, sources and what needs
+review: [INPUTS.md](INPUTS.md).
 
 ## When to harvest and sell (T147)
 

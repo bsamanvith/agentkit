@@ -708,3 +708,82 @@ func TestOneNumberForAQuantity(t *testing.T) {
 		}
 	}
 }
+
+// TestNutrientsAddUp: on the conventional route the fertilisers listed
+// deliver the crop's recommended N, P2O5 and K2O, within rounding, on
+// both waterings (the source's dose, the other watering's as a marked
+// fallback): DAP's own nitrogen counts, and never takes N over. The
+// recommendation is read from the data itself, apart from the plan.
+func TestNutrientsAddUp(t *testing.T) {
+	t.Parallel()
+	raw, _, err := inputs.DefaultJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	type npk struct{ N, P, K float64 }
+	var data struct {
+		Kinds []struct{ Kind, Like string }
+		Crops []struct {
+			Crop      string
+			PerPlant  bool `json:"per_plant"`
+			Rainfed   *npk
+			Irrigated *npk
+		}
+	}
+	if err := json.Unmarshal(raw, &data); err != nil {
+		t.Fatal(err)
+	}
+	type crop struct {
+		perPlant bool
+		dose     map[inputs.Water]*npk
+	}
+	crops := map[string]crop{}
+	for _, c := range data.Crops {
+		crops[c.Crop] = crop{c.PerPlant, map[inputs.Water]*npk{inputs.Rainfed: c.Rainfed, inputs.Irrigated: c.Irrigated}}
+	}
+	like := map[string]string{}
+	for _, k := range data.Kinds {
+		like[k.Kind] = k.Like
+	}
+	_, b := book(t)
+	every(t, func(c agro.Crop, m inputs.Method, w inputs.Water, p inputs.Plan) {
+		if m != inputs.Conventional {
+			return
+		}
+		cd, ok := crops[c.ID]
+		if !ok {
+			cd = crops[like[c.Kind]]
+		}
+		want := cd.dose[w]
+		if want == nil {
+			want = cd.dose[map[inputs.Water]inputs.Water{inputs.Rainfed: inputs.Irrigated, inputs.Irrigated: inputs.Rainfed}[w]]
+		}
+		if want == nil {
+			return // fed manure only (grown trees' doses only)
+		}
+		var got npk
+		for _, k := range p.Schedule {
+			for _, d := range k.Doses {
+				pr, ok := b.Product(d.Product)
+				if !ok || pr.Kind != "fertiliser" {
+					continue
+				}
+				got.N += d.Qty * pr.N / 100
+				got.P += d.Qty * pr.P / 100
+				got.K += d.Qty * pr.K / 100
+			}
+		}
+		if cd.perPlant {
+			plants := 1e8 / (c.RowCM * c.PlantCM) // on one hectare
+			want = &npk{want.N * plants / 1000, want.P * plants / 1000, want.K * plants / 1000}
+		}
+		for _, v := range []struct {
+			what      string
+			got, want float64
+		}{{"N", got.N, want.N}, {"P2O5", got.P, want.P}, {"K2O", got.K, want.K}} {
+			if off := math.Abs(v.got - v.want); off > 0.5+0.01*v.want {
+				t.Errorf("%s %s: %s %.1f kg/ha delivered, %.1f recommended", c.ID, w, v.what, v.got, v.want)
+			}
+		}
+	})
+}

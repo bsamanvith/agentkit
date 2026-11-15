@@ -63,8 +63,15 @@ same peninsular conditions and are the base until they can be.
 ## What is rule
 
 - Fertiliser from N-P2O5-K2O: phosphate as DAP (SSP for sugarcane and
-  coconut), counting DAP's nitrogen; the rest of the nitrogen as urea;
-  potash as MOP; sulphur as gypsum (18 % S) with the first split.
+  coconut), counting DAP's nitrogen across the season: a split where
+  DAP brings more N than is due then (the basal dose) takes the surplus
+  off the urea of the later splits; where DAP for all the phosphate
+  would bring more N than the whole season gets (soybean), DAP goes as
+  far as the N allows and the rest of the phosphate is SSP. The rest of
+  the nitrogen as urea; potash as MOP; sulphur as gypsum (18 % S) with
+  the first split. What the listed fertilisers deliver equals the
+  recommended N, P2O5 and K2O for every crop and watering
+  (`TestNutrientsAddUp`).
 - Times: a split is on a calendar task key (`sow`, `nitrogen-1`,
   `treat-seed`, `plough`, `dig-pits`, `y1-fertilise-2`), on a day after
   sowing (`feed-das-45`), on the first day of a calendar stage

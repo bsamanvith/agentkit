@@ -555,11 +555,32 @@ func (x *fieldCtx) nutrition(cd Crop, dflt bool) error {
 		scale = 0.001
 	}
 	pProd := cmpOr(cd.PProduct, "dap")
+	type at struct {
+		key string
+		day time.Time
+		ok  bool
+	}
+	whens := make([]at, len(splits))
+	// total is the N of the splits in the plan's window: what the season
+	// gets, and what the phosphate carrier's own N counts against.
+	total := 0.0
 	for si, s := range splits {
 		key, day, ok, err := x.when(s.At, s.DAS, s.Stage, s.Month, "feed")
 		if err != nil {
 			return err
 		}
+		whens[si] = at{key, day, ok}
+		if ok {
+			total += n.N * s.N / 100
+		}
+	}
+	// due is the N the splits so far call for, given what they delivered:
+	// DAP's N counts where it goes on, so a surplus in one split (DAP for
+	// the basal phosphate, little N due then) comes off the urea of the
+	// later ones.
+	due, given := 0.0, 0.0
+	for si, s := range splits {
+		key, day, ok := whens[si].key, whens[si].day, whens[si].ok
 		gypsum := si == 0 && n.S > 0
 		if !ok || (x.method != Conventional && !gypsum) {
 			continue
@@ -573,16 +594,31 @@ func (x *fieldCtx) nutrition(cd Crop, dflt bool) error {
 		if x.method != Conventional {
 			continue
 		}
-		nn, pp, kk := n.N*s.N/100, n.P*s.P/100, n.K*s.K/100
+		due += n.N * s.N / 100
+		pp, kk := n.P*s.P/100, n.K*s.K/100
 		if pp > 0 {
 			p := x.b.products[pProd]
-			kg := pp / (p.P / 100)
-			nn = math.Max(0, nn-kg*p.N/100)
-			x.dose(t, p, kg*scale, fmt.Sprintf("for %.4g of P2O5", pp), []Ref{n.Ref}, d)
+			kg, rest := pp/(p.P/100), 0.0
+			if p.N > 0 && given+kg*p.N/100 > total {
+				// DAP for all this phosphate brings more N than the season
+				// gets: as much DAP as the N allows, the rest of the
+				// phosphate as SSP, which has none.
+				kg = math.Max(0, total-given) / (p.N / 100)
+				rest = pp - kg*p.P/100
+			}
+			if kg > 0 {
+				x.dose(t, p, kg*scale, fmt.Sprintf("for %.4g of P2O5", kg*p.P/100), []Ref{n.Ref}, d)
+				given += kg * p.N / 100
+			}
+			if rest > 0 {
+				ssp := x.b.products["ssp"]
+				x.dose(t, ssp, rest/(ssp.P/100)*scale, fmt.Sprintf("for %.4g of P2O5", rest), []Ref{n.Ref}, d)
+			}
 		}
-		if nn > 0 {
+		if nn := due - given; nn > 1e-9 {
 			p := x.b.products["urea"]
 			x.dose(t, p, nn/(p.N/100)*scale, fmt.Sprintf("for %.4g of N", nn), []Ref{n.Ref}, d)
+			given += nn
 		}
 		if kk > 0 {
 			p := x.b.products["mop"]

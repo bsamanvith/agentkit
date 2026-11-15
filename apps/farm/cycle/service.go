@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/bsamanvith/agentkit/apps/farm/agro"
@@ -312,6 +314,13 @@ func (s *Service) SetSown(ctx context.Context, farmID, day string) (Line, error)
 		p := Pending{Plan: save}
 		if s.roadmap != nil {
 			p.Sown = day
+			if save != nil && f.Plan != nil && len(f.Plan.Zones) > 0 {
+				carry, err := s.carry(ctx, *f, day)
+				if err != nil {
+					return err
+				}
+				p.Carry = carry
+			}
 		}
 		pend(*f, rec, p)
 		rec.Slots[0].Sown, rec.Slots[0].SownFor = day, PlanKey(*sown)
@@ -332,6 +341,51 @@ func far(p agro.Plan, day time.Time) bool {
 		}
 	}
 	return false
+}
+
+// carry returns the farmer's closes (done, skipped, not needed) of the
+// saved plan's tasks as events on the same tasks once the plan is saved
+// again sown on day: a task's ID carries the plan's sowing, so the save
+// renames every one. The sowing itself is recorded apart. Event IDs are
+// made from what they record, so recording them twice is once.
+func (s *Service) carry(ctx context.Context, f farm.Farm, day string) ([]work.Event, error) {
+	r, err := s.roadmap.Roadmap(ctx, f.ID)
+	if err != nil {
+		return nil, err
+	}
+	at := s.now().UTC()
+	var out []work.Event
+	for _, t := range r.Tasks {
+		if t.State == work.Open || t.Source == work.FromFarmer || t.Zone < 0 || t.Zone >= len(f.Plan.Zones) {
+			continue
+		}
+		z := f.Plan.Zones[t.Zone]
+		key, ok := strings.CutPrefix(t.ID, work.TaskID(t.Zone, z.Crop, z.Sow, ""))
+		if !ok || key == "sow" {
+			continue
+		}
+		id := work.TaskID(t.Zone, z.Crop, day, key)
+		h := sha256.Sum256([]byte(id + "|" + t.State + "|" + t.Day))
+		out = append(out, work.Event{
+			ID: "carry-" + hex.EncodeToString(h[:12]), Task: id, Kind: t.State, Day: t.Day,
+			At: at, By: t.By, Note: t.Note, Actuals: t.Actuals,
+		})
+	}
+	return out, nil
+}
+
+// recordCarry records the carried closes whose task the saved plan has.
+func (s *Service) recordCarry(ctx context.Context, f farm.Farm, evs []work.Event) error {
+	r, err := s.roadmap.Roadmap(ctx, f.ID)
+	if err != nil {
+		return err
+	}
+	evs = slices.DeleteFunc(slices.Clone(evs), func(e work.Event) bool { _, ok := r.Task(e.Task); return !ok })
+	if len(evs) == 0 {
+		return nil
+	}
+	_, _, err = s.roadmap.Record(ctx, f.ID, evs)
+	return err
 }
 
 // sownOn: the roadmap already has every zone sown on day.
@@ -384,7 +438,9 @@ func (s *Service) SetFuture(ctx context.Context, farmID string, on bool) (Line, 
 
 // Advance moves the line on once the current cycle is over: the next
 // planned cycle becomes the plot's saved plan, the current one's main
-// crop its previous crop, and the later own cycles move up a place.
+// crop its previous crop, and the later own cycles move up a place. It
+// cannot be undone, so it is refused (ErrInvalid) before the line's
+// AdvanceFrom, AdvanceDays before the current harvest.
 func (s *Service) Advance(ctx context.Context, farmID string) (Line, error) {
 	if farm.IsReadOnly(ctx) {
 		return Line{}, farm.ErrReadOnly
@@ -396,6 +452,12 @@ func (s *Service) Advance(ctx context.Context, farmID string) (Line, error) {
 		line, err := s.line(ctx, *f, *rec, true)
 		if err != nil {
 			return err
+		}
+		if line.AdvanceFrom == "" {
+			return fmt.Errorf("%w: the current cycle's harvest is not known (a perennial, or a crop not in the plot's list): it cannot be moved on", ErrInvalid)
+		}
+		if s.plan.Today().Before(parse(line.AdvanceFrom)) {
+			return fmt.Errorf("%w: the current crop comes off around %s: the next cycle can start from %s", ErrInvalid, line.Cycles[0].Planned.Harvest, line.AdvanceFrom)
 		}
 		if len(line.Cycles) < 2 || line.Cycles[1].Planned == nil {
 			return fmt.Errorf("%w: nothing is planned after the current cycle: set the next one first", ErrInvalid)
@@ -536,6 +598,11 @@ func (s *Service) finish(ctx context.Context, f farm.Farm, rec *Record) (farm.Fa
 	default:
 		rec.Pending = nil // overtaken: the newer plan stands
 		return f, nil
+	}
+	if len(p.Carry) > 0 && s.roadmap != nil && f.Plan != nil {
+		if err := s.recordCarry(ctx, f, p.Carry); err != nil {
+			return f, err // not refused: the next read tries again
+		}
 	}
 	if p.Sown != "" && s.roadmap != nil && f.Plan != nil && !s.sownOn(ctx, f.ID, p.Sown) {
 		if err := s.recordSown(ctx, f, p.Sown); err != nil {

@@ -187,6 +187,9 @@ func setCycle(ctx context.Context, s *cycle.Service, in setCycleIn) (cycle.Line,
 		if in.Position != 0 {
 			return cycle.Line{}, fmt.Errorf("%w: only the current cycle (position 0) can be sown", cycle.ErrInvalid)
 		}
+		if in.Accept || in.Clear || in.Crop != "" || in.Sow != "" || in.Area != nil || in.Method != "" {
+			return cycle.Line{}, fmt.Errorf("%w: record the sowing alone (farm, position 0 and sown); make the other change in a second set_cycle call", cycle.ErrInvalid)
+		}
 		return s.SetSown(ctx, in.Farm, in.Sown)
 	}
 	ch := cycle.Change{Accept: in.Accept, Clear: in.Clear, Method: cycle.Method(in.Method)}

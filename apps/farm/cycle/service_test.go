@@ -708,3 +708,130 @@ func sha(t *testing.T, p *agro.Plan) string {
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
 }
+
+// A cycle whose crop the plot's crop list no longer has (its region pack
+// changed, or the crop was taken out) is shown with a warning, never a
+// failed line; dates that need the crop are left out, and nothing is
+// planned after a cycle with no harvest date.
+func TestUnknownCropIsAWarning(t *testing.T) {
+	t.Parallel()
+	w := setup(t)
+	w.savePlan(t, "maize", "2026-06-20")
+	rec, _ := w.store.Get(ctx, w.plot)
+	f, _ := w.svc.Get(ctx, w.plot)
+	rec.Slots[1].Plan = &agro.Plan{Zones: []agro.Zone{{Crop: "kale", Sow: "2026-11-01", Ring: f.Boundary.Ring()}}}
+	if _, err := w.store.Put(ctx, rec); err != nil {
+		t.Fatal(err)
+	}
+	l, err := w.cycles.Line(ctx, w.plot)
+	if err != nil {
+		t.Fatalf("line with an unknown crop at 2: %v", err)
+	}
+	if o := l.Cycles[1].Own; o == nil || o.MainCrop() != "kale" || !has(l.Cycles[1].Checks, "crop.unknown") || len(l.Cycles) != 2 {
+		t.Errorf("cycle 2 = %+v, checks %v, %d cycles; want kale with the warning, and nothing after it", o, l.Cycles[1].Checks, len(l.Cycles))
+	}
+	// The saved plan itself.
+	if _, err := w.svc.SetPlan(ctx, w.plot, &agro.Plan{Zones: []agro.Zone{{Crop: "kale", Sow: "2026-06-20", Ring: f.Boundary.Ring()}}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	l, err = w.cycles.Line(ctx, w.plot)
+	if err != nil || len(l.Cycles) == 0 || !has(l.Cycles[0].Checks, "crop.unknown") {
+		t.Errorf("unknown crop in the saved plan: %+v, %v; want it with a warning", l.Cycles, err)
+	}
+}
+
+// The line moves on only once the current crop is about to come off
+// (AdvanceDays before its harvest, the day the line says): earlier, the
+// step, which cannot be undone, is refused and changes nothing. With the
+// later cycles turned off it moves on to our suggestion.
+func TestAdvanceOnlyNearHarvest(t *testing.T) {
+	t.Parallel()
+	w := setup(t)
+	w.savePlan(t, "maize", "2026-06-20")
+	l := w.line(t)
+	from := plus(l.Cycles[0].Planned.Harvest, -cycle.AdvanceDays)
+	if l.AdvanceFrom != from {
+		t.Errorf("advance from %q; want %s", l.AdvanceFrom, from)
+	}
+	w.clock.Advance(time.Date(2026, 8, 1, 0, 30, 0, 0, time.UTC).Sub(w.clock.Now()))
+	if _, err := w.cycles.Advance(ctx, w.plot); !errors.Is(err, cycle.ErrInvalid) {
+		t.Errorf("advance on 1 August (maize comes off %s) = %v; want ErrInvalid", l.Cycles[0].Planned.Harvest, err)
+	}
+	if f, _ := w.svc.Get(ctx, w.plot); f.Plan.Zones[0].Crop != "maize" {
+		t.Errorf("a refused advance saved %s", f.Plan.Zones[0].Crop)
+	}
+	if _, err := w.cycles.SetFuture(ctx, w.plot, false); err != nil {
+		t.Fatal(err)
+	}
+	d, _ := time.Parse(agro.DateLayout, from)
+	w.clock.Advance(d.Add(30*time.Minute).Sub(w.clock.Now()))
+	if _, err := w.cycles.Advance(ctx, w.plot); err != nil {
+		t.Fatalf("advance on %s with the later cycles off: %v", from, err)
+	}
+	if f, _ := w.svc.Get(ctx, w.plot); f.Plan.Zones[0].Crop == "maize" || f.Profile.PreviousCrop != "maize" {
+		t.Errorf("after advancing: saved %s after %s", f.Plan.Zones[0].Crop, f.Profile.PreviousCrop)
+	}
+}
+
+// A sowing far from the plan saves the plan again, which renames its
+// tasks (their IDs carry the planned sowing): what the farmer had ticked
+// moves to the same tasks of the new plan, never silently dropped.
+func TestFarSowingKeepsTheTicks(t *testing.T) {
+	t.Parallel()
+	w := setup(t)
+	w.clock.Advance(time.Date(2026, 7, 15, 0, 30, 0, 0, time.UTC).Sub(w.clock.Now()))
+	w.savePlan(t, "maize", "2026-12-01")
+	r, err := w.work.Roadmap(ctx, w.plot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix := work.TaskID(0, "maize", "2026-12-01", "")
+	var before, after work.Task
+	for _, k := range r.Tasks {
+		if k.Source != work.FromCalendar || k.Kind == "sow" {
+			continue
+		}
+		if *k.DAS < 0 && before.ID == "" {
+			before = k
+		}
+		if *k.DAS > 0 && after.ID == "" {
+			after = k
+		}
+	}
+	evs := []work.Event{
+		{ID: "t1", Task: before.ID, Kind: work.Done, Day: "2026-07-01", Note: "ploughed twice"},
+		{ID: "t2", Task: after.ID, Kind: work.Skipped, Day: "2026-07-10"},
+	}
+	if _, _, err := w.work.Record(ctx, w.plot, evs); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.cycles.SetSown(ctx, w.plot, "2026-07-12"); err != nil {
+		t.Fatal(err)
+	}
+	r, err = w.work.Roadmap(ctx, w.plot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved := work.TaskID(0, "maize", "2026-07-12", "")
+	for _, c := range []struct {
+		was        work.Task
+		state, day string
+	}{{before, work.Done, "2026-07-01"}, {after, work.Skipped, "2026-07-10"}} {
+		id := moved + c.was.ID[len(prefix):]
+		k, ok := r.Task(id)
+		if !ok || k.State != c.state || k.Day != c.day {
+			t.Errorf("%s after the plan was saved again: %+v, %v; want %s on %s", id, k, ok, c.state, c.day)
+		}
+	}
+	if k, _ := r.Task(moved + before.ID[len(prefix):]); k.Note != "ploughed twice" {
+		t.Errorf("note %q; want it kept", k.Note)
+	}
+	// Recording the same sowing again changes nothing.
+	n := r.Counts
+	if _, err := w.cycles.SetSown(ctx, w.plot, "2026-07-12"); err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := w.work.Roadmap(ctx, w.plot); r.Counts != n {
+		t.Errorf("counts %+v after the same sowing again; want %+v", r.Counts, n)
+	}
+}

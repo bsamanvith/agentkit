@@ -2,6 +2,7 @@ package cycle
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -99,6 +100,11 @@ func Compute(in Input) (Line, error) {
 		if p.Planned == nil {
 			break
 		}
+		if p.Planned.Harvest == "" {
+			// Only crops the plot's crop list lacks: no harvest to plan from.
+			line.Notes = append(line.Notes, agro.Note{ID: "cycle.unknown", Message: fmt.Sprintf("Cycle %d's crop is not in the crop list for this plot, so its harvest and what follows cannot be worked out: change it or clear it.", pos+1)})
+			break
+		}
 		if p.Planned.Perennial {
 			if pos < n-1 {
 				line.Notes = append(line.Notes, agro.Note{ID: "cycle.perennial", Message: fmt.Sprintf("%s is a perennial: it holds the land, so no later cycle is planned.", cropName(in.Library, p.Planned.MainCrop()))})
@@ -106,6 +112,9 @@ func Compute(in Input) (Line, error) {
 			break
 		}
 		prev = p.Planned
+	}
+	if c := line.Cycles[0].Planned; c != nil && !c.Perennial && c.Harvest != "" { // there is always a position 0
+		line.AdvanceFrom = parse(c.Harvest).AddDate(0, 0, -AdvanceDays).Format(agro.DateLayout)
 	}
 	return line, nil
 }
@@ -146,10 +155,16 @@ func (in Input) cycleOf(plan agro.Plan, origin Origin, m Method, sown map[int]st
 	c := Cycle{Origin: origin, Method: m, Plan: clonePlan(plan), Areas: make([]Area, len(plan.Zones)), SowKind: Planned}
 	for i, z := range plan.Zones {
 		crop, err := in.Library.Crop(z.Crop)
-		if err != nil {
+		unknown := errors.Is(err, agro.ErrUnknown)
+		if err != nil && !unknown {
 			return Cycle{}, fmt.Errorf("%w: zone %d: %w", ErrInvalid, i+1, err)
 		}
-		a := Area{Zone: i, Crop: z.Crop, CropName: crop.Name, With: z.With, Sow: z.Sow, SowKind: Planned}
+		if z.With != "" {
+			if _, err := in.Library.Crop(z.With); errors.Is(err, agro.ErrUnknown) {
+				unknown = true
+			}
+		}
+		a := Area{Zone: i, Crop: z.Crop, CropName: cmp.Or(crop.Name, z.Crop), With: z.With, Sow: z.Sow, SowKind: Planned, Unknown: unknown}
 		if d := sown[i]; d != "" {
 			a.Sow, a.SowKind = d, Actual
 			c.SowKind = Actual
@@ -161,6 +176,15 @@ func (in Input) cycleOf(plan agro.Plan, origin Origin, m Method, sown map[int]st
 		if len(z.Ring.Open()) >= 3 {
 			a.AreaM2 = math.Round(geo.Area(z.Ring)*10) / 10
 			a.AreaHa = math.Round(a.AreaM2/10) / 1000
+		}
+		if unknown {
+			// Not in the plot's crop list (its region pack, or a crop taken
+			// out): kept, with no harvest date to work out.
+			c.Areas[i] = a
+			if c.Sow == "" || a.Sow < c.Sow {
+				c.Sow = a.Sow
+			}
+			continue
 		}
 		harvest := sow.AddDate(0, 0, days(crop))
 		if z.With != "" {
@@ -414,6 +438,9 @@ func (in Input) check(own, prev *Cycle, pos int, today time.Time) []Check {
 		label := a.CropName
 		if len(own.Areas) > 1 {
 			label = fmt.Sprintf("area %d's %s", i+1, a.CropName)
+		}
+		if a.Unknown {
+			add("crop.unknown", agro.Warning, i, "%s is not in the crop list for this plot's area, so its harvest and the work after sowing cannot be worked out: choose another crop.", label)
 		}
 		sow := parse(a.Sow)
 		if pos > 0 && a.SowKind == Planned && sow.Before(today) {

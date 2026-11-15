@@ -91,6 +91,11 @@ func TestCycleTools(t *testing.T) {
 	}
 	for _, bad := range []string{
 		`{"farm":"farm_1","position":1,"sown":"2026-10-30"}`,
+		// A sowing is recorded alone: nothing else in the call is dropped
+		// without a word.
+		`{"farm":"farm_1","position":0,"sown":"2026-10-30","method":"organic"}`,
+		`{"farm":"farm_1","position":0,"sown":"2026-10-30","crop":"chickpea","sow":"2026-10-30"}`,
+		`{"farm":"farm_1","position":0,"sown":"2026-10-30","accept":true}`,
 		`{"farm":"farm_1","position":1,"crop":"chickpea"}`,
 		`{"farm":"farm_1","position":5,"accept":true}`,
 		`{"farm":"farm_1","position":1,"area":4,"crop":"chickpea","sow":"2027-02-01"}`,

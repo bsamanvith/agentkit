@@ -73,6 +73,14 @@ func TestCycleRoutes(t *testing.T) {
 	if code := call(t, srv, "PUT", base+"/settings", `{"future":true}`, &l); code != http.StatusOK || len(l.Cycles) != 3 {
 		t.Errorf("future on: %d, %d cycles", code, len(l.Cycles))
 	}
+	if code := call(t, srv, "POST", base+"/advance", "", nil); code != http.StatusBadRequest {
+		t.Errorf("advance months before the harvest: %d; want 400", code)
+	}
+	from, err := time.Parse(agro.DateLayout, l.AdvanceFrom)
+	if err != nil {
+		t.Fatalf("advance from %q: %v", l.AdvanceFrom, err)
+	}
+	clk.Advance(from.Add(time.Hour).Sub(clk.Now()))
 	if code := call(t, srv, "POST", base+"/advance", "", &l); code != http.StatusOK || l.Cycles[0].Own == nil {
 		t.Errorf("advance: %d, %+v", code, l.Cycles[0])
 	}

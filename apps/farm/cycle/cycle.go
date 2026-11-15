@@ -8,6 +8,7 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/agro"
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
 	"github.com/bsamanvith/agentkit/apps/farm/region"
+	"github.com/bsamanvith/agentkit/apps/farm/work"
 )
 
 // Errors callers branch on.
@@ -32,6 +33,10 @@ const (
 	// may be, in the base rules: a rainfed plot waits through the dry
 	// months for the rains.
 	MaxWait = region.BaseMaxWaitDays
+	// AdvanceDays is how many days before the current cycle's harvest the
+	// line may be moved on (Service.Advance): the step cannot be undone,
+	// so not while the crop is still weeks from coming off.
+	AdvanceDays = 14
 )
 
 // Method is how a cycle is grown.
@@ -75,6 +80,9 @@ type Area struct {
 	Sow     string   `json:"sow"`
 	SowKind DateKind `json:"sow_kind"`
 	Harvest string   `json:"harvest"`
+	// Unknown is an area whose crop (or intercrop) the plot's crop list
+	// does not have: shown with a warning, with no harvest date.
+	Unknown bool `json:"unknown,omitempty"`
 }
 
 // Cycle is one crop season on the plot.
@@ -156,6 +164,10 @@ type Line struct {
 	// Notes are about the line as a whole: no climate, an orchard that
 	// holds the land, an addon that could not answer.
 	Notes []agro.Note `json:"notes,omitempty"`
+	// AdvanceFrom is the first day the line may be moved on to the next
+	// cycle (AdvanceDays before the current one's harvest); empty when it
+	// cannot be (nothing current, a perennial, a harvest not known).
+	AdvanceFrom string `json:"advance_from,omitempty"`
 	// Assumed is true when the plot's water and soil were never given:
 	// the suggestions assume rain only and score no soil, and irrigation
 	// can change them completely.
@@ -207,6 +219,10 @@ type Pending struct {
 	// Sown, when set, is recorded on the roadmap as each zone's sowing
 	// (last).
 	Sown string `json:"sown,omitempty"`
+	// Carry are the farmer's closes of the saved plan's tasks, renamed
+	// for Plan's (a plan saved again with another sowing renames them):
+	// recorded after Plan, those whose task Plan has.
+	Carry []work.Event `json:"carry,omitempty"`
 	// Was is the record's slots before the write: they come back if the
 	// farm refuses the change.
 	Was [MaxCycles]Slot `json:"was"`

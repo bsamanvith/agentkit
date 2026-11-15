@@ -402,7 +402,8 @@ Groundnut sowing of 1 October 2026 is before that." A real sowing day
 follows. The current cycle is the saved season plan, so the roadmap,
 weather advice and prices work as before. Three cycles at most; the
 later ones can be turned off; *Harvested: start the next cycle* moves
-the line on. With the climate down, nothing is suggested and their own
+the line on, from two weeks before the harvest, after the farmer
+confirms in the page what will happen. With the climate down, nothing is suggested and their own
 cycles still show.
 
 **Behind it:** `apps/farm/cycle` (the rules in `Compute`, `Service`,
@@ -410,8 +411,9 @@ cycles still show.
 `cycle/addon`, picked in `cmd/farm`); routes `/api/farms/{id}/cycles*`;
 tools `get_cycles`, `set_cycle`. Web: `cycles.tsx`, `cycles-data.ts`
 (a lazy chunk), `plot.tsx` (the plot page and its tabs, a lazy chunk).
-Design: [CYCLES.md](CYCLES.md). **Still to come:** the cycle-0 plan and
-the cycle record are saved by two writes, not one.
+Design: [CYCLES.md](CYCLES.md). The cycle-0 plan and the cycle record
+are two writes: the record wins first and carries the farm writes until
+they are made, so a lost race or a crash never leaves half a change.
 
 ### 24. What to buy, and feeding and sprays
 

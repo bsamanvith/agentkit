@@ -180,11 +180,26 @@ joined (branch `wt-join`, 2026-11-15):
   timing advice and points to `get_inputs`.
 - **A sowing far from the plan** (more than `work.MaxSowShift`, 120
   days): *I already sowed on…* saves the plan again with that day rather
-  than refusing it.
+  than refusing it. That renames the season's tasks (their IDs carry the
+  planned sowing), so what the farmer had ticked done, skipped or not
+  needed is recorded again on the same tasks of the new plan.
+- **Moving on** (*Harvested: start the next cycle*) cannot be undone: it
+  asks first, in the page, saying which crop becomes this cycle, and the
+  server refuses it before `cycle.AdvanceDays` (14) days ahead of the
+  harvest (the line's `advance_from`). It shows with later cycles turned
+  off too (the next crop is then our suggestion).
+- **A crop the plot's list lacks** (its region pack changed, or the crop
+  was taken out) shows with a warning on its cycle and no harvest date,
+  never a failed line; nothing is planned after it.
+- **One write that wins first.** The cycle record and the farm (the
+  saved plan, the previous crop, the roadmap's sowing) are two stores.
+  A change stores the record first, with the farm writes still to make
+  (`Record.Pending`): a write that loses a race to another is done again
+  from what is stored, or changes nothing (409). A crash after the record
+  and before the farm writes is finished by the next read, or dropped if
+  the plan was changed since; if the farm refuses it, the record's slots
+  go back.
 
-Still open: the cycle-0 plan (the farm's saved plan) and the cycle record
-are two writes, not one transaction, so a crash between them can leave
-the record's method or sown day pointing at an older plan (it is then
-ignored, as `SownFor` says). Preferring a sowing date by its harvest
+Still open: preferring a sowing date by its harvest
 month inside the window (`Input.suggest`) is not built. Guided photos
 come with the crop doctor.

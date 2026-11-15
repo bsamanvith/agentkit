@@ -81,6 +81,7 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/automation"
 	autosqlite "github.com/bsamanvith/agentkit/apps/farm/automation/sqlite"
 	"github.com/bsamanvith/agentkit/apps/farm/cycle"
+	"github.com/bsamanvith/agentkit/apps/farm/cycle/addon"
 	cyclesqlite "github.com/bsamanvith/agentkit/apps/farm/cycle/sqlite"
 	"github.com/bsamanvith/agentkit/apps/farm/elevation"
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
@@ -89,6 +90,7 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/farmapi"
 	"github.com/bsamanvith/agentkit/apps/farm/feeds"
 	"github.com/bsamanvith/agentkit/apps/farm/handbook"
+	"github.com/bsamanvith/agentkit/apps/farm/inputs"
 	"github.com/bsamanvith/agentkit/apps/farm/models"
 	"github.com/bsamanvith/agentkit/apps/farm/nasapower"
 	"github.com/bsamanvith/agentkit/apps/farm/nominatim"
@@ -333,17 +335,28 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 		return err
 	}
 	defer wstore.Close()
-	roadmap := work.New(plan, wstore)
-	watcher.UseRoadmap(roadmap)
 	cstore, err := cyclesqlite.Open(ctx, c.db)
 	if err != nil {
 		return err
 	}
 	defer cstore.Close()
+	// What to buy and when to feed and spray (rules and data, no model):
+	// on each crop cycle, and its schedule's tasks on the season roadmap,
+	// grown the way the current cycle is (organic or conventional).
+	inputBook, err := inputs.Default(lib)
+	if err != nil {
+		return err
+	}
+	roadmap := work.New(plan, wstore, work.WithTasks(addon.NewRoadmap(inputBook, lib, cstore)))
+	watcher.UseRoadmap(roadmap)
 	// The crop cycles read real sowings from the roadmap and record typed
-	// ones on it. Addons (the shopping list and sprays, harvest-month
-	// advice) plug in here with cycle.WithAddons when they land.
-	cycles := cycle.New(plan, cstore, cycle.WithRoadmap(roadmap))
+	// ones on it. Their addons: the shopping list and sprays, and when to
+	// sow and sell for price (from the saved price history, shown only
+	// where its backtest passed).
+	cycles := cycle.New(plan, cstore, cycle.WithRoadmap(roadmap), cycle.WithAddons(
+		addon.NewInputs(inputBook, lib),
+		addon.NewTiming(lib, priceDB, addon.PlannerWindows{P: plan}, plan.Today),
+	))
 	var astore *autosqlite.Store
 	if c.automations {
 		if astore, err = autosqlite.Open(ctx, c.db); err != nil {

@@ -114,8 +114,15 @@ func (s *Service) line(ctx context.Context, f farm.Farm, rec Record, all bool) (
 				if ctx.Err() != nil {
 					return Line{}, ctx.Err()
 				}
-				line.Notes = append(line.Notes, agro.Note{ID: "addon." + a.Name(), Message: fmt.Sprintf("Cycle %d: %s is not available now.", i+1, a.Name())})
+				what := a.Name()
+				if l, ok := a.(interface{ Label() string }); ok {
+					what = l.Label()
+				}
+				line.Notes = append(line.Notes, agro.Note{ID: "addon." + a.Name(), Message: fmt.Sprintf("Cycle %d: %s is not available now.", i+1, what)})
 				continue
+			}
+			if v == nil {
+				continue // nothing to say for this cycle
 			}
 			if p.Addons == nil {
 				p.Addons = map[string]any{}

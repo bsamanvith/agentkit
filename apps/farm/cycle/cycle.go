@@ -193,8 +193,9 @@ type Store interface {
 // Addon adds to each planned cycle what another feature computes from it:
 // a shopping list and spray schedule from its crops, areas and method
 // (package inputs), harvest-month advice from prices. Its result is in
-// Position.Addons under its Name; when it fails, the line goes without it
-// and says so in a note.
+// Position.Addons under its Name (none when it returns nil); when it
+// fails, the line goes without it and says so in a note, which names it by
+// its Label when it has a `Label() string` method.
 type Addon interface {
 	Name() string
 	For(ctx context.Context, f farm.Farm, c Cycle) (any, error)

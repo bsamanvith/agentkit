@@ -461,8 +461,9 @@ func TestAdvance(t *testing.T) {
 }
 
 type addon struct {
-	name string
-	err  error
+	name    string
+	err     error
+	nothing bool
 }
 
 func (a addon) Name() string { return a.name }
@@ -470,24 +471,28 @@ func (a addon) For(_ context.Context, _ farm.Farm, c cycle.Cycle) (any, error) {
 	if a.err != nil {
 		return nil, a.err
 	}
+	if a.nothing {
+		return nil, nil
+	}
 	return map[string]any{"crop": c.MainCrop(), "ha": c.Areas[0].AreaHa, "method": c.Method}, nil
 }
 
 // Addons ride along on each planned cycle; a failing one is a note, never
-// a failure.
+// a failure; one with nothing to say is left out without a note.
 func TestAddons(t *testing.T) {
 	t.Parallel()
-	w := setup(t, cycle.WithAddons(addon{name: "inputs"}, addon{name: "prices", err: errors.New("down")}))
+	w := setup(t, cycle.WithAddons(addon{name: "inputs"}, addon{name: "prices", err: errors.New("down")}, addon{name: "quiet", nothing: true}))
 	l := w.line(t)
 	for i, p := range l.Cycles {
 		got, _ := json.Marshal(p.Addons["inputs"])
 		want, _ := json.Marshal(map[string]any{"crop": p.Planned.MainCrop(), "ha": p.Planned.Areas[0].AreaHa, "method": p.Planned.Method})
-		if string(got) != string(want) || p.Addons["prices"] != nil {
+		_, quiet := p.Addons["quiet"]
+		if string(got) != string(want) || p.Addons["prices"] != nil || quiet {
 			t.Errorf("cycle %d addons %v", i, p.Addons)
 		}
 	}
-	if !hasNote(l.Notes, "addon.prices") {
-		t.Errorf("notes %v; want addon.prices", l.Notes)
+	if !hasNote(l.Notes, "addon.prices") || hasNote(l.Notes, "addon.quiet") {
+		t.Errorf("notes %v; want addon.prices alone", l.Notes)
 	}
 }
 

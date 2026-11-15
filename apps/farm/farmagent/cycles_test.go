@@ -7,8 +7,10 @@ import (
 	"testing"
 
 	"github.com/bsamanvith/agentkit/apps/farm/cycle"
+	"github.com/bsamanvith/agentkit/apps/farm/cycle/addon"
 	"github.com/bsamanvith/agentkit/apps/farm/cycle/cycletest"
 	"github.com/bsamanvith/agentkit/apps/farm/farmagent"
+	"github.com/bsamanvith/agentkit/apps/farm/inputs"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 )
 
@@ -19,7 +21,11 @@ func TestCycleTools(t *testing.T) {
 	t.Parallel()
 	svc, _ := service(t)
 	p := plannerFor(t, svc)
-	tools, err := farmagent.CycleTools(cycle.New(p, cycletest.NewMemory()))
+	book, err := inputs.Default(p.Library())
+	if err != nil {
+		t.Fatal(err)
+	}
+	tools, err := farmagent.CycleTools(cycle.New(p, cycletest.NewMemory(), cycle.WithAddons(addon.NewInputs(book, p.Library()))))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,6 +54,24 @@ func TestCycleTools(t *testing.T) {
 	l := line(call(t, reg, farmagent.GetCyclesTool, `{"farm":"farm_1"}`))
 	if len(l.Cycles) != cycle.MaxCycles || l.Cycles[0].Suggested == nil {
 		t.Fatalf("get_cycles = %+v", l)
+	}
+	// The shopping list and schedule are get_inputs': get_cycles points there.
+	if _, ok := l.Cycles[0].Addons["inputs"]; ok || l.Cycles[0].Addons["inputs_by"] != farmagent.GetInputsTool {
+		t.Errorf("get_cycles addons = %v; want a pointer to get_inputs", l.Cycles[0].Addons)
+	}
+	// get_inputs: the plan's numbers, as the book makes them, without the
+	// per-value references.
+	in := call(t, reg, farmagent.GetInputsTool, `{"farm":"farm_1"}`)
+	plan, _ := in["inputs"].(map[string]any)
+	buy, _ := plan["buy_before"].([]any)
+	if in["crops"] == "" || len(buy) == 0 || plan["notes"] == nil {
+		t.Fatalf("get_inputs = %v", in)
+	}
+	if first, _ := buy[0].(map[string]any); first["refs"] != nil || first["qty"] == nil || first["unit"] == nil {
+		t.Errorf("get_inputs item = %v; want quantity and unit, no refs", first)
+	}
+	if _, err := reg.Invoke(context.Background(), farmagent.GetInputsTool, json.RawMessage(`{"farm":"farm_1","position":3}`)); !errors.Is(err, tool.ErrInvalidInput) {
+		t.Errorf("get_inputs position 3: %v; want invalid input", err)
 	}
 	l = line(call(t, reg, farmagent.SetCycleTool, `{"farm":"farm_1","position":0,"accept":true}`))
 	if l.Cycles[0].Own == nil {

@@ -179,9 +179,19 @@ func PhaseOf(kind string) string {
 // Kinds are the kinds a farmer's task can have.
 var Kinds = []string{calendar.Prepare, calendar.Sow, calendar.Weed, calendar.Fertilise, calendar.Irrigate, calendar.Scout, calendar.Protect, calendar.Prune, calendar.Reap, Other}
 
+// FromInputs is the source of tasks that come from the plot's inputs plan
+// (feeding and sprays, package inputs) through a [TaskSource].
+const FromInputs = "inputs"
+
 // Build makes a plot's roadmap from its plan and the events recorded on
 // it, as of today. Events about tasks the plan no longer has are ignored.
 func Build(lib *agro.Library, farmID string, plan agro.Plan, irrigated bool, events []Event, today time.Time) (Roadmap, error) {
+	return build(lib, farmID, plan, irrigated, events, today, nil)
+}
+
+// build is Build with more tasks: extra gets the zones (with their real
+// sowing dates) and returns tasks to merge in (see [TaskSource]).
+func build(lib *agro.Library, farmID string, plan agro.Plan, irrigated bool, events []Event, today time.Time, extra func([]Zone) []Task) (Roadmap, error) {
 	evs := slices.Clone(events)
 	slices.SortStableFunc(evs, func(a, b Event) int {
 		return cmp.Or(a.At.Compare(b.At), cmp.Compare(a.ID, b.ID))
@@ -238,6 +248,9 @@ func Build(lib *agro.Library, farmID string, plan agro.Plan, irrigated bool, eve
 			})
 		}
 	}
+	if extra != nil {
+		r.Tasks = merge(r.Tasks, extra(slices.Clone(r.Zones)))
+	}
 	for _, e := range evs {
 		if e.Kind != Added {
 			continue
@@ -286,6 +299,42 @@ func Build(lib *agro.Library, farmID string, plan agro.Plan, irrigated bool, eve
 		return cmp.Or(cmp.Compare(a.Date, b.Date), cmp.Compare(a.Zone, b.Zone))
 	})
 	return r, nil
+}
+
+// merge adds more tasks to the calendar's. A task with the ID of one
+// already there enriches it rather than standing beside it: a fertilising
+// task takes its detail (the plan's own products and quantities say more
+// than the calendar's general rule), any other gets it added. The rest
+// are added as they are, in the phase of their kind.
+func merge(tasks, more []Task) []Task {
+	at := map[string]int{}
+	for i, t := range tasks {
+		at[t.ID] = i
+	}
+	for _, m := range more {
+		if m.ID == "" || m.Title == "" {
+			continue
+		}
+		i, ok := at[m.ID]
+		if !ok {
+			m.Phase = PhaseOf(m.Kind)
+			m.State, m.Day, m.By, m.Note, m.Actuals, m.Late, m.Overdue = "", "", "", "", nil, false, false
+			at[m.ID] = len(tasks)
+			tasks = append(tasks, m)
+			continue
+		}
+		t := &tasks[i]
+		switch {
+		case m.Detail == "":
+		case t.Kind == calendar.Fertilise && t.Source == FromCalendar:
+			t.Detail = m.Detail
+		case t.Detail == "":
+			t.Detail = m.Detail
+		default:
+			t.Detail += " " + m.Detail
+		}
+	}
+	return tasks
 }
 
 // stateMap is the tasks' states by ID.

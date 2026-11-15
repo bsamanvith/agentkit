@@ -3,6 +3,7 @@ package work_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -480,5 +481,62 @@ func TestAReadOnlyMemberRecordsNothing(t *testing.T) {
 	}
 	if r := w.roadmap(t); task(t, r, id("weed-1")).State != work.Open {
 		t.Error("the refused event was recorded")
+	}
+}
+
+// source is a TaskSource with fixed tasks, or an error.
+type source struct {
+	tasks []work.Task
+	err   error
+}
+
+func (s source) Tasks(context.Context, farm.Farm, []work.Zone) ([]work.Task, []string, error) {
+	return s.tasks, []string{"from the source"}, s.err
+}
+
+// Tasks from a source: one with a calendar task's ID enriches it (a
+// fertilising task takes its detail, another gets it added), never a
+// twin; the rest are added in their kind's phase, and are ticked, listed
+// as due and counted like the calendar's. A failing source is a note.
+func TestTaskSources(t *testing.T) {
+	t.Parallel()
+	w := setup(t)
+	feed := work.Task{ID: "z0-maize-" + plannedSow + "-feed-das-45", Kind: calendar.Protect, Title: "Spray neem oil", Detail: "Neem oil 1 litre.", Date: addDays(plannedSow, 45)}
+	src := source{tasks: []work.Task{
+		{ID: id("nitrogen-1"), Kind: calendar.Fertilise, Title: "Top-dress", Detail: "Urea 45 kg (18 kg an acre)."},
+		{ID: id("sow"), Kind: calendar.Fertilise, Title: "Sow", Detail: "DAP 50 kg."},
+		feed,
+		{ID: "", Title: "no id"},
+	}}
+	ws := work.New(w.plan, w.store, work.WithTasks(src))
+	ws.SetNow(w.clock.Now)
+	plain := w.roadmap(t)
+	r, err := ws.Roadmap(context.Background(), w.plot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Tasks) != len(plain.Tasks)+1 {
+		t.Fatalf("%d tasks, want the calendar's %d and one more", len(r.Tasks), len(plain.Tasks))
+	}
+	if k := task(t, r, id("nitrogen-1")); k.Detail != "Urea 45 kg (18 kg an acre)." || k.Source != work.FromCalendar {
+		t.Errorf("fertilising task: %+v; want the source's detail in place of the calendar's", k)
+	}
+	if k, p := task(t, r, id("sow")), task(t, plain, id("sow")); k.Detail != p.Detail+" DAP 50 kg." || k.Title != p.Title {
+		t.Errorf("sowing task: %q; want the calendar's detail and the source's after it", k.Detail)
+	}
+	if k := task(t, r, feed.ID); k.Phase != work.PhaseGrow || k.State != work.Open || k.Title != feed.Title {
+		t.Errorf("added task: %+v", k)
+	}
+	if !slices.Contains(r.Notes, "from the source") {
+		t.Errorf("notes %v", r.Notes)
+	}
+	_, r, err = ws.Record(context.Background(), w.plot, []work.Event{{ID: "f1", Task: feed.ID, Kind: work.Done, Day: "2026-07-19"}})
+	if err != nil || task(t, r, feed.ID).State != work.Done || r.Counts.Done != 1 {
+		t.Fatalf("record on the added task: %v", err)
+	}
+	failing := work.New(w.plan, w.store, work.WithTasks(source{tasks: src.tasks, err: errors.New("down")}))
+	r, err = failing.Roadmap(context.Background(), w.plot)
+	if err != nil || len(r.Tasks) != len(plain.Tasks) || !slices.Contains(r.Notes, work.NoteMissing) {
+		t.Errorf("failing source: %d tasks, notes %v, %v", len(r.Tasks), r.Notes, err)
 	}
 }

@@ -252,15 +252,23 @@ var files embed.FS
 
 // Default returns the book built into the app, checked against lib.
 func Default(lib *agro.Library) (*Book, error) {
-	d, err := files.ReadFile("data/inputs.json")
-	if err != nil {
-		return nil, err
-	}
-	b, err := files.ReadFile("data/banned.json")
+	d, b, err := DefaultJSON()
 	if err != nil {
 		return nil, err
 	}
 	return Load(lib, d, b)
+}
+
+// DefaultJSON returns the JSON [Default] is built from, the data and the
+// banned list, for a region pack to lay its overlays on.
+func DefaultJSON() (data, banned []byte, err error) {
+	if data, err = files.ReadFile("data/inputs.json"); err != nil {
+		return nil, nil, err
+	}
+	if banned, err = files.ReadFile("data/banned.json"); err != nil {
+		return nil, nil, err
+	}
+	return data, banned, nil
 }
 
 // Load builds a book from the JSON of the data and the banned list and

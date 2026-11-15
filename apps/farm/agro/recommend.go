@@ -262,6 +262,9 @@ func Recommend(l *Library, r Request) (Result, error) {
 		res.Notes = append(res.Notes, Note{"sun.unknown", "The climate has no sunlight figures, so sunlight is not scored."})
 	}
 	for _, c := range crops {
+		if c.Off && len(r.Crops) == 0 {
+			continue // switched off where the plot is, unless asked for by name
+		}
 		seasons := make([]Season, len(dates))
 		for i, d := range dates {
 			seasons[i] = simulate(c, r, d)
@@ -515,6 +518,12 @@ func simulate(c Crop, r Request, sow time.Time) Season {
 		seasonF = 0.8
 		note(true, "season.unusual", "It is not usually sown in %s in India.", s.Season)
 	}
+	if w, ok := window(c, r.Profile.Rainfed(), sow); ok {
+		note(false, "window.local", "%s is inside the local sowing window, %s to %s (%s).", sow.Format("2 January"), monthDay(w.From), monthDay(w.To), w.Source)
+	} else if w.From != "" {
+		seasonF *= 0.9
+		note(true, "window.outside", "It is outside the local sowing windows here, such as %s to %s (%s).", monthDay(w.From), monthDay(w.To), w.Source)
+	}
 	if c.ClimateAnalog {
 		note(true, "analog", "New to India (grown in %s): the climate here matches, but there is little local experience, so try a small area first.", strings.Join(c.GrownIn, ", "))
 	}
@@ -642,4 +651,31 @@ func titleCase(s string) string {
 		return s
 	}
 	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// window returns the local sowing window a sowing on sow is in, and true;
+// else the first window for the plot's water, and false; else nothing.
+func window(c Crop, rainfed bool, sow time.Time) (SowWindow, bool) {
+	var first SowWindow
+	for _, w := range c.Windows {
+		if !w.Applies(rainfed) {
+			continue
+		}
+		if w.Contains(sow) {
+			return w, true
+		}
+		if first.From == "" {
+			first = w
+		}
+	}
+	return first, false
+}
+
+// monthDay writes an MM-DD day as "15 June".
+func monthDay(md string) string {
+	t, err := time.Parse("01-02", md)
+	if err != nil {
+		return md
+	}
+	return t.Format("2 January")
 }

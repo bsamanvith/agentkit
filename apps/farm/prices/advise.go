@@ -28,6 +28,9 @@ type TimingQuery struct {
 	// Today is the day the advice is for; prices after it are not used.
 	Today  Day    `json:"today"`
 	Tuning Tuning `json:"tuning,omitzero"`
+	// Storage is what holding the harvest costs where the plot is (a
+	// region pack's); nil for [StorageFor]'s starter values.
+	Storage *Storage `json:"-"`
 }
 
 // TimingAdvice is advice or nothing: Sowing and Selling are set only when
@@ -164,6 +167,9 @@ func AdviseTiming(ctx context.Context, h History, q TimingQuery) (TimingAdvice, 
 
 	// Selling.
 	st := StorageFor(commodity)
+	if q.Storage != nil {
+		st = *q.Storage
+	}
 	if !st.Storable() {
 		a.Reasons = append(a.Reasons, commodity+" does not keep: sell when it is ready, at the best market that day.")
 		return a, nil

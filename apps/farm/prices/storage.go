@@ -1,6 +1,9 @@
 package prices
 
-import "strings"
+import (
+	"maps"
+	"strings"
+)
 
 // Storage is what holding a harvest costs, by commodity class. The values
 // are starter values with their sources in [Storage.Source]: the farmer's
@@ -76,11 +79,22 @@ var commodityClass = []struct{ prefix, class string }{
 // or any name [Commodity] knows); a commodity it does not know is
 // perishable, so no hold is ever suggested for it.
 func StorageFor(commodity string) Storage {
+	return storageClasses[StorageClassOf(commodity)]
+}
+
+// StorageClassOf returns the storage class of a commodity (a crop id or
+// any name [Commodity] knows): "pulses", "cereals", ..., "perishable" for
+// one it does not know.
+func StorageClassOf(commodity string) string {
 	f := Fold(Commodity(commodity))
 	for _, c := range commodityClass {
 		if strings.HasPrefix(f, c.prefix) {
-			return storageClasses[c.class]
+			return c.class
 		}
 	}
-	return storageClasses["perishable"]
+	return "perishable"
 }
+
+// StorageClasses returns the starter values of every storage class, by
+// class name.
+func StorageClasses() map[string]Storage { return maps.Clone(storageClasses) }

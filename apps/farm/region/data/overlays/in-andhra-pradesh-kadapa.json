@@ -1,0 +1,41 @@
+{
+ "region": {
+  "country": "IN",
+  "state": "Andhra Pradesh",
+  "district": "YSR Kadapa",
+  "name": "YSR Kadapa",
+  "aliases": ["Kadapa", "Y.S.R. Kadapa", "YSR District", "Y.S.R. District", "Cuddapah"]
+ },
+ "note": "YSR Kadapa district, Rayalaseema (Southern Zone of Andhra Pradesh, NARP AP-3). Normal sowing periods from the district's agriculture contingency plan; nothing else is changed.",
+ "sources": [
+  {
+   "id": "crida-cp-kadapa",
+   "name": "Agriculture Contingency Plan for District: Y.S.R. District (Kadapa)",
+   "publisher": "ICAR-CRIDA with RARS Tirupati, KVK Kadapa and DAATTC Kadapa (ANGRAU)",
+   "url": "https://icar-crida.res.in/CP/AndhraPradesh/Kadapa.pdf",
+   "read": "2026-11-15"
+  }
+ ],
+ "crops": {
+  "groundnut": {
+   "windows": [
+    {"season": "kharif", "water": "rainfed", "from": "06-01", "to": "07-31", "source": "ICAR-CRIDA contingency plan, YSR Kadapa, 1.12: kharif rainfed, 1 June to 31 July"},
+    {"season": "rabi", "water": "irrigated", "from": "11-01", "to": "12-31", "source": "ICAR-CRIDA contingency plan, YSR Kadapa, 1.12: rabi irrigated, November to December"}
+   ],
+   "ref": {"source": "crida-cp-kadapa", "where": "1.12 Sowing window for 5 major field crops: groundnut"}
+  },
+  "rice": {
+   "windows": [
+    {"season": "kharif", "water": "irrigated", "from": "06-01", "to": "08-31", "source": "ICAR-CRIDA contingency plan, YSR Kadapa, 1.12: paddy kharif irrigated, June to August"},
+    {"season": "rabi", "water": "irrigated", "from": "11-01", "to": "01-31", "source": "ICAR-CRIDA contingency plan, YSR Kadapa, 1.12: paddy rabi irrigated, November to January"}
+   ],
+   "ref": {"source": "crida-cp-kadapa", "where": "1.12 Sowing window for 5 major field crops: paddy"}
+  },
+  "cotton": {
+   "windows": [
+    {"season": "kharif", "water": "rainfed", "from": "06-01", "to": "07-31", "source": "ICAR-CRIDA contingency plan, YSR Kadapa, 1.12: cotton kharif rainfed, June to July"}
+   ],
+   "ref": {"source": "crida-cp-kadapa", "where": "1.12 Sowing window for 5 major field crops: cotton"}
+  }
+ }
+}

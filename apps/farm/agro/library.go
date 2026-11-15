@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 )
 
 // ErrUnknown is a soil or crop the library does not have.
@@ -118,7 +119,55 @@ type Crop struct {
 	// as days shorten), DayLong (as they lengthen; onion bulbs) or
 	// DayNeutral (the default).
 	DayLength string `json:"day_length,omitempty"`
+	// Windows are the local sowing windows of a place (a region pack's
+	// overlay sets them; the base library has none): a sowing outside
+	// every window that applies to the plot's water is marked down a
+	// little and says so.
+	Windows []SowWindow `json:"windows,omitempty"`
+	// Off marks a crop a region pack switched off where it applies: it
+	// stays known, so a plan that has it still works, but it is not
+	// recommended there unless asked for by name.
+	Off bool `json:"off,omitempty"`
 }
+
+// SowWindow is a local sowing window: from and to as MM-DD (to may be in
+// the next year, as 11-15 to 01-15), for one season and, when Water is
+// set, for rainfed or irrigated plots only.
+type SowWindow struct {
+	Season string `json:"season"`
+	// Water is "rainfed", "irrigated" or empty for both.
+	Water string `json:"water,omitempty"`
+	From  string `json:"from"`
+	To    string `json:"to"`
+	// Source names where the window was read.
+	Source string `json:"source"`
+}
+
+// Contains reports whether a sowing on t is inside the window.
+func (w SowWindow) Contains(t time.Time) bool {
+	md := t.Format("01-02")
+	if w.From <= w.To {
+		return w.From <= md && md <= w.To
+	}
+	return md >= w.From || md <= w.To
+}
+
+// Applies reports whether the window is for a plot watered that way.
+func (w SowWindow) Applies(rainfed bool) bool {
+	switch w.Water {
+	case WaterRainfedWindow:
+		return rainfed
+	case WaterIrrigatedWindow:
+		return !rainfed
+	}
+	return true
+}
+
+// The waters a sowing window can be for.
+const (
+	WaterRainfedWindow   = "rainfed"
+	WaterIrrigatedWindow = "irrigated"
+)
 
 // How much sun a crop wants.
 const (
@@ -174,15 +223,23 @@ var data embed.FS
 // Default returns the library built into the app: about a dozen Indian
 // soil types and the crops of data/crops.json.
 func Default() (*Library, error) {
-	soils, err := data.ReadFile("data/soils.json")
-	if err != nil {
-		return nil, err
-	}
-	crops, err := data.ReadFile("data/crops.json")
+	soils, crops, err := DefaultJSON()
 	if err != nil {
 		return nil, err
 	}
 	return Load(soils, crops)
+}
+
+// DefaultJSON returns the JSON [Default] is built from, the soil list and
+// the crop list, for a region pack to lay its overlays on.
+func DefaultJSON() (soils, crops []byte, err error) {
+	if soils, err = data.ReadFile("data/soils.json"); err != nil {
+		return nil, nil, err
+	}
+	if crops, err = data.ReadFile("data/crops.json"); err != nil {
+		return nil, nil, err
+	}
+	return soils, crops, nil
 }
 
 // Load builds a library from the JSON of a soil list ({"source", "soils"})
@@ -271,6 +328,22 @@ func (l *Library) check() error {
 		for _, s := range c.Seasons {
 			if !slices.Contains([]string{Kharif, Rabi, Zaid}, s) {
 				bad("crop %s: season %q", c.ID, s)
+			}
+		}
+		for _, w := range c.Windows {
+			if !slices.Contains([]string{Kharif, Rabi, Zaid}, w.Season) {
+				bad("crop %s: window season %q", c.ID, w.Season)
+			}
+			if !slices.Contains([]string{"", WaterRainfedWindow, WaterIrrigatedWindow}, w.Water) {
+				bad("crop %s: window water %q", c.ID, w.Water)
+			}
+			for _, d := range []string{w.From, w.To} {
+				if _, err := time.Parse("01-02", d); err != nil || len(d) != 5 {
+					bad("crop %s: window day %q: want MM-DD", c.ID, d)
+				}
+			}
+			if w.Source == "" {
+				bad("crop %s: window %s to %s: needs its source", c.ID, w.From, w.To)
 			}
 		}
 	}

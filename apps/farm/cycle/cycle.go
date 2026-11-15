@@ -7,6 +7,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/apps/farm/agro"
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
+	"github.com/bsamanvith/agentkit/apps/farm/region"
 )
 
 // Errors callers branch on.
@@ -18,17 +19,19 @@ var (
 	ErrConflict = errors.New("cycle: conflict")
 )
 
-// The line's limits and rules.
+// The line's limits, and the base rules (a plot's are its region pack's,
+// [Input.Rules]).
 const (
 	// MaxCycles is the most cycles in a line: the current one and the next
 	// two.
 	MaxCycles = 3
-	// Turnaround is the days after a harvest to prepare the land before
-	// the next cycle can be sown.
-	Turnaround = 15
+	// Turnaround is the base days after a harvest to prepare the land
+	// before the next cycle can be sown.
+	Turnaround = region.BaseTurnaroundDays
 	// MaxWait is how many days after the land is free a suggested sowing
-	// may be: a rainfed plot waits through the dry months for the rains.
-	MaxWait = 240
+	// may be, in the base rules: a rainfed plot waits through the dry
+	// months for the rains.
+	MaxWait = region.BaseMaxWaitDays
 )
 
 // Method is how a cycle is grown.

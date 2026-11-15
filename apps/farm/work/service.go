@@ -28,7 +28,7 @@ type Store interface {
 // Planner is what the roadmap needs of the planner.
 type Planner interface {
 	Farms() *farm.Service
-	Library() *agro.Library
+	LibraryFor(f farm.Farm) *agro.Library
 	Today() time.Time
 }
 
@@ -119,7 +119,7 @@ func (s *Service) build(ctx context.Context, f farm.Farm, evs []Event) (Roadmap,
 			return out
 		}
 	}
-	r, err := build(s.plan.Library(), f.ID, *f.Plan, irrigated, evs, s.plan.Today(), extra)
+	r, err := build(s.plan.LibraryFor(f), f.ID, *f.Plan, irrigated, evs, s.plan.Today(), extra)
 	r.Notes = append(r.Notes, notes...)
 	return r, err
 }

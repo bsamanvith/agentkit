@@ -97,7 +97,7 @@ func WatchTools(w *watch.Watch, p plannerish, store automation.Store) ([]tool.To
 					}
 					plan, out.Saved = *f.Plan, true
 				}
-				cal, err := calendar.ForPlan(p.Library(), plan, f.Profile != nil && len(f.Profile.Water) > 0)
+				cal, err := calendar.ForPlan(p.LibraryFor(f), plan, f.Profile != nil && len(f.Profile.Water) > 0)
 				if err != nil {
 					return calendarOut{}, err
 				}
@@ -175,7 +175,7 @@ func listAlerts(ctx context.Context, p plannerish, store automation.Store, in al
 // plannerish is what the calendar tool needs of the planner.
 type plannerish interface {
 	Farms() *farm.Service
-	Library() *agro.Library
+	LibraryFor(f farm.Farm) *agro.Library
 	Today() time.Time
 }
 

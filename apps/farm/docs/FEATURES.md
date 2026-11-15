@@ -556,9 +556,23 @@ in the *Cost* column and named in the PR that adds it.
 | Mandi prices | `prices.Source` (on `feeds.Provider`) | Agmarknet on data.gov.in (`datagov`, all India, daily; needs `FARM_DATAGOV_KEY`), price files (`files`: Agmarknet, data.gov.in or CEDA CSVs in `FARM_PRICE_FILES`) | the next provider, then every price saved before | data.gov.in: **free**, key on registration; files: free; CEDA: free with registration, check its terms before commercial use |
 | Price history for sell timing | `prices.History` (filled by the mandi providers, or loaded with `ScanFiles`) | India Data Portal's Agmarknet files (2021 on), CEDA Agri Market's (2000 to 2023), as files | the saved history; with too little, no advice | India Data Portal: **free**, Open Data Commons Attribution (cite it); CEDA: free with registration, **non-commercial use only** |
 | Fertiliser, seed and spray values | `inputs.Book` (embedded data) | TNAU crop production guides (2020) and crop protection pages, the CIB&RC list, India's banned list (PPQS) | kind defaults for crops without values | Free public documents; starter values for an agronomist to review |
+| Region data: what differs by place | `region.Set` (embedded base and overlays, plus the `-regions` folder) | ICAR-CRIDA district contingency plans (sowing windows), the PMFBY operational guidelines (insurance cut-offs and loss notice), state announcements as reported | the base pack | Free public documents |
 | Message lanes | `notify.Lane` | web push, Telegram, email (SMTP), WhatsApp (Meta Cloud API), SMS (MSG91 or Twilio), each on when its keys are set; `-notify-routes` composes them | the next lane in a chain; at a lane's cost cap, the next | Web push, Telegram: free; email: free tiers of most SMTP providers (flag the one chosen); WhatsApp: **paid** per template message, needs Meta business verification; SMS: **paid** per message, needs DLT registration |
 | Sign-in | `accounts.Lane` (redirect, secret or code lanes, `-signin`) | Google (`google`, OpenID Connect; needs `FARM_GOOGLE_CLIENT_ID` and `_SECRET`), password, invite codes, phone and email one-time codes | the other lanes turned on: a farmer can link several | Google, password, invite: **free**; phone and email codes: by the message lanes (14), at their cost: email free tiers, SMS and WhatsApp **paid** per code |
 | News and knowledge | to plan, on `feeds.Provider` as prices are (weather can move onto it) | | | |
+
+**Regions** ([REGIONS.md](REGIONS.md), T149). The crop library, the
+inputs book, the crop cycle rules, storage values, support prices and
+schemes (crop insurance first, as data) come from the region pack of the
+plot's place: the base set with overlays for its country, state and
+district laid on, the most specific winning field by field, every value
+with its source and the layer it came from. Overlays are JSON files, the
+built-in ones plus a folder (`-regions`, `FARM_REGIONS`), checked at
+startup: an unknown key, an unknown crop or a banned product stops the
+start, naming the file and the key. Built in today: Andhra Pradesh (its
+kharif 2026 crop insurance), YSR Kadapa and Anantapur (local sowing
+windows from the ICAR-CRIDA district contingency plans). A place with no
+overlay gets the base, unchanged.
 
 Paid things in the plans above, and the free way to start:
 

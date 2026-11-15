@@ -9,6 +9,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/apps/farm/agro"
 	"github.com/bsamanvith/agentkit/apps/farm/geo"
+	"github.com/bsamanvith/agentkit/apps/farm/region"
 	"github.com/bsamanvith/agentkit/apps/farm/sun"
 )
 
@@ -39,6 +40,9 @@ type Input struct {
 	// AllPositions computes every position even when the farmer turned
 	// the later cycles off (to advance the line).
 	AllPositions bool
+	// Rules are the cycle rules at the plot (its region pack's); zero for
+	// region.DefaultRules.
+	Rules region.Rules
 }
 
 // PlanKey identifies a plan's crops and sowing dates: a sowing date typed
@@ -73,7 +77,7 @@ func Compute(in Input) (Line, error) {
 		}
 		from := today
 		if prev != nil {
-			from = later(today, parse(prev.Harvest).AddDate(0, 0, Turnaround))
+			from = later(today, parse(prev.Harvest).AddDate(0, 0, in.Rules.Or().TurnaroundDays))
 		} else if own != nil && parse(own.Sow).Before(today) {
 			from = parse(own.Sow) // the season the farmer is in
 		}
@@ -173,7 +177,7 @@ func (in Input) cycleOf(plan agro.Plan, origin Origin, m Method, sown map[int]st
 		}
 	}
 	if c.Sow != "" {
-		c.Season = agro.SeasonOf(parse(c.Sow))
+		c.Season = in.Rules.Or().SeasonOf(parse(c.Sow))
 	}
 	return c, nil
 }
@@ -190,17 +194,17 @@ func days(c agro.Crop) int {
 // rotation scores a crop after the one before: the same family twice is
 // marked down, a legume after a cereal (or any non-legume) puts nitrogen
 // back, a cereal after a legume uses what it left.
-func rotation(prev *agro.Crop, c agro.Crop) (int, *agro.Note, *agro.Note) {
+func rotation(r region.Rotation, prev *agro.Crop, c agro.Crop) (int, *agro.Note, *agro.Note) {
 	if prev == nil {
 		return 0, nil, nil
 	}
 	switch {
 	case prev.Family == c.Family:
-		return -20, nil, &agro.Note{ID: "rotation.same", Message: fmt.Sprintf("%s after %s, the same family: pests carry over and the soil tires.", c.Name, prev.Name)}
+		return r.SameFamily, nil, &agro.Note{ID: "rotation.same", Message: fmt.Sprintf("%s after %s, the same family: pests carry over and the soil tires.", c.Name, prev.Name)}
 	case legume(c) && !legume(*prev):
-		return 10, &agro.Note{ID: "rotation.pulse", Message: fmt.Sprintf("A legume after %s puts nitrogen back in the soil.", prev.Name)}, nil
+		return r.LegumeAfterOther, &agro.Note{ID: "rotation.pulse", Message: fmt.Sprintf("A legume after %s puts nitrogen back in the soil.", prev.Name)}, nil
 	case legume(*prev) && c.Kind == "cereal":
-		return 5, &agro.Note{ID: "rotation.after-pulse", Message: fmt.Sprintf("%s uses the nitrogen %s left in the soil.", c.Name, prev.Name)}, nil
+		return r.CerealAfterLegume, &agro.Note{ID: "rotation.after-pulse", Message: fmt.Sprintf("%s uses the nitrogen %s left in the soil.", c.Name, prev.Name)}, nil
 	}
 	return 0, &agro.Note{ID: "rotation.ok", Message: fmt.Sprintf("%s after %s is a change of family: a good rotation.", c.Name, prev.Name)}, nil
 }
@@ -241,7 +245,7 @@ func (in Input) suggest(pos int, from time.Time, prev, own *Cycle) *Cycle {
 	}
 	var annuals []string
 	for _, c := range in.Library.Crops() {
-		if !c.Perennial {
+		if !c.Perennial && !c.Off {
 			annuals = append(annuals, c.ID)
 		}
 	}
@@ -263,11 +267,11 @@ func (in Input) suggest(pos int, from time.Time, prev, own *Cycle) *Cycle {
 				continue
 			}
 			wait := int(parse(o.Sow).Sub(from).Hours() / 24)
-			if wait > MaxWait {
+			if wait > in.Rules.Or().MaxWaitDays {
 				continue
 			}
-			bonus, good, bad := rotation(before, c)
-			adj := o.Score + bonus - wait/10
+			bonus, good, bad := rotation(in.Rules.Or().Rotation, before, c)
+			adj := o.Score + bonus - wait/in.Rules.Or().WaitDaysPerPoint
 			if adj > bestAdj {
 				best, bestAdj, bestScore, bestNotes = k, adj, max(0, min(100, o.Score+bonus)), [2]*agro.Note{good, bad}
 			}
@@ -339,7 +343,7 @@ func (in Input) check(own, prev *Cycle, pos int, today time.Time) []Check {
 			switch gap := int(sow.Sub(harvest).Hours() / 24); {
 			case gap < 0:
 				add("cycle.overlap", agro.Warning, i, "%s now ends %s; your %s sowing of %s is before that.", pa.CropName, long(harvest), label, long(sow))
-			case gap < Turnaround:
+			case gap < in.Rules.Or().TurnaroundDays:
 				add("cycle.turnaround", agro.Info, i, "Only %d days from the %s harvest to your %s sowing to prepare the land.", gap, pa.CropName, label)
 			}
 		}
@@ -348,7 +352,7 @@ func (in Input) check(own, prev *Cycle, pos int, today time.Time) []Check {
 			continue
 		}
 		if pos > 0 {
-			if _, good, bad := rotation(in.previous(prev, i, len(own.Areas)), crop); bad != nil {
+			if _, good, bad := rotation(in.Rules.Or().Rotation, in.previous(prev, i, len(own.Areas)), crop); bad != nil {
 				add(bad.ID, agro.Warning, i, "%s", bad.Message)
 			} else if good != nil && good.ID == "rotation.pulse" {
 				add(good.ID, agro.Info, i, "%s", good.Message)

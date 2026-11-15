@@ -68,7 +68,7 @@ func (s *Service) Line(ctx context.Context, farmID string) (Line, error) {
 
 func (s *Service) input(ctx context.Context, f farm.Farm, rec Record) Input {
 	in := Input{
-		Library: s.plan.Library(), Farm: f.ID, Ring: f.Boundary.Ring(), Current: f.Plan,
+		Library: s.plan.LibraryFor(f), Rules: s.plan.RulesFor(f), Farm: f.ID, Ring: f.Boundary.Ring(), Current: f.Plan,
 		Record: rec, Today: s.plan.Today(), Sown: map[int]string{},
 	}
 	if f.Profile != nil {

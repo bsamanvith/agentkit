@@ -56,6 +56,7 @@ type Timing struct {
 
 	mu    sync.Mutex
 	cache map[string]timed
+	regional
 }
 
 type timed struct {
@@ -65,8 +66,8 @@ type timed struct {
 
 // NewTiming returns the timing addon over the price history; windows may
 // be nil (then a cycle not yet sown is advised from its planned date).
-func NewTiming(lib *agro.Library, hist prices.History, windows Windows, today func() time.Time) *Timing {
-	return &Timing{lib: lib, hist: hist, windows: windows, today: today, ttl: 30 * time.Minute, cache: map[string]timed{}}
+func NewTiming(lib *agro.Library, hist prices.History, windows Windows, today func() time.Time, opts ...Option) *Timing {
+	return &Timing{lib: lib, hist: hist, windows: windows, today: today, ttl: 30 * time.Minute, cache: map[string]timed{}, regional: regionalOf(opts)}
 }
 
 // Name implements cycle.Addon.
@@ -80,7 +81,12 @@ func (a *Timing) For(ctx context.Context, f farm.Farm, c cycle.Cycle) (any, erro
 	if crop == "" || loc == nil || loc.State == "" || c.Sow == "" || prices.Commodity(crop) == "" {
 		return nil, nil
 	}
-	cr, err := a.lib.Crop(crop)
+	lib := a.lib
+	pack := a.pack(f)
+	if pack != nil {
+		lib = pack.Library()
+	}
+	cr, err := lib.Crop(crop)
 	if err != nil {
 		return nil, nil
 	}
@@ -96,6 +102,10 @@ func (a *Timing) For(ctx context.Context, f farm.Farm, c cycle.Cycle) (any, erro
 	}
 	a.mu.Unlock()
 	q := prices.TimingQuery{Crop: crop, State: loc.State, District: loc.District, DaysMin: int(cr.Days[0]), DaysMax: int(cr.Days[1]), Today: today}
+	if pack != nil {
+		st := pack.Storage(crop)
+		q.Storage = &st
+	}
 	sow, err := prices.ParseDay(c.Sow)
 	if err != nil {
 		return nil, nil

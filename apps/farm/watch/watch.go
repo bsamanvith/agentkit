@@ -96,7 +96,7 @@ func (w *Watch) week(ctx context.Context, f farm.Farm, fc *weather.Forecast) (ad
 		}
 		fc = &got
 	}
-	return advise.Advise(w.plan.Library(), f, *fc, w.plan.Today()), nil
+	return advise.Advise(w.plan.LibraryFor(f), f, *fc, w.plan.Today()), nil
 }
 
 // Calendar returns the calendar of a plot's saved plan.
@@ -108,7 +108,7 @@ func (w *Watch) Calendar(ctx context.Context, farmID string) (calendar.Calendar,
 	if f.Plan == nil || len(f.Plan.Zones) == 0 {
 		return calendar.Calendar{}, fmt.Errorf("%w: plot %s has no saved crop plan", agro.ErrInvalid, farmID)
 	}
-	return calendar.ForPlan(w.plan.Library(), *f.Plan, irrigated(f))
+	return calendar.ForPlan(w.plan.LibraryFor(f), *f.Plan, irrigated(f))
 }
 
 func irrigated(f farm.Farm) bool { return f.Profile != nil && len(f.Profile.Water) > 0 }
@@ -159,7 +159,7 @@ func (w *Watch) TasksRule() automation.Handler {
 		if f.Plan == nil || len(f.Plan.Zones) == 0 {
 			return automation.Outcome{Note: "no crop plan"}, nil
 		}
-		cal, err := calendar.ForPlan(w.plan.Library(), *f.Plan, irrigated(f))
+		cal, err := calendar.ForPlan(w.plan.LibraryFor(f), *f.Plan, irrigated(f))
 		if err != nil {
 			return automation.Outcome{}, err
 		}

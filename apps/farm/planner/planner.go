@@ -11,6 +11,7 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/agro"
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
 	"github.com/bsamanvith/agentkit/apps/farm/geo"
+	"github.com/bsamanvith/agentkit/apps/farm/region"
 	"github.com/bsamanvith/agentkit/apps/farm/sun"
 	"github.com/bsamanvith/agentkit/pkg/clock"
 )
@@ -39,6 +40,7 @@ type Planner struct {
 	climate agro.ClimateSource
 	clock   clock.Clock
 	loc     *time.Location
+	regions *region.Set
 }
 
 // Option configures [New].
@@ -50,6 +52,11 @@ func WithClock(c clock.Clock) Option { return func(p *Planner) { p.clock = c } }
 // WithLocation sets the time zone of the farmer's "today" (default India,
 // UTC+5:30).
 func WithLocation(l *time.Location) Option { return func(p *Planner) { p.loc = l } }
+
+// WithRegions plans each plot with the region pack of its place: the
+// crop library and the rules that hold there. Without it every plot gets
+// the library New was given and the base rules.
+func WithRegions(s *region.Set) Option { return func(p *Planner) { p.regions = s } }
 
 // India is UTC+5:30, without the time zone database.
 var India = time.FixedZone("IST", 5*3600+1800)
@@ -68,8 +75,44 @@ func New(farms *farm.Service, lib *agro.Library, climate agro.ClimateSource, opt
 // Farms returns the farm service the planner plans for.
 func (p *Planner) Farms() *farm.Service { return p.farms }
 
-// Library returns the rules' library.
+// Library returns the base library: for what is not about one plot (the
+// crop list, the handbook). A plot's is [Planner.LibraryFor].
 func (p *Planner) Library() *agro.Library { return p.lib }
+
+// Pack returns the region pack for a plot's place; nil without
+// [WithRegions].
+func (p *Planner) Pack(f farm.Farm) *region.Pack {
+	if p.regions == nil {
+		return nil
+	}
+	return p.regions.For(PlaceOf(f))
+}
+
+// LibraryFor returns the crop library that holds at a plot.
+func (p *Planner) LibraryFor(f farm.Farm) *agro.Library {
+	if pk := p.Pack(f); pk != nil {
+		return pk.Library()
+	}
+	return p.lib
+}
+
+// RulesFor returns the crop cycle rules that hold at a plot.
+func (p *Planner) RulesFor(f farm.Farm) region.Rules {
+	if pk := p.Pack(f); pk != nil {
+		return pk.Rules()
+	}
+	return region.DefaultRules()
+}
+
+// PlaceOf is a plot's place, from its boundary's location: country code,
+// state and district; empty when it was not looked up.
+func PlaceOf(f farm.Farm) region.Place {
+	l := f.Report.Location
+	if l == nil {
+		return region.Place{}
+	}
+	return region.Place{Country: l.CountryCode, State: l.State, District: l.District}
+}
 
 // Today returns the farmer's date.
 func (p *Planner) Today() time.Time {
@@ -151,13 +194,14 @@ func (p *Planner) Recommend(ctx context.Context, id string, ask Ask) (Recommenda
 		return Recommendation{}, err
 	}
 	out := Recommendation{Farm: f.ID, Profile: f.Profile, Climate: r.Climate, Slope: SlopeOf(f)}
+	lib := p.LibraryFor(f)
 	if f.Profile != nil {
 		r.Profile = *f.Profile
-		if s, err := p.lib.Soil(f.Profile.Soil); err == nil {
+		if s, err := lib.Soil(f.Profile.Soil); err == nil {
 			r.Soil, out.Soil = &s, &s
 		}
 	}
-	if out.Result, err = agro.Recommend(p.lib, r); err != nil {
+	if out.Result, err = agro.Recommend(lib, r); err != nil {
 		return Recommendation{}, err
 	}
 	if ask.Limit > 0 && len(out.Options) > ask.Limit {
@@ -172,7 +216,7 @@ func (p *Planner) Layout(ctx context.Context, id string, parts []agro.Part) (agr
 	if err != nil {
 		return agro.Plan{}, agro.PlanReport{}, err
 	}
-	plan, err := agro.Layout(p.lib, f.Boundary.Ring(), parts)
+	plan, err := agro.Layout(p.LibraryFor(f), f.Boundary.Ring(), parts)
 	if err != nil {
 		return agro.Plan{}, agro.PlanReport{}, err
 	}
@@ -194,13 +238,14 @@ func (p *Planner) check(ctx context.Context, f farm.Farm, plan agro.Plan) agro.P
 	if c, err := p.climateAt(ctx, f); err == nil {
 		plot.Climate = &c
 	}
+	lib := p.LibraryFor(f)
 	if f.Profile != nil {
 		plot.Profile = *f.Profile
-		if s, err := p.lib.Soil(f.Profile.Soil); err == nil {
+		if s, err := lib.Soil(f.Profile.Soil); err == nil {
 			plot.Soil = &s
 		}
 	}
-	rep := agro.CheckPlan(p.lib, plot, plan, p.Today())
+	rep := agro.CheckPlan(lib, plot, plan, p.Today())
 	if plot.Climate == nil {
 		rep.Checks = append(rep.Checks, agro.PlanCheck{
 			ID: "climate.none", Severity: agro.Info, Zone: -1, Other: -1,

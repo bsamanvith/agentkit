@@ -14,6 +14,7 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
 	"github.com/bsamanvith/agentkit/apps/farm/geo"
 	"github.com/bsamanvith/agentkit/apps/farm/inputs"
+	"github.com/bsamanvith/agentkit/apps/farm/region"
 	"github.com/bsamanvith/agentkit/apps/farm/work"
 )
 
@@ -45,21 +46,64 @@ type InputsPlan struct {
 	inputs.Plan
 }
 
+// Packs gives the region pack for a plot's place: the inputs book and
+// crop library that hold there. *planner.Planner is one.
+type Packs interface {
+	Pack(f farm.Farm) *region.Pack
+}
+
+// Option configures an addon.
+type Option func(*regional)
+
+// WithPacks takes each plot's book and library (and, for timing, its
+// storage values) from its region pack; without it, or when it has none
+// for a plot, the addon's own are used.
+func WithPacks(p Packs) Option { return func(r *regional) { r.packs = p } }
+
+type regional struct{ packs Packs }
+
+func (r regional) pack(f farm.Farm) *region.Pack {
+	if r.packs == nil {
+		return nil
+	}
+	return r.packs.Pack(f)
+}
+
+// data returns the book and library for a plot.
+func (r regional) data(f farm.Farm, book *inputs.Book, lib *agro.Library) (*inputs.Book, *agro.Library) {
+	if p := r.pack(f); p != nil {
+		return p.Book(), p.Library()
+	}
+	return book, lib
+}
+
+func regionalOf(opts []Option) regional {
+	var r regional
+	for _, o := range opts {
+		o(&r)
+	}
+	return r
+}
+
 // Inputs is the cycle addon that plans what to buy and when to feed and
 // spray, for each planned cycle.
 type Inputs struct {
 	book *inputs.Book
 	lib  *agro.Library
+	regional
 }
 
 // NewInputs returns the inputs addon over a book checked against lib.
-func NewInputs(book *inputs.Book, lib *agro.Library) *Inputs { return &Inputs{book: book, lib: lib} }
+func NewInputs(book *inputs.Book, lib *agro.Library, opts ...Option) *Inputs {
+	return &Inputs{book: book, lib: lib, regional: regionalOf(opts)}
+}
 
 // Name implements cycle.Addon.
 func (a *Inputs) Name() string { return InputsName }
 
 // For implements cycle.Addon: nil for a cycle with no area to plan.
 func (a *Inputs) For(_ context.Context, f farm.Farm, c cycle.Cycle) (any, error) {
+	book, lib := a.data(f, a.book, a.lib)
 	var req inputs.Request
 	var fields []Field
 	for i, ar := range c.Areas {
@@ -69,7 +113,7 @@ func (a *Inputs) For(_ context.Context, f farm.Farm, c cycle.Cycle) (any, error)
 		}
 		for _, p := range parts(z, ar.AreaHa) {
 			name := p.crop
-			if cr, err := a.lib.Crop(p.crop); err == nil {
+			if cr, err := lib.Crop(p.crop); err == nil {
 				name = cr.Name
 			}
 			req.Fields = append(req.Fields, inputs.Field{Crop: p.crop, Hectares: p.ha, Sow: ar.Sow})
@@ -83,7 +127,7 @@ func (a *Inputs) For(_ context.Context, f farm.Farm, c cycle.Cycle) (any, error)
 	if req.Method == "" {
 		req.Method = inputs.Conventional
 	}
-	p, err := a.book.Plan(req)
+	p, err := book.Plan(req)
 	if err != nil {
 		return nil, err
 	}
@@ -149,12 +193,13 @@ type Roadmap struct {
 	book    *inputs.Book
 	lib     *agro.Library
 	methods Methods
+	regional
 }
 
 // NewRoadmap returns the roadmap source over a book checked against lib
 // and the cycles' store (for the method; nil for conventional always).
-func NewRoadmap(book *inputs.Book, lib *agro.Library, methods Methods) *Roadmap {
-	return &Roadmap{book: book, lib: lib, methods: methods}
+func NewRoadmap(book *inputs.Book, lib *agro.Library, methods Methods, opts ...Option) *Roadmap {
+	return &Roadmap{book: book, lib: lib, methods: methods, regional: regionalOf(opts)}
 }
 
 // Tasks implements work.TaskSource.
@@ -162,6 +207,7 @@ func (r *Roadmap) Tasks(ctx context.Context, f farm.Farm, zones []work.Zone) ([]
 	if f.Plan == nil || len(zones) == 0 {
 		return nil, nil, nil
 	}
+	book, lib := r.data(f, r.book, r.lib)
 	method := inputs.Conventional
 	if r.methods != nil {
 		rec, err := r.methods.Get(ctx, f.ID)
@@ -191,7 +237,7 @@ func (r *Roadmap) Tasks(ctx context.Context, f farm.Farm, zones []work.Zone) ([]
 			ha = geo.Area(pz.Ring) / 10000
 		}
 		sow, shift := z.PlannedSow, 0
-		if z.Sown != "" && z.Sown != z.PlannedSow && !r.perennial(z.Crop) {
+		if z.Sown != "" && z.Sown != z.PlannedSow && !perennial(lib, z.Crop) {
 			// After the sowing, work follows the real date, as the
 			// calendar's does; up to it, the planned date stands.
 			sow, shift = z.Sown, days(z.Sown, z.PlannedSow)
@@ -205,7 +251,7 @@ func (r *Roadmap) Tasks(ctx context.Context, f farm.Farm, zones []work.Zone) ([]
 		return nil, nil, nil
 	}
 	req.Method, req.Water = method, WaterOf(f)
-	p, err := r.book.Plan(req)
+	p, err := book.Plan(req)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -234,8 +280,8 @@ func (r *Roadmap) Tasks(ctx context.Context, f farm.Farm, zones []work.Zone) ([]
 
 // perennial: a perennial's work runs by the calendar month, so it keeps
 // its planned dates when the planting moves, as on the roadmap.
-func (r *Roadmap) perennial(crop string) bool {
-	c, err := r.lib.Crop(crop)
+func perennial(lib *agro.Library, crop string) bool {
+	c, err := lib.Crop(crop)
 	return err == nil && c.Perennial
 }
 

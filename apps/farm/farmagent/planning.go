@@ -195,7 +195,11 @@ func PlanningTools(p *planner.Planner) ([]tool.Tool, error) {
 				slices.SortStableFunc(r.Options, func(a, b agro.Option) int {
 					return slices.Index(in.Crops, a.Crop) - slices.Index(in.Crops, b.Crop)
 				})
-				return compare(r, lib), nil
+				here := lib
+				if f, err := p.Farms().Get(ctx, in.Farm); err == nil {
+					here = p.LibraryFor(f) // the seasons where the plot is
+				}
+				return compare(r, here), nil
 			}, read)),
 		add(tool.Func(SetProfileTool, "Save what the farmer told you about a farm's land and water: soil id (from list_soils), measured pH, water sources (canal, river, tank, borewell, open_well, farm_pond, each reliable or not; none for rainfed), drip, and the previous crop. Replaces the whole profile: include what was there before.",
 			func(ctx context.Context, in profileIn) (agro.Profile, error) {

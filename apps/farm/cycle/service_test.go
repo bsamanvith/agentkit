@@ -764,7 +764,7 @@ func TestAdvanceOnlyNearHarvest(t *testing.T) {
 		t.Fatal(err)
 	}
 	d, _ := time.Parse(agro.DateLayout, from)
-	w.clock.Advance(d.Add(30*time.Minute).Sub(w.clock.Now()))
+	w.clock.Advance(d.Add(30 * time.Minute).Sub(w.clock.Now()))
 	if _, err := w.cycles.Advance(ctx, w.plot); err != nil {
 		t.Fatalf("advance on %s with the later cycles off: %v", from, err)
 	}

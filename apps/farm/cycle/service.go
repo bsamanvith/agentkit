@@ -555,10 +555,6 @@ func planSum(p *agro.Plan) string {
 	return hex.EncodeToString(h[:])
 }
 
-// errOvertaken: a pending change was made against a saved plan that has
-// since been replaced by another write.
-var errOvertaken = errors.New("cycle: the saved plan changed since")
-
 // refused: the farm will never take the change (the plan no longer
 // checks, the profile is refused), so trying again cannot help.
 func refused(err error) bool {

@@ -1,0 +1,47 @@
+{
+ "region": {
+  "country": "IN",
+  "state": "Andhra Pradesh",
+  "district": "Sri Sathya Sai",
+  "name": "Sri Sathya Sai",
+  "aliases": ["Sri Sathya Sai District", "Sathya Sai", "Sri Satya Sai", "Satya Sai", "Sri Sathyasai", "Puttaparthi"]
+ },
+ "note": "Sri Sathya Sai district (headquarters Puttaparthi), Rayalaseema: carved out of Anantapur district in April 2022, in the same scarce rainfall zone (NARP AP-6). No contingency plan has been published for the new district, so it takes the normal sowing periods of the undivided Ananthapuramu plan, which covered this land; nothing else is changed.",
+ "sources": [
+  {
+   "id": "crida-cp-anantapur",
+   "name": "Agriculture Contingency Plan for District: Ananthapuramu",
+   "publisher": "ICAR-CRIDA with ANGRAU",
+   "url": "https://icar-crida.res.in/CP/AndhraPradesh/Ananthapuram.pdf",
+   "read": "2026-11-15"
+  }
+ ],
+ "crops": {
+  "groundnut": {
+   "windows": [
+    {"season": "kharif", "water": "rainfed", "from": "07-01", "to": "07-31", "source": "ICAR-CRIDA contingency plan, Ananthapuramu (undivided, includes Sri Sathya Sai), 1.12: kharif rainfed, July"},
+    {"season": "rabi", "water": "irrigated", "from": "11-15", "to": "12-30", "source": "ICAR-CRIDA contingency plan, Ananthapuramu (undivided, includes Sri Sathya Sai), 1.12: rabi irrigated, 15 November to 30 December"}
+   ],
+   "ref": {"source": "crida-cp-anantapur", "where": "1.12 Sowing window for 5 major crops: groundnut"}
+  },
+  "rice": {
+   "windows": [
+    {"season": "kharif", "water": "irrigated", "from": "07-16", "to": "08-15", "source": "ICAR-CRIDA contingency plan, Ananthapuramu (undivided, includes Sri Sathya Sai), 1.12: paddy kharif irrigated, July 2nd fortnight to August 1st fortnight"},
+    {"season": "rabi", "water": "irrigated", "from": "12-01", "to": "12-30", "source": "ICAR-CRIDA contingency plan, Ananthapuramu (undivided, includes Sri Sathya Sai), 1.12: paddy rabi irrigated, 1 to 30 December"}
+   ],
+   "ref": {"source": "crida-cp-anantapur", "where": "1.12 Sowing window for 5 major crops: paddy"}
+  },
+  "chickpea": {
+   "windows": [
+    {"season": "rabi", "water": "rainfed", "from": "10-16", "to": "11-15", "source": "ICAR-CRIDA contingency plan, Ananthapuramu (undivided, includes Sri Sathya Sai), 1.12: bengal gram rabi rainfed, October 2nd fortnight to November 1st fortnight"}
+   ],
+   "ref": {"source": "crida-cp-anantapur", "where": "1.12 Sowing window for 5 major crops: bengal gram"}
+  },
+  "pigeon_pea": {
+   "windows": [
+    {"season": "kharif", "water": "rainfed", "from": "06-16", "to": "08-15", "source": "ICAR-CRIDA contingency plan, Ananthapuramu (undivided, includes Sri Sathya Sai), 1.12: redgram kharif rainfed, June 2nd fortnight to August 1st fortnight"}
+   ],
+   "ref": {"source": "crida-cp-anantapur", "where": "1.12 Sowing window for 5 major crops: redgram"}
+  }
+ }
+}

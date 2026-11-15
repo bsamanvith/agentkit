@@ -21,6 +21,7 @@ var (
 	guntur    = region.Place{Country: "IN", State: "Andhra Pradesh", District: "Guntur"}
 	bengal    = region.Place{Country: "IN", State: "West Bengal", District: "Nadia"}
 	anantapur = region.Place{Country: "IN", State: "andhra pradesh", District: "Anantapuramu"}
+	sathyaSai = region.Place{Country: "IN", State: "Andhra Pradesh", District: "Sri Sathya Sai District"}
 )
 
 func load(t *testing.T, files map[string]string) (*region.Set, error) {
@@ -151,6 +152,21 @@ func TestEmbeddedAndhraPradeshOverlays(t *testing.T) {
 	// Anantapur by its newer spelling, the state in lower case.
 	if p := s.For(anantapur); p.Name() != "Anantapur" {
 		t.Errorf("Anantapuramu resolves to %s", p.Name())
+	}
+	// Sri Sathya Sai, split from Anantapur in 2022, is a district of its
+	// own with the undivided plan's windows.
+	ss := s.For(sathyaSai)
+	if ss.Name() != "Sri Sathya Sai" {
+		t.Errorf("Sri Sathya Sai resolves to %s", ss.Name())
+	}
+	a, b := crop(t, ss, "groundnut").Windows, crop(t, s.For(anantapur), "groundnut").Windows
+	if len(a) != 2 || len(a) != len(b) {
+		t.Fatalf("Sri Sathya Sai groundnut windows %+v, Anantapur's %+v", a, b)
+	}
+	for i := range a {
+		if a[i].From != b[i].From || a[i].To != b[i].To || a[i].Water != b[i].Water || !strings.Contains(a[i].Source, "Sri Sathya Sai") {
+			t.Errorf("window %d: %+v, Anantapur's %+v", i, a[i], b[i])
+		}
 	}
 }
 

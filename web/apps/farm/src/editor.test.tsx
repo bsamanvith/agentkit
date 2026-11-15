@@ -153,6 +153,18 @@ describe("Editor drawing tools", () => {
     expect(sent[0]).toEqual(map.props.corners);
   });
 
+  it("tells the farmer at once when a freehand loop crosses itself, and keeps what was there", () => {
+    render(<Editor others={[]} onSaved={() => {}} onCancel={() => {}} />);
+    const tie: Point[] = [];
+    for (let k = 0; k < 72; k++) tie.push(at((60 * k) / 72, (40 * k) / 72));
+    for (let y = 40; y > 0; y--) tie.push(at(60, y));
+    for (let k = 0; k < 72; k++) tie.push(at(60 - (60 * k) / 72, (40 * k) / 72));
+    for (let y = 40; y > 2; y--) tie.push(at(0, y));
+    act(() => map.props.onStroke?.(tie));
+    expect(map.props.corners).toHaveLength(0);
+    expect(screen.getByRole("alert")).toHaveTextContent(/crosses itself/);
+  });
+
   it("drags a rectangle, turns and stretches it by its handles, and undoes step by step", async () => {
     verifier();
     const user = userEvent.setup();

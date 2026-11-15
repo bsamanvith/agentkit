@@ -287,6 +287,48 @@ describe("Cycles", () => {
   });
 });
 
+describe("Cycles, moving on", () => {
+  // Today is a week before the black gram comes off: the server says the
+  // line may move on from two weeks before it.
+  const near = (future: boolean): Line => {
+    const l = { ...line(), today: "2026-09-01", advance_from: "2026-08-25", future };
+    return future ? l : { ...l, cycles: l.cycles.slice(0, 1) };
+  };
+  const advanced = (fetch: ReturnType<typeof server>) =>
+    fetch.mock.calls.some((c) => (c as unknown as Call)[0] === "/api/farms/farm_1/cycles/advance");
+
+  it("asks in the page, saying what will happen, before it moves on", async () => {
+    const fetch = server(() => json(near(true)));
+    render(<Cycles farm={farm} />);
+    await userEvent.click(await screen.findByRole("button", { name: /Harvested: start the next cycle/ }));
+    expect(advanced(fetch)).toBe(false);
+    const ask = screen.getByRole("group", { name: /Start the next cycle/ });
+    expect(ask).toHaveTextContent(/Chickpea becomes this cycle/);
+    expect(ask).toHaveTextContent(/Black gram is kept as the crop before/);
+    expect(ask).toHaveTextContent(/cannot be undone/);
+    await userEvent.click(screen.getByRole("button", { name: "Not yet" }));
+    expect(screen.queryByRole("group", { name: /Start the next cycle/ })).not.toBeInTheDocument();
+    expect(advanced(fetch)).toBe(false);
+    await userEvent.click(screen.getByRole("button", { name: /Harvested: start the next cycle/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Yes, start the next cycle" }));
+    await waitFor(() => expect(advanced(fetch)).toBe(true));
+  });
+
+  it("is there with the later cycles turned off, and not before the day the server says", async () => {
+    server(() => json(near(false)));
+    const { unmount } = render(<Cycles farm={farm} />);
+    await userEvent.click(await screen.findByRole("button", { name: /Harvested: start the next cycle/ }));
+    expect(screen.getByRole("group", { name: /Start the next cycle/ })).toHaveTextContent(
+      /The crop we suggest next becomes this cycle/,
+    );
+    unmount();
+    server(() => json({ ...near(true), today: "2026-08-24" }));
+    render(<Cycles farm={farm} />);
+    await screen.findByText("This cycle");
+    expect(screen.queryByRole("button", { name: /Harvested/ })).not.toBeInTheDocument();
+  });
+});
+
 describe("Cycles, what the farmer sees first", () => {
   it("says plainly when nothing suits sowing soon, what to do meanwhile, and what comes next", async () => {
     const l = line();

@@ -56,8 +56,7 @@ function Summary({ c }: { c: Cycle }) {
       <p>
         {c.sow_kind === "actual" ? "Sown " : "Sow "}
         {dayLabel(c.sow)}
-        {" · harvest around "}
-        {dayLabel(c.harvest)}
+        {c.harvest ? " · harvest around " + dayLabel(c.harvest) : " · harvest not known"}
       </p>
       {c.areas.length > 1 && (
         <ul className="text-xs text-muted-foreground">
@@ -182,10 +181,14 @@ function Now({
   onLand: (f: Farm) => void;
 }) {
   const [sowing, setSowing] = useState(false);
+  const [moving, setMoving] = useState(false);
   const [day, setDay] = useState(line.today);
   const c = p.planned;
   const sown = c?.sow_kind === "actual";
-  const harvested = c && !c.perennial && c.harvest <= addDays(line.today, 14) && line.cycles.length > 1;
+  // The server says from when the line may move on (it refuses earlier);
+  // with the later cycles off, the next crop is our suggestion.
+  const harvested = !!c && !!line.advance_from && line.today >= line.advance_from;
+  const next = line.cycles[1]?.planned;
   // Why we suggest it: the first reason, and the crop's own when the first
   // is that it can go in soon.
   const why = c?.origin === "suggested" ? (c.reasons ?? []).slice(0, c.reasons?.[0]?.id === "sow.soon" ? 2 : 1) : [];
@@ -218,16 +221,35 @@ function Now({
           </Button>
         )}
         {harvested && (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={busy}
-            onClick={() => void run(() => cyclesApi.advance(farm.id), true)}
-          >
+          <Button variant="outline" size="sm" disabled={busy} onClick={() => setMoving((m) => !m)}>
             Harvested: start the next cycle
           </Button>
         )}
       </div>
+      {harvested && moving && c && (
+        <div role="group" aria-label="Start the next cycle?" className="mt-3 rounded-lg bg-ak-bg p-3 text-sm">
+          <p className="font-medium">Start the next cycle?</p>
+          <p className="mt-1">
+            {next ? cropsOf(next) : "The crop we suggest next"} becomes this cycle and its plan the plot&apos;s season
+            plan; {cropsOf(c)} is kept as the crop before. This cannot be undone.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              disabled={busy}
+              onClick={() => {
+                setMoving(false);
+                void run(() => cyclesApi.advance(farm.id), true);
+              }}
+            >
+              Yes, start the next cycle
+            </Button>
+            <Button variant="outline" size="sm" disabled={busy} onClick={() => setMoving(false)}>
+              Not yet
+            </Button>
+          </div>
+        </div>
+      )}
       {sowing && (
         <form
           className="mt-3 flex flex-wrap items-end gap-2"
@@ -671,7 +693,7 @@ const barColors = ["bg-[#4d7c0f]", "bg-[#a16207]", "bg-[#0f766e]"];
 
 /** The planned cycles on one strip of months. */
 function Timeline({ line }: { line: Line }) {
-  const planned = line.cycles.flatMap((p) => (p.planned ? [{ pos: p.position, c: p.planned }] : []));
+  const planned = line.cycles.flatMap((p) => (p.planned?.harvest ? [{ pos: p.position, c: p.planned }] : []));
   if (planned.length === 0) return null;
   const start = planned.reduce((m, { c }) => (c.sow < m ? c.sow : m), line.today);
   const end = planned.reduce((m, { c }) => (c.harvest > m ? c.harvest : m), line.today);

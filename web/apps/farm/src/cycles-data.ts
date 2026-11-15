@@ -21,7 +21,10 @@ export interface CycleArea {
   area_ha: number;
   sow: string;
   sow_kind: DateKind;
+  /** Empty when the crop is not in the plot's crop list. */
   harvest: string;
+  /** The crop (or intercrop) is not in the plot's crop list. */
+  unknown?: boolean;
 }
 
 export interface Cycle {
@@ -67,6 +70,8 @@ export interface Line {
   notes?: Note[];
   /** The plot's water and soil were never given: the suggestions assume rain only. */
   assumed?: boolean;
+  /** The first day the line may move on to the next cycle (two weeks before the harvest); none when it cannot. */
+  advance_from?: string;
 }
 
 export interface Change {

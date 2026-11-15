@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { dragRect, freehand, rectCorners, rectFromDrag, rectHandles, type Rect, type RectHandle } from "./draw";
+import { dragRect, freehandRing, rectCorners, rectFromDrag, rectHandles, type Rect, type RectHandle } from "./draw";
 import type { Handle, Stroke } from "./map";
 import type { Corner, Point } from "./types";
 
@@ -37,11 +37,14 @@ export interface SketchMap {
 export function useSketch(corners: Corner[], apply: (c: Corner[]) => void, tool: Tool, panning = false) {
   const [past, setPast] = useState<Corner[][]>([]);
   const [rect, setRect] = useState<Rect>();
+  // Why the last stroke drew nothing, for the farmer; cleared by the next change.
+  const [problem, setProblem] = useState("");
   // The handle being dragged: a drag is one step of the history.
   const dragging = useRef<string>(undefined);
 
   const set = (c: Corner[], r?: Rect) => {
     setPast((p) => [...p.slice(-49), corners]);
+    setProblem("");
     setRect(r);
     dragging.current = undefined;
     apply(c);
@@ -56,8 +59,9 @@ export function useSketch(corners: Corner[], apply: (c: Corner[]) => void, tool:
   };
   const onStroke = (pts: Point[]) => {
     if (tool === "pencil") {
-      const ring = freehand(pts);
+      const { ring, problem } = freehandRing(pts);
       if (ring) set(ring);
+      else setProblem(problem ?? "");
     } else if (tool === "rect") {
       const [a, b] = pts;
       const r = a && b ? rectFromDrag(a, b) : undefined;
@@ -85,5 +89,5 @@ export function useSketch(corners: Corner[], apply: (c: Corner[]) => void, tool:
     // A tap (lines) or a corner dragged: the rectangle, if any, is now just corners.
     onChange: (c) => set(c),
   };
-  return { set, undo, canUndo: past.length > 0, rect: shown, map };
+  return { set, undo, canUndo: past.length > 0, rect: shown, map, problem };
 }

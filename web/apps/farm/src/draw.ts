@@ -95,15 +95,47 @@ export function simplify(line: Point[], tol: number): Point[] {
 /** The most corners a freehand stroke becomes. */
 export const maxFreehandCorners = 24;
 
+/** Why a freehand stroke makes no plot, in the farmer's words. */
+export const strokeTooSmall = "That is too small for a plot: draw right round the field.";
+export const strokeCrosses =
+  "The line crosses itself: draw round the field once, without crossing your own line, or use the lines tool.";
+
+/** Whether two edges of a ring (not neighbours) cross. */
+function crossesItself(ps: XY[]): boolean {
+  const n = ps.length;
+  const side = (a: XY, b: XY, c: XY) => Math.sign(cross(sub(b, a), sub(c, a)));
+  for (let i = 0; i < n; i++)
+    for (let j = i + 2; j < n; j++) {
+      if (i === 0 && j === n - 1) continue;
+      const a = ps[i] as XY;
+      const b = ps[(i + 1) % n] as XY;
+      const c = ps[j] as XY;
+      const d = ps[(j + 1) % n] as XY;
+      if (side(a, b, c) * side(a, b, d) < 0 && side(c, d, a) * side(c, d, b) < 0) return true;
+    }
+  return false;
+}
+
+/**
+ * Turns a freehand stroke into a plot's corners (see freehandRing);
+ * undefined when it makes no plot.
+ */
+export function freehand(stroke: Point[], maxCorners = maxFreehandCorners): Point[] | undefined {
+  return freehandRing(stroke, maxCorners).ring;
+}
+
 /**
  * Turns a freehand stroke into a plot's corners: the stroke is closed back
  * to where it started and simplified (Douglas-Peucker) to within a few per
- * cent of its size, coarser until it has at most maxCorners. Undefined
- * when the stroke is too short or too small to be a plot.
+ * cent of its size, coarser until it has at most maxCorners. No ring, and
+ * the problem to tell the farmer, when the stroke is too short or too
+ * small to be a plot, or its loop crosses itself (the server refuses such
+ * a boundary, so the farmer is told at once).
  */
-export function freehand(stroke: Point[], maxCorners = maxFreehandCorners): Point[] | undefined {
+export function freehandRing(stroke: Point[], maxCorners = maxFreehandCorners): { ring?: Point[]; problem?: string } {
+  const small = { problem: strokeTooSmall };
   const [o] = stroke;
-  if (!o) return undefined;
+  if (!o) return small;
   const pl = plane(o);
   // Drop jitter: points closer than half a metre to the last one kept.
   const ps: XY[] = [];
@@ -111,11 +143,11 @@ export function freehand(stroke: Point[], maxCorners = maxFreehandCorners): Poin
     const last = ps[ps.length - 1];
     if (!last || len(sub(p, last)) >= 0.5) ps.push(p);
   }
-  if (ps.length < 3) return undefined;
+  if (ps.length < 3) return small;
   const xs = ps.map((p) => p.x);
   const ys = ps.map((p) => p.y);
   const diag = Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
-  if (diag < 3) return undefined;
+  if (diag < 3) return small;
   // Close it: the line runs back to its start, so the simplification
   // keeps the corners of the whole loop.
   const loop = [...ps, ps[0] as XY];
@@ -129,8 +161,9 @@ export function freehand(stroke: Point[], maxCorners = maxFreehandCorners): Poin
   const first = out[0] as XY;
   const last = out[out.length - 1] as XY;
   if (out.length > 3 && len(sub(last, first)) < tol) out.pop();
-  if (out.length < 3 || Math.abs(signedArea(out)) < 1) return undefined;
-  return out.map(pl.point);
+  if (crossesItself(out)) return { problem: strokeCrosses }; // a bow tie's lobes cancel out: say why first
+  if (out.length < 3 || Math.abs(signedArea(out)) < 1) return small;
+  return { ring: out.map(pl.point) };
 }
 
 /** A rectangle on the ground: its centre, the bearing of its length (degrees from north), and its sides in metres. */

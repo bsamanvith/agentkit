@@ -5,6 +5,7 @@ import {
   cutAreas,
   dragRect,
   freehand,
+  freehandRing,
   maxFreehandCorners,
   plane,
   rectCorners,
@@ -12,6 +13,8 @@ import {
   rectHandles,
   simplify,
   splitByLine,
+  strokeCrosses,
+  strokeTooSmall,
   type XY,
 } from "./draw";
 import type { Point } from "./types";
@@ -143,6 +146,24 @@ describe("freehand", () => {
     const ring = freehand(jag) ?? [];
     expect(ring.length).toBeGreaterThanOrEqual(4);
     expect(ring.length).toBeLessThanOrEqual(maxFreehandCorners);
+  });
+
+  it("refuses a loop that crosses itself, and says so", () => {
+    // A bow tie: across the field, up, back across, down.
+    const tie: Point[] = [];
+    const leg = (a: [number, number], b: [number, number]) => {
+      const n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]));
+      for (let k = 0; k < n; k++)
+        tie.push(pl.point({ x: a[0] + ((b[0] - a[0]) * k) / n, y: a[1] + ((b[1] - a[1]) * k) / n }));
+    };
+    leg([0, 0], [60, 40]);
+    leg([60, 40], [60, 0]);
+    leg([60, 0], [0, 40]);
+    leg([0, 40], [0, 2]);
+    expect(freehand(tie)).toBeUndefined();
+    expect(freehandRing(tie).problem).toBe(strokeCrosses);
+    expect(freehandRing(stroke).problem).toBeUndefined();
+    expect(freehandRing([origin]).problem).toBe(strokeTooSmall);
   });
 
   it("refuses a tap or a scribble too small to be a plot", () => {

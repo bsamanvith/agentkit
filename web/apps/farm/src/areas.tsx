@@ -1,7 +1,7 @@
 import { Button } from "@agentkit/ui/components/button";
 import { Hand, Pencil, Scissors, Square, Undo2 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { addShape, areaM2, cutAreas, freehand, rectCorners, rectFromDrag } from "./draw";
+import { addShape, areaM2, cutAreas, freehandRing, strokeCrosses, rectCorners, rectFromDrag } from "./draw";
 import { FarmMap, type Stroke, type ZoneShape } from "./map";
 import { colors } from "./plan";
 import type { Point } from "./types";
@@ -77,7 +77,12 @@ export function AreaEditor({
       if (a && b) set(cutAreas(areas, a, b), "Draw the line right across the plot, from one edge to the other.");
       return;
     }
-    const r = tool === "shape" ? freehand(pts) : a && b ? rectFromDrag(a, b) : undefined;
+    const drawn = tool === "shape" ? freehandRing(pts) : undefined;
+    if (drawn?.problem === strokeCrosses) {
+      set(undefined, strokeCrosses);
+      return;
+    }
+    const r = tool === "shape" ? drawn?.ring : a && b ? rectFromDrag(a, b) : undefined;
     const ring = r === undefined ? undefined : Array.isArray(r) ? r : rectCorners(r);
     set(ring && addShape(areas, ring), "Draw the shape over the plot, a little bigger than a few steps across.");
   };

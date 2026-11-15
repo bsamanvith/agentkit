@@ -335,6 +335,11 @@ export function Editor({
             </Button>
           </div>
         )}
+        {drawing && sketch.problem && (
+          <p className="text-sm text-ak-bad" role="alert">
+            {sketch.problem}
+          </p>
+        )}
         {mode === "gps" && at(1) && (
           <p className="text-sm" role="status">
             {(hasGPS ? gpsError : "This device has no GPS.") ||

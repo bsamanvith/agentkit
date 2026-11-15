@@ -1,6 +1,6 @@
 # Farm: what farmers can do, and what comes next
 
-> The product list, kept up to date. Last updated 2026-11-10.
+> The product list, kept up to date. Last updated 2026-11-15.
 > Every PR that adds, changes or removes something a farmer can see
 > updates this file (the `farm-features` skill says how). Why the app
 > exists and the farmer's year: [PRODUCT.md](PRODUCT.md). Epic:
@@ -14,7 +14,7 @@ Status words: **live** (merged on main, a farmer can use it), **building**
 
 | # | Feature | Status | Farmer's year | Since |
 |---|---|---|---|---|
-| 1 | [My plots](#1-my-plots) | live | land | T133 |
+| 1 | [My plots](#1-my-plots) | live | land | T133, T146 |
 | 2 | [The land and its surroundings](#2-the-land-and-its-surroundings) | live | land | T135, T138 |
 | 3 | [Farm layout](#3-farm-layout) | live | land | T135 |
 | 4 | [What to plant and when](#4-what-to-plant-and-when) | live | plan | T134, T137 |
@@ -42,11 +42,28 @@ Status words: **live** (merged on main, a farmer can use it), **building**
 ### 1. My plots
 
 **The farmer** adds a plot: a name, how big they think it is (acres,
-guntas, cents, hectares or m²), and its boundary, by tapping the corners
-on a satellite map, by walking to each corner and tapping "add my
-position", or by pasting coordinates. To draw, they type their village
-or town and the map flies there; zoomed out, a tap zooms in rather than
-dropping a corner far from where they meant.
+guntas, cents, hectares or m²), and its boundary. They draw it on a
+satellite map with the **pencil** (round the field with a finger; the
+line becomes a few corners), with **lines** (a tap on each corner) or
+with a **rectangle** (drag corner to corner, then turn it and stretch its
+length or width by its handles); or they walk to each corner and tap
+"add my position", or paste coordinates. Any corner can be dragged, and
+*Undo* steps back one change at a time. To draw, they type their village
+or town and the map flies there; zoomed out, a tap zooms in. While the
+pencil or rectangle is on, one finger draws and two fingers move the map
+(or *Move map* frees one finger to pan).
+
+**First run.** A farmer with no plots is walked through it in three or
+four short steps on the phone: find the village, draw the plot, name it
+(size optional), then say the crop or tap *Suggest for me* and see the
+sowing and harvest dates. Saving opens the plot's season work. Every
+step after the drawing can be skipped, and the guide itself too.
+
+**Areas.** On the *Season plan* tab the farmer can divide a plot into
+areas: cut it with a line drawn across it, or draw a shape (pencil or
+rectangle) over part of it. Each area gets its own crop and sowing date
+and becomes a zone of the plan as drawn; an area left without a crop
+stays unplanned. One area is the default.
 
 **The app** checks it before saving: a valid shape, the true area on the
 ground in every unit, whether it matches the size the farmer said (a big
@@ -54,11 +71,18 @@ miss usually means a wrong corner or the wrong unit), slivers and GPS
 jumps, poor GPS accuracy while walking, where it is (village, district,
 state) and overlaps with the farmer's other plots. The result is
 *verified*, *needs review* (warnings the farmer can accept) or *invalid*.
+A drawn boundary goes through the same check however it was drawn. Areas
+always cover the plot without overlapping or holes (a shape drawn
+inside an area cuts the rest of it in two), and the plan check checks
+them again as zones.
 
 **Behind it:** `apps/farm/geo` (geodesic area, shape checks),
-`apps/farm/farm` (verifier, store), `apps/farm/nominatim` (place). Web:
-`editor.tsx`, `map.tsx`, `report.tsx`. Details:
-[PRODUCT.md, first feature](PRODUCT.md#first-feature-my-land).
+`apps/farm/farm` (verifier, store), `apps/farm/nominatim` (place),
+`agro` (plan check). Web: `editor.tsx`, `sketch.ts` (drawing tools and
+undo), `draw.ts` (simplifying a stroke, the rectangle, cutting and
+clipping areas), `map.tsx`, `report.tsx`, `areas.tsx`, `firstrun.tsx`.
+Details: [PRODUCT.md, first feature](PRODUCT.md#first-feature-my-land),
+[CYCLES.md, onboarding](CYCLES.md#onboarding-t146).
 
 ### 2. The land and its surroundings
 
@@ -118,7 +142,7 @@ POWER sunlight; tool `get_sun`. Web: *Sun and seasons* tab
 
 **The farmer** picks one crop or a mix ("60% cotton, 40% green gram",
 "4 rows soybean : 1 row maize"), and the app cuts the plot into strips to
-scale, with row and plant spacing, plant counts and seed needed. The plan
+scale (or uses the areas the farmer drew, feature 1), with row and plant spacing, plant counts and seed needed. The plan
 check warns before it costs a season: sowing outside the window, a
 thirsty crop on rain alone, a crop that rots in waterlogged clay, spacing
 out of range.

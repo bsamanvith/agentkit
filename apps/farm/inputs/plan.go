@@ -451,12 +451,14 @@ func addCaution(cs []string, c ...string) []string {
 	return cs
 }
 
-// dose adds qty (the product's unit, per hectare or per plant) of a
-// product to task t and to the shopping needs.
-func (x *fieldCtx) dose(t *Task, p Product, per float64, note string, refs []Ref, dflt bool) {
+// dose adds per (the product's unit, per hectare, or per plant when
+// perPlant is set on a crop fed per plant) of a product to task t and to
+// the shopping needs. A value the source gives per hectare stays per
+// hectare on a tree.
+func (x *fieldCtx) dose(t *Task, p Product, per float64, perPlant bool, note string, refs []Ref, dflt bool) {
 	total := per * x.ha
 	d := Dose{Product: p.ID, Name: p.Name, Synthetic: p.Synthetic, Unit: p.Unit, Note: note}
-	if x.perPlant {
+	if perPlant && x.perPlant {
 		total = per * x.plants
 		d.PerPlant = round2(per)
 		d.PerAcre = round2(per * x.plants / x.ha / AcresPerHectare)
@@ -510,7 +512,7 @@ func (x *fieldCtx) seed(cd Crop, dflt bool) error {
 			t.Refs = addRef(t.Refs, st.Ref)
 			continue
 		}
-		x.dose(t, p, st.PerKgSeed*seedKg, note, []Ref{st.Ref}, false)
+		x.dose(t, p, st.PerKgSeed*seedKg, false, note, []Ref{st.Ref}, false)
 	}
 	return nil
 }
@@ -589,7 +591,7 @@ func (x *fieldCtx) nutrition(cd Crop, dflt bool) error {
 		t.Cautions = addCaution(t.Cautions, CautionFeed)
 		if gypsum {
 			g := x.b.products["gypsum"]
-			x.dose(t, g, n.S/(g.S/100)*scale, fmt.Sprintf("for %g of sulphur", n.S), []Ref{n.Ref}, d)
+			x.dose(t, g, n.S/(g.S/100)*scale, x.perPlant, fmt.Sprintf("for %g of sulphur", n.S), []Ref{n.Ref}, d)
 		}
 		if x.method != Conventional {
 			continue
@@ -607,22 +609,22 @@ func (x *fieldCtx) nutrition(cd Crop, dflt bool) error {
 				rest = pp - kg*p.P/100
 			}
 			if kg > 0 {
-				x.dose(t, p, kg*scale, fmt.Sprintf("for %.4g of P2O5", kg*p.P/100), []Ref{n.Ref}, d)
+				x.dose(t, p, kg*scale, x.perPlant, fmt.Sprintf("for %.4g of P2O5", kg*p.P/100), []Ref{n.Ref}, d)
 				given += kg * p.N / 100
 			}
 			if rest > 0 {
 				ssp := x.b.products["ssp"]
-				x.dose(t, ssp, rest/(ssp.P/100)*scale, fmt.Sprintf("for %.4g of P2O5", rest), []Ref{n.Ref}, d)
+				x.dose(t, ssp, rest/(ssp.P/100)*scale, x.perPlant, fmt.Sprintf("for %.4g of P2O5", rest), []Ref{n.Ref}, d)
 			}
 		}
 		if nn := due - given; nn > 1e-9 {
 			p := x.b.products["urea"]
-			x.dose(t, p, nn/(p.N/100)*scale, fmt.Sprintf("for %.4g of N", nn), []Ref{n.Ref}, d)
+			x.dose(t, p, nn/(p.N/100)*scale, x.perPlant, fmt.Sprintf("for %.4g of N", nn), []Ref{n.Ref}, d)
 			given += nn
 		}
 		if kk > 0 {
 			p := x.b.products["mop"]
-			x.dose(t, p, kk/(p.K/100)*scale, fmt.Sprintf("for %.4g of K2O", kk), []Ref{n.Ref}, d)
+			x.dose(t, p, kk/(p.K/100)*scale, x.perPlant, fmt.Sprintf("for %.4g of K2O", kk), []Ref{n.Ref}, d)
 		}
 	}
 	return nil
@@ -665,7 +667,7 @@ func (x *fieldCtx) uses(cd Crop, dflt bool) error {
 		if !day.Before(x.sow) {
 			t.Cautions = addCaution(t.Cautions, CautionFeed) // rows to feed beside, from the sowing on
 		}
-		x.dose(t, p, u.Qty*factor(cmpOr(u.Unit, p.Unit), p.Unit), u.Note, []Ref{u.Ref}, d)
+		x.dose(t, p, u.Qty*factor(cmpOr(u.Unit, p.Unit), p.Unit), x.perPlant, u.Note, []Ref{u.Ref}, d)
 	}
 	return nil
 }
@@ -685,7 +687,7 @@ func (x *fieldCtx) jeevamrutham() {
 		t.Cautions = addCaution(t.Cautions, j.Note)
 		for _, in := range j.Batch {
 			p := x.b.products[in.Product]
-			x.dose(t, p, in.Qty*acres/x.ha, "per batch of 200 litres", []Ref{j.Ref}, false)
+			x.dose(t, p, in.Qty*acres/x.ha, false, "per batch of 200 litres", []Ref{j.Ref}, false)
 		}
 	}
 }
@@ -747,7 +749,7 @@ func (x *fieldCtx) protect(cd Crop) error {
 			if err != nil {
 				return err
 			}
-			w.Prevent = append(w.Prevent, fmt.Sprintf("%s: %g per ha. %s", p.Name, pv.Qty, pv.Note))
+			w.Prevent = append(w.Prevent, fmt.Sprintf("%s: %g per %s. %s", p.Name, pv.Qty, cmpOr(pv.Per, "ha"), pv.Note))
 			if !ok {
 				continue
 			}
@@ -756,7 +758,7 @@ func (x *fieldCtx) protect(cd Crop) error {
 			if pest := strings.ToLower(pr.Name); !slices.Contains(x.pests[key], pest) {
 				x.pests[key] = append(x.pests[key], pest)
 			}
-			x.dose(t, p, pv.Qty, strings.TrimSpace("Against "+strings.ToLower(pr.Name)+". "+pv.Note), []Ref{pv.Ref}, false)
+			x.dose(t, p, pv.Qty, pv.Per == "tree", strings.TrimSpace("Against "+strings.ToLower(pr.Name)+". "+pv.Note), []Ref{pv.Ref}, false)
 		}
 		routes := []struct {
 			route string
@@ -827,7 +829,7 @@ func (x *fieldCtx) schedule(pr Problem, r Remedy, p Product) {
 		t.Refs = addRef(addRef(t.Refs, r.Ref), p.Ref)
 		return
 	}
-	x.dose(t, p, qty/x.ha, r.Text, []Ref{r.Ref}, false)
+	x.dose(t, p, qty/x.ha, false, r.Text, []Ref{r.Ref}, false)
 	t.Doses[len(t.Doses)-1].Rate = rate(r, p.Unit)
 }
 

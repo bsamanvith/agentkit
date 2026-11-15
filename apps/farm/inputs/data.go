@@ -139,8 +139,9 @@ type Remedy struct {
 	Ref  Ref    `json:"ref"`
 }
 
-// Prevent is a preventive measure: a product (Qty per hectare, applied
-// at At or DAS) or only a Text.
+// Prevent is a preventive measure: a product (Qty per Per, "ha" (the
+// default) or "tree" on a crop fed per plant, applied at At or DAS) or
+// only a Text.
 type Prevent struct {
 	Product string  `json:"product,omitempty"`
 	Qty     float64 `json:"qty,omitempty"`
@@ -354,6 +355,19 @@ func (b *Book) check() error {
 			}
 		}
 	}
+	// The fertilisers nutrition() turns doses into, by the nutrient it
+	// divides by.
+	for id, content := range map[string]func(Product) float64{
+		"urea":   func(p Product) float64 { return p.N },
+		"dap":    func(p Product) float64 { return p.P },
+		"ssp":    func(p Product) float64 { return p.P },
+		"mop":    func(p Product) float64 { return p.K },
+		"gypsum": func(p Product) float64 { return p.S },
+	} {
+		if p, ok := b.products[id]; !ok || !(content(p) > 0) || p.N < 0 {
+			bad("product %s: the fertiliser plans are made with it: it must be there, with its nutrient above 0", id)
+		}
+	}
 	product := func(what, id string) (Product, bool) {
 		p, ok := b.products[id]
 		if !ok {
@@ -452,6 +466,9 @@ func (b *Book) check() error {
 				ref(pw+" prevent", p.Ref)
 				if p.Product != "" {
 					route(pw+" prevent", RouteBoth, p.Product)
+					if !slices.Contains([]string{"", "ha", "tree"}, p.Per) || (p.Per == "tree" && !c.PerPlant) {
+						bad("%s prevent %s: per %q: want ha, or tree on a crop fed per plant", pw, p.Product, p.Per)
+					}
 				}
 				if n := isBanned(p.Text + " " + p.Note); n != "" {
 					bad("%s: prevention names %q, banned or restricted in India", pw, n)

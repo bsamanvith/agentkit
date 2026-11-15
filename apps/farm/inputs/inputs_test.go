@@ -397,6 +397,23 @@ func TestLoadRefuses(t *testing.T) {
 		"splits off 100 %": func(m map[string]any) {
 			crop(m, "wheat")["splits"].([]any)[1].(map[string]any)["n"] = 40.0
 		},
+		"DAP with no phosphate": func(m map[string]any) {
+			for _, p := range m["products"].([]any) {
+				if p := p.(map[string]any); p["id"] == "dap" {
+					delete(p, "p")
+				}
+			}
+		},
+		"no MOP": func(m map[string]any) {
+			m["products"] = slices.DeleteFunc(m["products"].([]any), func(p any) bool { return p.(map[string]any)["id"] == "mop" })
+		},
+		"a trap per acre": func(m map[string]any) {
+			for _, pr := range crop(m, "mango")["protect"].([]any) {
+				for _, pv := range pr.(map[string]any)["prevent"].([]any) {
+					pv.(map[string]any)["per"] = "acre"
+				}
+			}
+		},
 		"unknown calendar key": func(m map[string]any) {
 			crop(m, "groundnut")["splits"].([]any)[0].(map[string]any)["at"] = "no-such-task"
 		},
@@ -786,4 +803,51 @@ func TestNutrientsAddUp(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestPerHectareOnATree: a tree is fed per plant, but what the source
+// gives per hectare stays per hectare on it (a trap, a seed treatment,
+// jeevamrutham, a spray); what it gives per tree is for every tree.
+func TestPerHectareOnATree(t *testing.T) {
+	t.Parallel()
+	l := lib(t)
+	mango, err := l.Crop("mango")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plants := 1e8 / (mango.RowCM * mango.PlantCM)
+	for per, want := range map[string]float64{"ha": 25, "": 25, "tree": 25 * plants} {
+		m := readData(t)
+		for _, c := range m["crops"].([]any) {
+			c := c.(map[string]any)
+			if c["crop"] != "mango" {
+				continue
+			}
+			for _, pr := range c["protect"].([]any) {
+				for _, pv := range pr.(map[string]any)["prevent"].([]any) {
+					pv := pv.(map[string]any)
+					if pv["product"] == "methyl_eugenol_trap" {
+						delete(pv, "at")
+						pv["das"], pv["per"] = 60, per
+					}
+				}
+			}
+		}
+		b, err := inputs.Load(l, marshal(t, m), readFile(t, "data/banned.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		p := plan(t, b, inputs.Conventional, inputs.Irrigated, inputs.Field{Crop: "mango", Hectares: 1, Sow: "2026-06-15"})
+		got := -1.0
+		for _, k := range p.Schedule {
+			for _, d := range k.Doses {
+				if d.Product == "methyl_eugenol_trap" {
+					got = d.Qty
+				}
+			}
+		}
+		if math.Abs(got-want) > 0.01*want {
+			t.Errorf("per %q: %v traps on a hectare of mango, want %v", per, got, want)
+		}
+	}
 }

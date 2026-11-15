@@ -2,6 +2,7 @@ package watch_test
 
 import (
 	"context"
+	"github.com/bsamanvith/agentkit/pkg/clock/clocktest"
 	"path/filepath"
 	"testing"
 	"time"
@@ -30,7 +31,10 @@ func TestNoticesBecomeMessages(t *testing.T) {
 		}
 	}
 	lane := notifytest.NewFake("telegram", notify.AddrTelegram)
-	d, err := notify.NewDispatcher(s, notify.Guard(lane, s))
+	// A fixed clock: a notice expires, so the machine's clock would fail
+	// this test a few days after the date above.
+	fc := clocktest.NewFake(now)
+	d, err := notify.NewDispatcher(s, notify.Guard(lane, s, notify.WithGuardClock(fc)), notify.WithClock(fc))
 	if err != nil {
 		t.Fatal(err)
 	}

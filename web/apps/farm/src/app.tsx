@@ -52,13 +52,14 @@ const Care = lazy(() => import("./alerts").then((m) => ({ default: m.Care })));
 const AlertsPage = lazy(() => import("./alerts").then((m) => ({ default: m.AlertsPage })));
 const MessagesPage = lazy(() => import("./messages").then((m) => ({ default: m.MessagesPage })));
 const AccountPage = lazy(() => import("./account").then((m) => ({ default: m.AccountPage })));
+const FirstRun = lazy(() => import("./firstrun").then((m) => ({ default: m.FirstRun })));
 
 const loading = <p className="text-sm text-muted-foreground">Loading…</p>;
 
 type View =
   | { kind: "home" }
   | { kind: "edit"; farm?: Farm }
-  | { kind: "farm"; id: string }
+  | { kind: "farm"; id: string; tab?: Tab }
   | { kind: "group"; id: string }
   | { kind: "group-form"; group?: Group }
   | { kind: "alerts" }
@@ -207,6 +208,12 @@ export function App({ account }: { account?: SignedIn } = {}) {
                 <Overview
                   farms={farms}
                   groups={groups}
+                  config={config}
+                  onDone={(f, tab) => {
+                    setFarms([f]);
+                    // HANDOVER(T145): the first run ends on the plot's season (firstrun.tsx).
+                    go({ kind: "farm", id: f.id, tab });
+                  }}
                   onOpen={(id) => go({ kind: "farm", id })}
                   onOpenGroup={(id) => go({ kind: "group", id })}
                   onAdd={() => go({ kind: "edit" })}
@@ -285,6 +292,7 @@ export function App({ account }: { account?: SignedIn } = {}) {
                 <FarmDetail
                   key={current.id}
                   farm={current}
+                  tab={view.tab}
                   others={farms ?? []}
                   group={groups.find((g) => g.plots.includes(current.id))}
                   planner={config?.planner ?? false}
@@ -496,6 +504,8 @@ function Stat({ label, value, icon }: { label: string; value: string; icon: Reac
 function Overview({
   farms,
   groups,
+  config,
+  onDone,
   onOpen,
   onOpenGroup,
   onAdd,
@@ -503,6 +513,8 @@ function Overview({
 }: {
   farms?: Farm[];
   groups: Group[];
+  config?: Config;
+  onDone: (f: Farm, tab?: Tab) => void;
   onOpen: (id: string) => void;
   onOpenGroup: (id: string) => void;
   onAdd: () => void;
@@ -510,21 +522,7 @@ function Overview({
 }) {
   if (!farms) return loading;
   if (farms.length === 0)
-    return (
-      <div className="flex flex-col items-center gap-4 rounded-2xl border bg-ak-surface px-6 py-16 text-center shadow-sm">
-        <span className="flex size-14 items-center justify-center rounded-2xl bg-[#3f6212]/10">
-          <Sprout className="size-8 text-ak-ok" aria-hidden="true" />
-        </span>
-        <h1 className="text-2xl font-semibold">Add your first plot</h1>
-        <p className="max-w-sm text-sm text-muted-foreground">
-          Draw its corners on the satellite map, walk around it with your phone&apos;s GPS, or type the coordinates. We
-          measure it and check that it looks right.
-        </p>
-        <Button onClick={onAdd}>
-          <Plus /> Add plot
-        </Button>
-      </div>
-    );
+    return <FirstRun planner={!!config?.planner} roadmap={!!config?.roadmap} onAdd={onAdd} onDone={onDone} />;
   const grouped = new Set(groups.flatMap((g) => g.plots));
   const loose = farms.filter((f) => !grouped.has(f.id));
   return (
@@ -668,6 +666,7 @@ type Tab = "map" | "roadmap" | "care" | "land" | "sun" | "plan" | "prices";
 
 function FarmDetail({
   farm,
+  tab: initial,
   others,
   group,
   planner,
@@ -682,6 +681,7 @@ function FarmDetail({
   onDeleted,
 }: {
   farm: Farm;
+  tab?: Tab;
   others: Farm[];
   group?: Group;
   planner: boolean;
@@ -697,7 +697,7 @@ function FarmDetail({
 }) {
   const [confirm, setConfirm] = useState(false);
   const [zones, setZones] = useState<ZoneShape[]>([]);
-  const [tab, setTab] = useState<Tab>("map");
+  const [tab, setTab] = useState<Tab>(initial ?? "map");
   const [error, setError] = useState("");
   const outlines = others
     .filter((o) => o.id !== farm.id)

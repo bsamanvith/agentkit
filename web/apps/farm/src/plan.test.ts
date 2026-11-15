@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { addPart, colors, formatDate, partsOf, scoreTone, shapes } from "./plan";
+import {
+  addPart,
+  areaParts,
+  areaPlan,
+  areasOf,
+  colors,
+  fillArea,
+  formatDate,
+  partsOf,
+  scoreTone,
+  shapes,
+} from "./plan";
+import { cutAreas, plane } from "./draw";
 import type { Crop, Plan, PlanReport } from "./types";
 
 const crop = (id: string, name: string): Crop => ({
@@ -80,5 +92,59 @@ describe("addPart", () => {
   it("replaces a crop already in the plan rather than adding it twice", () => {
     const ps = addPart([{ crop: "bajra", share: 1, sow }], { crop: "bajra", share: 1, sow: "2027-07-01" });
     expect(ps).toEqual([{ crop: "bajra", share: 1, sow: "2027-07-01" }]);
+  });
+});
+
+describe("areas as the plan's zones", () => {
+  const pl = plane({ lat: 16.29, lng: 80.45 });
+  const plot = [
+    pl.point({ x: 0, y: 0 }),
+    pl.point({ x: 100, y: 0 }),
+    pl.point({ x: 100, y: 100 }),
+    pl.point({ x: 0, y: 100 }),
+  ];
+  const areas = cutAreas([plot], pl.point({ x: 25, y: -5 }), pl.point({ x: 25, y: 105 })) ?? [];
+
+  it("gives each area a part with its share of the plot, the first area's crop for a new one", () => {
+    const parts = areaParts(areas, [{ crop: "cotton", share: 1, sow: "2027-06-10" }], plot);
+    expect(parts.map((p) => p.share).sort()).toEqual([0.25, 0.75]);
+    expect(parts.every((p) => p.crop === "cotton" && p.sow === "2027-06-10")).toBe(true);
+  });
+
+  it("makes a zone of each area with a crop and a date, its ring the area, and leaves the rest unplanned", () => {
+    const p = areaPlan(areas, [
+      { crop: "cotton", share: 0.25, sow: "2027-06-10" },
+      { crop: "", share: 0.75, sow: "" },
+    ]);
+    expect(p.zones).toHaveLength(1);
+    expect(p.zones[0]?.ring).toEqual(areas[0]);
+    expect(p.zones[0]?.row_bearing).toBe(0);
+  });
+
+  it("puts a suggested crop in the first area without one, else the last", () => {
+    const ps = [
+      { crop: "cotton", share: 0.5, sow: "2027-06-10" },
+      { crop: "", share: 0.5, sow: "" },
+    ];
+    const once = fillArea(ps, { crop: "soybean", share: 1, sow: "2027-06-20" });
+    expect(once.map((p) => p.crop)).toEqual(["cotton", "soybean"]);
+    expect(once[1]?.share).toBe(0.5);
+    expect(fillArea(once, { crop: "green_gram", share: 1, sow: "2027-06-21" }).map((p) => p.crop)).toEqual([
+      "cotton",
+      "green_gram",
+    ]);
+  });
+
+  it("reads a saved plan's zones back as areas only when they cover the plot", () => {
+    const whole = areaPlan(areas, [
+      { crop: "cotton", share: 0.25, sow: "2027-06-10" },
+      { crop: "soybean", share: 0.75, sow: "2027-06-10" },
+    ]);
+    expect(areasOf(whole, plot)).toHaveLength(2);
+    // Strips that leave part of the plot unplanned are not areas.
+    const strip = whole.zones[0];
+    if (!strip) throw new Error("no zone");
+    expect(areasOf({ zones: [strip, strip] }, plot)).toBeUndefined();
+    expect(areasOf(undefined, plot)).toBeUndefined();
   });
 });

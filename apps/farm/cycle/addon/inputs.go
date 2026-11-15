@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"strconv"
 	"strings"
 	"time"
 
@@ -352,41 +351,8 @@ func Detail(t inputs.Task) string {
 	return strings.TrimSpace(b.String())
 }
 
-// Amount says a quantity as it is bought: grams and millilitres from a
-// thousand on in kilograms and litres, whole numbers from ten on, one
-// decimal below.
-func Amount(v float64, unit string) string {
-	switch {
-	case unit == "g" && v >= 1000:
-		v, unit = v/1000, "kg"
-	case unit == "ml" && v >= 1000:
-		v, unit = v/1000, "l"
-	}
-	var n string
-	if v >= 10 {
-		n = strconv.FormatFloat(math.Round(v), 'f', -1, 64)
-	} else {
-		n = strconv.FormatFloat(math.Round(v*10)/10, 'f', -1, 64)
-	}
-	switch unit {
-	case "piece":
-		unit = "pieces"
-		if n == "1" {
-			unit = "piece"
-		}
-	case "t":
-		unit = "tonnes"
-		if n == "1" {
-			unit = "tonne"
-		}
-	case "l":
-		unit = "litres"
-		if n == "1" {
-			unit = "litre"
-		}
-	}
-	return n + " " + unit
-}
+// Amount says a quantity as everything else says it: inputs.Amount.
+func Amount(v float64, unit string) string { return inputs.Amount(v, unit) }
 
 // Label names the addon for the farmer, in a note when it cannot answer.
 func (a *Inputs) Label() string { return "what to buy and the spray schedule" }

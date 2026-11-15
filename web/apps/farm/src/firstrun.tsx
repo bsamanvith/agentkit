@@ -249,7 +249,9 @@ function CropStep({
           </dl>
           {pick.window && (
             <p className="text-sm text-muted-foreground">
-              A good time to sow: {formatDate(pick.window.from)} to {formatDate(pick.window.to)}.
+              {pick.window.from === pick.window.to
+                ? `Sow close to ${formatDate(pick.window.from)}: the weeks either side suit it less.`
+                : `A good time to sow: ${formatDate(pick.window.from)} to ${formatDate(pick.window.to)}.`}
             </p>
           )}
           {!pick.window && pick.next && (

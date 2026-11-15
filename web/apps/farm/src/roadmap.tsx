@@ -105,7 +105,9 @@ export function Roadmap({ farm }: { farm: Farm }) {
   // Now: what is open up to two weeks ahead (overdue included), and what
   // was closed in the last week, so a tick stays in sight.
   const recent = addDays(view.today, -7);
-  const shown = view.tasks.filter((t) => all || (t.state === "open" ? t.date <= soon : (t.day ?? t.date) >= recent));
+  const shown = view.tasks.filter(
+    (t) => all || (t.state === "open" ? !t.passed && t.date <= soon : (t.day ?? t.date) >= recent),
+  );
   const crop = (t: Task) => view.zones.find((z) => z.zone === t.zone)?.crop_name;
   const phases = (["prepare", "sow", "grow", "harvest"] as const).filter((p) => shown.some((t) => t.phase === p));
   return (
@@ -211,7 +213,7 @@ function TaskRow({
         <div className="min-w-0">
           <p className={closed ? "text-sm text-muted-foreground line-through" : "text-sm font-medium"}>{t.title}</p>
           <p className="text-xs text-muted-foreground">
-            {dayLabel(t.date)}
+            {closed && t.day && t.day !== t.date ? `planned ${dayLabel(t.date)}` : dayLabel(t.date)}
             {crop ? ` · ${crop}` : ""}
             {` · ${kindNames[t.kind] ?? t.kind}`}
             {t.source === "farmer" ? " · my task" : ""}
@@ -246,6 +248,9 @@ function TaskRow({
           )
         )}
       </div>
+      {t.passed && !form && (
+        <p className="text-xs text-muted-foreground">Before the sowing: its time has passed. Tick it if you did it.</p>
+      )}
       {t.overdue && !form && (
         <p className="flex items-center gap-1 text-xs text-ak-warn">
           <AlertTriangle className="size-3.5" aria-hidden="true" /> Past its date: did you do it?

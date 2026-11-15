@@ -607,3 +607,104 @@ func TestRejects(t *testing.T) {
 		}
 	}
 }
+
+// The crop calendar is read on every plot, organic ones too (the season's
+// work where no organic feeding replaces a task, the weather and care
+// page, the weekly notice): it names no synthetic product, only what to
+// feed and how; the inputs plan says with what.
+func TestCalendarNamesNoSyntheticProduct(t *testing.T) {
+	t.Parallel()
+	l, b := book(t)
+	var names []string
+	for _, p := range b.Products() {
+		if p.Synthetic {
+			n := p.Name
+			if i := strings.Index(n, " ("); i > 0 {
+				n = n[:i]
+			}
+			names = append(names, strings.ToLower(n))
+		}
+	}
+	for _, c := range l.Crops() {
+		for _, irrigated := range []bool{false, true} {
+			z, err := calendar.ForZone(l, 0, agro.Zone{Crop: c.ID, Sow: "2026-06-20"}, irrigated)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, k := range z.Tasks {
+				text := strings.ToLower(k.Title + " " + k.Detail)
+				for _, n := range names {
+					if strings.Contains(text, n) {
+						t.Errorf("%s calendar task %s names %q: %s", c.ID, k.Key, n, text)
+					}
+				}
+			}
+		}
+	}
+}
+
+// A feeding says what it feeds and with what, in the same numbers as its
+// doses: "First nitrogen feed: urea, 21.7 kg"; never "Feed the crop".
+func TestFeedTitlesSayWhatAndWhy(t *testing.T) {
+	t.Parallel()
+	_, b := book(t)
+	p := plan(t, b, inputs.Conventional, inputs.Rainfed, inputs.Field{Crop: "finger_millet", Hectares: 1, Sow: "2026-06-20"})
+	var titles []string
+	for _, k := range p.Schedule {
+		if k.Kind == "feed" && k.Key != "sow" && k.Key != "plough" {
+			titles = append(titles, k.Title)
+			if len(k.Doses) == 1 && !strings.HasSuffix(k.Title, ": urea, "+inputs.Amount(k.Doses[0].Qty, k.Doses[0].Unit)) {
+				t.Errorf("title %q does not say the dose %v as the schedule does", k.Title, k.Doses[0])
+			}
+		}
+	}
+	if len(titles) < 2 || !strings.HasPrefix(titles[0], "First nitrogen feed: urea, ") || !strings.HasPrefix(titles[1], "Second nitrogen feed: urea, ") {
+		t.Errorf("titles %q; want the first and second nitrogen feeds of urea", titles)
+	}
+	og := plan(t, b, inputs.Organic, inputs.Rainfed, inputs.Field{Crop: "groundnut", Hectares: 1, Sow: "2026-06-20"})
+	for _, k := range slices.Concat(p.Schedule, og.Schedule) {
+		if k.Title == "" || strings.HasPrefix(k.Title, "Feed the crop") || k.Title == "Set up protection" {
+			t.Errorf("%s: title %q says nothing", k.Key, k.Title)
+		}
+	}
+	if !slices.ContainsFunc(og.Schedule, func(k inputs.Task) bool { return strings.HasPrefix(k.Title, "Sulphur feed: gypsum, ") }) {
+		t.Errorf("organic groundnut: no sulphur feed of gypsum among %v", og.Schedule)
+	}
+}
+
+// One number: the schedule, the shopping list's need and the titles say a
+// quantity the same way; what to buy is the need rounded up, never down.
+func TestOneNumberForAQuantity(t *testing.T) {
+	t.Parallel()
+	_, b := book(t)
+	p := plan(t, b, inputs.Conventional, inputs.Rainfed, inputs.Field{Crop: "finger_millet", Hectares: 1.03, Sow: "2026-06-20"})
+	for _, it := range slices.Concat(p.BuyBefore, p.BuyLater) {
+		if it.Qty < it.Need {
+			t.Errorf("%s: buy %v, under the %v needed", it.Name, it.Qty, it.Need)
+		}
+		if it.Product != "seed:finger_millet" {
+			continue
+		}
+		var dose float64
+		for _, k := range p.Schedule {
+			for _, d := range k.Doses {
+				if d.Product == "seed" {
+					dose += d.Qty
+				}
+			}
+		}
+		if inputs.Amount(dose, it.Unit) != inputs.Amount(it.Need, it.Unit) || inputs.Amount(dose, it.Unit) == inputs.Amount(it.Qty, it.Unit) {
+			t.Errorf("seed: schedule %s, need %s, buy %s; want the schedule to say the need, the buy rounded up past it",
+				inputs.Amount(dose, it.Unit), inputs.Amount(it.Need, it.Unit), inputs.Amount(it.Qty, it.Unit))
+		}
+	}
+	for _, c := range []struct {
+		v    float64
+		unit string
+		want string
+	}{{10.3, "kg", "10.3 kg"}, {21.74, "kg", "21.7 kg"}, {146.7, "kg", "147 kg"}, {11, "kg", "11 kg"}, {1, "t", "1 tonne"}} {
+		if got := inputs.Amount(c.v, c.unit); got != c.want {
+			t.Errorf("Amount(%v %s) = %q; want %q", c.v, c.unit, got, c.want)
+		}
+	}
+}

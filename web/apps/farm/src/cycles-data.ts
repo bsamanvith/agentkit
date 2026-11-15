@@ -53,6 +53,8 @@ export interface Position {
   own?: Cycle;
   planned?: Cycle;
   checks?: CycleCheck[];
+  /** Nothing suits sowing soon: the land rests until the suggestion's season. */
+  rest?: Note;
   /** What other features computed from the planned cycle, by name (a shopping list, sprays, sell timing). */
   addons?: Record<string, unknown>;
 }
@@ -63,6 +65,8 @@ export interface Line {
   future: boolean;
   cycles: Position[];
   notes?: Note[];
+  /** The plot's water and soil were never given: the suggestions assume rain only. */
+  assumed?: boolean;
 }
 
 export interface Change {
@@ -128,6 +132,9 @@ export interface WeekTask {
   date: string;
   state: string;
   overdue?: boolean;
+  passed?: boolean;
+  /** Dated before today, not overdue: to do now, before the sowing. */
+  late?: boolean;
 }
 
 // dayLabel and addDays are the roadmap's (roadmap-data.ts), repeated so
@@ -136,9 +143,12 @@ export interface WeekTask {
 export function dayLabel(day: string): string {
   const d = new Date(day + "T00:00:00");
   if (Number.isNaN(d.getTime())) return day;
+  const now = new Date();
   // A day in another year says its year: a suggestion can be months ahead.
-  const year = d.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined;
-  return d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year });
+  const year = d.getFullYear() !== now.getFullYear() ? "numeric" : undefined;
+  // The weekday helps only for the next fortnight or so.
+  const near = Math.abs(d.getTime() - now.getTime()) < 15 * 864e5;
+  return d.toLocaleDateString("en-IN", { weekday: near ? "short" : undefined, day: "numeric", month: "short", year });
 }
 
 export function addDays(day: string, n: number): string {

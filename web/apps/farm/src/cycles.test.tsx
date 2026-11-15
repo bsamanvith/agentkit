@@ -170,6 +170,8 @@ describe("Cycles", () => {
     await userEvent.click(buy);
     expect(screen.getByText("DAP")).toBeInTheDocument();
     expect(screen.getByText("2 × 50 kg bag")).toBeInTheDocument();
+    // One number: the need as the schedule says it, the buy rounded up and said so.
+    expect(screen.getByText(/87 kg needed/)).toBeInTheDocument();
     expect(screen.getByText("Gypsum")).toBeInTheDocument();
     expect(screen.getByText(/Only if you see/)).toBeInTheDocument();
     expect(screen.getByText(starter)).toBeInTheDocument();
@@ -183,7 +185,7 @@ describe("Cycles", () => {
     await userEvent.click(screen.getByRole("button", { name: /When to sell/ }));
     expect(screen.getByText(/Hold until January: about \+6% after storage loss and cost/)).toBeInTheDocument();
     // Organic recomputes the line; this one has no timing advice: a line, not a section.
-    await userEvent.click(screen.getByRole("radio", { name: "organic" }));
+    await userEvent.click(screen.getByRole("radio", { name: "Organic" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: /When to sell/ })).not.toBeInTheDocument());
     const put = fetch.mock.calls.find((c) => (c as unknown as Call)[1].method === "PUT") as unknown as Call;
     expect(JSON.parse(String(put[1].body))).toEqual({ method: "organic" });
@@ -253,7 +255,7 @@ describe("Cycles", () => {
     };
     const fetch = server((_, init) => json(init.method === "DELETE" ? line() : l));
     render(<Cycles farm={farm} />);
-    await userEvent.click(await screen.findByRole("button", { name: /Plan the next 2 cycles/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /What comes after: the next 2 crops/ }));
     expect(screen.getByRole("heading", { name: "Next cycle" })).toBeInTheDocument();
     expect(screen.getAllByText("Groundnut").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Chickpea").length).toBeGreaterThan(0);
@@ -271,12 +273,104 @@ describe("Cycles", () => {
       return json(line());
     });
     render(<Cycles farm={farm} />);
-    await userEvent.click(await screen.findByRole("radio", { name: "organic" }));
+    await userEvent.click(await screen.findByRole("radio", { name: "Organic" }));
     expect(await screen.findByRole("alert")).toHaveTextContent('method "x"');
     const put = fetch.mock.calls.find((c) => (c as unknown as Call)[1].method === "PUT") as unknown as Call;
     expect(JSON.parse(String(put[1].body))).toEqual({ method: "organic" });
-    await userEvent.click(screen.getByRole("checkbox", { name: /Plan the cycles after this one/ }));
-    await waitFor(() => expect(screen.queryByRole("button", { name: /Plan the next/ })).not.toBeInTheDocument());
+    // Planning the later crops is under "What comes after", out of the way.
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /What comes after/ }));
+    await userEvent.click(screen.getByRole("checkbox", { name: /Plan the crops after this one/ }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: /What comes after/ })).not.toBeInTheDocument());
+    // Off, the box stays in sight to turn them on again.
+    expect(screen.getByRole("checkbox", { name: /Plan the crops after this one/ })).not.toBeChecked();
+  });
+});
+
+describe("Cycles, what the farmer sees first", () => {
+  it("says plainly when nothing suits sowing soon, what to do meanwhile, and what comes next", async () => {
+    const l = line();
+    l.assumed = true;
+    l.cycles[0] = {
+      ...l.cycles[0]!,
+      rest: { id: "cycle.rest", message: "Nothing suits sowing on rainfed land before June." },
+      addons: addons("conventional", false),
+    };
+    server(() => json(l));
+    render(<Cycles farm={farm} />);
+    const rest = await screen.findByText("Nothing suits sowing on rainfed land before June.");
+    const card = rest.closest("section")!;
+    // First thing in the card: before the crop and its dates.
+    expect(card.textContent!.indexOf("Nothing suits")).toBeLessThan(card.textContent!.indexOf("What comes next"));
+    expect(screen.getByText(/The land rests/)).toBeInTheDocument();
+    expect(screen.getByText(/Treat the seed · from/)).toBeInTheDocument(); // the work before sowing
+    expect(screen.getByText(/Sow Black gram from/)).toBeInTheDocument();
+    expect(screen.getByText(/Assuming rain only, no irrigation/)).toBeInTheDocument();
+  });
+
+  it("sets the water and soil in one tap from the assumption, and suggests again", async () => {
+    const l = line();
+    l.assumed = true;
+    let saved = false;
+    const fetch = server((path, init) => {
+      if (path === "/api/soils") return json({ soils: [{ id: "red", name: "Red soil", signs: "" }] });
+      if (path.endsWith("/profile")) {
+        saved = true;
+        return json({ ...farm, profile: JSON.parse(String(init.body)) });
+      }
+      return json(saved ? line() : l);
+    });
+    const onFarm = vi.fn();
+    render(<Cycles farm={{ ...farm, profile: { previous_crop: "maize" } }} onFarm={onFarm} />);
+    await userEvent.click(await screen.findByRole("button", { name: /Change: water and soil/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Borewell" }));
+    await screen.findByRole("option", { name: "Red soil" });
+    await userEvent.selectOptions(screen.getByLabelText("Soil"), "red");
+    await userEvent.click(screen.getByRole("button", { name: /Save and suggest again/ }));
+    await waitFor(() => expect(onFarm).toHaveBeenCalled());
+    const put = fetch.mock.calls.find((c) => (c as unknown as Call)[0].endsWith("/profile")) as unknown as Call;
+    // What was there is kept; the water and soil are the farmer's.
+    expect(JSON.parse(String(put[1].body))).toEqual({
+      previous_crop: "maize",
+      soil: "red",
+      water: [{ kind: "borewell", reliable: true }],
+    });
+    // The line is asked again: with the water known, the assumption goes.
+    await waitFor(() => expect(screen.queryByText(/Assuming rain only/)).not.toBeInTheDocument());
+    expect(fetch.mock.calls.filter((c) => (c as unknown as Call)[0] === "/api/farms/farm_1/cycles").length).toBe(2);
+  });
+
+  it("once sown, drops what we would have suggested and the work whose time has passed", async () => {
+    const l = line();
+    const own = cycle("farmer", "finger_millet", "Finger millet", "2026-05-28", "2026-09-20");
+    own.sow_kind = "actual";
+    own.areas[0]!.sow_kind = "actual";
+    l.cycles[0] = { ...l.cycles[0]!, own, planned: own, addons: addons("conventional", false) };
+    l.cycles[0].suggested = cycle("suggested", "chilli", "Chilli", "2027-06-01", "2027-11-01");
+    server((path) => {
+      if (path.endsWith("/roadmap"))
+        return json({
+          farm: "farm_1",
+          today: "2026-06-01",
+          zones: [],
+          tasks: [
+            { id: "p", title: "Plough and spread manure", date: "2026-05-07", state: "open", passed: true },
+            { id: "g", title: "Fill the gaps", date: "2026-06-05", state: "open" },
+          ],
+          counts: {},
+        });
+      return json(l);
+    });
+    render(<Cycles farm={{ ...farm, plan: { zones: own.plan.zones } }} />);
+    expect(await screen.findByText("Fill the gaps")).toBeInTheDocument();
+    expect(screen.queryByText(/Plough/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/We would have suggested/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /I already sowed/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/^Sown /)).toBeInTheDocument();
+    // What was bought before sowing is behind the farmer: what is still to buy leads.
+    const buy = await screen.findByRole("button", { name: /What to buy/ });
+    expect(buy).toHaveTextContent("1 still to buy");
+    expect(buy).not.toHaveTextContent("before sowing");
   });
 });
 

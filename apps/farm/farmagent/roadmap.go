@@ -73,7 +73,7 @@ func RoadmapTools(s *work.Service) ([]tool.Tool, error) {
 			}
 			out := roadmapOut{Farm: r.Farm, Today: r.Today, Zones: r.Zones, Counts: r.Counts, Notes: r.Notes}
 			for _, t := range r.Tasks {
-				if in.All || t.Overdue || (t.State == work.Open && t.Date <= plusDays(r.Today, 14)) {
+				if in.All || t.Overdue || (t.State == work.Open && !t.Passed && t.Date <= plusDays(r.Today, 14)) {
 					out.Tasks = append(out.Tasks, t)
 				} else {
 					out.Hidden++

@@ -554,3 +554,70 @@ func TestTaskSources(t *testing.T) {
 		t.Errorf("failing source: %d tasks, notes %v, %v", len(r.Tasks), r.Notes, err)
 	}
 }
+
+// Once the sowing is recorded, the open work from before it has passed:
+// not overdue, not due, not counted open, and no record is made up for
+// it; the farmer may still say it was done. Work after the sowing still
+// falls due.
+func TestRecordedSowingPassesTheWorkBefore(t *testing.T) {
+	t.Parallel()
+	w := setup(t)
+	ctx := context.Background()
+	if p := task(t, w.roadmap(t), id("plough")); !p.Overdue || p.Passed {
+		t.Fatalf("before the sowing is recorded, plough = %+v; want overdue", p)
+	}
+	_, r := w.record(t, work.Event{ID: "e-sow", Task: id("sow"), Kind: work.Done, Day: plannedSow})
+	for _, key := range []string{"plough", "treat-seed"} {
+		if k := task(t, r, id(key)); !k.Passed || k.Overdue || k.State != work.Open || k.Day != "" {
+			t.Errorf("%s after the sowing = %+v; want passed, open, not overdue, no day", key, k)
+		}
+	}
+	for _, k := range r.Tasks {
+		if k.Passed && *k.DAS >= 0 {
+			t.Errorf("%s (day %d) passed; only work before the sowing passes", k.ID, *k.DAS)
+		}
+	}
+	if fill := task(t, r, id("fill-gaps")); fill.Passed || !fill.Overdue {
+		t.Errorf("fill-gaps after the sowing = %+v; want still overdue", fill)
+	}
+	open := 0
+	for _, k := range r.Tasks {
+		if k.State == work.Open && !k.Passed {
+			open++
+		}
+	}
+	if r.Counts.Passed != 2 || r.Counts.Open != open {
+		t.Errorf("counts %+v; want 2 passed and %d open", r.Counts, open)
+	}
+	due, err := w.work.Due(ctx, w.plot, time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range due {
+		if k.ID == id("plough") || k.ID == id("treat-seed") {
+			t.Errorf("due lists %s, passed by the sowing", k.ID)
+		}
+	}
+	_, r = w.record(t, work.Event{ID: "e-plough", Task: id("plough"), Kind: work.Done, Day: "2026-06-01"})
+	if p := task(t, r, id("plough")); p.State != work.Done || p.Passed {
+		t.Errorf("plough said done = %+v; want done", p)
+	}
+}
+
+// A plan made a week before its sowing: the land preparation dated three
+// weeks before is not overdue, it is still to do before the sowing; once
+// the sowing day is past and not recorded, it is.
+func TestWorkBeforeASowingAheadIsNotOverdue(t *testing.T) {
+	t.Parallel()
+	w := setup(t)
+	w.savePlan(t, addDays(now.Format(agro.DateLayout), 7))
+	r := w.roadmap(t)
+	plough := work.TaskID(0, "maize", addDays(now.Format(agro.DateLayout), 7), "plough")
+	if p := task(t, r, plough); p.Overdue || p.State != work.Open {
+		t.Errorf("plough before a sowing a week ahead = %+v; want open, not overdue", p)
+	}
+	w.clock.Advance(20 * 24 * time.Hour)
+	if p := task(t, w.roadmap(t), plough); !p.Overdue {
+		t.Errorf("plough after the sowing day passed unrecorded = %+v; want overdue", p)
+	}
+}

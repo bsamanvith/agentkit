@@ -124,8 +124,9 @@ func (s *Service) build(ctx context.Context, f farm.Farm, evs []Event) (Roadmap,
 	return r, err
 }
 
-// Due returns a plot's open tasks dated from from to to, both included;
-// none for a plot with no plan.
+// Due returns a plot's open tasks dated from from to to, both included,
+// leaving out those passed by a recorded sowing; none for a plot with no
+// plan.
 func (s *Service) Due(ctx context.Context, farmID string, from, to time.Time) ([]Task, error) {
 	r, err := s.Roadmap(ctx, farmID)
 	if err != nil {
@@ -136,7 +137,7 @@ func (s *Service) Due(ctx context.Context, farmID string, from, to time.Time) ([
 		return nil, err
 	}
 	f, t := from.Format(agro.DateLayout), to.Format(agro.DateLayout)
-	return slices.DeleteFunc(r.Tasks, func(k Task) bool { return k.State != Open || k.Date < f || k.Date > t }), nil
+	return slices.DeleteFunc(r.Tasks, func(k Task) bool { return k.State != Open || k.Passed || k.Date < f || k.Date > t }), nil
 }
 
 // Record checks and records events on a plot and returns how many were new

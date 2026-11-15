@@ -88,7 +88,7 @@ func TestAnnualCalendar(t *testing.T) {
 		t.Errorf("maize harvest %s to %s", cal.Zones[0].HarvestFrom, cal.Zones[0].HarvestBy)
 	}
 	for _, task := range cal.Zones[1].Tasks {
-		if task.Kind == calendar.Fertilise && task.Title != "No urea needed" {
+		if task.Kind == calendar.Fertilise && task.Title != "No nitrogen feed needed" {
 			t.Errorf("green gram task %+v: pulses get no nitrogen top-dressing", task)
 		}
 	}

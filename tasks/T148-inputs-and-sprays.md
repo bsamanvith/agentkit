@@ -75,3 +75,22 @@ T145 to T148 were joined into one path in `wt-join`; status stays
 - The assistant's `get_inputs` tool gives the plan for "what should I
   buy" (`TestCycleTools` in `farmagent`).
 - `Amount` shows 1,000 g or more in kg and 1,000 ml or more in litres.
+
+
+## Refined (branch `wt-refine`, 2026-11-15)
+
+Looked at as a farmer near Kadapa on 15 November, then reviewed:
+
+- Feed titles say what and why from their doses ("First nitrogen feed:
+  urea, 21.7 kg"; preventive steps "Against fall armyworm: …") —
+  `TestFeedTitlesSayWhatAndWhy`.
+- One number: `inputs.Amount` (whole from 100, one decimal below) is
+  used by the schedule, titles and Season work; the web says the buy
+  rounded up with the need beside it (`TestOneNumberForAQuantity`).
+- Organic never names a synthetic product: the crop calendar's feeding
+  text is method-neutral (`TestCalendarNamesNoSyntheticProduct`, caught
+  the old "Put urea" text), and an organic cycle's plan, Season work and
+  Due list are checked for every synthetic name
+  (`TestOrganicNamesNoSyntheticProduct`).
+- The feed caution "beside the rows" is no longer put on work before
+  sowing (ploughing in manure).

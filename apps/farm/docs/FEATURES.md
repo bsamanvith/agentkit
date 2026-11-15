@@ -368,18 +368,32 @@ the crop (ours, or theirs), when to sow, when it comes off and this
 week's work. A plot with no plan opens on this tab. One tap takes our
 suggestion; *My own crop* changes the crop or the dates; *I already
 sowed on…* records the real day (one far from the plan saves the plan
-again with it). *Grown: Conventional / Organic* is one tap. Under it,
+again with it). *How you grow it: With fertiliser / Organic* is one tap.
+When nothing suits sowing soon, the card says so first ("Nothing suits
+sowing on rainfed land before May"), then what to do meanwhile (a soil
+test, the land preparation with its date) and what comes next. While the
+plot's water and soil were never given, one line says what the
+suggestion assumes ("Assuming rain only, no irrigation") with one tap to
+set them; irrigation changes the answer completely in rabi. Once the
+sowing is recorded, what we would have suggested no longer shows, the
+work from before the sowing stops nagging (not overdue, not in this
+week), and *What to buy* leads with what is still to buy. Under it,
 closed until tapped: *What to buy*, *Feeding and sprays*
 ([24](#24-what-to-buy-and-feeding-and-sprays)) and *When to sell*
-([25](#25-when-to-sell)). One more tap shows the next two cycles, our
-suggestion beside their own, with a strip of the months. None of it is
+([25](#25-when-to-sell)). One more tap (*What comes after*) shows the
+next two cycles, our suggestion beside their own, with a strip of the
+months, and the switch to stop planning them. None of it is
 asked for: a farmer who only says the crop still gets the dates and the
 week's work.
 
 **The app** works out the suggested line by rules: each cycle starts
 after the one before comes off plus 15 days to prepare the land, and is
 chosen with that crop as the last one (not the same family twice, a
-legume after a cereal), with the crop recommender. The farmer's own
+legume after a cereal), with the crop recommender. A crop that suits
+sowing (scores `SoonScore`, the recommender's good) within six weeks
+(`SoonDays`) is preferred to a better one months later, and says why;
+this cycle's sowing leaves a week (`ReadyDays`) to get seed and ready
+the land when it can. The farmer's own
 cycle wins where there is one; the cycles after it are suggested from
 it, so changing a crop or a date moves them. Their own later cycles are
 never changed, only checked: "Cotton now ends 2 January 2027; your
@@ -407,7 +421,11 @@ sowing and what later, in the units the shop sells (a 45 kg bag of urea,
 it a list of what to buy only if a pest or disease shows up, with when
 to look. *Feeding and sprays* lists each step by date: the products and
 how much for the plot and per acre, the water per acre, the days to wait
-before harvest and the cautions. Organic or conventional changes both
+before harvest and the cautions; each feeding says what and why ("First
+nitrogen feed: urea, 21.7 kg", "Sulphur feed: gypsum, 400 kg"). A
+quantity is one number everywhere (one decimal under 100): the
+shopping list shows what to buy, rounded up to what is sold, with the
+need beside it ("11 kg · 10.3 kg needed"). Organic or conventional changes both
 lists at once. Or they ask the assistant "what should I buy for the east
 plot". Both notes show wherever a dose does: these are starter values for
 an agronomist to review, and the product label wins.
@@ -416,7 +434,8 @@ an agronomist to review, and the product label wins.
 of the plot (an intercrop by its rows), the method, rainfed or irrigated
 (from the plot's water source) and the sowing day: the sources' rates,
 rounded up to whole packs, nothing banned or restricted in India, no
-synthetic product on the organic route. The feeding steps are also
+synthetic product on the organic route, nor anywhere an organic farmer
+reads (the crop calendar names what to feed, not a product). The feeding steps are also
 Season work's tasks ([22](#22-season-roadmap)). The model never makes up
 a number: `get_inputs` gives the plan.
 

@@ -298,4 +298,12 @@ func TestTwoFilesForOneRegion(t *testing.T) {
 	if !errors.Is(err, region.ErrInvalid) || !strings.Contains(err.Error(), "in-andhra-pradesh.json") {
 		t.Errorf("err %v", err)
 	}
+	// Names that differ only in case and punctuation match the same
+	// place, so they are the same region.
+	for _, name := range []string{"andhra-pradesh", "ANDHRA PRADESH.", "Andhra  Pradesh"} {
+		_, err := load(t, map[string]string{"a.json": `{"region": {"country": "IN", "state": "` + name + `"}}`})
+		if !errors.Is(err, region.ErrInvalid) || !strings.Contains(err.Error(), "in-andhra-pradesh.json") {
+			t.Errorf("%q: err %v; want it refused as Andhra Pradesh again", name, err)
+		}
+	}
 }

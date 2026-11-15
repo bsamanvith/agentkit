@@ -191,8 +191,8 @@ type Pack struct {
 	origins map[string]Origin
 }
 
-// Key is the pack's region key: "base", "IN", "IN/andhra pradesh" or
-// "IN/andhra pradesh/ysr kadapa".
+// Key is the pack's region key: "base", "IN", "IN/andhrapradesh" or
+// "IN/andhrapradesh/ysrkadapa" (names folded as places match).
 func (p *Pack) Key() string { return p.key }
 
 // Name is the most specific layer's name: "base", "Andhra Pradesh".

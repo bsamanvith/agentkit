@@ -274,13 +274,16 @@ func fold(s string) string {
 	return b.String()
 }
 
+// regionKey names a region by its names folded as places are matched
+// (fold), so two overlays whose names differ only in case or punctuation
+// are the same region, and a district finds its state's overlay.
 func regionKey(country, state, district string) string {
 	k := strings.ToUpper(country)
 	if state != "" {
-		k += "/" + strings.ToLower(strings.TrimSpace(state))
+		k += "/" + fold(state)
 	}
 	if district != "" {
-		k += "/" + strings.ToLower(strings.TrimSpace(district))
+		k += "/" + fold(district)
 	}
 	return k
 }

@@ -57,6 +57,7 @@ func PlanKey(p agro.Plan) string {
 func Compute(in Input) (Line, error) {
 	today := day(in.Today)
 	line := Line{Farm: in.Farm, Today: today.Format(agro.DateLayout), Future: !in.Record.FutureOff, Cycles: []Position{}}
+	line.Assumed = in.Profile.Rainfed() && in.Profile.Soil == ""
 	n := MaxCycles
 	if in.Record.FutureOff && !in.AllPositions {
 		n = 1
@@ -79,7 +80,11 @@ func Compute(in Input) (Line, error) {
 		}
 		p.From = from.Format(agro.DateLayout)
 		if in.Climate != nil {
-			p.Suggested = in.suggest(pos, from, prev, own)
+			var rest time.Time
+			p.Suggested, rest = in.suggest(pos, from, prev, own)
+			if pos == 0 && own == nil && p.Suggested != nil && !rest.IsZero() {
+				p.Rest = in.rest(rest)
+			}
 		}
 		p.Own = own
 		p.Planned = cmp.Or(own, p.Suggested)
@@ -225,11 +230,39 @@ func (in Input) previous(prev *Cycle, i, n int) *agro.Crop {
 	return &c
 }
 
+// How the suggestion weighs a sowing soon against a better one later.
+const (
+	// SoonDays is how far ahead of the day the land is free a sowing
+	// counts as soon: a crop that suits sowing by then is preferred to a
+	// better one later, so the land is not left waiting for months.
+	SoonDays = 42
+	// SoonScore is the sowing score from which a crop sown soon suits the
+	// land well enough to be preferred: the recommender's good.
+	SoonScore = agro.Good
+	// ReadyDays is the time a farmer needs to get seed and ready the land
+	// before a sowing suggested for the current cycle: a sowing soon is
+	// not suggested sooner, unless only a sooner one suits.
+	ReadyDays = 7
+)
+
+// pick is one crop chosen for an area, sown on sow.
+type pick struct {
+	crop       agro.Crop
+	sow        string
+	score, adj int
+	good, bad  *agro.Note
+	reasons    []agro.Note
+	risks      []agro.Note
+}
+
 // suggest works out the suggestion at pos from the day the land is free:
 // the areas of the cycle before (or the farmer's own here, or the whole
-// plot), each with the crop that scores best there, rotation counted, and
-// sown soonest. Nil when no crop fits.
-func (in Input) suggest(pos int, from time.Time, prev, own *Cycle) *Cycle {
+// plot), each with the crop that scores best there, rotation counted. A
+// crop that suits sowing within SoonDays (SoonScore), ReadyDays from now
+// for a current cycle when it can be, comes first; else the
+// best one sown within MaxWait. Nil when no crop fits. rest is the first
+// day any crop suits sowing when none does soon (zero when one does).
+func (in Input) suggest(pos int, from time.Time, prev, own *Cycle) (sug *Cycle, rest time.Time) {
 	var rings []geo.Ring
 	switch {
 	case own != nil:
@@ -245,66 +278,124 @@ func (in Input) suggest(pos int, from time.Time, prev, own *Cycle) *Cycle {
 			annuals = append(annuals, c.ID)
 		}
 	}
-	req := agro.Request{Climate: *in.Climate, Soil: in.Soil, Profile: in.Profile, Slope: in.Slope, Today: from, Crops: annuals}
+	req := agro.Request{Climate: *in.Climate, Soil: in.Soil, Profile: in.Profile, Slope: in.Slope, Today: from, Crops: annuals, Calendar: true}
 	res, err := agro.Recommend(in.Library, req)
 	if err != nil {
-		return nil
+		return nil, time.Time{}
+	}
+	soonBy := from.AddDate(0, 0, SoonDays)
+	ready := 0
+	if pos == 0 && prev == nil {
+		ready = ReadyDays
+	}
+	waitOf := func(sow string) int { return int(parse(sow).Sub(from).Hours() / 24) }
+	// The first day anything suits sowing, when nothing does soon.
+	var first string
+	for _, o := range res.Options {
+		for _, s := range o.Calendar {
+			if s.Score >= SoonScore && waitOf(s.Sow) >= 0 && (first == "" || s.Sow < first) {
+				first = s.Sow
+			}
+		}
+	}
+	if first != "" && parse(first).After(soonBy) {
+		rest = parse(first)
 	}
 	plan := agro.Plan{Zones: make([]agro.Zone, len(rings))}
 	var reasons, risks []agro.Note
 	score := 0
 	for i, ring := range rings {
 		before := in.previous(prev, i, len(rings))
-		best, bestAdj, bestScore := -1, math.MinInt, 0
-		var bestNotes [2]*agro.Note
-		for k, o := range res.Options {
+		var soon, later *pick
+		for _, o := range res.Options {
 			c, err := in.Library.Crop(o.Crop)
-			if err != nil || o.Score < agro.Fair {
-				continue
-			}
-			wait := int(parse(o.Sow).Sub(from).Hours() / 24)
-			if wait > MaxWait {
+			if err != nil {
 				continue
 			}
 			bonus, good, bad := rotation(before, c)
-			adj := o.Score + bonus - wait/10
-			if adj > bestAdj {
-				best, bestAdj, bestScore, bestNotes = k, adj, max(0, min(100, o.Score+bonus)), [2]*agro.Note{good, bad}
+			// Soon: the crop's best date within SoonDays that suits, with
+			// time to get ready first when that can be had.
+			for _, s := range o.Calendar {
+				wait := waitOf(s.Sow)
+				if wait < 0 || wait > SoonDays || s.Score < SoonScore {
+					continue
+				}
+				adj := s.Score + bonus - wait/10
+				if wait < ready {
+					adj -= 100 // only when nothing suits after the time to get ready
+				}
+				if soon == nil || adj > soon.adj {
+					soon = &pick{crop: c, sow: s.Sow, score: max(0, min(100, s.Score+bonus)), adj: adj, good: good, bad: bad}
+				}
+			}
+			// Later: the crop's best sowing, within MaxWait.
+			if o.Score < agro.Fair {
+				continue
+			}
+			wait := waitOf(o.Sow)
+			if wait > MaxWait {
+				continue
+			}
+			if adj := o.Score + bonus - wait/10; later == nil || adj > later.adj {
+				later = &pick{crop: c, sow: o.Sow, score: max(0, min(100, o.Score+bonus)), adj: adj, good: good, bad: bad, reasons: o.Reasons, risks: o.Risks}
 			}
 		}
-		if best < 0 {
-			return nil
+		chosen := cmp.Or(soon, later)
+		if chosen == nil {
+			return nil, rest
 		}
-		o := res.Options[best]
-		plan.Zones[i] = agro.Zone{Crop: o.Crop, Ring: slicesClone(ring), Sow: o.Sow}
+		if i == 0 && first == "" && soon == nil && parse(chosen.sow).After(soonBy) {
+			rest = parse(chosen.sow) // nothing suits well at all: the land waits for this
+		}
+		var soonNote *agro.Note
+		if soon != nil {
+			s := agro.Simulate(soon.crop, req, parse(soon.sow))
+			soon.reasons, soon.risks = s.Reasons, s.Risks
+			if later != nil && later.crop.ID != soon.crop.ID && parse(later.sow).After(soonBy) {
+				soonNote = &agro.Note{ID: "sow.soon", Message: fmt.Sprintf("It can be sown within %d weeks; %s would leave the land empty until %s.", SoonDays/7, later.crop.Name, parse(later.sow).Format("January"))}
+			}
+		}
+		plan.Zones[i] = agro.Zone{Crop: chosen.crop.ID, Ring: slicesClone(ring), Sow: chosen.sow}
+		notes := []*agro.Note{soonNote, chosen.good, chosen.bad}
 		if len(rings) > 1 {
-			for k := range bestNotes {
-				if bestNotes[k] != nil {
-					n := *bestNotes[k]
+			for k := range notes {
+				if notes[k] != nil {
+					n := *notes[k]
 					n.Message = fmt.Sprintf("Area %d: %s", i+1, n.Message)
-					bestNotes[k] = &n
+					notes[k] = &n
 				}
 			}
 		}
-		if bestNotes[0] != nil {
-			reasons = append(reasons, *bestNotes[0])
+		for _, n := range notes[:2] {
+			if n != nil {
+				reasons = append(reasons, *n)
+			}
 		}
-		if bestNotes[1] != nil {
-			risks = append(risks, *bestNotes[1])
+		if notes[2] != nil {
+			risks = append(risks, *notes[2])
 		}
 		if i == 0 {
-			reasons = append(reasons, o.Reasons...)
-			risks = append(risks, o.Risks...)
+			reasons = append(reasons, chosen.reasons...)
+			risks = append(risks, chosen.risks...)
 		}
-		score += bestScore
+		score += chosen.score
 	}
 	c, err := in.cycleOf(plan, Suggested, methodOf(in.Record.Slots[pos]), nil)
 	if err != nil {
-		return nil
+		return nil, rest
 	}
 	c.Score = score / len(rings)
 	c.Reasons, c.Risks = reasons, risks
-	return &c
+	return &c, rest
+}
+
+// rest says that nothing suits sowing before day's month: the land rests.
+func (in Input) rest(day time.Time) *agro.Note {
+	where := "on this land"
+	if in.Profile.Rainfed() {
+		where = "on rainfed land"
+	}
+	return &agro.Note{ID: "cycle.rest", Message: fmt.Sprintf("Nothing suits sowing %s before %s.", where, day.Format("January"))}
 }
 
 // check checks the farmer's own cycle against the planned cycle before

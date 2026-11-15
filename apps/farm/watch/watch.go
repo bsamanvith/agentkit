@@ -254,7 +254,7 @@ func Builtins(withWeather, withSkills bool) []automation.Automation {
 	}
 	out = append(out, automation.Automation{
 		ID: WeeklyTasks, Name: "This week's crop work", Enabled: true,
-		Description: "Every Monday at 6:30 am (India), lists the work each plot's crop calendar has for the week (weeding, top-dressing, irrigation, harvest).",
+		Description: "Every Monday at 6:30 am (India), lists the work each plot's crop calendar has for the week (weeding, feeding, irrigation, harvest).",
 		Trigger:     automation.Trigger{Kind: automation.OnSchedule, Schedule: "0 1 * * 1"},
 		Scope:       automation.Scope{WithPlan: true},
 		Action:      automation.Action{Kind: automation.DoRule, Rule: RuleTasks},

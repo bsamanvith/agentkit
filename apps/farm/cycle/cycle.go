@@ -134,6 +134,10 @@ type Position struct {
 	// Planned is Own where there is one, else Suggested; nil when neither.
 	Planned *Cycle  `json:"planned,omitempty"`
 	Checks  []Check `json:"checks,omitempty"`
+	// Rest says, for the current cycle when it is only suggested, that
+	// nothing suits sowing soon (within SoonDays): the land rests until
+	// the suggestion's season. Nil when something can be sown soon.
+	Rest *agro.Note `json:"rest,omitempty"`
 	// Addons are what other features computed from the planned cycle,
 	// by the addon's name.
 	Addons map[string]any `json:"addons,omitempty"`
@@ -149,6 +153,10 @@ type Line struct {
 	// Notes are about the line as a whole: no climate, an orchard that
 	// holds the land, an addon that could not answer.
 	Notes []agro.Note `json:"notes,omitempty"`
+	// Assumed is true when the plot's water and soil were never given:
+	// the suggestions assume rain only and score no soil, and irrigation
+	// can change them completely.
+	Assumed bool `json:"assumed,omitempty"`
 }
 
 // Slot is what the farmer set at one position.

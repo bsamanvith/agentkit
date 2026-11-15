@@ -152,3 +152,28 @@ T145 to T148 were joined into one path in `wt-join`; status stays
 - Still open: the cycle-0 plan and the cycle record are two writes, not
   one transaction (a crash between them leaves the record's `SownFor`
   pointing at an older plan, which is then ignored).
+
+
+## Refined (branch `wt-refine`, 2026-11-15)
+
+Looked at as a farmer near Kadapa on 15 November, then reviewed:
+
+- The suggestion prefers a crop that suits sowing soon: within
+  `SoonDays` (42) at `SoonScore` (`agro.Good`), with `ReadyDays` (7) to get
+  ready for this cycle when a date that late suits; the reason says what
+  it beats ("…would leave the land empty until July"). When nothing does,
+  `Position.Rest` says so ("Nothing suits sowing on rainfed land before
+  May": the first month anything suits) and the page leads with it, what
+  to do meanwhile and what comes next. `Line.Assumed` marks a plot with
+  no water and no soil given; the page offers to set both in one tap.
+  Tests: `soon_test.go` (the recommender's own calendar as the oracle),
+  `cycles.test.tsx`.
+- Taking a suggestion no longer shows "we would have suggested" the same
+  crop a week earlier (`TestTakenSuggestionIsStillTheSuggestion`); after
+  a recorded sowing the hint is gone, and the work from before the
+  sowing is `work.Task.Passed` (not overdue, not due, no record made up;
+  `TestRecordedSowingPassesTheWorkBefore`). Land preparation before a
+  sowing still ahead is not overdue (`TestWorkBeforeASowingAheadIsNotOverdue`).
+- Mutations checked: the old `own == nil` ready rule, no soon pass.
+- Still open: the rest month is the first month anything suits, which can
+  be before the suggested crop's (May, for finger millet in July).

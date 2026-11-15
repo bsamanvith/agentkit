@@ -125,11 +125,15 @@ function noAdvice(t: Timing): string {
   return "past prices here show no pattern steady enough to advise on.";
 }
 
-/** Says a quantity as it is bought: from a thousand grams on in kilograms, whole numbers from ten. */
+/**
+ * Says a quantity as the server does (inputs.Amount): from a thousand
+ * grams on in kilograms, whole numbers from a hundred, one decimal below.
+ * The schedule and the shopping list's need say the same number.
+ */
 function amount(v: number, unit: string): string {
   if (unit === "g" && v >= 1000) [v, unit] = [v / 1000, "kg"];
   if (unit === "ml" && v >= 1000) [v, unit] = [v / 1000, "l"];
-  const n = v >= 10 ? Math.round(v) : Math.round(v * 10) / 10;
+  const n = v >= 100 ? Math.round(v) : Math.round(v * 10) / 10;
   const plural = n !== 1;
   const name: Record<string, string> = {
     t: plural ? "tonnes" : "tonne",
@@ -142,7 +146,8 @@ function amount(v: number, unit: string): string {
 /** What to buy of an item: the packs, else the quantity. */
 function buy(it: Item): string {
   if (it.packs && it.pack) return `${it.packs} × ${it.pack}`;
-  return amount(it.qty, it.unit);
+  // What is made on the farm or got locally is not sold in steps: what it needs.
+  return amount(it.make ? it.need : it.qty, it.unit);
 }
 
 const months = [
@@ -232,7 +237,7 @@ function Items({ items, when }: { items: Item[]; when: string }) {
             {it.make && <span className="text-xs text-muted-foreground"> · make or get locally</span>}
             <span className="block text-xs text-muted-foreground">
               {when} {day(it.first)}
-              {it.packs && it.pack ? ` · ${amount(it.need, it.unit)} needed` : ""}
+              {amount(it.need, it.unit) !== buy(it) && ` · ${amount(it.need, it.unit)} needed`}
             </span>
           </span>
           <span className="shrink-0 font-medium tabular-nums">{buy(it)}</span>
@@ -242,19 +247,30 @@ function Items({ items, when }: { items: Item[]; when: string }) {
   );
 }
 
-function Buy({ p }: { p: InputsPlan }) {
+function Buy({ p, sown }: { p: InputsPlan; sown?: boolean }) {
   return (
     <>
       <p className="text-sm">
-        For {p.acres.toLocaleString("en-IN")} acres, {p.method}, {p.water}.
+        For {(Math.round(p.acres * 10) / 10).toLocaleString("en-IN")} acres,{" "}
+        {p.method === "organic" ? "organic" : "with fertiliser"}, {p.water === "rainfed" ? "on rain only" : "irrigated"}
+        .
       </p>
       <Notes notes={p.notes} />
-      {p.buy_before.length > 0 && (
-        <div className="flex flex-col gap-1.5">
-          <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Before sowing</h4>
-          <Items items={p.buy_before} when="Needed" />
-        </div>
-      )}
+      {p.buy_before.length > 0 &&
+        (sown ? (
+          // Sown: what was needed before is behind the farmer, one tap away.
+          <details className="text-sm">
+            <summary className="min-h-11 cursor-pointer py-2 text-muted-foreground">
+              Before sowing: {p.buy_before.length} {p.buy_before.length === 1 ? "item" : "items"}, used by now
+            </summary>
+            <Items items={p.buy_before} when="Needed" />
+          </details>
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Before sowing</h4>
+            <Items items={p.buy_before} when="Needed" />
+          </div>
+        ))}
       {p.buy_later.length > 0 && (
         <div className="flex flex-col gap-1.5">
           <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Later</h4>
@@ -330,7 +346,14 @@ function Schedule({ p }: { p: InputsPlan }) {
                 {t.title}
               </span>
               <span className="text-xs text-muted-foreground tabular-nums">
-                {day(t.date)} · day {t.das}
+                {day(t.date)} ·{" "}
+                {t.das === 0
+                  ? "sowing day"
+                  : t.das === -1
+                    ? "the day before sowing"
+                    : t.das < 0
+                      ? `${-t.das} days before sowing`
+                      : `${t.das} days after sowing`}
               </span>
             </p>
             <ul className="mt-1 flex flex-col gap-0.5">
@@ -412,7 +435,7 @@ function Sell({ t }: { t: Timing }) {
 }
 
 /** The optional parts of the current cycle, each collapsed until tapped. */
-export default function Extras({ addons }: { addons?: Record<string, unknown> }) {
+export default function Extras({ addons, sown }: { addons?: Record<string, unknown>; sown?: boolean }) {
   const [open, setOpen] = useState("");
   const inputs = addons?.inputs as InputsPlan | undefined;
   const timing = addons?.timing as Timing | undefined;
@@ -425,11 +448,21 @@ export default function Extras({ addons }: { addons?: Record<string, unknown> })
       {inputs && (
         <Section
           title="What to buy"
-          summary={`${inputs.buy_before.length} before sowing · ${inputs.buy_later.length} later${inputs.if_seen.length ? ` · ${inputs.if_seen.length} only if you see them` : ""}`}
+          summary={[
+            sown ? "" : `${inputs.buy_before.length} before sowing`,
+            sown && !inputs.buy_later.length
+              ? "nothing more to buy"
+              : sown || inputs.buy_later.length
+                ? `${inputs.buy_later.length} ${sown ? "still to buy" : "later"}`
+                : "",
+            inputs.if_seen.length ? `${inputs.if_seen.length} only if you see them` : "",
+          ]
+            .filter(Boolean)
+            .join(" · ")}
           open={open === "buy"}
           onToggle={toggle("buy")}
         >
-          <Buy p={inputs} />
+          <Buy p={inputs} sown={sown} />
         </Section>
       )}
       {inputs && inputs.schedule.length > 0 && (

@@ -67,6 +67,11 @@ No step needs the assistant; every step can also be done by asking it.
   land is fallow) and the next two. Later cycles are optional; the
   farmer can turn future planning off.
 - **Nothing planted, nothing entered:** the suggested line is the plan.
+- **Something useful today.** A crop that suits sowing within six weeks
+  is preferred to a better one months away; when nothing does, the page
+  says so first, with what to do meanwhile and what comes next, and
+  names the assumption that drives it (rain only, when the water was
+  never given) with one tap to change it.
 - **Actual beats planned.** A recorded sowing (the *Sown* tick of the
   season roadmap, or a date the farmer types) becomes the cycle's date
   and moves everything after it.

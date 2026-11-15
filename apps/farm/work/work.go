@@ -110,9 +110,15 @@ type Task struct {
 	Note    string   `json:"note,omitempty"`
 	Actuals *Actuals `json:"actuals,omitempty"`
 	// Late is a task done more than Grace days after its date; Overdue an
-	// open one past it, for the farmer to say what happened.
+	// open one past it, for the farmer to say what happened (not work
+	// before a sowing that is still ahead: it can still be done).
 	Late    bool `json:"late,omitempty"`
 	Overdue bool `json:"overdue,omitempty"`
+	// Passed is an open task from before its zone's sowing once the
+	// sowing is recorded: its time has gone, so it is neither due nor
+	// overdue (nor counted open). It stays open, with no record made up:
+	// the farmer may still say it was done.
+	Passed bool `json:"passed,omitempty"`
 }
 
 // Zone is one zone of the plan on the roadmap.
@@ -136,6 +142,8 @@ type Counts struct {
 	Skipped   int `json:"skipped"`
 	NotNeeded int `json:"not_needed"`
 	Overdue   int `json:"overdue"`
+	// Passed counts the open tasks from before a recorded sowing.
+	Passed int `json:"passed"`
 }
 
 // Roadmap is a plot's season: its zones and every task in date order.
@@ -267,6 +275,11 @@ func build(lib *agro.Library, farmID string, plan agro.Plan, irrigated bool, eve
 		})
 	}
 	day := func(s string) time.Time { d, _ := time.Parse(agro.DateLayout, s); return d }
+	sown, ahead := map[int]bool{}, map[int]bool{}
+	for _, z := range r.Zones {
+		sown[z.Zone] = z.Sown != ""
+		ahead[z.Zone] = z.Sown == "" && !day(z.PlannedSow).Before(today)
+	}
 	out := r.Tasks[:0]
 	for _, t := range r.Tasks {
 		st := byTask.get(t.ID)
@@ -280,7 +293,14 @@ func build(lib *agro.Library, farmID string, plan agro.Plan, irrigated bool, eve
 		due := day(t.Date).AddDate(0, 0, Grace)
 		switch t.State {
 		case Open:
-			t.Overdue = today.After(due)
+			if t.Source != FromFarmer && t.DAS != nil && *t.DAS < 0 && sown[t.Zone] {
+				t.Passed = true
+				r.Counts.Passed++
+				break
+			}
+			// Work before a sowing still ahead is not overdue: it can still be
+			// done, before the sowing (a plan made a week before it).
+			t.Overdue = today.After(due) && (t.DAS == nil || *t.DAS >= 0 || !ahead[t.Zone])
 			r.Counts.Open++
 			if t.Overdue {
 				r.Counts.Overdue++

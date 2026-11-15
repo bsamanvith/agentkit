@@ -33,6 +33,8 @@ export interface Task {
   actuals?: Actuals;
   late?: boolean;
   overdue?: boolean;
+  /** Open work from before a recorded sowing: its time has gone, so it is neither due nor overdue. */
+  passed?: boolean;
 }
 
 export interface RoadmapZone {
@@ -51,7 +53,7 @@ export interface Roadmap {
   today: string;
   zones: RoadmapZone[];
   tasks: Task[];
-  counts: { open: number; done: number; skipped: number; not_needed: number; overdue: number };
+  counts: { open: number; done: number; skipped: number; not_needed: number; overdue: number; passed?: number };
   notes?: string[];
 }
 
@@ -221,7 +223,15 @@ export function applyQueued(r: Roadmap, events: WorkEvent[]): Roadmap {
     if (!t) continue;
     if (e.kind === "reopened") Object.assign(t, { state: "open", day: undefined, by: undefined, actuals: undefined });
     else if (t.state === "open")
-      Object.assign(t, { state: e.kind, day: e.day, by: e.by, note: e.note, actuals: e.actuals, overdue: false });
+      Object.assign(t, {
+        state: e.kind,
+        day: e.day,
+        by: e.by,
+        note: e.note,
+        actuals: e.actuals,
+        overdue: false,
+        passed: false,
+      });
   }
   tasks.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.zone - b.zone));
   return { ...r, tasks };

@@ -254,12 +254,12 @@ func tasks(c agro.Crop, sow time.Time, zone int, irrigated bool) []Task {
 	}
 	switch {
 	case nitrogenKinds[c.Kind]:
-		add("nitrogen-1", 0.25, Fertilise, "First top-dressing of nitrogen", "Put urea (or the nitrogen your soil test asks for) beside the rows into moist soil, not before heavy rain.")
-		add("nitrogen-2", 0.5, Fertilise, "Second top-dressing of nitrogen", "At the start of flowering or panicle initiation, into moist soil.")
+		add("nitrogen-1", 0.25, Fertilise, "First nitrogen feed", "Beside the rows, into moist soil, not just before heavy rain: the fertiliser your soil test asks for, or on an organic farm vermicompost or jeevamrutham.")
+		add("nitrogen-2", 0.5, Fertilise, "Second nitrogen feed", "As flowering or the ear begins to form, into moist soil.")
 	case c.Kind == "oilseed":
-		add("nitrogen-sulphur", 0.3, Fertilise, "Top-dress nitrogen (and sulphur)", "Oilseeds need sulphur for oil: gypsum or a sulphur-bearing fertiliser.")
+		add("nitrogen-sulphur", 0.3, Fertilise, "Nitrogen and sulphur feed", "Oilseeds need sulphur for their oil: gypsum gives it, on any farm.")
 	case c.Kind == "pulse":
-		add("pulse-nutrition", 0.3, Fertilise, "No urea needed", "Pulses fix their own nitrogen; a 2 % DAP spray at flowering helps pod set.")
+		add("pulse-nutrition", 0.3, Fertilise, "No nitrogen feed needed", "Pulses fix their own nitrogen from the air; keep the soil moist at flowering for a good pod set.")
 	}
 	for i, f := 1, 0.15; f < 0.86; i, f = i+1, f+0.14 {
 		add(fmt.Sprintf("scout-%d", i), f, Scout, "Walk the field for pests and disease", "Look under leaves and at the growing tips; act early on what you find.")

@@ -282,7 +282,9 @@ type fieldCtx struct {
 	plants    float64
 	perPlant  bool
 	tasks     map[string]*Task
-	out       fieldPlan
+	// pests are the pests each preventive task (by key) is against.
+	pests map[string][]string
+	out   fieldPlan
 }
 
 func (b *Book) field(f Field, i int, method Method, irrigated bool) (fieldPlan, error) {
@@ -303,7 +305,7 @@ func (b *Book) field(f Field, i int, method Method, irrigated bool) (fieldPlan, 
 	}
 	x := &fieldCtx{
 		b: b, i: i, crop: lc, sow: sow, cal: z.Tasks, method: method, irrigated: irrigated, ha: f.Hectares,
-		harvest: sow.AddDate(0, 0, int(lc.Days[0])), tasks: map[string]*Task{},
+		harvest: sow.AddDate(0, 0, int(lc.Days[0])), tasks: map[string]*Task{}, pests: map[string][]string{},
 	}
 	x.end = sow.AddDate(0, 0, int(lc.Days[1])+14)
 	if lc.Perennial {
@@ -340,6 +342,8 @@ func (b *Book) field(f Field, i int, method Method, irrigated bool) (fieldPlan, 
 		x.out.notes = append(x.out.notes, fmt.Sprintf("%s: our sources give no inputs for the %s route in its first season; ask your agronomist.", lc.Name, method))
 	}
 	slices.SortFunc(x.out.tasks, func(a, b Task) int { return cmp.Or(a.DAS-b.DAS, strings.Compare(a.Key, b.Key)) })
+	x.feedTitles(x.out.tasks)
+	x.preventTitles(x.out.tasks)
 	return x.out, nil
 }
 
@@ -622,7 +626,9 @@ func (x *fieldCtx) uses(cd Crop, dflt bool) error {
 		}
 		d := dflt || (extraDefault && i >= len(cd.Add)+len(cd.Organic))
 		t := x.task(key, day, "feed", d)
-		t.Cautions = addCaution(t.Cautions, CautionFeed)
+		if !day.Before(x.sow) {
+			t.Cautions = addCaution(t.Cautions, CautionFeed) // rows to feed beside, from the sowing on
+		}
 		x.dose(t, p, u.Qty*factor(cmpOr(u.Unit, p.Unit), p.Unit), u.Note, []Ref{u.Ref}, d)
 	}
 	return nil
@@ -711,6 +717,9 @@ func (x *fieldCtx) protect(cd Crop) error {
 			}
 			t := x.task(key, day, "prevent", false)
 			t.Cautions = addCaution(t.Cautions, CautionLabel)
+			if pest := strings.ToLower(pr.Name); !slices.Contains(x.pests[key], pest) {
+				x.pests[key] = append(x.pests[key], pest)
+			}
 			x.dose(t, p, pv.Qty, strings.TrimSpace("Against "+strings.ToLower(pr.Name)+". "+pv.Note), []Ref{pv.Ref}, false)
 		}
 		routes := []struct {

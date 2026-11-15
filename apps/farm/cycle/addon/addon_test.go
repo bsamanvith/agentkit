@@ -279,6 +279,74 @@ func TestRoadmapCarriesTheSchedule(t *testing.T) {
 	}
 }
 
+// syntheticNames are the names of the book's synthetic products as they
+// could show in text, in lower case: "urea", "dap", "lambda-cyhalothrin
+// 5 % ec".
+func syntheticNames(b *inputs.Book) []string {
+	var out []string
+	for _, p := range b.Products() {
+		if !p.Synthetic {
+			continue
+		}
+		n := p.Name
+		if i := strings.Index(n, " ("); i > 0 {
+			n = n[:i]
+		}
+		out = append(out, strings.ToLower(n))
+	}
+	return out
+}
+
+// An organic cycle never names a synthetic product: not in its inputs
+// plan, not in the season's work (calendar tasks with no organic feeding
+// near them included), not in what the weekly notice reads (Due).
+func TestOrganicNamesNoSyntheticProduct(t *testing.T) {
+	t.Parallel()
+	for _, crop := range []string{"maize", "finger_millet", "cotton", "chilli", "groundnut", "green_gram", "rice"} {
+		t.Run(crop, func(t *testing.T) {
+			t.Parallel()
+			w := setup(t, crop == "rice")
+			if _, err := w.cycles.Set(ctx, w.plot, 0, cycle.Change{Plan: &agro.Plan{Zones: []agro.Zone{{Crop: crop, Sow: "2026-06-20"}}}, Method: cycle.Organic}); err != nil {
+				t.Fatal(err)
+			}
+			l, err := w.cycles.Line(ctx, w.plot)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r, err := w.work.Roadmap(ctx, w.plot)
+			if err != nil {
+				t.Fatal(err)
+			}
+			due, err := w.work.Due(ctx, w.plot, now.AddDate(0, -1, 0), now.AddDate(1, 0, 0))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var texts []string
+			for _, k := range append(r.Tasks, due...) {
+				texts = append(texts, k.Title+" "+k.Detail)
+			}
+			texts = append(texts, r.Notes...)
+			p := inputsOf(t, l.Cycles[0])
+			for _, k := range p.Schedule {
+				texts = append(texts, k.Title)
+				for _, d := range k.Doses {
+					texts = append(texts, d.Name, d.Note)
+				}
+			}
+			for _, it := range slices.Concat(p.BuyBefore, p.BuyLater) {
+				texts = append(texts, it.Name)
+			}
+			for _, x := range texts {
+				for _, n := range syntheticNames(w.book) {
+					if strings.Contains(strings.ToLower(x), n) {
+						t.Errorf("organic %s names %q: %s", crop, n, x)
+					}
+				}
+			}
+		})
+	}
+}
+
 type failing struct{}
 
 func (failing) Get(context.Context, string) (cycle.Record, error) {
@@ -323,7 +391,10 @@ func TestAmount(t *testing.T) {
 		{384, "g", "384 g"},
 		{1200, "ml", "1.2 litres"},
 		{9.45, "kg", "9.5 kg"},
-		{21.17, "kg", "21 kg"},
+		{21.17, "kg", "21.2 kg"},
+		{146.74, "kg", "147 kg"},
+		{10.3, "kg", "10.3 kg"},
+		{20, "kg", "20 kg"},
 		{1, "t", "1 tonne"},
 		{0.8, "t", "0.8 tonnes"},
 		{3, "piece", "3 pieces"},

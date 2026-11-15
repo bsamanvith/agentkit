@@ -177,3 +177,43 @@ Looked at as a farmer near Kadapa on 15 November, then reviewed:
 - Mutations checked: the old `own == nil` ready rule, no soon pass.
 - Still open: the rest month is the first month anything suits, which can
   be before the suggested crop's (May, for finger millet in July).
+
+## Review fixes (branch `wt-fix`, 2026-11-15)
+
+An independent review of the cycle work found, and this branch fixed
+(each with the failing test first):
+
+- **Advance could skip a cycle on a save conflict** (blocking). `update`
+  retried the whole edit after `ErrConflict`, but Advance, SetSown and
+  Set at 0 had already written the farm (profile, plan, roadmap): the
+  retry advanced again (maize → chickpea → sorghum), and a 409 left the
+  plan replaced. Edits now only store the farm writes in the record
+  (`Record.Pending`, with the plan they were made against and the slots
+  before); the farm is written after the record's Put wins. A crash
+  between is finished by the next write or read, dropped if the plan was
+  changed since, and the slots go back if the farm refuses it.
+  `TestConflictsApplyOnceOrNotAtAll` (conflict once; always: nothing
+  changed, 409), `TestAWriteCutShortIsFinished`; the store suite keeps
+  `Pending`.
+- **A done tick moved to another task on a method switch** (blocking):
+  see T148; `work.merge` now keeps the inputs feeding's own ID.
+- **Advance had no server-side guard**: refused before
+  `cycle.AdvanceDays` (14) before the harvest; `Line.AdvanceFrom` gives
+  the page the same day; the page asks in place before moving on and
+  shows the step with later cycles off (`TestAdvanceOnlyNearHarvest`,
+  `TestCycleRoutes`, `cycles.test.tsx` "moving on").
+- **A far sowing dropped the ticks**: saving the plan again renames the
+  tasks; the farmer's closes are carried to the same tasks of the new
+  plan with event IDs made from what they record
+  (`TestFarSowingKeepsTheTicks`).
+- **A crop missing from the plot's list failed the line (400)**: the
+  cycle shows with a `crop.unknown` warning and no harvest, nothing after
+  it (`TestUnknownCropIsAWarning`).
+- **`set_cycle` with `sown` ignored the other fields**: refused now
+  (`TestCycleTools`).
+- **Freehand accepted a self-crossing loop**: refused at once with a
+  plain message (`draw.test.ts`, `editor.test.tsx`).
+- Mutations checked: retry without the pending step (the conflict tests
+  fail), healing off in Line and the From check off
+  (`TestAWriteCutShortIsFinished` fails), the window check off
+  (`TestAdvanceOnlyNearHarvest` fails).

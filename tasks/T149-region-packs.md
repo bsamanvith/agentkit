@@ -75,3 +75,12 @@ constants in code, and the app had no notion of region. Design:
   October 2026 on AP's kharif 2026 insurance. ANGRAU's own page for
   Anantapur did not load (503); no value was taken from search snippets.
 - Size: the farm binary grows 143,360 bytes ([SIZES.md](../docs/SIZES.md)).
+
+## Review fixes (branch `wt-fix`, 2026-11-15)
+
+- Overlay keys differing only in case or punctuation ("Andhra Pradesh",
+  "ANDHRA PRADESH.") escaped the duplicate check but matched the same
+  place. The region key is now built with `fold()`, as matching is, so
+  they are refused as one region, and a district finds its state's
+  overlay whatever the punctuation (`TestTwoFilesForOneRegion`). Pack
+  keys read "IN/andhrapradesh" now (only logged).

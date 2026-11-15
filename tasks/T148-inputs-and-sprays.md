@@ -94,3 +94,35 @@ Looked at as a farmer near Kadapa on 15 November, then reviewed:
   (`TestOrganicNamesNoSyntheticProduct`).
 - The feed caution "beside the rows" is no longer put on work before
   sowing (ploughing in manure).
+
+## Review fixes (branch `wt-fix`, 2026-11-15)
+
+- **A done tick moved to another task on a method switch** (blocking).
+  A feeding within `work.NearFeed` of a calendar feeding took over the
+  calendar task's ID, so organic maize's ticked jeevamrutham showed as
+  the conventional urea feed done. It now takes the calendar task's
+  place under its own ID: the urea feed is open after the switch and the
+  jeevamrutham still done when switching back.
+  `TestRoadmapCarriesTheSchedule` checks what a tick is attached to;
+  `TestTaskSources` updated.
+- **A planted bug in `nearFeed` survived** (blocking): removing
+  `taken[i] ||` passed every test. New invariant: every inputs schedule
+  entry is on the roadmap exactly once by its ID, both methods, ten crops
+  (`TestEveryScheduleEntryOnTheRoadmapOnce`); the plant now fails it.
+- **DAP's nitrogen was counted only within its split** (blocking): the
+  surplus now comes off later splits' urea, and where DAP for all the
+  phosphate would exceed the season's N, SSP gives the rest.
+  `TestNutrientsAddUp` (every crop, both waterings, against the data
+  read on its own). Per hectare, N/P2O5/K2O delivered, before → after
+  (recommended): watermelon irrigated 76.5 → 55/55/55 (55/55/55); ginger
+  irrigated 94.6 → 75/50/50 (75/50/50); rice rainfed 59.8 → 50/25/25
+  (50/25/25); onion irrigated 108.7 → 100/150/75 (100/150/75); soybean
+  irrigated 31.3 → 20/80/40 (20/80/40: DAP 111.1 kg + SSP 180.6 kg).
+- `dose()` took per-hectare values as per plant on trees (no data hit
+  it): callers now say which; `Prevent.Per` is used ("ha" or "tree") and
+  checked on load (`TestPerHectareOnATree`, `TestLoadRefuses`).
+- Load refuses data without urea, DAP, SSP, MOP or gypsum, or with their
+  nutrient at 0 (`TestLoadRefuses`).
+- Banana's biofertilisers (AM fungi 250 g, PSB, Azospirillum and
+  Trichoderma 50 g a plant) were re-read in the TNAU Horticulture guide
+  2020, p. 8: that is what it says. Kept, each with a re-checked note.

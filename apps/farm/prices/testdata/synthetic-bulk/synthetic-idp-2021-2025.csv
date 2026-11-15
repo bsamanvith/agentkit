@@ -1,0 +1,4 @@
+"id","report_date","state_name","state_code","district_name","district_code","market_center","market_code","latitude","longitude","commodity_type","commodity_name","variety","origin","arrival_quantity","arrivals_unit","min_price","max_price","modal_price","price_unit"
+1,"2023-10-02","Andhra Pradesh","28","Kurnool","999","Synthetic Yard","1",15.8,78.0,"Oil Seeds","Groundnut","Local","NR",12.5,"Tonnes",5200.0,6100.0,5800.0,"Rs/Quintal"
+2,"2023-10-02","Andhra Pradesh","28","Kurnool","999","Synthetic Yard","1",15.8,78.0,"Pulses","Arhar (Tur/Red Gram)(Whole)","Red","NR",3.0,"Tonnes",8000.0,9000.0,8600.0,"Rs/Quintal"
+3,"2023-10-03","Andhra Pradesh","28","Kurnool","999","Synthetic Yard","1",15.8,78.0,"Oil Seeds","Groundnut","Local","NR",10.0,"Tonnes",0,0,0,"Rs/Quintal"

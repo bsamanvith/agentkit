@@ -1,0 +1,2 @@
+date,state_name,state_id,district_name,district_id,census_state_name,census_state_id,census_district_name,census_district_id,market_name,market_id,commodity_name,commodity_id,variety,min_price,max_price,modal_price
+2019-11-04,Andhra Pradesh,28,Anantapur,1,Andhra Pradesh,28,Anantapur,553,Synthetic Market,3,Groundnut,10,Other,4100,4700,4450

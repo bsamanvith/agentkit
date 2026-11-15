@@ -86,6 +86,11 @@ eval: ## Tool-use evals: real Claude with faked connectors (evals/README.md; ANT
 	@[ -n "$${ANTHROPIC_API_KEY:-$$ANTHROPIC_KEY}" ] || { echo "eval: set ANTHROPIC_API_KEY (or ANTHROPIC_KEY)" >&2; exit 1; }
 	cd evals && $(GO) test -tags eval -count=1 -v -timeout 60m -run TestConnectorEvals .
 
+.PHONY: farm-price-backtest
+farm-price-backtest: ## Walk-forward backtest of the farm app's sell and sowing timing advice on price files (FARM_PRICE_FILES=<folder>: Agmarknet, India Data Portal or CEDA CSVs); without it, on synthetic series
+	@if [ -n "$(FARM_PRICE_FILES)" ]; then $(GO) run ./apps/farm/cmd/farm-price-backtest -files "$(FARM_PRICE_FILES)"; \
+	else echo "FARM_PRICE_FILES is not set: running on synthetic series"; $(GO) run ./apps/farm/cmd/farm-price-backtest -synthetic; fi
+
 .PHONY: farm-eval
 farm-eval: ## The farm assistant on a real model: map, layout, handbook and web research scenarios (apps/farm; FARM_EVAL_MODEL=anthropic|gemini|openai/<id>|openrouter/<vendor>/<id>; FARM_EVAL_RECORD=1 lets the farm app use a model that passes); never in CI
 	cd apps/farm && $(GO) test -tags eval -count=1 -v -timeout 30m -run TestAssistantEval ./farmagent/

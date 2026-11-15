@@ -2,6 +2,8 @@ package cycle_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -554,4 +556,155 @@ func TestConcurrentWritesAllLand(t *testing.T) {
 	if r.Slots[1].Method != cycle.Organic || r.Slots[2].Method != cycle.Organic {
 		t.Errorf("slots %+v; want both writes", r.Slots)
 	}
+}
+
+// A save that loses to another writer is done again from what is stored,
+// so the change lands once: advancing maize → chickpea makes chickpea
+// the plan, never the cycle after it. One that never wins is a conflict
+// and changes nothing: not the saved plan, the profile, the record or
+// the roadmap.
+func TestConflictsApplyOnceOrNotAtAll(t *testing.T) {
+	t.Parallel()
+	ready := func(t *testing.T) (*world, cycle.Line) {
+		w := setup(t)
+		w.savePlan(t, "maize", "2026-06-20")
+		if _, err := w.cycles.Set(ctx, w.plot, 1, cycle.Change{Accept: true}); err != nil {
+			t.Fatal(err)
+		}
+		before := w.line(t)
+		w.clock.Advance(time.Date(2026, 10, 1, 0, 30, 0, 0, time.UTC).Sub(w.clock.Now()))
+		return w, before
+	}
+	t.Run("advance, conflict once", func(t *testing.T) {
+		t.Parallel()
+		w, before := ready(t)
+		w.store.n.Store(1)
+		l, err := w.cycles.Advance(ctx, w.plot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		next := before.Cycles[1].Planned.MainCrop()
+		f, _ := w.svc.Get(ctx, w.plot)
+		if f.Plan.Zones[0].Crop != next || f.Profile.PreviousCrop != "maize" || l.Cycles[0].Planned.MainCrop() != next {
+			t.Errorf("saved %s after %s, line starts %s; want %s after maize", f.Plan.Zones[0].Crop, f.Profile.PreviousCrop, l.Cycles[0].Planned.MainCrop(), next)
+		}
+	})
+	type state struct {
+		Farm    farm.Farm
+		Record  cycle.Record
+		Roadmap work.Roadmap
+	}
+	snap := func(t *testing.T, w *world) state {
+		t.Helper()
+		f, err := w.svc.Get(ctx, w.plot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, _ := w.store.Get(ctx, w.plot)
+		rm, err := w.work.Roadmap(ctx, w.plot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return state{f, r, rm}
+	}
+	for name, call := range map[string]func(w *world) error{
+		"advance": func(w *world) error { _, err := w.cycles.Advance(ctx, w.plot); return err },
+		"far sowing": func(w *world) error {
+			_, err := w.cycles.SetSown(ctx, w.plot, "2026-01-15")
+			return err
+		},
+		"near sowing": func(w *world) error {
+			_, err := w.cycles.SetSown(ctx, w.plot, "2026-06-25")
+			return err
+		},
+		"own plan at 0": func(w *world) error {
+			f, _ := w.svc.Get(ctx, w.plot)
+			_, err := w.cycles.Set(ctx, w.plot, 0, cycle.Change{Plan: &agro.Plan{Zones: []agro.Zone{{Crop: "cotton", Sow: "2026-10-05", Ring: f.Boundary.Ring()}}}, Method: cycle.Organic})
+			return err
+		},
+	} {
+		t.Run(name+", always in conflict", func(t *testing.T) {
+			t.Parallel()
+			w, _ := ready(t)
+			was := snap(t, w)
+			w.store.n.Store(-1)
+			if err := call(w); !errors.Is(err, cycle.ErrConflict) {
+				t.Fatalf("= %v; want ErrConflict", err)
+			}
+			w.store.n.Store(0)
+			now := snap(t, w)
+			for what, same := range map[string]bool{
+				"saved plan": reflect.DeepEqual(now.Farm.Plan, was.Farm.Plan),
+				"profile":    reflect.DeepEqual(now.Farm.Profile, was.Farm.Profile),
+				"record":     reflect.DeepEqual(now.Record, was.Record),
+				"roadmap":    reflect.DeepEqual(now.Roadmap, was.Roadmap),
+			} {
+				if !same {
+					t.Errorf("a conflict changed the %s", what)
+				}
+			}
+		})
+	}
+}
+
+// A write cut short after storing the record (a crash before the farm
+// was changed) is finished by the next read: over the plan it was made
+// against it is made; over a plan changed since, it is dropped.
+func TestAWriteCutShortIsFinished(t *testing.T) {
+	t.Parallel()
+	cut := func(t *testing.T, w *world) {
+		t.Helper()
+		// An advance whose record was stored and whose farm writes never
+		// ran, as a crash between them leaves it.
+		f, _ := w.svc.Get(ctx, w.plot)
+		next := w.line(t).Cycles[1].Planned.Plan
+		rec, _ := w.store.Get(ctx, w.plot)
+		was := rec.Slots
+		rec.Slots = [cycle.MaxCycles]cycle.Slot{{Method: rec.Slots[1].Method}, rec.Slots[2], {}}
+		sum := sha(t, f.Plan)
+		rec.Pending = &cycle.Pending{From: sum, PreviousCrop: "maize", Plan: &next, Was: was}
+		if _, err := w.store.Put(ctx, rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Run("finished", func(t *testing.T) {
+		t.Parallel()
+		w := setup(t)
+		w.savePlan(t, "maize", "2026-06-20")
+		if _, err := w.cycles.Set(ctx, w.plot, 1, cycle.Change{Accept: true}); err != nil {
+			t.Fatal(err)
+		}
+		next := w.line(t).Cycles[1].Planned.MainCrop()
+		cut(t, w)
+		l := w.line(t)
+		f, _ := w.svc.Get(ctx, w.plot)
+		r, _ := w.store.Get(ctx, w.plot)
+		if f.Plan.Zones[0].Crop != next || f.Profile.PreviousCrop != "maize" || r.Pending != nil || l.Cycles[0].Own.MainCrop() != next {
+			t.Errorf("after the read: saved %s after %s, pending %v; want %s after maize, nothing pending", f.Plan.Zones[0].Crop, f.Profile.PreviousCrop, r.Pending, next)
+		}
+	})
+	t.Run("overtaken", func(t *testing.T) {
+		t.Parallel()
+		w := setup(t)
+		w.savePlan(t, "maize", "2026-06-20")
+		cut(t, w)
+		w.savePlan(t, "cotton", "2026-06-25") // the season plan, since
+		w.line(t)
+		f, _ := w.svc.Get(ctx, w.plot)
+		r, _ := w.store.Get(ctx, w.plot)
+		if f.Plan.Zones[0].Crop != "cotton" || r.Pending != nil {
+			t.Errorf("saved %s, pending %v; want the newer cotton, nothing pending", f.Plan.Zones[0].Crop, r.Pending)
+		}
+	})
+}
+
+// sha is the plan's hash as cycle.Pending.From has it.
+func sha(t *testing.T, p *agro.Plan) string {
+	t.Helper()
+	b, err := json.Marshal(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := sha256.Sum256(b)
+	return hex.EncodeToString(h[:])
 }

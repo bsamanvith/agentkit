@@ -74,6 +74,7 @@ func RunStore(t *testing.T, open func(t *testing.T) cycle.Store) {
 		r.Slots[0] = cycle.Slot{Method: cycle.Organic, Sown: "2026-11-01", SownFor: "maize+@2026-10-28;"}
 		r.Slots[1] = cycle.Slot{Plan: &agro.Plan{Zones: []agro.Zone{{Crop: "chickpea", Sow: "2027-03-01", Ring: ring, RowCM: 30}}}}
 		r.Slots[2] = cycle.Slot{Method: cycle.Conventional}
+		r.Pending = &cycle.Pending{From: "ab12", PreviousCrop: "maize", Plan: r.Slots[1].Plan, Sown: "2026-11-02", Was: r.Slots}
 		return r
 	}
 

@@ -2,6 +2,7 @@ package cycle_test
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -32,7 +33,7 @@ type world struct {
 	svc     *farm.Service
 	plan    *planner.Planner
 	climate *agrotest.Source
-	store   *cycletest.Memory
+	store   *conflicting
 	work    *work.Service
 	cycles  *cycle.Service
 	clock   *clocktest.Fake
@@ -50,7 +51,7 @@ func setup(t *testing.T, opts ...cycle.Option) *world {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := &world{svc: svc, climate: &agrotest.Source{Clim: agrotest.Hyderabad()}, store: cycletest.NewMemory(), clock: clk}
+	w := &world{svc: svc, climate: &agrotest.Source{Clim: agrotest.Hyderabad()}, store: &conflicting{Memory: cycletest.NewMemory()}, clock: clk}
 	w.plan = planner.New(svc, lib, w.climate, planner.WithClock(clk))
 	w.work = work.New(w.plan, worktest.NewMemory())
 	w.work.SetNow(clk.Now)
@@ -65,4 +66,21 @@ func setup(t *testing.T, opts ...cycle.Option) *world {
 		t.Fatal(err)
 	}
 	return w
+}
+
+// conflicting is a Store whose next n Puts (every one, n < 0) lose to
+// another writer: they store nothing and answer ErrConflict.
+type conflicting struct {
+	*cycletest.Memory
+	n atomic.Int64
+}
+
+func (c *conflicting) Put(ctx context.Context, r cycle.Record) (cycle.Record, error) {
+	if n := c.n.Load(); n != 0 {
+		if n > 0 {
+			c.n.Add(-1)
+		}
+		return cycle.Record{}, cycle.ErrConflict
+	}
+	return c.Memory.Put(ctx, r)
 }

@@ -185,7 +185,31 @@ type Record struct {
 	// cycle alone. Own later cycles are kept, not shown.
 	FutureOff bool            `json:"future_off,omitempty"`
 	Slots     [MaxCycles]Slot `json:"slots"`
-	UpdatedAt time.Time       `json:"updated_at"`
+	// Pending is a change to the plot's saved plan, profile or roadmap
+	// that a write stored here first and makes on the farm after; nil
+	// once made. The next write or read finishes it (Service.update).
+	Pending   *Pending  `json:"pending,omitempty"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// Pending is what a write still has to change on the farm after storing
+// the record: the record wins the race first, so a write that loses
+// changes nothing anywhere.
+type Pending struct {
+	// From identifies the saved plan the change was made against (its
+	// JSON's hash; "" for none). The change is made only over that plan.
+	From string `json:"from"`
+	// PreviousCrop, when set, becomes the profile's previous crop
+	// (first).
+	PreviousCrop string `json:"previous_crop,omitempty"`
+	// Plan, when set, becomes the saved plan (second).
+	Plan *agro.Plan `json:"plan,omitempty"`
+	// Sown, when set, is recorded on the roadmap as each zone's sowing
+	// (last).
+	Sown string `json:"sown,omitempty"`
+	// Was is the record's slots before the write: they come back if the
+	// farm refuses the change.
+	Was [MaxCycles]Slot `json:"was"`
 }
 
 // Store keeps plots' records. Implementations are safe for concurrent use

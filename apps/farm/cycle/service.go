@@ -2,6 +2,9 @@ package cycle
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -62,6 +65,10 @@ func (s *Service) Line(ctx context.Context, farmID string) (Line, error) {
 	rec, err := s.store.Get(ctx, f.ID)
 	if err != nil {
 		return Line{}, err
+	}
+	if rec.Pending != nil && !farm.IsReadOnly(ctx) {
+		// A write stopped before it changed the farm: finish it now.
+		return s.update(ctx, farmID, func(*farm.Farm, *Record) error { return nil })
 	}
 	return s.line(ctx, f, rec, false)
 }
@@ -201,20 +208,12 @@ func (s *Service) Set(ctx context.Context, farmID string, pos int, ch Change) (L
 			rec.Slots[pos].Plan = nil
 		}
 		if plan != nil {
+			if err := s.checkPlan(ctx, f.ID, *plan); err != nil {
+				return err
+			}
 			if pos == 0 {
-				saved, err := s.plan.SavePlan(ctx, f.ID, *plan)
-				if err != nil {
-					return err
-				}
-				*f = saved
+				pend(*f, rec, Pending{Plan: plan})
 			} else {
-				rep, err := s.plan.Check(ctx, f.ID, *plan)
-				if err != nil {
-					return err
-				}
-				if rep.Status == agro.PlanInvalid {
-					return &planner.PlanError{Report: rep}
-				}
 				rec.Slots[pos].Plan = plan
 			}
 		}
@@ -282,6 +281,7 @@ func (s *Service) SetSown(ctx context.Context, farmID, day string) (Line, error)
 		return Line{}, fmt.Errorf("%w: day %s is more than a year ago", ErrInvalid, day)
 	}
 	return s.update(ctx, farmID, func(f *farm.Farm, rec *Record) error {
+		var save *agro.Plan
 		if f.Plan == nil || len(f.Plan.Zones) == 0 {
 			line, err := s.line(ctx, *f, *rec, false)
 			if err != nil {
@@ -291,34 +291,30 @@ func (s *Service) SetSown(ctx context.Context, farmID, day string) (Line, error)
 				return fmt.Errorf("%w: the plot has no plan and nothing is suggested: say the crop first", ErrInvalid)
 			}
 			p := clonePlan(line.Cycles[0].Suggested.Plan)
-			for i := range p.Zones {
-				p.Zones[i].Sow = day
-			}
-			saved, err := s.plan.SavePlan(ctx, f.ID, p)
-			if err != nil {
-				return err
-			}
-			*f = saved
+			save = &p
 		} else if far(*f.Plan, d) {
 			// Sown long before or after the plan's date (the roadmap takes a
 			// sowing up to work.MaxSowShift days from it): the farmer grew
 			// these crops, so the plan is saved again with that sowing.
 			p := clonePlan(*f.Plan)
-			for i := range p.Zones {
-				p.Zones[i].Sow = day
+			save = &p
+		}
+		sown := f.Plan
+		if save != nil {
+			for i := range save.Zones {
+				save.Zones[i].Sow = day
 			}
-			saved, err := s.plan.SavePlan(ctx, f.ID, p)
-			if err != nil {
+			if err := s.checkPlan(ctx, f.ID, *save); err != nil {
 				return err
 			}
-			*f = saved
+			sown = save
 		}
+		p := Pending{Plan: save}
 		if s.roadmap != nil {
-			if err := s.recordSown(ctx, *f, day); err != nil {
-				return err
-			}
+			p.Sown = day
 		}
-		rec.Slots[0].Sown, rec.Slots[0].SownFor = day, PlanKey(*f.Plan)
+		pend(*f, rec, p)
+		rec.Slots[0].Sown, rec.Slots[0].SownFor = day, PlanKey(*sown)
 		return nil
 	})
 }
@@ -336,6 +332,20 @@ func far(p agro.Plan, day time.Time) bool {
 		}
 	}
 	return false
+}
+
+// sownOn: the roadmap already has every zone sown on day.
+func (s *Service) sownOn(ctx context.Context, farmID, day string) bool {
+	r, err := s.roadmap.Roadmap(ctx, farmID)
+	if err != nil || len(r.Zones) == 0 {
+		return false
+	}
+	for _, z := range r.Zones {
+		if z.Sown != day {
+			return false
+		}
+	}
+	return true
 }
 
 // recordSown marks each zone's sowing done on day on the roadmap,
@@ -391,27 +401,36 @@ func (s *Service) Advance(ctx context.Context, farmID string) (Line, error) {
 			return fmt.Errorf("%w: nothing is planned after the current cycle: set the next one first", ErrInvalid)
 		}
 		cur, next := line.Cycles[0].Planned, line.Cycles[1].Planned
-		prof := agro.Profile{}
-		if f.Profile != nil {
-			prof = *f.Profile
-		}
-		prof.PreviousCrop = cur.MainCrop()
-		if _, err := s.plan.SetProfile(ctx, f.ID, prof); err != nil {
+		plan := clonePlan(next.Plan)
+		if err := s.checkPlan(ctx, f.ID, plan); err != nil {
 			return err
 		}
-		saved, err := s.plan.SavePlan(ctx, f.ID, clonePlan(next.Plan))
-		if err != nil {
-			return err
-		}
-		*f = saved
+		pend(*f, rec, Pending{PreviousCrop: cur.MainCrop(), Plan: &plan})
 		rec.Slots = [MaxCycles]Slot{{Method: rec.Slots[1].Method}, rec.Slots[2], {}}
 		return nil
 	})
 }
 
 // update reads the plot and its record, applies edit and stores the
-// record, again from the start when it changed in between; then returns
-// the line.
+// record, again from the start when it changed in between; then makes
+// the change edit left pending on the farm, and returns the line.
+//
+// An edit never writes the farm itself: it stores what to change in the
+// record (Record.Pending), so the record's Put is the one place a write
+// can lose a race, and a write that loses is done again from what is
+// stored, or, after the last try, changes nothing (ErrConflict). Once
+// the Put has won, the farm is changed (profile, then plan, then the
+// roadmap's sowing) and the pending change is cleared from the record.
+//
+// A crash (or a failing farm store) between the Put and the farm writes
+// leaves a record whose slots are already moved, with the change still
+// pending, over a farm with its old plan. The next write, or the next
+// Line that may write, finishes it first: over the plan it was made
+// against it makes every step again (each is the same when made twice);
+// over the plan it saves it makes only the roadmap step; over any other
+// plan (changed in the season plan since) it is dropped, as overtaken.
+// If the farm refuses the change (the plan no longer checks), the slots
+// it moved go back.
 func (s *Service) update(ctx context.Context, farmID string, edit func(*farm.Farm, *Record) error) (Line, error) {
 	for try := 0; ; try++ {
 		f, err := s.plan.Farms().Get(ctx, farmID)
@@ -421,6 +440,11 @@ func (s *Service) update(ctx context.Context, farmID string, edit func(*farm.Far
 		rec, err := s.store.Get(ctx, f.ID)
 		if err != nil {
 			return Line{}, err
+		}
+		if rec.Pending != nil {
+			if f, err = s.finish(ctx, f, &rec); err != nil && !refused(err) {
+				return Line{}, err
+			}
 		}
 		if err := edit(&f, &rec); err != nil {
 			return Line{}, err
@@ -433,6 +457,126 @@ func (s *Service) update(ctx context.Context, farmID string, edit func(*farm.Far
 		if err != nil {
 			return Line{}, err
 		}
+		if stored.Pending != nil {
+			f, err = s.finish(ctx, f, &stored)
+			if err != nil && !refused(err) {
+				return Line{}, err // still pending: the next read finishes it
+			}
+			stored = s.settle(ctx, stored)
+			if err != nil {
+				return Line{}, err
+			}
+		}
 		return s.line(ctx, f, stored, false)
 	}
+}
+
+// pend has rec carry change p, made against f's saved plan, keeping
+// rec's slots as they are now to put back if the farm refuses it.
+func pend(f farm.Farm, rec *Record, p Pending) {
+	p.From, p.Was = planSum(f.Plan), rec.Slots
+	rec.Pending = &p
+}
+
+// planSum identifies a saved plan exactly (nil: ""). The farm store keeps
+// a plan as it was given, so the hash of the plan saved is the hash of
+// the plan read back.
+func planSum(p *agro.Plan) string {
+	if p == nil {
+		return ""
+	}
+	b, err := json.Marshal(p)
+	if err != nil {
+		panic(err) // a plan always marshals
+	}
+	h := sha256.Sum256(b)
+	return hex.EncodeToString(h[:])
+}
+
+// errOvertaken: a pending change was made against a saved plan that has
+// since been replaced by another write.
+var errOvertaken = errors.New("cycle: the saved plan changed since")
+
+// refused: the farm will never take the change (the plan no longer
+// checks, the profile is refused), so trying again cannot help.
+func refused(err error) bool {
+	var pe *planner.PlanError
+	return errors.As(err, &pe) || errors.Is(err, agro.ErrInvalid) || errors.Is(err, ErrInvalid)
+}
+
+// finish makes rec's pending change on the farm f and returns the farm
+// after. Made, or overtaken (dropped): rec.Pending is cleared. Refused:
+// rec's slots go back as well, and the refusal is returned. Any other
+// error leaves rec as it was.
+func (s *Service) finish(ctx context.Context, f farm.Farm, rec *Record) (farm.Farm, error) {
+	p := *rec.Pending
+	switch sum := planSum(f.Plan); {
+	case sum == p.From:
+		if p.PreviousCrop != "" {
+			prof := agro.Profile{}
+			if f.Profile != nil {
+				prof = *f.Profile
+			}
+			prof.PreviousCrop = p.PreviousCrop
+			g, err := s.plan.SetProfile(ctx, f.ID, prof)
+			if err != nil {
+				return f, s.undo(rec, err)
+			}
+			f = g
+		}
+		if p.Plan != nil {
+			g, err := s.plan.SavePlan(ctx, f.ID, clonePlan(*p.Plan))
+			if err != nil {
+				return f, s.undo(rec, err)
+			}
+			f = g
+		}
+	case p.Plan != nil && sum == planSum(p.Plan):
+		// The plan was saved: only the roadmap may be left.
+	default:
+		rec.Pending = nil // overtaken: the newer plan stands
+		return f, nil
+	}
+	if p.Sown != "" && s.roadmap != nil && f.Plan != nil && !s.sownOn(ctx, f.ID, p.Sown) {
+		if err := s.recordSown(ctx, f, p.Sown); err != nil {
+			return f, s.undo(rec, err)
+		}
+	}
+	rec.Pending = nil
+	return f, nil
+}
+
+// undo puts rec's slots back when the farm refused its pending change,
+// and returns err.
+func (s *Service) undo(rec *Record, err error) error {
+	if refused(err) {
+		rec.Slots, rec.Pending = rec.Pending.Was, nil
+	}
+	return err
+}
+
+// settle stores rec, which no longer has the change pending. It is best
+// effort: when another write got there first, that write finished the
+// change itself (or the next read will), and what is stored is returned.
+func (s *Service) settle(ctx context.Context, rec Record) Record {
+	rec.UpdatedAt = s.now().UTC()
+	if stored, err := s.store.Put(ctx, rec); err == nil {
+		return stored
+	}
+	if stored, err := s.store.Get(ctx, rec.Farm); err == nil {
+		return stored
+	}
+	return rec
+}
+
+// checkPlan checks a plan for the plot as SavePlan will.
+func (s *Service) checkPlan(ctx context.Context, farmID string, plan agro.Plan) error {
+	rep, err := s.plan.Check(ctx, farmID, plan)
+	if err != nil {
+		return err
+	}
+	if rep.Status == agro.PlanInvalid {
+		return &planner.PlanError{Report: rep}
+	}
+	return nil
 }

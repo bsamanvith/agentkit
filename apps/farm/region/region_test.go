@@ -130,6 +130,10 @@ func TestEmbeddedAndhraPradeshOverlays(t *testing.T) {
 	if !reflect.DeepEqual(gn, base) {
 		t.Error("Kadapa's groundnut differs from the base beyond its windows")
 	}
+	// Castor's window is the plan's Southern zone table: any water.
+	if ca := crop(t, k, "castor"); len(ca.Windows) != 2 || ca.Windows[0].From != "06-15" || ca.Windows[0].To != "07-15" || ca.Windows[0].Water != "" {
+		t.Errorf("Kadapa castor windows %+v", ca.Windows)
+	}
 	if o := k.Origin("crops.groundnut.windows"); o.Layer != "YSR Kadapa" || o.Ref == nil || o.Ref.Source != "crida-cp-kadapa" || !strings.Contains(o.File, "kadapa") {
 		t.Errorf("origin of Kadapa's windows %+v", o)
 	}

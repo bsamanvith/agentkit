@@ -13,7 +13,7 @@
    "name": "Agriculture Contingency Plan for District: Y.S.R. District (Kadapa)",
    "publisher": "ICAR-CRIDA with RARS Tirupati, KVK Kadapa and DAATTC Kadapa (ANGRAU)",
    "url": "https://icar-crida.res.in/CP/AndhraPradesh/Kadapa.pdf",
-   "read": "2026-11-15"
+   "read": "2026-11-16"
   }
  ],
  "crops": {
@@ -36,6 +36,13 @@
     {"season": "kharif", "water": "rainfed", "from": "06-01", "to": "07-31", "source": "ICAR-CRIDA contingency plan, YSR Kadapa, 1.12: cotton kharif rainfed, June to July"}
    ],
    "ref": {"source": "crida-cp-kadapa", "where": "1.12 Sowing window for 5 major field crops: cotton"}
+  },
+  "castor": {
+   "windows": [
+    {"season": "kharif", "from": "06-15", "to": "07-15", "source": "ICAR-CRIDA contingency plan, YSR Kadapa, sowing window for major crops of the Southern zone: castor kharif, 15 June to 15 July"},
+    {"season": "rabi", "from": "10-01", "to": "10-07", "source": "ICAR-CRIDA contingency plan, YSR Kadapa, sowing window for major crops of the Southern zone: castor rabi, first week of October"}
+   ],
+   "ref": {"source": "crida-cp-kadapa", "where": "Sowing window for major crops grown in Southern zone districts during Kharif & Rabi, row 15: castor"}
   }
  }
 }

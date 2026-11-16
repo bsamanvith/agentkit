@@ -26,8 +26,9 @@ func TestDefaultLibrary(t *testing.T) {
 	if l.SoilsSource == "" || l.CropsSource == "" {
 		t.Error("the library does not say where its values come from")
 	}
-	// Every soil has crops that suit its texture, every crop a Telugu and
-	// Hindi name, and some crops are climate analogs from abroad.
+	// Every soil has crops that suit its texture, every crop a Telugu,
+	// Hindi, Kannada, Tamil and Marathi name, and some crops are climate
+	// analogs from abroad.
 	analogs := 0
 	for _, s := range l.Soils() {
 		n := 0
@@ -44,8 +45,10 @@ func TestDefaultLibrary(t *testing.T) {
 		}
 	}
 	for _, c := range l.Crops() {
-		if c.NameIn("te") == c.Name || c.NameIn("hi") == c.Name {
-			t.Errorf("crop %s: no Telugu or Hindi name", c.ID)
+		for _, lang := range []string{"te", "hi", "kn", "ta", "mr"} {
+			if c.Names[lang] == "" {
+				t.Errorf("crop %s: no %s name", c.ID, lang)
+			}
 		}
 		if c.ClimateAnalog {
 			analogs++

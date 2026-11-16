@@ -50,6 +50,7 @@ next: [apps/farm/docs/FEATURES.md](../apps/farm/docs/FEATURES.md).
 - [ ] [T149](T149-region-packs.md) Region packs: the crop library, inputs, cycle rules, storage and schemes by country, state and district, as data with sources ([design](../apps/farm/docs/REGIONS.md))
 - [ ] [T150](T150-ask-before-drawing.md) Ask before drawing: what to sow at a village with no plot yet (planner, `recommend_for_place`, `POST /api/recommend`, the first run's "What can I sow here now?"), by the rules a saved plot gets, with named assumptions
 - [ ] [T152](T152-farm-data-updates-skill.md) Assistant and cycle fixes from a live test, "I already sowed" in one step, and the `farm-data-updates` skill
+- [ ] [T153](T153-more-crops-and-language-names.md) More crops (castor, horse gram, vegetables, small fruit: 39 to 75) and crop names in Kannada, Tamil and Marathi
 - [ ] [T151](T151-insurance-on-season-work.md) Crop insurance on season work: enrolment cut-offs and the 72-hour loss rule from the region's schemes, on the roadmap and the cycle, an alert two weeks ahead, `get_schemes` and `/api/farms/{id}/schemes`
 - [ ] Field watch: satellite greenness and weather per plot, a weekly background agent (to plan)
 - [ ] Land-cover cross-check: is the plot cropland (ESA WorldCover / Dynamic World) (to plan)

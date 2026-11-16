@@ -39,6 +39,7 @@ Status words: **live** (merged on main, a farmer can use it), **building**
 | 23 | [Crop cycles](#23-crop-cycles) | building | plan, grow | T145, T146 |
 | 24 | [What to buy, and feeding and sprays](#24-what-to-buy-and-feeding-and-sprays) | building | grow | T148 |
 | 25 | [When to sell](#25-when-to-sell) | building | sell | T147 |
+| 26 | [Idea check](#26-idea-check) | live | plan, sell | T155 |
 
 ## Live
 
@@ -431,6 +432,36 @@ once and under the paid lanes' caps; WhatsApp needs an authentication
 template for codes and MSG91 a DLT OTP template. With no lane keys yet,
 `-code-sender log` writes the codes to the server's log, for trying it out.
 
+### 26. Idea check
+
+**The farmer** opens *Ideas* on a plot and sees four lists: the usual
+crops here, new things that could work, crops possible with a growing
+method, and popular ideas that are not realistic here. Every idea carries
+one verdict (**Realistic**, **A stretch**, **Unrealistic**) and the reason
+in a sentence: saffron at Kadapa is unrealistic because it is too hot, and
+the app says so. They can type any crop's name to check it. A method (mulch
+with drip, raised beds, a low tunnel, a shade net house, a polyhouse,
+hydroponics) shows how the crop scores under it, whether it opens
+off-season sowing or gets past a soil the crop dislikes, and what it costs by the horticulture
+mission's norm with the subsidy taken off. Each idea shows a price where
+the app has one (the mandi estimate, the support price, the district's
+markets) and the ways to sell it: support-price purchase, the market yard,
+e-NAM, Rythu Bazaar, a producer organisation, a processor. The assistant
+answers the same questions ("can I grow strawberries in a polyhouse?").
+
+**The app** changes what the crop sees under a method (temperature,
+light, rain, water need, drainage, soil) and scores it again with the
+recommender's own rules. It does **not** estimate yield, running cost or
+profit: there are no reviewed figures yet, and the screen says so.
+
+**Behind it:** `apps/farm/ideas` (`Service.For`, `Method.Apply`,
+`data/ideas.json`), `agro.Score`, `prices`. API
+`GET /api/farms/{id}/ideas`; tool `check_ideas`; web `ideas.tsx`.
+**Starter values:** what a method does to heat, light and water is set
+from general practice and needs an agronomist's review; the selling
+routes' text is general guidance. **Still to come:** yield, cost and
+profit an acre from cited sources; nearest markets by distance.
+
 ## Building now
 
 ### 23. Crop cycles
@@ -642,6 +673,7 @@ in the *Cost* column and named in the PR that adds it.
 | Mandi prices | `prices.Source` (on `feeds.Provider`) | Agmarknet on data.gov.in (`datagov`, all India, daily; needs `FARM_DATAGOV_KEY`), price files (`files`: Agmarknet, data.gov.in or CEDA CSVs in `FARM_PRICE_FILES`) | the next provider, then every price saved before | data.gov.in: **free**, key on registration; files: free; CEDA: free with registration, check its terms before commercial use |
 | Price history for sell timing | `prices.History` (filled by the mandi providers, or loaded with `ScanFiles`) | India Data Portal's Agmarknet files (2021 on), CEDA Agri Market's (2000 to 2023), as files | the saved history; with too little, no advice | India Data Portal: **free**, Open Data Commons Attribution (cite it); CEDA: free with registration, **non-commercial use only** |
 | Experimental plants and varieties | `agro.Wide`, `Crop.Varieties` (embedded data) | FAO ECOCROP (the whole table, 1,282 plants kept); the invasive plants of the Global Register of Introduced and Invasive Species for India (GRIIS, CC BY 4.0); TNAU horticulture guide (2020) and the district contingency plans for varieties | none: the library alone | Free public documents. **ECOCROP states no licence**: FAO's database terms (CC BY 4.0, credit FAO) name its statistical databases and bar promoting a commercial enterprise with them, which a free app that credits FAO does not do. The data is not under the repo's Apache licence ([NOTICE](../../../NOTICE)); anyone using it commercially checks FAO's terms first |
+| Growing methods (idea check) | `ideas.Book` (embedded data) | MIDH Operational Guidelines 2025, Annexure V (cost norms and assistance for mulching, tunnels, shade net houses, polyhouses, hydroponics) | none: the book alone | Free public document. The methods' effects on heat, light and water are starter values, not from it |
 | Fertiliser, seed and spray values | `inputs.Book` (embedded data) | TNAU crop production guides (2020) and crop protection pages, the CIB&RC list, India's banned list (PPQS) | kind defaults for crops without values | Free public documents; starter values for an agronomist to review |
 | Region data: what differs by place | `region.Set` (embedded base and overlays, plus the `-regions` folder) | ICAR-CRIDA district contingency plans (sowing windows), the PMFBY operational guidelines (insurance cut-offs and loss notice), state announcements as reported | the base pack | Free public documents |
 | Message lanes | `notify.Lane` | web push, Telegram, email (SMTP), WhatsApp (Meta Cloud API), SMS (MSG91 or Twilio), each on when its keys are set; `-notify-routes` composes them | the next lane in a chain; at a lane's cost cap, the next | Web push, Telegram: free; email: free tiers of most SMTP providers (flag the one chosen); WhatsApp: **paid** per template message, needs Meta business verification; SMS: **paid** per message, needs DLT registration |

@@ -250,7 +250,9 @@ func (s *Set) sameState(country, state, placeState string) bool {
 }
 
 func nameIs(got, name string, aliases []string) bool {
-	g := fold(got)
+	// A map service may say "Anantapuramu District": the word is not part
+	// of the name.
+	g := strings.TrimSuffix(fold(got), "district")
 	if g == "" {
 		return false
 	}

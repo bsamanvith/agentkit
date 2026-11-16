@@ -221,13 +221,6 @@ type Result struct {
 // crops best first. The rules are deterministic: the same request gives
 // the same result.
 func Recommend(l *Library, r Request) (Result, error) {
-	if err := r.Climate.Check(); err != nil {
-		return Result{}, err
-	}
-	if r.Today.IsZero() {
-		return Result{}, fmt.Errorf("%w: no today", ErrInvalid)
-	}
-	today := day(r.Today)
 	crops := l.Crops()
 	if len(r.Crops) > 0 {
 		crops = crops[:0]
@@ -239,6 +232,20 @@ func Recommend(l *Library, r Request) (Result, error) {
 			crops = append(crops, c)
 		}
 	}
+	return Score(crops, r)
+}
+
+// Score is Recommend for crops given as they are, not by id from a
+// library: for a crop whose needs a growing method changes (a shade net, a
+// polyhouse). r.Crops only says whether crops were asked for by name.
+func Score(crops []Crop, r Request) (Result, error) {
+	if err := r.Climate.Check(); err != nil {
+		return Result{}, err
+	}
+	if r.Today.IsZero() {
+		return Result{}, fmt.Errorf("%w: no today", ErrInvalid)
+	}
+	today := day(r.Today)
 	res := Result{Today: today.Format(DateLayout), Options: []Option{}}
 	var from, to time.Time
 	dates := []time.Time{}

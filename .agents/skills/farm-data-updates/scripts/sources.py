@@ -5,7 +5,7 @@ Read-only and offline: it reads the data files in the repository and
 prints what a person (or an agent) should check against the source. It
 fetches nothing and changes nothing.
 
-    sources.py [--kind schemes|windows|varieties|wide|inputs|banned|msp|all] [--older-than DAYS] [--json]
+    sources.py [--kind schemes|windows|varieties|wide|inputs|banned|methods|msp|all] [--older-than DAYS] [--json]
 """
 import argparse
 import datetime
@@ -87,6 +87,15 @@ def inputs_rows():
            "url": None, "read": b.get("checked"), "used_for": "%d active ingredients the app never lists; see the file's note for the source" % len(b.get("actives") or [])}
 
 
+def ideas_rows():
+    path = os.path.join(FARM, "ideas", "data", "ideas.json")
+    with open(path, encoding="utf-8") as f:
+        d = json.load(f)
+    for s in d.get("sources") or []:
+        yield {"kind": "methods", "file": rel(path), "id": s.get("id"), "name": s.get("name"), "url": s.get("url"),
+               "read": s.get("read"), "used_for": s.get("note") or "growing methods' cost norms"}
+
+
 def msp_rows():
     path = os.path.join(FARM, "prices", "msp.go")
     with open(path, encoding="utf-8") as f:
@@ -111,7 +120,7 @@ def main():
     ap.add_argument("--today", default=datetime.date.today().isoformat(), help=argparse.SUPPRESS)
     a = ap.parse_args()
     today = datetime.date.fromisoformat(a.today)
-    rows = list(region_rows()) + list(crops_rows()) + list(inputs_rows()) + list(msp_rows())
+    rows = list(region_rows()) + list(crops_rows()) + list(inputs_rows()) + list(ideas_rows()) + list(msp_rows())
     for r in rows:
         try:
             r["age_days"] = (today - datetime.date.fromisoformat(r["read"])).days

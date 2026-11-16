@@ -84,6 +84,12 @@
 //
 //	GET    /api/farms/{id}/schemes            schemes.Answer
 //
+// The idea check (with [WithIdeas]): usual crops, new ones and ones that
+// need a growing method, each with a verdict, a price and the ways to sell
+// (package ideas):
+//
+//	GET    /api/farms/{id}/ideas?search=&limit=   ideas.Report
+//
 // Automations and the farmer's inbox (with [WithAutomations]):
 //
 //	GET    /api/notices?farm=&unread=1     notices, newest first, and the unread count
@@ -145,6 +151,7 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/farmagent"
 	"github.com/bsamanvith/agentkit/apps/farm/feeds"
 	"github.com/bsamanvith/agentkit/apps/farm/geo"
+	"github.com/bsamanvith/agentkit/apps/farm/ideas"
 	"github.com/bsamanvith/agentkit/apps/farm/land"
 	"github.com/bsamanvith/agentkit/apps/farm/notify"
 	"github.com/bsamanvith/agentkit/apps/farm/planner"
@@ -202,6 +209,7 @@ type api struct {
 	work      *work.Service
 	cycles    *cycle.Service
 	schemes   Schemes
+	ideas     *ideas.Service
 	hub       *notify.Hub
 	country   string
 	log       *slog.Logger
@@ -265,6 +273,7 @@ func New(svc *farm.Service, opts ...Option) http.Handler {
 	mux.HandleFunc("GET /api/farms/{id}/roadmap", a.roadmapping(a.roadmap))
 	mux.HandleFunc("POST /api/farms/{id}/roadmap/events", a.roadmapping(a.recordWork))
 	mux.HandleFunc("GET /api/farms/{id}/schemes", a.schemesOf)
+	mux.HandleFunc("GET /api/farms/{id}/ideas", a.ideasOf)
 	mux.HandleFunc("GET /api/farms/{id}/cycles", a.cycling(a.cycleLine))
 	mux.HandleFunc("PUT /api/farms/{id}/cycles/{pos}", a.cycling(a.setCycle))
 	mux.HandleFunc("DELETE /api/farms/{id}/cycles/{pos}", a.cycling(a.setCycle))
@@ -376,7 +385,7 @@ func decode(w http.ResponseWriter, r *http.Request, v any) error {
 func (a *api) config(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"assistant": a.assistant != nil, "planner": a.planner != nil, "surveyor": a.surveyor != nil,
-		"research": a.research != nil, "prices": a.prices != nil, "country": a.country,
+		"research": a.research != nil, "prices": a.prices != nil, "country": a.country, "ideas": a.ideas != nil,
 		"weather": a.watch != nil && a.watch.HasWeather(), "automations": a.engine != nil,
 		"roadmap":  a.work != nil,
 		"cycles":   a.cycles != nil,

@@ -89,6 +89,7 @@ type setup struct {
 	alerts    automation.Store
 	work      *work.Service
 	cycles    *cycle.Service
+	schemes   Schemes
 }
 
 // WithPlanner gives the assistant the crop planning and plot group tools
@@ -200,6 +201,14 @@ func groups(svc *farm.Service, s setup) ([]group, error) {
 			}
 			farmSet.tools = append(farmSet.tools, more...)
 			farmSet.system += "\n" + CyclesSystem
+		}
+		if s.schemes != nil {
+			more, err = SchemeTools(s.schemes)
+			if err != nil {
+				return nil, err
+			}
+			farmSet.tools = append(farmSet.tools, more...)
+			farmSet.system += SchemesSystem
 		}
 	}
 	out := []group{farmSet}

@@ -78,6 +78,11 @@
 //	PUT    /api/farms/{id}/cycles/settings    turn later cycles on or off {"future"}
 //	POST   /api/farms/{id}/cycles/advance     move on: the next cycle becomes the saved plan
 //
+// Crop insurance (with [WithSchemes]): what applies to the current cycle,
+// from the region's schemes (package schemes):
+//
+//	GET    /api/farms/{id}/schemes            schemes.Answer
+//
 // Automations and the farmer's inbox (with [WithAutomations]):
 //
 //	GET    /api/notices?farm=&unread=1     notices, newest first, and the unread count
@@ -195,6 +200,7 @@ type api struct {
 	engine    *automation.Engine
 	work      *work.Service
 	cycles    *cycle.Service
+	schemes   Schemes
 	hub       *notify.Hub
 	country   string
 	log       *slog.Logger
@@ -256,6 +262,7 @@ func New(svc *farm.Service, opts ...Option) http.Handler {
 	mux.HandleFunc("GET /api/farms/{id}/calendar", a.watching(a.calendar))
 	mux.HandleFunc("GET /api/farms/{id}/roadmap", a.roadmapping(a.roadmap))
 	mux.HandleFunc("POST /api/farms/{id}/roadmap/events", a.roadmapping(a.recordWork))
+	mux.HandleFunc("GET /api/farms/{id}/schemes", a.schemesOf)
 	mux.HandleFunc("GET /api/farms/{id}/cycles", a.cycling(a.cycleLine))
 	mux.HandleFunc("PUT /api/farms/{id}/cycles/{pos}", a.cycling(a.setCycle))
 	mux.HandleFunc("DELETE /api/farms/{id}/cycles/{pos}", a.cycling(a.setCycle))

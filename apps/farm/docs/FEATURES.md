@@ -1,6 +1,6 @@
 # Farm: what farmers can do, and what comes next
 
-> The product list, kept up to date. Last updated 2026-11-15.
+> The product list, kept up to date. Last updated 2026-11-16.
 > Every PR that adds, changes or removes something a farmer can see
 > updates this file (the `farm-features` skill says how). Why the app
 > exists and the farmer's year: [PRODUCT.md](PRODUCT.md). Epic:
@@ -17,7 +17,7 @@ Status words: **live** (merged on main, a farmer can use it), **building**
 | 1 | [My plots](#1-my-plots) | live | land | T133, T146 |
 | 2 | [The land and its surroundings](#2-the-land-and-its-surroundings) | live | land | T135, T138 |
 | 3 | [Farm layout](#3-farm-layout) | live | land | T135 |
-| 4 | [What to plant and when](#4-what-to-plant-and-when) | live | plan | T134, T137 |
+| 4 | [What to plant and when](#4-what-to-plant-and-when) | live | plan | T134, T137, T150 |
 | 5 | [Sun and seasons](#5-sun-and-seasons) | live | plan | T137 |
 | 6 | [Season plan for a plot](#6-season-plan-for-a-plot) | live | plan | T134 |
 | 7 | [Plot groups and how plants are spread](#7-plot-groups-and-how-plants-are-spread) | live | plan | T136 |
@@ -127,10 +127,21 @@ score from 0 to 100, the reasons and the risks, and how much water rain
 will not cover. Crops from similar climates abroad (dragon fruit,
 avocado, quinoa) are scored too and marked as *climate analogs*.
 
+**Before any plot is drawn** (T150), the farmer can ask the same for a
+village: on the first run, after typing the village, *What can I sow
+here now?* shows the top three crops with their sowing window and
+harvest, or they ask the assistant "what should I sow in Pulivendula in
+June". The answer uses the village's district rules (its sowing windows)
+and says what it assumed when the farmer did not say: rain only, no
+irrigation, and the soil not known. Giving the water and soil changes it.
+
 **Behind it:** rules, not the model: `apps/farm/agro` (soil and crop
 libraries in `agro/data`, the recommender), climate normals from NASA
-POWER (`apps/farm/nasapower`). Tools `recommend_crops`, `compare_crops`;
-skills `plan-season`, `research-crops`. The rule values are starter values
+POWER (`apps/farm/nasapower`); a place with no plot by `planner.RecommendAt`
+(the village found with Nominatim, its district from the same lookup the
+plots use), `POST /api/recommend`, web `sowhere.tsx`. Tools
+`recommend_crops`, `recommend_for_place`, `compare_crops`; skills
+`plan-season`, `research-crops`. The rule values are starter values
 that need an agronomist's review. Details:
 [CROP-PLANNING.md](CROP-PLANNING.md).
 
@@ -175,7 +186,8 @@ Details: [GROUPS.md](GROUPS.md).
 
 **The farmer** asks in their own language and script (Telugu, Hindi,
 Kannada, Marathi, English) on a phone: "what should I sow on the east
-plot after Dasara", "how far is the canal", "convert 2 acres 10 guntas to
+plot after Dasara", "what can I sow in my village now" (before drawing
+any plot), "how far is the canal", "convert 2 acres 10 guntas to
 cents". The assistant answers short and plain, and every number in the
 answer comes from a tool, so it is the same however the question is
 asked.

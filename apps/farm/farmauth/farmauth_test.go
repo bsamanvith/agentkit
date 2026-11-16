@@ -406,3 +406,17 @@ func TestMessageSettingsAreAnAdminsAndUnsubscribeIsOpen(t *testing.T) {
 		t.Errorf("unsubscribe without a session: %d, want it let through", c)
 	}
 }
+
+// Asking what to sow at a place with no plot is a read like asking for a
+// plot: a session is needed, and any signed-in farmer may ask.
+func TestRecommendForAPlaceNeedsSignIn(t *testing.T) {
+	a := newApp(t, nil)
+	body := `{"place":"Pulivendula"}`
+	if code := a.browser().do("POST", "/api/recommend", body, nil); code != http.StatusUnauthorized {
+		t.Errorf("POST /api/recommend without a session: %d, want 401", code)
+	}
+	// This app has no planner: past the gate it is 503, not 401 or 403.
+	if code := a.user("Ravi").do("POST", "/api/recommend", body, nil); code != http.StatusServiceUnavailable {
+		t.Errorf("POST /api/recommend signed in: %d, want 503 from the API behind the gate", code)
+	}
+}

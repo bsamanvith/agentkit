@@ -36,7 +36,12 @@ useful thing, not every setting.
 
 ## Onboarding (T146)
 
-1. Sign in, type the village, the map flies there.
+1. Sign in, type the village, the map flies there. Before drawing, the
+   farmer may tap *What can I sow here now?* (T150): the top three crops
+   at the village with their sowing window and harvest, by the same rules
+   a saved plot gets, and the assumption line ("Assuming rain only, no
+   irrigation, and the soil not known."). It is optional, loads only when
+   tapped and never blocks drawing.
 2. Draw the plot: **pencil** (freehand, smoothed to corners),
    **lines** (tap each corner, as today), **rectangle** (drag, then turn
    and stretch), or walk it with GPS, or type coordinates.

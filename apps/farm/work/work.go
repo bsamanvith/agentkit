@@ -119,6 +119,14 @@ type Task struct {
 	// overdue (nor counted open). It stays open, with no record made up:
 	// the farmer may still say it was done.
 	Passed bool `json:"passed,omitempty"`
+	// Deadline is a task whose date is a last day (an insurance
+	// enrolment cut-off): once the day is gone and it is still open, it
+	// is Passed, not overdue.
+	Deadline bool `json:"deadline,omitempty"`
+	// Standing is information that holds all season ("if the crop is
+	// damaged, report within 72 hours"): never due, overdue or counted,
+	// and not closed.
+	Standing bool `json:"standing,omitempty"`
 }
 
 // Zone is one zone of the plan on the roadmap.
@@ -191,6 +199,13 @@ var Kinds = []string{calendar.Prepare, calendar.Sow, calendar.Weed, calendar.Fer
 // FromInputs is the source of tasks that come from the plot's inputs plan
 // (feeding and sprays, package inputs) through a [TaskSource].
 const FromInputs = "inputs"
+
+// FromSchemes is the source of tasks that come from the schemes of the
+// plot's region (crop insurance, package schemes) through a [TaskSource].
+const FromSchemes = "schemes"
+
+// Insurance is the kind of a scheme's task.
+const Insurance = "insurance"
 
 // Build makes a plot's roadmap from its plan and the events recorded on
 // it, as of today. Events about tasks the plan no longer has are ignored.
@@ -291,6 +306,18 @@ func build(lib *agro.Library, farmID string, plan agro.Plan, irrigated bool, eve
 			t.By = st.By
 		}
 		due := day(t.Date).AddDate(0, 0, Grace)
+		switch {
+		case t.Standing:
+			t.State, t.Day, t.Note, t.Actuals, t.By = Open, "", "", nil, ""
+			out = append(out, t)
+			continue
+		case t.State == Open && t.Deadline && today.After(day(t.Date)):
+			// A last day gone: passed, never overdue for ever.
+			t.Passed = true
+			r.Counts.Passed++
+			out = append(out, t)
+			continue
+		}
 		switch t.State {
 		case Open:
 			if t.Source != FromFarmer && t.DAS != nil && *t.DAS < 0 && sown[t.Zone] {

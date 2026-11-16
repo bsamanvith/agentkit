@@ -272,6 +272,10 @@ func (p *Planner) recommend(ctx context.Context, s spot, ask Ask) (Recommendatio
 			search, open := strings.TrimSpace(ask.Search), len(ask.Kinds) == 0
 			for _, c := range lib.Crops() {
 				switch {
+				case c.Invasive && search == "":
+					// Recorded as invasive in India: only by name, and
+					// then with its warning.
+					continue
 				case search != "":
 					if !c.Matches(search) || !open && !slices.Contains(ask.Kinds, c.Kind) {
 						continue
@@ -295,7 +299,7 @@ func (p *Planner) recommend(ctx context.Context, s spot, ask Ask) (Recommendatio
 		return Recommendation{}, err
 	}
 	if ask.Experimental {
-		out.Notes = append(out.Notes, agro.Note{ID: "experimental", Message: "These are experimental: plants outside the reviewed library, scored on climate and soil ranges from FAO ECOCROP alone, with no local season, spacing, dose or trial behind them. Try a small area first, and check with the agriculture office that a plant new to the area is not invasive or restricted."})
+		out.Notes = append(out.Notes, agro.Note{ID: "experimental", Message: "These are experimental: plants outside the reviewed library, scored on climate and soil ranges from FAO ECOCROP alone, with no local season, spacing, dose or trial behind them. Plants recorded as invasive in India are left out. Try a small area first, and check with the agriculture office that a plant new to the area is not restricted."})
 	}
 	if ask.Limit > 0 && len(out.Options) > ask.Limit {
 		out.Options = out.Options[:ask.Limit]

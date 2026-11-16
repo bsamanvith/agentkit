@@ -374,6 +374,8 @@ export interface Option {
   analog?: boolean;
   /** A plant of the experimental tier, with the other names it goes by. */
   experimental?: boolean;
+  /** Recorded as invasive in India: shown only when asked for by name. */
+  invasive?: boolean;
   common?: string[];
   sow: string;
   harvest: string;

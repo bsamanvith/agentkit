@@ -272,6 +272,12 @@ func TestExperimentalTierOnlyWhenAsked(t *testing.T) {
 		if _, err := p.Library().Crop(o.Crop); err == nil {
 			t.Errorf("option %s is in the library too", o.Crop)
 		}
+		if c.Invasive || o.Invasive {
+			t.Errorf("option %s is recorded as invasive in India, and was offered", o.Crop)
+		}
+		if !c.Perennial && !slices.ContainsFunc(o.Risks, func(n agro.Note) bool { return n.ID == "experimental.season" }) {
+			t.Errorf("annual %s does not say its sowing date is no local season", o.Crop)
+		}
 		if !slices.ContainsFunc(o.Risks, func(n agro.Note) bool { return n.ID == "experimental" }) {
 			t.Errorf("option %s does not say it is experimental", o.Crop)
 		}
@@ -283,6 +289,19 @@ func TestExperimentalTierOnlyWhenAsked(t *testing.T) {
 	coffee := recommendAt(t, p, at, planner.Ask{Experimental: true, Search: "coffee"})
 	if len(coffee.Options) == 0 || !slices.ContainsFunc(coffee.Options, func(o agro.Option) bool { return o.Crop == "coffea_arabica" && o.Score < 60 }) {
 		t.Errorf("coffee: %+v", coffee.Options)
+	}
+	// An invasive plant is never offered, here or by kind. By name it is
+	// found, scored nothing, and says not to plant it.
+	for _, ask := range []planner.Ask{{Experimental: true, Limit: 2000}, {Experimental: true, Kinds: []string{"fruit", "fodder", "material"}, Limit: 2000}} {
+		for _, o := range recommendAt(t, p, at, ask).Options {
+			if o.Invasive {
+				t.Errorf("%+v offers invasive %s", ask, o.Crop)
+			}
+		}
+	}
+	weed := recommendAt(t, p, at, planner.Ask{Experimental: true, Search: "Prosopis juliflora"})
+	if len(weed.Options) != 1 || !weed.Options[0].Invasive || weed.Options[0].Score != 0 || !slices.ContainsFunc(weed.Options[0].Risks, func(n agro.Note) bool { return n.ID == "invasive" }) {
+		t.Errorf("Prosopis juliflora by name: %+v", weed.Options)
 	}
 	// A kind: farmed roots and tubers only.
 	roots := recommendAt(t, p, at, planner.Ask{Experimental: true, Kinds: []string{"root"}, Limit: 50})

@@ -8,7 +8,10 @@ a public copy of the whole table is EcoCrop_DB.csv in
 https://github.com/OpenCLIM/ecocrop. It is not committed here. A plant is
 kept when it is a food, fodder, medicinal or material plant, has every
 range the recommender scores (temperature, rain, pH, soil texture, days),
-and its species is not already in ../crops.json (by "species").
+and its species is not already in ../crops.json (by "species"). A plant
+whose species is in griis-india-invasive.txt (the invasive plants of the
+Global Register of Introduced and Invasive Species for India) is marked
+"invasive": it is never offered, and is found only by name, with a warning.
 """
 import csv, gzip, json, os, re, sys
 
@@ -36,6 +39,7 @@ def whole(v):
 
 def build(path):
     have = {" ".join(c["species"].lower().split()[:2]) for c in json.load(open(os.path.join(HERE, "..", "crops.json"), encoding="utf8"))["crops"]}
+    invasive = {l.strip().lower() for l in open(os.path.join(HERE, "griis-india-invasive.txt"), encoding="utf8") if l.strip() and not l.startswith("#")}
     out, seen = [], set()
     for r in csv.DictReader(open(path, encoding="latin-1")):
         cat = r["CAT"].lower()
@@ -89,6 +93,8 @@ def build(path):
             "grown": "large" if "large scale" in r["PLAT"] else "small" if "small scale" in r["PLAT"] else "wild" if "wild" in r["PLAT"] else "",
             "experimental": True,
         }
+        if key in invasive:
+            c["invasive"] = True
         out.append(c)
     out.sort(key=lambda c: c["id"])
     doc = {

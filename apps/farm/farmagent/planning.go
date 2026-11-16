@@ -56,6 +56,8 @@ type cropCard struct {
 	// An experimental plant's other names, and that it is one.
 	Common       []string `json:"common,omitempty"`
 	Experimental bool     `json:"experimental,omitempty"`
+	// Invasive: recorded as invasive in India; not to be planted.
+	Invasive bool `json:"invasive,omitempty"`
 }
 
 type compareIn struct {
@@ -196,7 +198,7 @@ func PlanningTools(p *planner.Planner) ([]tool.Tool, error) {
 				}
 				for _, c := range from.Crops() {
 					if (in.Kind == "" || c.Kind == in.Kind) && c.Matches(in.Search) {
-						out = append(out, cropCard{c.ID, c.Name, c.Names, c.Kind, c.Days, c.Seasons, c.ClimateAnalog, c.LightNeed(), c.DayHabit(), c.Common, c.Experimental})
+						out = append(out, cropCard{c.ID, c.Name, c.Names, c.Kind, c.Days, c.Seasons, c.ClimateAnalog, c.LightNeed(), c.DayHabit(), c.Common, c.Experimental, c.Invasive})
 					}
 				}
 				if in.Experimental && len(out) > 60 {

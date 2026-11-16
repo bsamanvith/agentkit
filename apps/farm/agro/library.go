@@ -142,6 +142,10 @@ type Crop struct {
 	// Grown says how widely an experimental plant is farmed: GrownLarge,
 	// GrownSmall, GrownWild (gathered, not farmed) or unknown.
 	Grown string `json:"grown,omitempty"`
+	// Invasive marks an experimental plant recorded as invasive in India
+	// (data/ecocrop/griis-india-invasive.txt): never offered, and found
+	// only by name, with a warning.
+	Invasive bool `json:"invasive,omitempty"`
 	// Zones are the climate zones ECOCROP knows the plant from (ZoneSteppe,
 	// ...); empty when it does not say.
 	Zones []string `json:"zones,omitempty"`

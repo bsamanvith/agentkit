@@ -184,7 +184,7 @@ joined (branch `wt-join`, 2026-11-15):
   (numbers from the plan, never the model); `get_cycles` carries the
   timing advice and points to `get_inputs`.
 - **A sowing far from the plan** (more than `work.MaxSowShift`, 120
-  days): *I already sowed on…* saves the plan again with that day rather
+  days): *I already sowed…* saves the plan again with that day rather
   than refusing it. That renames the season's tasks (their IDs carry the
   planned sowing), so what the farmer had ticked done, skipped or not
   needed is recorded again on the same tasks of the new plan.
@@ -204,6 +204,16 @@ joined (branch `wt-join`, 2026-11-15):
   and before the farm writes is finished by the next read, or dropped if
   the plan was changed since; if the farm refuses it, the record's slots
   go back.
+
+- **"I already sowed" is one step** (T152). The page asks what and when
+  (the planned crop by default), `POST /cycles/sown` takes `crop` with
+  `day`, and `set_cycle` takes `crop` with `sown`; a crop set for the
+  current cycle with a day gone by is recorded as sown. The crop the
+  farmer names becomes the cycle, whatever was suggested.
+- **The app's own plan stays local.** The suggested line leaves out
+  crops marked new to the country (the recommender still lists them),
+  and when nothing can be sown within the wait limit it shows the next
+  good sowing instead of nothing.
 
 Still open: preferring a sowing date by its harvest
 month inside the window (`Input.suggest`) is not built. Guided photos

@@ -190,7 +190,9 @@ plot after Dasara", "what can I sow in my village now" (before drawing
 any plot), "how far is the canal", "convert 2 acres 10 guntas to
 cents". The assistant answers short and plain, and every number in the
 answer comes from a tool, so it is the same however the question is
-asked.
+asked. It is told the day with every question, so "I sowed groundnut
+last Monday" is noted as that crop on that day in one step, and it says
+something was saved only after it was.
 
 **Behind it:** the agentkit harness (`apps/farm/farmagent`) on the model
 lane (`apps/farm/models`, T142): a list of models tried in order, by

@@ -59,7 +59,7 @@ func suits(t *testing.T, r agro.Request) time.Time {
 	lib, _ := agro.Default()
 	r.Calendar = true
 	for _, c := range lib.Crops() {
-		if !c.Perennial {
+		if !c.Perennial && !c.ClimateAnalog {
 			r.Crops = append(r.Crops, c.ID)
 		}
 	}
@@ -190,5 +190,31 @@ func TestTakenSuggestionIsStillTheSuggestion(t *testing.T) {
 	p := got.Cycles[0]
 	if p.Own == nil || p.Suggested == nil || p.Suggested.MainCrop() != p.Own.MainCrop() || p.Suggested.Sow != p.Own.Sow {
 		t.Errorf("taken %s on %s; suggested now %+v", s.MainCrop(), s.Sow, p.Suggested)
+	}
+}
+
+// The app never plans a crop new to the country by itself, whatever the
+// month, soil or water: such a crop has no local seed, market or
+// experience (a Kadapa plot with a borewell was offered chia in November).
+func TestSuggestionIsNeverACropNewToTheCountry(t *testing.T) {
+	lib, err := agro.Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for m := time.January; m <= time.December; m++ {
+		for _, soil := range []string{"", "red_sandy", "black"} {
+			for _, water := range [][]agro.Water{nil, borewell} {
+				l, _ := current(t, time.Date(2026, m, 16, 0, 0, 0, 0, time.UTC), soil, water)
+				for _, a := range l.Cycles[0].Suggested.Areas {
+					c, err := lib.Crop(a.Crop)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if c.ClimateAnalog {
+						t.Errorf("%s, soil %q, water %v: suggested %s, a crop new to the country", m, soil, water, c.Name)
+					}
+				}
+			}
+		}
 	}
 }

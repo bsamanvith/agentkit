@@ -302,7 +302,12 @@ func (in Input) suggest(pos int, from time.Time, prev, own *Cycle) (sug *Cycle, 
 	}
 	var annuals []string
 	for _, c := range in.Library.Crops() {
-		if !c.Perennial && !c.Off {
+		// A crop new to the country (ClimateAnalog) is never what the
+		// app plans by itself: it has no local seed, market or
+		// experience. The farmer can still choose it, and the
+		// recommender still lists it; a region where it is grown turns
+		// the mark off in its overlay.
+		if !c.Perennial && !c.Off && !c.ClimateAnalog {
 			annuals = append(annuals, c.ID)
 		}
 	}
@@ -334,7 +339,7 @@ func (in Input) suggest(pos int, from time.Time, prev, own *Cycle) (sug *Cycle, 
 	score := 0
 	for i, ring := range rings {
 		before := in.previous(prev, i, len(rings))
-		var soon, later *pick
+		var soon, later, far *pick
 		for _, o := range res.Options {
 			c, err := in.Library.Crop(o.Crop)
 			if err != nil {
@@ -361,14 +366,22 @@ func (in Input) suggest(pos int, from time.Time, prev, own *Cycle) (sug *Cycle, 
 				continue
 			}
 			wait := waitOf(o.Sow)
+			adj := o.Score + bonus - wait/in.Rules.Or().WaitDaysPerPoint
+			p := &pick{crop: c, sow: o.Sow, score: max(0, min(100, o.Score+bonus)), adj: adj, good: good, bad: bad, reasons: o.Reasons, risks: o.Risks}
 			if wait > in.Rules.Or().MaxWaitDays {
+				// Far: past MaxWait, taken only when nothing else fits,
+				// so the page never comes up empty (rain only, asked in
+				// September: the next good sowing is the monsoon).
+				if far == nil || adj > far.adj {
+					far = p
+				}
 				continue
 			}
-			if adj := o.Score + bonus - wait/in.Rules.Or().WaitDaysPerPoint; later == nil || adj > later.adj {
-				later = &pick{crop: c, sow: o.Sow, score: max(0, min(100, o.Score+bonus)), adj: adj, good: good, bad: bad, reasons: o.Reasons, risks: o.Risks}
+			if later == nil || adj > later.adj {
+				later = p
 			}
 		}
-		chosen := cmp.Or(soon, later)
+		chosen := cmp.Or(soon, later, far)
 		if chosen == nil {
 			return nil, rest
 		}

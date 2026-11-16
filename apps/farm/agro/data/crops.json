@@ -15,7 +15,7 @@
    "publisher": "Food and Agriculture Organization of the United Nations (FAO)",
    "url": "https://gaez.fao.org/pages/ecocrop",
    "read": "2026-11-16",
-   "note": "The experimental tier (wide.json.gz, built by ecocrop/build.py) from the whole table, read from the public copy at https://github.com/OpenCLIM/ecocrop (EcoCrop_DB.csv). FAO's page states no licence for this database; FAO's database terms (CC BY 4.0 with credit to FAO) name its statistical databases. Credit FAO; confirm the terms before commercial use."
+   "note": "The experimental tier (wide.json.gz, built by ecocrop/build.py) from the whole table, read from the public copy at https://github.com/OpenCLIM/ecocrop (EcoCrop_DB.csv). FAO's page states no licence for this database; FAO's database terms (CC BY 4.0 with credit to FAO) name its statistical databases. The app is free and credits FAO; this data is not under the repository's Apache licence and stays under FAO's terms (see NOTICE at the repository root). Check FAO's terms before any commercial use."
   }
  ],
  "crops": [

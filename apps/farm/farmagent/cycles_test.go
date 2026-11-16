@@ -95,6 +95,12 @@ func TestCycleTools(t *testing.T) {
 	if c := l.Cycles[0].Planned; c.MainCrop() != "sesame" || c.Sow != "2026-10-28" || c.SowKind != cycle.Actual {
 		t.Errorf("sowed sesame: %+v", c)
 	}
+	// A crop for the current cycle with a sowing day already gone by is
+	// a sowing that happened, however the call is worded.
+	l = line(call(t, reg, farmagent.SetCycleTool, `{"farm":"farm_1","position":0,"crop":"chickpea","sow":"2026-10-20"}`))
+	if c := l.Cycles[0].Planned; c.MainCrop() != "chickpea" || c.Sow != "2026-10-20" || c.SowKind != cycle.Actual {
+		t.Errorf("a past sowing day: %+v; want it recorded as sown", c)
+	}
 	for _, bad := range []string{
 		`{"farm":"farm_1","position":1,"sown":"2026-10-30"}`,
 		// A sowing is recorded alone: nothing else in the call is dropped

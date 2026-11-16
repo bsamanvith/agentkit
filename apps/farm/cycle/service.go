@@ -271,10 +271,10 @@ func (s *Service) sownDay(day string) (time.Time, error) {
 	}
 	today := s.plan.Today()
 	if d.After(today.AddDate(0, 0, 1)) {
-		return time.Time{}, fmt.Errorf("%w: day %s is in the future", ErrInvalid, day)
+		return time.Time{}, fmt.Errorf("%w: day %s is in the future; today is %s", ErrInvalid, day, today.Format(agro.DateLayout))
 	}
 	if d.Before(today.AddDate(-1, 0, 0)) {
-		return time.Time{}, fmt.Errorf("%w: day %s is more than a year ago", ErrInvalid, day)
+		return time.Time{}, fmt.Errorf("%w: day %s is more than a year ago; today is %s", ErrInvalid, day, today.Format(agro.DateLayout))
 	}
 	return d, nil
 }

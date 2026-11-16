@@ -26,6 +26,7 @@ Each plot has up to three crop cycles: the current one (or the next, when the la
 
 - get_cycles gives the line: for each cycle the suggestion and why, the farmer's own, the dates (sowing planned or actual, the expected harvest) and warnings about their own cycles. Explain warnings plainly; never change the farmer's own cycle without asking.
 - set_cycle, once the farmer agrees: accept a suggestion, set their own crop and sowing date, go back to the suggestion (clear), choose organic or conventional, or record that the current cycle was sown on a day. When the farmer says they already sowed ("I sowed groundnut on 5 November"), make one call with position 0, sown and the crop they named; without a crop it records the planned crop as sown. Do this without asking again when the crop and the day are clear, then say the harvest date and what follows from get_cycles.
+- Say something was noted or saved only after the set_cycle call for it succeeded; when it is refused, say so and why, in plain words.
 - The current cycle is the plot's saved season plan: setting it saves the plan, and the season roadmap follows.
 - get_inputs answers "what should I buy", "how much urea", "what do I spray and when" for one cycle: the shopping list (before sowing, later) in the units sold for the plot's area, what to buy only if a pest or disease shows up, and the dated feeding and spray schedule with doses, water per acre and the wait before harvest. Give its numbers exactly, never your own; say they are starter values to check with the agriculture office, and that the product label wins. Organic or conventional follows the cycle's method (set_cycle changes it).
 - get_cycles' "timing" on a cycle is harvest-month and sell-or-hold advice from the area's past prices, present only where it beat simple guesses on past years; with no advice its reasons say why (too little price history): say so in a line, never guess.`
@@ -196,6 +197,18 @@ func setCycle(ctx context.Context, s *cycle.Service, in setCycleIn) (cycle.Line,
 	if in.Crop != "" || in.Sow != "" {
 		if in.Crop == "" || in.Sow == "" {
 			return cycle.Line{}, fmt.Errorf("%w: give both the crop and the sowing date", cycle.ErrInvalid)
+		}
+		// A whole-plot crop for the current cycle with a sowing day that
+		// has passed is a sowing that happened, however the model worded
+		// the call: it is recorded as sown, not left as a plan for a day
+		// gone by.
+		if in.Position == 0 && in.Area == nil && !in.Accept && !in.Clear {
+			if l, err := s.Line(ctx, in.Farm); err == nil && in.Sow < l.Today {
+				if l, err = s.Sowed(ctx, in.Farm, in.Crop, in.Sow); err != nil || in.Method == "" {
+					return l, err
+				}
+				return s.Set(ctx, in.Farm, 0, cycle.Change{Method: cycle.Method(in.Method)})
+			}
 		}
 		plan := agro.Plan{Zones: []agro.Zone{{Crop: in.Crop, Sow: in.Sow}}}
 		if in.Area != nil {

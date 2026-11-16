@@ -237,4 +237,44 @@ describe("Roadmap", () => {
     expect(queued("farm_1")).toHaveLength(1);
     expect(screen.getByText("First weeding")).toHaveClass("line-through");
   });
+  it("shows a passed insurance date as passed, and the loss rule as information with nothing to tick", async () => {
+    const r = roadmap();
+    r.tasks.push(
+      {
+        id: "scheme-pmfby-kharif-2026",
+        source: "schemes",
+        zone: -1,
+        kind: "insurance",
+        phase: "grow",
+        title: "Enrol for crop insurance by 15 July",
+        date: "2026-07-15",
+        state: "open",
+        deadline: true,
+        passed: true,
+      },
+      {
+        id: "scheme-loss-notice-kharif-2026",
+        source: "schemes",
+        zone: -1,
+        kind: "insurance",
+        phase: "grow",
+        title: "If the crop is damaged: report within 72 hours",
+        date: "2026-07-01",
+        state: "open",
+        standing: true,
+      },
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => json(r)),
+    );
+    render(<Roadmap farm={farm} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Whole season" }));
+    expect(screen.getByText("Enrol for crop insurance by 15 July")).toBeInTheDocument();
+    expect(screen.getByText("The last date has passed. Tick it if you did it.")).toBeInTheDocument();
+    const loss = screen.getByText("If the crop is damaged: report within 72 hours").closest("li")!;
+    expect(loss).toHaveTextContent("Keep this in mind all season.");
+    expect(loss.querySelector("button")).toBeNull();
+    expect(screen.getAllByText(/Past its date/)).toHaveLength(1); // the sowing only
+  });
 });

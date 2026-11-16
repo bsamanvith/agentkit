@@ -211,12 +211,14 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 		}
 	})
 	vopts := []farm.VerifierOption{farm.WithCountry(c.country)}
+	popts := []planner.Option{} // the plots' locator also places a village with no plot
 	if c.geocoder != "off" {
 		loc, err := nominatim.New("agentkit-farm/0.1 (+https://github.com/bsamanvith/agentkit)", nominatim.WithURL(c.geocoder))
 		if err != nil {
 			return err
 		}
 		vopts = append(vopts, farm.WithLocator(loc))
+		popts = append(popts, planner.WithLocator(loc))
 	}
 	svc, err := farm.NewService(store, farm.NewVerifier(vopts...), observe)
 	if err != nil {
@@ -239,7 +241,7 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 			return err
 		}
 	}
-	plan := planner.New(svc, lib, climate, planner.WithRegions(regions))
+	plan := planner.New(svc, lib, climate, append(popts, planner.WithRegions(regions))...)
 	sopts := []surveyor.Option{surveyor.WithLogger(log)}
 	var sources []osm.Source
 	if c.overpass != "off" && c.overpass != "" {

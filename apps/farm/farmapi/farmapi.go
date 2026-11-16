@@ -32,6 +32,7 @@
 //	GET    /api/farms/{id}/sun         the sun at the farm month by month (day length, sun hours, noon sun, slope)
 //	PUT    /api/farms/{id}/profile     set the farm's land and water profile
 //	POST   /api/farms/{id}/recommend   what to plant and when (planner.Ask)
+//	POST   /api/recommend              the same for a place with no plot (farmagent.PlaceAsk)
 //	POST   /api/farms/{id}/layout      cut the farm into strips {"parts": [...]}
 //	POST   /api/farms/{id}/plan/check  check a plan, save nothing
 //	PUT    /api/farms/{id}/plan        check and save a plan
@@ -233,6 +234,7 @@ func New(svc *farm.Service, opts ...Option) http.Handler {
 	mux.HandleFunc("GET /api/farms/{id}/sun", a.planning(a.sun))
 	mux.HandleFunc("PUT /api/farms/{id}/profile", a.planning(a.profile))
 	mux.HandleFunc("POST /api/farms/{id}/recommend", a.planning(a.recommend))
+	mux.HandleFunc("POST /api/recommend", a.planning(a.recommendAt))
 	mux.HandleFunc("POST /api/farms/{id}/layout", a.planning(a.layout))
 	mux.HandleFunc("POST /api/farms/{id}/plan/check", a.planning(a.checkPlan))
 	mux.HandleFunc("PUT /api/farms/{id}/plan", a.planning(a.savePlan))

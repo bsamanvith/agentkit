@@ -48,6 +48,7 @@ next: [apps/farm/docs/FEATURES.md](../apps/farm/docs/FEATURES.md).
 - [ ] [T148](T148-inputs-and-sprays.md) Inputs and sprays: a shopping list and a spray schedule from crop, area and method
   - T145 to T148 joined in branch `wt-join` (2026-11-15): the addons on each cycle, the plan's tasks in Season work, `get_inputs`, the first run ending on Cycles; all four in review until it merges
 - [ ] [T149](T149-region-packs.md) Region packs: the crop library, inputs, cycle rules, storage and schemes by country, state and district, as data with sources ([design](../apps/farm/docs/REGIONS.md))
+- [ ] [T150](T150-ask-before-drawing.md) Ask before drawing: what to sow at a village with no plot yet (planner, `recommend_for_place`, `POST /api/recommend`, the first run's "What can I sow here now?"), by the rules a saved plot gets, with named assumptions
 - [ ] Field watch: satellite greenness and weather per plot, a weekly background agent (to plan)
 - [ ] Land-cover cross-check: is the plot cropland (ESA WorldCover / Dynamic World) (to plan)
 - [ ] Offline (PWA) capture (to plan)

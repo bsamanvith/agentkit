@@ -173,6 +173,15 @@ func groups(svc *farm.Service, s setup) ([]group, error) {
 		}
 		farmSet.tools = append(farmSet.tools, more...)
 		farmSet.system += "\n" + PlanningSystem
+		var find PlaceFinder // no place search: positions only
+		if s.surveyor != nil {
+			find = s.surveyor
+		}
+		if more, err = PlaceTools(s.planner, find); err != nil {
+			return nil, err
+		}
+		farmSet.tools = append(farmSet.tools, more...)
+		farmSet.system += PlaceSystem
 		more, err = GroupTools(s.planner)
 		if err != nil {
 			return nil, err

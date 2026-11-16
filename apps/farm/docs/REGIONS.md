@@ -98,7 +98,7 @@ asks the planner, never a global:
 
 | Consumer | Takes from the plot's pack |
 |---|---|
-| `planner.Recommend`, `Layout`, `Check`, `SavePlan` | the library |
+| `planner.Recommend`, `RecommendAt` (a place with no plot, T150), `Layout`, `Check`, `SavePlan` | the library |
 | `planner.Sun` | the seasons |
 | `cycle.Service` (`cycle.Input.Library`, `.Rules`) | the library and the rules: turnaround, max wait, wait cost, rotation, seasons |
 | `cycle/addon` Inputs and Roadmap (`addon.WithPacks`) | the inputs book and the library |

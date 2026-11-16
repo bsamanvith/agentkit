@@ -15,7 +15,7 @@ import {
   Trash2,
   Undo2,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ApiError, api } from "./api";
 import { formatCorners, parseCorners } from "./coords";
 import { FarmMap, type Outline } from "./map";
@@ -93,6 +93,8 @@ export function Editor({
   onCancel,
   guided = false,
   onStep,
+  onPlace,
+  aside,
 }: {
   farm?: Farm;
   others: Farm[];
@@ -102,6 +104,10 @@ export function Editor({
   guided?: boolean;
   /** Told the guided step shown, from 0. */
   onStep?: (n: number) => void;
+  /** Told the village the farmer found. */
+  onPlace?: (p: Point) => void;
+  /** Shown under the village search (the first run's "what can I sow here"). */
+  aside?: ReactNode;
 }) {
   const [name, setName] = useState(farm?.name ?? (guided ? "My field" : ""));
   const [declared, setDeclared] = useState(farm?.declared ? String(farm.declared.value) : "");
@@ -260,7 +266,15 @@ export function Editor({
           </div>
         )}
         {at(1) && <p className="text-sm text-muted-foreground">{help}</p>}
-        {mode === "map" && at(0) && <PlaceSearch onPick={(p) => setGoto({ ...p })} />}
+        {mode === "map" && at(0) && (
+          <PlaceSearch
+            onPick={(p) => {
+              setGoto({ ...p });
+              onPlace?.(p);
+            }}
+          />
+        )}
+        {mode === "map" && at(0) && aside}
         {drawing && (
           <div className="flex flex-wrap items-center gap-2" role="toolbar" aria-label="Drawing tools">
             {tools.map((t) => (

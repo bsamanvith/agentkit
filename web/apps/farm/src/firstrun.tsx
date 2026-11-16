@@ -1,11 +1,14 @@
 import { Button } from "@agentkit/ui/components/button";
 import { Plus, Sprout } from "lucide-react";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { api } from "./api";
 import { Editor } from "./editor";
 import { guidedSteps } from "./sketch";
 import { formatDate, localName } from "./plan";
-import type { Crop, Farm, Option } from "./types";
+import type { Crop, Farm, Option, Point } from "./types";
+
+// Asked for only when the farmer taps it, so it loads apart.
+const SowHere = lazy(() => import("./sowhere"));
 
 /** Where the first-run path ends: the plot, on the tab that shows its season. */
 export type Landing = "cycles" | "plan" | undefined;
@@ -42,6 +45,7 @@ export function FirstRun({
   const [skipped, setSkipped] = useState(false);
   const [step, setStep] = useState(0);
   const [farm, setFarm] = useState<Farm>();
+  const [place, setPlace] = useState<Point>();
   const steps: string[] = [...guidedSteps, ...(planner ? ["Your crop and its dates"] : [])];
   const shown = farm ? 3 : step;
 
@@ -94,6 +98,15 @@ export function FirstRun({
           guided
           others={[]}
           onStep={setStep}
+          onPlace={setPlace}
+          aside={
+            planner &&
+            place && (
+              <Suspense fallback={null}>
+                <SowHere key={`${place.lat},${place.lng}`} at={place} />
+              </Suspense>
+            )
+          }
           onCancel={() => setSkipped(true)}
           onSaved={(f) => {
             onSaved?.(f);

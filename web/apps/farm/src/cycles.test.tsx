@@ -235,6 +235,23 @@ describe("Cycles", () => {
     expect(JSON.parse(String(post[1].body))).toEqual({ day: "2026-05-30" });
   });
 
+  it("records a crop the farmer already sowed that is not the planned one, in one step", async () => {
+    const fetch = server((path) =>
+      path === "/api/crops" ? json({ crops: [{ id: "groundnut", name: "Groundnut", kind: "oilseed" }] }) : json(line()),
+    );
+    render(<Cycles farm={farm} />);
+    await userEvent.click(await screen.findByRole("button", { name: /I already sowed/ }));
+    await screen.findByRole("option", { name: "Groundnut" });
+    await userEvent.selectOptions(screen.getByLabelText("What I sowed"), "groundnut");
+    const input = screen.getByLabelText("Sown on");
+    await userEvent.clear(input);
+    await userEvent.type(input, "2026-05-28");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(fetch.mock.calls.some((c) => (c as unknown as Call)[0].endsWith("/sown"))).toBe(true));
+    const post = fetch.mock.calls.find((c) => (c as unknown as Call)[0].endsWith("/sown")) as unknown as Call;
+    expect(JSON.parse(String(post[1].body))).toEqual({ day: "2026-05-28", crop: "groundnut" });
+  });
+
   it("shows later cycles side by side with the farmer's own, its warnings, and lets them go back", async () => {
     const l = line();
     const own = cycle("farmer", "groundnut", "Groundnut", "2026-09-01", "2026-12-26");

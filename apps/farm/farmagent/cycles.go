@@ -25,7 +25,7 @@ const CyclesSystem = `
 Each plot has up to three crop cycles: the current one (or the next, when the land is fallow) and the two after. For each there is our suggestion (worked out from the plot, its climate and the crop before) and the farmer's own, if they set one; the planned cycle is theirs where they have one.
 
 - get_cycles gives the line: for each cycle the suggestion and why, the farmer's own, the dates (sowing planned or actual, the expected harvest) and warnings about their own cycles. Explain warnings plainly; never change the farmer's own cycle without asking.
-- set_cycle, once the farmer agrees: accept a suggestion, set their own crop and sowing date, go back to the suggestion (clear), choose organic or conventional, or record that the current cycle was sown on a day ("I already sowed on ...").
+- set_cycle, once the farmer agrees: accept a suggestion, set their own crop and sowing date, go back to the suggestion (clear), choose organic or conventional, or record that the current cycle was sown on a day. When the farmer says they already sowed ("I sowed groundnut on 5 November"), make one call with position 0, sown and the crop they named; without a crop it records the planned crop as sown. Do this without asking again when the crop and the day are clear, then say the harvest date and what follows from get_cycles.
 - The current cycle is the plot's saved season plan: setting it saves the plan, and the season roadmap follows.
 - get_inputs answers "what should I buy", "how much urea", "what do I spray and when" for one cycle: the shopping list (before sowing, later) in the units sold for the plot's area, what to buy only if a pest or disease shows up, and the dated feeding and spray schedule with doses, water per acre and the wait before harvest. Give its numbers exactly, never your own; say they are starter values to check with the agriculture office, and that the product label wins. Organic or conventional follows the cycle's method (set_cycle changes it).
 - get_cycles' "timing" on a cycle is harvest-month and sell-or-hold advice from the area's past prices, present only where it beat simple guesses on past years; with no advice its reasons say why (too little price history): say so in a line, never guess.`
@@ -41,12 +41,12 @@ type setCycleIn struct {
 	Farm     string `json:"farm" jsonschema:"the farm's id, from list_farms"`
 	Position int    `json:"position" jsonschema:"0 for the current cycle, 1 and 2 for the next ones"`
 	Accept   bool   `json:"accept,omitempty" jsonschema:"take our suggestion for this cycle as the farmer's own"`
-	Crop     string `json:"crop,omitempty" jsonschema:"the farmer's own crop id (from the crop library); with sow"`
+	Crop     string `json:"crop,omitempty" jsonschema:"the farmer's own crop id (from the crop library); with sow for a plan, or with sown when it was already sown"`
 	Sow      string `json:"sow,omitempty" jsonschema:"YYYY-MM-DD: when the farmer plans to sow their own crop"`
 	Area     *int   `json:"area,omitempty" jsonschema:"the area (0, 1, ...) of the planned cycle to change; leave out for the whole plot"`
 	Clear    bool   `json:"clear,omitempty" jsonschema:"drop the farmer's own later cycle (position 1 or 2) and follow our suggestion"`
 	Method   string `json:"method,omitempty" jsonschema:"organic or conventional"`
-	Sown     string `json:"sown,omitempty" jsonschema:"YYYY-MM-DD: the current cycle was really sown that day (position 0 only)"`
+	Sown     string `json:"sown,omitempty" jsonschema:"YYYY-MM-DD: the crop was really sown that day (position 0 only); add crop when the farmer names what they sowed"`
 }
 
 // CycleTools returns get_cycles and set_cycle over s.
@@ -187,10 +187,10 @@ func setCycle(ctx context.Context, s *cycle.Service, in setCycleIn) (cycle.Line,
 		if in.Position != 0 {
 			return cycle.Line{}, fmt.Errorf("%w: only the current cycle (position 0) can be sown", cycle.ErrInvalid)
 		}
-		if in.Accept || in.Clear || in.Crop != "" || in.Sow != "" || in.Area != nil || in.Method != "" {
-			return cycle.Line{}, fmt.Errorf("%w: record the sowing alone (farm, position 0 and sown); make the other change in a second set_cycle call", cycle.ErrInvalid)
+		if in.Accept || in.Clear || in.Sow != "" || in.Area != nil || in.Method != "" {
+			return cycle.Line{}, fmt.Errorf("%w: record the sowing with farm, position 0, sown and, when the farmer names it, crop; make any other change in a second set_cycle call", cycle.ErrInvalid)
 		}
-		return s.SetSown(ctx, in.Farm, in.Sown)
+		return s.Sowed(ctx, in.Farm, in.Crop, in.Sown)
 	}
 	ch := cycle.Change{Accept: in.Accept, Clear: in.Clear, Method: cycle.Method(in.Method)}
 	if in.Crop != "" || in.Sow != "" {

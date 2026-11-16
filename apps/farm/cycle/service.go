@@ -262,6 +262,57 @@ func (s *Service) fill(ctx context.Context, f farm.Farm, rec Record, pos int, pl
 	return plan, nil
 }
 
+// sownDay reads a day a crop was sown: not in the future, not more than
+// a year ago.
+func (s *Service) sownDay(day string) (time.Time, error) {
+	d, err := time.Parse(agro.DateLayout, day)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("%w: day %q: want YYYY-MM-DD", ErrInvalid, day)
+	}
+	today := s.plan.Today()
+	if d.After(today.AddDate(0, 0, 1)) {
+		return time.Time{}, fmt.Errorf("%w: day %s is in the future", ErrInvalid, day)
+	}
+	if d.Before(today.AddDate(-1, 0, 0)) {
+		return time.Time{}, fmt.Errorf("%w: day %s is more than a year ago", ErrInvalid, day)
+	}
+	return d, nil
+}
+
+// Sowed records what the farmer already did: crop was sown on the whole
+// plot on day. It is the one step for "I already sowed groundnut on
+// 5 November": the crop becomes the farmer's own current cycle when it is
+// not that already, then the sowing is recorded as SetSown does. An empty
+// crop keeps the planned one. Nothing is saved when the day or the crop
+// is refused.
+func (s *Service) Sowed(ctx context.Context, farmID, crop, day string) (Line, error) {
+	if crop == "" {
+		return s.SetSown(ctx, farmID, day)
+	}
+	if farm.IsReadOnly(ctx) {
+		return Line{}, farm.ErrReadOnly
+	}
+	if _, err := s.sownDay(day); err != nil {
+		return Line{}, err
+	}
+	line, err := s.Line(ctx, farmID)
+	if err != nil {
+		return Line{}, err
+	}
+	same := false
+	if len(line.Cycles) > 0 && line.Cycles[0].Planned != nil {
+		zs := line.Cycles[0].Planned.Plan.Zones
+		same = len(zs) == 1 && zs[0].Crop == crop && zs[0].With == ""
+	}
+	if !same {
+		plan := agro.Plan{Zones: []agro.Zone{{Crop: crop, Sow: day}}}
+		if _, err := s.Set(ctx, farmID, 0, Change{Plan: &plan}); err != nil {
+			return Line{}, err
+		}
+	}
+	return s.SetSown(ctx, farmID, day)
+}
+
 // SetSown records that the current cycle was sown on day (YYYY-MM-DD),
 // which becomes its date and moves what follows. With no saved plan, the
 // suggested current cycle is saved first, sown that day; a saved plan
@@ -271,16 +322,9 @@ func (s *Service) SetSown(ctx context.Context, farmID, day string) (Line, error)
 	if farm.IsReadOnly(ctx) {
 		return Line{}, farm.ErrReadOnly
 	}
-	d, err := time.Parse(agro.DateLayout, day)
+	d, err := s.sownDay(day)
 	if err != nil {
-		return Line{}, fmt.Errorf("%w: day %q: want YYYY-MM-DD", ErrInvalid, day)
-	}
-	today := s.plan.Today()
-	if d.After(today.AddDate(0, 0, 1)) {
-		return Line{}, fmt.Errorf("%w: day %s is in the future", ErrInvalid, day)
-	}
-	if d.Before(today.AddDate(-1, 0, 0)) {
-		return Line{}, fmt.Errorf("%w: day %s is more than a year ago", ErrInvalid, day)
+		return Line{}, err
 	}
 	return s.update(ctx, farmID, func(f *farm.Farm, rec *Record) error {
 		var save *agro.Plan

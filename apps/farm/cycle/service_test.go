@@ -352,6 +352,49 @@ func TestSownWithoutAPlan(t *testing.T) {
 	}
 }
 
+// "I already sowed groundnut on 28 May" is one step: the crop the farmer
+// names becomes the current cycle, sown that day, whatever was suggested,
+// and the cycles after follow its harvest. A refused day or crop saves
+// nothing.
+func TestSowedACropInOneStep(t *testing.T) {
+	t.Parallel()
+	w := setup(t)
+	bare := cycle.New(w.plan, w.store) // no roadmap
+	sugg := w.line(t).Cycles[0].Suggested
+	crop := "groundnut"
+	if sugg.MainCrop() == crop {
+		crop = "sesame"
+	}
+	for _, bad := range [][2]string{{crop, "2031-01-01"}, {crop, "28 May"}, {"kale", "2026-05-28"}} {
+		if _, err := bare.Sowed(ctx, w.plot, bad[0], bad[1]); !errors.Is(err, cycle.ErrInvalid) && !errors.Is(err, agro.ErrInvalid) && !errors.Is(err, agro.ErrUnknown) {
+			t.Errorf("Sowed(%s, %s): %v; want it refused", bad[0], bad[1], err)
+		}
+		if c := w.line(t).Cycles[0]; c.Own != nil {
+			t.Fatalf("Sowed(%s, %s) saved %+v", bad[0], bad[1], c.Own)
+		}
+	}
+	l, err := bare.Sowed(ctx, w.plot, crop, "2026-05-28")
+	if err != nil {
+		t.Fatal(err)
+	}
+	invariants(t, l)
+	c := l.Cycles[0].Own
+	if c == nil || c.MainCrop() != crop || c.Sow != "2026-05-28" || c.SowKind != cycle.Actual || c.Harvest == "" {
+		t.Fatalf("cycle 1 = %+v; want %s sown 28 May with a harvest date", c, crop)
+	}
+	if len(l.Cycles) > 1 && l.Cycles[1].Planned != nil && l.Cycles[1].Planned.Sow <= c.Harvest {
+		t.Errorf("the next cycle is sown %s, not after the harvest %s", l.Cycles[1].Planned.Sow, c.Harvest)
+	}
+	// The same crop again with another day only moves the day; no crop
+	// keeps the planned one.
+	if l, err = bare.Sowed(ctx, w.plot, crop, "2026-05-30"); err != nil || l.Cycles[0].Own.Sow != "2026-05-30" || l.Cycles[0].Own.MainCrop() != crop {
+		t.Errorf("the day corrected: %+v, %v", l.Cycles[0].Own, err)
+	}
+	if l, err = bare.Sowed(ctx, w.plot, "", "2026-05-29"); err != nil || l.Cycles[0].Own.Sow != "2026-05-29" || l.Cycles[0].Own.MainCrop() != crop {
+		t.Errorf("no crop named: %+v, %v", l.Cycles[0].Own, err)
+	}
+}
+
 // At most three cycles; later ones can be turned off, which keeps the
 // farmer's own ones for when they are turned on again.
 func TestThreeAtMostAndFutureOff(t *testing.T) {

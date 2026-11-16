@@ -51,8 +51,11 @@ func (a *api) setCycle(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, l)
 }
 
+// sownBody is "I already sowed": the day, and the crop when it is not
+// the planned one.
 type sownBody struct {
-	Day string `json:"day"`
+	Day  string `json:"day"`
+	Crop string `json:"crop,omitempty"`
 }
 
 func (a *api) cycleSown(w http.ResponseWriter, r *http.Request) {
@@ -61,7 +64,7 @@ func (a *api) cycleSown(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	l, err := a.cycles.SetSown(r.Context(), r.PathValue("id"), body.Day)
+	l, err := a.cycles.Sowed(r.Context(), r.PathValue("id"), body.Crop, body.Day)
 	if err != nil {
 		a.fail(w, r, err)
 		return

@@ -67,7 +67,7 @@ forest, peaty and marshy. For each: local names, how to recognise it,
 texture class, pH range, water holding, drainage, fertility, where it is
 found, and what it suits.
 
-**Crop library.** For each crop: names (English, Hindi, Telugu), family
+**Crop library.** For each crop: names (English, Telugu, Hindi, Kannada, Tamil, Marathi), family
 (for rotation), kind, perennial or not, days to harvest, the monthly mean
 temperature it needs (optimal and absolute), water need per season (rain
 plus irrigation), pH range, soil textures, tolerance of frost,

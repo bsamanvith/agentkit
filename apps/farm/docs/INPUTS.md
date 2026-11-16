@@ -14,7 +14,7 @@ data, no model. Part of [crop cycles](CYCLES.md#inputs-and-sprays-t148).
   (urea 46 % N in 45 kg bags, DAP 18-46 in 50 kg bags, biofertilisers
   in 200 g packets), whether they are synthetic, and their class in
   India's organic standard (NPOP Annex 3: permitted or restricted).
-- **Crops** (34 of the library's 39 have their own values): seed rate,
+- **Crops** (34 of the library's 75 have their own values; the rest use their kind's default): seed rate,
   N-P2O5-K2O per hectare rainfed and irrigated (grams per plant for the
   first year of a tree), the splits by stage, the extra inputs (gypsum,
   zinc sulphate), the manures and biofertilisers, the seed treatments, and

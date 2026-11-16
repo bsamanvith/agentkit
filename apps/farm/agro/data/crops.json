@@ -6,6 +6,9 @@
    "name": "Rice (paddy)",
    "names": {
     "hi": "धान",
+    "kn": "ಭತ್ತ",
+    "mr": "भात",
+    "ta": "நெல்",
     "te": "వరి"
    },
    "family": "Poaceae",
@@ -63,6 +66,9 @@
    "name": "Wheat",
    "names": {
     "hi": "गेहूं",
+    "kn": "ಗೋಧಿ",
+    "mr": "गहू",
+    "ta": "கோதுமை",
     "te": "గోధుమ"
    },
    "family": "Poaceae",
@@ -122,6 +128,9 @@
    "name": "Maize",
    "names": {
     "hi": "मक्का",
+    "kn": "ಮೆಕ್ಕೆಜೋಳ",
+    "mr": "मका",
+    "ta": "மக்காச்சோளம்",
     "te": "మొక్కజొన్న"
    },
    "family": "Poaceae",
@@ -184,6 +193,9 @@
    "name": "Sorghum (jowar)",
    "names": {
     "hi": "ज्वार",
+    "kn": "ಜೋಳ",
+    "mr": "ज्वारी",
+    "ta": "சோளம்",
     "te": "జొన్న"
    },
    "family": "Poaceae",
@@ -244,6 +256,9 @@
    "name": "Pearl millet (bajra)",
    "names": {
     "hi": "बाजरा",
+    "kn": "ಸಜ್ಜೆ",
+    "mr": "बाजरी",
+    "ta": "கம்பு",
     "te": "సజ్జ"
    },
    "family": "Poaceae",
@@ -303,6 +318,9 @@
    "name": "Finger millet (ragi)",
    "names": {
     "hi": "रागी",
+    "kn": "ರಾಗಿ",
+    "mr": "नाचणी",
+    "ta": "கேழ்வரகு",
     "te": "రాగి"
    },
    "family": "Poaceae",
@@ -360,6 +378,9 @@
    "name": "Foxtail millet (korra)",
    "names": {
     "hi": "कंगनी",
+    "kn": "ನವಣೆ",
+    "mr": "राळा",
+    "ta": "தினை",
     "te": "కొర్ర"
    },
    "family": "Poaceae",
@@ -416,6 +437,9 @@
    "name": "Chickpea (Bengal gram)",
    "names": {
     "hi": "चना",
+    "kn": "ಕಡಲೆ",
+    "mr": "हरभरा",
+    "ta": "கொண்டைக்கடலை",
     "te": "శనగ"
    },
    "family": "Fabaceae",
@@ -475,6 +499,9 @@
    "name": "Pigeon pea (red gram)",
    "names": {
     "hi": "अरहर",
+    "kn": "ತೊಗರಿ",
+    "mr": "तूर",
+    "ta": "துவரை",
     "te": "కంది"
    },
    "family": "Fabaceae",
@@ -543,6 +570,9 @@
    "name": "Green gram (moong)",
    "names": {
     "hi": "मूंग",
+    "kn": "ಹೆಸರು",
+    "mr": "मूग",
+    "ta": "பாசிப்பயறு",
     "te": "పెసర"
    },
    "family": "Fabaceae",
@@ -609,6 +639,9 @@
    "name": "Black gram (urad)",
    "names": {
     "hi": "उड़द",
+    "kn": "ಉದ್ದು",
+    "mr": "उडीद",
+    "ta": "உளுந்து",
     "te": "మినుము"
    },
    "family": "Fabaceae",
@@ -670,6 +703,9 @@
    "name": "Groundnut",
    "names": {
     "hi": "मूंगफली",
+    "kn": "ಶೇಂಗಾ",
+    "mr": "भुईमूग",
+    "ta": "நிலக்கடலை",
     "te": "వేరుశనగ"
    },
    "family": "Fabaceae",
@@ -729,6 +765,9 @@
    "name": "Soybean",
    "names": {
     "hi": "सोयाबीन",
+    "kn": "ಸೋಯಾ ಅವರೆ",
+    "mr": "सोयाबीन",
+    "ta": "சோயா மொச்சை",
     "te": "సోయా చిక్కుడు"
    },
    "family": "Fabaceae",
@@ -787,6 +826,9 @@
    "name": "Mustard",
    "names": {
     "hi": "सरसों",
+    "kn": "ಸಾಸಿವೆ",
+    "mr": "मोहरी",
+    "ta": "கடுகு",
     "te": "ఆవాలు"
    },
    "family": "Brassicaceae",
@@ -847,6 +889,9 @@
    "name": "Sunflower",
    "names": {
     "hi": "सूरजमुखी",
+    "kn": "ಸೂರ್ಯಕಾಂತಿ",
+    "mr": "सूर्यफूल",
+    "ta": "சூரியகாந்தி",
     "te": "పొద్దుతిరుగుడు"
    },
    "family": "Asteraceae",
@@ -908,6 +953,9 @@
    "name": "Sesame",
    "names": {
     "hi": "तिल",
+    "kn": "ಎಳ್ಳು",
+    "mr": "तीळ",
+    "ta": "எள்",
     "te": "నువ్వులు"
    },
    "family": "Pedaliaceae",
@@ -966,6 +1014,9 @@
    "name": "Cotton",
    "names": {
     "hi": "कपास",
+    "kn": "ಹತ್ತಿ",
+    "mr": "कापूस",
+    "ta": "பருத்தி",
     "te": "పత్తి"
    },
    "family": "Malvaceae",
@@ -1026,6 +1077,9 @@
    "name": "Sugarcane",
    "names": {
     "hi": "गन्ना",
+    "kn": "ಕಬ್ಬು",
+    "mr": "ऊस",
+    "ta": "கரும்பு",
     "te": "చెరకు"
    },
    "family": "Poaceae",
@@ -1084,6 +1138,9 @@
    "name": "Turmeric",
    "names": {
     "hi": "हल्दी",
+    "kn": "ಅರಿಶಿನ",
+    "mr": "हळद",
+    "ta": "மஞ்சள்",
     "te": "పసుపు"
    },
    "family": "Zingiberaceae",
@@ -1139,6 +1196,9 @@
    "name": "Chilli",
    "names": {
     "hi": "मिर्च",
+    "kn": "ಮೆಣಸಿನಕಾಯಿ",
+    "mr": "मिरची",
+    "ta": "மிளகாய்",
     "te": "మిర్చి"
    },
    "family": "Solanaceae",
@@ -1198,6 +1258,9 @@
    "name": "Tomato",
    "names": {
     "hi": "टमाटर",
+    "kn": "ಟೊಮೆಟೊ",
+    "mr": "टोमॅटो",
+    "ta": "தக்காளி",
     "te": "టమాట"
    },
    "family": "Solanaceae",
@@ -1255,6 +1318,9 @@
    "name": "Onion",
    "names": {
     "hi": "प्याज",
+    "kn": "ಈರುಳ್ಳಿ",
+    "mr": "कांदा",
+    "ta": "வெங்காயம்",
     "te": "ఉల్లి"
    },
    "family": "Amaryllidaceae",
@@ -1313,6 +1379,9 @@
    "name": "Brinjal (eggplant)",
    "names": {
     "hi": "बैंगन",
+    "kn": "ಬದನೆಕಾಯಿ",
+    "mr": "वांगे",
+    "ta": "கத்தரிக்காய்",
     "te": "వంకాయ"
    },
    "family": "Solanaceae",
@@ -1367,6 +1436,9 @@
    "name": "Okra (bhindi)",
    "names": {
     "hi": "भिंडी",
+    "kn": "ಬೆಂಡೆಕಾಯಿ",
+    "mr": "भेंडी",
+    "ta": "வெண்டைக்காய்",
     "te": "బెండ"
    },
    "family": "Malvaceae",
@@ -1420,6 +1492,9 @@
    "name": "Potato",
    "names": {
     "hi": "आलू",
+    "kn": "ಆಲೂಗಡ್ಡೆ",
+    "mr": "बटाटा",
+    "ta": "உருளைக்கிழங்கு",
     "te": "బంగాళాదుంప"
    },
    "family": "Solanaceae",
@@ -1474,6 +1549,9 @@
    "name": "Sweet potato",
    "names": {
     "hi": "शकरकंद",
+    "kn": "ಗೆಣಸು",
+    "mr": "रताळे",
+    "ta": "சர்க்கரைவள்ளிக்கிழங்கு",
     "te": "చిలగడదుంప"
    },
    "family": "Convolvulaceae",
@@ -1530,6 +1608,9 @@
    "name": "Watermelon",
    "names": {
     "hi": "तरबूज",
+    "kn": "ಕಲ್ಲಂಗಡಿ",
+    "mr": "कलिंगड",
+    "ta": "தர்பூசணி",
     "te": "పుచ్చకాయ"
    },
    "family": "Cucurbitaceae",
@@ -1584,6 +1665,9 @@
    "name": "Banana",
    "names": {
     "hi": "केला",
+    "kn": "ಬಾಳೆ",
+    "mr": "केळी",
+    "ta": "வாழை",
     "te": "అరటి"
    },
    "family": "Musaceae",
@@ -1640,6 +1724,9 @@
    "name": "Mango",
    "names": {
     "hi": "आम",
+    "kn": "ಮಾವು",
+    "mr": "आंबा",
+    "ta": "மா",
     "te": "మామిడి"
    },
    "family": "Anacardiaceae",
@@ -1700,6 +1787,9 @@
    "name": "Papaya",
    "names": {
     "hi": "पपीता",
+    "kn": "ಪಪ್ಪಾಯಿ",
+    "mr": "पपई",
+    "ta": "பப்பாளி",
     "te": "బొప్పాయి"
    },
    "family": "Caricaceae",
@@ -1753,6 +1843,9 @@
    "name": "Guava",
    "names": {
     "hi": "अमरूद",
+    "kn": "ಸೀಬೆ",
+    "mr": "पेरू",
+    "ta": "கொய்யா",
     "te": "జామ"
    },
    "family": "Myrtaceae",
@@ -1814,6 +1907,9 @@
    "name": "Coconut",
    "names": {
     "hi": "नारियल",
+    "kn": "ತೆಂಗು",
+    "mr": "नारळ",
+    "ta": "தென்னை",
     "te": "కొబ్బరి"
    },
    "family": "Arecaceae",
@@ -1875,6 +1971,9 @@
    "name": "Moringa (drumstick)",
    "names": {
     "hi": "सहजन",
+    "kn": "ನುಗ್ಗೆ",
+    "mr": "शेवगा",
+    "ta": "முருங்கை",
     "te": "మునగ"
    },
    "family": "Moringaceae",
@@ -1934,6 +2033,9 @@
    "name": "Dragon fruit (pitaya)",
    "names": {
     "hi": "ड्रैगन फ्रूट",
+    "kn": "ಡ್ರ್ಯಾಗನ್ ಫ್ರೂಟ್",
+    "mr": "ड्रॅगन फ्रूट",
+    "ta": "டிராகன் பழம்",
     "te": "డ్రాగన్ ఫ్రూట్"
    },
    "family": "Cactaceae",
@@ -1989,6 +2091,9 @@
    "name": "Avocado",
    "names": {
     "hi": "एवोकाडो",
+    "kn": "ಬೆಣ್ಣೆ ಹಣ್ಣು",
+    "mr": "ॲव्होकॅडो",
+    "ta": "அவகாடோ",
     "te": "అవకాడో"
    },
    "family": "Lauraceae",
@@ -2041,6 +2146,9 @@
    "name": "Quinoa",
    "names": {
     "hi": "क्विनोआ",
+    "kn": "ಕ್ವಿನೋವಾ",
+    "mr": "क्विनोआ",
+    "ta": "கினோவா",
     "te": "క్వినోవా"
    },
    "family": "Amaranthaceae",
@@ -2098,6 +2206,9 @@
    "name": "Chia",
    "names": {
     "hi": "चिया",
+    "kn": "ಚಿಯಾ",
+    "mr": "चिया",
+    "ta": "சியா",
     "te": "చియా"
    },
    "family": "Lamiaceae",
@@ -2152,6 +2263,9 @@
    "name": "Ginger",
    "names": {
     "hi": "अदरक",
+    "kn": "ಶುಂಠಿ",
+    "mr": "आले",
+    "ta": "இஞ்சி",
     "te": "అల్లం"
    },
    "family": "Zingiberaceae",
@@ -2207,6 +2321,9 @@
    "name": "Cocoa",
    "names": {
     "hi": "कोको",
+    "kn": "ಕೋಕೋ",
+    "mr": "कोको",
+    "ta": "கோகோ",
     "te": "కోకో"
    },
    "family": "Malvaceae",
@@ -2255,6 +2372,2105 @@
     "coconut"
    ],
    "light": "shade",
+   "day_length": "neutral"
+  },
+  {
+   "id": "horse_gram",
+   "name": "Horse gram (kulthi)",
+   "names": {
+    "hi": "कुलथी",
+    "kn": "ಹುರುಳಿ",
+    "mr": "कुळीथ",
+    "ta": "கொள்ளு",
+    "te": "ఉలవలు"
+   },
+   "family": "Fabaceae",
+   "kind": "pulse",
+   "perennial": false,
+   "days": [
+    90,
+    120
+   ],
+   "temp_opt": [
+    20,
+    30
+   ],
+   "temp_abs": [
+    15,
+    38
+   ],
+   "water_mm": [
+    200,
+    400
+   ],
+   "ph": [
+    5.5,
+    8.0
+   ],
+   "textures": [
+    "loamy_sand",
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [
+    "drought"
+   ],
+   "row_cm": 30,
+   "plant_cm": 10,
+   "seasons": [
+    "kharif",
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "Myanmar",
+    "Nepal"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "height_m": 0.5,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "short"
+  },
+  {
+   "id": "castor",
+   "name": "Castor",
+   "names": {
+    "hi": "अरंडी",
+    "kn": "ಹರಳು",
+    "mr": "एरंड",
+    "ta": "ஆமணக்கு",
+    "te": "ఆముదం"
+   },
+   "family": "Euphorbiaceae",
+   "kind": "oilseed",
+   "perennial": false,
+   "days": [
+    120,
+    180
+   ],
+   "temp_opt": [
+    20,
+    30
+   ],
+   "temp_abs": [
+    15,
+    38
+   ],
+   "water_mm": [
+    500,
+    750
+   ],
+   "ph": [
+    5.0,
+    8.0
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [
+    "drought"
+   ],
+   "row_cm": 90,
+   "plant_cm": 45,
+   "seasons": [
+    "kharif",
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "China",
+    "Brazil",
+    "Mozambique"
+   ],
+   "climate_analog": false,
+   "tall": true,
+   "height_m": 2.0,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
+  },
+  {
+   "id": "cowpea",
+   "name": "Cowpea (lobia)",
+   "names": {
+    "hi": "लोबिया",
+    "kn": "ಅಲಸಂದೆ",
+    "mr": "चवळी",
+    "ta": "தட்டைப்பயறு",
+    "te": "అలసంద"
+   },
+   "family": "Fabaceae",
+   "kind": "pulse",
+   "perennial": false,
+   "days": [
+    70,
+    100
+   ],
+   "temp_opt": [
+    25,
+    35
+   ],
+   "temp_abs": [
+    15,
+    40
+   ],
+   "water_mm": [
+    300,
+    500
+   ],
+   "ph": [
+    5.5,
+    7.5
+   ],
+   "textures": [
+    "loamy_sand",
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [
+    "drought"
+   ],
+   "row_cm": 45,
+   "plant_cm": 15,
+   "seasons": [
+    "kharif",
+    "zaid"
+   ],
+   "grown_in": [
+    "India",
+    "Nigeria",
+    "Niger",
+    "Brazil"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "height_m": 0.6,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "short"
+  },
+  {
+   "id": "field_bean",
+   "name": "Field bean (lablab)",
+   "names": {
+    "hi": "सेम",
+    "kn": "ಅವರೆ",
+    "mr": "वाल",
+    "ta": "மொச்சை",
+    "te": "అనుములు"
+   },
+   "family": "Fabaceae",
+   "kind": "pulse",
+   "perennial": false,
+   "days": [
+    100,
+    140
+   ],
+   "temp_opt": [
+    18,
+    30
+   ],
+   "temp_abs": [
+    10,
+    35
+   ],
+   "water_mm": [
+    400,
+    700
+   ],
+   "ph": [
+    5.5,
+    7.5
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [
+    "drought"
+   ],
+   "row_cm": 45,
+   "plant_cm": 20,
+   "seasons": [
+    "kharif",
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "Bangladesh",
+    "Kenya"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "height_m": 1.0,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "short"
+  },
+  {
+   "id": "safflower",
+   "name": "Safflower",
+   "names": {
+    "hi": "कुसुम",
+    "kn": "ಕುಸುಬೆ",
+    "mr": "करडई",
+    "ta": "குசும்பா",
+    "te": "కుసుమ"
+   },
+   "family": "Asteraceae",
+   "kind": "oilseed",
+   "perennial": false,
+   "days": [
+    120,
+    150
+   ],
+   "temp_opt": [
+    18,
+    28
+   ],
+   "temp_abs": [
+    5,
+    35
+   ],
+   "water_mm": [
+    250,
+    450
+   ],
+   "ph": [
+    6.0,
+    8.5
+   ],
+   "textures": [
+    "loam",
+    "clay_loam",
+    "clay"
+   ],
+   "tolerates": [
+    "drought",
+    "salinity"
+   ],
+   "row_cm": 45,
+   "plant_cm": 20,
+   "seasons": [
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "Kazakhstan",
+    "USA",
+    "Mexico"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "height_m": 1.0,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "long"
+  },
+  {
+   "id": "little_millet",
+   "name": "Little millet (sama)",
+   "names": {
+    "hi": "कुटकी",
+    "kn": "ಸಾಮೆ",
+    "mr": "सावा",
+    "ta": "சாமை",
+    "te": "సామలు"
+   },
+   "family": "Poaceae",
+   "kind": "cereal",
+   "perennial": false,
+   "days": [
+    75,
+    100
+   ],
+   "temp_opt": [
+    23,
+    32
+   ],
+   "temp_abs": [
+    15,
+    38
+   ],
+   "water_mm": [
+    300,
+    500
+   ],
+   "ph": [
+    5.0,
+    7.5
+   ],
+   "textures": [
+    "loamy_sand",
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [
+    "drought"
+   ],
+   "row_cm": 25,
+   "plant_cm": 8,
+   "seasons": [
+    "kharif"
+   ],
+   "grown_in": [
+    "India",
+    "Nepal",
+    "Sri Lanka"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "height_m": 1.0,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "short"
+  },
+  {
+   "id": "kodo_millet",
+   "name": "Kodo millet (arika)",
+   "names": {
+    "hi": "कोदो",
+    "kn": "ಹಾರಕ",
+    "mr": "कोद्रा",
+    "ta": "வரகு",
+    "te": "అరికెలు"
+   },
+   "family": "Poaceae",
+   "kind": "cereal",
+   "perennial": false,
+   "days": [
+    100,
+    130
+   ],
+   "temp_opt": [
+    25,
+    32
+   ],
+   "temp_abs": [
+    15,
+    38
+   ],
+   "water_mm": [
+    400,
+    600
+   ],
+   "ph": [
+    5.0,
+    7.5
+   ],
+   "textures": [
+    "loamy_sand",
+    "sandy_loam",
+    "loam"
+   ],
+   "tolerates": [
+    "drought"
+   ],
+   "row_cm": 25,
+   "plant_cm": 10,
+   "seasons": [
+    "kharif"
+   ],
+   "grown_in": [
+    "India",
+    "West Africa"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "height_m": 0.8,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "short"
+  },
+  {
+   "id": "cluster_bean",
+   "name": "Cluster bean (guar)",
+   "names": {
+    "hi": "ग्वार",
+    "kn": "ಗೋರಿಕಾಯಿ",
+    "mr": "गवार",
+    "ta": "கொத்தவரை",
+    "te": "గోరుచిక్కుడు"
+   },
+   "family": "Fabaceae",
+   "kind": "vegetable",
+   "perennial": false,
+   "days": [
+    60,
+    90
+   ],
+   "temp_opt": [
+    25,
+    35
+   ],
+   "temp_abs": [
+    18,
+    42
+   ],
+   "water_mm": [
+    300,
+    500
+   ],
+   "ph": [
+    6.5,
+    8.5
+   ],
+   "textures": [
+    "loamy_sand",
+    "sandy_loam",
+    "loam"
+   ],
+   "tolerates": [
+    "drought",
+    "salinity"
+   ],
+   "row_cm": 45,
+   "plant_cm": 15,
+   "seasons": [
+    "kharif",
+    "zaid"
+   ],
+   "grown_in": [
+    "India",
+    "Pakistan"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "height_m": 1.0,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
+  },
+  {
+   "id": "french_bean",
+   "name": "French bean",
+   "names": {
+    "hi": "फ्रेंच बीन",
+    "kn": "ಹುರುಳಿಕಾಯಿ",
+    "mr": "फरसबी",
+    "ta": "பீன்ஸ்",
+    "te": "బీన్స్"
+   },
+   "family": "Fabaceae",
+   "kind": "vegetable",
+   "perennial": false,
+   "days": [
+    60,
+    90
+   ],
+   "temp_opt": [
+    15,
+    25
+   ],
+   "temp_abs": [
+    10,
+    30
+   ],
+   "water_mm": [
+    300,
+    500
+   ],
+   "ph": [
+    5.5,
+    7.0
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [],
+   "row_cm": 45,
+   "plant_cm": 10,
+   "seasons": [
+    "rabi",
+    "kharif"
+   ],
+   "grown_in": [
+    "India",
+    "China",
+    "Kenya",
+    "Brazil"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "height_m": 0.5,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
+  },
+  {
+   "id": "cabbage",
+   "name": "Cabbage",
+   "names": {
+    "hi": "पत्ता गोभी",
+    "kn": "ಎಲೆಕೋಸು",
+    "mr": "कोबी",
+    "ta": "முட்டைக்கோஸ்",
+    "te": "క్యాబేజీ"
+   },
+   "family": "Brassicaceae",
+   "kind": "vegetable",
+   "perennial": false,
+   "days": [
+    80,
+    110
+   ],
+   "temp_opt": [
+    15,
+    22
+   ],
+   "temp_abs": [
+    5,
+    30
+   ],
+   "water_mm": [
+    350,
+    500
+   ],
+   "ph": [
+    6.0,
+    7.5
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [
+    "frost"
+   ],
+   "row_cm": 45,
+   "plant_cm": 45,
+   "seasons": [
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "China",
+    "Russia"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "height_m": 0.4,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
+  },
+  {
+   "id": "cauliflower",
+   "name": "Cauliflower",
+   "names": {
+    "hi": "फूलगोभी",
+    "kn": "ಹೂಕೋಸು",
+    "mr": "फुलकोबी",
+    "ta": "காலிஃபிளவர்",
+    "te": "కాలీఫ్లవర్"
+   },
+   "family": "Brassicaceae",
+   "kind": "vegetable",
+   "perennial": false,
+   "days": [
+    80,
+    120
+   ],
+   "temp_opt": [
+    15,
+    22
+   ],
+   "temp_abs": [
+    5,
+    30
+   ],
+   "water_mm": [
+    350,
+    500
+   ],
+   "ph": [
+    6.0,
+    7.5
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [],
+   "row_cm": 60,
+   "plant_cm": 45,
+   "seasons": [
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "China",
+    "Spain"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "height_m": 0.5,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
+  },
+  {
+   "id": "carrot",
+   "name": "Carrot",
+   "names": {
+    "hi": "गाजर",
+    "kn": "ಗಜ್ಜರಿ",
+    "mr": "गाजर",
+    "ta": "கேரட்",
+    "te": "క్యారెట్"
+   },
+   "family": "Apiaceae",
+   "kind": "vegetable",
+   "perennial": false,
+   "days": [
+    90,
+    110
+   ],
+   "temp_opt": [
+    15,
+    22
+   ],
+   "temp_abs": [
+    7,
+    30
+   ],
+   "water_mm": [
+    350,
+    500
+   ],
+   "ph": [
+    6.0,
+    7.0
+   ],
+   "textures": [
+    "loamy_sand",
+    "sandy_loam",
+    "loam"
+   ],
+   "tolerates": [
+    "frost"
+   ],
+   "row_cm": 30,
+   "plant_cm": 8,
+   "seasons": [
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "China",
+    "Uzbekistan",
+    "USA"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "height_m": 0.4,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "long"
+  },
+  {
+   "id": "radish",
+   "name": "Radish",
+   "names": {
+    "hi": "मूली",
+    "kn": "ಮೂಲಂಗಿ",
+    "mr": "मुळा",
+    "ta": "முள்ளங்கி",
+    "te": "ముల్లంగి"
+   },
+   "family": "Brassicaceae",
+   "kind": "vegetable",
+   "perennial": false,
+   "days": [
+    40,
+    60
+   ],
+   "temp_opt": [
+    12,
+    25
+   ],
+   "temp_abs": [
+    5,
+    32
+   ],
+   "water_mm": [
+    200,
+    350
+   ],
+   "ph": [
+    6.0,
+    7.5
+   ],
+   "textures": [
+    "loamy_sand",
+    "sandy_loam",
+    "loam"
+   ],
+   "tolerates": [],
+   "row_cm": 30,
+   "plant_cm": 8,
+   "seasons": [
+    "rabi",
+    "kharif"
+   ],
+   "grown_in": [
+    "India",
+    "China",
+    "Japan"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "height_m": 0.4,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "long"
+  },
+  {
+   "id": "beetroot",
+   "name": "Beetroot",
+   "names": {
+    "hi": "चुकंदर",
+    "kn": "ಬೀಟ್ರೂಟ್",
+    "mr": "बीट",
+    "ta": "பீட்ரூட்",
+    "te": "బీట్‌రూట్"
+   },
+   "family": "Amaranthaceae",
+   "kind": "vegetable",
+   "perennial": false,
+   "days": [
+    60,
+    90
+   ],
+   "temp_opt": [
+    15,
+    25
+   ],
+   "temp_abs": [
+    5,
+    30
+   ],
+   "water_mm": [
+    300,
+    450
+   ],
+   "ph": [
+    6.0,
+    7.5
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [
+    "salinity"
+   ],
+   "row_cm": 30,
+   "plant_cm": 10,
+   "seasons": [
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "Russia",
+    "France"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "height_m": 0.4,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "long"
+  },
+  {
+   "id": "cucumber",
+   "name": "Cucumber",
+   "names": {
+    "hi": "खीरा",
+    "kn": "ಸೌತೆಕಾಯಿ",
+    "mr": "काकडी",
+    "ta": "வெள்ளரி",
+    "te": "దోసకాయ"
+   },
+   "family": "Cucurbitaceae",
+   "kind": "vegetable",
+   "perennial": false,
+   "days": [
+    55,
+    80
+   ],
+   "temp_opt": [
+    20,
+    30
+   ],
+   "temp_abs": [
+    15,
+    38
+   ],
+   "water_mm": [
+    300,
+    500
+   ],
+   "ph": [
+    6.0,
+    7.5
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam"
+   ],
+   "tolerates": [],
+   "row_cm": 150,
+   "plant_cm": 60,
+   "seasons": [
+    "zaid",
+    "kharif"
+   ],
+   "grown_in": [
+    "India",
+    "China",
+    "Turkey"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "height_m": 0.4,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
+  },
+  {
+   "id": "bottle_gourd",
+   "name": "Bottle gourd (lauki)",
+   "names": {
+    "hi": "लौकी",
+    "kn": "ಸೋರೆಕಾಯಿ",
+    "mr": "दुधी भोपळा",
+    "ta": "சுரைக்காய்",
+    "te": "సొరకాయ"
+   },
+   "family": "Cucurbitaceae",
+   "kind": "vegetable",
+   "perennial": false,
+   "days": [
+    70,
+    120
+   ],
+   "temp_opt": [
+    24,
+    32
+   ],
+   "temp_abs": [
+    15,
+    40
+   ],
+   "water_mm": [
+    400,
+    600
+   ],
+   "ph": [
+    6.0,
+    7.5
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [],
+   "row_cm": 250,
+   "plant_cm": 100,
+   "seasons": [
+    "kharif",
+    "zaid"
+   ],
+   "grown_in": [
+    "India",
+    "China",
+    "Sri Lanka"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "height_m": 0.5,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
+  },
+  {
+   "id": "bitter_gourd",
+   "name": "Bitter gourd (karela)",
+   "names": {
+    "hi": "करेला",
+    "kn": "ಹಾಗಲಕಾಯಿ",
+    "mr": "कारले",
+    "ta": "பாகற்காய்",
+    "te": "కాకరకాయ"
+   },
+   "family": "Cucurbitaceae",
+   "kind": "vegetable",
+   "perennial": false,
+   "days": [
+    60,
+    110
+   ],
+   "temp_opt": [
+    24,
+    32
+   ],
+   "temp_abs": [
+    15,
+    38
+   ],
+   "water_mm": [
+    400,
+    600
+   ],
+   "ph": [
+    6.0,
+    7.5
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam"
+   ],
+   "tolerates": [],
+   "row_cm": 150,
+   "plant_cm": 60,
+   "seasons": [
+    "kharif",
+    "zaid"
+   ],
+   "grown_in": [
+    "India",
+    "China",
+    "Vietnam"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "height_m": 1.8,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
+  },
+  {
+   "id": "ridge_gourd",
+   "name": "Ridge gourd (turai)",
+   "names": {
+    "hi": "तोरई",
+    "kn": "ಹೀರೆಕಾಯಿ",
+    "mr": "दोडका",
+    "ta": "பீர்க்கங்காய்",
+    "te": "బీరకాయ"
+   },
+   "family": "Cucurbitaceae",
+   "kind": "vegetable",
+   "perennial": false,
+   "days": [
+    60,
+    110
+   ],
+   "temp_opt": [
+    24,
+    32
+   ],
+   "temp_abs": [
+    15,
+    38
+   ],
+   "water_mm": [
+    400,
+    600
+   ],
+   "ph": [
+    6.0,
+    7.5
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [],
+   "row_cm": 150,
+   "plant_cm": 60,
+   "seasons": [
+    "kharif",
+    "zaid"
+   ],
+   "grown_in": [
+    "India",
+    "China",
+    "Thailand"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "height_m": 1.8,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
+  },
+  {
+   "id": "pumpkin",
+   "name": "Pumpkin",
+   "names": {
+    "hi": "कद्दू",
+    "kn": "ಕುಂಬಳಕಾಯಿ",
+    "mr": "लाल भोपळा",
+    "ta": "பூசணி",
+    "te": "గుమ్మడికాయ"
+   },
+   "family": "Cucurbitaceae",
+   "kind": "vegetable",
+   "perennial": false,
+   "days": [
+    90,
+    130
+   ],
+   "temp_opt": [
+    22,
+    32
+   ],
+   "temp_abs": [
+    15,
+    38
+   ],
+   "water_mm": [
+    400,
+    600
+   ],
+   "ph": [
+    5.5,
+    7.5
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [],
+   "row_cm": 250,
+   "plant_cm": 100,
+   "seasons": [
+    "kharif",
+    "zaid"
+   ],
+   "grown_in": [
+    "India",
+    "China",
+    "Ukraine"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "height_m": 0.5,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
+  },
+  {
+   "id": "muskmelon",
+   "name": "Muskmelon",
+   "names": {
+    "hi": "खरबूजा",
+    "kn": "ಕರಬೂಜ",
+    "mr": "खरबूज",
+    "ta": "முலாம்பழம்",
+    "te": "ఖర్బూజ"
+   },
+   "family": "Cucurbitaceae",
+   "kind": "vegetable",
+   "perennial": false,
+   "days": [
+    75,
+    100
+   ],
+   "temp_opt": [
+    25,
+    35
+   ],
+   "temp_abs": [
+    18,
+    40
+   ],
+   "water_mm": [
+    350,
+    500
+   ],
+   "ph": [
+    6.0,
+    7.5
+   ],
+   "textures": [
+    "loamy_sand",
+    "sandy_loam",
+    "loam"
+   ],
+   "tolerates": [],
+   "row_cm": 150,
+   "plant_cm": 60,
+   "seasons": [
+    "zaid",
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "China",
+    "Turkey",
+    "Iran"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "height_m": 0.4,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
+  },
+  {
+   "id": "capsicum",
+   "name": "Capsicum (bell pepper)",
+   "names": {
+    "hi": "शिमला मिर्च",
+    "kn": "ದೊಣ್ಣೆ ಮೆಣಸಿನಕಾಯಿ",
+    "mr": "ढोबळी मिरची",
+    "ta": "குடைமிளகாய்",
+    "te": "క్యాప్సికమ్"
+   },
+   "family": "Solanaceae",
+   "kind": "vegetable",
+   "perennial": false,
+   "days": [
+    90,
+    130
+   ],
+   "temp_opt": [
+    18,
+    25
+   ],
+   "temp_abs": [
+    10,
+    32
+   ],
+   "water_mm": [
+    450,
+    650
+   ],
+   "ph": [
+    6.0,
+    7.0
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam"
+   ],
+   "tolerates": [],
+   "row_cm": 60,
+   "plant_cm": 45,
+   "seasons": [
+    "rabi",
+    "kharif"
+   ],
+   "grown_in": [
+    "India",
+    "China",
+    "Mexico",
+    "Spain"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "height_m": 0.8,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
+  },
+  {
+   "id": "garlic",
+   "name": "Garlic",
+   "names": {
+    "hi": "लहसुन",
+    "kn": "ಬೆಳ್ಳುಳ್ಳಿ",
+    "mr": "लसूण",
+    "ta": "பூண்டு",
+    "te": "వెల్లుల్లి"
+   },
+   "family": "Amaryllidaceae",
+   "kind": "vegetable",
+   "perennial": false,
+   "days": [
+    120,
+    150
+   ],
+   "temp_opt": [
+    12,
+    24
+   ],
+   "temp_abs": [
+    5,
+    30
+   ],
+   "water_mm": [
+    350,
+    500
+   ],
+   "ph": [
+    6.0,
+    7.5
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [
+    "frost"
+   ],
+   "row_cm": 15,
+   "plant_cm": 8,
+   "seasons": [
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "China",
+    "Bangladesh"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "height_m": 0.5,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "long"
+  },
+  {
+   "id": "spinach",
+   "name": "Spinach (palak)",
+   "names": {
+    "hi": "पालक",
+    "kn": "ಪಾಲಕ್",
+    "mr": "पालक",
+    "ta": "பசலைக்கீரை",
+    "te": "పాలకూర"
+   },
+   "family": "Amaranthaceae",
+   "kind": "vegetable",
+   "perennial": false,
+   "days": [
+    30,
+    45
+   ],
+   "temp_opt": [
+    15,
+    25
+   ],
+   "temp_abs": [
+    5,
+    32
+   ],
+   "water_mm": [
+    200,
+    300
+   ],
+   "ph": [
+    6.0,
+    7.5
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [
+    "salinity"
+   ],
+   "row_cm": 20,
+   "plant_cm": 5,
+   "seasons": [
+    "rabi",
+    "kharif"
+   ],
+   "grown_in": [
+    "India",
+    "China",
+    "USA"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "height_m": 0.3,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "long"
+  },
+  {
+   "id": "amaranth",
+   "name": "Amaranth greens (thotakura)",
+   "names": {
+    "hi": "चौलाई",
+    "kn": "ದಂಟು",
+    "mr": "माठ",
+    "ta": "தண்டுக்கீரை",
+    "te": "తోటకూర"
+   },
+   "family": "Amaranthaceae",
+   "kind": "vegetable",
+   "perennial": false,
+   "days": [
+    25,
+    40
+   ],
+   "temp_opt": [
+    22,
+    32
+   ],
+   "temp_abs": [
+    15,
+    40
+   ],
+   "water_mm": [
+    200,
+    300
+   ],
+   "ph": [
+    5.5,
+    7.5
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [
+    "drought"
+   ],
+   "row_cm": 20,
+   "plant_cm": 10,
+   "seasons": [
+    "kharif",
+    "zaid",
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "China",
+    "West Africa"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "height_m": 0.8,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "short"
+  },
+  {
+   "id": "coriander",
+   "name": "Coriander",
+   "names": {
+    "hi": "धनिया",
+    "kn": "ಕೊತ್ತಂಬರಿ",
+    "mr": "धणे",
+    "ta": "கொத்தமல்லி",
+    "te": "ధనియాలు"
+   },
+   "family": "Apiaceae",
+   "kind": "vegetable",
+   "perennial": false,
+   "days": [
+    90,
+    110
+   ],
+   "temp_opt": [
+    15,
+    25
+   ],
+   "temp_abs": [
+    8,
+    32
+   ],
+   "water_mm": [
+    250,
+    400
+   ],
+   "ph": [
+    6.0,
+    8.0
+   ],
+   "textures": [
+    "loam",
+    "clay_loam",
+    "clay"
+   ],
+   "tolerates": [],
+   "row_cm": 30,
+   "plant_cm": 10,
+   "seasons": [
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "Morocco",
+    "Russia"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "height_m": 0.6,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "long"
+  },
+  {
+   "id": "fenugreek",
+   "name": "Fenugreek (methi)",
+   "names": {
+    "hi": "मेथी",
+    "kn": "ಮೆಂತ್ಯ",
+    "mr": "मेथी",
+    "ta": "வெந்தயம்",
+    "te": "మెంతులు"
+   },
+   "family": "Fabaceae",
+   "kind": "vegetable",
+   "perennial": false,
+   "days": [
+    90,
+    110
+   ],
+   "temp_opt": [
+    15,
+    25
+   ],
+   "temp_abs": [
+    8,
+    32
+   ],
+   "water_mm": [
+    250,
+    400
+   ],
+   "ph": [
+    6.0,
+    8.0
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [
+    "frost"
+   ],
+   "row_cm": 25,
+   "plant_cm": 10,
+   "seasons": [
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "Egypt",
+    "Morocco"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "height_m": 0.5,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "long"
+  },
+  {
+   "id": "sweet_orange",
+   "name": "Sweet orange (mosambi)",
+   "names": {
+    "hi": "मौसंबी",
+    "kn": "ಮೂಸಂಬಿ",
+    "mr": "मोसंबी",
+    "ta": "சாத்துக்குடி",
+    "te": "బత్తాయి"
+   },
+   "family": "Rutaceae",
+   "kind": "fruit",
+   "perennial": true,
+   "days": [
+    1095,
+    1460
+   ],
+   "temp_opt": [
+    20,
+    32
+   ],
+   "temp_abs": [
+    10,
+    40
+   ],
+   "water_mm": [
+    900,
+    1500
+   ],
+   "ph": [
+    5.5,
+    7.5
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [],
+   "row_cm": 600,
+   "plant_cm": 600,
+   "seasons": [
+    "kharif"
+   ],
+   "grown_in": [
+    "India",
+    "Brazil",
+    "Spain",
+    "Egypt"
+   ],
+   "climate_analog": false,
+   "tall": true,
+   "height_m": 5.0,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
+  },
+  {
+   "id": "lime",
+   "name": "Acid lime (lemon)",
+   "names": {
+    "hi": "नींबू",
+    "kn": "ನಿಂಬೆ",
+    "mr": "लिंबू",
+    "ta": "எலுமிச்சை",
+    "te": "నిమ్మ"
+   },
+   "family": "Rutaceae",
+   "kind": "fruit",
+   "perennial": true,
+   "days": [
+    1095,
+    1460
+   ],
+   "temp_opt": [
+    20,
+    32
+   ],
+   "temp_abs": [
+    10,
+    42
+   ],
+   "water_mm": [
+    750,
+    1250
+   ],
+   "ph": [
+    5.5,
+    7.5
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [],
+   "row_cm": 500,
+   "plant_cm": 500,
+   "seasons": [
+    "kharif"
+   ],
+   "grown_in": [
+    "India",
+    "Mexico",
+    "Argentina"
+   ],
+   "climate_analog": false,
+   "tall": true,
+   "height_m": 4.0,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
+  },
+  {
+   "id": "pomegranate",
+   "name": "Pomegranate",
+   "names": {
+    "hi": "अनार",
+    "kn": "ದಾಳಿಂಬೆ",
+    "mr": "डाळिंब",
+    "ta": "மாதுளை",
+    "te": "దానిమ్మ"
+   },
+   "family": "Lythraceae",
+   "kind": "fruit",
+   "perennial": true,
+   "days": [
+    730,
+    1095
+   ],
+   "temp_opt": [
+    25,
+    35
+   ],
+   "temp_abs": [
+    5,
+    44
+   ],
+   "water_mm": [
+    500,
+    800
+   ],
+   "ph": [
+    6.0,
+    8.5
+   ],
+   "textures": [
+    "loamy_sand",
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [
+    "drought",
+    "salinity"
+   ],
+   "row_cm": 450,
+   "plant_cm": 300,
+   "seasons": [
+    "kharif"
+   ],
+   "grown_in": [
+    "India",
+    "Iran",
+    "Turkey",
+    "Spain"
+   ],
+   "climate_analog": false,
+   "tall": true,
+   "height_m": 3.5,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
+  },
+  {
+   "id": "custard_apple",
+   "name": "Custard apple (sitaphal)",
+   "names": {
+    "hi": "सीताफल",
+    "kn": "ಸೀತಾಫಲ",
+    "mr": "सीताफळ",
+    "ta": "சீத்தாப்பழம்",
+    "te": "సీతాఫలం"
+   },
+   "family": "Annonaceae",
+   "kind": "fruit",
+   "perennial": true,
+   "days": [
+    1095,
+    1460
+   ],
+   "temp_opt": [
+    25,
+    35
+   ],
+   "temp_abs": [
+    10,
+    42
+   ],
+   "water_mm": [
+    500,
+    800
+   ],
+   "ph": [
+    6.0,
+    8.0
+   ],
+   "textures": [
+    "loamy_sand",
+    "sandy_loam",
+    "loam"
+   ],
+   "tolerates": [
+    "drought"
+   ],
+   "row_cm": 500,
+   "plant_cm": 500,
+   "seasons": [
+    "kharif"
+   ],
+   "grown_in": [
+    "India",
+    "Brazil",
+    "Thailand"
+   ],
+   "climate_analog": false,
+   "tall": true,
+   "height_m": 4.0,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
+  },
+  {
+   "id": "sapota",
+   "name": "Sapota (chikoo)",
+   "names": {
+    "hi": "चीकू",
+    "kn": "ಸಪೋಟ",
+    "mr": "चिकू",
+    "ta": "சப்போட்டா",
+    "te": "సపోటా"
+   },
+   "family": "Sapotaceae",
+   "kind": "fruit",
+   "perennial": true,
+   "days": [
+    1095,
+    1825
+   ],
+   "temp_opt": [
+    22,
+    32
+   ],
+   "temp_abs": [
+    10,
+    40
+   ],
+   "water_mm": [
+    1000,
+    1500
+   ],
+   "ph": [
+    6.0,
+    8.0
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [
+    "drought",
+    "salinity"
+   ],
+   "row_cm": 800,
+   "plant_cm": 800,
+   "seasons": [
+    "kharif"
+   ],
+   "grown_in": [
+    "India",
+    "Mexico",
+    "Thailand"
+   ],
+   "climate_analog": false,
+   "tall": true,
+   "height_m": 8.0,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
+  },
+  {
+   "id": "grape",
+   "name": "Grape",
+   "names": {
+    "hi": "अंगूर",
+    "kn": "ದ್ರಾಕ್ಷಿ",
+    "mr": "द्राक्ष",
+    "ta": "திராட்சை",
+    "te": "ద్రాక్ష"
+   },
+   "family": "Vitaceae",
+   "kind": "fruit",
+   "perennial": true,
+   "days": [
+    540,
+    730
+   ],
+   "temp_opt": [
+    18,
+    30
+   ],
+   "temp_abs": [
+    5,
+    40
+   ],
+   "water_mm": [
+    500,
+    900
+   ],
+   "ph": [
+    6.5,
+    8.0
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [],
+   "row_cm": 300,
+   "plant_cm": 180,
+   "seasons": [
+    "rabi"
+   ],
+   "grown_in": [
+    "India",
+    "Italy",
+    "Chile",
+    "South Africa"
+   ],
+   "climate_analog": false,
+   "tall": false,
+   "height_m": 2.0,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
+  },
+  {
+   "id": "ber",
+   "name": "Ber (Indian jujube)",
+   "names": {
+    "hi": "बेर",
+    "kn": "ಬೋರೆ ಹಣ್ಣು",
+    "mr": "बोर",
+    "ta": "இலந்தை",
+    "te": "రేగు"
+   },
+   "family": "Rhamnaceae",
+   "kind": "fruit",
+   "perennial": true,
+   "days": [
+    730,
+    1095
+   ],
+   "temp_opt": [
+    22,
+    35
+   ],
+   "temp_abs": [
+    5,
+    46
+   ],
+   "water_mm": [
+    300,
+    600
+   ],
+   "ph": [
+    6.0,
+    9.0
+   ],
+   "textures": [
+    "sand",
+    "loamy_sand",
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [
+    "drought",
+    "salinity"
+   ],
+   "row_cm": 600,
+   "plant_cm": 600,
+   "seasons": [
+    "kharif"
+   ],
+   "grown_in": [
+    "India",
+    "China",
+    "Pakistan"
+   ],
+   "climate_analog": false,
+   "tall": true,
+   "height_m": 6.0,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
+  },
+  {
+   "id": "amla",
+   "name": "Amla (Indian gooseberry)",
+   "names": {
+    "hi": "आंवला",
+    "kn": "ನೆಲ್ಲಿಕಾಯಿ",
+    "mr": "आवळा",
+    "ta": "நெல்லிக்காய்",
+    "te": "ఉసిరి"
+   },
+   "family": "Phyllanthaceae",
+   "kind": "fruit",
+   "perennial": true,
+   "days": [
+    1095,
+    1460
+   ],
+   "temp_opt": [
+    22,
+    35
+   ],
+   "temp_abs": [
+    5,
+    45
+   ],
+   "water_mm": [
+    500,
+    900
+   ],
+   "ph": [
+    6.0,
+    8.5
+   ],
+   "textures": [
+    "loamy_sand",
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [
+    "drought",
+    "salinity"
+   ],
+   "row_cm": 600,
+   "plant_cm": 600,
+   "seasons": [
+    "kharif"
+   ],
+   "grown_in": [
+    "India",
+    "Sri Lanka",
+    "Thailand"
+   ],
+   "climate_analog": false,
+   "tall": true,
+   "height_m": 8.0,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
+  },
+  {
+   "id": "fig",
+   "name": "Fig (anjeer)",
+   "names": {
+    "hi": "अंजीर",
+    "kn": "ಅಂಜೂರ",
+    "mr": "अंजीर",
+    "ta": "அத்திப்பழம்",
+    "te": "అంజీర"
+   },
+   "family": "Moraceae",
+   "kind": "fruit",
+   "perennial": true,
+   "days": [
+    540,
+    730
+   ],
+   "temp_opt": [
+    20,
+    32
+   ],
+   "temp_abs": [
+    5,
+    42
+   ],
+   "water_mm": [
+    500,
+    800
+   ],
+   "ph": [
+    6.0,
+    8.0
+   ],
+   "textures": [
+    "sandy_loam",
+    "loam",
+    "clay_loam"
+   ],
+   "tolerates": [
+    "drought"
+   ],
+   "row_cm": 500,
+   "plant_cm": 500,
+   "seasons": [
+    "kharif"
+   ],
+   "grown_in": [
+    "India",
+    "Turkey",
+    "Egypt",
+    "Morocco"
+   ],
+   "climate_analog": false,
+   "tall": true,
+   "height_m": 4.0,
+   "intercrops": [],
+   "light": "full",
+   "day_length": "neutral"
+  },
+  {
+   "id": "tamarind",
+   "name": "Tamarind",
+   "names": {
+    "hi": "इमली",
+    "kn": "ಹುಣಸೆ",
+    "mr": "चिंच",
+    "ta": "புளி",
+    "te": "చింత"
+   },
+   "family": "Fabaceae",
+   "kind": "fruit",
+   "perennial": true,
+   "days": [
+    1460,
+    2920
+   ],
+   "temp_opt": [
+    22,
+    35
+   ],
+   "temp_abs": [
+    10,
+    45
+   ],
+   "water_mm": [
+    500,
+    1500
+   ],
+   "ph": [
+    5.5,
+    8.5
+   ],
+   "textures": [
+    "loamy_sand",
+    "sandy_loam",
+    "loam",
+    "clay_loam",
+    "clay"
+   ],
+   "tolerates": [
+    "drought",
+    "salinity"
+   ],
+   "row_cm": 1000,
+   "plant_cm": 1000,
+   "seasons": [
+    "kharif"
+   ],
+   "grown_in": [
+    "India",
+    "Thailand",
+    "Mexico"
+   ],
+   "climate_analog": false,
+   "tall": true,
+   "height_m": 15.0,
+   "intercrops": [],
+   "light": "full",
    "day_length": "neutral"
   }
  ]

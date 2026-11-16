@@ -122,7 +122,9 @@ the plot).
 **The farmer** tells the app the soil (picked from a list of eleven soils
 with the signs they can see: colour, cracks, stickiness), the water
 sources (rain, canal, borewell, drip, ...) and last season's crop. The app
-scores 39 crops for the plot, each with its next good sowing window, a
+scores 75 crops for the plot (grains, millets, pulses, oilseeds,
+vegetables, spices and fruit trees, each named in Telugu, Hindi, Kannada,
+Tamil and Marathi), each with its next good sowing window, a
 score from 0 to 100, the reasons and the risks, and how much water rain
 will not cover. Crops from similar climates abroad (dragon fruit,
 avocado, quinoa) are scored too and marked as *climate analogs*.

@@ -109,6 +109,8 @@ export interface Config {
   weather?: boolean;
   automations?: boolean;
   prices?: boolean;
+  /** The idea check is served. */
+  ideas?: boolean;
   roadmap?: boolean;
   /** Crop cycles: the suggested line and the farmer's own (the plot's Cycles tab). */
   cycles?: boolean;

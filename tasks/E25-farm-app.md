@@ -52,6 +52,7 @@ next: [apps/farm/docs/FEATURES.md](../apps/farm/docs/FEATURES.md).
 - [ ] [T152](T152-farm-data-updates-skill.md) Assistant and cycle fixes from a live test, "I already sowed" in one step, and the `farm-data-updates` skill
 - [ ] [T153](T153-more-crops-and-language-names.md) More crops (castor, horse gram, vegetables, small fruit: 39 to 75) and crop names in Kannada, Tamil and Marathi
 - [ ] [T154](T154-experimental-tier-and-varieties.md) A wide experimental tier (1,282 plants from FAO ECOCROP, answered only when asked) and varieties under a crop (266 from TNAU horticulture, Kadapa's own from its district plan)
+- [ ] [T155](T155-idea-check.md) The idea check: usual, new and unrealistic crop ideas with a verdict and its reason, growing methods (mulch and drip, tunnel, shade net, polyhouse, hydroponics) scored by the recommender's rules with the horticulture mission's cost norms, prices and where to sell; `check_ideas`, `/api/farms/{id}/ideas`, the Ideas tab
 - [ ] [T151](T151-insurance-on-season-work.md) Crop insurance on season work: enrolment cut-offs and the 72-hour loss rule from the region's schemes, on the roadmap and the cycle, an alert two weeks ahead, `get_schemes` and `/api/farms/{id}/schemes`
 - [ ] Field watch: satellite greenness and weather per plot, a weekly background agent (to plan)
 - [ ] Land-cover cross-check: is the plot cropland (ESA WorldCover / Dynamic World) (to plan)

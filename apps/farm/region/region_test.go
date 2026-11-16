@@ -173,6 +173,10 @@ func TestEmbeddedAndhraPradeshOverlays(t *testing.T) {
 	if p := s.For(anantapur); p.Name() != "Anantapur" {
 		t.Errorf("Anantapuramu resolves to %s", p.Name())
 	}
+	// As a map service writes it.
+	if p := s.For(region.Place{Country: "IN", State: "Andhra Pradesh", District: "Anantapuramu District"}); p.Name() != "Anantapur" {
+		t.Errorf("Anantapuramu District resolves to %s", p.Name())
+	}
 	// Sri Sathya Sai, split from Anantapur in 2022, is a district of its
 	// own with the undivided plan's windows.
 	ss := s.For(sathyaSai)

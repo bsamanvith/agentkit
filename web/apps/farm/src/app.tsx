@@ -297,6 +297,7 @@ export function App({ account }: { account?: SignedIn } = {}) {
                   weather={config?.weather ?? false}
                   automations={config?.automations ?? false}
                   prices={config?.prices ?? false}
+                  ideas={config?.ideas ?? false}
                   roadmap={config?.roadmap ?? false}
                   onChanged={(f) => setFarms((fs) => fs?.map((x) => (x.id === f.id ? f : x)))}
                   onEdit={() => go({ kind: "edit", farm: current })}

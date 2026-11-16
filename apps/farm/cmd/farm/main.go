@@ -96,6 +96,7 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/farmapi"
 	"github.com/bsamanvith/agentkit/apps/farm/feeds"
 	"github.com/bsamanvith/agentkit/apps/farm/handbook"
+	"github.com/bsamanvith/agentkit/apps/farm/ideas"
 	"github.com/bsamanvith/agentkit/apps/farm/models"
 	"github.com/bsamanvith/agentkit/apps/farm/nasapower"
 	"github.com/bsamanvith/agentkit/apps/farm/nominatim"
@@ -394,6 +395,12 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 	if astore != nil {
 		alerts = astore
 	}
+	ideaBook, err := ideas.DefaultBook()
+	if err != nil {
+		return err
+	}
+	ideaCheck := ideas.New(plan, market, ideaBook)
+	toolOpts = append(toolOpts, farmagent.WithIdeas(ideaCheck))
 	toolOpts = append(toolOpts, farmagent.WithWatch(watcher, alerts), farmagent.WithRoadmap(roadmap), farmagent.WithCycles(cycles), farmagent.WithSchemes(insurance))
 	agentOpts := append(slices.Clone(toolOpts), farmagent.WithSkills(skills))
 
@@ -401,6 +408,7 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 		farmapi.WithCountry(c.country), farmapi.WithLogger(log), farmapi.WithPlanner(plan),
 		farmapi.WithSurveyor(survey), farmapi.WithResearch(webResearch), farmapi.WithWatch(watcher), farmapi.WithPrices(market),
 		farmapi.WithRoadmap(roadmap), farmapi.WithCycles(cycles), farmapi.WithSchemes(insurance),
+		farmapi.WithIdeas(ideaCheck),
 	}
 	model, provider, err := buildModel(c, log)
 	if err != nil {

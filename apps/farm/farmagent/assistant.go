@@ -15,6 +15,7 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/automation"
 	"github.com/bsamanvith/agentkit/apps/farm/cycle"
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
+	"github.com/bsamanvith/agentkit/apps/farm/ideas"
 	"github.com/bsamanvith/agentkit/apps/farm/planner"
 	"github.com/bsamanvith/agentkit/apps/farm/prices"
 	"github.com/bsamanvith/agentkit/apps/farm/surveyor"
@@ -97,6 +98,7 @@ type setup struct {
 	work      *work.Service
 	cycles    *cycle.Service
 	schemes   Schemes
+	ideas     *ideas.Service
 }
 
 // WithPlanner gives the assistant the crop planning and plot group tools
@@ -225,6 +227,14 @@ func groups(svc *farm.Service, s setup) ([]group, error) {
 			}
 			farmSet.tools = append(farmSet.tools, more...)
 			farmSet.system += SchemesSystem
+		}
+		if s.ideas != nil {
+			more, err = IdeaTools(s.ideas)
+			if err != nil {
+				return nil, err
+			}
+			farmSet.tools = append(farmSet.tools, more...)
+			farmSet.system += IdeasSystem
 		}
 	}
 	out := []group{farmSet}

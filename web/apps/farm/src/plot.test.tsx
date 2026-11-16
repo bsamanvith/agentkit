@@ -29,6 +29,7 @@ function show(f: Farm, cycles: boolean) {
       weather={false}
       automations={false}
       prices={false}
+      ideas={false}
       roadmap
       onChanged={() => {}}
       onEdit={() => {}}

@@ -1,0 +1,154 @@
+{
+ "sources": [
+  {
+   "id": "midh-2025",
+   "name": "MIDH Operational Guidelines 2025, Annexure V: cost norms and pattern of assistance, protected cultivation",
+   "publisher": "Department of Agriculture and Farmers Welfare, Government of India (Mission for Integrated Development of Horticulture)",
+   "url": "https://nhb.gov.in/writereaddata/082825102800MIDH%20Guideline%202025.pdf",
+   "read": "2026-11-16",
+   "note": "The cost of each growing method a square metre or a hectare, the share the scheme assists (50%) and the largest area assisted for one farmer. Guidelines dated 31.12.2024, pp. 54-57. The cost norm is the ceiling the subsidy is worked on, not a quotation."
+  }
+ ],
+ "assumed": "What a method does to heat, cold, light and water is a starter value set here from general practice, not a measurement: an agronomist has not reviewed it. The costs are the scheme's norms.",
+ "methods": [
+  {
+   "id": "mulch_drip",
+   "name": "Plastic mulch with drip",
+   "what": "A plastic sheet over the bed with drip lines under it: less water lost, fewer weeds.",
+   "kinds": ["vegetable", "fruit", "spice", "medicinal", "cash", "fibre"],
+   "water_save": 0.3,
+   "drip": true,
+   "needs_water": true,
+   "cost_per_ha": 40000,
+   "subsidy": 0.5,
+   "max_sqm": 20000,
+   "skill": "low",
+   "ref": {"source": "midh-2025", "where": "Annexure V, protected cultivation, item 10 (mulching), p. 57. Drip itself is assisted separately, under Per Drop More Crop."}
+  },
+  {
+   "id": "raised_beds",
+   "name": "Raised beds and drains",
+   "what": "Beds raised above the field with drains between them, so water does not stand at the roots.",
+   "drains": true,
+   "skill": "low"
+  },
+  {
+   "id": "low_tunnel",
+   "name": "Plastic low tunnel",
+   "what": "A low plastic cover over the rows in the cold months: warmer nights and no frost on the crop.",
+   "kinds": ["vegetable", "spice", "fruit", "medicinal"],
+   "max_height_m": 1,
+   "annual_only": true,
+   "temp_min": 3,
+   "temp_max": 1,
+   "cost_per_sqm": 80,
+   "subsidy": 0.5,
+   "max_sqm": 2500,
+   "skill": "low",
+   "ref": {"source": "midh-2025", "where": "Annexure V, protected cultivation, item 3 (plastic tunnels), p. 56"}
+  },
+  {
+   "id": "shade_net",
+   "name": "Shade net house",
+   "what": "A frame covered with a net that cuts about half the sun: cooler days and less water lost.",
+   "crops": ["tomato", "capsicum", "cucumber", "chilli", "brinjal", "french_bean", "muskmelon", "watermelon", "coriander", "spinach", "fragaria_x_ananassa", "lactuca_sativa_var_capitata", "ginger", "turmeric", "cabbage", "cauliflower", "fenugreek", "amaranth"],
+   "max_height_m": 2.5,
+   "annual_only": true,
+   "temp_max": -3,
+   "light": 0.5,
+   "water_save": 0.2,
+   "drip": true,
+   "needs_water": true,
+   "cost_per_sqm": 710,
+   "subsidy": 0.5,
+   "max_sqm": 2500,
+   "skill": "medium",
+   "ref": {"source": "midh-2025", "where": "Annexure V, protected cultivation, item 2(a) (shade net house, tubular structure), p. 55"}
+  },
+  {
+   "id": "polyhouse",
+   "name": "Naturally ventilated polyhouse",
+   "what": "A plastic-covered house with open vents: no rain on the crop and warmer nights, but hotter days in summer.",
+   "crops": ["tomato", "capsicum", "cucumber", "chilli", "brinjal", "french_bean", "muskmelon", "watermelon", "coriander", "spinach", "fragaria_x_ananassa", "lactuca_sativa_var_capitata"],
+   "max_height_m": 2.5,
+   "annual_only": true,
+   "temp_min": 3,
+   "temp_max": 2,
+   "light": 0.8,
+   "shelter": true,
+   "water_save": 0.3,
+   "drip": true,
+   "needs_water": true,
+   "cost_per_sqm": 1000,
+   "subsidy": 0.5,
+   "max_sqm": 2500,
+   "skill": "high",
+   "ref": {"source": "midh-2025", "where": "Annexure V, protected cultivation, item 1(b)(i) (naturally ventilated, tubular structure, above 1,008 m²), p. 55"}
+  },
+  {
+   "id": "hydroponics",
+   "name": "Hydroponics in a polyhouse",
+   "what": "Plants in channels of nutrient water inside a polyhouse: the soil no longer matters, the skill and the power supply do.",
+   "crops": ["tomato", "capsicum", "cucumber", "spinach", "coriander", "amaranth", "fenugreek", "fragaria_x_ananassa", "lactuca_sativa_var_capitata"],
+   "max_height_m": 2.5,
+   "annual_only": true,
+   "temp_min": 3,
+   "temp_max": 2,
+   "light": 0.8,
+   "shelter": true,
+   "water_save": 0.6,
+   "drip": true,
+   "no_soil": true,
+   "needs_water": true,
+   "cost_per_sqm": 1350,
+   "subsidy": 0.5,
+   "max_sqm": 1000,
+   "skill": "high",
+   "ref": {"source": "midh-2025", "where": "Annexure V, protected cultivation, item 1(b)(i) with add-on 11(i) (hydroponics, Rs 350 a m² on the polyhouse), pp. 55, 57"}
+  }
+ ],
+ "asked": [
+  "malus_domestica", "crocus_sativus", "fragaria_x_ananassa", "vaccinium_corymbosum", "vanilla_planifolia",
+  "coffea_canephora", "lactuca_sativa_var_capitata", "asparagus_officinalis", "olea_europaea", "juglans_regia",
+  "pistacia_vera", "camellia_sinensis", "lavandula_angustifolia", "stevia_rebaudiana", "elettaria_cardamomum",
+  "piper_nigrum", "litchi_chinensis", "prunus_amygdalus", "elaeis_guineensis", "prunus_persica"
+ ],
+ "routes": [
+  {
+   "id": "msp",
+   "name": "Government purchase at the minimum support price",
+   "how": "When the market falls below the support price, the state opens purchase centres (in Andhra Pradesh through the Rythu Seva Kendram). Register the crop in e-Crop first: purchase is only from registered farmers.",
+   "msp_only": true
+  },
+  {
+   "id": "mandi",
+   "name": "The regulated market yard (mandi)",
+   "how": "Open auction at the nearest agricultural market yard. Dry and grade the produce first: the price is set on the lot's quality that day.",
+   "kinds": ["cereal", "pulse", "oilseed", "fibre", "cash", "spice", "vegetable", "fruit"]
+  },
+  {
+   "id": "enam",
+   "name": "e-NAM, the online market",
+   "how": "Yards linked to e-NAM put the lot before traders from other markets too. Ask at the yard whether your crop is traded on it there.",
+   "kinds": ["cereal", "pulse", "oilseed", "fibre", "spice", "vegetable", "fruit"]
+  },
+  {
+   "id": "rythu_bazaar",
+   "name": "Rythu Bazaar: straight to the people who eat it",
+   "how": "Farmers' markets in the towns of Andhra Pradesh and Telangana where growers sell vegetables and fruit themselves, with no commission. It needs a grower card from the estate officer, and someone to stand at the stall.",
+   "kinds": ["vegetable", "fruit"],
+   "states": ["Andhra Pradesh", "Telangana"]
+  },
+  {
+   "id": "fpo",
+   "name": "A farmer producer organisation",
+   "how": "A group of farmers that pools the crop and sells in bulk, to a processor or a far market. It matters most for a new crop: one farmer's small lot finds no buyer, a group's does."
+  },
+  {
+   "id": "processor",
+   "name": "A processor or a buyer under contract",
+   "how": "A mill, a pulp or pickle unit, a seed company or an exporter's packhouse that agrees the price and quality before sowing. For a crop the local yard does not trade, find this buyer before you plant.",
+   "kinds": ["oilseed", "fibre", "cash", "spice", "vegetable", "fruit", "medicinal", "material", "root"]
+  }
+ ]
+}

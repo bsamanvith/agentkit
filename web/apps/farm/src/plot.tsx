@@ -4,6 +4,7 @@ import {
   CloudSun,
   Download,
   IndianRupee,
+  Lightbulb,
   ListChecks,
   Map as MapIcon,
   Mountain,
@@ -32,13 +33,14 @@ const Seasons = lazy(() => import("./seasons").then((m) => ({ default: m.Seasons
 const Prices = lazy(() => import("./prices").then((m) => ({ default: m.Prices })));
 const Roadmap = lazy(() => import("./roadmap").then((m) => ({ default: m.Roadmap })));
 const Cycles = lazy(() => import("./cycles"));
+const Ideas = lazy(() => import("./ideas"));
 const Care = lazy(() => import("./alerts").then((m) => ({ default: m.Care })));
 
 function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-export type Tab = "map" | "cycles" | "roadmap" | "care" | "land" | "sun" | "plan" | "prices";
+export type Tab = "map" | "cycles" | "roadmap" | "care" | "land" | "sun" | "plan" | "prices" | "ideas";
 
 /** A plot: its map and checks, and a tab per feature that is on. */
 export default function FarmDetail({
@@ -52,6 +54,7 @@ export default function FarmDetail({
   weather,
   automations,
   prices,
+  ideas,
   roadmap,
   onChanged,
   onEdit,
@@ -69,6 +72,8 @@ export default function FarmDetail({
   weather: boolean;
   automations: boolean;
   prices: boolean;
+  /** The idea check is served: the Ideas tab. */
+  ideas: boolean;
   roadmap: boolean;
   onChanged: (f: Farm) => void;
   onEdit: () => void;
@@ -99,6 +104,7 @@ export default function FarmDetail({
     { id: "sun", label: "Sun and seasons", icon: <SunIcon />, on: planner },
     { id: "plan", label: "Season plan", icon: <Sprout />, on: planner },
     { id: "prices", label: "Prices", icon: <IndianRupee />, on: prices },
+    { id: "ideas", label: "Ideas", icon: <Lightbulb />, on: ideas },
   ];
   return (
     <>
@@ -184,6 +190,7 @@ export default function FarmDetail({
         {tab === "land" && <Land farm={farm} onFarm={onChanged} />}
         {tab === "sun" && <Seasons farm={farm} />}
         {tab === "prices" && <Prices farm={farm} />}
+        {tab === "ideas" && <Ideas farm={farm} />}
         {tab === "roadmap" && <Roadmap farm={farm} />}
         {tab === "cycles" && <Cycles farm={farm} onFarm={onChanged} />}
         <div className={tab === "map" ? "grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]" : "hidden"}>

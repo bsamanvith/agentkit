@@ -81,7 +81,14 @@ export const api = {
   sun: (id: string) => call<SunReport>("GET", `/api/farms/${encodeURIComponent(id)}/sun`),
   recommend: (
     id: string,
-    ask: { around?: string; spread?: number; crops?: string[]; limit?: number; calendar?: boolean },
+    ask: {
+      around?: string;
+      spread?: number;
+      crops?: string[];
+      limit?: number;
+      calendar?: boolean;
+      experimental?: boolean;
+    },
   ) => call<Recommendation>("POST", `/api/farms/${encodeURIComponent(id)}/recommend`, ask),
   layout: (id: string, parts: Part[]) =>
     call<{ plan: Plan; report: PlanReport }>("POST", `/api/farms/${encodeURIComponent(id)}/layout`, { parts }),

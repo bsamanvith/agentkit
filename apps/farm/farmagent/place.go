@@ -51,6 +51,7 @@ type PlaceAsk struct {
 	Soil  string       `json:"soil,omitempty" jsonschema:"the soil id, from list_soils, when the farmer knows it"`
 	Water []agro.Water `json:"water,omitempty" jsonschema:"the irrigation sources (canal, river, tank, borewell, open_well, farm_pond), each reliable or not; leave out for rain only"`
 	Drip  bool         `json:"drip,omitempty" jsonschema:"the land is under drip or sprinkler"`
+	experimentalIn
 }
 
 // PlaceAnswer is what to sow at a place with no plot.
@@ -121,11 +122,11 @@ func RecommendForPlace(ctx context.Context, p *planner.Planner, find PlaceFinder
 	if in.Soil != "" || len(in.Water) > 0 || in.Drip {
 		at.Profile = &agro.Profile{Soil: in.Soil, Water: in.Water, Drip: in.Drip}
 	}
-	if in.Limit == 0 {
+	if in.Limit == 0 && !in.Experimental {
 		in.Limit = 5
 	}
-	open := len(in.Crops) == 0 && in.Around == ""
-	ask := planner.Ask{Around: in.Around, Spread: in.Spread, Crops: in.Crops, Limit: in.Limit}
+	open := len(in.Crops) == 0 && in.Around == "" && !in.Experimental
+	ask := planner.Ask{Around: in.Around, Spread: in.Spread, Crops: in.Crops, Limit: in.Limit, Experimental: in.Experimental, Kinds: in.Kinds, Search: in.Search}
 	if open {
 		ask.Limit = 200 // every crop: they are sorted into field crops and trees below
 	}

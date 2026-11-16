@@ -125,10 +125,18 @@ func TestEmbeddedAndhraPradeshOverlays(t *testing.T) {
 	if len(crop(t, g, "groundnut").Windows) != 0 || len(base.Windows) != 0 {
 		t.Error("windows leaked outside Kadapa")
 	}
-	// Field-level: everything but the windows is the base's.
-	gn.Windows = nil
+	// The district's own varieties, each with where the plan lists it;
+	// the base's (another state's guide) stay elsewhere.
+	if len(gn.Varieties) != 10 || gn.Varieties[1].Name != "Dharani" || gn.Varieties[1].Ref.Source != "crida-cp-kadapa" {
+		t.Errorf("Kadapa groundnut varieties %+v", gn.Varieties)
+	}
+	if hg := crop(t, k, "horse_gram"); len(hg.Varieties) != 4 || len(crop(t, g, "horse_gram").Varieties) != 0 {
+		t.Errorf("horse gram varieties: Kadapa %+v", hg.Varieties)
+	}
+	// Field-level: everything but the windows and varieties is the base's.
+	gn.Windows, gn.Varieties = nil, nil
 	if !reflect.DeepEqual(gn, base) {
-		t.Error("Kadapa's groundnut differs from the base beyond its windows")
+		t.Error("Kadapa's groundnut differs from the base beyond its windows and varieties")
 	}
 	// Castor's window is the plan's Southern zone table: any water.
 	if ca := crop(t, k, "castor"); len(ca.Windows) != 2 || ca.Windows[0].From != "06-15" || ca.Windows[0].To != "07-15" || ca.Windows[0].Water != "" {

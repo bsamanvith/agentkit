@@ -3,6 +3,7 @@ package agro_test
 import (
 	"encoding/json"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/bsamanvith/agentkit/apps/farm/agro"
@@ -59,6 +60,13 @@ func TestDefaultLibrary(t *testing.T) {
 	}
 	if analogs < 3 {
 		t.Errorf("%d climate analogs, want a few", analogs)
+	}
+	// Varieties name their document; mango has its well-known ones.
+	mango, _ := l.Crop("mango")
+	if !slices.ContainsFunc(mango.Varieties, func(v agro.Variety) bool {
+		return v.Name == "Banganapalli" && v.For != "" && v.Ref.Source == "tnau-cpg-hort-2020"
+	}) {
+		t.Errorf("mango varieties %+v", mango.Varieties)
 	}
 	if _, err := l.Crop("rice"); err != nil {
 		t.Error(err)

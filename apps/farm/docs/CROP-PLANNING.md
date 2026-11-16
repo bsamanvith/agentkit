@@ -177,7 +177,7 @@ Now ([T134](../../../tasks/T134-crop-planning.md), built 2026-10-31):
 Later:
 
 - SoilGrids lookup when it is up; rivers and canals from OpenStreetMap.
-- ECOCROP ingested whole, for the worldwide analog search.
+- ECOCROP ingested whole, for the worldwide analog search: done as the experimental tier (T154, `agro.Wide`).
 - Water need with FAO-56 (ET0 × Kc).
 - Forecast-aware advice ("sow after Thursday's rain").
 - Licensed knowledge sources, AGROVOC for concept names.

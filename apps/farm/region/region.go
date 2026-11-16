@@ -143,12 +143,17 @@ type Cutoff struct {
 }
 
 // Scheme is a government scheme as data (crop insurance first): what it
-// covers and its dates. No feature reads it yet; it is kept so a feature
-// can, and so a review desk can show it with its source.
+// covers and its dates, with its source. Package schemes reads it for a
+// plot's cycle (the season roadmap, the alerts, the assistant).
 type Scheme struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	Kind string `json:"kind"` // insurance, ...
+	// Season and Year are the one season a notice is for ("kharif", 2026:
+	// the season that starts in 2026); both empty for rules that hold
+	// every season (PMFBY's guidelines). Year needs Season.
+	Season string `json:"season,omitempty"`
+	Year   int    `json:"year,omitempty"`
 	// Crops are the crop ids covered; empty when the source does not name
 	// them.
 	Crops   []string `json:"crops,omitempty"`

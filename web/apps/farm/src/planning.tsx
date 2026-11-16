@@ -293,14 +293,15 @@ function WhatToPlant({
   const [busy, setBusy] = useState(false);
   const [rec, setRec] = useState<Recommendation>();
   const [error, setError] = useState("");
-  const ask = () => {
+  const ask = (experimental = false) => {
     setBusy(true);
     setError("");
     api
       .recommend(farm.id, {
         around: when === "around" && around ? around : undefined,
-        crops: crop ? [crop] : undefined,
-        limit: crop ? undefined : 8,
+        crops: crop && !experimental ? [crop] : undefined,
+        limit: crop && !experimental ? undefined : 8,
+        experimental: experimental || undefined,
       })
       .then(setRec, (e: unknown) => setError(message(e)))
       .finally(() => setBusy(false));
@@ -345,9 +346,14 @@ function WhatToPlant({
           Tap “Save land and water” first: the suggestions use the saved soil and water.
         </p>
       )}
-      <Button size="sm" className="self-start" onClick={ask} disabled={busy}>
-        <Sprout /> {busy ? "Working it out…" : "Suggest crops"}
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" onClick={() => ask()} disabled={busy}>
+          <Sprout /> {busy ? "Working it out…" : "Suggest crops"}
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => ask(true)} disabled={busy}>
+          What else could grow here?
+        </Button>
+      </div>
       {error && (
         <p role="alert" className="text-sm text-ak-bad">
           {error}
@@ -362,7 +368,12 @@ function WhatToPlant({
           ))}
           <ol className="flex flex-col gap-2">
             {rec.options.map((o) => (
-              <OptionCard key={o.crop} o={o} onAdd={() => onAdd({ crop: o.crop, share: 1, sow: o.sow })} />
+              <OptionCard
+                key={o.crop}
+                o={o}
+                varieties={crops.find((c) => c.id === o.crop)?.varieties}
+                onAdd={() => onAdd({ crop: o.crop, share: 1, sow: o.sow })}
+              />
             ))}
           </ol>
         </div>
@@ -371,7 +382,7 @@ function WhatToPlant({
   );
 }
 
-function OptionCard({ o, onAdd }: { o: Option; onAdd: () => void }) {
+function OptionCard({ o, varieties, onAdd }: { o: Option; varieties?: Crop["varieties"]; onAdd: () => void }) {
   const local = localName(o.names);
   return (
     <li className="flex flex-col gap-1 rounded-md border p-3 text-sm" data-crop={o.crop}>
@@ -380,6 +391,10 @@ function OptionCard({ o, onAdd }: { o: Option; onAdd: () => void }) {
           {o.name}
           {local && <span className="font-normal text-muted-foreground"> · {local}</span>}
           {o.analog && <span className="ml-2 rounded bg-accent px-1.5 py-0.5 text-xs">new to India</span>}
+          {o.experimental && <span className="ml-2 rounded bg-accent px-1.5 py-0.5 text-xs">experimental</span>}
+          {o.common?.length ? (
+            <span className="block font-normal text-muted-foreground">{o.common.slice(0, 4).join(", ")}</span>
+          ) : null}
         </span>
         <Status tone={scoreTone(o.score)}>{o.score}/100</Status>
       </div>
@@ -417,9 +432,21 @@ function OptionCard({ o, onAdd }: { o: Option; onAdd: () => void }) {
           </li>
         ))}
       </ul>
-      <Button variant="outline" size="sm" className="self-start" onClick={onAdd}>
-        <Plus /> Add to plan
-      </Button>
+      {varieties?.length ? (
+        <div className="text-muted-foreground">
+          Varieties:{" "}
+          {varieties
+            .slice(0, 8)
+            .map((v) => v.name + (v.hybrid ? " (hybrid)" : ""))
+            .join(", ")}
+          {varieties.length > 8 && ` and ${varieties.length - 8} more`}
+        </div>
+      ) : null}
+      {!o.experimental && (
+        <Button variant="outline" size="sm" className="self-start" onClick={onAdd}>
+          <Plus /> Add to plan
+        </Button>
+      )}
     </li>
   );
 }

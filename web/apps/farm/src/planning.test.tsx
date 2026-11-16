@@ -76,3 +76,70 @@ describe("Planning with areas", () => {
     expect(onZones).toHaveBeenLastCalledWith([expect.objectContaining({ ring: halves[0], label: "Maize" })]);
   });
 });
+
+describe("What to plant", () => {
+  const option = (over: object) => ({
+    crop: "tomato",
+    name: "Tomato",
+    kind: "vegetable",
+    sow: "2026-11-20",
+    harvest: "2027-03-05",
+    season: "rabi",
+    score: 82,
+    water: { need_mm: 500, rain_mm: 200, irrigation_mm: 300, gap_mm: 300, short_mm: 0 },
+    reasons: [],
+    risks: [],
+    ...over,
+  });
+
+  it("shows a crop's varieties, and asks the experimental tier only on its own button", async () => {
+    const asked: { experimental?: boolean }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const u = String(url);
+        if (u === "/api/crops")
+          return json({
+            crops: [
+              { id: "tomato", name: "Tomato", varieties: [{ name: "PKM 1" }, { name: "Arka Rakshak", hybrid: true }] },
+            ],
+          });
+        if (u === "/api/soils") return json({ soils: [] });
+        if (u.endsWith("/recommend")) {
+          const ask = JSON.parse(String(init?.body)) as { experimental?: boolean };
+          asked.push(ask);
+          return json({
+            today: "2026-11-16",
+            options: ask.experimental
+              ? [
+                  option({
+                    crop: "anacardium_occidentale",
+                    name: "Anacardium occidentale",
+                    experimental: true,
+                    common: ["cashew", "caju"],
+                    risks: [{ id: "experimental", message: "Experimental: try a small bed first." }],
+                  }),
+                ]
+              : [option({})],
+          });
+        }
+        return json({});
+      }),
+    );
+    const user = userEvent.setup();
+    render(<Planning farm={farm} onFarm={() => {}} onZones={() => {}} />);
+    await user.click(await screen.findByRole("button", { name: "Suggest crops" }));
+    const usual = await screen.findByText(/Varieties: PKM 1, Arka Rakshak \(hybrid\)/);
+    expect(usual).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add to plan" })).toBeTruthy();
+    expect(asked[0]?.experimental).toBeUndefined();
+
+    await user.click(screen.getByRole("button", { name: "What else could grow here?" }));
+    expect(await screen.findByText("cashew, caju")).toBeTruthy();
+    expect(screen.getByText("experimental")).toBeTruthy();
+    expect(screen.getByText("Experimental: try a small bed first.")).toBeTruthy();
+    // An experimental plant cannot go into the season plan.
+    expect(screen.queryByRole("button", { name: "Add to plan" })).toBeNull();
+    expect(asked[1]?.experimental).toBe(true);
+  });
+});

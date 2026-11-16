@@ -220,3 +220,44 @@ func TestAssistantWithPlanningSkillsAndHandbook(t *testing.T) {
 		t.Error("skill_load did not return plan-season's instructions")
 	}
 }
+
+// The crop tools reach the experimental tier when asked: by name through
+// list_crops and get_crop, and scored for a farm through recommend_crops;
+// a library crop carries its varieties.
+func TestCropToolsReachTheExperimentalTier(t *testing.T) {
+	t.Parallel()
+	reg := planningRegistry(t)
+	found := invoke[struct {
+		Crops []struct {
+			ID           string
+			Experimental bool
+			Common       []string
+		}
+	}](t, reg, farmagent.ListCropsTool, `{"experimental":true,"search":"cashew"}`)
+	if len(found.Crops) == 0 || found.Crops[0].ID != "anacardium_occidentale" || !found.Crops[0].Experimental {
+		t.Fatalf("list_crops cashew: %+v", found)
+	}
+	if _, err := reg.Invoke(context.Background(), farmagent.ListCropsTool, json.RawMessage(`{"experimental":true}`)); err == nil {
+		t.Error("list_crops experimental with no search or kind listed the whole tier")
+	}
+	cashew := invoke[agro.Crop](t, reg, farmagent.GetCropTool, `{"id":"anacardium_occidentale"}`)
+	if !cashew.Experimental || cashew.Species != "Anacardium occidentale" || len(cashew.Zones) == 0 {
+		t.Errorf("get_crop cashew: %+v", cashew)
+	}
+	mango := invoke[agro.Crop](t, reg, farmagent.GetCropTool, `{"id":"mango"}`)
+	if mango.Experimental || len(mango.Varieties) < 10 {
+		t.Errorf("get_crop mango: %d varieties", len(mango.Varieties))
+	}
+	rec := invoke[struct {
+		Options []agro.Option
+		Notes   []agro.Note
+	}](t, reg, farmagent.RecommendCropsTool, `{"farm":"farm_1","experimental":true,"kinds":["fruit"],"limit":4}`)
+	if len(rec.Options) != 4 {
+		t.Fatalf("%d experimental fruit options", len(rec.Options))
+	}
+	for _, o := range rec.Options {
+		if !o.Experimental || o.Kind != "fruit" {
+			t.Errorf("option %+v", o.Crop)
+		}
+	}
+}

@@ -1,14 +1,17 @@
 package farmagent
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/bsamanvith/agentkit/apps/farm/agro"
 	"github.com/bsamanvith/agentkit/apps/farm/planner"
+	"github.com/bsamanvith/agentkit/apps/farm/region"
 	"github.com/bsamanvith/agentkit/pkg/tool"
 )
 
@@ -50,6 +53,9 @@ type cropCard struct {
 	// sets its flowering.
 	Light     string `json:"light"`
 	DayLength string `json:"day_length"`
+	// An experimental plant's other names, and that it is one.
+	Common       []string `json:"common,omitempty"`
+	Experimental bool     `json:"experimental,omitempty"`
 }
 
 type compareIn struct {
@@ -80,11 +86,18 @@ type compareOut struct {
 }
 
 type kindIn struct {
-	Kind string `json:"kind,omitempty" jsonschema:"only crops of this kind: cereal, millet, pulse, oilseed, vegetable, fruit, fibre, cash, spice, ..."`
+	Kind         string `json:"kind,omitempty" jsonschema:"only crops of this kind: cereal, millet, pulse, oilseed, vegetable, fruit, fibre, cash, spice, ..."`
+	Search       string `json:"search,omitempty" jsonschema:"only crops that go by this name, in any language or botanical"`
+	Experimental bool   `json:"experimental,omitempty" jsonschema:"true to search the experimental tier (FAO ECOCROP, about 1,300 more plants) instead; give search or kind with it"`
 }
 
 type idIn struct {
 	ID string `json:"id" jsonschema:"the crop's id, from list_crops"`
+	// Where, for the district's own sowing windows and varieties.
+	Farm     string `json:"farm,omitempty" jsonschema:"the farm's id, to get the crop as it is known where the farm is: the district's own sowing windows and varieties"`
+	State    string `json:"state,omitempty" jsonschema:"instead of farm, the state: 'Andhra Pradesh'"`
+	District string `json:"district,omitempty" jsonschema:"with state, the district: 'Kadapa'"`
+	Country  string `json:"country,omitempty" jsonschema:"with state, the ISO country code (default IN)"`
 }
 
 type farmIn struct {
@@ -108,6 +121,14 @@ type recommendIn struct {
 	Spread int      `json:"spread,omitempty" jsonschema:"how many days either side of around count (default 45)"`
 	Crops  []string `json:"crops,omitempty" jsonschema:"only these crop ids, when the farmer asks about particular crops"`
 	Limit  int      `json:"limit,omitempty" jsonschema:"how many options at most (default 5)"`
+	experimentalIn
+}
+
+// experimentalIn asks the experimental tier in place of the library.
+type experimentalIn struct {
+	Experimental bool     `json:"experimental,omitempty" jsonschema:"true to ask the experimental tier instead: about 1,300 more plants from FAO ECOCROP (coffee, cashew, jackfruit, pineapple, cassava, dates, lentil, ...), scored on climate and soil alone. Only when the farmer asks what else could grow, wants something new or unusual, or names a plant list_crops does not have"`
+	Kinds        []string `json:"kinds,omitempty" jsonschema:"with experimental: only these kinds: cereal, pulse, root, vegetable, fruit, fodder, medicinal (also spices and beverages), material (fibre, oil, timber)"`
+	Search       string   `json:"search,omitempty" jsonschema:"with experimental: only plants that go by this name, common or botanical: 'coffee', 'Artocarpus'"`
 }
 
 type recommendOut struct {
@@ -160,18 +181,50 @@ func PlanningTools(p *planner.Planner) ([]tool.Tool, error) {
 				}
 				return map[string][]soilCard{"soils": out}, nil
 			}, read)),
-		add(tool.Func(ListCropsTool, "List the crops the app can plan, with their kind, days to harvest and Indian seasons.",
+		add(tool.Func(ListCropsTool, "List the crops the app can plan, with their kind, days to harvest and Indian seasons. With experimental and a search or kind, list plants of the experimental tier instead (at most 60).",
 			func(_ context.Context, in kindIn) (map[string][]cropCard, error) {
 				out := []cropCard{}
-				for _, c := range lib.Crops() {
-					if in.Kind == "" || c.Kind == in.Kind {
-						out = append(out, cropCard{c.ID, c.Name, c.Names, c.Kind, c.Days, c.Seasons, c.ClimateAnalog, c.LightNeed(), c.DayHabit()})
+				from := lib
+				if in.Experimental {
+					if in.Kind == "" && strings.TrimSpace(in.Search) == "" {
+						return nil, fmt.Errorf("%w: give search or kind with experimental", agro.ErrInvalid)
 					}
+					var err error
+					if from, err = agro.Wide(); err != nil {
+						return nil, err
+					}
+				}
+				for _, c := range from.Crops() {
+					if (in.Kind == "" || c.Kind == in.Kind) && c.Matches(in.Search) {
+						out = append(out, cropCard{c.ID, c.Name, c.Names, c.Kind, c.Days, c.Seasons, c.ClimateAnalog, c.LightNeed(), c.DayHabit(), c.Common, c.Experimental})
+					}
+				}
+				if in.Experimental && len(out) > 60 {
+					out = out[:60] // a kind of the tier can be hundreds: narrow it with search
 				}
 				return map[string][]cropCard{"crops": out}, nil
 			}, read)),
-		add(tool.Func(GetCropTool, "Get everything the app knows about a crop: temperatures, water, soil, spacing, seasons, intercrops.",
-			func(_ context.Context, in idIn) (agro.Crop, error) { return lib.Crop(in.ID) }, read)),
+		add(tool.Func(GetCropTool, "Get everything the app knows about a crop: temperatures, water, soil, spacing, seasons, intercrops, and its named varieties, each with the document that lists it. Give the farm, or the state and district, to get the district's own sowing windows and varieties where the app has them. An experimental plant's id works too.",
+			func(ctx context.Context, in idIn) (agro.Crop, error) {
+				lib := lib
+				switch {
+				case in.Farm != "":
+					f, err := p.Farms().Get(ctx, in.Farm)
+					if err != nil {
+						return agro.Crop{}, err
+					}
+					lib = p.LibraryFor(f)
+				case in.State != "":
+					lib = p.LibraryAt(region.Place{Country: cmp.Or(in.Country, "IN"), State: in.State, District: in.District})
+				}
+				c, err := lib.Crop(in.ID)
+				if w, werr := agro.Wide(); err != nil && werr == nil {
+					if x, xerr := w.Crop(in.ID); xerr == nil {
+						return x, nil
+					}
+				}
+				return c, err
+			}, read)),
 		add(tool.Func(GetClimateTool, "Get the climate normals at a farm, month by month (temperature, rain, humidity), and today's date.",
 			func(ctx context.Context, in farmIn) (climateOut, error) {
 				c, err := p.Climate(ctx, in.Farm)
@@ -209,12 +262,12 @@ func PlanningTools(p *planner.Planner) ([]tool.Tool, error) {
 				}
 				return *f.Profile, nil
 			}, write)),
-		add(tool.Func(RecommendCropsTool, "Recommend crops for a farm and when to sow them, from its soil, water and the climate at the plot, best first. Each option has a score from 0 to 100, the sowing and harvest dates, the good sowing window, the water balance, and reasons and risks. Give 'around' when the farmer has a time in mind, 'crops' when they ask about particular crops.",
+		add(tool.Func(RecommendCropsTool, "Recommend crops for a farm and when to sow them, from its soil, water and the climate at the plot, best first. Each option has a score from 0 to 100, the sowing and harvest dates, the good sowing window, the water balance, and reasons and risks. Give 'around' when the farmer has a time in mind, 'crops' when they ask about particular crops. With 'experimental' it answers from the experimental tier instead: plants outside the reviewed library, to try on a small area.",
 			func(ctx context.Context, in recommendIn) (recommendOut, error) {
-				if in.Limit == 0 {
+				if in.Limit == 0 && !in.Experimental {
 					in.Limit = 5
 				}
-				r, err := p.Recommend(ctx, in.Farm, planner.Ask{Around: in.Around, Spread: in.Spread, Crops: in.Crops, Limit: in.Limit})
+				r, err := p.Recommend(ctx, in.Farm, planner.Ask{Around: in.Around, Spread: in.Spread, Crops: in.Crops, Limit: in.Limit, Experimental: in.Experimental, Kinds: in.Kinds, Search: in.Search})
 				if err != nil {
 					return recommendOut{}, err
 				}

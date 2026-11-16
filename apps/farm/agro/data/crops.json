@@ -1,5 +1,23 @@
 {
  "source": "Starter values: temperature and water ranges follow FAO ECOCROP where it has the crop, seasons and spacing follow ICAR and state university packages of practice for India. Temperatures are monthly means in °C; water is the crop's whole-season need in mm (perennials: per year); days run from sowing or planting to (first) harvest. Review before relying on them. Heights are a grown crop's usual height in metres (a tree's at maturity), for shade. Light (full sun, part shade or shade) and day length (short-day, long-day or neutral flowering) follow the same packages of practice and standard crop physiology texts; most Indian varieties of short- and long-day crops are bred to be less sensitive.",
+ "sources": [
+  {
+   "id": "tnau-cpg-hort-2020",
+   "name": "TNAU Crop Production Guide: Horticulture Crops (2020)",
+   "publisher": "Tamil Nadu Agricultural University and the Directorate of Horticulture and Plantation Crops, Tamil Nadu",
+   "url": "https://agritech.tnau.ac.in/pdf/HORTICULTURE.pdf",
+   "read": "2026-11-16",
+   "note": "The varieties are the ones Tamil Nadu's guide lists; a region pack's overlay gives a district's own where a document for it was read."
+  },
+  {
+   "id": "fao-ecocrop",
+   "name": "ECOCROP database",
+   "publisher": "Food and Agriculture Organization of the United Nations (FAO)",
+   "url": "https://gaez.fao.org/pages/ecocrop",
+   "read": "2026-11-16",
+   "note": "The experimental tier (wide.json.gz, built by ecocrop/build.py) from the whole table, read from the public copy at https://github.com/OpenCLIM/ecocrop (EcoCrop_DB.csv). FAO's page states no licence for this database; FAO's database terms (CC BY 4.0 with credit to FAO) name its statistical databases. Credit FAO; confirm the terms before commercial use."
+  }
+ ],
  "crops": [
   {
    "id": "rice",
@@ -11,6 +29,7 @@
     "ta": "நெல்",
     "te": "వరి"
    },
+   "species": "Oryza sativa",
    "family": "Poaceae",
    "kind": "cereal",
    "perennial": false,
@@ -71,6 +90,7 @@
     "ta": "கோதுமை",
     "te": "గోధుమ"
    },
+   "species": "Triticum aestivum",
    "family": "Poaceae",
    "kind": "cereal",
    "perennial": false,
@@ -133,6 +153,7 @@
     "ta": "மக்காச்சோளம்",
     "te": "మొక్కజొన్న"
    },
+   "species": "Zea mays",
    "family": "Poaceae",
    "kind": "cereal",
    "perennial": false,
@@ -198,6 +219,7 @@
     "ta": "சோளம்",
     "te": "జొన్న"
    },
+   "species": "Sorghum bicolor",
    "family": "Poaceae",
    "kind": "cereal",
    "perennial": false,
@@ -261,6 +283,7 @@
     "ta": "கம்பு",
     "te": "సజ్జ"
    },
+   "species": "Pennisetum glaucum",
    "family": "Poaceae",
    "kind": "cereal",
    "perennial": false,
@@ -323,6 +346,7 @@
     "ta": "கேழ்வரகு",
     "te": "రాగి"
    },
+   "species": "Eleusine coracana",
    "family": "Poaceae",
    "kind": "cereal",
    "perennial": false,
@@ -383,6 +407,7 @@
     "ta": "தினை",
     "te": "కొర్ర"
    },
+   "species": "Setaria italica",
    "family": "Poaceae",
    "kind": "cereal",
    "perennial": false,
@@ -442,6 +467,7 @@
     "ta": "கொண்டைக்கடலை",
     "te": "శనగ"
    },
+   "species": "Cicer arietinum",
    "family": "Fabaceae",
    "kind": "pulse",
    "perennial": false,
@@ -504,6 +530,7 @@
     "ta": "துவரை",
     "te": "కంది"
    },
+   "species": "Cajanus cajan",
    "family": "Fabaceae",
    "kind": "pulse",
    "perennial": false,
@@ -575,6 +602,7 @@
     "ta": "பாசிப்பயறு",
     "te": "పెసర"
    },
+   "species": "Vigna radiata",
    "family": "Fabaceae",
    "kind": "pulse",
    "perennial": false,
@@ -644,6 +672,7 @@
     "ta": "உளுந்து",
     "te": "మినుము"
    },
+   "species": "Vigna mungo",
    "family": "Fabaceae",
    "kind": "pulse",
    "perennial": false,
@@ -708,6 +737,7 @@
     "ta": "நிலக்கடலை",
     "te": "వేరుశనగ"
    },
+   "species": "Arachis hypogaea",
    "family": "Fabaceae",
    "kind": "oilseed",
    "perennial": false,
@@ -770,6 +800,7 @@
     "ta": "சோயா மொச்சை",
     "te": "సోయా చిక్కుడు"
    },
+   "species": "Glycine max",
    "family": "Fabaceae",
    "kind": "oilseed",
    "perennial": false,
@@ -831,6 +862,7 @@
     "ta": "கடுகு",
     "te": "ఆవాలు"
    },
+   "species": "Brassica juncea",
    "family": "Brassicaceae",
    "kind": "oilseed",
    "perennial": false,
@@ -894,6 +926,7 @@
     "ta": "சூரியகாந்தி",
     "te": "పొద్దుతిరుగుడు"
    },
+   "species": "Helianthus annuus",
    "family": "Asteraceae",
    "kind": "oilseed",
    "perennial": false,
@@ -958,6 +991,7 @@
     "ta": "எள்",
     "te": "నువ్వులు"
    },
+   "species": "Sesamum indicum",
    "family": "Pedaliaceae",
    "kind": "oilseed",
    "perennial": false,
@@ -1019,6 +1053,7 @@
     "ta": "பருத்தி",
     "te": "పత్తి"
    },
+   "species": "Gossypium hirsutum",
    "family": "Malvaceae",
    "kind": "fibre",
    "perennial": false,
@@ -1082,6 +1117,7 @@
     "ta": "கரும்பு",
     "te": "చెరకు"
    },
+   "species": "Saccharum officinarum",
    "family": "Poaceae",
    "kind": "cash",
    "perennial": false,
@@ -1143,6 +1179,7 @@
     "ta": "மஞ்சள்",
     "te": "పసుపు"
    },
+   "species": "Curcuma longa",
    "family": "Zingiberaceae",
    "kind": "spice",
    "perennial": false,
@@ -1201,6 +1238,7 @@
     "ta": "மிளகாய்",
     "te": "మిర్చి"
    },
+   "species": "Capsicum annuum",
    "family": "Solanaceae",
    "kind": "vegetable",
    "perennial": false,
@@ -1251,7 +1289,90 @@
     "mango"
    ],
    "light": "full",
-   "day_length": "neutral"
+   "day_length": "neutral",
+   "varieties": [
+    {
+     "name": "K 1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 87, Chilli: Varieties"
+     }
+    },
+    {
+     "name": "K 2",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 87, Chilli: Varieties"
+     }
+    },
+    {
+     "name": "CO 1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 87, Chilli: Varieties"
+     }
+    },
+    {
+     "name": "CO 2",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 87, Chilli: Varieties"
+     }
+    },
+    {
+     "name": "CO 3",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 87, Chilli: Varieties"
+     }
+    },
+    {
+     "name": "CO 4",
+     "for": "vegetable type",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 87, Chilli: Varieties"
+     }
+    },
+    {
+     "name": "PKM 1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 87, Chilli: Varieties"
+     }
+    },
+    {
+     "name": "PMK 1",
+     "for": "semi-dry conditions",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 87, Chilli: Varieties"
+     }
+    },
+    {
+     "name": "PLR 1",
+     "for": "coastal regions",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 87, Chilli: Varieties"
+     }
+    },
+    {
+     "name": "KKM (Ch) 1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 87, Chilli: Varieties"
+     }
+    },
+    {
+     "name": "TNAU Chilli Hybrid CO 1",
+     "hybrid": true,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 87, Chilli: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "tomato",
@@ -1263,6 +1384,7 @@
     "ta": "தக்காளி",
     "te": "టమాట"
    },
+   "species": "Solanum lycopersicum",
    "family": "Solanaceae",
    "kind": "vegetable",
    "perennial": false,
@@ -1311,7 +1433,54 @@
     "onion"
    ],
    "light": "full",
-   "day_length": "neutral"
+   "day_length": "neutral",
+   "varieties": [
+    {
+     "name": "PKM 1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 71, Tomato: Varieties"
+     }
+    },
+    {
+     "name": "CO 3 (Marutham)",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 71, Tomato: Varieties"
+     }
+    },
+    {
+     "name": "Paiyur 1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 71, Tomato: Varieties"
+     }
+    },
+    {
+     "name": "TNAU Tomato Hybrid CO 3",
+     "hybrid": true,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 71, Tomato: Varieties"
+     }
+    },
+    {
+     "name": "Arka Rakshak",
+     "hybrid": true,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 71, Tomato: Varieties"
+     }
+    },
+    {
+     "name": "Arka Samrat",
+     "hybrid": true,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 71, Tomato: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "onion",
@@ -1323,6 +1492,7 @@
     "ta": "வெங்காயம்",
     "te": "ఉల్లి"
    },
+   "species": "Allium cepa",
    "family": "Amaryllidaceae",
    "kind": "vegetable",
    "perennial": false,
@@ -1384,6 +1554,7 @@
     "ta": "கத்தரிக்காய்",
     "te": "వంకాయ"
    },
+   "species": "Solanum melongena",
    "family": "Solanaceae",
    "kind": "vegetable",
    "perennial": false,
@@ -1429,7 +1600,88 @@
    "height_m": 1.0,
    "intercrops": [],
    "light": "full",
-   "day_length": "neutral"
+   "day_length": "neutral",
+   "varieties": [
+    {
+     "name": "CO 2",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 77, Brinjal: Varieties"
+     }
+    },
+    {
+     "name": "MDU 1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 77, Brinjal: Varieties"
+     }
+    },
+    {
+     "name": "PKM 1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 77, Brinjal: Varieties"
+     }
+    },
+    {
+     "name": "PLR 1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 77, Brinjal: Varieties"
+     }
+    },
+    {
+     "name": "PLR (B) 2",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 77, Brinjal: Varieties"
+     }
+    },
+    {
+     "name": "KKM 1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 77, Brinjal: Varieties"
+     }
+    },
+    {
+     "name": "PPI 1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 77, Brinjal: Varieties"
+     }
+    },
+    {
+     "name": "Annamalai",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 77, Brinjal: Varieties"
+     }
+    },
+    {
+     "name": "TNAU Brinjal VRM 1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 77, Brinjal: Varieties"
+     }
+    },
+    {
+     "name": "COBH 1",
+     "hybrid": true,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 77, Brinjal: Varieties"
+     }
+    },
+    {
+     "name": "COBH 2",
+     "hybrid": true,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 77, Brinjal: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "okra",
@@ -1441,6 +1693,7 @@
     "ta": "வெண்டைக்காய்",
     "te": "బెండ"
    },
+   "species": "Abelmoschus esculentus",
    "family": "Malvaceae",
    "kind": "vegetable",
    "perennial": false,
@@ -1485,7 +1738,61 @@
    "height_m": 1.5,
    "intercrops": [],
    "light": "full",
-   "day_length": "neutral"
+   "day_length": "neutral",
+   "varieties": [
+    {
+     "name": "Arka Anamika",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 83, Bhendi: Varieties"
+     }
+    },
+    {
+     "name": "Arka Abhay",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 83, Bhendi: Varieties"
+     }
+    },
+    {
+     "name": "Parbhani Kranti",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 83, Bhendi: Varieties"
+     }
+    },
+    {
+     "name": "Varsha Uphar",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 83, Bhendi: Varieties"
+     }
+    },
+    {
+     "name": "COBhH 1",
+     "hybrid": true,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 83, Bhendi: Varieties"
+     }
+    },
+    {
+     "name": "COBhH 3",
+     "hybrid": true,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 83, Bhendi: Varieties"
+     }
+    },
+    {
+     "name": "Bhendi Hybrid CO 4",
+     "hybrid": true,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 83, Bhendi: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "potato",
@@ -1497,6 +1804,7 @@
     "ta": "உருளைக்கிழங்கு",
     "te": "బంగాళాదుంప"
    },
+   "species": "Solanum tuberosum",
    "family": "Solanaceae",
    "kind": "vegetable",
    "perennial": false,
@@ -1554,6 +1862,7 @@
     "ta": "சர்க்கரைவள்ளிக்கிழங்கு",
     "te": "చిలగడదుంప"
    },
+   "species": "Ipomoea batatas",
    "family": "Convolvulaceae",
    "kind": "vegetable",
    "perennial": false,
@@ -1613,6 +1922,7 @@
     "ta": "தர்பூசணி",
     "te": "పుచ్చకాయ"
    },
+   "species": "Citrullus lanatus",
    "family": "Cucurbitaceae",
    "kind": "vegetable",
    "perennial": false,
@@ -1658,7 +1968,47 @@
    "height_m": 0.4,
    "intercrops": [],
    "light": "full",
-   "day_length": "neutral"
+   "day_length": "neutral",
+   "varieties": [
+    {
+     "name": "Sugar Baby",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 115, Watermelon: Varieties"
+     }
+    },
+    {
+     "name": "Arka Manik",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 115, Watermelon: Varieties"
+     }
+    },
+    {
+     "name": "Arka Jyoti",
+     "hybrid": true,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 115, Watermelon: Varieties"
+     }
+    },
+    {
+     "name": "Sonna",
+     "hybrid": true,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 115, Watermelon: Varieties"
+     }
+    },
+    {
+     "name": "Suvarnima",
+     "hybrid": true,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 115, Watermelon: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "banana",
@@ -1670,6 +2020,7 @@
     "ta": "வாழை",
     "te": "అరటి"
    },
+   "species": "Musa acuminata",
    "family": "Musaceae",
    "kind": "fruit",
    "perennial": true,
@@ -1717,7 +2068,145 @@
     "coconut"
    ],
    "light": "full",
-   "day_length": "neutral"
+   "day_length": "neutral",
+   "varieties": [
+    {
+     "name": "Grand Naine",
+     "for": "dessert",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 21, Banana: Varieties"
+     }
+    },
+    {
+     "name": "Robusta",
+     "for": "dessert",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 21, Banana: Varieties"
+     }
+    },
+    {
+     "name": "Dwarf Cavendish",
+     "for": "dessert",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 21, Banana: Varieties"
+     }
+    },
+    {
+     "name": "Rasthali",
+     "for": "dessert",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 21, Banana: Varieties"
+     }
+    },
+    {
+     "name": "Vayal vazhai",
+     "for": "dessert, culinary",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 21, Banana: Varieties"
+     }
+    },
+    {
+     "name": "Poovan",
+     "for": "dessert",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 21, Banana: Varieties"
+     }
+    },
+    {
+     "name": "Nendran",
+     "for": "dessert, culinary",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 21, Banana: Varieties"
+     }
+    },
+    {
+     "name": "Red Banana",
+     "for": "dessert",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 21, Banana: Varieties"
+     }
+    },
+    {
+     "name": "Karpooravalli",
+     "for": "dessert",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 21, Banana: Varieties"
+     }
+    },
+    {
+     "name": "Udhayam",
+     "for": "dessert",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 21, Banana: Varieties"
+     }
+    },
+    {
+     "name": "CO 1",
+     "for": "dessert",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 21, Banana: Varieties"
+     }
+    },
+    {
+     "name": "Matti",
+     "for": "dessert",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 21, Banana: Varieties"
+     }
+    },
+    {
+     "name": "Sannachenkadali",
+     "for": "dessert",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 21, Banana: Varieties"
+     }
+    },
+    {
+     "name": "Ney poovan",
+     "for": "dessert",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 21, Banana: Varieties"
+     }
+    },
+    {
+     "name": "Monthan",
+     "for": "culinary",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 21, Banana: Varieties"
+     }
+    },
+    {
+     "name": "Ash Monthan",
+     "for": "culinary",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 21, Banana: Varieties"
+     }
+    },
+    {
+     "name": "Chakkia",
+     "for": "culinary",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 21, Banana: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "mango",
@@ -1729,6 +2218,7 @@
     "ta": "மா",
     "te": "మామిడి"
    },
+   "species": "Mangifera indica",
    "family": "Anacardiaceae",
    "kind": "fruit",
    "perennial": true,
@@ -1780,7 +2270,167 @@
     "chilli"
    ],
    "light": "full",
-   "day_length": "neutral"
+   "day_length": "neutral",
+   "varieties": [
+    {
+     "name": "Neelum",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 15, Mango: Varieties"
+     }
+    },
+    {
+     "name": "Bangalora",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 15, Mango: Varieties"
+     }
+    },
+    {
+     "name": "Alphonso",
+     "for": "processing, export",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 15, Mango: Varieties"
+     }
+    },
+    {
+     "name": "Rumani",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 15, Mango: Varieties"
+     }
+    },
+    {
+     "name": "Banganapalli",
+     "for": "processing, export",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 15, Mango: Varieties"
+     }
+    },
+    {
+     "name": "Kalepad",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 15, Mango: Varieties"
+     }
+    },
+    {
+     "name": "Peter",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 15, Mango: Varieties"
+     }
+    },
+    {
+     "name": "PKM 1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 15, Mango: Varieties"
+     }
+    },
+    {
+     "name": "PKM 2",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 15, Mango: Varieties"
+     }
+    },
+    {
+     "name": "Sendura",
+     "for": "export",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 15, Mango: Varieties"
+     }
+    },
+    {
+     "name": "Jahangir",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 15, Mango: Varieties"
+     }
+    },
+    {
+     "name": "Mulgoa",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 15, Mango: Varieties"
+     }
+    },
+    {
+     "name": "Himayuddin",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 15, Mango: Varieties"
+     }
+    },
+    {
+     "name": "Paiyur 1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 15, Mango: Varieties"
+     }
+    },
+    {
+     "name": "Mallika",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 15, Mango: Varieties"
+     }
+    },
+    {
+     "name": "Amrapali",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 15, Mango: Varieties"
+     }
+    },
+    {
+     "name": "Salem Bangalora",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 15, Mango: Varieties"
+     }
+    },
+    {
+     "name": "Arka Anmol",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 15, Mango: Varieties"
+     }
+    },
+    {
+     "name": "Arka Aruna",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 15, Mango: Varieties"
+     }
+    },
+    {
+     "name": "Arka Neelkiran",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 15, Mango: Varieties"
+     }
+    },
+    {
+     "name": "Arka Puneeth",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 15, Mango: Varieties"
+     }
+    },
+    {
+     "name": "Totapuri",
+     "for": "processing",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 15, Mango: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "papaya",
@@ -1792,6 +2442,7 @@
     "ta": "பப்பாளி",
     "te": "బొప్పాయి"
    },
+   "species": "Carica papaya",
    "family": "Caricaceae",
    "kind": "fruit",
    "perennial": true,
@@ -1836,7 +2487,72 @@
    "height_m": 5.0,
    "intercrops": [],
    "light": "full",
-   "day_length": "neutral"
+   "day_length": "neutral",
+   "varieties": [
+    {
+     "name": "CO 2",
+     "for": "table and papain",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 47, Papaya: Varieties"
+     }
+    },
+    {
+     "name": "CO 3",
+     "for": "table; bisexual and female plants",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 47, Papaya: Varieties"
+     }
+    },
+    {
+     "name": "CO 4",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 47, Papaya: Varieties"
+     }
+    },
+    {
+     "name": "CO 5",
+     "for": "table and papain",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 47, Papaya: Varieties"
+     }
+    },
+    {
+     "name": "CO 6",
+     "for": "table and papain",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 47, Papaya: Varieties"
+     }
+    },
+    {
+     "name": "CO 7",
+     "for": "table; bisexual and female plants",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 47, Papaya: Varieties"
+     }
+    },
+    {
+     "name": "TNAU Papaya CO 8",
+     "for": "table and papain",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 47, Papaya: Varieties"
+     }
+    },
+    {
+     "name": "Red Lady",
+     "for": "grown commercially",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 47, Papaya: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "guava",
@@ -1848,6 +2564,7 @@
     "ta": "கொய்யா",
     "te": "జామ"
    },
+   "species": "Psidium guajava",
    "family": "Myrtaceae",
    "kind": "fruit",
    "perennial": true,
@@ -1900,7 +2617,79 @@
     "black_gram"
    ],
    "light": "full",
-   "day_length": "neutral"
+   "day_length": "neutral",
+   "varieties": [
+    {
+     "name": "Allahabad Safeda",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 42, Guava: Varieties"
+     }
+    },
+    {
+     "name": "Lucknow 49",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 42, Guava: Varieties"
+     }
+    },
+    {
+     "name": "Arka Amulya",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 42, Guava: Varieties"
+     }
+    },
+    {
+     "name": "Arka Mirdula",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 42, Guava: Varieties"
+     }
+    },
+    {
+     "name": "Banarasi",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 42, Guava: Varieties"
+     }
+    },
+    {
+     "name": "TRY (G) 1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 42, Guava: Varieties"
+     }
+    },
+    {
+     "name": "Arka Kiran",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 42, Guava: Varieties"
+     }
+    },
+    {
+     "name": "Lucknow 46",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 42, Guava: Varieties"
+     }
+    },
+    {
+     "name": "Arka Reshmi",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 42, Guava: Varieties"
+     }
+    },
+    {
+     "name": "Lalit",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 42, Guava: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "coconut",
@@ -1912,6 +2701,7 @@
     "ta": "தென்னை",
     "te": "కొబ్బరి"
    },
+   "species": "Cocos nucifera",
    "family": "Arecaceae",
    "kind": "fruit",
    "perennial": true,
@@ -1976,6 +2766,7 @@
     "ta": "முருங்கை",
     "te": "మునగ"
    },
+   "species": "Moringa oleifera",
    "family": "Moringaceae",
    "kind": "vegetable",
    "perennial": true,
@@ -2026,7 +2817,25 @@
     "black_gram"
    ],
    "light": "full",
-   "day_length": "neutral"
+   "day_length": "neutral",
+   "varieties": [
+    {
+     "name": "PKM 1",
+     "for": "annual type",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 129, Annual moringa: Varieties"
+     }
+    },
+    {
+     "name": "PKM 2",
+     "for": "annual type",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 129, Annual moringa: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "dragon_fruit",
@@ -2038,6 +2847,7 @@
     "ta": "டிராகன் பழம்",
     "te": "డ్రాగన్ ఫ్రూట్"
    },
+   "species": "Hylocereus undatus",
    "family": "Cactaceae",
    "kind": "fruit",
    "perennial": true,
@@ -2096,6 +2906,7 @@
     "ta": "அவகாடோ",
     "te": "అవకాడో"
    },
+   "species": "Persea americana",
    "family": "Lauraceae",
    "kind": "fruit",
    "perennial": true,
@@ -2151,6 +2962,7 @@
     "ta": "கினோவா",
     "te": "క్వినోవా"
    },
+   "species": "Chenopodium quinoa",
    "family": "Amaranthaceae",
    "kind": "cereal",
    "perennial": false,
@@ -2211,6 +3023,7 @@
     "ta": "சியா",
     "te": "చియా"
    },
+   "species": "Salvia hispanica",
    "family": "Lamiaceae",
    "kind": "oilseed",
    "perennial": false,
@@ -2268,6 +3081,7 @@
     "ta": "இஞ்சி",
     "te": "అల్లం"
    },
+   "species": "Zingiber officinale",
    "family": "Zingiberaceae",
    "kind": "spice",
    "perennial": false,
@@ -2326,6 +3140,7 @@
     "ta": "கோகோ",
     "te": "కోకో"
    },
+   "species": "Theobroma cacao",
    "family": "Malvaceae",
    "kind": "cash",
    "perennial": true,
@@ -2384,6 +3199,7 @@
     "ta": "கொள்ளு",
     "te": "ఉలవలు"
    },
+   "species": "Macrotyloma uniflorum",
    "family": "Fabaceae",
    "kind": "pulse",
    "perennial": false,
@@ -2444,6 +3260,7 @@
     "ta": "ஆமணக்கு",
     "te": "ఆముదం"
    },
+   "species": "Ricinus communis",
    "family": "Euphorbiaceae",
    "kind": "oilseed",
    "perennial": false,
@@ -2504,6 +3321,7 @@
     "ta": "தட்டைப்பயறு",
     "te": "అలసంద"
    },
+   "species": "Vigna unguiculata",
    "family": "Fabaceae",
    "kind": "pulse",
    "perennial": false,
@@ -2553,7 +3371,49 @@
    "height_m": 0.6,
    "intercrops": [],
    "light": "full",
-   "day_length": "short"
+   "day_length": "short",
+   "varieties": [
+    {
+     "name": "CO 2",
+     "for": "vegetable type",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 122, Vegetable Cowpea: Varieties"
+     }
+    },
+    {
+     "name": "VBN 2",
+     "for": "vegetable type",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 122, Vegetable Cowpea: Varieties"
+     }
+    },
+    {
+     "name": "Pusa Komal",
+     "for": "vegetable type",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 122, Vegetable Cowpea: Varieties"
+     }
+    },
+    {
+     "name": "PKM 1",
+     "for": "vegetable type",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 122, Vegetable Cowpea: Varieties"
+     }
+    },
+    {
+     "name": "Arka Garima",
+     "for": "vegetable type",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 122, Vegetable Cowpea: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "field_bean",
@@ -2565,6 +3425,7 @@
     "ta": "மொச்சை",
     "te": "అనుములు"
    },
+   "species": "Lablab purpureus",
    "family": "Fabaceae",
    "kind": "pulse",
    "perennial": false,
@@ -2612,7 +3473,145 @@
    "height_m": 1.0,
    "intercrops": [],
    "light": "full",
-   "day_length": "short"
+   "day_length": "short",
+   "varieties": [
+    {
+     "name": "CO 6",
+     "for": "bush type",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 123, Lab lab or Dolichos bean: Varieties"
+     }
+    },
+    {
+     "name": "CO 7",
+     "for": "bush type",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 123, Lab lab or Dolichos bean: Varieties"
+     }
+    },
+    {
+     "name": "CO 8",
+     "for": "bush type",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 123, Lab lab or Dolichos bean: Varieties"
+     }
+    },
+    {
+     "name": "CO 9",
+     "for": "bush type",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 123, Lab lab or Dolichos bean: Varieties"
+     }
+    },
+    {
+     "name": "CO 10",
+     "for": "bush type",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 123, Lab lab or Dolichos bean: Varieties"
+     }
+    },
+    {
+     "name": "CO 11",
+     "for": "bush type",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 123, Lab lab or Dolichos bean: Varieties"
+     }
+    },
+    {
+     "name": "CO 12",
+     "for": "bush type",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 123, Lab lab or Dolichos bean: Varieties"
+     }
+    },
+    {
+     "name": "CO 13",
+     "for": "bush type",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 123, Lab lab or Dolichos bean: Varieties"
+     }
+    },
+    {
+     "name": "CO (GB) 14",
+     "for": "bush type",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 123, Lab lab or Dolichos bean: Varieties"
+     }
+    },
+    {
+     "name": "Arka Jay",
+     "for": "bush type",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 123, Lab lab or Dolichos bean: Varieties"
+     }
+    },
+    {
+     "name": "Arka Vijay",
+     "for": "bush type",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 123, Lab lab or Dolichos bean: Varieties"
+     }
+    },
+    {
+     "name": "CO 1",
+     "for": "pandal type",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 123, Lab lab or Dolichos bean: Varieties"
+     }
+    },
+    {
+     "name": "CO 2",
+     "for": "pandal type",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 123, Lab lab or Dolichos bean: Varieties"
+     }
+    },
+    {
+     "name": "CO 3",
+     "for": "pandal type",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 123, Lab lab or Dolichos bean: Varieties"
+     }
+    },
+    {
+     "name": "CO 4",
+     "for": "pandal type",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 123, Lab lab or Dolichos bean: Varieties"
+     }
+    },
+    {
+     "name": "CO 5",
+     "for": "pandal type",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 123, Lab lab or Dolichos bean: Varieties"
+     }
+    },
+    {
+     "name": "Pusa Early Prolific",
+     "for": "pandal type",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 123, Lab lab or Dolichos bean: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "safflower",
@@ -2624,6 +3623,7 @@
     "ta": "குசும்பா",
     "te": "కుసుమ"
    },
+   "species": "Carthamus tinctorius",
    "family": "Asteraceae",
    "kind": "oilseed",
    "perennial": false,
@@ -2684,6 +3684,7 @@
     "ta": "சாமை",
     "te": "సామలు"
    },
+   "species": "Panicum sumatrense",
    "family": "Poaceae",
    "kind": "cereal",
    "perennial": false,
@@ -2743,6 +3744,7 @@
     "ta": "வரகு",
     "te": "అరికెలు"
    },
+   "species": "Paspalum scrobiculatum",
    "family": "Poaceae",
    "kind": "cereal",
    "perennial": false,
@@ -2800,6 +3802,7 @@
     "ta": "கொத்தவரை",
     "te": "గోరుచిక్కుడు"
    },
+   "species": "Cyamopsis tetragonoloba",
    "family": "Fabaceae",
    "kind": "vegetable",
    "perennial": false,
@@ -2847,7 +3850,37 @@
    "height_m": 1.0,
    "intercrops": [],
    "light": "full",
-   "day_length": "neutral"
+   "day_length": "neutral",
+   "varieties": [
+    {
+     "name": "Pusa Mausmi",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 121, Cluster bean: Varieties"
+     }
+    },
+    {
+     "name": "Pusa Sadabahar",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 121, Cluster bean: Varieties"
+     }
+    },
+    {
+     "name": "Pusa Naubahar",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 121, Cluster bean: Varieties"
+     }
+    },
+    {
+     "name": "MDU 1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 121, Cluster bean: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "french_bean",
@@ -2859,6 +3892,7 @@
     "ta": "பீன்ஸ்",
     "te": "బీన్స్"
    },
+   "species": "Phaseolus vulgaris",
    "family": "Fabaceae",
    "kind": "vegetable",
    "perennial": false,
@@ -2917,6 +3951,7 @@
     "ta": "முட்டைக்கோஸ்",
     "te": "క్యాబేజీ"
    },
+   "species": "Brassica oleracea var. capitata",
    "family": "Brassicaceae",
    "kind": "vegetable",
    "perennial": false,
@@ -2963,7 +3998,33 @@
    "height_m": 0.4,
    "intercrops": [],
    "light": "full",
-   "day_length": "neutral"
+   "day_length": "neutral",
+   "varieties": [
+    {
+     "name": "Pusa Mukta",
+     "for": "hills",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 133, Cabbage: Varieties"
+     }
+    },
+    {
+     "name": "Golden Acre",
+     "for": "plains",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 133, Cabbage: Varieties"
+     }
+    },
+    {
+     "name": "Pusa Drum Head",
+     "for": "plains",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 133, Cabbage: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "cauliflower",
@@ -2975,6 +4036,7 @@
     "ta": "காலிஃபிளவர்",
     "te": "కాలీఫ్లవర్"
    },
+   "species": "Brassica oleracea var. botrytis",
    "family": "Brassicaceae",
    "kind": "vegetable",
    "perennial": false,
@@ -3019,7 +4081,41 @@
    "height_m": 0.5,
    "intercrops": [],
    "light": "full",
-   "day_length": "neutral"
+   "day_length": "neutral",
+   "varieties": [
+    {
+     "name": "Ooty 1",
+     "for": "hills",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 138, Cauliflower: Varieties"
+     }
+    },
+    {
+     "name": "Pusa Deepali",
+     "for": "hills",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 138, Cauliflower: Varieties"
+     }
+    },
+    {
+     "name": "Early Synthetic",
+     "for": "plains",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 138, Cauliflower: Varieties"
+     }
+    },
+    {
+     "name": "Pawas",
+     "for": "plains",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 138, Cauliflower: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "carrot",
@@ -3031,6 +4127,7 @@
     "ta": "கேரட்",
     "te": "క్యారెట్"
    },
+   "species": "Daucus carota",
    "family": "Apiaceae",
    "kind": "vegetable",
    "perennial": false,
@@ -3078,7 +4175,57 @@
    "height_m": 0.4,
    "intercrops": [],
    "light": "full",
-   "day_length": "long"
+   "day_length": "long",
+   "varieties": [
+    {
+     "name": "Ooty-1",
+     "for": "hills",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 142, Carrot: Varieties"
+     }
+    },
+    {
+     "name": "Early Nantes",
+     "for": "hills",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 142, Carrot: Varieties"
+     }
+    },
+    {
+     "name": "New Korda",
+     "for": "hills",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 142, Carrot: Varieties"
+     }
+    },
+    {
+     "name": "India Gold",
+     "for": "plains",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 142, Carrot: Varieties"
+     }
+    },
+    {
+     "name": "Pusa Kesar",
+     "for": "plains",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 142, Carrot: Varieties"
+     }
+    },
+    {
+     "name": "Half Long Danvers",
+     "for": "plains",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 142, Carrot: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "radish",
@@ -3090,6 +4237,7 @@
     "ta": "முள்ளங்கி",
     "te": "ముల్లంగి"
    },
+   "species": "Raphanus sativus",
    "family": "Brassicaceae",
    "kind": "vegetable",
    "perennial": false,
@@ -3135,7 +4283,81 @@
    "height_m": 0.4,
    "intercrops": [],
    "light": "full",
-   "day_length": "long"
+   "day_length": "long",
+   "varieties": [
+    {
+     "name": "White Icicle",
+     "for": "hills",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 144, Radish: Varieties"
+     }
+    },
+    {
+     "name": "Scarlet Globe",
+     "for": "hills",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 144, Radish: Varieties"
+     }
+    },
+    {
+     "name": "Rapid Red White Tipped",
+     "for": "hills",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 144, Radish: Varieties"
+     }
+    },
+    {
+     "name": "CO 1",
+     "for": "plains",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 144, Radish: Varieties"
+     }
+    },
+    {
+     "name": "Pusa Rashmi",
+     "for": "plains",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 144, Radish: Varieties"
+     }
+    },
+    {
+     "name": "Pusa Chetki",
+     "for": "plains",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 144, Radish: Varieties"
+     }
+    },
+    {
+     "name": "Pusa Desi",
+     "for": "plains",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 144, Radish: Varieties"
+     }
+    },
+    {
+     "name": "Japanese White",
+     "for": "plains",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 144, Radish: Varieties"
+     }
+    },
+    {
+     "name": "Arka Nishant",
+     "for": "plains",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 144, Radish: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "beetroot",
@@ -3147,6 +4369,7 @@
     "ta": "பீட்ரூட்",
     "te": "బీట్‌రూట్"
    },
+   "species": "Beta vulgaris",
    "family": "Amaranthaceae",
    "kind": "vegetable",
    "perennial": false,
@@ -3193,7 +4416,37 @@
    "height_m": 0.4,
    "intercrops": [],
    "light": "full",
-   "day_length": "long"
+   "day_length": "long",
+   "varieties": [
+    {
+     "name": "Ooty 1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 146, Beetroot: Varieties"
+     }
+    },
+    {
+     "name": "Crimson Globe",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 146, Beetroot: Varieties"
+     }
+    },
+    {
+     "name": "Detroit Dark Red",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 146, Beetroot: Varieties"
+     }
+    },
+    {
+     "name": "Red Ball",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 146, Beetroot: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "cucumber",
@@ -3205,6 +4458,7 @@
     "ta": "வெள்ளரி",
     "te": "దోసకాయ"
    },
+   "species": "Cucumis sativus",
    "family": "Cucurbitaceae",
    "kind": "vegetable",
    "perennial": false,
@@ -3249,7 +4503,46 @@
    "height_m": 0.4,
    "intercrops": [],
    "light": "full",
-   "day_length": "neutral"
+   "day_length": "neutral",
+   "varieties": [
+    {
+     "name": "Japanese Long Green",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 112, Cucumber: Varieties"
+     }
+    },
+    {
+     "name": "Straight Eight",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 112, Cucumber: Varieties"
+     }
+    },
+    {
+     "name": "Poinsette",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 112, Cucumber: Varieties"
+     }
+    },
+    {
+     "name": "KPCH 2",
+     "hybrid": true,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 112, Cucumber: Varieties"
+     }
+    },
+    {
+     "name": "Pant C 2",
+     "hybrid": true,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 112, Cucumber: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "bottle_gourd",
@@ -3261,6 +4554,7 @@
     "ta": "சுரைக்காய்",
     "te": "సొరకాయ"
    },
+   "species": "Lagenaria siceraria",
    "family": "Cucurbitaceae",
    "kind": "vegetable",
    "perennial": false,
@@ -3306,7 +4600,67 @@
    "height_m": 0.5,
    "intercrops": [],
    "light": "full",
-   "day_length": "neutral"
+   "day_length": "neutral",
+   "varieties": [
+    {
+     "name": "Pusa Summer Prolific Long",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 103, Bottle gourd: Varieties"
+     }
+    },
+    {
+     "name": "Pusa Summer Prolific Round",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 103, Bottle gourd: Varieties"
+     }
+    },
+    {
+     "name": "Pusa Manjari",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 103, Bottle gourd: Varieties"
+     }
+    },
+    {
+     "name": "Pusa Meghdoot",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 103, Bottle gourd: Varieties"
+     }
+    },
+    {
+     "name": "Arka Bahar",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 103, Bottle gourd: Varieties"
+     }
+    },
+    {
+     "name": "PLR 2",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 103, Bottle gourd: Varieties"
+     }
+    },
+    {
+     "name": "PLR 1",
+     "for": "salad type",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 103, Bottle gourd: Varieties"
+     }
+    },
+    {
+     "name": "TNAU Bottle gourd Hybrid CO 1",
+     "hybrid": true,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 103, Bottle gourd: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "bitter_gourd",
@@ -3318,6 +4672,7 @@
     "ta": "பாகற்காய்",
     "te": "కాకరకాయ"
    },
+   "species": "Momordica charantia",
    "family": "Cucurbitaceae",
    "kind": "vegetable",
    "perennial": false,
@@ -3362,7 +4717,59 @@
    "height_m": 1.8,
    "intercrops": [],
    "light": "full",
-   "day_length": "neutral"
+   "day_length": "neutral",
+   "varieties": [
+    {
+     "name": "CO 1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 106, Bitter gourd: Varieties"
+     }
+    },
+    {
+     "name": "MDU 1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 106, Bitter gourd: Varieties"
+     }
+    },
+    {
+     "name": "Arka Harit",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 106, Bitter gourd: Varieties"
+     }
+    },
+    {
+     "name": "VK 1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 106, Bitter gourd: Varieties"
+     }
+    },
+    {
+     "name": "Priya",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 106, Bitter gourd: Varieties"
+     }
+    },
+    {
+     "name": "Preethi",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 106, Bitter gourd: Varieties"
+     }
+    },
+    {
+     "name": "COBgoH 1",
+     "hybrid": true,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 106, Bitter gourd: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "ridge_gourd",
@@ -3374,6 +4781,7 @@
     "ta": "பீர்க்கங்காய்",
     "te": "బీరకాయ"
    },
+   "species": "Luffa acutangula",
    "family": "Cucurbitaceae",
    "kind": "vegetable",
    "perennial": false,
@@ -3419,7 +4827,38 @@
    "height_m": 1.8,
    "intercrops": [],
    "light": "full",
-   "day_length": "neutral"
+   "day_length": "neutral",
+   "varieties": [
+    {
+     "name": "CO 1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 100, Ribbed gourd: Varieties"
+     }
+    },
+    {
+     "name": "CO 2",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 100, Ribbed gourd: Varieties"
+     }
+    },
+    {
+     "name": "PKM 1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 100, Ribbed gourd: Varieties"
+     }
+    },
+    {
+     "name": "Ridge gourd COH 1",
+     "hybrid": true,
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 100, Ribbed gourd: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "pumpkin",
@@ -3431,6 +4870,7 @@
     "ta": "பூசணி",
     "te": "గుమ్మడికాయ"
    },
+   "species": "Cucurbita moschata",
    "family": "Cucurbitaceae",
    "kind": "vegetable",
    "perennial": false,
@@ -3476,7 +4916,51 @@
    "height_m": 0.5,
    "intercrops": [],
    "light": "full",
-   "day_length": "neutral"
+   "day_length": "neutral",
+   "varieties": [
+    {
+     "name": "CO 1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 96, Pumpkin: Varieties"
+     }
+    },
+    {
+     "name": "CO 2",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 96, Pumpkin: Varieties"
+     }
+    },
+    {
+     "name": "Arka Suryamuki",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 96, Pumpkin: Varieties"
+     }
+    },
+    {
+     "name": "Arka Chandan",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 96, Pumpkin: Varieties"
+     }
+    },
+    {
+     "name": "Pusa Viswas",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 96, Pumpkin: Varieties"
+     }
+    },
+    {
+     "name": "Ambili",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 96, Pumpkin: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "muskmelon",
@@ -3488,6 +4972,7 @@
     "ta": "முலாம்பழம்",
     "te": "ఖర్బూజ"
    },
+   "species": "Cucumis melo",
    "family": "Cucurbitaceae",
    "kind": "vegetable",
    "perennial": false,
@@ -3534,7 +5019,44 @@
    "height_m": 0.4,
    "intercrops": [],
    "light": "full",
-   "day_length": "neutral"
+   "day_length": "neutral",
+   "varieties": [
+    {
+     "name": "Pusa Sharbati",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 117, Muskmelon: Varieties"
+     }
+    },
+    {
+     "name": "Hara Madhu",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 117, Muskmelon: Varieties"
+     }
+    },
+    {
+     "name": "Durgapura Madhu",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 117, Muskmelon: Varieties"
+     }
+    },
+    {
+     "name": "Arka Rajhans",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 117, Muskmelon: Varieties"
+     }
+    },
+    {
+     "name": "Arka Jeet",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 117, Muskmelon: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "capsicum",
@@ -3546,6 +5068,7 @@
     "ta": "குடைமிளகாய்",
     "te": "క్యాప్సికమ్"
    },
+   "species": "Capsicum annuum var. grossum",
    "family": "Solanaceae",
    "kind": "vegetable",
    "perennial": false,
@@ -3591,7 +5114,44 @@
    "height_m": 0.8,
    "intercrops": [],
    "light": "full",
-   "day_length": "neutral"
+   "day_length": "neutral",
+   "varieties": [
+    {
+     "name": "Arka Basant",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 92, Capsicum: Varieties"
+     }
+    },
+    {
+     "name": "Arka Gaurav",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 92, Capsicum: Varieties"
+     }
+    },
+    {
+     "name": "Arka Mohini",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 92, Capsicum: Varieties"
+     }
+    },
+    {
+     "name": "Green Gold",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 92, Capsicum: Varieties"
+     }
+    },
+    {
+     "name": "Bharath",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 92, Capsicum: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "garlic",
@@ -3603,6 +5163,7 @@
     "ta": "பூண்டு",
     "te": "వెల్లుల్లి"
    },
+   "species": "Allium sativum",
    "family": "Amaryllidaceae",
    "kind": "vegetable",
    "perennial": false,
@@ -3661,6 +5222,7 @@
     "ta": "பசலைக்கீரை",
     "te": "పాలకూర"
    },
+   "species": "Spinacia oleracea",
    "family": "Amaranthaceae",
    "kind": "vegetable",
    "perennial": false,
@@ -3720,6 +5282,7 @@
     "ta": "தண்டுக்கீரை",
     "te": "తోటకూర"
    },
+   "species": "Amaranthus tricolor",
    "family": "Amaranthaceae",
    "kind": "vegetable",
    "perennial": false,
@@ -3780,6 +5343,7 @@
     "ta": "கொத்தமல்லி",
     "te": "ధనియాలు"
    },
+   "species": "Coriandrum sativum",
    "family": "Apiaceae",
    "kind": "vegetable",
    "perennial": false,
@@ -3836,6 +5400,7 @@
     "ta": "வெந்தயம்",
     "te": "మెంతులు"
    },
+   "species": "Trigonella foenum-graecum",
    "family": "Fabaceae",
    "kind": "vegetable",
    "perennial": false,
@@ -3894,6 +5459,7 @@
     "ta": "சாத்துக்குடி",
     "te": "బత్తాయి"
    },
+   "species": "Citrus sinensis",
    "family": "Rutaceae",
    "kind": "fruit",
    "perennial": true,
@@ -3939,7 +5505,44 @@
    "height_m": 5.0,
    "intercrops": [],
    "light": "full",
-   "day_length": "neutral"
+   "day_length": "neutral",
+   "varieties": [
+    {
+     "name": "Sathugudi",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 31, Sweet Orange: Varieties"
+     }
+    },
+    {
+     "name": "Batavian",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 31, Sweet Orange: Varieties"
+     }
+    },
+    {
+     "name": "Mosambi",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 31, Sweet Orange: Varieties"
+     }
+    },
+    {
+     "name": "Malta blood red",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 31, Sweet Orange: Varieties"
+     }
+    },
+    {
+     "name": "Cutter Valencia",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 31, Sweet Orange: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "lime",
@@ -3951,6 +5554,7 @@
     "ta": "எலுமிச்சை",
     "te": "నిమ్మ"
    },
+   "species": "Citrus aurantiifolia",
    "family": "Rutaceae",
    "kind": "fruit",
    "perennial": true,
@@ -3995,7 +5599,72 @@
    "height_m": 4.0,
    "intercrops": [],
    "light": "full",
-   "day_length": "neutral"
+   "day_length": "neutral",
+   "varieties": [
+    {
+     "name": "PKM 1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 28, Acid Lime: Varieties"
+     }
+    },
+    {
+     "name": "VRM 1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 28, Acid Lime: Varieties"
+     }
+    },
+    {
+     "name": "Tahithi lime",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 28, Acid Lime: Varieties"
+     }
+    },
+    {
+     "name": "Balaji (Tenali)",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 28, Acid Lime: Varieties"
+     }
+    },
+    {
+     "name": "Vikram",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 28, Acid Lime: Varieties"
+     }
+    },
+    {
+     "name": "Rasraj",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 28, Acid Lime: Varieties"
+     }
+    },
+    {
+     "name": "NRCC-7",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 28, Acid Lime: Varieties"
+     }
+    },
+    {
+     "name": "NRCC-8",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 28, Acid Lime: Varieties"
+     }
+    },
+    {
+     "name": "Phule Sharbathi",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 28, Acid Lime: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "pomegranate",
@@ -4007,6 +5676,7 @@
     "ta": "மாதுளை",
     "te": "దానిమ్మ"
    },
+   "species": "Punica granatum",
    "family": "Lythraceae",
    "kind": "fruit",
    "perennial": true,
@@ -4056,7 +5726,118 @@
    "height_m": 3.5,
    "intercrops": [],
    "light": "full",
-   "day_length": "neutral"
+   "day_length": "neutral",
+   "varieties": [
+    {
+     "name": "Jyothi",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 50, Pomegranate: Varieties"
+     }
+    },
+    {
+     "name": "Ganesh",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 50, Pomegranate: Varieties"
+     }
+    },
+    {
+     "name": "Arakta",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 50, Pomegranate: Varieties"
+     }
+    },
+    {
+     "name": "Rudhra",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 50, Pomegranate: Varieties"
+     }
+    },
+    {
+     "name": "Mridhula",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 50, Pomegranate: Varieties"
+     }
+    },
+    {
+     "name": "Bhagwa",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 50, Pomegranate: Varieties"
+     }
+    },
+    {
+     "name": "Ruby",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 50, Pomegranate: Varieties"
+     }
+    },
+    {
+     "name": "YCD-1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 50, Pomegranate: Varieties"
+     }
+    },
+    {
+     "name": "G 137",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 50, Pomegranate: Varieties"
+     }
+    },
+    {
+     "name": "Solapur Lal",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 50, Pomegranate: Varieties"
+     }
+    },
+    {
+     "name": "Solapur Anardana",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 50, Pomegranate: Varieties"
+     }
+    },
+    {
+     "name": "Nayana",
+     "for": "bacterial blight tolerant",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 50, Pomegranate: Varieties"
+     }
+    },
+    {
+     "name": "Kalpitiya",
+     "for": "bacterial blight tolerant",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 50, Pomegranate: Varieties"
+     }
+    },
+    {
+     "name": "Nana",
+     "for": "bacterial blight tolerant",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 50, Pomegranate: Varieties"
+     }
+    },
+    {
+     "name": "Daru",
+     "for": "bacterial blight tolerant",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 50, Pomegranate: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "custard_apple",
@@ -4068,6 +5849,7 @@
     "ta": "சீத்தாப்பழம்",
     "te": "సీతాఫలం"
    },
+   "species": "Annona squamosa",
    "family": "Annonaceae",
    "kind": "fruit",
    "perennial": true,
@@ -4126,6 +5908,7 @@
     "ta": "சப்போட்டா",
     "te": "సపోటా"
    },
+   "species": "Manilkara zapota",
    "family": "Sapotaceae",
    "kind": "fruit",
    "perennial": true,
@@ -4173,7 +5956,100 @@
    "height_m": 8.0,
    "intercrops": [],
    "light": "full",
-   "day_length": "neutral"
+   "day_length": "neutral",
+   "varieties": [
+    {
+     "name": "Oval",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 45, Sapota: Varieties"
+     }
+    },
+    {
+     "name": "Cricket Ball",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 45, Sapota: Varieties"
+     }
+    },
+    {
+     "name": "Kirtibarti",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 45, Sapota: Varieties"
+     }
+    },
+    {
+     "name": "Guthi",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 45, Sapota: Varieties"
+     }
+    },
+    {
+     "name": "CO 1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 45, Sapota: Varieties"
+     }
+    },
+    {
+     "name": "CO 2",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 45, Sapota: Varieties"
+     }
+    },
+    {
+     "name": "CO 3",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 45, Sapota: Varieties"
+     }
+    },
+    {
+     "name": "PKM 1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 45, Sapota: Varieties"
+     }
+    },
+    {
+     "name": "PKM 2",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 45, Sapota: Varieties"
+     }
+    },
+    {
+     "name": "PKM 3",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 45, Sapota: Varieties"
+     }
+    },
+    {
+     "name": "PKM 4",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 45, Sapota: Varieties"
+     }
+    },
+    {
+     "name": "PKM (Sa) 5",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 45, Sapota: Varieties"
+     }
+    },
+    {
+     "name": "Kalipatti",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 45, Sapota: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "grape",
@@ -4185,6 +6061,7 @@
     "ta": "திராட்சை",
     "te": "ద్రాక్ష"
    },
+   "species": "Vitis vinifera",
    "family": "Vitaceae",
    "kind": "fruit",
    "perennial": true,
@@ -4230,7 +6107,161 @@
    "height_m": 2.0,
    "intercrops": [],
    "light": "full",
-   "day_length": "neutral"
+   "day_length": "neutral",
+   "varieties": [
+    {
+     "name": "Muscat Hamburg (Panneer / Gulabi)",
+     "for": "table",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 34, Grapes: Varieties"
+     }
+    },
+    {
+     "name": "Pachadraksha",
+     "for": "table",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 34, Grapes: Varieties"
+     }
+    },
+    {
+     "name": "Anab-e-Shahi",
+     "for": "table",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 34, Grapes: Varieties"
+     }
+    },
+    {
+     "name": "Dil Kush",
+     "for": "table",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 34, Grapes: Varieties"
+     }
+    },
+    {
+     "name": "Thompson Seedless",
+     "for": "table",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 34, Grapes: Varieties"
+     }
+    },
+    {
+     "name": "Red Globe",
+     "for": "table",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 34, Grapes: Varieties"
+     }
+    },
+    {
+     "name": "Tas-A-Ganesh",
+     "for": "table",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 34, Grapes: Varieties"
+     }
+    },
+    {
+     "name": "Manik Chaman",
+     "for": "table",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 34, Grapes: Varieties"
+     }
+    },
+    {
+     "name": "Sonaka",
+     "for": "table",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 34, Grapes: Varieties"
+     }
+    },
+    {
+     "name": "Sharad Seedless",
+     "for": "table",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 34, Grapes: Varieties"
+     }
+    },
+    {
+     "name": "Nana Saheb Purple",
+     "for": "table",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 34, Grapes: Varieties"
+     }
+    },
+    {
+     "name": "Crimson Seedless",
+     "for": "table",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 34, Grapes: Varieties"
+     }
+    },
+    {
+     "name": "Fantasy Seedless",
+     "for": "table",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 34, Grapes: Varieties"
+     }
+    },
+    {
+     "name": "Italia",
+     "for": "table",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 34, Grapes: Varieties"
+     }
+    },
+    {
+     "name": "Flame Seedless",
+     "for": "table",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 34, Grapes: Varieties"
+     }
+    },
+    {
+     "name": "Manjari Medika",
+     "for": "juice",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 34, Grapes: Varieties"
+     }
+    },
+    {
+     "name": "Punjab MACS Purple (H-516)",
+     "for": "juice",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 34, Grapes: Varieties"
+     }
+    },
+    {
+     "name": "Bangalore Blue",
+     "for": "juice",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 34, Grapes: Varieties"
+     }
+    },
+    {
+     "name": "Concord",
+     "for": "juice",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 34, Grapes: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "ber",
@@ -4242,6 +6273,7 @@
     "ta": "இலந்தை",
     "te": "రేగు"
    },
+   "species": "Ziziphus mauritiana",
    "family": "Rhamnaceae",
    "kind": "fruit",
    "perennial": true,
@@ -4291,7 +6323,58 @@
    "height_m": 6.0,
    "intercrops": [],
    "light": "full",
-   "day_length": "neutral"
+   "day_length": "neutral",
+   "varieties": [
+    {
+     "name": "Goma Kirti",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 54, Ber: Varieties"
+     }
+    },
+    {
+     "name": "Thar Sevika",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 54, Ber: Varieties"
+     }
+    },
+    {
+     "name": "Thar Bhubhraj",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 54, Ber: Varieties"
+     }
+    },
+    {
+     "name": "Kaithali",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 54, Ber: Varieties"
+     }
+    },
+    {
+     "name": "Umran",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 54, Ber: Varieties"
+     }
+    },
+    {
+     "name": "Gola",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 54, Ber: Varieties"
+     }
+    },
+    {
+     "name": "Banarasi",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 54, Ber: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "amla",
@@ -4303,6 +6386,7 @@
     "ta": "நெல்லிக்காய்",
     "te": "ఉసిరి"
    },
+   "species": "Phyllanthus emblica",
    "family": "Phyllanthaceae",
    "kind": "fruit",
    "perennial": true,
@@ -4351,7 +6435,58 @@
    "height_m": 8.0,
    "intercrops": [],
    "light": "full",
-   "day_length": "neutral"
+   "day_length": "neutral",
+   "varieties": [
+    {
+     "name": "BSR 1",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 55, Amla: Varieties"
+     }
+    },
+    {
+     "name": "Goma Aiswarya",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 55, Amla: Varieties"
+     }
+    },
+    {
+     "name": "Banarasi",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 55, Amla: Varieties"
+     }
+    },
+    {
+     "name": "NA 7",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 55, Amla: Varieties"
+     }
+    },
+    {
+     "name": "Krishna",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 55, Amla: Varieties"
+     }
+    },
+    {
+     "name": "Kanchan",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 55, Amla: Varieties"
+     }
+    },
+    {
+     "name": "Chakaiya",
+     "ref": {
+      "source": "tnau-cpg-hort-2020",
+      "where": "PDF p. 55, Amla: Varieties"
+     }
+    }
+   ]
   },
   {
    "id": "fig",
@@ -4363,6 +6498,7 @@
     "ta": "அத்திப்பழம்",
     "te": "అంజీర"
    },
+   "species": "Ficus carica",
    "family": "Moraceae",
    "kind": "fruit",
    "perennial": true,
@@ -4422,6 +6558,7 @@
     "ta": "புளி",
     "te": "చింత"
    },
+   "species": "Tamarindus indica",
    "family": "Fabaceae",
    "kind": "fruit",
    "perennial": true,

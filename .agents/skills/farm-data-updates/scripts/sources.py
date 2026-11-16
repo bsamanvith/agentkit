@@ -5,7 +5,7 @@ Read-only and offline: it reads the data files in the repository and
 prints what a person (or an agent) should check against the source. It
 fetches nothing and changes nothing.
 
-    sources.py [--kind schemes|windows|inputs|banned|msp|all] [--older-than DAYS] [--json]
+    sources.py [--kind schemes|windows|varieties|wide|inputs|banned|msp|all] [--older-than DAYS] [--json]
 """
 import argparse
 import datetime
@@ -40,6 +40,8 @@ def region_rows():
         for cid, c in (d.get("crops") or {}).items():
             if c.get("windows"):
                 uses.setdefault((c.get("ref") or {}).get("source"), []).append(("windows", "sowing windows of %s" % cid))
+            for src in sorted({(v.get("ref") or {}).get("source") for v in c.get("varieties") or []}):
+                uses.setdefault(src, []).append(("varieties", "varieties of %s" % cid))
         for key in ("inputs", "rules", "storage", "msp"):
             if d.get(key):
                 uses.setdefault(None, []).append((key, key))
@@ -55,6 +57,20 @@ def region_rows():
                 "read": s.get("read"),
                 "used_for": "; ".join(w for _, w in used) or "listed, not referenced",
             }
+
+
+def crops_rows():
+    path = os.path.join(FARM, "agro", "data", "crops.json")
+    with open(path, encoding="utf-8") as f:
+        d = json.load(f)
+    uses = {}
+    for c in d.get("crops") or []:
+        for src in {(v.get("ref") or {}).get("source") for v in c.get("varieties") or []}:
+            uses.setdefault(src, []).append(c.get("id"))
+    for s in d.get("sources") or []:
+        crops = sorted(uses.get(s.get("id"), []))
+        yield {"kind": "varieties" if crops else "wide", "file": rel(path), "id": s.get("id"), "name": s.get("name"), "url": s.get("url"),
+               "read": s.get("read"), "used_for": ("varieties of " + ", ".join(crops)) if crops else (s.get("note") or "the experimental tier")}
 
 
 def inputs_rows():
@@ -95,7 +111,7 @@ def main():
     ap.add_argument("--today", default=datetime.date.today().isoformat(), help=argparse.SUPPRESS)
     a = ap.parse_args()
     today = datetime.date.fromisoformat(a.today)
-    rows = list(region_rows()) + list(inputs_rows()) + list(msp_rows())
+    rows = list(region_rows()) + list(crops_rows()) + list(inputs_rows()) + list(msp_rows())
     for r in rows:
         try:
             r["age_days"] = (today - datetime.date.fromisoformat(r["read"])).days

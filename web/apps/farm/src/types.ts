@@ -274,6 +274,8 @@ export interface Crop {
   plant_cm: number;
   seasons: string[];
   grown_in: string[];
+  /** Named varieties and hybrids, each with the document that lists it. */
+  varieties?: { name: string; hybrid?: boolean; for?: string }[];
   climate_analog: boolean;
   tall: boolean;
   height_m: number;
@@ -370,6 +372,9 @@ export interface Option {
   names?: Record<string, string>;
   kind: string;
   analog?: boolean;
+  /** A plant of the experimental tier, with the other names it goes by. */
+  experimental?: boolean;
+  common?: string[];
   sow: string;
   harvest: string;
   season: string;

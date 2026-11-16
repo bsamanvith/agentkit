@@ -145,6 +145,12 @@ type Option struct {
 	Names  map[string]string `json:"names,omitempty"`
 	Kind   string            `json:"kind"`
 	Analog bool              `json:"analog,omitempty"`
+	// Experimental marks a plant of the wide tier, with its botanical
+	// name and the other names it goes by.
+	Experimental bool     `json:"experimental,omitempty"`
+	Species      string   `json:"species,omitempty"`
+	Common       []string `json:"common,omitempty"`
+	Grown        string   `json:"grown,omitempty"`
 	// Season is the best sowing: in the farmer's range when they gave one,
 	// else the best date of the next good window.
 	Season
@@ -179,7 +185,20 @@ type Request struct {
 	// Calendar asks for every sowing date's score in each option.
 	Calendar bool
 
-	sun *[12]sun.Month // the slope's sun, month by month
+	sun   *[12]sun.Month // the slope's sun, month by month
+	zoned *zoned         // the climate's zone
+}
+
+type zoned struct {
+	zone string
+	hot  bool
+}
+
+func (r Request) zone() (string, bool) {
+	if r.zoned == nil {
+		return r.Climate.Zone()
+	}
+	return r.zoned.zone, r.zoned.hot
 }
 
 // Result is the recommender's answer, best option first.
@@ -247,6 +266,7 @@ func Recommend(l *Library, r Request) (Result, error) {
 	slices.SortFunc(dates, func(a, b time.Time) int { return a.Compare(b) })
 	dates = slices.Compact(dates)
 
+	all := dates
 	if r.Soil == nil {
 		res.Notes = append(res.Notes, Note{"soil.unknown", "The soil is not known, so it is not scored: tell us the soil type for a better answer."})
 	}
@@ -258,6 +278,8 @@ func Recommend(l *Library, r Request) (Result, error) {
 	}
 	year := r.Climate.Sun(r.Slope)
 	r.sun = &year
+	z, hot := r.Climate.Zone()
+	r.zoned = &zoned{z, hot}
 	if !r.Climate.HasSun() {
 		res.Notes = append(res.Notes, Note{"sun.unknown", "The climate has no sunlight figures, so sunlight is not scored."})
 	}
@@ -265,12 +287,25 @@ func Recommend(l *Library, r Request) (Result, error) {
 		if c.Off && len(r.Crops) == 0 {
 			continue // switched off where the plot is, unless asked for by name
 		}
+		// The wide tier is some thousand plants: a date a month for its
+		// annuals and a date a season for its perennials (whose year
+		// hardly moves with the planting day) is enough to place them.
+		dates := dates
+		if every := thin(c); every > 1 && !r.Calendar && from.IsZero() {
+			dates = nil
+			for i := 0; i < len(all); i += every {
+				dates = append(dates, all[i])
+			}
+		}
 		seasons := make([]Season, len(dates))
 		for i, d := range dates {
 			seasons[i] = simulate(c, r, d)
 		}
 		windows := windowsOf(dates, seasons)
-		o := Option{Crop: c.ID, Name: c.Name, Names: c.Names, Kind: c.Kind, Analog: c.ClimateAnalog}
+		o := Option{Crop: c.ID, Name: c.Name, Names: c.Names, Kind: c.Kind, Analog: c.ClimateAnalog, Experimental: c.Experimental}
+		if c.Experimental {
+			o.Species, o.Common, o.Grown = c.Species, c.Common, c.Grown
+		}
 		if r.Calendar {
 			o.Calendar = make([]Sowing, len(dates))
 			for i := range dates {
@@ -310,9 +345,42 @@ func Recommend(l *Library, r Request) (Result, error) {
 			}
 			return 1
 		}
-		return cmp.Or(b.Score-a.Score, strings.Compare(a.Sow, b.Sow), strings.Compare(a.Crop, b.Crop))
+		return cmp.Or(b.Score-a.Score, familiar(a)-familiar(b), strings.Compare(a.Sow, b.Sow), strings.Compare(a.Crop, b.Crop))
 	})
 	return res, nil
+}
+
+// thin is how many of the weekly sowing dates one is tried of for a crop.
+func thin(c Crop) int {
+	switch {
+	case !c.Experimental:
+		return 1
+	case c.Perennial:
+		return 13
+	}
+	return 4
+}
+
+// familiar ranks equal scores: a library crop first, then experimental
+// plants farmed at scale, food before fodder and the rest, wild ones last.
+func familiar(o Option) int {
+	if !o.Experimental {
+		return 0
+	}
+	n := 1
+	if !slices.Contains(FoodKinds(), o.Kind) {
+		n += 4
+	}
+	switch o.Grown {
+	case GrownLarge:
+	case GrownSmall:
+		n++
+	case GrownWild:
+		n += 3
+	default:
+		n += 2
+	}
+	return n
 }
 
 // bestIn returns the index of next's best date, or of the best date of all
@@ -512,10 +580,21 @@ func simulate(c Crop, r Request, sow time.Time) Season {
 	lightF := light(c, r, &s, sums, sow, note)
 
 	seasonF := 1.0
-	if slices.Contains(c.Seasons, s.Season) {
+	if zone, hot := r.zone(); !zoneFit(c.Zones, zone, hot) {
+		seasonF = 0.5
+		names := make([]string, len(c.Zones))
+		for i, z := range c.Zones {
+			names[i] = ZoneName(z)
+		}
+		note(true, "climate.zone", "It is not known from a climate like this one (%s%s): it grows in %s climates.", map[bool]string{true: "hot ", false: ""}[hot && strings.HasPrefix(zone, "B")], ZoneName(zone), strings.Join(names, ", "))
+	}
+	switch {
+	case c.Experimental:
+		note(true, "experimental", "Experimental: outside the reviewed library, scored on climate and soil alone (FAO ECOCROP). There is no local season, spacing, dose or trial behind it, so try a few plants or a small bed first.")
+	case slices.Contains(c.Seasons, s.Season):
 		note(false, "season.usual", "%s is a usual season for it in India.", titleCase(s.Season))
-	} else if !c.Perennial {
-		seasonF = 0.8
+	case !c.Perennial:
+		seasonF *= 0.8
 		note(true, "season.unusual", "It is not usually sown in %s in India.", s.Season)
 	}
 	if w, ok := window(c, r.Profile.Rainfed(), sow); ok {

@@ -6,6 +6,8 @@ package planner
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/bsamanvith/agentkit/apps/farm/agro"
@@ -102,6 +104,16 @@ func (p *Planner) LibraryFor(f farm.Farm) *agro.Library {
 	return p.lib
 }
 
+// LibraryAt returns the crop library that holds at a place: the region
+// pack's, with the district's own sowing windows and varieties, or the
+// planner's own when it has no region packs.
+func (p *Planner) LibraryAt(place region.Place) *agro.Library {
+	if p.regions == nil {
+		return p.lib
+	}
+	return p.regions.For(place).Library()
+}
+
 // RulesFor returns the crop cycle rules that hold at a plot.
 func (p *Planner) RulesFor(f farm.Farm) region.Rules {
 	if pk := p.Pack(f); pk != nil {
@@ -168,7 +180,21 @@ type Ask struct {
 	Limit int `json:"limit,omitempty"`
 	// Calendar asks for every sowing date's score in each option.
 	Calendar bool `json:"calendar,omitempty"`
+	// Experimental asks the wide tier ([agro.Wide]) in place of the
+	// library: plants known by climate and soil ranges alone, to try on
+	// a small area. Search finds plants by any name; Kinds limits the
+	// answer to farmed plants of those kinds (cereal, pulse, root,
+	// vegetable, fruit, fodder, medicinal, material); with neither it is
+	// the plants farmed at scale somewhere, fodder apart. Limit defaults
+	// to ExperimentalLimit.
+	Experimental bool     `json:"experimental,omitempty"`
+	Kinds        []string `json:"kinds,omitempty"`
+	Search       string   `json:"search,omitempty"`
 }
+
+// ExperimentalLimit is how many experimental plants an answer holds when
+// the ask does not say.
+const ExperimentalLimit = 10
 
 // Recommendation is the recommender's answer for a farm.
 type Recommendation struct {
@@ -230,8 +256,46 @@ func (p *Planner) recommend(ctx context.Context, s spot, ask Ask) (Recommendatio
 			r.Soil, out.Soil = &soil, &soil
 		}
 	}
-	if out.Result, err = agro.Recommend(s.lib, r); err != nil {
+	lib := s.lib
+	if ask.Experimental {
+		if lib, err = agro.Wide(); err != nil {
+			return Recommendation{}, err
+		}
+		if ask.Limit == 0 {
+			ask.Limit = ExperimentalLimit
+		}
+		if len(r.Crops) == 0 {
+			// Most of the tier is wild trees and pasture grasses. Unless
+			// the farmer names a plant, only farmed ones are offered: of a
+			// kind asked for, or else those farmed at scale somewhere,
+			// fodder apart.
+			search, open := strings.TrimSpace(ask.Search), len(ask.Kinds) == 0
+			for _, c := range lib.Crops() {
+				switch {
+				case search != "":
+					if !c.Matches(search) || !open && !slices.Contains(ask.Kinds, c.Kind) {
+						continue
+					}
+				case open:
+					if c.Grown != agro.GrownLarge || c.Kind == "fodder" {
+						continue
+					}
+				case !slices.Contains(ask.Kinds, c.Kind) || c.Grown != agro.GrownLarge && c.Grown != agro.GrownSmall:
+					continue
+				}
+				r.Crops = append(r.Crops, c.ID)
+			}
+			if len(r.Crops) == 0 {
+				out.Result = agro.Result{Today: r.Today.Format(agro.DateLayout), Options: []agro.Option{}, Notes: []agro.Note{{ID: "experimental.none", Message: "No experimental plant goes by that name or kind."}}}
+				return out, nil
+			}
+		}
+	}
+	if out.Result, err = agro.Recommend(lib, r); err != nil {
 		return Recommendation{}, err
+	}
+	if ask.Experimental {
+		out.Notes = append(out.Notes, agro.Note{ID: "experimental", Message: "These are experimental: plants outside the reviewed library, scored on climate and soil ranges from FAO ECOCROP alone, with no local season, spacing, dose or trial behind them. Try a small area first, and check with the agriculture office that a plant new to the area is not invasive or restricted."})
 	}
 	if ask.Limit > 0 && len(out.Options) > ask.Limit {
 		out.Options = out.Options[:ask.Limit]

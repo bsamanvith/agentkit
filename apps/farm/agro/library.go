@@ -2,12 +2,15 @@ package agro
 
 import (
 	"cmp"
+	"compress/gzip"
 	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -76,12 +79,16 @@ const (
 
 // Crop is what a crop needs and how it is grown.
 type Crop struct {
-	ID        string            `json:"id"`
-	Name      string            `json:"name"`
-	Names     map[string]string `json:"names,omitempty"`
-	Family    string            `json:"family"` // botanical, for rotation
-	Kind      string            `json:"kind"`   // cereal, millet, pulse, oilseed, ...
-	Perennial bool              `json:"perennial"`
+	ID    string            `json:"id"`
+	Name  string            `json:"name"`
+	Names map[string]string `json:"names,omitempty"`
+	// Species is the botanical name; Common are other names it goes by
+	// (the experimental tier's, from ECOCROP, in many languages).
+	Species   string   `json:"species,omitempty"`
+	Common    []string `json:"common,omitempty"`
+	Family    string   `json:"family"` // botanical, for rotation
+	Kind      string   `json:"kind"`   // cereal, millet, pulse, oilseed, ...
+	Perennial bool     `json:"perennial"`
 	// Days runs from sowing or planting to the (first) harvest.
 	Days Range `json:"days"`
 	// TempOpt and TempAbs are the monthly mean temperatures, in °C, it
@@ -124,6 +131,20 @@ type Crop struct {
 	// every window that applies to the plot's water is marked down a
 	// little and says so.
 	Windows []SowWindow `json:"windows,omitempty"`
+	// Varieties are named varieties and hybrids of the crop, each with the
+	// document that lists it. A region pack's overlay replaces the list
+	// with the ones recommended there.
+	Varieties []Variety `json:"varieties,omitempty"`
+	// Experimental marks a plant of the wide tier ([Wide]): known only by
+	// its climate and soil ranges, with no Indian season, spacing, dose
+	// or local trial behind it. It is never suggested unless asked for.
+	Experimental bool `json:"experimental,omitempty"`
+	// Grown says how widely an experimental plant is farmed: GrownLarge,
+	// GrownSmall, GrownWild (gathered, not farmed) or unknown.
+	Grown string `json:"grown,omitempty"`
+	// Zones are the climate zones ECOCROP knows the plant from (ZoneSteppe,
+	// ...); empty when it does not say.
+	Zones []string `json:"zones,omitempty"`
 	// Off marks a crop a region pack switched off where it applies: it
 	// stays known, so a plan that has it still works, but it is not
 	// recommended there unless asked for by name.
@@ -217,8 +238,95 @@ type Library struct {
 	crops       []Crop
 }
 
-//go:embed data/soils.json data/crops.json
+//go:embed data/soils.json data/crops.json data/wide.json.gz
 var data embed.FS
+
+// Wide returns the experimental tier: the food, fodder, medicinal and
+// material plants of FAO's ECOCROP database that are not in the library
+// (data/ecocrop/build.py makes it), with the library's soils. Every crop
+// in it is Experimental. It is read once and shared.
+var Wide = sync.OnceValues(func() (*Library, error) {
+	soils, err := data.ReadFile("data/soils.json")
+	if err != nil {
+		return nil, err
+	}
+	f, err := data.Open("data/wide.json.gz")
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	z, err := gzip.NewReader(f)
+	if err != nil {
+		return nil, err
+	}
+	crops, err := io.ReadAll(z)
+	if err != nil {
+		return nil, err
+	}
+	l, err := Load(soils, crops)
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range l.crops {
+		if !c.Experimental {
+			return nil, fmt.Errorf("%w: wide tier: crop %s is not marked experimental", ErrInvalid, c.ID)
+		}
+	}
+	return l, nil
+})
+
+// Variety is a named variety or hybrid of a crop.
+type Variety struct {
+	Name string `json:"name"`
+	// Hybrid marks an F1 hybrid: its seed is bought each season.
+	Hybrid bool `json:"hybrid,omitempty"`
+	// For says what the document recommends it for, when it does: "export",
+	// "plains", "wilt resistant", "short duration".
+	For string `json:"for,omitempty"`
+	// Ref is the document that lists it: a source id of the file it is
+	// in, and where in the document.
+	Ref VarietyRef `json:"ref"`
+}
+
+// VarietyRef names the document a variety was read from.
+type VarietyRef struct {
+	Source string `json:"source"`
+	Where  string `json:"where"`
+}
+
+// How widely an experimental plant is farmed.
+const (
+	GrownLarge = "large"
+	GrownSmall = "small"
+	GrownWild  = "wild"
+)
+
+// FoodKinds are the kinds of plant grown to eat.
+func FoodKinds() []string { return []string{"cereal", "pulse", "root", "vegetable", "fruit"} }
+
+// Matches reports whether the crop goes by the name: a part of its id,
+// name, species, a common name or a name in any language, in any case.
+func (c Crop) Matches(name string) bool {
+	q := strings.ToLower(strings.TrimSpace(name))
+	if q == "" {
+		return true
+	}
+	has := func(s string) bool { return strings.Contains(strings.ToLower(s), q) }
+	if has(c.ID) || has(strings.ReplaceAll(c.ID, "_", " ")) || has(c.Name) || has(c.Species) {
+		return true
+	}
+	for _, n := range c.Common {
+		if has(n) {
+			return true
+		}
+	}
+	for _, n := range c.Names {
+		if has(n) {
+			return true
+		}
+	}
+	return false
+}
 
 // Default returns the library built into the app: about a dozen Indian
 // soil types and the crops of data/crops.json.
@@ -300,10 +408,10 @@ func (l *Library) check() error {
 		if c.TempOpt[0] < c.TempAbs[0] || c.TempOpt[1] > c.TempAbs[1] {
 			bad("crop %s: temp_opt %v is not inside temp_abs %v", c.ID, c.TempOpt, c.TempAbs)
 		}
-		if c.Days[0] <= 0 || c.RowCM <= 0 || c.PlantCM <= 0 {
+		if c.Days[0] <= 0 || !c.Experimental && (c.RowCM <= 0 || c.PlantCM <= 0) {
 			bad("crop %s: days and spacing must be positive", c.ID)
 		}
-		if !(c.HeightM > 0 && c.HeightM <= 40) {
+		if !c.Experimental && !(c.HeightM > 0 && c.HeightM <= 40) {
 			bad("crop %s: height_m %v must be above 0 and at most 40", c.ID, c.HeightM)
 		}
 		if len(c.Textures) == 0 {
@@ -328,6 +436,16 @@ func (l *Library) check() error {
 		for _, s := range c.Seasons {
 			if !slices.Contains([]string{Kharif, Rabi, Zaid}, s) {
 				bad("crop %s: season %q", c.ID, s)
+			}
+		}
+		names := map[string]bool{}
+		for _, v := range c.Varieties {
+			if v.Name == "" || names[v.Name] {
+				bad("crop %s: variety %q: empty or repeated name", c.ID, v.Name)
+			}
+			names[v.Name] = true
+			if v.Ref.Source == "" || v.Ref.Where == "" {
+				bad("crop %s: variety %s: needs its source and where in it", c.ID, v.Name)
 			}
 		}
 		for _, w := range c.Windows {
@@ -373,7 +491,11 @@ func (l *Library) Crops() []Crop { return slices.Clone(l.crops) }
 func (l *Library) Soil(id string) (Soil, error) {
 	i, ok := slices.BinarySearchFunc(l.soils, id, func(s Soil, id string) int { return strings.Compare(s.ID, id) })
 	if !ok {
-		return Soil{}, fmt.Errorf("%w: soil %q", ErrUnknown, id)
+		ids := make([]string, len(l.soils))
+		for i, s := range l.soils {
+			ids[i] = s.ID
+		}
+		return Soil{}, fmt.Errorf("%w: soil %q (the soils are %s)", ErrUnknown, id, strings.Join(ids, ", "))
 	}
 	return l.soils[i], nil
 }

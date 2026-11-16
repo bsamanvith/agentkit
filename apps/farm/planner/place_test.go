@@ -242,3 +242,79 @@ func TestRecommendAtFailures(t *testing.T) {
 		t.Errorf("no climate: err %v", err)
 	}
 }
+
+// The experimental tier answers only when asked: plants outside the
+// library, farmed somewhere, each marked experimental with its risk, and
+// a search finds one by a common name. The usual answer has none.
+func TestExperimentalTierOnlyWhenAsked(t *testing.T) {
+	t.Parallel()
+	p, _ := placePlanner(t, &farmtest.Locator{Location: kadapaLoc})
+	at := planner.At{Point: kadapaPoint}
+	usual := recommendAt(t, p, at, planner.Ask{})
+	for _, o := range usual.Options {
+		if o.Experimental {
+			t.Fatalf("the usual answer has experimental %s", o.Crop)
+		}
+	}
+	wide, err := agro.Wide()
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := recommendAt(t, p, at, planner.Ask{Experimental: true})
+	if len(r.Options) != planner.ExperimentalLimit || !slices.ContainsFunc(r.Notes, func(n agro.Note) bool { return n.ID == "experimental" }) {
+		t.Fatalf("%d options, notes %+v", len(r.Options), r.Notes)
+	}
+	for i, o := range r.Options {
+		c, err := wide.Crop(o.Crop)
+		if err != nil || !o.Experimental || o.Species == "" || c.Grown != agro.GrownLarge || c.Kind == "fodder" {
+			t.Errorf("option %s: %v, experimental %t, grown %q, kind %s", o.Crop, err, o.Experimental, c.Grown, c.Kind)
+		}
+		if _, err := p.Library().Crop(o.Crop); err == nil {
+			t.Errorf("option %s is in the library too", o.Crop)
+		}
+		if !slices.ContainsFunc(o.Risks, func(n agro.Note) bool { return n.ID == "experimental" }) {
+			t.Errorf("option %s does not say it is experimental", o.Crop)
+		}
+		if i > 0 && o.Score > r.Options[i-1].Score {
+			t.Errorf("option %s is out of order", o.Crop)
+		}
+	}
+	// By name: coffee is found, and marked down in Kadapa's hot dry climate.
+	coffee := recommendAt(t, p, at, planner.Ask{Experimental: true, Search: "coffee"})
+	if len(coffee.Options) == 0 || !slices.ContainsFunc(coffee.Options, func(o agro.Option) bool { return o.Crop == "coffea_arabica" && o.Score < 60 }) {
+		t.Errorf("coffee: %+v", coffee.Options)
+	}
+	// A kind: farmed roots and tubers only.
+	roots := recommendAt(t, p, at, planner.Ask{Experimental: true, Kinds: []string{"root"}, Limit: 50})
+	for _, o := range roots.Options {
+		if o.Kind != "root" {
+			t.Errorf("asked for roots, got %s (%s)", o.Crop, o.Kind)
+		}
+	}
+	if none := recommendAt(t, p, at, planner.Ask{Experimental: true, Search: "unobtainium"}); len(none.Options) != 0 || none.Notes[0].ID != "experimental.none" {
+		t.Errorf("no such plant: %+v", none)
+	}
+}
+
+// A crop asked for at a district carries the district's own varieties;
+// at another district it carries the base's, or none.
+func TestLibraryAtADistrict(t *testing.T) {
+	t.Parallel()
+	p, _ := placePlanner(t, &farmtest.Locator{Location: kadapaLoc})
+	at := func(district, crop string) []agro.Variety {
+		c, err := p.LibraryAt(region.Place{Country: "IN", State: "Andhra Pradesh", District: district}).Crop(crop)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c.Varieties
+	}
+	if v := at("Kadapa", "groundnut"); len(v) != 10 || v[0].Name != "Narayani" || v[0].Ref.Source != "crida-cp-kadapa" {
+		t.Errorf("Kadapa groundnut: %+v", v)
+	}
+	if v := at("Guntur", "groundnut"); len(v) != 0 {
+		t.Errorf("Guntur groundnut: %+v", v)
+	}
+	if v := at("Guntur", "mango"); len(v) < 10 {
+		t.Errorf("Guntur mango: %d varieties", len(v))
+	}
+}

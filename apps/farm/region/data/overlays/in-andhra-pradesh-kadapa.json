@@ -18,6 +18,18 @@
  ],
  "crops": {
   "groundnut": {
+   "varieties": [
+    {"name": "Narayani", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "Dharani", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "K-6", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "K-9", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "TAG-24", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "Kadiri Anantha", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "Kadiri Harithandra", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "Dheeraj", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "Nitya Haritha", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "ICGV 91114", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}}
+   ],
    "windows": [
     {"season": "kharif", "water": "rainfed", "from": "06-01", "to": "07-31", "source": "ICAR-CRIDA contingency plan, YSR Kadapa, 1.12: kharif rainfed, 1 June to 31 July"},
     {"season": "rabi", "water": "irrigated", "from": "11-01", "to": "12-31", "source": "ICAR-CRIDA contingency plan, YSR Kadapa, 1.12: rabi irrigated, November to December"}
@@ -32,17 +44,96 @@
    "ref": {"source": "crida-cp-kadapa", "where": "1.12 Sowing window for 5 major field crops: paddy"}
   },
   "cotton": {
+   "varieties": [
+    {"name": "Aravinda", "for": "desi cotton", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "Srinandi (NDLA-2463)", "for": "desi cotton", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "Yaganti (NDLA-2933)", "for": "desi cotton", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "Kanchana (LPS 141)", "for": "American cotton", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "LK-861", "for": "American cotton", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "L-839", "for": "American cotton", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "L-603", "for": "American cotton", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "L-604", "for": "American cotton", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "Narasimha (NA-1325)", "for": "American cotton", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "Sivanandi (NDLH-1755)", "for": "American cotton", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "NDLH-1938", "for": "American cotton", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "LRA-5166", "for": "American cotton", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "LRK-516", "for": "American cotton", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "LAHH-1", "hybrid": true, "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "LAHH-4", "hybrid": true, "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "LAHH-5", "hybrid": true, "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "Lam Cotton Hybrid-7", "hybrid": true, "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "NDLHH-390", "hybrid": true, "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "NDLHH-240", "hybrid": true, "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "Orugallu Krishna (WGHH-2)", "hybrid": true, "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "NHH-44", "hybrid": true, "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "Savitha", "hybrid": true, "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "H-6", "hybrid": true, "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "H-8", "hybrid": true, "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "H-10", "hybrid": true, "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}}
+   ],
    "windows": [
     {"season": "kharif", "water": "rainfed", "from": "06-01", "to": "07-31", "source": "ICAR-CRIDA contingency plan, YSR Kadapa, 1.12: cotton kharif rainfed, June to July"}
    ],
    "ref": {"source": "crida-cp-kadapa", "where": "1.12 Sowing window for 5 major field crops: cotton"}
   },
   "castor": {
+   "varieties": [
+    {"name": "PCH-222", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "PCH-111", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "DCH-519", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "DCH-177 (Deepak)", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "DCH-32 (Deepthi)", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "GCH-4 (SHB-18)", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "PCS-262 (Pragathi)", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "Jwala (48-1)", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "Kiran (PCS-136)", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "Haritha (PCS-124)", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "Kranthi (PCS-4)", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "Jyothi (DCS-9)", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}}
+   ],
    "windows": [
     {"season": "kharif", "from": "06-15", "to": "07-15", "source": "ICAR-CRIDA contingency plan, YSR Kadapa, sowing window for major crops of the Southern zone: castor kharif, 15 June to 15 July"},
     {"season": "rabi", "from": "10-01", "to": "10-07", "source": "ICAR-CRIDA contingency plan, YSR Kadapa, sowing window for major crops of the Southern zone: castor rabi, first week of October"}
    ],
    "ref": {"source": "crida-cp-kadapa", "where": "Sowing window for major crops grown in Southern zone districts during Kharif & Rabi, row 15: castor"}
+  },
+  "pigeon_pea": {
+   "varieties": [
+    {"name": "LRG 52", "for": "medium duration", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "LRG 41", "for": "medium duration", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "LRG 38", "for": "medium duration", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "LRG 30", "for": "medium duration", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "ICPL 332", "for": "medium duration", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "ICP 8863", "for": "medium duration; wilt resistant", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "ICPL 87119", "for": "medium duration; wilt resistant; sterility mosaic resistant", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "ICPL 85063", "for": "medium duration", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "TRG 22", "for": "medium duration", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "ICPL 84031 (Durga)", "for": "short duration", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "ICPL 85010", "for": "short duration", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "BSMR 736", "for": "sterility mosaic resistant", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "BSMR 853", "for": "sterility mosaic resistant", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}}
+   ],
+   "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}
+  },
+  "sunflower": {
+   "varieties": [
+    {"name": "NDSH 1012 (Prabhath)", "hybrid": true, "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "DRSF-113", "hybrid": true, "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "KBSH-44", "hybrid": true, "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "NDSH-1", "hybrid": true, "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "LSFH 171", "hybrid": true, "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}},
+    {"name": "DRSH-1", "hybrid": true, "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}}
+   ],
+   "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, early season drought (delay by 4 weeks): Varieties, printed p. 17"}
+  },
+  "horse_gram": {
+   "varieties": [
+    {"name": "CRHG 9", "for": "rabi, after a groundnut crop lost to late drought", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, Condition 4 (terminal drought): rabi crop planning on rainfed red soils"}},
+    {"name": "VZM-1", "for": "rabi, after a groundnut crop lost to late drought", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, Condition 4 (terminal drought): rabi crop planning on rainfed red soils"}},
+    {"name": "Palem-1", "for": "rabi, after a groundnut crop lost to late drought", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, Condition 4 (terminal drought): rabi crop planning on rainfed red soils"}},
+    {"name": "Palem-2", "for": "rabi, after a groundnut crop lost to late drought", "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, Condition 4 (terminal drought): rabi crop planning on rainfed red soils"}}
+   ],
+   "ref": {"source": "crida-cp-kadapa", "where": "2.1.1 Rainfed situation, Condition 4 (terminal drought)"}
   }
  }
 }

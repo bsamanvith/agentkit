@@ -151,6 +151,9 @@ type Option struct {
 	Species      string   `json:"species,omitempty"`
 	Common       []string `json:"common,omitempty"`
 	Grown        string   `json:"grown,omitempty"`
+	// Invasive: recorded as invasive in India; shown only when asked for
+	// by name, with a risk that says not to plant it.
+	Invasive bool `json:"invasive,omitempty"`
 	// Season is the best sowing: in the farmer's range when they gave one,
 	// else the best date of the next good window.
 	Season
@@ -304,7 +307,7 @@ func Recommend(l *Library, r Request) (Result, error) {
 		windows := windowsOf(dates, seasons)
 		o := Option{Crop: c.ID, Name: c.Name, Names: c.Names, Kind: c.Kind, Analog: c.ClimateAnalog, Experimental: c.Experimental}
 		if c.Experimental {
-			o.Species, o.Common, o.Grown = c.Species, c.Common, c.Grown
+			o.Species, o.Common, o.Grown, o.Invasive = c.Species, c.Common, c.Grown, c.Invasive
 		}
 		if r.Calendar {
 			o.Calendar = make([]Sowing, len(dates))
@@ -590,6 +593,13 @@ func simulate(c Crop, r Request, sow time.Time) Season {
 	}
 	switch {
 	case c.Experimental:
+		if c.Invasive {
+			seasonF = 0
+			note(true, "invasive", "It is recorded as an invasive plant in India (Global Register of Introduced and Invasive Species): it spreads into fields, commons and forest and is hard to remove. Do not plant it.")
+		}
+		if !c.Perennial {
+			note(true, "experimental.season", "The sowing date is only when rain and temperature match it best here. It is not a local sowing season: a cool-season crop is often sown after the rains in India, on stored moisture or with irrigation.")
+		}
 		note(true, "experimental", "Experimental: outside the reviewed library, scored on climate and soil alone (FAO ECOCROP). There is no local season, spacing, dose or trial behind it, so try a few plants or a small bed first.")
 	case slices.Contains(c.Seasons, s.Season):
 		note(false, "season.usual", "%s is a usual season for it in India.", titleCase(s.Season))

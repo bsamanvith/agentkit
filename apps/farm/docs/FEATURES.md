@@ -134,7 +134,11 @@ more plants from FAO's ECOCROP database (cashew, jackfruit, pineapple,
 cassava, dates, lentil, coffee, ...), scored on climate and soil alone
 and marked experimental, to try on a small area. They are never offered
 unless asked for, and cannot go into a season plan. A plant ECOCROP does
-not know from the plot's kind of climate is marked down.
+not know from the plot's kind of climate is marked down. The 33 of them
+recorded as invasive in India (Prosopis juliflora, for one) are never
+offered; asked for by name, they score nothing and say not to plant them.
+An experimental annual says its sowing date is only the best match of
+rain and temperature, not a local season.
 
 A suggestion lists the crop's **varieties** where a document names them:
 266 on 32 fruit and vegetable crops from Tamil Nadu's horticulture guide,
@@ -637,7 +641,7 @@ in the *Cost* column and named in the PR that adds it.
 | Weather forecast | `weather.Source` | Open-Meteo, then MET Norway (`-weather`, tried in order) | the next in the list | Open-Meteo: **free for non-commercial use only** (under 10,000 a day), paid plan or self-hosting for commercial; MET Norway: free, CC BY 4.0, commercial use allowed with credit |
 | Mandi prices | `prices.Source` (on `feeds.Provider`) | Agmarknet on data.gov.in (`datagov`, all India, daily; needs `FARM_DATAGOV_KEY`), price files (`files`: Agmarknet, data.gov.in or CEDA CSVs in `FARM_PRICE_FILES`) | the next provider, then every price saved before | data.gov.in: **free**, key on registration; files: free; CEDA: free with registration, check its terms before commercial use |
 | Price history for sell timing | `prices.History` (filled by the mandi providers, or loaded with `ScanFiles`) | India Data Portal's Agmarknet files (2021 on), CEDA Agri Market's (2000 to 2023), as files | the saved history; with too little, no advice | India Data Portal: **free**, Open Data Commons Attribution (cite it); CEDA: free with registration, **non-commercial use only** |
-| Experimental plants and varieties | `agro.Wide`, `Crop.Varieties` (embedded data) | FAO ECOCROP (the whole table, 1,282 plants kept); TNAU horticulture guide (2020) and the district contingency plans for varieties | none: the library alone | Free public documents. **ECOCROP states no licence**: FAO's database terms (CC BY 4.0, credit FAO) name its statistical databases and bar promoting a commercial enterprise with them, which a free app that credits FAO does not do. The data is not under the repo's Apache licence ([NOTICE](../../../NOTICE)); anyone using it commercially checks FAO's terms first |
+| Experimental plants and varieties | `agro.Wide`, `Crop.Varieties` (embedded data) | FAO ECOCROP (the whole table, 1,282 plants kept); the invasive plants of the Global Register of Introduced and Invasive Species for India (GRIIS, CC BY 4.0); TNAU horticulture guide (2020) and the district contingency plans for varieties | none: the library alone | Free public documents. **ECOCROP states no licence**: FAO's database terms (CC BY 4.0, credit FAO) name its statistical databases and bar promoting a commercial enterprise with them, which a free app that credits FAO does not do. The data is not under the repo's Apache licence ([NOTICE](../../../NOTICE)); anyone using it commercially checks FAO's terms first |
 | Fertiliser, seed and spray values | `inputs.Book` (embedded data) | TNAU crop production guides (2020) and crop protection pages, the CIB&RC list, India's banned list (PPQS) | kind defaults for crops without values | Free public documents; starter values for an agronomist to review |
 | Region data: what differs by place | `region.Set` (embedded base and overlays, plus the `-regions` folder) | ICAR-CRIDA district contingency plans (sowing windows), the PMFBY operational guidelines (insurance cut-offs and loss notice), state announcements as reported | the base pack | Free public documents |
 | Message lanes | `notify.Lane` | web push, Telegram, email (SMTP), WhatsApp (Meta Cloud API), SMS (MSG91 or Twilio), each on when its keys are set; `-notify-routes` composes them | the next lane in a chain; at a lane's cost cap, the next | Web push, Telegram: free; email: free tiers of most SMTP providers (flag the one chosen); WhatsApp: **paid** per template message, needs Meta business verification; SMS: **paid** per message, needs DLT registration |

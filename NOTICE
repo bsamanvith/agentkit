@@ -22,6 +22,13 @@ terms, and anyone who copies or reuses them takes those terms on.
   wherever these plants are shown. Check FAO's terms yourself before any
   commercial use.
 
+- apps/farm/agro/data/ecocrop/griis-india-invasive.txt (the plants the
+  experimental tier never offers) is taken from the Global Register of
+  Introduced and Invasive Species - India, version 1.6 (Sankaran K V,
+  Khuroo A A, Raghavan R, Molur S, Kumar B, Wong L J, Pagad S, 2026;
+  Invasive Species Specialist Group ISSG), https://doi.org/10.15468/uvnf8m,
+  under CC BY 4.0.
+
 - Other rule data under apps/farm (crop varieties, district sowing windows,
   doses, scheme dates, prices) is read from public government and university
   documents. Each data file names its sources in a "sources" list, with the

@@ -392,6 +392,11 @@ function OptionCard({ o, varieties, onAdd }: { o: Option; varieties?: Crop["vari
           {local && <span className="font-normal text-muted-foreground"> · {local}</span>}
           {o.analog && <span className="ml-2 rounded bg-accent px-1.5 py-0.5 text-xs">new to India</span>}
           {o.experimental && <span className="ml-2 rounded bg-accent px-1.5 py-0.5 text-xs">experimental</span>}
+          {o.invasive && (
+            <span className="ml-2 rounded bg-destructive/15 px-1.5 py-0.5 text-xs">
+              invasive in India: do not plant
+            </span>
+          )}
           {o.common?.length ? (
             <span className="block font-normal text-muted-foreground">{o.common.slice(0, 4).join(", ")}</span>
           ) : null}

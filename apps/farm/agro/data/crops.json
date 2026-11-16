@@ -16,6 +16,14 @@
    "url": "https://gaez.fao.org/pages/ecocrop",
    "read": "2026-11-16",
    "note": "The experimental tier (wide.json.gz, built by ecocrop/build.py) from the whole table, read from the public copy at https://github.com/OpenCLIM/ecocrop (EcoCrop_DB.csv). FAO's page states no licence for this database; FAO's database terms (CC BY 4.0 with credit to FAO) name its statistical databases. The app is free and credits FAO; this data is not under the repository's Apache licence and stays under FAO's terms (see NOTICE at the repository root). Check FAO's terms before any commercial use."
+  },
+  {
+   "id": "griis-india",
+   "name": "Global Register of Introduced and Invasive Species - India, version 1.6",
+   "publisher": "Invasive Species Specialist Group (ISSG), IUCN",
+   "url": "https://doi.org/10.15468/uvnf8m",
+   "read": "2026-11-16",
+   "note": "The plants the experimental tier never offers (ecocrop/griis-india-invasive.txt, read by ecocrop/build.py): the register's plant rows marked invasive, 265 species, 33 of them in the tier. CC BY 4.0; credit Sankaran K V, Khuroo A A, Raghavan R, Molur S, Kumar B, Wong L J, Pagad S (2026). To update: download the checklist archive from GBIF, rewrite the list, rebuild the tier."
   }
  ],
  "crops": [

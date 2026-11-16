@@ -67,3 +67,12 @@ varieties of a crop (tomato, mango).
 - The horticulture varieties are Tamil Nadu's list, not Andhra Pradesh's.
 - The Kadapa plan calls every sunflower entry a hybrid and does not mark
   castor's hybrids; the data follows the plan.
+- After the first deployment (2026-11-16) the assistant offered Prosopis
+  juliflora and gave lentil a June sowing date. Fixed after: the build
+  marks the 33 plants of the tier that the Global Register of Introduced
+  and Invasive Species for India records as invasive
+  (`data/ecocrop/griis-india-invasive.txt`, CC BY 4.0); they are never
+  offered, and by name they score nothing with an `invasive` risk. An
+  experimental annual carries an `experimental.season` risk: its date is a
+  climate match, not a local season. Castor is on that register too and
+  stays in the reviewed library: it is a traditional crop here.

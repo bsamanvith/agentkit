@@ -14,6 +14,10 @@ export interface PlaceAnswer {
   today: string;
   options: Option[];
   notes?: Note[];
+  /** Field crops that suit sowing within six weeks; empty or missing when none does. */
+  soon?: Option[];
+  /** In a line: what can go in now, or that nothing can and what comes next. */
+  headline?: string;
 }
 
 /** The assumption line, in plain words: what the answer took for granted. */
@@ -71,9 +75,10 @@ export default function SowHere({ at }: { at: Point }) {
       {answer && answer.options.length === 0 && (
         <p className="text-muted-foreground">Nothing scores well here now. Draw your plot to see later seasons.</p>
       )}
+      {answer?.headline && <p className="font-medium">{answer.headline}</p>}
       {answer && answer.options.length > 0 && (
         <ol aria-label="Crops to sow here" className="flex flex-col gap-1">
-          {answer.options.slice(0, 3).map((o) => (
+          {(answer.soon?.length ? answer.soon : answer.options).slice(0, 3).map((o) => (
             <li key={o.crop} className="flex flex-col rounded-md border px-2 py-1.5">
               <span className="font-medium">
                 {o.name}

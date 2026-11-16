@@ -92,6 +92,7 @@ function server({ recommend = true, place = true } = {}) {
             { id: "soil.unknown", message: "" },
           ],
           today: "2026-11-16",
+          headline: "Maize can be sown in the next 6 weeks, around 20 November 2026.",
           options: [
             ...options,
             option("mustard", "Mustard", "2026-11-30", "2027-03-01"),
@@ -240,6 +241,7 @@ describe("FirstRun", () => {
     expect(items[0]).toHaveTextContent(
       /Maize.*Sow (Nov 20, 2026|20 Nov 2026) to .*harvest about (Mar 10, 2027|10 Mar 2027)/,
     );
+    expect(screen.getByText("Maize can be sown in the next 6 weeks, around 20 November 2026.")).toBeInTheDocument();
     expect(screen.getByText(/Assuming rain only, no irrigation, and the soil not known\./)).toBeInTheDocument();
     expect(calls).toContain("POST /api/recommend");
     // No plot is made for it, and the drawing is one tap away.

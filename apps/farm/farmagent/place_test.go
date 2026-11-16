@@ -161,3 +161,65 @@ func TestRecommendForPlaceIsOffered(t *testing.T) {
 		t.Errorf("tools %v", names)
 	}
 }
+
+// The open question, "what can I sow here now": field crops that can go
+// in soon come apart from the ones whose time is later and from trees, a
+// headline says which it is, and no crop new to the country is offered.
+func TestRecommendForPlaceAnswersNowAndNext(t *testing.T) {
+	t.Parallel()
+	p := placePlanner(t)
+	lib := p.Library()
+	check := func(name string, opts []agro.Option, perennial bool) {
+		t.Helper()
+		for _, o := range opts {
+			c, err := lib.Crop(o.Crop)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c.ClimateAnalog || c.Perennial != perennial {
+				t.Errorf("%s has %s (new to the country %v, perennial %v)", name, o.Crop, c.ClimateAnalog, c.Perennial)
+			}
+		}
+	}
+	soonBy := time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC).AddDate(0, 0, farmagent.SoonDays).Format(agro.DateLayout)
+
+	// Rain only in November: nothing soon; the headline names the next
+	// sowing, which is the first option.
+	dry, err := farmagent.RecommendForPlace(context.Background(), p, pulivendula{}, farmagent.PlaceAsk{Place: "Pulivendula"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("options", dry.Options, false)
+	check("trees", dry.Trees, true)
+	if len(dry.Options) == 0 || len(dry.Options) > 5 || len(dry.Trees) > 2 {
+		t.Fatalf("%d options, %d trees", len(dry.Options), len(dry.Trees))
+	}
+	if len(dry.Soon) != 0 || !strings.Contains(dry.Headline, "No field crop suits sowing in the next 6 weeks") || !strings.Contains(dry.Headline, strings.ToLower(dry.Options[0].Name)) {
+		t.Errorf("rain only: soon %d, headline %q, first option %s", len(dry.Soon), dry.Headline, dry.Options[0].Name)
+	}
+
+	// With a borewell something can go in within six weeks, and the
+	// headline leads with it.
+	wet, err := farmagent.RecommendForPlace(context.Background(), p, pulivendula{}, farmagent.PlaceAsk{Place: "Pulivendula", Water: []agro.Water{{Kind: agro.Borewell, Reliable: true}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("soon", wet.Soon, false)
+	if len(wet.Soon) == 0 || len(wet.Soon) > 3 || !strings.HasPrefix(wet.Headline, wet.Soon[0].Name+" can be sown") {
+		t.Fatalf("a borewell: soon %d, headline %q", len(wet.Soon), wet.Headline)
+	}
+	for _, o := range wet.Soon {
+		if o.Sow > soonBy || o.Score < agro.Good {
+			t.Errorf("soon has %s sown %s scoring %d", o.Crop, o.Sow, o.Score)
+		}
+	}
+
+	// A named crop or a date is answered as asked, without the layout.
+	named, err := farmagent.RecommendForPlace(context.Background(), p, pulivendula{}, farmagent.PlaceAsk{Place: "Pulivendula", Crops: []string{"mango", "groundnut"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if named.Headline != "" || named.Soon != nil || named.Trees != nil || len(named.Options) != 2 {
+		t.Errorf("named crops: %+v", named)
+	}
+}

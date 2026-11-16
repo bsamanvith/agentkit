@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/bsamanvith/agentkit/apps/farm/agro"
+	"github.com/bsamanvith/agentkit/apps/farm/cycle"
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
 	"github.com/bsamanvith/agentkit/apps/farm/geo"
 	"github.com/bsamanvith/agentkit/apps/farm/planner"
@@ -19,7 +21,7 @@ const RecommendForPlaceTool = "recommend_for_place"
 
 // PlaceSystem is added to the system prompt with recommend_for_place.
 const PlaceSystem = `
-- A farmer who has not drawn a plot yet, or asks about a village or place rather than one of their plots ("what can I sow in Pulivendula now?"), gets recommend_for_place with the place's name (or a position), never a guess. For a saved plot use recommend_crops. Say the assumptions it returns in a few plain words ("assuming rain only, no irrigation") and offer to redo it with their water and soil.`
+- A farmer who has not drawn a plot yet, or asks about a village or place rather than one of their plots ("what can I sow in Pulivendula now?"), gets recommend_for_place with the place's name (or a position), never a guess. For a saved plot use recommend_crops. Say the assumptions it returns in a few plain words ("assuming rain only, no irrigation") and offer to redo it with their water and soil. For the open question ("what can I sow now") lead with its headline: what can go in within the next weeks (soon), or that nothing can and what the next good sowing is and when (options); mention trees only as a separate, long-term choice, in a line.`
 
 // ErrNoPlace is a place name the geocoder does not know; ErrPlaceSearch a
 // geocoder that could not answer.
@@ -67,7 +69,20 @@ type PlaceAnswer struct {
 	Soil    string        `json:"soil,omitempty"`
 	Options []agro.Option `json:"options"`
 	Notes   []agro.Note   `json:"notes,omitempty"`
+	// For the open question (no crops named, no date given) the answer
+	// is laid out the way the farmer asks it: Soon are the field crops
+	// that suit sowing within SoonDays, best first; Options are then the
+	// field crops at their best sowing time, whenever that is; Trees the
+	// tree and orchard crops, which are a different decision; Headline
+	// says in a line whether anything can go in now and what comes next.
+	// Crops new to the country are left out, as in the app's own plans.
+	Soon     []agro.Option `json:"soon,omitempty"`
+	Trees    []agro.Option `json:"trees,omitempty"`
+	Headline string        `json:"headline,omitempty"`
 }
+
+// SoonDays is how far ahead "can I sow now" looks, as the cycles do.
+const SoonDays = cycle.SoonDays
 
 // RecommendForPlace finds the place (by name with find, or at the
 // position given), and recommends crops there by the rules a saved plot
@@ -109,9 +124,42 @@ func RecommendForPlace(ctx context.Context, p *planner.Planner, find PlaceFinder
 	if in.Limit == 0 {
 		in.Limit = 5
 	}
-	r, err := p.RecommendAt(ctx, at, planner.Ask{Around: in.Around, Spread: in.Spread, Crops: in.Crops, Limit: in.Limit})
+	open := len(in.Crops) == 0 && in.Around == ""
+	ask := planner.Ask{Around: in.Around, Spread: in.Spread, Crops: in.Crops, Limit: in.Limit}
+	if open {
+		ask.Limit = 200 // every crop: they are sorted into field crops and trees below
+	}
+	r, err := p.RecommendAt(ctx, at, ask)
 	if err != nil {
 		return PlaceAnswer{}, err
+	}
+	if open {
+		field, trees := sortOut(p, r.Options)
+		r.Options = head(field, in.Limit)
+		out.Trees = head(trees, 2)
+		today, err := time.Parse(agro.DateLayout, r.Today)
+		if err != nil {
+			return PlaceAnswer{}, err
+		}
+		half := SoonDays / 2
+		sr, err := p.RecommendAt(ctx, at, planner.Ask{Around: today.AddDate(0, 0, half).Format(agro.DateLayout), Spread: half, Limit: 200})
+		if err != nil {
+			return PlaceAnswer{}, err
+		}
+		soon, _ := sortOut(p, sr.Options)
+		for _, o := range soon {
+			if o.Score >= cycle.SoonScore && len(out.Soon) < 3 {
+				out.Soon = append(out.Soon, o)
+			}
+		}
+		switch {
+		case len(out.Soon) > 0:
+			out.Headline = fmt.Sprintf("%s can be sown in the next %d weeks, around %s.", out.Soon[0].Name, SoonDays/7, day(out.Soon[0].Sow))
+		case len(r.Options) > 0:
+			out.Headline = fmt.Sprintf("No field crop suits sowing in the next %d weeks on what is known. The next good sowing is %s, around %s.", SoonDays/7, strings.ToLower(r.Options[0].Name), day(r.Options[0].Sow))
+		default:
+			out.Headline = "No field crop in the library suits this place on what is known."
+		}
 	}
 	out.Location, out.Regions, out.Assumed = r.Location, r.Regions, r.Assumed
 	if r.Location != nil && in.Lat != nil && r.Location.DisplayName != "" {
@@ -127,7 +175,7 @@ func RecommendForPlace(ctx context.Context, p *planner.Planner, find PlaceFinder
 // PlaceTools returns recommend_for_place over p, finding places by name
 // with find (nil: by position only). It reads only.
 func PlaceTools(p *planner.Planner, find PlaceFinder) ([]tool.Tool, error) {
-	t, err := tool.Func(RecommendForPlaceTool, "Recommend crops and when to sow them at a village or place where the farmer has no plot drawn yet, by the same rules as recommend_crops: the climate there, the district's own sowing windows, and the water and soil the farmer gives (left out: assumed rain only and the soil not known, listed in 'assumed'). Returns the place found, its region layers, the assumptions, and options best first with score, sowing and harvest dates, the good sowing window, water balance, reasons and risks. Use recommend_crops instead for a saved plot.",
+	t, err := tool.Func(RecommendForPlaceTool, "Recommend crops and when to sow them at a village or place where the farmer has no plot drawn yet, by the same rules as recommend_crops: the climate there, the district's own sowing windows, and the water and soil the farmer gives (left out: assumed rain only and the soil not known, listed in 'assumed'). Returns the place found, its region layers, the assumptions, and options best first with score, sowing and harvest dates, the good sowing window, water balance, reasons and risks. With no crops and no date given it also returns a headline, the field crops that suit sowing within the next six weeks (soon), the field crops at their best sowing time (options) and tree crops apart (trees). Use recommend_crops instead for a saved plot.",
 		func(ctx context.Context, in PlaceAsk) (PlaceAnswer, error) {
 			out, err := RecommendForPlace(ctx, p, find, in)
 			if errors.Is(err, ErrNoPlace) || errors.Is(err, agro.ErrInvalid) {
@@ -139,4 +187,37 @@ func PlaceTools(p *planner.Planner, find PlaceFinder) ([]tool.Tool, error) {
 		return nil, err
 	}
 	return []tool.Tool{t}, nil
+}
+
+// sortOut splits options into field crops and trees, leaving out crops
+// new to the country.
+func sortOut(p *planner.Planner, opts []agro.Option) (field, trees []agro.Option) {
+	for _, o := range opts {
+		c, err := p.Library().Crop(o.Crop)
+		if err != nil || c.ClimateAnalog {
+			continue
+		}
+		if c.Perennial {
+			trees = append(trees, o)
+		} else {
+			field = append(field, o)
+		}
+	}
+	return field, trees
+}
+
+func head(opts []agro.Option, n int) []agro.Option {
+	if len(opts) > n {
+		return opts[:n]
+	}
+	return opts
+}
+
+// day writes a YYYY-MM-DD day as "2 August 2027".
+func day(d string) string {
+	t, err := time.Parse(agro.DateLayout, d)
+	if err != nil {
+		return d
+	}
+	return t.Format("2 January 2006")
 }

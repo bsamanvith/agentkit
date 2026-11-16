@@ -10,9 +10,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bsamanvith/agentkit/apps/farm/automation"
 	autosqlite "github.com/bsamanvith/agentkit/apps/farm/automation/sqlite"
+	"github.com/bsamanvith/agentkit/apps/farm/cycle/addon"
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
 	"github.com/bsamanvith/agentkit/apps/farm/farm/farmtest"
 	"github.com/bsamanvith/agentkit/apps/farm/farmapi"
@@ -20,6 +22,7 @@ import (
 	"github.com/bsamanvith/agentkit/apps/farm/geo"
 	"github.com/bsamanvith/agentkit/apps/farm/members"
 	"github.com/bsamanvith/agentkit/apps/farm/members/memberstest"
+	"github.com/bsamanvith/agentkit/apps/farm/region"
 	"github.com/bsamanvith/agentkit/pkg/auth/accounts"
 )
 
@@ -64,7 +67,12 @@ func newApp(t *testing.T, before func(*farm.Service)) *app {
 	gate := farmauth.New(acc, members.New(&memberstest.Memory{}, acc, svc), nil)
 	mux := http.NewServeMux()
 	gate.Register(mux)
-	mux.Handle("/api/", gate.Protect(farmapi.New(svc, farmapi.WithAutomations(engine))))
+	set, err := region.Load(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	insurance := addon.NewSchemes(set.Base(), svc, func() time.Time { return time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC) })
+	mux.Handle("/api/", gate.Protect(farmapi.New(svc, farmapi.WithAutomations(engine), farmapi.WithSchemes(insurance))))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return &app{t: t, srv: srv, acc: acc, svc: svc}
@@ -208,6 +216,7 @@ func TestEachFarmSeesOnlyItsOwnPlots(t *testing.T) {
 		{"PUT", "/api/farms/" + plot},
 		{"DELETE", "/api/farms/" + plot},
 		{"GET", "/api/farms/" + plot + "/geojson"},
+		{"GET", "/api/farms/" + plot + "/schemes"},
 	} {
 		body := ""
 		if c.method == "PUT" {
@@ -216,6 +225,9 @@ func TestEachFarmSeesOnlyItsOwnPlots(t *testing.T) {
 		if code := sita.do(c.method, c.path, body, nil); code != http.StatusNotFound {
 			t.Errorf("Sita %s %s: %d, want 404", c.method, c.path, code)
 		}
+	}
+	if code := ravi.do("GET", "/api/farms/"+plot+"/schemes", "", nil); code != http.StatusOK {
+		t.Errorf("Ravi reading his plot's insurance dates: %d", code)
 	}
 	// Naming Ravi's farm does not get her in.
 	sita.holding = ravi.holding
@@ -404,5 +416,19 @@ func TestMessageSettingsAreAnAdminsAndUnsubscribeIsOpen(t *testing.T) {
 	// it reaches the API (no lanes here: 503), not the sign-in guard.
 	if c := a.browser().do("GET", "/api/notify/unsubscribe?r=x&l=email&s=y", "", nil); c == http.StatusUnauthorized {
 		t.Errorf("unsubscribe without a session: %d, want it let through", c)
+	}
+}
+
+// Asking what to sow at a place with no plot is a read like asking for a
+// plot: a session is needed, and any signed-in farmer may ask.
+func TestRecommendForAPlaceNeedsSignIn(t *testing.T) {
+	a := newApp(t, nil)
+	body := `{"place":"Pulivendula"}`
+	if code := a.browser().do("POST", "/api/recommend", body, nil); code != http.StatusUnauthorized {
+		t.Errorf("POST /api/recommend without a session: %d, want 401", code)
+	}
+	// This app has no planner: past the gate it is 503, not 401 or 403.
+	if code := a.user("Ravi").do("POST", "/api/recommend", body, nil); code != http.StatusServiceUnavailable {
+		t.Errorf("POST /api/recommend signed in: %d, want 503 from the API behind the gate", code)
 	}
 }

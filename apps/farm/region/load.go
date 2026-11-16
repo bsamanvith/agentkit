@@ -736,12 +736,22 @@ func checkSchemes(ss []Scheme, lib *agro.Library, sources []Source) error {
 				bad("crop %q is not in the crop library", c)
 			}
 		}
+		seasons := []string{agro.Kharif, agro.Rabi, agro.Zaid}
+		if s.Season != "" && !slices.Contains(seasons, s.Season) {
+			bad("season %q: want kharif, rabi or zaid", s.Season)
+		}
+		if s.Year != 0 && (s.Season == "" || s.Year < 2000 || s.Year > 2100) {
+			bad("year %d: want a season with it, and a year from 2000 to 2100", s.Year)
+		}
 		for _, c := range s.Cutoffs {
 			if _, err := time.Parse("01-02", c.By); err != nil || len(c.By) != 5 {
 				bad("cutoff %q: want MM-DD", c.By)
 			}
-			if !slices.Contains([]string{agro.Kharif, agro.Rabi, agro.Zaid}, c.Season) || (c.What != "enrolment" && c.What != "sowing") {
+			if !slices.Contains(seasons, c.Season) || (c.What != "enrolment" && c.What != "sowing") {
 				bad("cutoff %+v: want a season and enrolment or sowing", c)
+			}
+			if s.Season != "" && c.Season != s.Season {
+				bad("cutoff %+v: the scheme is for %s only", c, s.Season)
 			}
 		}
 		if s.LossNoticeHours < 0 {

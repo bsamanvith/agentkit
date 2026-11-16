@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { plane } from "./draw";
@@ -63,7 +63,7 @@ const options = [
 ];
 
 /** The farm API for a farmer with no plots yet; calls records each method and path. */
-function server({ recommend = true } = {}) {
+function server({ recommend = true, place = true } = {}) {
   const calls: string[] = [];
   let farm: Record<string, unknown> = {};
   vi.stubGlobal(
@@ -81,6 +81,25 @@ function server({ recommend = true } = {}) {
         return json(farm);
       }
       if (u === "/api/crops") return json({ crops: [{ id: "maize", name: "Maize" }] });
+      if (u === "/api/recommend") {
+        if (!place) return json({ error: "climate unavailable" }, 503);
+        return json({
+          place: "Lalapet",
+          point: body,
+          regions: ["base", "Andhra Pradesh"],
+          assumed: [
+            { id: "water.rain_only", message: "" },
+            { id: "soil.unknown", message: "" },
+          ],
+          today: "2026-11-16",
+          headline: "Maize can be sown in the next 6 weeks, around 20 November 2026.",
+          options: [
+            ...options,
+            option("mustard", "Mustard", "2026-11-30", "2027-03-01"),
+            option("rice", "Rice", "", ""),
+          ],
+        });
+      }
       if (u.endsWith("/recommend")) {
         if (!recommend) return json({ error: "climate unavailable" }, 502);
         return json({ farm: "f1", today: "2026-11-15", options: body.crops ? options.slice(0, 1) : options });
@@ -208,6 +227,48 @@ describe("FirstRun", () => {
     expect(screen.getByText("Step 1 of 3")).toBeInTheDocument();
     await drawAndSave(user);
     await waitFor(() => expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ id: "f1" })));
+  });
+
+  it("before drawing, can say what to sow at the village now, and drawing goes on", async () => {
+    const calls = server();
+    const user = userEvent.setup();
+    render(<FirstRun planner cycles onAdd={() => {}} onDone={() => {}} />);
+    await user.type(screen.getByRole("textbox", { name: "Village or town" }), "Lalapet{Enter}");
+    await user.click(await screen.findByRole("button", { name: "What can I sow here now?" }));
+    const list = await screen.findByRole("list", { name: "Crops to sow here" });
+    const items = within(list).getAllByRole("listitem");
+    expect(items).toHaveLength(3);
+    expect(items[0]).toHaveTextContent(
+      /Maize.*Sow (Nov 20, 2026|20 Nov 2026) to .*harvest about (Mar 10, 2027|10 Mar 2027)/,
+    );
+    expect(screen.getByText("Maize can be sown in the next 6 weeks, around 20 November 2026.")).toBeInTheDocument();
+    expect(screen.getByText(/Assuming rain only, no irrigation, and the soil not known\./)).toBeInTheDocument();
+    expect(calls).toContain("POST /api/recommend");
+    // No plot is made for it, and the drawing is one tap away.
+    expect(calls).not.toContain("POST /api/farms");
+    await user.click(screen.getByRole("button", { name: "Next: draw the plot" }));
+    expect(screen.getByText(/Step 2 of/)).toBeInTheDocument();
+  });
+
+  it("never blocks drawing when what to sow here cannot be worked out", async () => {
+    server({ place: false });
+    const onDone = vi.fn();
+    const user = userEvent.setup();
+    render(<FirstRun planner cycles onAdd={() => {}} onDone={onDone} />);
+    await user.type(screen.getByRole("textbox", { name: "Village or town" }), "Lalapet{Enter}");
+    await user.click(await screen.findByRole("button", { name: "What can I sow here now?" }));
+    expect(await screen.findByText(/Could not work it out just now/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Next: draw the plot" }));
+    expect(screen.getByText(/Step 2 of/)).toBeInTheDocument();
+  });
+
+  it("does not offer what to sow here without crop planning", async () => {
+    server();
+    const user = userEvent.setup();
+    render(<FirstRun planner={false} cycles={false} onAdd={() => {}} onDone={() => {}} />);
+    await user.type(screen.getByRole("textbox", { name: "Village or town" }), "Lalapet{Enter}");
+    await waitFor(() => expect(screen.getByTestId("map")).toHaveTextContent("16.29,80.45"));
+    expect(screen.queryByRole("button", { name: "What can I sow here now?" })).not.toBeInTheDocument();
   });
 
   it("lets the farmer skip the guide for the plain plot editor", async () => {

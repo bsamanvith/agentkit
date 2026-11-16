@@ -211,12 +211,14 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 		}
 	})
 	vopts := []farm.VerifierOption{farm.WithCountry(c.country)}
+	popts := []planner.Option{} // the plots' locator also places a village with no plot
 	if c.geocoder != "off" {
 		loc, err := nominatim.New("agentkit-farm/0.1 (+https://github.com/bsamanvith/agentkit)", nominatim.WithURL(c.geocoder))
 		if err != nil {
 			return err
 		}
 		vopts = append(vopts, farm.WithLocator(loc))
+		popts = append(popts, planner.WithLocator(loc))
 	}
 	svc, err := farm.NewService(store, farm.NewVerifier(vopts...), observe)
 	if err != nil {
@@ -239,7 +241,7 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 			return err
 		}
 	}
-	plan := planner.New(svc, lib, climate, planner.WithRegions(regions))
+	plan := planner.New(svc, lib, climate, append(popts, planner.WithRegions(regions))...)
 	sopts := []surveyor.Option{surveyor.WithLogger(log)}
 	var sources []osm.Source
 	if c.overpass != "off" && c.overpass != "" {
@@ -358,7 +360,12 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 	// on each crop cycle, and its schedule's tasks on the season roadmap,
 	// grown the way the current cycle is (organic or conventional).
 	inputBook := regions.Base().Book()
-	roadmap := work.New(plan, wstore, work.WithTasks(addon.NewRoadmap(inputBook, lib, cstore, addon.WithPacks(plan))))
+	// Crop insurance (the region's schemes, rules only): enrolment
+	// cut-offs and the loss-report rule on the roadmap and on each cycle,
+	// the cut-off alert (watch), get_schemes and /api/farms/{id}/schemes.
+	insurance := addon.NewSchemes(regions.Base(), svc, plan.Today, addon.WithPacks(plan))
+	roadmap := work.New(plan, wstore, work.WithTasks(addon.NewRoadmap(inputBook, lib, cstore, addon.WithPacks(plan))), work.WithTasks(insurance))
+	insurance.UseRoadmap(roadmap)
 	watcher.UseRoadmap(roadmap)
 	// The crop cycles read real sowings from the roadmap and record typed
 	// ones on it. Their addons: the shopping list and sprays, and when to
@@ -367,6 +374,7 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 	cycles := cycle.New(plan, cstore, cycle.WithRoadmap(roadmap), cycle.WithAddons(
 		addon.NewInputs(inputBook, lib, addon.WithPacks(plan)),
 		addon.NewTiming(lib, priceDB, addon.PlannerWindows{P: plan}, plan.Today, addon.WithPacks(plan)),
+		insurance,
 	))
 	var astore *autosqlite.Store
 	if c.automations {
@@ -386,13 +394,13 @@ func run(ctx context.Context, c config, logw io.Writer) error {
 	if astore != nil {
 		alerts = astore
 	}
-	toolOpts = append(toolOpts, farmagent.WithWatch(watcher, alerts), farmagent.WithRoadmap(roadmap), farmagent.WithCycles(cycles))
+	toolOpts = append(toolOpts, farmagent.WithWatch(watcher, alerts), farmagent.WithRoadmap(roadmap), farmagent.WithCycles(cycles), farmagent.WithSchemes(insurance))
 	agentOpts := append(slices.Clone(toolOpts), farmagent.WithSkills(skills))
 
 	aopts := []farmapi.Option{
 		farmapi.WithCountry(c.country), farmapi.WithLogger(log), farmapi.WithPlanner(plan),
 		farmapi.WithSurveyor(survey), farmapi.WithResearch(webResearch), farmapi.WithWatch(watcher), farmapi.WithPrices(market),
-		farmapi.WithRoadmap(roadmap), farmapi.WithCycles(cycles),
+		farmapi.WithRoadmap(roadmap), farmapi.WithCycles(cycles), farmapi.WithSchemes(insurance),
 	}
 	model, provider, err := buildModel(c, log)
 	if err != nil {

@@ -182,7 +182,6 @@ function Now({
 }) {
   const [sowing, setSowing] = useState(false);
   const [moving, setMoving] = useState(false);
-  const [day, setDay] = useState(line.today);
   const c = p.planned;
   const sown = c?.sow_kind === "actual";
   // The server says from when the line may move on (it refuses earlier);
@@ -217,7 +216,7 @@ function Now({
         <EditButton farm={farm} p={p} busy={busy} run={run} />
         {c && c.sow_kind !== "actual" && (
           <Button variant="outline" size="sm" disabled={busy} onClick={() => setSowing((s) => !s)}>
-            <Sprout /> I already sowed on…
+            <Sprout /> I already sowed…
           </Button>
         )}
         {harvested && (
@@ -251,29 +250,16 @@ function Now({
         </div>
       )}
       {sowing && (
-        <form
-          className="mt-3 flex flex-wrap items-end gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
+        <SowedForm
+          planned={c ? cropsOf(c) : undefined}
+          today={line.today}
+          busy={busy}
+          onSave={(crop, day) => {
             setSowing(false);
-            void run(() => cyclesApi.sown(farm.id, day), true);
+            void run(() => cyclesApi.sown(farm.id, day, crop), true);
           }}
-        >
-          <label className="flex flex-col gap-1 text-sm">
-            Sown on
-            <input
-              type="date"
-              className="rounded-md border px-2 py-1"
-              value={day}
-              max={line.today}
-              onChange={(e) => setDay(e.target.value)}
-              required
-            />
-          </label>
-          <Button type="submit" size="sm" disabled={busy}>
-            Save
-          </Button>
-        </form>
+          onCancel={() => setSowing(false)}
+        />
       )}
       {!sown && p.own && p.suggested && !sameCycle(p.own, p.suggested) && (
         <p className="mt-3 text-xs text-muted-foreground">
@@ -532,6 +518,78 @@ function MethodChoice({ farm, p, busy, run }: { farm: Farm; p: Position; busy: b
         ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * "I already sowed": what and when, in one step. The crop defaults to the
+ * planned one; a farmer who sowed something else picks it here, and it
+ * becomes this cycle.
+ */
+function SowedForm({
+  planned,
+  today,
+  busy,
+  onSave,
+  onCancel,
+}: {
+  planned?: string;
+  today: string;
+  busy: boolean;
+  onSave: (crop: string, day: string) => void;
+  onCancel: () => void;
+}) {
+  const [crops, setCrops] = useState<Crop[]>([]);
+  const [crop, setCrop] = useState("");
+  const [day, setDay] = useState(today);
+  useEffect(() => {
+    api.crops().then(
+      (cs) => setCrops(Array.isArray(cs) ? cs : []),
+      () => setCrops([]),
+    );
+  }, []);
+  return (
+    <form
+      className="mt-3 flex flex-wrap items-end gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSave(crop, day);
+      }}
+    >
+      <label className="flex min-w-40 flex-1 flex-col gap-1 text-sm">
+        What I sowed
+        <select
+          className="rounded-md border px-2 py-1"
+          value={crop}
+          required={!planned}
+          onChange={(e) => setCrop(e.target.value)}
+        >
+          <option value="">{planned ? `${planned} (as planned)` : "Choose…"}</option>
+          {crops.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex flex-col gap-1 text-sm">
+        Sown on
+        <input
+          type="date"
+          className="rounded-md border px-2 py-1"
+          value={day}
+          max={today}
+          onChange={(e) => setDay(e.target.value)}
+          required
+        />
+      </label>
+      <Button type="submit" size="sm" disabled={busy}>
+        Save
+      </Button>
+      <Button type="button" variant="outline" size="sm" disabled={busy} onClick={onCancel}>
+        Cancel
+      </Button>
+    </form>
   );
 }
 

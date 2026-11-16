@@ -76,6 +76,7 @@ Built-ins, which can be turned on and off but not changed:
 | `rain-watch` | Every 6 h, rain ≥ 50 mm within 3 days | `weather_advice` |
 | `new-plan-weather` | A plan is saved | `weather_advice` on that plot |
 | `weekly-tasks` | Monday 06:30 IST | `crop_tasks` on plots with a plan |
+| `weekly-insurance` | Monday 06:45 IST | `insurance_cutoffs` on plots with a plan: a crop insurance enrolment date within 14 days and not ticked on the roadmap, warned once (`Notice.Window` holds its key past the date) |
 | `weekly-field-brief` | Sunday 18:00 IST, off by default | the `weather-check` skill |
 
 ### How it scales

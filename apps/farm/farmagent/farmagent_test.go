@@ -152,6 +152,11 @@ func TestAssistantAnswersFromTheTools(t *testing.T) {
 	if last := reqs[1].Messages[len(reqs[1].Messages)-1]; !strings.Contains(string(mustJSON(t, last)), "farm_1") {
 		t.Errorf("the model was not sent the farm: %s", mustJSON(t, last))
 	}
+	// The model is told the day with the question: it does not know the
+	// year of "I sowed on 9 November" by itself.
+	if first := string(mustJSON(t, reqs[0].Messages[0])); !strings.Contains(first, "Today is ") || !strings.Contains(first, time.Now().Format("2006")) || !strings.Contains(first, "నా పొలం ఎంత?") {
+		t.Errorf("the question was sent without the day: %s", first)
+	}
 	if !strings.Contains(reqs[0].System, "Reply in the language") {
 		t.Errorf("system prompt not sent: %q", reqs[0].System)
 	}

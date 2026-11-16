@@ -7,8 +7,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/bsamanvith/agentkit/apps/farm/automation"
 	"github.com/bsamanvith/agentkit/apps/farm/cycle"
@@ -29,7 +31,7 @@ import (
 const System = `You are the farm assistant in a farm management app used by smallholder farmers, mostly in India.
 You help the farmer with their land: their plots, their sizes and locations, and whether each plot's boundary checks out.
 
-- Reply in the language and script the farmer writes in (Telugu, Hindi, Kannada, Marathi, English, ...). Keep replies short and plain: the farmer reads them on a phone in the field.
+- Reply in the language and script the farmer writes in (Telugu, Hindi, Kannada, Marathi, English, ...). The language of the message decides, not where the farm is: a question in English gets an answer in English, one in Telugu written in English letters gets Telugu. Keep replies short and plain: the farmer reads them on a phone in the field.
 - Every number about a plot (area, perimeter, overlap, location, status) comes from the tools. Never estimate or do arithmetic yourself: call convert_area for any conversion, even a simple one.
 - Talk in the farmer's units: acres and guntas (40 guntas to an acre), or cents (100 to an acre), unless they use hectares.
 - When a check failed or warned, say what it means in practice and what to do (walk to the corner again, fix the unit, re-draw a corner).
@@ -60,6 +62,9 @@ const MaxConversations = 200
 // one conversation run one at a time.
 type Assistant struct {
 	h *harness.Harness
+	// today is the farmer's day: the model does not know the date, and
+	// guessed the year of "I sowed on 9 November".
+	today func() time.Time
 
 	mu    sync.Mutex
 	convs map[string]*conversation
@@ -89,6 +94,7 @@ type setup struct {
 	alerts    automation.Store
 	work      *work.Service
 	cycles    *cycle.Service
+	schemes   Schemes
 }
 
 // WithPlanner gives the assistant the crop planning and plot group tools
@@ -173,6 +179,15 @@ func groups(svc *farm.Service, s setup) ([]group, error) {
 		}
 		farmSet.tools = append(farmSet.tools, more...)
 		farmSet.system += "\n" + PlanningSystem
+		var find PlaceFinder // no place search: positions only
+		if s.surveyor != nil {
+			find = s.surveyor
+		}
+		if more, err = PlaceTools(s.planner, find); err != nil {
+			return nil, err
+		}
+		farmSet.tools = append(farmSet.tools, more...)
+		farmSet.system += PlaceSystem
 		more, err = GroupTools(s.planner)
 		if err != nil {
 			return nil, err
@@ -200,6 +215,14 @@ func groups(svc *farm.Service, s setup) ([]group, error) {
 			}
 			farmSet.tools = append(farmSet.tools, more...)
 			farmSet.system += "\n" + CyclesSystem
+		}
+		if s.schemes != nil {
+			more, err = SchemeTools(s.schemes)
+			if err != nil {
+				return nil, err
+			}
+			farmSet.tools = append(farmSet.tools, more...)
+			farmSet.system += SchemesSystem
 		}
 	}
 	out := []group{farmSet}
@@ -303,7 +326,11 @@ func NewAssistant(model llm.Model, svc *farm.Service, opts ...Option) (*Assistan
 	if err != nil {
 		return nil, err
 	}
-	return &Assistant{h: h, convs: map[string]*conversation{}}, nil
+	today := time.Now
+	if s.planner != nil {
+		today = s.planner.Today
+	}
+	return &Assistant{h: h, today: today, convs: map[string]*conversation{}}, nil
 }
 
 // Reply is the assistant's answer to one message.
@@ -327,17 +354,27 @@ func (a *Assistant) Ask(ctx context.Context, conversationID, message string) (Re
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	res, err := harness.Collect(a.h.Run(ctx, harness.Input{Transcript: c.transcript, Message: harness.UserText(message)}))
+	res, err := harness.Collect(a.h.Run(ctx, harness.Input{Transcript: c.transcript, Message: harness.UserText(dated(a.today(), message))}))
 	if err != nil {
 		return Reply{}, fmt.Errorf("farmagent: %w", err)
 	}
 	prev := len(c.transcript)
 	c.transcript = res.Transcript
 	r := Reply{Conversation: id, Text: res.Final.Text(), Tools: []string{}}
+	uses := map[string]llm.ToolUse{}
 	for _, m := range res.Transcript[prev:] {
 		for _, b := range m.Content {
-			if u, ok := b.(llm.ToolUse); ok {
-				r.Tools = append(r.Tools, u.Name)
+			switch v := b.(type) {
+			case llm.ToolUse:
+				r.Tools = append(r.Tools, v.Name)
+				uses[v.ID] = v
+			case llm.ToolResult:
+				// A refused tool call is how "the assistant said it saved it
+				// but did not" shows up: keep a trace of each.
+				if v.IsError {
+					u := uses[v.ToolUseID]
+					slog.WarnContext(ctx, "farm assistant: a tool call failed", "tool", u.Name, "input", clip(string(u.Input), 300), "error", clip(v.Content, 300))
+				}
 			}
 		}
 	}
@@ -369,4 +406,18 @@ func (a *Assistant) conversation(id, holding string) (string, *conversation, err
 		a.order = a.order[1:]
 	}
 	return id, c, nil
+}
+
+// clip cuts s to n bytes for a log line.
+func clip(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
+}
+
+// dated puts the day in front of the farmer's message, so "on 9 November",
+// "last week" and "this season" get the right year.
+func dated(today time.Time, message string) string {
+	return "(Today is " + today.Format("Monday, 2 January 2006") + ".)\n\n" + message
 }

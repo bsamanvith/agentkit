@@ -1,6 +1,6 @@
 # Farm: what farmers can do, and what comes next
 
-> The product list, kept up to date. Last updated 2026-11-15.
+> The product list, kept up to date. Last updated 2026-11-16.
 > Every PR that adds, changes or removes something a farmer can see
 > updates this file (the `farm-features` skill says how). Why the app
 > exists and the farmer's year: [PRODUCT.md](PRODUCT.md). Epic:
@@ -17,7 +17,7 @@ Status words: **live** (merged on main, a farmer can use it), **building**
 | 1 | [My plots](#1-my-plots) | live | land | T133, T146 |
 | 2 | [The land and its surroundings](#2-the-land-and-its-surroundings) | live | land | T135, T138 |
 | 3 | [Farm layout](#3-farm-layout) | live | land | T135 |
-| 4 | [What to plant and when](#4-what-to-plant-and-when) | live | plan | T134, T137 |
+| 4 | [What to plant and when](#4-what-to-plant-and-when) | live | plan | T134, T137, T150 |
 | 5 | [Sun and seasons](#5-sun-and-seasons) | live | plan | T137 |
 | 6 | [Season plan for a plot](#6-season-plan-for-a-plot) | live | plan | T134 |
 | 7 | [Plot groups and how plants are spread](#7-plot-groups-and-how-plants-are-spread) | live | plan | T136 |
@@ -33,7 +33,7 @@ Status words: **live** (merged on main, a farmer can use it), **building**
 | 17 | [Offline and voice in the field](#17-offline-and-voice-in-the-field) | planned | all | |
 | 18 | [Field watch from satellites](#18-field-watch-from-satellites) | idea | grow | |
 | 19 | [Soil Health Card and land papers from a photo](#19-soil-health-card-and-land-papers-from-a-photo) | idea | land | |
-| 20 | [Schemes, insurance and paperwork](#20-schemes-insurance-and-paperwork) | idea | plan, money | |
+| 20 | [Schemes, insurance and paperwork](#20-schemes-insurance-and-paperwork) | live: insurance dates; idea: the rest | plan, grow, money | T151 |
 | 21 | [For FPOs, dealers and lenders](#21-for-fpos-dealers-and-lenders) | idea | all | |
 | 22 | [Season roadmap](#22-season-roadmap) | live | grow | T141 |
 | 23 | [Crop cycles](#23-crop-cycles) | building | plan, grow | T145, T146 |
@@ -127,10 +127,21 @@ score from 0 to 100, the reasons and the risks, and how much water rain
 will not cover. Crops from similar climates abroad (dragon fruit,
 avocado, quinoa) are scored too and marked as *climate analogs*.
 
+**Before any plot is drawn** (T150), the farmer can ask the same for a
+village: on the first run, after typing the village, *What can I sow
+here now?* shows the top three crops with their sowing window and
+harvest, or they ask the assistant "what should I sow in Pulivendula in
+June". The answer uses the village's district rules (its sowing windows)
+and says what it assumed when the farmer did not say: rain only, no
+irrigation, and the soil not known. Giving the water and soil changes it.
+
 **Behind it:** rules, not the model: `apps/farm/agro` (soil and crop
 libraries in `agro/data`, the recommender), climate normals from NASA
-POWER (`apps/farm/nasapower`). Tools `recommend_crops`, `compare_crops`;
-skills `plan-season`, `research-crops`. The rule values are starter values
+POWER (`apps/farm/nasapower`); a place with no plot by `planner.RecommendAt`
+(the village found with Nominatim, its district from the same lookup the
+plots use), `POST /api/recommend`, web `sowhere.tsx`. Tools
+`recommend_crops`, `recommend_for_place`, `compare_crops`; skills
+`plan-season`, `research-crops`. The rule values are starter values
 that need an agronomist's review. Details:
 [CROP-PLANNING.md](CROP-PLANNING.md).
 
@@ -175,10 +186,13 @@ Details: [GROUPS.md](GROUPS.md).
 
 **The farmer** asks in their own language and script (Telugu, Hindi,
 Kannada, Marathi, English) on a phone: "what should I sow on the east
-plot after Dasara", "how far is the canal", "convert 2 acres 10 guntas to
+plot after Dasara", "what can I sow in my village now" (before drawing
+any plot), "how far is the canal", "convert 2 acres 10 guntas to
 cents". The assistant answers short and plain, and every number in the
 answer comes from a tool, so it is the same however the question is
-asked.
+asked. It is told the day with every question, so "I sowed groundnut
+last Monday" is noted as that crop on that day in one step, and it says
+something was saved only after it was.
 
 **Behind it:** the agentkit harness (`apps/farm/farmagent`) on the model
 lane (`apps/farm/models`, T142): a list of models tried in order, by
@@ -292,6 +306,46 @@ sowing or a change of method.
 tasks), calendar rule keys in `apps/farm/calendar`; routes `/api/farms/{id}/roadmap*`; tools
 `get_roadmap`, `record_work`. Web: `roadmap.tsx`, `roadmap-data.ts` (the
 offline queue). Design: [ROADMAP.md](ROADMAP.md).
+
+### 20. Schemes, insurance and paperwork
+
+**Live: crop insurance dates (T151).** **The farmer** opens *Insurance*
+under this cycle (closed until tapped): each crop insurance scheme of
+their region (PMFBY everywhere; Andhra Pradesh's kharif 2026 notice
+there), whether it covers the crop ("covers your crop", "covers the
+crops the state notifies: ask whether yours is one", or "your crop is not
+among the crops it names: ask"), the last date to enrol and the days
+left, or that it has passed, or "last year's dates, not yet announced for
+this season", the 72-hour rule for reporting damage, and the source with
+the day it was read, with "confirm before you rely on this" at the bank,
+the Rythu Seva Kendra or the insurer. *Season work* has an "Enrol for
+crop insurance by 15 July" task (once the date is gone it shows as
+passed, not overdue) and a standing "If the crop is damaged: report
+within 72 hours" entry with nothing to tick. Two weeks before a last
+date that is not ticked, one alert goes to the bell and by the message
+lanes of [14](#14-alerts-on-the-phone-push-telegram-email-whatsapp-sms).
+Or they ask the assistant "is my crop insured, what is the last date".
+
+**The app** reads the schemes of the plot's region pack (no model, no
+date of its own): the cycle's crops and first sowing fix the season and
+its year, the scheme's cut-off for that season gives the date. A notice
+for an earlier season is never shown as a live deadline.
+
+**Behind it:** `apps/farm/schemes` (the rules), `region.Scheme` (data,
+with `season` and `year` for a one-season notice), `cycle/addon`
+(`Schemes`: the cycle addon and the roadmap's task source), `work`
+(`Task.Deadline`, `Task.Standing`), `watch` (`insurance_cutoffs`, the
+`weekly-insurance` automation); route `/api/farms/{id}/schemes`; tool
+`get_schemes`, skill `manage-crop`. Web: `cycle-extras.tsx`,
+`roadmap.tsx`. Design: [REGIONS.md](REGIONS.md),
+[ROADMAP.md](ROADMAP.md). **Still to come:** this season's notices as
+they are published (only PMFBY's normal cut-offs and AP's kharif 2026
+notice are in the data), district cut-offs.
+
+**Still an idea:** which other schemes a farmer qualifies for (PM-KISAN,
+Rythu Bharosa, Raitha Siri and other state schemes), the documents; an
+insurance claim drafted with geo-tagged photos, submitted only with the
+farmer's approval.
 
 ### 14. Alerts on the phone: push, Telegram, email, WhatsApp, SMS
 
@@ -509,13 +563,6 @@ The farmer photographs the Soil Health Card and the app fills the plot's
 soil (pH, N, P, K, organic carbon) instead of guessing from colour; the
 pattadar passbook or RoR gives the survey number and recorded area to
 check against the drawn boundary.
-
-### 20. Schemes, insurance and paperwork
-
-Which schemes a farmer qualifies for (PM-KISAN, PMFBY, Rythu Bharosa,
-Raitha Siri and other state schemes), the documents and deadlines; an
-insurance claim drafted with geo-tagged photos, submitted only with the
-farmer's approval.
 
 ### 21. For FPOs, dealers and lenders
 

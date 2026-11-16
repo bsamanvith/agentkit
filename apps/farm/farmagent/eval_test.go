@@ -24,6 +24,7 @@ import (
 
 	"github.com/bsamanvith/agentkit/apps/farm/elevation"
 	"github.com/bsamanvith/agentkit/apps/farm/farm"
+	"github.com/bsamanvith/agentkit/apps/farm/farm/farmtest"
 	"github.com/bsamanvith/agentkit/apps/farm/farmagent"
 	"github.com/bsamanvith/agentkit/apps/farm/geo"
 	"github.com/bsamanvith/agentkit/apps/farm/handbook"
@@ -106,6 +107,8 @@ type scenario struct {
 	connect bool
 	// group puts the plot in a group "Home farm" first.
 	group bool
+	// bare starts the farmer with no plot at all.
+	bare bool
 	// then checks the world afterwards.
 	then func(t *testing.T, s *surveyor.Surveyor)
 }
@@ -212,6 +215,20 @@ func scenarios() []scenario {
 			tools: [][]string{bookTools},
 			says:  []*regexp.Regexp{re(`(?i)(neem|teak|drumstick|moringa|glyricidia|gliricidia|casuarina|subabul|coconut|palmyra|bamboo)`)},
 		},
+		{
+			name:  "no plot, what to sow in a village",
+			bare:  true,
+			ask:   "I have not drawn my land in the app yet. What should I sow now in Kothapeta, Andhra Pradesh, and when will it come off?",
+			tools: [][]string{{farmagent.RecommendForPlaceTool}},
+			// The dates and the assumption come from the tool; no plot is
+			// asked for first.
+			says: []*regexp.Regexp{re(`(?i)rain`), re(`(?i)(january|february|march|april|may|june|july|august|september|october|november|december|\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2})`)},
+			then: func(t *testing.T, s *surveyor.Surveyor) {
+				if fs, err := s.Farms().List(context.Background()); err != nil || len(fs) != 0 {
+					t.Errorf("a plot was made: %d %v", len(fs), err)
+				}
+			},
+		},
 	}
 }
 
@@ -241,6 +258,12 @@ func TestAssistantEval(t *testing.T) {
 		}
 		t.Run(sc.name, func(t *testing.T) {
 			svc, _ := kothapeta(t)
+			if sc.bare {
+				var err error
+				if svc, err = farm.NewService(&farmtest.Memory{}, farm.NewVerifier()); err != nil {
+					t.Fatal(err)
+				}
+			}
 			heights := elevation.Func(func(p geo.Point) float64 { return 14 + (p.Lat-16.70677)*3000 - (p.Lng-81.900394)*3000 })
 			s := surveyor.New(svc, surveyor.WithFeatures(osmtest.Source()), surveyor.WithHeights(heights), surveyor.WithSearch(places{}, "IN"))
 			fake := researchtest.New()

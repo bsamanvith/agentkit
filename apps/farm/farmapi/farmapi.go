@@ -32,6 +32,7 @@
 //	GET    /api/farms/{id}/sun         the sun at the farm month by month (day length, sun hours, noon sun, slope)
 //	PUT    /api/farms/{id}/profile     set the farm's land and water profile
 //	POST   /api/farms/{id}/recommend   what to plant and when (planner.Ask)
+//	POST   /api/recommend              the same for a place with no plot (farmagent.PlaceAsk)
 //	POST   /api/farms/{id}/layout      cut the farm into strips {"parts": [...]}
 //	POST   /api/farms/{id}/plan/check  check a plan, save nothing
 //	PUT    /api/farms/{id}/plan        check and save a plan
@@ -77,6 +78,11 @@
 //	POST   /api/farms/{id}/cycles/sown        the current cycle was sown {"day"}
 //	PUT    /api/farms/{id}/cycles/settings    turn later cycles on or off {"future"}
 //	POST   /api/farms/{id}/cycles/advance     move on: the next cycle becomes the saved plan
+//
+// Crop insurance (with [WithSchemes]): what applies to the current cycle,
+// from the region's schemes (package schemes):
+//
+//	GET    /api/farms/{id}/schemes            schemes.Answer
 //
 // Automations and the farmer's inbox (with [WithAutomations]):
 //
@@ -195,6 +201,7 @@ type api struct {
 	engine    *automation.Engine
 	work      *work.Service
 	cycles    *cycle.Service
+	schemes   Schemes
 	hub       *notify.Hub
 	country   string
 	log       *slog.Logger
@@ -233,6 +240,7 @@ func New(svc *farm.Service, opts ...Option) http.Handler {
 	mux.HandleFunc("GET /api/farms/{id}/sun", a.planning(a.sun))
 	mux.HandleFunc("PUT /api/farms/{id}/profile", a.planning(a.profile))
 	mux.HandleFunc("POST /api/farms/{id}/recommend", a.planning(a.recommend))
+	mux.HandleFunc("POST /api/recommend", a.planning(a.recommendAt))
 	mux.HandleFunc("POST /api/farms/{id}/layout", a.planning(a.layout))
 	mux.HandleFunc("POST /api/farms/{id}/plan/check", a.planning(a.checkPlan))
 	mux.HandleFunc("PUT /api/farms/{id}/plan", a.planning(a.savePlan))
@@ -256,6 +264,7 @@ func New(svc *farm.Service, opts ...Option) http.Handler {
 	mux.HandleFunc("GET /api/farms/{id}/calendar", a.watching(a.calendar))
 	mux.HandleFunc("GET /api/farms/{id}/roadmap", a.roadmapping(a.roadmap))
 	mux.HandleFunc("POST /api/farms/{id}/roadmap/events", a.roadmapping(a.recordWork))
+	mux.HandleFunc("GET /api/farms/{id}/schemes", a.schemesOf)
 	mux.HandleFunc("GET /api/farms/{id}/cycles", a.cycling(a.cycleLine))
 	mux.HandleFunc("PUT /api/farms/{id}/cycles/{pos}", a.cycling(a.setCycle))
 	mux.HandleFunc("DELETE /api/farms/{id}/cycles/{pos}", a.cycling(a.setCycle))

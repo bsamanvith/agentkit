@@ -87,7 +87,9 @@ export const cyclesApi = {
   get: (farm: string, signal?: AbortSignal) => call<Line>("GET", base(farm), undefined, signal),
   set: (farm: string, pos: number, ch: Change) => call<Line>("PUT", `${base(farm)}/${pos}`, ch),
   clear: (farm: string, pos: number) => call<Line>("DELETE", `${base(farm)}/${pos}`),
-  sown: (farm: string, day: string) => call<Line>("POST", `${base(farm)}/sown`, { day }),
+  /** "I already sowed": the day, and the crop when it is not the planned one. */
+  sown: (farm: string, day: string, crop?: string) =>
+    call<Line>("POST", `${base(farm)}/sown`, crop ? { day, crop } : { day }),
   future: (farm: string, on: boolean) => call<Line>("PUT", `${base(farm)}/settings`, { future: on }),
   advance: (farm: string) => call<Line>("POST", `${base(farm)}/advance`),
 };

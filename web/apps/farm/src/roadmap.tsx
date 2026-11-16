@@ -213,13 +213,17 @@ function TaskRow({
         <div className="min-w-0">
           <p className={closed ? "text-sm text-muted-foreground line-through" : "text-sm font-medium"}>{t.title}</p>
           <p className="text-xs text-muted-foreground">
-            {closed && t.day && t.day !== t.date ? `planned ${dayLabel(t.date)}` : dayLabel(t.date)}
+            {t.standing
+              ? `from ${dayLabel(t.date)}`
+              : closed && t.day && t.day !== t.date
+                ? `planned ${dayLabel(t.date)}`
+                : dayLabel(t.date)}
             {crop ? ` · ${crop}` : ""}
             {` · ${kindNames[t.kind] ?? t.kind}`}
             {t.source === "farmer" ? " · my task" : ""}
           </p>
         </div>
-        {closed ? (
+        {t.standing ? null : closed ? (
           <span className="flex items-center gap-2">
             <Status tone={t.state === "done" ? "ok" : "neutral"}>
               {stateText[t.state]}
@@ -249,8 +253,13 @@ function TaskRow({
         )}
       </div>
       {t.passed && !form && (
-        <p className="text-xs text-muted-foreground">Before the sowing: its time has passed. Tick it if you did it.</p>
+        <p className="text-xs text-muted-foreground">
+          {t.deadline
+            ? "The last date has passed. Tick it if you did it."
+            : "Before the sowing: its time has passed. Tick it if you did it."}
+        </p>
       )}
+      {t.standing && <p className="text-xs text-muted-foreground">Keep this in mind all season.</p>}
       {t.overdue && !form && (
         <p className="flex items-center gap-1 text-xs text-ak-warn">
           <AlertTriangle className="size-3.5" aria-hidden="true" /> Past its date: did you do it?

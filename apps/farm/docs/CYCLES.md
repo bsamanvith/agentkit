@@ -36,7 +36,12 @@ useful thing, not every setting.
 
 ## Onboarding (T146)
 
-1. Sign in, type the village, the map flies there.
+1. Sign in, type the village, the map flies there. Before drawing, the
+   farmer may tap *What can I sow here now?* (T150): the top three crops
+   at the village with their sowing window and harvest, by the same rules
+   a saved plot gets, and the assumption line ("Assuming rain only, no
+   irrigation, and the soil not known."). It is optional, loads only when
+   tapped and never blocks drawing.
 2. Draw the plot: **pencil** (freehand, smoothed to corners),
    **lines** (tap each corner, as today), **rectangle** (drag, then turn
    and stretch), or walk it with GPS, or type coordinates.
@@ -134,7 +139,7 @@ input. Planned, in the order they become possible:
 | **Crop doctor with guided photos** | farmer | crop, stage and recent sprays, so the app can ask for the right photos (whole plant, leaf top and underside, with a coin for scale) and answer for this crop today | T148, feature 15 |
 | **FPO season view** | FPO, extension worker | members' planned cycles: area by crop, expected harvest by week, input demand to buy in bulk, produce to sell together | T145, accounts |
 | **Harvest and sale desk** | farmer, FPO, buyer | expected harvest dates and quantities weeks ahead: book a harvester and labour, offer a lot to a buyer before the glut | T145, T147 |
-| **Insurance and scheme deadlines** | farmer | sowing date and crop fix the PMFBY cut-off and the 72-hour loss notice; tasks on the roadmap | T145 |
+| **Insurance and scheme deadlines** (live for crop insurance, T151) | farmer | sowing date and crop fix the PMFBY cut-off and the 72-hour loss notice; tasks on the roadmap | T145 |
 | **Agronomist's review desk** | reviewer (ANGRAU, KVK) | every rule value with its source, where it is used, and a way to correct it for a district | T148 |
 | **Plot history** | farmer, lender | finished cycles: what was grown, yield, price got; next year's suggestions learn from it | T145, ledger |
 
@@ -179,7 +184,7 @@ joined (branch `wt-join`, 2026-11-15):
   (numbers from the plan, never the model); `get_cycles` carries the
   timing advice and points to `get_inputs`.
 - **A sowing far from the plan** (more than `work.MaxSowShift`, 120
-  days): *I already sowed on…* saves the plan again with that day rather
+  days): *I already sowed…* saves the plan again with that day rather
   than refusing it. That renames the season's tasks (their IDs carry the
   planned sowing), so what the farmer had ticked done, skipped or not
   needed is recorded again on the same tasks of the new plan.
@@ -199,6 +204,16 @@ joined (branch `wt-join`, 2026-11-15):
   and before the farm writes is finished by the next read, or dropped if
   the plan was changed since; if the farm refuses it, the record's slots
   go back.
+
+- **"I already sowed" is one step** (T152). The page asks what and when
+  (the planned crop by default), `POST /cycles/sown` takes `crop` with
+  `day`, and `set_cycle` takes `crop` with `sown`; a crop set for the
+  current cycle with a day gone by is recorded as sown. The crop the
+  farmer names becomes the cycle, whatever was suggested.
+- **The app's own plan stays local.** The suggested line leaves out
+  crops marked new to the country (the recommender still lists them),
+  and when nothing can be sown within the wait limit it shows the next
+  good sowing instead of nothing.
 
 Still open: preferring a sowing date by its harvest
 month inside the window (`Input.suggest`) is not built. Guided photos

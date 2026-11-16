@@ -3,14 +3,31 @@ name: plan-season
 description: >
   Help a farmer decide what to plant on a plot, when to sow it and how to
   share the plot between crops. Use when the farmer asks what to grow, when
-  to sow, whether a crop suits their land, or wants a plan for the season.
-tools: [get_farm, list_soils, set_profile, recommend_crops, get_crop, suggest_layout, save_plan, knowledge_search]
+  to sow, whether a crop suits their land, or wants a plan for the season,
+  also before any plot is drawn ("what can I sow in my village now?").
+tools: [get_farm, list_soils, set_profile, recommend_crops, recommend_for_place, get_crop, suggest_layout, save_plan, knowledge_search]
 ---
 
 # plan-season
 
 The numbers come from the tools, the advice from you. Never score a crop,
 pick a date or count plants yourself.
+
+## 0. No plot yet
+
+- If the farmer has no saved plot (or asks about a village, not one of
+  their plots), do not ask them to draw one first. Call
+  `recommend_for_place` with the village's name (with its mandal or
+  district if they said it), or with `lat` and `lng`; pass `around` and
+  `crops` as for `recommend_crops`, and `water` and `soil` only if they
+  told you.
+- Say the place it found, so a wrong village is caught. Then the three
+  best options as in step 2, and the assumptions it returns in plain
+  words ("assuming rain only, no irrigation; soil not known"). Offer to
+  redo it with their water and soil, and to draw the plot for dates on
+  their own land.
+- With a saved plot, always use `recommend_crops` instead: it knows the
+  plot's own profile and slope.
 
 ## 1. Know the plot
 

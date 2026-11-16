@@ -305,9 +305,13 @@ type Notice struct {
 	// Body says what to do and why.
 	Body string `json:"body"`
 	// Day is the day it concerns (YYYY-MM-DD), if any.
-	Day       string     `json:"day,omitempty"`
-	CreatedAt time.Time  `json:"created_at"`
-	ReadAt    *time.Time `json:"read_at,omitempty"`
+	Day string `json:"day,omitempty"`
+	// Window, when set, is how long its key keeps the same notice from
+	// being sent again, instead of the engine's (WithDedupe): a rule that
+	// warns once ahead of a date sets it past the date. Not stored.
+	Window    time.Duration `json:"-"`
+	CreatedAt time.Time     `json:"created_at"`
+	ReadAt    *time.Time    `json:"read_at,omitempty"`
 }
 
 // RunFilter selects runs, newest first.

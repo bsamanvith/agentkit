@@ -77,7 +77,7 @@ func TestWatchAndAutomationRoutes(t *testing.T) {
 		Automations []automation.Automation
 		Rules       map[string]string
 	}
-	if code := call(t, srv, "GET", "/api/automations", "", &list); code != 200 || len(list.Automations) != 4 || len(list.Rules) != 2 {
+	if code := call(t, srv, "GET", "/api/automations", "", &list); code != 200 || len(list.Automations) != 5 || len(list.Rules) != 3 {
 		t.Fatalf("automations: %d %+v", code, list)
 	}
 	var runs struct{ Runs []automation.Run }

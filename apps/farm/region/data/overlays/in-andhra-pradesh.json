@@ -11,13 +11,15 @@
    "name": "CM Naidu's Crop Insurance Policy to Provide Financial Security to Farmers (Deccan Chronicle, 30 October 2026)",
    "publisher": "Deccan Chronicle",
    "url": "https://www.deccanchronicle.com/southern-states/andhra-pradesh/cm-naidus-crop-insurance-policy-to-provide-financial-security-to-farmers-2000460",
-   "read": "2026-11-15"
+   "read": "2026-11-16"
   }
  ],
  "schemes": {
   "ap-crop-insurance-kharif-2026": {
    "name": "Crop insurance in Andhra Pradesh, kharif 2026 (PMFBY and RWBCIS)",
    "kind": "insurance",
+   "season": "kharif",
+   "year": 2026,
    "crops": ["rice", "pigeon_pea", "chilli", "maize", "turmeric"],
    "note": "22 crops notified for kharif 2026: 15 yield-based under PMFBY, 7 weather-based under the Restructured Weather Based Crop Insurance Scheme. The source names paddy, red gram, dry chilli, maize and turmeric, with sums insured per acre of about Rs 40,000, 20,000, 90,000, 33,000 and 94,000; the rest are in the state's notification. Claims need the crop recorded in e-Panta.",
    "ref": {

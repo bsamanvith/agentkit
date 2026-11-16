@@ -138,7 +138,9 @@ func (s *Service) Due(ctx context.Context, farmID string, from, to time.Time) ([
 		return nil, err
 	}
 	f, t := from.Format(agro.DateLayout), to.Format(agro.DateLayout)
-	return slices.DeleteFunc(r.Tasks, func(k Task) bool { return k.State != Open || k.Passed || k.Date < f || k.Date > t }), nil
+	return slices.DeleteFunc(r.Tasks, func(k Task) bool {
+		return k.State != Open || k.Passed || k.Standing || k.Date < f || k.Date > t
+	}), nil
 }
 
 // Record checks and records events on a plot and returns how many were new
@@ -278,6 +280,9 @@ func (s *Service) check(e Event, f farm.Farm, r Roadmap, added map[string]bool) 
 	t, ok := r.Task(e.Task)
 	if !ok && !added[e.Task] {
 		return fmt.Errorf("task %q is not on the plot's roadmap", e.Task)
+	}
+	if ok && t.Standing && e.Kind != Reopened {
+		return fmt.Errorf("task %q is information for the whole season, not work to close", e.Task)
 	}
 	if e.Kind == Removed {
 		if ok && t.Source != FromFarmer {

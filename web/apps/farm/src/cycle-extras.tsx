@@ -2,7 +2,7 @@ import { ChevronDown, ChevronRight, Info } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 // The optional parts of a cycle, each one tap away and collapsed until
-// tapped: what to buy, feeding and sprays, and when to sell. A lazy chunk
+// tapped: what to buy, feeding and sprays, crop insurance, and when to sell. A lazy chunk
 // of the Cycles tab; the numbers are the server's (package inputs and
 // prices), this only says them.
 
@@ -116,6 +116,110 @@ export interface Timing {
   /** The seasonal index, when there were enough years of prices for one. */
   index?: unknown;
   reasons: string[];
+}
+
+/** One crop insurance scheme for the cycle (package schemes). */
+export interface SchemeItem {
+  scheme: string;
+  name: string;
+  kind: string;
+  cover: "named" | "notified" | "not_named";
+  crops?: string[];
+  for_season?: string;
+  status: "open" | "soon" | "passed" | "no_date" | "stale";
+  what?: string;
+  by?: string;
+  days_left?: number;
+  cutoff_note?: string;
+  loss_notice_hours?: number;
+  says: string;
+  note?: string;
+  source: { id: string; name: string; publisher?: string; url?: string; where: string; read: string; layer: string };
+}
+
+export interface Schemes {
+  season: string;
+  year: number;
+  items: SchemeItem[];
+  confirm: string;
+}
+
+function left(n: number): string {
+  return n === 0 ? "today is the last day" : n === 1 ? "1 day left" : `${n} days left`;
+}
+
+/** The scheme's last date, in a line. */
+function lastDate(it: SchemeItem): string {
+  const what = it.what === "sowing" ? "sow to be covered" : "enrol";
+  switch (it.status) {
+    case "open":
+    case "soon":
+      return `Last date to ${what}: ${day(it.by ?? "")} · ${left(it.days_left ?? 0)}`;
+    case "passed":
+      return `Last date to ${what} was ${day(it.by ?? "")}: it has passed`;
+    case "stale":
+      return `Last year's dates (${it.for_season}), not yet announced for this season`;
+    default:
+      return "No last date given for this season: ask before you sow";
+  }
+}
+
+const coverText: Record<SchemeItem["cover"], string> = {
+  named: "Covers your crop",
+  notified: "Covers the crops the state notifies each season: ask whether yours is one",
+  not_named: "Your crop is not among the crops it names: ask whether it is covered",
+};
+
+/** What the summary line of the Insurance section says. */
+function insuranceSummary(s: Schemes): string {
+  const live = s.items.filter((i) => i.status === "open" || i.status === "soon");
+  const next = live.sort((a, b) => (a.days_left ?? 0) - (b.days_left ?? 0))[0];
+  const hours = s.items.find((i) => i.loss_notice_hours && i.status !== "stale")?.loss_notice_hours;
+  return [
+    next
+      ? `Enrol by ${day(next.by ?? "")}, ${left(next.days_left ?? 0)}`
+      : s.items.some((i) => i.status === "passed")
+        ? "Last date to enrol has passed"
+        : "Dates not yet announced",
+    hours ? `report damage within ${hours} hours` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function Insurance({ s }: { s: Schemes }) {
+  return (
+    <>
+      <ul className="flex flex-col gap-2">
+        {s.items.map((it) => (
+          <li key={it.scheme} className="rounded-lg border px-3 py-2 text-sm">
+            <p className="font-medium">{it.name}</p>
+            <p className="text-xs text-muted-foreground">{coverText[it.cover]}</p>
+            <p className={it.status === "soon" ? "mt-1 font-medium text-ak-warn" : "mt-1"}>{lastDate(it)}</p>
+            {it.cutoff_note && it.status !== "stale" && (
+              <p className="text-xs text-muted-foreground">{it.cutoff_note}</p>
+            )}
+            {it.loss_notice_hours ? (
+              <p className="mt-1">If the crop is damaged: report within {it.loss_notice_hours} hours.</p>
+            ) : null}
+            <p className="mt-1 text-xs text-muted-foreground">
+              From{" "}
+              {it.source.url ? (
+                <a className="underline" href={it.source.url} target="_blank" rel="noreferrer">
+                  {it.source.name}
+                </a>
+              ) : (
+                it.source.name
+              )}
+              , read {day(it.source.read)}
+              {it.source.layer !== "base" ? ` (${it.source.layer})` : ""}.
+            </p>
+          </li>
+        ))}
+      </ul>
+      <Notes notes={[`Confirm before you rely on this. ${s.confirm}`]} />
+    </>
+  );
 }
 
 /** Why there is no timing advice, in a line. */
@@ -440,7 +544,8 @@ export default function Extras({ addons, sown }: { addons?: Record<string, unkno
   const inputs = addons?.inputs as InputsPlan | undefined;
   const timing = addons?.timing as Timing | undefined;
   const advice = timing && (timing.selling || timing.sowing);
-  if (!inputs && !timing) return null;
+  const insurance = addons?.schemes as Schemes | undefined;
+  if (!inputs && !timing && !insurance?.items.length) return null;
   const toggle = (id: string) => () => setOpen((o) => (o === id ? "" : id));
   const sprays = inputs?.schedule.filter((t) => t.kind === "spray" || t.kind === "prevent").length ?? 0;
   return (
@@ -473,6 +578,16 @@ export default function Extras({ addons, sown }: { addons?: Record<string, unkno
           onToggle={toggle("feed")}
         >
           <Schedule p={inputs} />
+        </Section>
+      )}
+      {insurance && insurance.items.length > 0 && (
+        <Section
+          title="Insurance"
+          summary={insuranceSummary(insurance)}
+          open={open === "insurance"}
+          onToggle={toggle("insurance")}
+        >
+          <Insurance s={insurance} />
         </Section>
       )}
       {advice && timing ? (

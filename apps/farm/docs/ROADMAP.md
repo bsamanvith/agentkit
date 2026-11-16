@@ -67,6 +67,17 @@ share the event store, the states and the screens. Weather adjustments (move
 a spray to a dry day) are a later step: they will be their own events, so
 the calendar and the weather never fight over a date.
 
+**Crop insurance (T151)** is the first such source: `addon.Schemes`
+reads the plot's region schemes (package `schemes`) and adds one "Enrol
+for crop insurance by <date>" task per scheme that may cover the crops,
+ID `scheme-<scheme>-<season>-<year>` (a moved sowing keeps its tick), and
+a standing "If the crop is damaged: report within 72 hours" entry. Two
+task flags carry what is new: `Deadline` (a last day: once gone, an open
+task is *passed*, never overdue for ever) and `Standing` (information for
+the season: never due, overdue or counted, and it cannot be closed). The
+`weekly-insurance` automation warns once when an enrolment date not yet
+ticked is 14 days away or less.
+
 ## Later
 
 Anchors other than the sowing (an observed stage, a fixed cut-off, 72 hours

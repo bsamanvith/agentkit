@@ -16,7 +16,7 @@ export type EventKind = "done" | "skipped" | "not_needed" | "reopened" | "added"
 
 export interface Task {
   id: string;
-  source: "calendar" | "farmer";
+  source: "calendar" | "farmer" | "inputs" | "schemes";
   zone: number;
   crop?: string;
   kind: string;
@@ -35,6 +35,10 @@ export interface Task {
   overdue?: boolean;
   /** Open work from before a recorded sowing: its time has gone, so it is neither due nor overdue. */
   passed?: boolean;
+  /** Its date is a last day (an insurance enrolment): once gone, it is passed, not overdue. */
+  deadline?: boolean;
+  /** Information for the whole season (report crop damage within 72 hours): nothing to tick. */
+  standing?: boolean;
 }
 
 export interface RoadmapZone {
@@ -254,6 +258,7 @@ export const kindNames: Record<string, string> = {
   protect: "Spraying",
   prune: "Pruning",
   harvest: "Harvest",
+  insurance: "Insurance",
   other: "Other",
 };
 

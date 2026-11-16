@@ -139,7 +139,7 @@ input. Planned, in the order they become possible:
 | **Crop doctor with guided photos** | farmer | crop, stage and recent sprays, so the app can ask for the right photos (whole plant, leaf top and underside, with a coin for scale) and answer for this crop today | T148, feature 15 |
 | **FPO season view** | FPO, extension worker | members' planned cycles: area by crop, expected harvest by week, input demand to buy in bulk, produce to sell together | T145, accounts |
 | **Harvest and sale desk** | farmer, FPO, buyer | expected harvest dates and quantities weeks ahead: book a harvester and labour, offer a lot to a buyer before the glut | T145, T147 |
-| **Insurance and scheme deadlines** | farmer | sowing date and crop fix the PMFBY cut-off and the 72-hour loss notice; tasks on the roadmap | T145 |
+| **Insurance and scheme deadlines** (live for crop insurance, T151) | farmer | sowing date and crop fix the PMFBY cut-off and the 72-hour loss notice; tasks on the roadmap | T145 |
 | **Agronomist's review desk** | reviewer (ANGRAU, KVK) | every rule value with its source, where it is used, and a way to correct it for a district | T148 |
 | **Plot history** | farmer, lender | finished cycles: what was grown, yield, price got; next year's suggestions learn from it | T145, ledger |
 

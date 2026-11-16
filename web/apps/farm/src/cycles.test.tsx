@@ -469,4 +469,69 @@ describe("cycle helpers", () => {
     expect(sameCycle(a, cycle("farmer", "maize", "Maize", "2026-06-21", "2026-09-21"))).toBe(false);
     expect(sameCycle(a, undefined)).toBe(false);
   });
+  it("keeps crop insurance one tap away: last date and days left, the 72-hour rule, the source and read date, last year's dates as such", async () => {
+    const l = line();
+    const source = {
+      id: "pmfby-og-2020",
+      name: "PMFBY Revamped Operational Guidelines",
+      url: "https://pmfby.gov.in/x.pdf",
+      where: "para 16.2",
+      read: "2026-11-15",
+      layer: "base",
+    };
+    l.cycles[0] = {
+      ...l.cycles[0]!,
+      addons: {
+        schemes: {
+          season: "kharif",
+          year: 2026,
+          confirm: "Confirm at the bank, the Rythu Seva Kendra or the insurer before you rely on this.",
+          items: [
+            {
+              scheme: "pmfby",
+              name: "Pradhan Mantri Fasal Bima Yojana (PMFBY)",
+              kind: "insurance",
+              cover: "notified",
+              status: "open",
+              what: "enrolment",
+              by: "2026-07-15",
+              days_left: 44,
+              loss_notice_hours: 72,
+              says: "",
+              source,
+            },
+            {
+              scheme: "ap-2026",
+              name: "Crop insurance in Andhra Pradesh, kharif 2026",
+              kind: "insurance",
+              cover: "named",
+              crops: ["black_gram"],
+              for_season: "kharif 2026",
+              status: "stale",
+              says: "",
+              source: { ...source, id: "dc", name: "Deccan Chronicle", layer: "Andhra Pradesh" },
+            },
+          ],
+        },
+      },
+    };
+    server(() => json(l));
+    render(<Cycles farm={farm} />);
+    const section = await screen.findByRole("button", { name: /Insurance/ });
+    expect(section).toHaveAttribute("aria-expanded", "false");
+    expect(section).toHaveTextContent(/Enrol by 15 Jul( \d{4})?, 44 days left · report damage within 72 hours/);
+    expect(screen.queryByText(/Rythu Seva Kendra/)).not.toBeInTheDocument();
+    await userEvent.click(section);
+    expect(screen.getByText(/Last date to enrol: 15 Jul( \d{4})? · 44 days left/)).toBeInTheDocument();
+    expect(screen.getByText("If the crop is damaged: report within 72 hours.")).toBeInTheDocument();
+    expect(screen.getByText(/Covers the crops the state notifies each season/)).toBeInTheDocument();
+    expect(screen.getByText("Covers your crop")).toBeInTheDocument();
+    expect(screen.getByText("Last year's dates (kharif 2026), not yet announced for this season")).toBeInTheDocument();
+    expect(screen.getAllByText(/read 15 Nov/)).toHaveLength(2);
+    expect(screen.getByRole("link", { name: "PMFBY Revamped Operational Guidelines" })).toHaveAttribute(
+      "href",
+      "https://pmfby.gov.in/x.pdf",
+    );
+    expect(screen.getByText(/Confirm before you rely on this/)).toBeInTheDocument();
+  });
 });

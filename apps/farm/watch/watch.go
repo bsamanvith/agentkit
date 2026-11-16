@@ -259,6 +259,13 @@ func Builtins(withWeather, withSkills bool) []automation.Automation {
 		Scope:       automation.Scope{WithPlan: true},
 		Action:      automation.Action{Kind: automation.DoRule, Rule: RuleTasks},
 	})
+	out = append(out, automation.Automation{
+		ID: WeeklyInsurance, Name: "Crop insurance last dates", Enabled: true,
+		Description: "Every Monday at 6:45 am (India), warns once when a crop insurance enrolment date on a plot's season work is two weeks away or less and not yet ticked.",
+		Trigger:     automation.Trigger{Kind: automation.OnSchedule, Schedule: "15 1 * * 1"},
+		Scope:       automation.Scope{WithPlan: true},
+		Action:      automation.Action{Kind: automation.DoRule, Rule: RuleInsurance},
+	})
 	if withSkills && withWeather {
 		out = append(out, automation.Automation{
 			ID: FieldBrief, Name: "Weekly field brief (assistant)", Enabled: false,
@@ -273,7 +280,10 @@ func Builtins(withWeather, withSkills bool) []automation.Automation {
 
 // Rules returns the engine options that register the rules.
 func (w *Watch) Rules() []automation.Option {
-	opts := []automation.Option{automation.WithRule(RuleTasks, "The crop calendar's work due this week, as one notice.", w.TasksRule())}
+	opts := []automation.Option{
+		automation.WithRule(RuleTasks, "The crop calendar's work due this week, as one notice.", w.TasksRule()),
+		automation.WithRule(RuleInsurance, "A crop insurance enrolment date within two weeks and not ticked on the season roadmap, warned once.", w.InsuranceRule()),
+	}
 	if w.forecast != nil {
 		opts = append(opts, automation.WithRule(RuleWeather, "The 7-day forecast read against the plot's crops: a notice per action needed, none in a quiet week.", w.WeatherRule()))
 	}

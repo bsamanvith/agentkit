@@ -38,6 +38,7 @@ type world struct {
 	engine  *automation.Engine
 	store   automation.Store
 	weather *weathertest.Fake
+	clk     *clocktest.Fake
 	planted string // a plot with maize sown 25 days ago
 	bare    string // a plot with no plan
 }
@@ -47,6 +48,7 @@ func setup(t *testing.T) *world {
 	ctx := context.Background()
 	w := &world{weather: weathertest.New(weathertest.Week("2026-11-09")...)}
 	clk := clocktest.NewFake(now)
+	w.clk = clk
 	var events []farm.Event
 	svc, err := farm.NewService(&farmtest.Memory{}, farm.NewVerifier(), farm.WithServiceClock(clk),
 		farm.WithObserver(func(_ context.Context, e farm.Event) {

@@ -33,7 +33,7 @@ Status words: **live** (merged on main, a farmer can use it), **building**
 | 17 | [Offline and voice in the field](#17-offline-and-voice-in-the-field) | planned | all | |
 | 18 | [Field watch from satellites](#18-field-watch-from-satellites) | idea | grow | |
 | 19 | [Soil Health Card and land papers from a photo](#19-soil-health-card-and-land-papers-from-a-photo) | idea | land | |
-| 20 | [Schemes, insurance and paperwork](#20-schemes-insurance-and-paperwork) | idea | plan, money | |
+| 20 | [Schemes, insurance and paperwork](#20-schemes-insurance-and-paperwork) | live: insurance dates; idea: the rest | plan, grow, money | T151 |
 | 21 | [For FPOs, dealers and lenders](#21-for-fpos-dealers-and-lenders) | idea | all | |
 | 22 | [Season roadmap](#22-season-roadmap) | live | grow | T141 |
 | 23 | [Crop cycles](#23-crop-cycles) | building | plan, grow | T145, T146 |
@@ -305,6 +305,46 @@ tasks), calendar rule keys in `apps/farm/calendar`; routes `/api/farms/{id}/road
 `get_roadmap`, `record_work`. Web: `roadmap.tsx`, `roadmap-data.ts` (the
 offline queue). Design: [ROADMAP.md](ROADMAP.md).
 
+### 20. Schemes, insurance and paperwork
+
+**Live: crop insurance dates (T151).** **The farmer** opens *Insurance*
+under this cycle (closed until tapped): each crop insurance scheme of
+their region (PMFBY everywhere; Andhra Pradesh's kharif 2026 notice
+there), whether it covers the crop ("covers your crop", "covers the
+crops the state notifies: ask whether yours is one", or "your crop is not
+among the crops it names: ask"), the last date to enrol and the days
+left, or that it has passed, or "last year's dates, not yet announced for
+this season", the 72-hour rule for reporting damage, and the source with
+the day it was read, with "confirm before you rely on this" at the bank,
+the Rythu Seva Kendra or the insurer. *Season work* has an "Enrol for
+crop insurance by 15 July" task (once the date is gone it shows as
+passed, not overdue) and a standing "If the crop is damaged: report
+within 72 hours" entry with nothing to tick. Two weeks before a last
+date that is not ticked, one alert goes to the bell and by the message
+lanes of [14](#14-alerts-on-the-phone-push-telegram-email-whatsapp-sms).
+Or they ask the assistant "is my crop insured, what is the last date".
+
+**The app** reads the schemes of the plot's region pack (no model, no
+date of its own): the cycle's crops and first sowing fix the season and
+its year, the scheme's cut-off for that season gives the date. A notice
+for an earlier season is never shown as a live deadline.
+
+**Behind it:** `apps/farm/schemes` (the rules), `region.Scheme` (data,
+with `season` and `year` for a one-season notice), `cycle/addon`
+(`Schemes`: the cycle addon and the roadmap's task source), `work`
+(`Task.Deadline`, `Task.Standing`), `watch` (`insurance_cutoffs`, the
+`weekly-insurance` automation); route `/api/farms/{id}/schemes`; tool
+`get_schemes`, skill `manage-crop`. Web: `cycle-extras.tsx`,
+`roadmap.tsx`. Design: [REGIONS.md](REGIONS.md),
+[ROADMAP.md](ROADMAP.md). **Still to come:** this season's notices as
+they are published (only PMFBY's normal cut-offs and AP's kharif 2026
+notice are in the data), district cut-offs.
+
+**Still an idea:** which other schemes a farmer qualifies for (PM-KISAN,
+Rythu Bharosa, Raitha Siri and other state schemes), the documents; an
+insurance claim drafted with geo-tagged photos, submitted only with the
+farmer's approval.
+
 ### 14. Alerts on the phone: push, Telegram, email, WhatsApp, SMS
 
 **The farmer** gets the plot's alerts where they already look: a
@@ -521,13 +561,6 @@ The farmer photographs the Soil Health Card and the app fills the plot's
 soil (pH, N, P, K, organic carbon) instead of guessing from colour; the
 pattadar passbook or RoR gives the survey number and recorded area to
 check against the drawn boundary.
-
-### 20. Schemes, insurance and paperwork
-
-Which schemes a farmer qualifies for (PM-KISAN, PMFBY, Rythu Bharosa,
-Raitha Siri and other state schemes), the documents and deadlines; an
-insurance claim drafted with geo-tagged photos, submitted only with the
-farmer's approval.
 
 ### 21. For FPOs, dealers and lenders
 

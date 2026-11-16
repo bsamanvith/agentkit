@@ -40,7 +40,7 @@ embedded; or a file in the `-regions` folder, `FARM_REGIONS`):
 | `rules` | | `turnaround_days`, `max_wait_days`, `wait_days_per_point`, `rotation` (`same_family`, `legume_after_other`, `cereal_after_legume`, each on its own), `seasons` |
 | `storage` | storage class | a class's loss, cost, interest or months |
 | `msp` | commodity, variety, season | change or add a support price (a state bonus) |
-| `schemes` | scheme id | change or add a scheme: name, kind, crops covered, cut-offs (season, enrolment or sowing, `MM-DD`), loss-notice hours, a note |
+| `schemes` | scheme id | change or add a scheme: name, kind, the one season and year a notice is for, crops covered, cut-offs (season, enrolment or sowing, `MM-DD`), loss-notice hours, a note |
 
 **Field-level merge.** Each field an overlay names replaces the base's
 field whole, except a field that is itself an object of plain fields
@@ -68,9 +68,18 @@ plot's water it is a risk, and the sowing's season factor is multiplied
 by 0.9, the same kind of nudge as an unusual season (0.8). A crop with no
 window for the plot's water is scored as before.
 
-**Schemes are data only.** No feature reads them yet; the slot is there
-so insurance cut-offs and loss-notice hours can reach the calendar and
-the alerts later without a change to the pack format.
+**Schemes are read (T151).** Package `schemes` reads a plot's pack for
+its current cycle: which schemes cover its crops (a scheme that names no
+crops may cover any: the state notifies them), the season's cut-off and
+the days left, and the loss-notice hours, each with its source, layer and
+read date. From it come the season roadmap's insurance tasks, the
+`weekly-insurance` alert, the cycle's *Insurance* section, `get_schemes`
+and `/api/farms/{id}/schemes` ([FEATURES.md](FEATURES.md#20-schemes-insurance-and-paperwork)).
+A notice for one season carries `season` and `year` ("kharif", 2026:
+the season that starts that year); read for a later season it gives last
+year's dates, "not yet announced for this season", never a live
+deadline. Rules that hold every season (PMFBY's guidelines) leave both
+out.
 
 ## Checked at startup
 
@@ -82,7 +91,8 @@ entry has a ref to a listed source), then the whole library with
 `agro.Load` and the whole book with `inputs.Load` (so an overlay cannot
 add an unknown crop to the inputs, a product whose active is banned, a
 split that does not add up), the rules (months covered once, positive
-waits) and the schemes (crops in the library, `MM-DD` dates). Any error
+waits) and the schemes (crops in the library, `MM-DD` dates, a year
+only with a season, cut-offs of a one-season notice in that season). Any error
 stops the start with `region.ErrInvalid`, naming the file and the key:
 `region: invalid: bihar.json: crops.groundnut.dayz: unknown key`. Two
 files for one region are an error too.
@@ -104,6 +114,7 @@ asks the planner, never a global:
 | `cycle/addon` Inputs and Roadmap (`addon.WithPacks`) | the inputs book and the library |
 | `cycle/addon` Timing (`addon.WithPacks`) | the library (crop days) and the storage values (`prices.TimingQuery.Storage`) |
 | `work` (season roadmap), `watch` (calendar, weekly advice), the assistant's calendar and compare tools | the library (`planner.LibraryFor`) |
+| `cycle/addon` Schemes (`addon.WithPacks`): the roadmap's insurance tasks, the cycle's insurance, `get_schemes`, the cut-off alert | the schemes, their sources and origins, the seasons |
 
 The plot's place is its boundary's location (`farm.Report.Location`, from
 Nominatim): country code, state, district. Names match whatever their

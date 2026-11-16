@@ -569,7 +569,11 @@ func (e *Engine) do(ctx context.Context, j Job) (r Run) {
 		if n.Severity == "" {
 			n.Severity = Advice
 		}
-		added, err := e.store.AddNotice(ctx, n, since)
+		from := since
+		if n.Window > 0 {
+			from = e.clock.Now().Add(-n.Window)
+		}
+		added, err := e.store.AddNotice(ctx, n, from)
 		if err != nil {
 			return fail(err)
 		}

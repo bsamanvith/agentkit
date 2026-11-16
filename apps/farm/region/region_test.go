@@ -146,6 +146,14 @@ func TestEmbeddedAndhraPradeshOverlays(t *testing.T) {
 	if !reflect.DeepEqual(names, []string{"pmfby", "ap-crop-insurance-kharif-2026"}) {
 		t.Errorf("Guntur schemes %v", names)
 	}
+	for _, sc := range k.Schemes() {
+		if sc.ID == "ap-crop-insurance-kharif-2026" && (sc.Season != agro.Kharif || sc.Year != 2026) {
+			t.Errorf("the AP notice is for kharif 2026 only: %+v", sc)
+		}
+	}
+	if b := s.Base().Schemes(); len(b) != 1 || b[0].Season != "" || b[0].Year != 0 {
+		t.Errorf("PMFBY's guidelines hold every season: %+v", b)
+	}
 	if len(s.Base().Schemes()) != 1 || s.Base().Schemes()[0].LossNoticeHours != 72 {
 		t.Errorf("base schemes %+v", s.Base().Schemes())
 	}
@@ -291,6 +299,9 @@ func TestInvalidOverlayFailsWithFileAndKey(t *testing.T) {
 		{"unknown crop in inputs", overlay(ap, `"inputs": {"crops": {"yam": {"per_plant": false, `+ref+`}}}`), `crop "yam": not in the crop library`},
 		{"banned product", overlay(ap, `"inputs": {"products": {"mono": {"name": "Monocrotophos 36 SL", "kind": "pesticide", "synthetic": true, "unit": "ml", "active": "monocrotophos", `+ref+`}}}`), "banned or restricted"},
 		{"unknown crop in scheme", overlay(ap, `"schemes": {"x": {"name": "X", "kind": "insurance", "crops": ["yam"], `+ref+`}}`), `crop "yam"`},
+		{"scheme year without a season", overlay(ap, `"schemes": {"x": {"name": "X", "kind": "insurance", "year": 2026, `+ref+`}}`), "schemes.x: year 2026"},
+		{"scheme season unknown", overlay(ap, `"schemes": {"x": {"name": "X", "kind": "insurance", "season": "monsoon", "year": 2026, `+ref+`}}`), `season "monsoon"`},
+		{"scheme cutoff of another season", overlay(ap, `"schemes": {"x": {"name": "X", "kind": "insurance", "season": "kharif", "year": 2026, "cutoffs": [{"season": "rabi", "what": "enrolment", "by": "12-15"}], `+ref+`}}`), "for kharif only"},
 		{"bad rules", overlay(ap, `"rules": {"max_wait_days": 0, `+ref+`}`), "max_wait_days"},
 		{"bad window", overlay(ap, `"crops": {"groundnut": {"windows": [{"season": "kharif", "from": "6-1", "to": "07-31", "source": "s"}], `+ref+`}}`), "want MM-DD"},
 		{"bad region", `{"region": {"country": "India"}}`, "two-letter country"},

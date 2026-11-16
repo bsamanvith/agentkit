@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -460,17 +461,20 @@ func (s *suite) errorMatrix(t *testing.T) {
 	s.run(t, "errors.connection_refused", func(t *testing.T) {
 		t.Parallel()
 		r := s.newRig(t, modeKeyed)
-		ln, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			t.Fatal(err)
-		}
-		addr := ln.Addr().String()
-		_ = ln.Close()
+		// The dial itself is refused. Listening on a free port and closing
+		// it is not enough: a server another parallel test starts can be
+		// given that port, and then the call is answered (CI, 2026-11-16:
+		// the calendar connector's list_calendars reached another test's
+		// upstream).
+		const addr = "127.0.0.1:1"
 		h := newHermetic(t, r.up.via, addr)
+		h.base = &http.Transport{DialContext: func(context.Context, string, string) (net.Conn, error) {
+			return nil, &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}
+		}}
 		t.Cleanup(h.close)
 		r.env.BaseURL, r.env.HTTPClient = "http://"+addr, &http.Client{Transport: h}
 		tools := r.toolsFor(call)
-		_, err = r.invoke(t.Context(), tools, call.Tool, call.Input)
+		_, err := r.invoke(t.Context(), tools, call.Tool, call.Input)
 		failed(t, err)
 	})
 }

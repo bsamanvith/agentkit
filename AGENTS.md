@@ -44,6 +44,7 @@ template in [the README](.agents/skills/README.md)). Idea to merge:
 | `review` | Review a diff against our rules and test its tests |
 | `local-env` | Run the change in a real deployment, smoke it, read logs |
 | `farm-features` | Read and update the farm app's product list ([apps/farm/docs/FEATURES.md](apps/farm/docs/FEATURES.md)): what farmers can do, how it works, what's next |
+| `farm-data-updates` | Check the farm app's rule data against its sources when asked (insurance cut-offs, MSP, banned pesticides, doses, sowing windows) and bring it up to date |
 
 ## Seams
 

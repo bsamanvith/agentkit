@@ -84,4 +84,4 @@ How we work:
 
 ## License
 
-[Apache-2.0](LICENSE)
+[Apache-2.0](LICENSE) for the code. Some data files come from other publishers (FAO's ECOCROP among them) and stay under their terms: see [NOTICE](NOTICE).

@@ -1,0 +1,29 @@
+agentkit
+Copyright the agentkit authors
+
+The code in this repository is licensed under the Apache License,
+Version 2.0 (see LICENSE).
+
+Data that is not ours
+---------------------
+
+Some data files in this repository come from other publishers. The Apache
+licence above does not cover them: they stay under their publisher's own
+terms, and anyone who copies or reuses them takes those terms on.
+
+- apps/farm/agro/data/wide.json.gz (the farm app's experimental plant
+  tier) is derived from the ECOCROP database of the Food and Agriculture
+  Organization of the United Nations (FAO), https://gaez.fao.org/pages/ecocrop,
+  read from the public copy at https://github.com/OpenCLIM/ecocrop. FAO
+  states no licence for this database. FAO's database terms (CC BY 4.0, with
+  credit to FAO, https://www.fao.org/contact-us/terms/db-terms-of-use/en/)
+  name its statistical databases and do not allow using FAO's name or data
+  to promote a commercial enterprise. The farm app is free and credits FAO
+  wherever these plants are shown. Check FAO's terms yourself before any
+  commercial use.
+
+- Other rule data under apps/farm (crop varieties, district sowing windows,
+  doses, scheme dates, prices) is read from public government and university
+  documents. Each data file names its sources in a "sources" list, with the
+  publisher, the address and the date it was read. The facts are restated in
+  our own format; the source documents remain their publishers'.
